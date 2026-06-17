@@ -20,6 +20,7 @@ import {
   threadPromptHistoryQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
@@ -38,7 +39,11 @@ interface ThreadListInvalidationArgs extends ProjectScopedInvalidationArgs {
 }
 
 export function getProjectListInvalidationQueryKeys(): QueryKey[] {
-  return [projectsQueryKey(), sidebarNavigationQueryKey()];
+  return [
+    projectsQueryKey(),
+    sidebarNavigationQueryKey(),
+    threadSearchQueryKeyPrefix(),
+  ];
 }
 
 export function getProjectPromptHistoryInvalidationQueryKeys({
@@ -81,7 +86,11 @@ export function getThreadListInvalidationQueryKeys({
         queryClient,
       })
     : [threadsQueryKey()];
-  return [...threadListQueryKeys, sidebarNavigationQueryKey()];
+  return [
+    ...threadListQueryKeys,
+    sidebarNavigationQueryKey(),
+    threadSearchQueryKeyPrefix(),
+  ];
 }
 
 export function getThreadDetailInvalidationQueryKeys({

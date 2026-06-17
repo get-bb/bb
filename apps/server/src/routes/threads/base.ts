@@ -1,9 +1,13 @@
 import {
+  THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
+  THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
+  searchThreadsWithPendingInteractionState,
   updateThread,
+  type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
@@ -14,6 +18,7 @@ import {
   type ThreadGetQuery,
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
+  type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
@@ -62,6 +67,17 @@ interface BuildThreadResponseArgs {
   thread: Thread;
 }
 
+type ThreadSearchResultGroupResponse = ThreadSearchResponse["active"];
+
+interface BuildThreadSearchGroupResponseArgs {
+  group: DbThreadSearchResultGroup;
+}
+
+interface BuildThreadSearchResponseArgs {
+  active: DbThreadSearchResultGroup;
+  archived: DbThreadSearchResultGroup;
+}
+
 function resolveIncludedThreadEnvironment(
   deps: Pick<AppDeps, "db">,
   thread: Thread,
@@ -99,6 +115,68 @@ function buildThreadResponse(
   return response;
 }
 
+function countNonWhitespaceChars(value: string): number {
+  return value.replaceAll(/\s/gu, "").length;
+}
+
+function parseSearchLimitPerGroup(value: string | undefined): number {
+  const limit =
+    value === undefined
+      ? THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT
+      : parseOptionalInteger(value, "limitPerGroup");
+  if (limit === undefined) {
+    return THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT;
+  }
+  if (limit <= 0) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "limitPerGroup must be positive",
+    );
+  }
+  if (limit > THREAD_SEARCH_LIMIT_PER_GROUP_MAX) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `limitPerGroup must be at most ${THREAD_SEARCH_LIMIT_PER_GROUP_MAX}`,
+    );
+  }
+  return limit;
+}
+
+function buildThreadSearchGroupResponse(
+  deps: AppDeps,
+  args: BuildThreadSearchGroupResponseArgs,
+): ThreadSearchResultGroupResponse {
+  const threadEntries = toThreadListEntryResponses(deps, {
+    threads: args.group.results.map((result) => result.thread),
+  });
+  const threadEntriesById = new Map(
+    threadEntries.map((thread) => [thread.id, thread]),
+  );
+
+  return {
+    total: args.group.total,
+    results: args.group.results.flatMap((result) => {
+      const thread = threadEntriesById.get(result.thread.id);
+      if (thread === undefined) {
+        return [];
+      }
+      return [{ thread, matches: result.matches }];
+    }),
+  };
+}
+
+function buildThreadSearchResponse(
+  deps: AppDeps,
+  args: BuildThreadSearchResponseArgs,
+): ThreadSearchResponse {
+  return {
+    active: buildThreadSearchGroupResponse(deps, { group: args.active }),
+    archived: buildThreadSearchGroupResponse(deps, { group: args.archived }),
+  };
+}
+
 export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -132,6 +210,26 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     });
     return context.json(
       toThreadListEntryResponses(deps, { threads }) satisfies ThreadListEntry[],
+    );
+  });
+
+  get(routes.search, (context, query) => {
+    const searchQuery = query.query.trim();
+    if (countNonWhitespaceChars(searchQuery) < 2) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "query must contain at least two non-whitespace characters",
+      );
+    }
+    const limitPerGroup = parseSearchLimitPerGroup(query.limitPerGroup);
+    return context.json(
+      buildThreadSearchResponse(deps, {
+        ...searchThreadsWithPendingInteractionState(deps.db, {
+          query: searchQuery,
+          limitPerGroup,
+        }),
+      }) satisfies ThreadSearchResponse,
     );
   });
 

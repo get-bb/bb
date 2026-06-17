@@ -25,6 +25,7 @@ import type {
   TerminalSessionCloseReason,
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
+  ThreadSearchSourceKind,
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
@@ -297,6 +298,30 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const threadSearchSegments = sqliteTable(
+  "thread_search_segments",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind").$type<ThreadSearchSourceKind>().notNull(),
+    sourceKey: text("source_key").notNull(),
+    sourceSeq: integer("source_seq"),
+    text: text("text").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_search_segments_source_idx").on(
+      table.threadId,
+      table.sourceKind,
+      table.sourceKey,
+    ),
+    index("thread_search_segments_thread_idx").on(table.threadId),
   ],
 );
 

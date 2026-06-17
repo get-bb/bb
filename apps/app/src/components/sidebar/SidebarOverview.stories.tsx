@@ -1,7 +1,10 @@
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import type {
+  SidebarBootstrapResponse,
+  ThreadSearchResponse,
+} from "@bb/server-contract";
 import {
   BRANCH_NAMES,
   makeProject,
@@ -16,7 +19,13 @@ import {
   ProjectListNavigationLoadingState,
   ProjectListShell,
 } from "./ProjectList";
-import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
+import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
+import {
+  sidebarNavigationQueryKey,
+  threadSearchQueryKey,
+} from "@/hooks/queries/query-keys";
+import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -191,6 +200,75 @@ const loadedSidebarNavigation = {
   ],
 } satisfies SidebarBootstrapResponse;
 
+const searchResponse = {
+  active: {
+    total: 2,
+    results: [
+      {
+        thread: makeThreadListEntry({
+          id: "thr_story_search_active",
+          projectId: bbProject.id,
+          title: "Search result handoff",
+          titleFallback: "Search result handoff",
+          environmentName: "Sidebar polish",
+          environmentBranchName: BRANCH_NAMES.feature,
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+        matches: [
+          {
+            sourceKind: "user_message",
+            text: "needle appears in the original request",
+            highlightRanges: [{ start: 0, end: 6 }],
+          },
+        ],
+      },
+      {
+        thread: makeThreadListEntry({
+          id: "thr_story_search_pending",
+          projectId: docsProject.id,
+          title: "Needle follow-up",
+          titleFallback: "Needle follow-up",
+          hasPendingInteraction: true,
+        }),
+        matches: [
+          {
+            sourceKind: "title",
+            text: "Needle follow-up",
+            highlightRanges: [{ start: 0, end: 6 }],
+          },
+        ],
+      },
+    ],
+  },
+  archived: {
+    total: 1,
+    results: [
+      {
+        thread: makeThreadListEntry({
+          archivedAt: 220,
+          id: "thr_story_search_archived",
+          projectId: bbProject.id,
+          title: "Archived needle investigation",
+          titleFallback: "Archived needle investigation",
+        }),
+        matches: [
+          {
+            sourceKind: "assistant_message",
+            text: "The archived thread contains the matching needle.",
+            highlightRanges: [{ start: 42, end: 48 }],
+          },
+        ],
+      },
+    ],
+  },
+} satisfies ThreadSearchResponse;
+
+const searchProjectNamesById = new Map([
+  [bbProject.id, bbProject.name],
+  [docsProject.id, docsProject.name],
+  [PERSONAL_PROJECT_ID, personalProject.name],
+]);
+
 function SidebarFrame({ children }: SidebarFrameProps) {
   return (
     <ProjectActionsProvider>
@@ -254,6 +332,89 @@ function LoadedSidebar() {
   );
 }
 
+function SearchSidebar() {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isSeeded, setIsSeeded] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [navigationItems, setNavigationItems] = useState<
+    readonly SidebarThreadSearchNavigationItem[]
+  >([]);
+
+  useEffect(() => {
+    queryClient.setQueryData(
+      threadSearchQueryKey({
+        limitPerGroup: THREAD_SEARCH_LIMIT_PER_GROUP,
+        query: "needle",
+      }),
+      searchResponse,
+    );
+    setIsSeeded(true);
+
+    return () => {
+      queryClient.removeQueries({
+        queryKey: threadSearchQueryKey({
+          limitPerGroup: THREAD_SEARCH_LIMIT_PER_GROUP,
+          query: "needle",
+        }),
+        exact: true,
+      });
+    };
+  }, [queryClient]);
+
+  if (!isSeeded) {
+    return <LoadingSidebar />;
+  }
+
+  return (
+    <ProjectActionsProvider>
+      <ThreadActionsProvider>
+        <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
+          <div className="shrink-0 px-2 py-2">
+            <ProjectListActionButtons
+              onNewChat={noop}
+              threadSearch={{
+                activeDescendantId: navigationItems[activeIndex]?.optionId,
+                inputRef,
+                isActive: true,
+                onActivate: noop,
+                onClose: noop,
+                onQueryChange: noop,
+                query: "needle",
+              }}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ProjectListShell>
+              <SidebarThreadSearchPanel
+                activeIndex={activeIndex}
+                isRecentsLoading={false}
+                onActiveIndexChange={setActiveIndex}
+                onNavigationItemsChange={setNavigationItems}
+                onSelect={noop}
+                projectNamesById={searchProjectNamesById}
+                query="needle"
+                recentThreads={[]}
+              />
+            </ProjectListShell>
+          </div>
+          <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
+            <button
+              type="button"
+              aria-label="App settings"
+              title="App settings"
+              className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2"
+            >
+              <Icon name="Settings" className="size-4" />
+            </button>
+          </div>
+        </div>
+        <span className="sr-only">{navigationItems.length} search rows</span>
+      </ThreadActionsProvider>
+    </ProjectActionsProvider>
+  );
+}
+
 export function Overview() {
   return (
     <StoryCard labelWidth="120px">
@@ -266,6 +427,9 @@ export function Overview() {
         <SidebarFrame>
           <LoadedSidebar />
         </SidebarFrame>
+      </StoryRow>
+      <StoryRow label="search">
+        <SearchSidebar />
       </StoryRow>
     </StoryCard>
   );

@@ -248,8 +248,11 @@ const GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS =
 
 export interface GitDiffCardHeaderWrapperClassArgs {
   stickyHeader: boolean;
+  stickyHeaderTopClassName?: string;
   isBodyHidden: boolean;
   isStuck: boolean;
+  applyStuckHeaderChrome?: boolean;
+  showStuckHeaderEdge?: boolean;
 }
 
 /**
@@ -258,16 +261,24 @@ export interface GitDiffCardHeaderWrapperClassArgs {
  */
 export function gitDiffCardHeaderWrapperClass({
   stickyHeader,
+  stickyHeaderTopClassName = "top-0",
   isBodyHidden,
   isStuck,
+  applyStuckHeaderChrome = true,
+  showStuckHeaderEdge = true,
 }: GitDiffCardHeaderWrapperClassArgs): string {
   return cn(
     GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS,
-    stickyHeader && "sticky top-0 z-30",
+    stickyHeader && "sticky z-30",
+    stickyHeader && stickyHeaderTopClassName,
     !isBodyHidden && "rounded-b-none",
-    // When stuck, the card's own rounded top border scrolls out of view; add a
-    // matching top border on the sticky so it still reads as the top edge of the
-    // card instead of a flat-cut slab.
-    isStuck && "rounded-t-none border-t border-border",
+    isStuck && applyStuckHeaderChrome && "rounded-t-none",
+    // When stuck, the card's own rounded top border scrolls out of view. Draw
+    // the replacement top edge as an inset shadow instead of a real border so
+    // the stuck transition does not change layout.
+    isStuck &&
+      applyStuckHeaderChrome &&
+      showStuckHeaderEdge &&
+      "shadow-[inset_0_1px_0_var(--border)]",
   );
 }

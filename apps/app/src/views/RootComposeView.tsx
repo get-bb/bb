@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  findLocalPathProjectSourceForHost,
+  PERSONAL_PROJECT_ID,
+  type ProjectSource,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
   NewThreadPromptBox,
@@ -11,6 +16,7 @@ import {
   encodeHostValue,
   encodeReuseValue,
   parseEnvironmentValue,
+  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
@@ -80,6 +86,15 @@ type RootComposeViewProps =
 
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
+}
+
+interface ResolveRootComposeEffectiveEnvironmentValueArgs {
+  environmentSelectionValue: string;
+  isProjectless: boolean;
+  primaryHostId: string | null;
+  projectSources: readonly ProjectSource[];
+  reuseThreadOptions: readonly ReuseThreadOption[];
+  reuseThreadOptionsLoading: boolean;
 }
 
 // react-router's location.state is freeform unknown — narrow it here at the
@@ -152,6 +167,60 @@ function buildReuseThreadOptions(
     return left.environmentId.localeCompare(right.environmentId);
   });
   return options;
+}
+
+export function resolveRootComposeEffectiveEnvironmentValue({
+  environmentSelectionValue,
+  isProjectless,
+  primaryHostId,
+  projectSources,
+  reuseThreadOptions,
+  reuseThreadOptionsLoading,
+}: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
+  if (!primaryHostId) {
+    return "";
+  }
+
+  const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
+  const canUseHostWorkspace =
+    isProjectless ||
+    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
+      undefined;
+  const fallbackHostValue = canUseHostWorkspace
+    ? encodeHostValue(primaryHostId, "local")
+    : "";
+
+  if (isProjectless) {
+    return fallbackHostValue;
+  }
+
+  if (parsedSelection?.type === "reuse") {
+    if (parsedSelection.environmentId === null) {
+      return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
+        ? environmentSelectionValue
+        : fallbackHostValue;
+    }
+
+    if (reuseThreadOptionsLoading) {
+      return REUSE_VALUE_WITHOUT_ENVIRONMENT;
+    }
+
+    return reuseThreadOptions.some(
+      (option) => option.environmentId === parsedSelection.environmentId,
+    )
+      ? environmentSelectionValue
+      : fallbackHostValue;
+  }
+
+  if (!canUseHostWorkspace) {
+    return "";
+  }
+
+  if (parsedSelection?.type === "host") {
+    return encodeHostValue(primaryHostId, parsedSelection.mode);
+  }
+
+  return fallbackHostValue;
 }
 
 export function buildMobileRecentThreads({
@@ -372,25 +441,27 @@ export function RootComposeView(props: RootComposeViewProps) {
     [sidebarNavigationQuery.data],
   );
 
-  // Projectless threads choose a host directly, not an environment mode. Keep
-  // the underlying persisted value host-shaped for the create-thread contract,
-  // but discard reuse/worktree mode when resolving the effective value.
-  const effectiveEnvironmentValue = useMemo(() => {
-    const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
-    if (isProjectless) {
-      return primaryHostId ? encodeHostValue(primaryHostId, "local") : "";
-    }
-    if (parsedSelection?.type === "reuse") {
-      return environmentSelectionValue;
-    }
-    if (primaryHostId) {
-      return encodeHostValue(
+  // The stored root-compose environment is global. Resolve it against the
+  // selected project before the branch picker or create-thread request sees it.
+  const effectiveEnvironmentValue = useMemo(
+    () =>
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue,
+        isProjectless,
         primaryHostId,
-        parsedSelection?.type === "host" ? parsedSelection.mode : "local",
-      );
-    }
-    return "";
-  }, [environmentSelectionValue, isProjectless, primaryHostId]);
+        projectSources,
+        reuseThreadOptions,
+        reuseThreadOptionsLoading: threadsQuery.isLoading,
+      }),
+    [
+      environmentSelectionValue,
+      isProjectless,
+      primaryHostId,
+      projectSources,
+      reuseThreadOptions,
+      threadsQuery.isLoading,
+    ],
+  );
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
@@ -457,6 +528,19 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeBranchesQuery.data?.selectedBranch,
     branchEnvironmentMode,
   ]);
+  const priorityBranchOptions = useMemo(
+    () =>
+      [
+        activeBranchesQuery.data?.defaultWorktreeBaseBranch,
+        activeBranchesQuery.data?.defaultBranch,
+        activeBranchesQuery.data?.originDefaultBranch,
+      ].filter((branch): branch is string => Boolean(branch)),
+    [
+      activeBranchesQuery.data?.defaultBranch,
+      activeBranchesQuery.data?.defaultWorktreeBaseBranch,
+      activeBranchesQuery.data?.originDefaultBranch,
+    ],
+  );
   const branchSelectionSeed =
     branchEnvironmentMode === "local" &&
     activeBranchesQuery.data?.checkout.kind === "branch"
@@ -870,6 +954,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       isNew: selectedBranch?.isNew ?? false,
       options: branchOptions,
       remoteOptions: remoteBranchOptions,
+      priorityOptions: priorityBranchOptions,
       loading: activeBranchesQuery.isFetching,
       placeholder: branchUiState.placeholder,
       triggerLabel: branchUiState.triggerLabel,
@@ -897,6 +982,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeBranchesQuery.isFetching,
       branchOptions,
       branchEnvironmentMode,
+      priorityBranchOptions,
       remoteBranchOptions,
       branchUiState.currentBranch,
       branchUiState.currentOptionLabel,

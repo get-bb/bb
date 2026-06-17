@@ -4,7 +4,6 @@ import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
-  resolveProjectId,
   resolveExplicitIdFlag,
   resolveThreadId,
 } from "../../context-env.js";
@@ -147,9 +146,9 @@ export function registerSpawnCommand(
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
     .option("--json", "Print machine-readable JSON output")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option(
       "--environment <id-or-path>",
@@ -185,7 +184,13 @@ export function registerSpawnCommand(
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        const projectId = resolveProjectId(opts.project) ?? PERSONAL_PROJECT_ID;
+        const projectId = resolveExplicitIdFlag({
+          flagName: "--project flag",
+          value: opts.project,
+        });
+        if (!projectId) {
+          throw new Error("Missing required option --project <id>.");
+        }
         const environmentValue = resolveSpawnEnvironmentValue(
           opts.environment,
         );

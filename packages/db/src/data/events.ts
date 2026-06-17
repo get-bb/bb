@@ -17,6 +17,8 @@ import {
 import type { SQL } from "drizzle-orm";
 import type {
   ClientTurnRequestId,
+  PromptInput,
+  ThreadEvent,
   StoredThreadEventDataForType,
   SystemThreadInterruptedReason,
   ThreadEventItemType,
@@ -27,6 +29,7 @@ import type {
 import {
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
+  parseStoredThreadEvent,
   systemThreadInterruptedReasonSchema,
 } from "@bb/domain";
 import type {
@@ -39,6 +42,10 @@ import type { DbNotifier } from "../notifier.js";
 import { environments, events, threads } from "../schema.js";
 import { createEventId } from "../ids.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
+import {
+  upsertThreadSearchSegments,
+  type UpsertThreadSearchSegmentInput,
+} from "./threads.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 
@@ -320,6 +327,130 @@ function parseAcceptedInputClientRequestIdFromInput(
   return result.data;
 }
 
+function isStoredEventPayload(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractVisiblePromptText(input: readonly PromptInput[]): string {
+  return input
+    .filter((part) => part.visibility !== "agent-only")
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n")
+    .trim();
+}
+
+function buildThreadEventSearchSegment(args: {
+  sequence: number;
+  sourceKind: UpsertThreadSearchSegmentInput["sourceKind"];
+  text: string;
+  threadId: string;
+}): UpsertThreadSearchSegmentInput[] {
+  const text = args.text.trim();
+  if (text.length === 0) {
+    return [];
+  }
+  return [
+    {
+      threadId: args.threadId,
+      sourceKind: args.sourceKind,
+      sourceKey: `event:${args.sequence}`,
+      sourceSeq: args.sequence,
+      text,
+    },
+  ];
+}
+
+function listThreadSearchSegmentsForStoredEventArgs(args: {
+  eventArgs: AppendStoredThreadEventArgs;
+  sequence: number;
+}): UpsertThreadSearchSegmentInput[] {
+  switch (args.eventArgs.type) {
+    case "client/turn/requested":
+      return buildThreadEventSearchSegment({
+        threadId: args.eventArgs.threadId,
+        sequence: args.sequence,
+        sourceKind: "user_message",
+        text: extractVisiblePromptText(args.eventArgs.data.input),
+      });
+    case "item/completed":
+      if (args.eventArgs.data.item.type !== "agentMessage") {
+        return [];
+      }
+      return buildThreadEventSearchSegment({
+        threadId: args.eventArgs.threadId,
+        sequence: args.sequence,
+        sourceKind: "assistant_message",
+        text: args.eventArgs.data.item.text,
+      });
+    case "system/manager/user_message":
+      return buildThreadEventSearchSegment({
+        threadId: args.eventArgs.threadId,
+        sequence: args.sequence,
+        sourceKind: "system_message",
+        text: args.eventArgs.data.text,
+      });
+    default:
+      return [];
+  }
+}
+
+function listThreadSearchSegmentsForThreadEvent(args: {
+  event: ThreadEvent;
+  sequence: number;
+}): UpsertThreadSearchSegmentInput[] {
+  switch (args.event.type) {
+    case "client/turn/requested":
+      return buildThreadEventSearchSegment({
+        threadId: args.event.threadId,
+        sequence: args.sequence,
+        sourceKind: "user_message",
+        text: extractVisiblePromptText(args.event.input),
+      });
+    case "item/completed":
+      if (args.event.item.type !== "agentMessage") {
+        return [];
+      }
+      return buildThreadEventSearchSegment({
+        threadId: args.event.threadId,
+        sequence: args.sequence,
+        sourceKind: "assistant_message",
+        text: args.event.item.text,
+      });
+    case "system/manager/user_message":
+      return buildThreadEventSearchSegment({
+        threadId: args.event.threadId,
+        sequence: args.sequence,
+        sourceKind: "system_message",
+        text: args.event.text,
+      });
+    default:
+      return [];
+  }
+}
+
+function parseDaemonThreadEvent(input: AppendDaemonEventInput): ThreadEvent | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(input.data);
+  } catch {
+    return null;
+  }
+  if (!isStoredEventPayload(data)) {
+    return null;
+  }
+  try {
+    return parseStoredThreadEvent({
+      data,
+      providerThreadId: input.providerThreadId,
+      scope: input.scope,
+      threadId: input.threadId,
+      type: input.type,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export function appendDaemonEventsInTransaction(
   db: DbTransaction,
   eventInputs: readonly AppendDaemonEventInput[],
@@ -381,6 +512,16 @@ export function appendDaemonEventsInTransaction(
           ${now}
         )`,
     );
+    const event = parseDaemonThreadEvent(input);
+    if (event !== null) {
+      upsertThreadSearchSegments(db, {
+        updatedAt: now,
+        segments: listThreadSearchSegmentsForThreadEvent({
+          event,
+          sequence,
+        }),
+      });
+    }
 
     const acceptedEvent: AcceptedDaemonEvent = {
       sequence,
@@ -475,6 +616,13 @@ export function appendStoredThreadEventsInTransaction(
           ${now}
         )`,
     );
+    upsertThreadSearchSegments(db, {
+      updatedAt: now,
+      segments: listThreadSearchSegmentsForStoredEventArgs({
+        eventArgs: args,
+        sequence,
+      }),
+    });
 
     sequences.push(sequence);
     nextSequencesByThreadId.set(args.threadId, sequence + 1);

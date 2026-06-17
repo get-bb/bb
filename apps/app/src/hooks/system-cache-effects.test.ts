@@ -10,6 +10,7 @@ import {
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
+  threadSearchQueryKey,
 } from "./queries/query-keys";
 import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
 
@@ -52,6 +53,10 @@ describe("system cache effects", () => {
     const promptHistoryKey = threadPromptHistoryQueryKey("thread-1");
     const pendingInteractionsKey =
       threadPendingInteractionsQueryKey("thread-1");
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
     const defaultExecutionOptionsKey =
       threadDefaultExecutionOptionsQueryKey("thread-1");
     const executionOptionsKey = scopedSystemExecutionOptionsKey({
@@ -61,6 +66,10 @@ describe("system cache effects", () => {
     queryClient.setQueryData(queuedMessagesKey, []);
     queryClient.setQueryData(promptHistoryKey, []);
     queryClient.setQueryData(pendingInteractionsKey, []);
+    queryClient.setQueryData(threadSearchKey, {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
     queryClient.setQueryData(
       defaultExecutionOptionsKey,
       EMPTY_EXECUTION_OPTIONS,
@@ -82,6 +91,9 @@ describe("system cache effects", () => {
     expect(
       queryClient.getQueryState(pendingInteractionsKey)?.isInvalidated,
     ).toBe(true);
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      true,
+    );
     expect(
       queryClient.getQueryState(defaultExecutionOptionsKey)?.isInvalidated,
     ).toBe(true);

@@ -49,6 +49,7 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
+  ThreadSearchResponse,
   ThreadResponse,
   ThreadWithIncludesResponse,
   PathListIncludeQueryValue,
@@ -713,6 +714,11 @@ export interface ThreadListFilters {
   offset?: number;
 }
 
+export interface ThreadSearchFilters {
+  query: string;
+  limitPerGroup?: number;
+}
+
 function toBooleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
 }
@@ -743,6 +749,25 @@ export async function listThreads(
             : {}),
           ...(filters.offset !== undefined
             ? { offset: String(filters.offset) }
+            : {}),
+        },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function searchThreads(
+  filters: ThreadSearchFilters,
+  signal?: AbortSignal,
+): Promise<ThreadSearchResponse> {
+  return request<ThreadSearchResponse>(
+    apiClient.threads.search.$get(
+      {
+        query: {
+          query: filters.query,
+          ...(filters.limitPerGroup !== undefined
+            ? { limitPerGroup: String(filters.limitPerGroup) }
             : {}),
         },
       },

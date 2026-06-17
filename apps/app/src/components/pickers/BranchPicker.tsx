@@ -31,8 +31,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
 
-export type BranchPickerSelectedOptionKind = "local" | "remote";
-
 interface GetMergeBaseBranchCandidatesArgs {
   mergeBaseBranch?: string;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
@@ -43,7 +41,6 @@ interface GetMergeBaseBranchCandidatesArgs {
 export interface MergeBaseBranchCandidateGroups {
   options: readonly string[];
   remoteOptions: readonly string[];
-  selectedOptionKind?: BranchPickerSelectedOptionKind;
 }
 
 export function getMergeBaseBranchCandidateGroups({
@@ -68,21 +65,18 @@ export function getMergeBaseBranchCandidateGroups({
     return {
       options: fromProps,
       remoteOptions: fromRemoteProps,
-      ...(selectedOptionKind ? { selectedOptionKind } : {}),
     };
   }
   if (selectedOptionKind === "remote") {
     return {
       options: fromProps,
       remoteOptions: [mergeBaseBranch, ...fromRemoteProps],
-      selectedOptionKind,
     };
   }
   if (selectedOptionKind === "local" || selectedRef?.kind !== "missing") {
     return {
       options: [mergeBaseBranch, ...fromProps],
       remoteOptions: fromRemoteProps,
-      ...(selectedOptionKind ? { selectedOptionKind } : {}),
     };
   }
   return { options: fromProps, remoteOptions: fromRemoteProps };
@@ -208,8 +202,7 @@ interface BranchPickerOptionGroups {
 }
 
 interface BranchPickerBranchOptionsProps {
-  localOptions: readonly string[];
-  remoteOptions: readonly string[];
+  options: readonly string[];
   selectedValue: string | null;
   onSelect: (branch: string) => void;
 }
@@ -224,9 +217,10 @@ interface FilterBranchOptionsArgs {
   options: readonly string[];
 }
 
-interface PinSelectedBranchArgs {
+interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
-  value: string | null;
+  priorityOptions: readonly string[];
+  selectedValue: string | null;
 }
 
 type BranchPickerCheckoutIntent = "current" | "new" | "checkout";
@@ -527,14 +521,13 @@ function BranchPickerSearch({
 }
 
 function BranchPickerBranchOptions({
-  localOptions,
-  remoteOptions,
+  options,
   selectedValue,
   onSelect,
 }: BranchPickerBranchOptionsProps) {
   return (
     <>
-      {localOptions.map((branch) => (
+      {options.map((branch) => (
         <BranchPickerRowButton
           key={branch}
           icon="GitMerge"
@@ -544,24 +537,6 @@ function BranchPickerBranchOptions({
           onSelect={() => onSelect(branch)}
         />
       ))}
-      {remoteOptions.length > 0 ? (
-        <>
-          <BranchPickerSectionHeader
-            label="Remote branches"
-            className={localOptions.length > 0 ? "mt-1" : undefined}
-          />
-          {remoteOptions.map((branch) => (
-            <BranchPickerRowButton
-              key={branch}
-              icon="GitMerge"
-              label={branch}
-              title={branch}
-              selected={branch === selectedValue}
-              onSelect={() => onSelect(branch)}
-            />
-          ))}
-        </>
-      ) : null}
     </>
   );
 }
@@ -579,7 +554,7 @@ function getBranchPickerMenuCopy(
   }
 }
 
-function buildBranchPickerOptionGroups({
+export function buildBranchPickerOptionGroups({
   options,
   remoteOptions,
 }: BuildBranchPickerOptionGroupsArgs): BranchPickerOptionGroups {
@@ -604,24 +579,32 @@ function filterBranchOptions({
   );
 }
 
-function pinSelectedBranch({
+export function orderBranchPickerOptions({
   options,
-  value,
-}: PinSelectedBranchArgs): string[] {
-  if (!value) {
-    return [...options];
+  priorityOptions,
+  selectedValue,
+}: OrderBranchPickerOptionsArgs): string[] {
+  const availableOptions = new Set(options);
+  const ordered: string[] = [];
+  const seenOptions = new Set<string>();
+
+  const append = (branch: string | null | undefined) => {
+    if (!branch || !availableOptions.has(branch) || seenOptions.has(branch)) {
+      return;
+    }
+    ordered.push(branch);
+    seenOptions.add(branch);
+  };
+
+  append(selectedValue);
+  for (const branch of priorityOptions) {
+    append(branch);
+  }
+  for (const branch of options) {
+    append(branch);
   }
 
-  const selectedIndex = options.indexOf(value);
-  if (selectedIndex <= 0) {
-    return [...options];
-  }
-
-  return [
-    options[selectedIndex],
-    ...options.slice(0, selectedIndex),
-    ...options.slice(selectedIndex + 1),
-  ];
+  return ordered;
 }
 
 function resolveCheckoutIntent({
@@ -641,12 +624,15 @@ export interface BranchPickerProps {
   value: string | null;
   options: readonly string[];
   remoteOptions?: readonly string[];
+  /** Branch refs to keep near the top when they are present. The selected value still wins. */
+  priorityOptions?: readonly string[];
   currentBranch?: string | null;
   loading?: boolean;
   disabled?: boolean;
   placeholder?: string;
   triggerLabel?: string;
   triggerTitle?: string;
+  emphasizeTriggerValue?: boolean;
   menuKind?: BranchPickerMenuKind;
   currentOptionLabel?: string | null;
   currentOptionTitle?: string;
@@ -674,8 +660,6 @@ export interface BranchPickerProps {
   onOpenChange?: (open: boolean) => void;
   className?: string;
   variant?: "default" | "minimal" | "option";
-  /** Exact selected option kind. When omitted, the picker infers from the current option arrays. */
-  selectedOptionKind?: BranchPickerSelectedOptionKind;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. Only meaningful with variant="minimal" or "option". */
   muted?: boolean;
   /** Render with the popover open on mount. Story-only escape hatch. */
@@ -690,12 +674,14 @@ export function BranchPicker({
   value,
   options,
   remoteOptions = EMPTY_BRANCH_OPTIONS,
+  priorityOptions = EMPTY_BRANCH_OPTIONS,
   currentBranch,
   loading = false,
   disabled,
   placeholder,
   triggerLabel: triggerLabelOverride,
   triggerTitle,
+  emphasizeTriggerValue = true,
   menuKind,
   currentOptionLabel,
   currentOptionTitle,
@@ -712,7 +698,6 @@ export function BranchPicker({
   onOpenChange,
   className,
   variant = "default",
-  selectedOptionKind,
   muted,
   defaultOpen = false,
   modal = true,
@@ -773,53 +758,27 @@ export function BranchPicker({
       }),
     [branchOptionGroups.remote, normalizedQuery],
   );
+  const filteredCombinedBranchOptions = useMemo(
+    () => [...filteredLocalBranchOptions, ...filteredRemoteBranchOptions],
+    [filteredLocalBranchOptions, filteredRemoteBranchOptions],
+  );
   const filteredCheckoutTargetOptions = useMemo(
     () =>
-      pinSelectedBranch({
+      orderBranchPickerOptions({
         options: filteredLocalBranchOptions,
-        value,
+        priorityOptions,
+        selectedValue: value,
       }),
-    [filteredLocalBranchOptions, value],
-  );
-  const selectedBranchOptionGroup = useMemo(() => {
-    if (!value) {
-      return "local";
-    }
-    if (selectedOptionKind) {
-      return selectedOptionKind;
-    }
-    if (
-      branchOptionGroups.remote.includes(value) &&
-      !branchOptionGroups.local.includes(value)
-    ) {
-      return "remote";
-    }
-    return "local";
-  }, [
-    branchOptionGroups.local,
-    branchOptionGroups.remote,
-    selectedOptionKind,
-    value,
-  ]);
-  const filteredLocalBaseOptions = useMemo(
-    () =>
-      pinSelectedBranch({
-        options: filteredLocalBranchOptions,
-        value: selectedBranchOptionGroup === "local" ? value : null,
-      }),
-    [filteredLocalBranchOptions, selectedBranchOptionGroup, value],
-  );
-  const filteredRemoteBaseOptions = useMemo(
-    () =>
-      pinSelectedBranch({
-        options: filteredRemoteBranchOptions,
-        value: selectedBranchOptionGroup === "remote" ? value : null,
-      }),
-    [filteredRemoteBranchOptions, selectedBranchOptionGroup, value],
+    [filteredLocalBranchOptions, priorityOptions, value],
   );
   const filteredBranchOptions = useMemo(
-    () => [...filteredLocalBaseOptions, ...filteredRemoteBaseOptions],
-    [filteredLocalBaseOptions, filteredRemoteBaseOptions],
+    () =>
+      orderBranchPickerOptions({
+        options: filteredCombinedBranchOptions,
+        priorityOptions,
+        selectedValue: value,
+      }),
+    [filteredCombinedBranchOptions, priorityOptions, value],
   );
   const activeEnterOptions =
     isCheckoutMenu && activeCheckoutIntent === "checkout"
@@ -844,7 +803,9 @@ export function BranchPicker({
   // the committed selection stands out from muted prefix copy like
   // "Branch from:". Override callers can format their own label.
   const triggerHasPlainBranchValue =
-    triggerLabelOverride === undefined && (isCreatingNew || value !== null);
+    emphasizeTriggerValue &&
+    triggerLabelOverride === undefined &&
+    (isCreatingNew || value !== null);
   const showCreateItem = Boolean(onCreate);
   const createDisabledDescription = formatUnavailableDescription({
     title: createDisabledTitle,
@@ -1126,8 +1087,7 @@ export function BranchPicker({
                       ) : (
                         <>
                           <BranchPickerBranchOptions
-                            localOptions={filteredLocalBaseOptions}
-                            remoteOptions={filteredRemoteBaseOptions}
+                            options={filteredBranchOptions}
                             selectedValue={value}
                             onSelect={selectBranchAndClose}
                           />
@@ -1211,8 +1171,7 @@ export function BranchPicker({
                         )
                       ) : null}
                       <BranchPickerBranchOptions
-                        localOptions={filteredLocalBaseOptions}
-                        remoteOptions={filteredRemoteBaseOptions}
+                        options={filteredBranchOptions}
                         selectedValue={value}
                         onSelect={selectBranchAndClose}
                       />

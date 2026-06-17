@@ -939,7 +939,12 @@ export function SideChatTabContent({
     if (sourceEnvironment === null) {
       // Personal-project side chats inherit the parent's local workspace with no
       // discrete environment row; the main thread renders "Working locally".
-      return <ThreadEnvironmentSummary environmentLabel="Working locally" />;
+      return (
+        <ThreadEnvironmentSummary
+          environmentLabel="Working locally"
+          environmentCompactLabel="Local"
+        />
+      );
     }
     const host: EnvironmentDisplayHostContext = {
       locality: isLocalDaemonHost(sourceEnvironment.hostId)

@@ -5,6 +5,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useDebounceValue } from "usehooks-ts";
 import type {
   PendingInteraction,
   ResolvedThreadExecutionOptions,
@@ -16,6 +17,7 @@ import type {
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
   ThreadResponse,
+  ThreadSearchResponse,
   ThreadWithIncludesResponse,
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
@@ -56,6 +58,7 @@ import {
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
+  threadSearchQueryKey,
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
@@ -75,7 +78,11 @@ interface QueryOptions {
 }
 
 const THREAD_LIST_STALE_TIME_MS = 10_000;
+const THREAD_SEARCH_STALE_TIME_MS = 10_000;
 export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
+export const THREAD_SEARCH_DEBOUNCE_MS = 150;
+export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
+export const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   composerBootstrapPrefetch?: boolean;
@@ -122,6 +129,22 @@ export interface UseProjectThreadSubsetResult {
 
 export interface UseThreadMentionCandidatesResult {
   data: ThreadListResponse | undefined;
+  isError: boolean;
+  isFetching: boolean;
+  isLoading: boolean;
+}
+
+export interface UseThreadSearchArgs {
+  active: boolean;
+  limitPerGroup?: number;
+  query: string;
+}
+
+export interface UseThreadSearchResult {
+  data: ThreadSearchResponse | undefined;
+  debouncedQuery: string;
+  hasSearchableQuery: boolean;
+  isDebouncing: boolean;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
@@ -231,6 +254,16 @@ function getThreadMentionCandidatePlaceholder({
 
   const candidates = Array.from(candidatesById.values()).slice(0, limit);
   return candidates.length > 0 ? candidates : undefined;
+}
+
+function countNonWhitespaceChars(value: string): number {
+  return value.replace(/\s/g, "").length;
+}
+
+export function hasThreadSearchableQuery(value: string): boolean {
+  return (
+    countNonWhitespaceChars(value) >= THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS
+  );
 }
 
 export interface UseArchivedThreadsFilters {
@@ -396,6 +429,41 @@ export function useThreadMentionCandidates({
     isError: threadsQuery.isError,
     isFetching: threadsQuery.isFetching,
     isLoading: threadsQuery.isLoading,
+  };
+}
+
+export function useThreadSearch({
+  active,
+  limitPerGroup = THREAD_SEARCH_LIMIT_PER_GROUP,
+  query,
+}: UseThreadSearchArgs): UseThreadSearchResult {
+  const [debouncedRawQuery] = useDebounceValue(
+    query,
+    THREAD_SEARCH_DEBOUNCE_MS,
+  );
+  const trimmedQuery = query.trim();
+  const debouncedQuery = debouncedRawQuery.trim();
+  const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
+  const hasSearchableQuery = hasThreadSearchableQuery(debouncedQuery);
+  const isDebouncing =
+    active && liveQueryIsSearchable && trimmedQuery !== debouncedQuery;
+  const enabled = active && liveQueryIsSearchable && hasSearchableQuery;
+  const threadSearchQuery = useQuery<ThreadSearchResponse>({
+    queryKey: threadSearchQueryKey({ limitPerGroup, query: debouncedQuery }),
+    queryFn: ({ signal }) =>
+      api.searchThreads({ limitPerGroup, query: debouncedQuery }, signal),
+    enabled,
+    staleTime: THREAD_SEARCH_STALE_TIME_MS,
+  });
+
+  return {
+    data: threadSearchQuery.data,
+    debouncedQuery,
+    hasSearchableQuery,
+    isDebouncing,
+    isError: threadSearchQuery.isError,
+    isFetching: threadSearchQuery.isFetching,
+    isLoading: threadSearchQuery.isLoading,
   };
 }
 
