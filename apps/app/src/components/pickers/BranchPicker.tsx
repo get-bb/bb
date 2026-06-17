@@ -632,6 +632,7 @@ export interface BranchPickerProps {
   placeholder?: string;
   triggerLabel?: string;
   triggerTitle?: string;
+  emphasizeTriggerValue?: boolean;
   menuKind?: BranchPickerMenuKind;
   currentOptionLabel?: string | null;
   currentOptionTitle?: string;
@@ -680,6 +681,7 @@ export function BranchPicker({
   placeholder,
   triggerLabel: triggerLabelOverride,
   triggerTitle,
+  emphasizeTriggerValue = true,
   menuKind,
   currentOptionLabel,
   currentOptionTitle,
@@ -801,7 +803,9 @@ export function BranchPicker({
   // the committed selection stands out from muted prefix copy like
   // "Branch from:". Override callers can format their own label.
   const triggerHasPlainBranchValue =
-    triggerLabelOverride === undefined && (isCreatingNew || value !== null);
+    emphasizeTriggerValue &&
+    triggerLabelOverride === undefined &&
+    (isCreatingNew || value !== null);
   const showCreateItem = Boolean(onCreate);
   const createDisabledDescription = formatUnavailableDescription({
     title: createDisabledTitle,

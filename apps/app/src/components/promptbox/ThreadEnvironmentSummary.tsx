@@ -32,8 +32,8 @@ export interface ThreadEnvironmentSummaryProps {
  * - Promptbox container queries collapse the environment label to a concise value.
  * - The summary can shrink inside the follow-up strip so permission/context
  *   controls stay pinned and text truncates instead of wrapping.
- * - Branch chip hides in compact promptbox shells and truncates within its
- *   available space above that breakpoint.
+ * - Branch chip hides only in very narrow promptbox shells and truncates
+ *   within its available space above that breakpoint.
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentLabel,
@@ -70,7 +70,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
       {environmentCheckout && checkoutCopyValue !== null ? (
         <button
           type="button"
-          data-promptbox-hide-compact=""
+          data-promptbox-hide-branch-compact=""
           className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
           title={environmentCheckout.title}
           onClick={() => {
@@ -87,7 +87,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         </button>
       ) : environmentCheckout ? (
         <span
-          data-promptbox-hide-compact=""
+          data-promptbox-hide-branch-compact=""
           className={CHECKOUT_CHIP_BASE_CLASS_NAME}
           title={environmentCheckout.title}
         >

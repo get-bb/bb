@@ -753,6 +753,7 @@ export function ThreadPromptContextBanner({
               options={mergeBaseCandidates.options}
               remoteOptions={mergeBaseCandidates.remoteOptions}
               variant="minimal"
+              emphasizeTriggerValue={false}
               loading={gitSection.mergeBase.optionsLoading}
               onChange={gitSection.mergeBase.onChange}
               onOpenChange={gitSection.mergeBase.onPickerOpenChange}

@@ -140,6 +140,7 @@
   }
 
   @container promptbox-shell (max-width: 28rem) {
+    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }
