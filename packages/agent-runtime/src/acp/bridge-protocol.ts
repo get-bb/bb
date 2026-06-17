@@ -42,15 +42,17 @@ const acpBridgeModelListParamsSchema = z.object({
    * Command whose stdout lists one `id - Display Name` line per model. The
    * bridge groups the ids into model families with reasoning-effort variants
    * (see `bridge/model-catalog.ts`), falling back to the synthetic "Agent
-   * default" entry when the command fails or lists nothing.
+   * default" entry when the command fails or lists nothing. Optional so a
+   * minimal `model/list` (e.g. the packaged-bridge smoke test, which has no
+   * agent binary) still gets a valid synthetic response instead of hanging.
    */
-  listCommand: acpBridgeAgentCommandSchema,
+  listCommand: acpBridgeAgentCommandSchema.optional(),
   /**
    * Family ids served in the picker's default list; the rest become
    * selected-only "more models". No matches (or an empty list) serves
    * everything as primary.
    */
-  primaryModels: z.array(z.string()),
+  primaryModels: z.array(z.string()).default([]),
 });
 
 /**

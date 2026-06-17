@@ -221,6 +221,17 @@ describe("acp bridge", () => {
     ).toEqual(["low", "medium", "high"]);
   });
 
+  it("answers a minimal model/list (no params) with the synthetic default", async () => {
+    // The packaged-bridge smoke test sends `model/list` with empty params and
+    // no agent binary on PATH; the bridge must still respond (not hang) so the
+    // generic cross-bridge smoke contract holds.
+    const modelListId = sendRequest("model/list", {});
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
+      selectedOnlyModels: [],
+    });
+  });
+
   it("falls back to the synthetic model when the list command fails", async () => {
     const failingId = sendRequest("model/list", {
       listCommand: {

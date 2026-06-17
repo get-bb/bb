@@ -897,7 +897,9 @@ async function handleRequest(
       return;
 
     case "model/list": {
-      const catalog = await loadAgentModelCatalog(request.params.listCommand);
+      const catalog = request.params.listCommand
+        ? await loadAgentModelCatalog(request.params.listCommand)
+        : null;
       if (!catalog) {
         sendResult(request.id, {
           models: [ACP_DEFAULT_MODEL],
