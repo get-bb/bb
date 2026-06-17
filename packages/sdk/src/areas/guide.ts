@@ -18,6 +18,7 @@ const guideChapters: Record<string, TemplateId> = {
   environments: "bbGuideEnvironments",
   providers: "bbGuideProviders",
   projects: "bbGuideProjects",
+  automations: "bbGuideAutomations",
 };
 
 const templateBodyById = new Map(

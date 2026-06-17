@@ -1,0 +1,77 @@
+---
+kind: instruction
+title: bb Guide — Automations
+summary: Command reference for creating and managing scheduled agent and script automations.
+intent: Provide complete automation command documentation for agents.
+editingNotes: Keep flags accurate against the CLI implementation. Run the command-output tests after changes.
+---
+Automation commands
+
+An automation is a scheduled task. When due it runs in one of two modes:
+
+  agent    Spawn a thread that runs a configured prompt (uses tokens).
+  script   Run a stored command and capture stdout/exit (no agent, no tokens).
+
+The project defaults to BB_PROJECT_ID, then the personal project, so --project is
+never required. Inside a thread, automations are stamped origin "agent" and record
+the creating thread automatically.
+
+Every command supports --json for machine-readable output.
+
+Creating:
+
+  bb automation create --name "..." --cron "..." --timezone "..." [mode flags]
+
+    --name <name>                  Automation name (required)
+    --cron <expr>                  5-field cron expression (required)
+    --timezone <tz>                IANA timezone, e.g. America/New_York (required)
+    --project <id>                 Project (defaults to BB_PROJECT_ID, then personal)
+    --environment <id-or-path>     Existing environment ID or unmanaged workspace path
+    --new-environment <kind>       Create a new environment (worktree)
+    --base-branch <branch>         Base branch for new managed environments
+    --disabled                     Create the automation paused
+    --auto-archive                 Auto-archive the spawned thread when it completes
+
+  Agent mode (provide --prompt):
+
+    --prompt <prompt>              Prompt to run when due
+    --provider <id>                Provider ID (required for agent mode)
+    --model <model>                Model ID (required for agent mode)
+    --permission-mode <mode>       full, workspace-write, or readonly (default readonly)
+    --target-thread <id>           Reuse/re-prompt an existing thread
+
+  Script mode (provide --script or --script-file):
+
+    --script <inline>              Inline script content
+    --script-file <path>           Read script content from a local file (uploaded inline)
+    --interpreter <name>           bash, sh, node, or python3 (default by extension)
+    --timeout <ms>                 Timeout in milliseconds
+
+  A script that exits 0 with empty stdout, or whose last non-empty line is
+  {"wakeAgent": false}, stays silent. Any other stdout is surfaced.
+
+Listing and inspecting:
+
+  bb automation list                       List automations for a project
+    --project <id>                         Project filter
+
+  bb automation show <automationId>        Show automation details
+  bb automation runs <automationId>        List recent runs
+    --limit <count>                        Maximum runs to return
+    --output <runId>                       Print a script run's captured stdout
+
+Managing:
+
+  bb automation update <automationId>      Update configuration
+    --name <name>                          Set the name
+    --cron <expr>                          Set the cron (requires --timezone)
+    --timezone <tz>                        Set the timezone (requires --cron)
+    --auto-archive                         Enable auto-archive
+
+  bb automation pause <automationId>       Pause (disable, clear next run)
+  bb automation resume <automationId>      Resume (enable, recompute next run)
+  bb automation run <automationId>         Run now (manual trigger)
+    --idempotency-key <key>                Dedup key for replayable run-now
+
+  bb automation delete <automationId>      Delete permanently (cascades run history)
+    --yes                                  Skip confirmation

@@ -1,6 +1,6 @@
 ---
 name: bb-cli
-description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, projects, providers, and environments.
+description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, projects, providers, and environments.
 ---
 
 # bb CLI
@@ -63,3 +63,25 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+
+## Automations
+
+- Use `bb automation ...` to manage scheduled tasks. When due, an automation
+  runs in one of two modes: `agent` (spawns a thread running a prompt — uses
+  tokens) or `script` (runs a stored command and captures stdout/exit — no
+  agent, no tokens).
+- Create an agent automation with
+  `bb automation create --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+- Create a script automation with
+  `bb automation create --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
+  (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
+  last non-empty line is `{"wakeAgent": false}`, stays silent.
+- The project defaults to `BB_PROJECT_ID`, then the personal project, so
+  `--project` is never required.
+- Use `bb automation list`, `bb automation show <id>`, and
+  `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
+  run's captured stdout.
+- Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
+  `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
+  to remove.
+- Run `bb guide automations` for the full command reference.
