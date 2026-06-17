@@ -101,12 +101,16 @@ function pageKeyPart(page: ThreadTimelinePageRequest): string {
     : `latest:${page.segmentLimit}`;
 }
 
-export function buildThreadTimelineCacheKey(
-  args: ThreadTimelineCacheKeyArgs,
+/**
+ * The cache identity *excluding* `maxSeq` — i.e. everything that selects which
+ * window is being requested, but not which revision of it. Used to track the
+ * latest-sent rows per request shape for delta computation.
+ */
+export function buildThreadTimelineParamsKey(
+  args: Omit<ThreadTimelineCacheKeyArgs, "maxSeq">,
 ): string {
   return [
     args.threadId,
-    args.maxSeq,
     args.status,
     args.environmentId ?? "-",
     pageKeyPart(args.page),
@@ -114,4 +118,10 @@ export function buildThreadTimelineCacheKey(
     args.summaryOnly ? "1" : "0",
     args.isDevelopment ? "1" : "0",
   ].join("|");
+}
+
+export function buildThreadTimelineCacheKey(
+  args: ThreadTimelineCacheKeyArgs,
+): string {
+  return `${args.maxSeq}|${buildThreadTimelineParamsKey(args)}`;
 }

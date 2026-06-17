@@ -21,6 +21,7 @@ function response(rows: TimelineRow[]): ThreadTimelineResponse {
     activeThinking: null,
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

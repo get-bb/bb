@@ -96,6 +96,7 @@ import type { PathListOptions } from "./path-list-options";
 export type { FilePreview } from "./file-preview";
 
 interface GetThreadTimelineArgs {
+  afterSequence?: number;
   beforeCursor?: TimelinePaginationCursor;
   id: string;
   includeNestedRows?: boolean;
@@ -1378,6 +1379,7 @@ export async function archiveEnvironmentThreads(
 }
 
 export async function getThreadTimeline({
+  afterSequence,
   beforeCursor,
   id,
   includeNestedRows = false,
@@ -1392,6 +1394,9 @@ export async function getThreadTimeline({
           ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
           ...(segmentLimit !== undefined
             ? { segmentLimit: String(segmentLimit) }
+            : {}),
+          ...(afterSequence !== undefined
+            ? { afterSequence: String(afterSequence) }
             : {}),
           ...(beforeCursor
             ? {

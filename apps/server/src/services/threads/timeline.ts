@@ -93,6 +93,8 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 interface BuildThreadTimelineOptions {
   isDevelopment: boolean;
   includeNestedRows?: boolean;
+  /** Thread high-water event sequence this window reflects (echoed to clients). */
+  maxSeq: number;
   page: ThreadTimelinePageRequest;
   /**
    * When true, the response is built without rows (rows: []). The tail-only
@@ -864,6 +866,7 @@ function buildThreadTimelineInternal(
   }
 
   const response: ThreadTimelineResponse = {
+    maxSeq: options.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,

@@ -26,6 +26,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeThinking: null,
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

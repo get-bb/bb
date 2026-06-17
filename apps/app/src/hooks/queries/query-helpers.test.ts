@@ -153,6 +153,7 @@ function makeThreadTimelineResponse(
     activeWorkflow: null,
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     rows,
     timelinePage: {
       kind: "latest",

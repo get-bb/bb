@@ -199,12 +199,18 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.beforeAnchorSeq",
       "threadTimelineQuerySchema.beforeAnchorId",
       "threadTimelineQuerySchema.summaryOnly",
+      "threadTimelineQuerySchema.afterSequence",
     ],
   },
   {
     reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
+  },
+  {
+    reason:
+      "Timeline responses carry a row-patch delta only when the request supplied a usable afterSequence; a full window omits it.",
+    fields: ["threadTimelineResponseSchema.delta"],
   },
   {
     reason:

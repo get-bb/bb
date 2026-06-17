@@ -110,6 +110,7 @@ describe("fetchThreadPendingTodos", () => {
       pendingTodos,
       goal: null,
       rows: [],
+      maxSeq: 0,
       timelinePage: {
         kind: "latest",
         segmentLimit: 20,

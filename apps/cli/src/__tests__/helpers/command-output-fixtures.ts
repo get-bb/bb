@@ -69,6 +69,7 @@ export function makeTimelineResponse(
     activeWorkflow: null,
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
