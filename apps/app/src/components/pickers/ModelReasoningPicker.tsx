@@ -409,7 +409,7 @@ export function ModelReasoningPicker({
         {/* Model list */}
         <div
           className={cn(
-            "overflow-y-auto p-1",
+            "overflow-y-auto px-1 pb-1 pt-0",
             !isCompactViewport &&
               "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
           )}
@@ -465,7 +465,7 @@ export function ModelReasoningPicker({
         {showReasoningSection && reasoningOptions.length > 0 ? (
           <>
             <div className="border-t border-border" />
-            <div className="p-1">
+            <div className="px-1 pb-1 pt-0">
               <MenuSectionLabel>Reasoning</MenuSectionLabel>
               {reasoningOptions.map((option) => (
                 <MenuRowButton
@@ -507,15 +507,17 @@ export function ModelReasoningPicker({
 }
 
 // `sticky top-0` keeps "Model" pinned to the top of its scrolling parent
-// (no-op for "Reasoning" — its parent doesn't scroll). `flex h-7 items-center`
-// pins to an integer height so the sticky label doesn't subpixel-shift during
-// scroll. Uses `CHROME_SECTION_LABEL_CLASS` so these read like the sidebar's
+// (no-op for "Reasoning" — its parent doesn't scroll). `-mx-1 px-3` covers the
+// scroll container gutter while keeping label text aligned with option rows.
+// The top inset lives inside the opaque sticky label, not on the scroll
+// container, so rows can't peek above it while it is pinned. Uses
+// `CHROME_SECTION_LABEL_CLASS` so these read like the sidebar's
 // Projects/Pinned/Threads section labels.
 function MenuSectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "sticky top-0 z-10 flex h-7 items-center bg-background px-2",
+        "sticky top-0 z-10 -mx-1 flex h-8 items-center bg-background px-3 pt-1",
         CHROME_SECTION_LABEL_CLASS,
       )}
     >
