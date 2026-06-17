@@ -108,6 +108,7 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
+    let deferredRead: number | null = null;
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
@@ -115,9 +116,24 @@ export function SelectableMessageProse({
       hadSelection = next !== null;
       onSelectRef.current?.(next);
     };
+    const cancelFrame = () => {
+      if (frame === null) return;
+      window.cancelAnimationFrame(frame);
+      frame = null;
+    };
     const schedule = () => {
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
+    };
+    const scheduleAfterSelectionSettles = () => {
+      cancelFrame();
+      if (deferredRead !== null) {
+        window.clearTimeout(deferredRead);
+      }
+      deferredRead = window.setTimeout(() => {
+        deferredRead = null;
+        schedule();
+      }, 0);
     };
     const handleSelectionChange = () => {
       if (pointerIsDown) {
@@ -130,19 +146,30 @@ export function SelectableMessageProse({
     };
     const handlePointerEnd = () => {
       pointerIsDown = false;
-      schedule();
+      scheduleAfterSelectionSettles();
+    };
+    const handleClick = (event: MouseEvent) => {
+      if (event.detail < 2) {
+        return;
+      }
+      scheduleAfterSelectionSettles();
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("pointerup", handlePointerEnd);
     document.addEventListener("pointercancel", handlePointerEnd);
+    document.addEventListener("mouseup", handlePointerEnd);
+    document.addEventListener("click", handleClick);
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
+      if (deferredRead !== null) window.clearTimeout(deferredRead);
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerEnd);
       document.removeEventListener("pointercancel", handlePointerEnd);
+      document.removeEventListener("mouseup", handlePointerEnd);
+      document.removeEventListener("click", handleClick);
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
     };

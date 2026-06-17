@@ -9,13 +9,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mockWindowSelection({
-  node,
-  text,
-}: {
-  node: Node;
-  text: string;
-}) {
+function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
   const range = {
     commonAncestorContainer: node,
@@ -76,7 +70,9 @@ describe("SelectableMessageProse", () => {
         Double click selectable answer text
       </SelectableMessageProse>,
     );
-    const textNode = getByText("Double click selectable answer text").firstChild;
+    const textNode = getByText(
+      "Double click selectable answer text",
+    ).firstChild;
     expect(textNode).not.toBeNull();
 
     fireEvent.pointerDown(document);
@@ -93,6 +89,38 @@ describe("SelectableMessageProse", () => {
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({ text: "selectable" }),
+      ),
+    );
+  });
+
+  it("reports triple-click selections that settle after pointer release", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Triple click selectable paragraph text
+      </SelectableMessageProse>,
+    );
+    const textNode = getByText(
+      "Triple click selectable paragraph text",
+    ).firstChild;
+    expect(textNode).not.toBeNull();
+
+    fireEvent.pointerDown(document);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.pointerUp(document);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    mockWindowSelection({
+      node: textNode!,
+      text: "Triple click selectable paragraph text",
+    });
+    fireEvent.click(document, { detail: 3 });
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Triple click selectable paragraph text",
+        }),
       ),
     );
   });
