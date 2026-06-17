@@ -38,7 +38,7 @@ describe("PromptBoxActionsMenu", () => {
     expect(
       screen
         .getByRole("button", { name: "Prompt actions" })
-        .querySelector('[data-icon="PlusSignSquare"]'),
+        .querySelector('[data-icon="Plus"]'),
     ).not.toBeNull();
 
     await openPromptActionsMenu();

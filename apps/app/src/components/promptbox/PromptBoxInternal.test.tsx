@@ -62,13 +62,17 @@ function renderPromptBox(initialValue: string) {
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+      [],
+    );
     return (
       <PromptBoxInternal
         value={value}
-        mentionRanges={[]}
+        mentionRanges={mentionRanges}
         onChange={(nextValue, nextMentions) => {
           changes.push({ mentions: nextMentions, value: nextValue });
           setValue(nextValue);
+          setMentionRanges(nextMentions);
         }}
         onSubmit={() => {}}
         typeahead={buildTypeaheadConfig({ onCommandQueryChange })}
@@ -209,6 +213,9 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Goal");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    await waitFor(() =>
+      expect(document.querySelector('[data-icon="Target"]')).not.toBeNull(),
+    );
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,

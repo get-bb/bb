@@ -2,6 +2,11 @@ import type { PromptMentionResource } from "@bb/domain";
 import type { IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
+type PromptCommandLike = Pick<
+  Extract<PromptMentionResource, { kind: "command" }>,
+  "name" | "source"
+>;
+
 // Keeps prompt mention pills aligned with surrounding text. The icon in React
 // render paths opts back into vertical centering with `self-center`.
 export const PROMPT_MENTION_PILL_CLASS = cn(
@@ -35,9 +40,22 @@ export function promptMentionIconName(
     return "MessageSquare";
   }
   if (resource.kind === "command") {
-    return resource.source === "skill" ? "Zap" : "Terminal";
+    return promptCommandIconName(resource);
   }
   return resource.entryKind === "directory" ? "Folder" : "File";
+}
+
+export function promptCommandIconName(command: PromptCommandLike): IconName {
+  if (command.source === "skill") {
+    return "Zap";
+  }
+  if (command.name === "plan") {
+    return "ListTodo";
+  }
+  if (command.name === "goal") {
+    return "Target";
+  }
+  return "Terminal";
 }
 
 export function promptMentionDisplayLabel(

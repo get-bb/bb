@@ -97,7 +97,7 @@ export function PromptBoxActionsMenu({
           aria-label="Prompt actions"
           className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
         >
-          <Icon name="PlusSignSquare" className="size-4" />
+          <Icon name="Plus" className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

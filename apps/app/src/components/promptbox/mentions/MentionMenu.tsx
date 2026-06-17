@@ -13,7 +13,10 @@ import {
 } from "@bb/server-contract";
 import { directoryFromPath } from "@bb/thread-view";
 import { promptMentionResourceFromSuggestion } from "@/components/promptbox/editor/prompt-editor-serialization";
-import { promptMentionIconName } from "@/components/promptbox/mentions/prompt-mention-display";
+import {
+  promptCommandIconName,
+  promptMentionIconName,
+} from "@/components/promptbox/mentions/prompt-mention-display";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
@@ -159,9 +162,7 @@ function getCommandSectionLabel(kind: ProviderCommandSection): string {
 }
 
 function getCommandIconName(item: ProviderCommandSuggestion): IconName {
-  // Skills are reusable power-actions (Zap); Claude's legacy slash commands
-  // map to a terminal glyph.
-  return item.source === "skill" ? "Zap" : "Terminal";
+  return promptCommandIconName(item);
 }
 
 function getCommandKey(item: ProviderCommandSuggestion, index: number): string {
