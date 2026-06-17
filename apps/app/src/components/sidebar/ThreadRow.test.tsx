@@ -124,7 +124,7 @@ describe("ThreadRow", () => {
     ).toBeNull();
   });
 
-  it("keeps expanded parent carets hover-revealed in the shared caret column", () => {
+  it("keeps expanded parent carets hover-revealed at their row indentation", () => {
     renderThreadRow({
       options: {
         kind: "parent",
@@ -144,7 +144,8 @@ describe("ThreadRow", () => {
     expect(caret.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
       "always",
     );
-    expect(caret.style.marginLeft).toBe("-20px");
-    expect(caret.style.marginRight).toBe("20px");
+    expect(caret.className).toContain("size-4");
+    expect(caret.style.marginLeft).toBe("");
+    expect(caret.style.marginRight).toBe("");
   });
 });

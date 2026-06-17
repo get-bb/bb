@@ -680,7 +680,6 @@ function EnvironmentThreadGroupHeader({
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
-          alignDepth={rowDepth}
           revealOnHover={!isCollapsed}
         />
         <span
