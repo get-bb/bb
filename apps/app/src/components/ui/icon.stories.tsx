@@ -67,6 +67,7 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
+  PlusSignSquare: "Prompt actions trigger",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

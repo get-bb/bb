@@ -35,6 +35,12 @@ describe("PromptBoxActionsMenu", () => {
       <PromptBoxActionsMenu actions={promptActions} onAction={() => {}} />,
     );
 
+    expect(
+      screen
+        .getByRole("button", { name: "Prompt actions" })
+        .querySelector('[data-icon="PlusSignSquare"]'),
+    ).not.toBeNull();
+
     await openPromptActionsMenu();
 
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
