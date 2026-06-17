@@ -159,10 +159,7 @@ function preserveTimelineRowIdentity({
   const previousRowsById = buildTimelineRowIdentityMap(previousRows);
   return nextRows.map((row) => {
     const previous = previousRowsById.get(row.id);
-    if (
-      previous &&
-      previous.signature === timelineRowIdentitySignature(row)
-    ) {
+    if (previous && previous.signature === timelineRowIdentitySignature(row)) {
       return previous.row;
     }
     return row;
@@ -303,9 +300,15 @@ export function isStaleTimelinePaginationCursorError(error: Error): boolean {
 export function useThreadTimelinePages({
   threadId,
 }: UseThreadTimelinePagesArgs): UseThreadTimelinePagesResult {
+  // No `staleTime: Infinity` here: it silently defeats `refetchOnMount` (data
+  // is never stale, so a remount/refocus never refreshes), so a thread revisited
+  // after events arrived while it was unmounted shows a frozen, stale timeline
+  // until the next live event. It also didn't reduce streaming rerenders — those
+  // are invalidation-driven and refetch regardless of staleTime. Inheriting the
+  // app-wide 2s staleTime is correct and cheap now that live updates fetch a
+  // row-patch delta (or a cached/no-op response) instead of the full window.
   const latestTimelineQuery = useThreadTimeline(threadId, {
     refetchOnMount: true,
-    staleTime: Infinity,
   });
   const surfaceKey = buildSurfaceKey({ threadId });
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(
