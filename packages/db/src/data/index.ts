@@ -34,6 +34,8 @@ export {
   closeAutomationRun,
   createManualRun,
   getAutomationRun,
+  setAutomationRunThread,
+  getRunningAutomationRunByThread,
   listAutomationRuns,
   disableAutomationsForDeletedThread,
 } from "./automations.js";

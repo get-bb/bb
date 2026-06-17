@@ -483,6 +483,44 @@ export function getAutomationRun(
   );
 }
 
+/**
+ * Link a spawned thread to its (still-running) agent run row so the turn-complete
+ * hook can later close it by thread. Returns the updated run, or null if missing.
+ */
+export function setAutomationRunThread(
+  db: DbConnection,
+  args: { runId: string; threadId: string },
+): AutomationRunRow | null {
+  return (
+    db
+      .update(automationRuns)
+      .set({ threadId: args.threadId })
+      .where(eq(automationRuns.id, args.runId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+/** Find a still-running run linked to a thread (agent turn-complete close path). */
+export function getRunningAutomationRunByThread(
+  db: DbConnection,
+  threadId: string,
+): AutomationRunRow | null {
+  return (
+    db
+      .select()
+      .from(automationRuns)
+      .where(
+        and(
+          eq(automationRuns.threadId, threadId),
+          eq(automationRuns.status, "running"),
+        ),
+      )
+      .orderBy(desc(automationRuns.startedAt))
+      .get() ?? null
+  );
+}
+
 export interface ListAutomationRunsArgs {
   automationId: string;
   limit: number;

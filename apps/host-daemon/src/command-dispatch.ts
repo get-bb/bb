@@ -26,6 +26,7 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
+import { runScript } from "./command-handlers/run-script.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
@@ -185,6 +186,7 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
+  "host.run_script": runScript,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {

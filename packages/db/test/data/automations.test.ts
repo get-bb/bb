@@ -15,10 +15,12 @@ import {
   disableAutomationsForDeletedThread,
   getAutomation,
   getAutomationForProject,
+  getRunningAutomationRunByThread,
   listAutomationRuns,
   listDueAutomations,
   restoreAutomationAfterFailedRun,
   setAutomationEnabled,
+  setAutomationRunThread,
   updateAutomation,
   type CreateAutomationInput,
 } from "../../src/data/automations.js";
@@ -294,5 +296,38 @@ describe("automations data", () => {
     const a = createAutomation(db, noopNotifier, makeInput(projectId, { targetThreadId: threadId }));
     db.delete(threads).where(eq(threads.id, threadId)).run();
     expect(getAutomation(db, a.id)?.targetThreadId).toBeNull();
+  });
+
+  it("links a spawned thread to a running run and finds it by thread", () => {
+    const { db, projectId } = setup();
+    const threadId = insertThread(db, projectId, "thr_agent");
+    const automation = createAutomation(db, noopNotifier, makeInput(projectId));
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1_000,
+      newNextRunAt: 2_000,
+      now: 1_500,
+    });
+    expect(claim.advanced).toBe(true);
+    if (!claim.advanced) {
+      throw new Error("expected claim to advance");
+    }
+
+    // No link yet => not found by thread.
+    expect(getRunningAutomationRunByThread(db, threadId)).toBeNull();
+
+    setAutomationRunThread(db, { runId: claim.run.id, threadId });
+    const linked = getRunningAutomationRunByThread(db, threadId);
+    expect(linked?.id).toBe(claim.run.id);
+    expect(linked?.status).toBe("running");
+
+    // Once closed, it is no longer returned as running.
+    closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "succeeded",
+      threadId,
+      now: 3_000,
+    });
+    expect(getRunningAutomationRunByThread(db, threadId)).toBeNull();
   });
 });
