@@ -705,7 +705,6 @@ export function RootComposeView(props: RootComposeViewProps) {
               input: submittedInput,
               model: selectedThreadModel,
               permissionMode,
-              providerId: selectedProviderId,
               reasoningLevel,
               serviceTier: supportsServiceTier ? serviceTier : undefined,
             })
@@ -897,7 +896,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
-        onChange: setSelectedProviderId,
+        onChange: forkSeed === null ? setSelectedProviderId : undefined,
         hasMultiple: hasMultipleProviders,
       },
       model: {
@@ -923,6 +922,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [
       activeModel,
+      forkSeed,
       hasMultipleProviders,
       isLoadingModels,
       modelLoadFailed,
