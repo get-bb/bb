@@ -137,8 +137,7 @@ interface SideChatConversationProps {
   threadId: string;
   /**
    * Hand a side-chat agent message back to the main thread (the per-message
-   * "send to main" action). Undefined while the side chat is mid-turn, which
-   * keeps the action out of the bar until the reply is final.
+   * "send to main" action). Undefined only when there is no main-thread target.
    */
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
@@ -578,14 +577,11 @@ export function SideChatTabContent({
 
   // A side chat hands results back to the main thread per agent message (the
   // "send to main thread" action under each reply) via the cross-thread
-  // `senderThreadId` transport. Gate on idle so a mid-stream partial can't be
-  // posted while a turn is in flight, and on the mutation so a click can't
-  // double-send.
-  const childIsIdle = childThreadQuery.data?.runtime.displayStatus === "idle";
-  const canSendToMain = childIsIdle && !sendThreadMessage.isPending;
+  // `senderThreadId` transport. Keep the action visible and guard the handler
+  // against double-sends while the mutation is in flight.
   const sendMessageToMain = useCallback<ThreadTimelineSendToMainMessageHandler>(
     (target) => {
-      if (childThreadId === null) {
+      if (childThreadId === null || sendThreadMessage.isPending) {
         return;
       }
       sendThreadMessage.mutate({
@@ -1061,7 +1057,7 @@ export function SideChatTabContent({
           <SideChatConversation
             isSideChatTurnSubmitting={isSideChatTurnSubmitting}
             threadId={childThreadId}
-            onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
+            onSendToMainMessage={sendMessageToMain}
             onSelectionAddToChat={handleSelectionAddToChat}
           />
         ) : sideChatPreloadFailed ? (

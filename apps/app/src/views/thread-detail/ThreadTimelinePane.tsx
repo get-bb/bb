@@ -21,6 +21,7 @@ import {
   ThreadTimelineRows,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSelectionAddToChatHandler,
   type ThreadTimelineSelectionReplyInSideChatHandler,
   type ThreadTimelineLinkHandler,
@@ -48,6 +49,7 @@ interface ThreadTimelinePaneProps {
   timelineError: boolean;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
+  onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   onLoadOlderRows: () => void;
@@ -147,6 +149,7 @@ export function ThreadTimelinePane({
   timelineError,
   onForkMessage,
   onSideChatMessage,
+  onSendToMainMessage,
   onSelectionAddToChat,
   onSelectionReplyInSideChat,
   onLoadOlderRows,
@@ -222,6 +225,7 @@ export function ThreadTimelinePane({
               threadChildOrigin={threadChildOrigin}
               onForkMessage={onForkMessage}
               onSideChatMessage={onSideChatMessage}
+              onSendToMainMessage={onSendToMainMessage}
               onSelectionAddToChat={onSelectionAddToChat}
               onSelectionReplyInSideChat={onSelectionReplyInSideChat}
               onOpenLink={onOpenLink}

@@ -5,6 +5,7 @@ import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
   type ThreadTimelineLocalFileLinkHandler,
@@ -768,6 +769,36 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [handleSideChatMessage],
   );
+  const sendSideChatMessageToMain =
+    useCallback<ThreadTimelineSendToMainMessageHandler>(
+      (target) => {
+        if (
+          thread?.id === undefined ||
+          threadOriginKind !== "side-chat" ||
+          threadSourceThreadId === null ||
+          sendMessage.isPending
+        ) {
+          return;
+        }
+
+        sendMessage.mutate({
+          id: threadSourceThreadId,
+          input: [{ type: "text", text: target.messageText, mentions: [] }],
+          mode: "auto",
+          senderThreadId: thread.id,
+        });
+      },
+      [
+        sendMessage,
+        thread?.id,
+        threadOriginKind,
+        threadSourceThreadId,
+      ],
+    );
+  const handleSendToMainMessage =
+    threadOriginKind === "side-chat" && threadSourceThreadId !== null
+      ? sendSideChatMessageToMain
+      : undefined;
   const canUseGitUi = environment?.isGitRepo === true;
   const canCreateTerminal =
     thread?.environmentId !== null &&
@@ -1969,6 +2000,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           onSideChatMessage: canStartSideChat
             ? handleSideChatMessage
             : undefined,
+          onSendToMainMessage: handleSendToMainMessage,
           onSelectionAddToChat: handleSelectionAddToChat,
           onSelectionReplyInSideChat: canStartSideChat
             ? handleSelectionReplyInSideChat
