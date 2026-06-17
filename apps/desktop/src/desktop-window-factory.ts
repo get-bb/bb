@@ -56,6 +56,7 @@ export interface DesktopWindowWebContents {
 
 export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   focus(): void;
+  isFocused(): boolean;
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
   maximize(): void;
@@ -103,6 +104,7 @@ export interface DesktopWindowFactory {
   createWindow(args: CreateDesktopWindowArgs): Promise<DesktopBrowserWindow>;
   focusFirstWindow(): boolean;
   hasOpenWindows(): boolean;
+  sendToFocusedWindow(channel: string, payload: unknown): boolean;
   sendToFirstWindow(channel: string, payload: unknown): boolean;
   loadUrlInFirstWindow(args: LoadDesktopWindowsUrlArgs): Promise<boolean>;
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
@@ -341,6 +343,17 @@ export function createDesktopWindowFactory(
     return false;
   }
 
+  function sendToFocusedWindow(channel: string, payload: unknown): boolean {
+    for (const browserWindow of activeWindows.values()) {
+      if (!browserWindow.isFocused()) {
+        continue;
+      }
+      browserWindow.webContents.send(channel, payload);
+      return true;
+    }
+    return sendToFirstWindow(channel, payload);
+  }
+
   function openDevTools(): void {
     for (const browserWindow of activeWindows.values()) {
       browserWindow.webContents.openDevTools({ mode: "detach" });
@@ -365,6 +378,7 @@ export function createDesktopWindowFactory(
     hasOpenWindows() {
       return activeWindows.size > 0;
     },
+    sendToFocusedWindow,
     sendToFirstWindow,
     loadUrlInFirstWindow,
     loadUrl,

@@ -113,6 +113,7 @@ import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightP
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
+  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
   MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -187,6 +188,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
+import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -999,6 +1001,31 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (desktopInfo === null || desktopInfo.onOpenNewTab === undefined) {
+      return;
+    }
+    return desktopInfo.onOpenNewTab(handleOpenNewTab);
+  }, [handleOpenNewTab, props.surface]);
+  useEffect(() => {
+    if (props.surface !== "page" || getBbDesktopInfo() === null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isThreadNewTabKeyboardShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      handleOpenNewTab();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleOpenNewTab, props.surface]);
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);

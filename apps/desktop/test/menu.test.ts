@@ -1,6 +1,8 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import {
+  OPEN_NEW_TAB_ACCELERATOR,
+  OPEN_NEW_TAB_MENU_LABEL,
   SERVER_DAEMON_LOGS_MENU_LABEL,
   TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,
   TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,
@@ -46,6 +48,7 @@ describe("application menu", () => {
   it("shows a developer tools toggle in the view menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
+      openNewTab() {},
       openServerDaemonLogs() {},
       serverDaemonLogsMenuEnabled: true,
     });
@@ -61,9 +64,35 @@ describe("application menu", () => {
     expect(menuItem?.role).toBe("toggleDevTools");
   });
 
+  it("shows a new-tab command in the file menu", () => {
+    const openNewTab = vi.fn();
+    const template = buildApplicationMenuTemplate({
+      createNewWindow() {},
+      openNewTab,
+      openServerDaemonLogs() {},
+      serverDaemonLogsMenuEnabled: true,
+    });
+
+    const menuItem = findSubmenuItem({
+      itemLabel: OPEN_NEW_TAB_MENU_LABEL,
+      parentLabel: "File",
+      template,
+    });
+
+    expect(menuItem).not.toBeNull();
+    expect(menuItem?.accelerator).toBe(OPEN_NEW_TAB_ACCELERATOR);
+    menuItem?.click?.(
+      undefined as never,
+      undefined as never,
+      undefined as never,
+    );
+    expect(openNewTab).toHaveBeenCalledOnce();
+  });
+
   it("shows an enabled server and daemon logs item for owned runtimes", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
+      openNewTab() {},
       openServerDaemonLogs() {},
       serverDaemonLogsMenuEnabled: true,
     });
@@ -81,6 +110,7 @@ describe("application menu", () => {
   it("shows a disabled server and daemon logs item for attached runtimes", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
+      openNewTab() {},
       openServerDaemonLogs() {},
       serverDaemonLogsMenuEnabled: false,
     });

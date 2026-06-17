@@ -17,6 +17,7 @@ import {
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
+  type BbDesktopOpenNewTabHandler,
   type BbDesktopPopoutApi,
   type BbDesktopPopoutThreadChangedPayload,
   type BbDesktopPopoutThreadChangedHandler,
@@ -46,6 +47,7 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import { BB_DESKTOP_OPEN_NEW_TAB_CHANNEL } from "./desktop-window-command-ipc.js";
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
@@ -116,6 +118,7 @@ const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
 const browserScopedOpenTabListeners =
   new Set<BbDesktopBrowserScopedOpenTabHandler>();
 const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
+const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
 const popoutThreadChangedListeners =
   new Set<BbDesktopPopoutThreadChangedHandler>();
 
@@ -252,6 +255,12 @@ const bbDesktopApi: BbDesktopApi = {
       listeners.delete(listener);
     };
   },
+  onOpenNewTab(listener): BbDesktopInfoUnsubscribe {
+    openNewTabListeners.add(listener);
+    return () => {
+      openNewTabListeners.delete(listener);
+    };
+  },
   openExternalUrl(url: string): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, url);
   },
@@ -262,6 +271,12 @@ const bbDesktopApi: BbDesktopApi = {
 
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
   applyDesktopInfoPayload(payload);
+});
+
+ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
+  for (const listener of openNewTabListeners) {
+    listener();
+  }
 });
 
 ipcRenderer.on(BB_DESKTOP_BROWSER_STATE_CHANNEL, (_event, payload: unknown) => {

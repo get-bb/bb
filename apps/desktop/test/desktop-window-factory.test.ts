@@ -128,6 +128,10 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     return this.fullScreen;
   }
 
+  isFocused(): boolean {
+    return this.focused;
+  }
+
   isMaximized(): boolean {
     return this.maximized;
   }
@@ -480,5 +484,66 @@ describe("desktop window factory", () => {
     ]);
     expect(browserWindow.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(browserWindow.focused).toBe(true);
+  });
+
+  it("sends a renderer message to the focused window when available", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const generatedStateKeys: WindowStateKey[] = [
+      "focused-window-first",
+      "focused-window-second",
+    ];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return generatedStateKeys.shift() ?? "focused-window-fallback";
+      },
+      displayWorkAreas: [
+        {
+          height: 900,
+          width: 1440,
+          x: 0,
+          y: 0,
+        },
+      ],
+      icon: undefined,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+
+    await factory.createWindow({
+      initialUrl: "http://127.0.0.1:38886",
+      stateKey: null,
+    });
+    await factory.createWindow({
+      initialUrl: "http://127.0.0.1:38886",
+      stateKey: null,
+    });
+    const firstWindow = createdWindows[0];
+    const secondWindow = createdWindows[1];
+    if (firstWindow === undefined || secondWindow === undefined) {
+      throw new Error("Expected desktop windows");
+    }
+    secondWindow.focused = true;
+
+    expect(factory.sendToFocusedWindow("bb:test", { action: "new-tab" })).toBe(
+      true,
+    );
+
+    expect(firstWindow.webContents.sentMessages).toEqual([]);
+    expect(secondWindow.webContents.sentMessages).toEqual([
+      { channel: "bb:test", payload: { action: "new-tab" } },
+    ]);
   });
 });

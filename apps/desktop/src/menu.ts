@@ -1,10 +1,13 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
 export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+export const OPEN_NEW_TAB_ACCELERATOR = "CmdOrCtrl+T";
+export const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
 export interface InstallApplicationMenuArgs {
+  openNewTab(): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
   serverDaemonLogsMenuEnabled: boolean;
@@ -46,6 +49,13 @@ export function buildApplicationMenuTemplate(
     {
       label: "File",
       submenu: [
+        {
+          accelerator: OPEN_NEW_TAB_ACCELERATOR,
+          click() {
+            args.openNewTab();
+          },
+          label: OPEN_NEW_TAB_MENU_LABEL,
+        },
         {
           accelerator: "CmdOrCtrl+N",
           click() {

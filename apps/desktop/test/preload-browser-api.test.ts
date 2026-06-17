@@ -38,6 +38,7 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
+import { BB_DESKTOP_OPEN_NEW_TAB_CHANNEL } from "../src/desktop-window-command-ipc.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -299,6 +300,7 @@ describe("desktop preload browser API", () => {
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
+    let openNewTabCount = 0;
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
@@ -332,6 +334,9 @@ describe("desktop preload browser API", () => {
     });
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
+    });
+    api.onOpenNewTab?.(() => {
+      openNewTabCount += 1;
     });
     api.popout.onThreadChanged((thread) => {
       popoutThreads.push(thread);
@@ -370,6 +375,10 @@ describe("desktop preload browser API", () => {
       payload: snapshot,
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+      payload: null,
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
       payload: { projectId: "proj_a", threadId: "thr_a", extra: true },
     });
@@ -386,6 +395,7 @@ describe("desktop preload browser API", () => {
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(openNewTabCount).toBe(1);
     expect(popoutThreads).toEqual([
       { projectId: "proj_a", threadId: "thr_a" },
       null,
