@@ -16,6 +16,38 @@ The project defaults to BB_PROJECT_ID, then the personal project, so --project i
 never required. Inside a thread, automations are stamped origin "agent" and record
 the creating thread automatically.
 
+Choosing a mode:
+
+  Use script when the output is fully determined by code — watchdogs, threshold
+  alerts, health checks, heartbeats, API pollers with a fixed output shape.
+  Design the script to print NOTHING when there is nothing to report: an exit-0
+  run with empty stdout (or a trailing {"wakeAgent": false} line) is a silent
+  tick. Any other stdout is surfaced; a non-zero exit / timeout is recorded as a
+  failed run.
+
+  Use agent when the run needs reasoning — summarize a feed, pick interesting
+  items, draft a human-friendly message, or branch on content.
+
+  For a request like "every 15 minutes, alert me if disk is over 90%", prefer a
+  script automation: author a small check script whose stdout IS the alert, then
+  schedule it (no model spend per tick):
+
+    # 1. write the check — stays silent unless the threshold is crossed
+    cat > /tmp/disk-watch.sh <<'SH'
+    #!/usr/bin/env bash
+    pct=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}')
+    [ "$pct" -ge 90 ] && echo "Disk at ${pct}% on $(hostname)"
+    SH
+    # 2. schedule it
+    bb automation create --name "Disk watch" \
+      --cron "*/15 * * * *" --timezone "America/New_York" \
+      --script-file /tmp/disk-watch.sh
+
+  Automations cannot create automations (runs are origin-gated) — never schedule
+  one whose job is to create more. Host-script automations may be disabled by
+  server policy (config.automationsAllowScriptRuns); fall back to an agent
+  automation if script creation is rejected.
+
 Every command supports --json for machine-readable output.
 
 Creating:

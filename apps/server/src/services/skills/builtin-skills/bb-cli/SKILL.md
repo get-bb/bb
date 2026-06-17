@@ -70,6 +70,18 @@ For review or fix pipelines, get the environment ID from
   runs in one of two modes: `agent` (spawns a thread running a prompt — uses
   tokens) or `script` (runs a stored command and captures stdout/exit — no
   agent, no tokens).
+- Choosing a mode: pick `script` when the output is fully determined by code
+  (watchdogs, threshold alerts, health checks, pollers with a fixed output) —
+  write the check so it prints nothing when there's nothing to report, so quiet
+  ticks stay silent. Pick `agent` when the run needs reasoning (summarize,
+  triage, draft for a human, branch on content).
+- For a "watch X and alert me when Y" request, prefer a script automation:
+  author the check script (inline `--script` or a file via `--script-file`) so
+  its stdout IS the alert, then create it — no model spend per tick.
+- Automations cannot create automations (runs are origin-gated); never schedule
+  one whose job is to make more. Host-script automations may be disabled by
+  server policy — fall back to an `agent` automation if script creation is
+  rejected.
 - Create an agent automation with
   `bb automation create --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
 - Create a script automation with
