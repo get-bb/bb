@@ -348,10 +348,10 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
-  // Opens a message-anchored side chat: appends a side-chat tab (threadId null,
-  // child thread created lazily on the user's first submit), activates it, and
-  // reveals the panel. A fresh tab per call mirrors the browser-tab model — the
-  // source message is not a stable identity.
+  // Opens a message-anchored side chat: appends a side-chat tab (threadId null
+  // until preload finishes), activates it, and reveals the panel. A fresh tab
+  // per call mirrors the browser-tab model — the source message is not a stable
+  // identity.
   const openSideChat = useCallback(
     ({ sourceMessageText }: OpenSideChatArgs) => {
       const nextTab = createSideChatFixedPanelTab({
@@ -391,8 +391,8 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
-  // Records the child thread id once it is created on first submit, so later
-  // turns render against the persisted thread and the tab survives reloads.
+  // Records the child thread id once preload creates it, so later turns render
+  // against the persisted thread and the tab survives reloads.
   const setSideChatThreadId = useCallback(
     ({ tabId, threadId: childThreadId }: SetSideChatThreadIdArgs) => {
       updateFixedPanelTabsState((state) => {

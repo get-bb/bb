@@ -68,7 +68,6 @@ import {
   useSendThreadMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { useDeleteThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   SIDE_CHAT_PERMISSION_MODE,
   buildSideChatMessageInput,
@@ -304,7 +303,6 @@ export function SideChatTabContent({
   const createThread = useCreateThread();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
-  const deleteThread = useDeleteThread();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const sendThreadMessage = useSendThreadMessage();
@@ -339,10 +337,7 @@ export function SideChatTabContent({
   const createThreadPromiseRef = useRef<Promise<string | null> | null>(null);
   const childThreadIdRef = useRef<string | null>(childThreadId);
   const childHasUserMessageRef = useRef(false);
-  const deleteThreadMutateRef = useRef(deleteThread.mutate);
-  const hasAcceptedUserMessageRef = useRef(false);
   const isMountedRef = useRef(false);
-  const pendingSubmitCountRef = useRef(0);
   const queuedMessageCountRef = useRef(0);
 
   const [message, setMessage] = useState("");
@@ -430,32 +425,14 @@ export function SideChatTabContent({
 
   childThreadIdRef.current = childThreadId;
   childHasUserMessageRef.current = childHasUserMessage;
-  deleteThreadMutateRef.current = deleteThread.mutate;
   queuedMessageCountRef.current = queuedMessages.length;
-
-  const deleteSideChatIfUnused = useCallback((threadId: string | null) => {
-    if (
-      threadId === null ||
-      hasAcceptedUserMessageRef.current ||
-      pendingSubmitCountRef.current > 0 ||
-      childHasUserMessageRef.current ||
-      queuedMessageCountRef.current > 0
-    ) {
-      return;
-    }
-    deleteThreadMutateRef.current({
-      id: threadId,
-      childThreadsConfirmed: true,
-    });
-  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      deleteSideChatIfUnused(childThreadIdRef.current);
     };
-  }, [deleteSideChatIfUnused]);
+  }, []);
 
   const ensureSideChatThread = useCallback(async (): Promise<string | null> => {
     const existingThreadId = childThreadIdRef.current;
@@ -483,11 +460,9 @@ export function SideChatTabContent({
       .mutateAsync(request)
       .then((thread) => {
         childThreadIdRef.current = thread.id;
+        onSetThreadId({ tabId: tab.id, threadId: thread.id });
         if (isMountedRef.current) {
           setSideChatPreloadFailed(false);
-          onSetThreadId({ tabId: tab.id, threadId: thread.id });
-        } else {
-          deleteSideChatIfUnused(thread.id);
         }
         return thread.id;
       })
@@ -506,7 +481,6 @@ export function SideChatTabContent({
     canCreateSideChatThread,
     createThread,
     defaultExecutionOptions,
-    deleteSideChatIfUnused,
     onSetThreadId,
     sourceEnvironment,
     sourceThread.id,
@@ -554,7 +528,6 @@ export function SideChatTabContent({
           ...sideChatExecutionRequestFields,
         });
       }
-      hasAcceptedUserMessageRef.current = true;
     },
     [
       childThreadQuery.data?.runtime.displayStatus,
@@ -656,7 +629,6 @@ export function SideChatTabContent({
     setMessage("");
     setMentionRanges([]);
     setIsSideChatTurnSubmitting(true);
-    pendingSubmitCountRef.current += 1;
     void sendOrQueueSideChatText(trimmed)
       .catch((error) => {
         if (!isMountedRef.current) {
@@ -681,18 +653,11 @@ export function SideChatTabContent({
         );
       })
       .finally(() => {
-        pendingSubmitCountRef.current = Math.max(
-          0,
-          pendingSubmitCountRef.current - 1,
-        );
         if (isMountedRef.current) {
           setIsSideChatTurnSubmitting(false);
-        } else {
-          deleteSideChatIfUnused(childThreadIdRef.current);
         }
       });
   }, [
-    deleteSideChatIfUnused,
     isSideChatTurnSubmitting,
     mentionRanges,
     message,

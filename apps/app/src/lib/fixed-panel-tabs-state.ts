@@ -217,8 +217,8 @@ export interface TerminalFixedPanelTab {
 
 /**
  * A message-anchored side chat hosted in the secondary panel. The child thread
- * is created lazily on the user's first submit, so `threadId` is null until then
- * (the composer is shown with no thread yet). `title` is the truncated pill
+ * is preloaded after the tab opens, so `threadId` starts null and is filled once
+ * the child thread exists. `title` is the truncated pill
  * label derived from the source agent message at open time (and could later
  * mirror the child thread's title); `sourceMessageText` is the full, untruncated
  * source message used to anchor the context snapshot on the exact spawning
@@ -486,8 +486,7 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
  * Side-chat tabs get a fresh unique id per instance — the source agent message
  * is not a stable identity (the same message can spawn multiple side chats, and
  * the thread does not exist yet), so it cannot key the tab the way a file path
- * or application id does. `threadId` starts null; the child thread is created on
- * the user's first submit.
+ * or application id does. `threadId` starts null and is set after preload.
  */
 export function createSideChatFixedPanelTab({
   sourceMessageText,
