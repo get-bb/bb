@@ -223,6 +223,68 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
+  it("rejects approval requests from side chat threads", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, environment, project } = seedThreadFixture(harness, {
+        session: {
+          id: "host-side-chat-approval-reject",
+        },
+      });
+      const mainThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: mainThread.id,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: sideChatThread.id,
+        environmentId: environment.id,
+        turnId: "turn-side-chat-1",
+        providerThreadId: "provider-side-chat-1",
+      });
+
+      const response = await harness.app.request(
+        "/internal/session/interactive-request",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            interaction: {
+              threadId: sideChatThread.id,
+              turnId: "turn-side-chat-1",
+              providerId: "codex",
+              providerThreadId: "provider-side-chat-1",
+              providerRequestId: "request-side-chat-approval",
+              payload: createCommandApprovalPayload({
+                itemId: "item-side-chat-approval",
+                reason: "Needs approval",
+                command: "bb thread list --json",
+                cwd: "/tmp/project",
+              }),
+            },
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        outcome: "rejected",
+        reason:
+          "Side chat threads cannot request command or permission approvals.",
+      });
+      expect(
+        harness.deps.pendingInteractions.listThreadInteractions(
+          sideChatThread.id,
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("persists user-question interactive requests", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
