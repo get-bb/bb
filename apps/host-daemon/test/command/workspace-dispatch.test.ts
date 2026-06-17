@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { GitHostPullRequest } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   dispatchCommand,
@@ -102,7 +103,7 @@ describe("workspace command dispatch", () => {
       workspacePath: "/tmp/env-1",
     });
 
-    const pullRequest = {
+    const pullRequest: GitHostPullRequest = {
       number: 42,
       title: "Add timeline polish",
       state: "OPEN",
@@ -116,7 +117,7 @@ describe("workspace command dispatch", () => {
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
       mergeable: "MERGEABLE",
-    } as const;
+    };
     harness.workspaceState.pullRequest = pullRequest;
 
     const presentResult = await dispatchOnlineRpcCommand(
