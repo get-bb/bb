@@ -24,6 +24,7 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadPlanCard } from "@/components/promptbox/banner/ThreadPlanCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
   WorkspaceChangedFileSelection,
@@ -278,6 +279,7 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(true);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
@@ -938,8 +940,13 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
+        <ThreadPlanCard
+          plan={shouldHideComposer ? null : pendingTodos}
+          isExpanded={isPlanExpanded}
+          onToggle={() => setIsPlanExpanded((value) => !value)}
+        />
         <ThreadPromptContextBanner
-          todoSection={!pendingTodos ? null : { pendingTodos }}
+          todoSection={null}
           archivedSection={
             thread.archivedAt !== null
               ? { archivedAt: thread.archivedAt }
@@ -1004,6 +1011,7 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      isPlanExpanded,
       activeWorkflow,
       isWorkflowExpanded,
       parentThreadSection,

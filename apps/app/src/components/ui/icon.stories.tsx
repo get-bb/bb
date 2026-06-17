@@ -53,7 +53,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitMerge: "Branch name display, branch picker selected/option glyph",
   Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
-  ListTodo: "Todo section header in prompt context banner",
+  ListTodo: "Prompt action, plan card, todo section header in prompt context banner",
   Maximize2: "Enter zen mode (prompt expand), open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
