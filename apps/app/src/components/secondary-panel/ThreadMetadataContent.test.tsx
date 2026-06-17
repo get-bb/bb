@@ -98,6 +98,18 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain('data-icon="Laptop"');
   });
 
+  it("uses the compact environment label for direct workspaces", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({
+        isWorktree: false,
+        workspaceProvisionType: "unmanaged",
+      }),
+    );
+
+    expect(markup).toContain('title="Working locally">Local</span>');
+    expect(markup).not.toContain(">Working locally</span>");
+  });
+
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create new thread in this worktree"',

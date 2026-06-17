@@ -290,7 +290,9 @@ export function EnvironmentRow({
       valueClassName="min-w-0"
     >
       <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate">{display.modeLabel}</span>
+        <span className="min-w-0 truncate" title={display.modeLabel}>
+          {display.compactModeLabel}
+        </span>
         {showCreateThreadButton ? (
           <button
             type="button"
