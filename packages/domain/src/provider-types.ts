@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { permissionModeSchema, reasoningLevelSchema } from "./shared-types.js";
+import {
+  permissionModeSchema,
+  promptMentionCommandTriggerSchema,
+  reasoningLevelSchema,
+} from "./shared-types.js";
 
 export const modelReasoningEffortSchema = z.object({
   reasoningEffort: reasoningLevelSchema,
@@ -28,10 +32,29 @@ export const providerCapabilitiesSchema = z.object({
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
+export const providerComposerActionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("skills"),
+    trigger: promptMentionCommandTriggerSchema,
+  }),
+  z.object({
+    kind: z.literal("plan"),
+    insertText: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("goal"),
+    insertText: z.string().min(1),
+  }),
+]);
+export type ProviderComposerAction = z.infer<
+  typeof providerComposerActionSchema
+>;
+
 export const providerInfoSchema = z.object({
   id: z.string(),
   displayName: z.string(),
   capabilities: providerCapabilitiesSchema,
+  composerActions: z.array(providerComposerActionSchema),
   available: z.boolean(),
 });
 export type ProviderInfo = z.infer<typeof providerInfoSchema>;

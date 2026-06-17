@@ -21,6 +21,11 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
+        composerActions: [
+          { kind: "skills", trigger: "$" },
+          { kind: "plan", insertText: "/plan " },
+          { kind: "goal", insertText: "/goal " },
+        ],
         available: true,
       },
       {
@@ -34,6 +39,7 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
+        composerActions: [{ kind: "skills", trigger: "/" }],
         available: true,
       },
       {
@@ -47,6 +53,7 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full"],
         },
+        composerActions: [],
         available: true,
       },
     ]);
@@ -76,8 +83,27 @@ describe("agent provider catalog", () => {
   it("returns cloned catalog entries", () => {
     const provider = getBuiltInAgentProviderInfo("codex");
     provider.displayName = "Mutated";
+    provider.capabilities.supportedPermissionModes.push("full");
+    provider.composerActions.push({ kind: "goal", insertText: "/mutated " });
+    const skillsAction = provider.composerActions.find(
+      (action) => action.kind === "skills",
+    );
+    if (!skillsAction) {
+      throw new Error("Expected codex to declare a skills action");
+    }
+    skillsAction.trigger = "/";
 
-    expect(getBuiltInAgentProviderInfo("codex").displayName).toBe("Codex");
+    expect(getBuiltInAgentProviderInfo("codex")).toMatchObject({
+      displayName: "Codex",
+      capabilities: {
+        supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      },
+      composerActions: [
+        { kind: "skills", trigger: "$" },
+        { kind: "plan", insertText: "/plan " },
+        { kind: "goal", insertText: "/goal " },
+      ],
+    });
   });
 
   it("exposes pi default model declarations", () => {

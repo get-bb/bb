@@ -1,3 +1,7 @@
+import {
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
 import { getEnvironment, getProjectSourceByHost } from "@bb/db";
 import {
   providerCommandSectionRank,
@@ -21,18 +25,13 @@ export const PROVIDER_COMMAND_DEFAULT_LIMIT = 8;
  */
 export const PROVIDER_COMMAND_LIMIT_MAX = 50;
 
-/**
- * Providers that expose a discoverable skill/slash-command surface. Other
- * providers (`pi`, anything unknown) have no command typeahead, so the route
- * short-circuits to an empty list without a daemon roundtrip.
- */
-const PROVIDERS_WITH_COMMAND_SURFACE: ReadonlySet<string> = new Set([
-  "claude-code",
-  "codex",
-]);
-
 export function providerHasCommandSurface(providerId: string): boolean {
-  return PROVIDERS_WITH_COMMAND_SURFACE.has(providerId);
+  if (!isAgentProviderId(providerId)) {
+    return false;
+  }
+  return getBuiltInAgentProviderInfo(providerId).composerActions.some(
+    (action) => action.kind === "skills",
+  );
 }
 
 export interface CommandWorkspace {
