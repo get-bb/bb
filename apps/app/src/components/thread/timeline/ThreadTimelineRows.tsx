@@ -1033,7 +1033,7 @@ function LazyTurnRowBody({
  * running verb additionally shimmers (`animate-shine`) so active reads as more
  * alive still. Tune here if active vs. done needs more or less separation.
  */
-const PAST_ROW_DIM_CLASS_NAME = "opacity-40";
+export const PAST_ROW_DIM_CLASS_NAME = "opacity-40";
 
 /**
  * Whether a row sits in the receded past layer, and so takes
@@ -1051,7 +1051,7 @@ const PAST_ROW_DIM_CLASS_NAME = "opacity-40";
  *    stays prominent.
  * Conversation prose (the top tier) never recedes.
  */
-function pastRowDimClassName({
+export function pastRowDimClassName({
   activeLatestBundleId,
   row,
   scopeActive,
