@@ -67,9 +67,6 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 
-export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
-  "bg-sidebar-accent text-sidebar-foreground";
-
 /**
  * Hairline that runs through an expanded project's thread list, sitting
  * under the center of the project chevron/folder icon. The coarse-pointer

@@ -4,7 +4,10 @@ import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
-import { createExitTrailingBlockquoteBreakTransaction } from "./prompt-editor-blockquote";
+import {
+  createExitTrailingBlockquoteBreakTransaction,
+  createInsertParagraphBeforeBlockquoteTransaction,
+} from "./prompt-editor-blockquote";
 
 const schema = getSchema([
   StarterKit.configure({
@@ -113,5 +116,60 @@ describe("createExitTrailingBlockquoteBreakTransaction", () => {
     );
 
     expect(createExitTrailingBlockquoteBreakTransaction(state)).toBeNull();
+  });
+});
+
+describe("createInsertParagraphBeforeBlockquoteTransaction", () => {
+  it("turns Shift+Enter at the start of a blockquote into a paragraph above it", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "quote" }],
+              },
+            ],
+          },
+        ],
+      },
+      2,
+    );
+
+    const transaction =
+      createInsertParagraphBeforeBlockquoteTransaction(state);
+    expect(transaction).not.toBeNull();
+    const nextState = state.apply(transaction!);
+
+    expect(nextState.doc.toString()).toBe(
+      'doc(paragraph, blockquote(paragraph("quote")))',
+    );
+    expect(nextState.selection.from).toBe(1);
+    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("\n> quote");
+  });
+
+  it("does not insert above when the caret is inside quote text", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "quote" }],
+              },
+            ],
+          },
+        ],
+      },
+      4,
+    );
+
+    expect(createInsertParagraphBeforeBlockquoteTransaction(state)).toBeNull();
   });
 });

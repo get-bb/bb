@@ -62,7 +62,10 @@ import {
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
-import { exitTrailingBlockquoteBreak } from "./editor/prompt-editor-blockquote";
+import {
+  exitTrailingBlockquoteBreak,
+  insertParagraphBeforeBlockquote,
+} from "./editor/prompt-editor-blockquote";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1684,7 +1687,8 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        exitTrailingBlockquoteBreak(currentEditor)
+        (insertParagraphBeforeBlockquote(currentEditor) ||
+          exitTrailingBlockquoteBreak(currentEditor))
       ) {
         event.preventDefault();
         return true;

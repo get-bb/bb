@@ -149,7 +149,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active"
-        hint="selected thread shows the sidebar-accent background"
+        hint="selected thread shows the sidebar-border background"
       >
         <SidebarStage>
           <StoryThreadRow
