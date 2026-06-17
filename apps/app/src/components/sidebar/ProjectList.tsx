@@ -86,6 +86,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  SIDEBAR_CARET_BOX_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
@@ -476,7 +477,6 @@ function TopLevelSidebarSection({
             actions && "pr-14",
           )}
         >
-          <span className="min-w-0 truncate">{label}</span>
           {collapseControl ? (
             <button
               type="button"
@@ -492,8 +492,8 @@ function TopLevelSidebarSection({
                   : `Collapse ${label}`
               }
               className={cn(
-                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                SIDEBAR_CARET_BOX_CLASS,
+                "relative z-20 inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -509,6 +509,7 @@ function TopLevelSidebarSection({
               />
             </button>
           ) : null}
+          <span className="min-w-0 truncate">{label}</span>
         </span>
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">

@@ -149,7 +149,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active"
-        hint="selected thread shows the sidebar-border background"
+        hint="selected thread shows the sidebar-accent background"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -306,7 +306,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="env: managed worktree"
-        hint="trailing icon hint for the workspace display kind"
+        hint="leading worktree icon appears before the thread title"
       >
         <SidebarStage>
           <StoryThreadRow
