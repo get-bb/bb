@@ -18,14 +18,20 @@ import {
   applyQueuedMessageReorderResult,
   applyQueuedMessageSendResult,
   applySendThreadMessageSuccess,
+  beginCreateQueuedMessageTransaction,
   beginCreateThreadTransaction,
+  beginRemoveQueuedMessageTransaction,
   beginReorderQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
+  rollbackCreateQueuedMessageTransaction,
+  rollbackRemoveQueuedMessageTransaction,
   rollbackReorderQueuedMessageTransaction,
   rollbackSendThreadMessageTransaction,
   rollbackStopThreadTransaction,
   settleStopThreadTransaction,
+  type CreateQueuedMessageTransaction,
+  type RemoveQueuedMessageTransaction,
   type ReorderQueuedMessageTransaction,
   type SendThreadMessageTransaction,
   type StopThreadTransaction,
@@ -88,6 +94,7 @@ export function useSendThreadMessage() {
       permissionMode,
       mode,
       senderThreadId,
+      executionInputSources,
     }: SendThreadMessageMutationRequest) =>
       api.sendThreadMessage(id, {
         input,
@@ -95,6 +102,7 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        executionInputSources,
         mode,
         // Non-null only for cross-thread sends (e.g. a side chat handing a
         // result back); the target renders it as "Message from {sender}".
@@ -139,6 +147,8 @@ export function useCreateThreadQueuedMessage() {
       serviceTier,
       reasoningLevel,
       permissionMode,
+      senderThreadId,
+      executionInputSources,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       api.createThreadQueuedMessage(id, {
         input,
@@ -146,12 +156,27 @@ export function useCreateThreadQueuedMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        executionInputSources,
+        ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       }),
-    onSuccess: (queuedMessage, variables) => {
+    onMutate: async (variables): Promise<CreateQueuedMessageTransaction> =>
+      beginCreateQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+      }),
+    onError: (_error, variables, context) => {
+      rollbackCreateQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+        transaction: context,
+      });
+    },
+    onSuccess: (queuedMessage, variables, context) => {
       applyQueuedMessageCreateResult({
         queryClient,
         queuedMessage,
         threadId: variables.id,
+        transaction: context,
       });
     },
   });
@@ -172,6 +197,18 @@ export function useSendThreadQueuedMessage() {
       queuedMessageId,
     }: SendThreadQueuedMessageMutationRequest): Promise<SendQueuedMessageResponse> =>
       api.sendThreadQueuedMessage(id, queuedMessageId, { mode }),
+    onMutate: async (variables): Promise<RemoveQueuedMessageTransaction> =>
+      beginRemoveQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+      }),
+    onError: (_error, variables, context) => {
+      rollbackRemoveQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+        transaction: context,
+      });
+    },
     onSuccess: (_data, variables) => {
       applyQueuedMessageSendResult({
         queryClient,
@@ -235,6 +272,18 @@ export function useDeleteThreadQueuedMessage() {
       queuedMessageId,
     }: DeleteThreadQueuedMessageMutationRequest) =>
       api.deleteThreadQueuedMessage(id, queuedMessageId),
+    onMutate: async (variables): Promise<RemoveQueuedMessageTransaction> =>
+      beginRemoveQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+      }),
+    onError: (_error, variables, context) => {
+      rollbackRemoveQueuedMessageTransaction({
+        queryClient,
+        request: variables,
+        transaction: context,
+      });
+    },
     onSuccess: (_data, variables) => {
       applyQueuedMessageDeleteResult({
         queryClient,

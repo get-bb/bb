@@ -2,10 +2,12 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import type {
   PromptHistoryEntry,
+  ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  CreateQueuedMessageRequest,
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -41,6 +43,7 @@ import {
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
+import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   invalidateProjectPromptHistoryQueries,
   invalidateThreadAcceptedMessageQueries,
@@ -71,10 +74,41 @@ interface SendThreadMessageTransactionArgs {
   request: SendThreadMessageMutationRequest;
 }
 
+interface CreateQueuedMessageRequestWithThreadId extends CreateQueuedMessageRequest {
+  id: string;
+}
+
+interface CreateQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: CreateQueuedMessageRequestWithThreadId;
+}
+
+interface RemoveQueuedMessageRequest {
+  id: string;
+  queuedMessageId: string;
+}
+
+interface RemoveQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: RemoveQueuedMessageRequest;
+}
+
 interface RollbackSendThreadMessageTransactionArgs {
   queryClient: QueryClient;
   request: SendThreadMessageMutationRequest;
   transaction: SendThreadMessageTransaction | undefined;
+}
+
+interface RollbackCreateQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: CreateQueuedMessageRequestWithThreadId;
+  transaction: CreateQueuedMessageTransaction | undefined;
+}
+
+interface RollbackRemoveQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: RemoveQueuedMessageRequest;
+  transaction: RemoveQueuedMessageTransaction | undefined;
 }
 
 interface ApplySendThreadMessageSuccessArgs {
@@ -88,6 +122,7 @@ interface QueuedMessageSuccessArgs {
   queryClient: QueryClient;
   queuedMessage: ThreadQueuedMessage;
   threadId: string;
+  transaction: CreateQueuedMessageTransaction | undefined;
 }
 
 interface ReorderQueuedMessageRequest extends QueuedMessageReorderRequest {
@@ -141,6 +176,12 @@ interface BuildOptimisticUserMessageRowParams {
   threadStatus: ThreadWithRuntime["status"] | null;
 }
 
+interface BuildOptimisticQueuedMessageParams {
+  createdAt: number;
+  queryClient: QueryClient;
+  request: CreateQueuedMessageRequestWithThreadId;
+}
+
 type OptimisticTurnRequestKind = "message" | "steer";
 
 interface OptimisticTurnRequestKindArgs {
@@ -157,6 +198,8 @@ export interface SendThreadMessageAcceptedTurnTransaction {
 
 export interface SendThreadMessageQueuedTransaction {
   kind: "queued-message";
+  optimisticQueuedMessageId: string;
+  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
 }
 
 export type SendThreadMessageTransaction =
@@ -164,6 +207,15 @@ export type SendThreadMessageTransaction =
   | SendThreadMessageQueuedTransaction;
 
 export interface ReorderQueuedMessageTransaction {
+  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+}
+
+export interface CreateQueuedMessageTransaction {
+  optimisticQueuedMessageId: string;
+  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+}
+
+export interface RemoveQueuedMessageTransaction {
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
 }
 
@@ -191,6 +243,105 @@ function buildQueuedPromptHistoryEntry(
     createdAt: queuedMessage.createdAt,
     input: queuedMessage.content,
   };
+}
+
+function getCachedDefaultExecutionOptions(
+  queryClient: QueryClient,
+  threadId: string,
+): ResolvedThreadExecutionOptions | null | undefined {
+  return queryClient.getQueryData<ResolvedThreadExecutionOptions | null>(
+    threadDefaultExecutionOptionsQueryKey(threadId),
+  );
+}
+
+function buildOptimisticQueuedMessage({
+  createdAt,
+  queryClient,
+  request,
+}: BuildOptimisticQueuedMessageParams): ThreadQueuedMessage {
+  const defaultExecutionOptions = getCachedDefaultExecutionOptions(
+    queryClient,
+    request.id,
+  );
+
+  return {
+    id: `optimistic-queued-${nanoid()}`,
+    content: request.input,
+    model: request.model ?? defaultExecutionOptions?.model ?? "pending",
+    reasoningLevel:
+      request.reasoningLevel ??
+      defaultExecutionOptions?.reasoningLevel ??
+      "medium",
+    permissionMode:
+      request.permissionMode ??
+      defaultExecutionOptions?.permissionMode ??
+      "readonly",
+    serviceTier:
+      request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+function insertOptimisticQueuedMessage({
+  queryClient,
+  request,
+}: CreateQueuedMessageTransactionArgs): CreateQueuedMessageTransaction {
+  const queryKey = threadQueuedMessagesQueryKey(request.id);
+  const previousQueuedMessages =
+    queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
+  const optimisticQueuedMessage = buildOptimisticQueuedMessage({
+    createdAt: Date.now(),
+    queryClient,
+    request,
+  });
+
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    queryKey,
+    (currentQueuedMessages) => [
+      ...(currentQueuedMessages ?? []),
+      optimisticQueuedMessage,
+    ],
+  );
+
+  return {
+    optimisticQueuedMessageId: optimisticQueuedMessage.id,
+    previousQueuedMessages,
+  };
+}
+
+function restoreQueuedMessageSnapshot({
+  previousQueuedMessages,
+  queryClient,
+  threadId,
+}: {
+  previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+  queryClient: QueryClient;
+  threadId: string;
+}): void {
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    threadQueuedMessagesQueryKey(threadId),
+    previousQueuedMessages ?? [],
+  );
+}
+
+function removeCachedQueuedMessage({
+  queryClient,
+  request,
+}: RemoveQueuedMessageTransactionArgs): RemoveQueuedMessageTransaction {
+  const queryKey = threadQueuedMessagesQueryKey(request.id);
+  const previousQueuedMessages =
+    queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
+
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    queryKey,
+    (currentQueuedMessages) =>
+      currentQueuedMessages?.filter(
+        (queuedMessage) => queuedMessage.id !== request.queuedMessageId,
+      ) ?? currentQueuedMessages,
+  );
+
+  return { previousQueuedMessages };
 }
 
 function prependProjectPromptHistory(
@@ -346,10 +497,7 @@ export function applyCreateThreadResult({
   request,
   thread,
 }: CreateThreadSuccessArgs): void {
-  queryClient.setQueryData<ThreadResponse>(
-    threadQueryKey(thread.id),
-    thread,
-  );
+  queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
   optimisticallyInsertThread(queryClient, thread);
   prependProjectPromptHistory(
     queryClient,
@@ -381,10 +529,18 @@ export async function beginSendThreadMessageTransaction({
     threadQueryKey(request.id),
   );
   if (requestWillQueueForActiveThread(request, previousThread)) {
+    const queryKey = threadQueuedMessagesQueryKey(request.id);
     await queryClient.cancelQueries({
-      queryKey: threadQueuedMessagesQueryKey(request.id),
+      queryKey,
     });
-    return { kind: "queued-message" };
+    const transaction = insertOptimisticQueuedMessage({
+      queryClient,
+      request,
+    });
+    return {
+      kind: "queued-message",
+      ...transaction,
+    };
   }
 
   await Promise.all([
@@ -436,6 +592,14 @@ export function rollbackSendThreadMessageTransaction({
   request,
   transaction,
 }: RollbackSendThreadMessageTransactionArgs): void {
+  if (transaction?.kind === "queued-message") {
+    restoreQueuedMessageSnapshot({
+      previousQueuedMessages: transaction.previousQueuedMessages,
+      queryClient,
+      threadId: request.id,
+    });
+    return;
+  }
   if (transaction?.kind !== "accepted-turn") {
     return;
   }
@@ -484,17 +648,100 @@ export function applySendThreadMessageSuccess({
   });
 }
 
+export async function beginCreateQueuedMessageTransaction({
+  queryClient,
+  request,
+}: CreateQueuedMessageTransactionArgs): Promise<CreateQueuedMessageTransaction> {
+  await queryClient.cancelQueries({
+    queryKey: threadQueuedMessagesQueryKey(request.id),
+  });
+  return insertOptimisticQueuedMessage({ queryClient, request });
+}
+
+export function rollbackCreateQueuedMessageTransaction({
+  queryClient,
+  request,
+  transaction,
+}: RollbackCreateQueuedMessageTransactionArgs): void {
+  if (!transaction) {
+    return;
+  }
+  restoreQueuedMessageSnapshot({
+    previousQueuedMessages: transaction.previousQueuedMessages,
+    queryClient,
+    threadId: request.id,
+  });
+}
+
 export function applyQueuedMessageCreateResult({
   queryClient,
   queuedMessage,
   threadId,
+  transaction,
 }: QueuedMessageSuccessArgs): void {
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    threadQueuedMessagesQueryKey(threadId),
+    (currentQueuedMessages) => {
+      if (!currentQueuedMessages) {
+        return [queuedMessage];
+      }
+      if (
+        currentQueuedMessages.some(
+          (currentQueuedMessage) =>
+            currentQueuedMessage.id === queuedMessage.id,
+        )
+      ) {
+        return currentQueuedMessages;
+      }
+
+      const optimisticQueuedMessageId =
+        transaction?.optimisticQueuedMessageId ?? null;
+      if (optimisticQueuedMessageId !== null) {
+        const optimisticIndex = currentQueuedMessages.findIndex(
+          (currentQueuedMessage) =>
+            currentQueuedMessage.id === optimisticQueuedMessageId,
+        );
+        if (optimisticIndex !== -1) {
+          const nextQueuedMessages = [...currentQueuedMessages];
+          nextQueuedMessages[optimisticIndex] = queuedMessage;
+          return nextQueuedMessages;
+        }
+      }
+
+      return [...currentQueuedMessages, queuedMessage];
+    },
+  );
   prependThreadPromptHistory(
     queryClient,
     threadId,
     buildQueuedPromptHistoryEntry(queuedMessage),
   );
   invalidateThreadQueueQueries({ queryClient, threadId });
+}
+
+export async function beginRemoveQueuedMessageTransaction({
+  queryClient,
+  request,
+}: RemoveQueuedMessageTransactionArgs): Promise<RemoveQueuedMessageTransaction> {
+  await queryClient.cancelQueries({
+    queryKey: threadQueuedMessagesQueryKey(request.id),
+  });
+  return removeCachedQueuedMessage({ queryClient, request });
+}
+
+export function rollbackRemoveQueuedMessageTransaction({
+  queryClient,
+  request,
+  transaction,
+}: RollbackRemoveQueuedMessageTransactionArgs): void {
+  if (!transaction) {
+    return;
+  }
+  restoreQueuedMessageSnapshot({
+    previousQueuedMessages: transaction.previousQueuedMessages,
+    queryClient,
+    threadId: request.id,
+  });
 }
 
 export function applyQueuedMessageSendResult({
