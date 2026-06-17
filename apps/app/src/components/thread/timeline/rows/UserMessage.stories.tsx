@@ -193,7 +193,7 @@ const systemAssignedMessage = buildMessage(
 const systemChildOutcomeBatchMessage = buildMessage(
   renderTemplate("systemMessageChildThreadOutcomeBatch", {
     updates: [
-      "child thread updates:",
+      "Child thread updates:",
       "",
       "- @thread:thr_ux3h8sxg65 completed.",
       "- @thread:thr_cpf5sq7pyr completed.",
@@ -311,8 +311,11 @@ const parentChildSystemMessageFixtures = [
     hint: "single child thread failure asks the parent to inspect before deciding next steps",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
-        updates:
-          "@thread:thr_rebase failed. Inspect this child thread before deciding next steps.",
+        updates: [
+          "@thread:thr_rebase failed.",
+          "",
+          "Review the thread before deciding next steps.",
+        ].join("\n"),
       }),
       [
         {
@@ -331,7 +334,9 @@ const parentChildSystemMessageFixtures = [
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "@thread:thr_docs was interrupted. Inspect this child thread before deciding next steps.",
+          "@thread:thr_docs was interrupted.",
+          "",
+          "Review the thread before deciding next steps.",
           "",
           "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
@@ -353,13 +358,13 @@ const parentChildSystemMessageFixtures = [
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "child thread updates:",
+          "Child thread updates:",
           "",
           "- @thread:thr_schema completed.",
           "- @thread:thr_rebase failed.",
           "- @thread:thr_docs was interrupted.",
           "",
-          "If the user stopped any interrupted child thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+          "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
       }),
       [

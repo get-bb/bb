@@ -86,11 +86,11 @@ describe("@bb/templates", () => {
       [
         "[bb system]",
         "",
-        "@thread:thr_child needs attention.",
+        "@thread:thr_child needs help.",
         "Blocked on command approval:",
         "Command: git push",
         "",
-        "Inspect this child thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the child thread is stuck on the wrong assumption, send it a clarifying instruction.",
+        "Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
       ].join("\n"),
     );
   });
@@ -104,7 +104,7 @@ describe("@bb/templates", () => {
       [
         "[bb system]",
         "",
-        "@thread:thr_child was assigned to you as a child thread.",
+        "@thread:thr_child is now a child of this thread.",
       ].join("\n"),
     );
     expect(
@@ -115,7 +115,7 @@ describe("@bb/templates", () => {
       [
         "[bb system]",
         "",
-        "@thread:thr_child was unassigned from you as a child thread.",
+        "@thread:thr_child is no longer a child of this thread.",
       ].join("\n"),
     );
   });
