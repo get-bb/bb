@@ -107,6 +107,7 @@ export function SelectableMessageProse({
     // Only emit `null` once, after this node had reported a real selection, so
     // N messages don't thrash a shared controller.
     let hadSelection = false;
+    let pointerIsDown = false;
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
@@ -118,12 +119,31 @@ export function SelectableMessageProse({
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
     };
+    const handleSelectionChange = () => {
+      if (pointerIsDown) {
+        return;
+      }
+      schedule();
+    };
+    const handlePointerDown = () => {
+      pointerIsDown = true;
+    };
+    const handlePointerEnd = () => {
+      pointerIsDown = false;
+      schedule();
+    };
 
-    document.addEventListener("pointerup", schedule);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      document.removeEventListener("pointerup", schedule);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
     };
   }, []);

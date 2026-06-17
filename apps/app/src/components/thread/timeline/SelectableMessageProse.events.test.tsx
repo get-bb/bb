@@ -36,6 +36,12 @@ function mockWindowSelection({
   } as unknown as Selection);
 }
 
+function waitForAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 describe("SelectableMessageProse", () => {
   it("reports a selection only after pointer release", async () => {
     const onSelect = vi.fn();
@@ -51,6 +57,7 @@ describe("SelectableMessageProse", () => {
       text: "answer text",
     });
 
+    fireEvent.pointerDown(document);
     fireEvent(document, new Event("selectionchange"));
     expect(onSelect).not.toHaveBeenCalled();
 
@@ -58,6 +65,34 @@ describe("SelectableMessageProse", () => {
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({ text: "answer text" }),
+      ),
+    );
+  });
+
+  it("reports a selection that updates after pointer release", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Double click selectable answer text
+      </SelectableMessageProse>,
+    );
+    const textNode = getByText("Double click selectable answer text").firstChild;
+    expect(textNode).not.toBeNull();
+
+    fireEvent.pointerDown(document);
+    fireEvent.pointerUp(document);
+    await waitForAnimationFrame();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    mockWindowSelection({
+      node: textNode!,
+      text: "selectable",
+    });
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "selectable" }),
       ),
     );
   });
