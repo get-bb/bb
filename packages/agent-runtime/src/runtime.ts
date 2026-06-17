@@ -1087,6 +1087,48 @@ function createAgentRuntimeInternal(
             );
           }
 
+          if (
+            providerId === CODEX_PROVIDER_ID &&
+            fork &&
+            dynamicTools !== undefined &&
+            dynamicTools.length > 0
+          ) {
+            const resumeCommand: AdapterCommand = {
+              type: "thread/resume",
+              threadId,
+              cwd: options.workspacePath,
+              providerThreadId: resolved,
+              options: providerExecutionContext,
+              dynamicTools,
+              disallowedTools,
+              instructionMode,
+            };
+            const resumePlan = proc.adapter.buildCommandPlan(resumeCommand);
+            if (resumePlan.kind === "request") {
+              const resumeResult = await sendCommand({
+                proc,
+                message: resumePlan,
+                resultSchema: threadIdentityResultSchema,
+              });
+              const resumedProviderThreadId =
+                resolveThreadIdentityResult({
+                  result: resumeResult,
+                  threadId,
+                }) ?? resolved;
+              recordProviderThreadIdentity(
+                proc,
+                threadId,
+                resumedProviderThreadId,
+              );
+              emitAcceptedCommandEvents({
+                command: resumeCommand,
+                proc,
+                providerThreadId: resumedProviderThreadId,
+                sourceThreadId: threadId,
+              });
+            }
+          }
+
           if (input && input.length > 0) {
             if (clientRequestId === undefined) {
               throw new Error(

@@ -307,7 +307,9 @@ rl.on("line", (line) => {
           (command) => command.type === "skills/configure",
         ),
       ).toBeLessThan(
-        recordedCommands.findIndex((command) => command.type === "thread/start"),
+        recordedCommands.findIndex(
+          (command) => command.type === "thread/start",
+        ),
       );
 
       await runtime.shutdown();
@@ -509,6 +511,90 @@ rl.on("line", (line) => {
         throw new Error("Expected turn/start command");
       }
       expect(turnStart.options?.permissionMode).toBe("full");
+
+      await runtime.shutdown();
+    });
+
+    it("reconfigures Codex native forks with dynamic tools before their first turn", async () => {
+      const recordedCommands: AdapterCommand[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => {
+          const adapter = createRecordingAdapter({
+            recordedCommands,
+            scriptPath,
+          });
+          return {
+            ...adapter,
+            buildCommandPlan(command): ProviderCommandPlan {
+              if (command.type === "thread/fork") {
+                recordedCommands.push(command);
+                return {
+                  kind: "request",
+                  method: "thread/start",
+                  params: { threadId: command.threadId },
+                };
+              }
+              return adapter.buildCommandPlan(command);
+            },
+          };
+        },
+      });
+
+      await runtime.startThread({
+        clientRequestId: "creq_222222224j",
+        environmentId: "env-1",
+        fork: { sourceProviderThreadId: "codex-parent-thread" },
+        input: [promptTextInput({ text: "tell the main thread hi" })],
+        instructions: "Use bb_send_to_main_thread for handoff requests.",
+        dynamicTools: [
+          {
+            name: "bb_send_to_main_thread",
+            description: "Send a message to the main thread.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                message: { type: "string" },
+              },
+              required: ["message"],
+            },
+          },
+        ],
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "side-chat-1",
+        options: fullRuntimeOptions,
+      });
+
+      const lifecycleCommands = recordedCommands
+        .filter((command) =>
+          ["thread/fork", "thread/resume", "turn/start"].includes(command.type),
+        )
+        .map((command) => command.type);
+      expect(lifecycleCommands).toEqual([
+        "thread/fork",
+        "thread/resume",
+        "turn/start",
+      ]);
+
+      const resumeCommand = recordedCommands.find(
+        (command) => command.type === "thread/resume",
+      );
+      expect(resumeCommand?.type).toBe("thread/resume");
+      if (!resumeCommand || resumeCommand.type !== "thread/resume") {
+        throw new Error("Expected thread/resume command");
+      }
+      expect(resumeCommand.dynamicTools?.[0]?.name).toBe(
+        "bb_send_to_main_thread",
+      );
+      expect(resumeCommand.options.instructions).toContain(
+        "bb_send_to_main_thread",
+      );
 
       await runtime.shutdown();
     });
