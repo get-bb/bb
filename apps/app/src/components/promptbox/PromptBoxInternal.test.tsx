@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { PromptTextMention } from "@bb/domain";
 import { createRef, useState, type RefObject } from "react";
 import {
   act,
@@ -19,6 +20,7 @@ import {
 } from "./PromptBoxInternal";
 
 interface PromptChange {
+  mentions: PromptTextMention[];
   value: string;
 }
 
@@ -64,8 +66,8 @@ function renderPromptBox(initialValue: string) {
       <PromptBoxInternal
         value={value}
         mentionRanges={[]}
-        onChange={(nextValue) => {
-          changes.push({ value: nextValue });
+        onChange={(nextValue, nextMentions) => {
+          changes.push({ mentions: nextMentions, value: nextValue });
           setValue(nextValue);
         }}
         onSubmit={() => {}}
@@ -100,6 +102,12 @@ function getPromptEditorElement(): HTMLElement {
 
 function latestValue(changes: readonly PromptChange[]): string | undefined {
   return changes[changes.length - 1]?.value;
+}
+
+function latestChange(
+  changes: readonly PromptChange[],
+): PromptChange | undefined {
+  return changes[changes.length - 1];
 }
 
 async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
@@ -153,6 +161,21 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Plan");
 
     await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: "Start ".length,
+        end: "Start /plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ]);
   });
 
   it("replaces an active partial skills command token with plan mode", async () => {
@@ -162,6 +185,44 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Plan");
 
     await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: "Start ".length,
+        end: "Start /plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("inserts goal mode as a command pill", async () => {
+    const { changes } = renderPromptBox("");
+
+    await selectPromptAction("Goal");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/goal".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "goal",
+          source: "command",
+          origin: "user",
+          label: "goal",
+          argumentHint: null,
+        },
+      },
+    ]);
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {

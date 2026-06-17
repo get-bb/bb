@@ -1,6 +1,6 @@
 import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
-import type { PromptTextMention } from "@bb/domain";
+import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
@@ -349,6 +349,13 @@ interface PromptActionInsertionRange {
   to: number;
 }
 
+interface PromptActionCommand {
+  serializedText: string;
+  trailingText: string;
+  trigger: PromptMentionCommandTrigger;
+  suggestion: ProviderCommandSuggestion;
+}
+
 const PROMPTBOX_INTERACTIVE_TARGET_SELECTOR = [
   "a[href]",
   "button",
@@ -636,6 +643,36 @@ function getPromptActionInsertionRange({
   }
 
   return { from: selection.from, to: selection.to };
+}
+
+function promptActionCommandFromAction(
+  action: PromptBoxAction,
+): PromptActionCommand | null {
+  if (action.kind === "skills") {
+    return null;
+  }
+
+  const match = /^([/$])(\S+)(\s*)$/u.exec(action.text);
+  if (!match) {
+    return null;
+  }
+
+  const trigger = match[1] as PromptMentionCommandTrigger;
+  const name = match[2]!;
+  const serializedText = `${trigger}${name}`;
+  return {
+    serializedText,
+    trailingText: action.text.slice(serializedText.length),
+    trigger,
+    suggestion: {
+      kind: "command",
+      name,
+      source: "command",
+      origin: "user",
+      description: null,
+      argumentHint: null,
+    },
+  };
 }
 
 export function PromptBoxInternal({
@@ -1489,14 +1526,31 @@ export function PromptBoxInternal({
   const applyPromptAction = useCallback(
     (action: PromptBoxAction) => {
       if (action.text.length === 0) return;
+      const commandAction = promptActionCommandFromAction(action);
 
       const currentEditor = editorRef.current;
       if (!currentEditor || currentEditor.isDestroyed) {
         const currentValue = valueRef.current;
         if (currentValue.endsWith(action.text)) return;
-        onChangeRef.current(`${currentValue}${action.text}`, [
-          ...mentionRangesRef.current,
-        ]);
+        if (commandAction) {
+          const start = currentValue.length;
+          const nextValue = `${currentValue}${commandAction.serializedText}${commandAction.trailingText}`;
+          onChangeRef.current(nextValue, [
+            ...mentionRangesRef.current,
+            {
+              start,
+              end: start + commandAction.serializedText.length,
+              resource: promptCommandResourceFromSuggestion({
+                suggestion: commandAction.suggestion,
+                trigger: commandAction.trigger,
+              }),
+            },
+          ]);
+        } else {
+          onChangeRef.current(`${currentValue}${action.text}`, [
+            ...mentionRangesRef.current,
+          ]);
+        }
         return;
       }
 
@@ -1512,6 +1566,43 @@ export function PromptBoxInternal({
       });
       if (insertionRange === null) {
         focusAfterPromptAction(currentEditor);
+        return;
+      }
+
+      if (commandAction) {
+        triggerKeyRef.current = "";
+        dismissedTriggerRef.current = null;
+        isRestoringAppliedMentionRef.current = true;
+        setActiveTrigger(null);
+        setSelectedIndex(0);
+        onCommandQueryChange(null);
+
+        try {
+          skipEditorChangeRef.current = true;
+          currentEditor
+            .chain()
+            .focus()
+            .deleteRange({ from: insertionRange.from, to: insertionRange.to })
+            .insertContent([
+              {
+                type: "mention",
+                attrs: {
+                  resource: promptCommandResourceFromSuggestion({
+                    suggestion: commandAction.suggestion,
+                    trigger: commandAction.trigger,
+                  }),
+                  serializedText: commandAction.serializedText,
+                },
+              },
+              ...(commandAction.trailingText
+                ? [{ type: "text", text: commandAction.trailingText }]
+                : []),
+            ])
+            .run();
+        } finally {
+          skipEditorChangeRef.current = false;
+        }
+        finishApply(currentEditor);
         return;
       }
 
@@ -1532,7 +1623,7 @@ export function PromptBoxInternal({
       currentEditor.view.dispatch(transaction.scrollIntoView());
       focusAfterPromptAction(currentEditor);
     },
-    [focusAfterPromptAction, triggers],
+    [finishApply, focusAfterPromptAction, onCommandQueryChange, triggers],
   );
 
   const getTextBeforeCursor = useCallback((): string | undefined => {
