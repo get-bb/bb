@@ -174,6 +174,7 @@ describe("environment command dispatch", () => {
       branchName: "main",
       defaultBranch: "main",
     });
+    expect(harness.workspaceState.statusReads).toBe(0);
     expect(result.transcript).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

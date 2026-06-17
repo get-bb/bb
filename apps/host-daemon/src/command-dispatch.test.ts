@@ -132,6 +132,7 @@ function createWorkspace(): HostWorkspace {
     managed: false,
     isGitRepo: false,
     isWorktree: false,
+    getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
     getHeadSha: unexpectedWorkspaceCall,
     getLocalStateFingerprint: unexpectedWorkspaceCall,
