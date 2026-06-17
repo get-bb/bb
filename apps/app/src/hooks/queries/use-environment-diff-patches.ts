@@ -196,11 +196,12 @@ export function useEnvironmentDiffPatches(
   }, [targetIdentity]);
 
   useEffect(() => {
+    const abortControllers = abortControllersRef.current;
     return () => {
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
       }
-      abortPatchRequests(abortControllersRef.current);
+      abortPatchRequests(abortControllers);
     };
   }, []);
 
