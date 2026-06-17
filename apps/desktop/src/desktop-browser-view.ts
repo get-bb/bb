@@ -271,6 +271,31 @@ function prepareEntryForTrustedTopLevelLoad(
   return true;
 }
 
+function findUniquePendingTrustedLocalEntryForRequest(
+  entriesByKey: Iterable<BrowserViewEntry>,
+  url: string,
+): BrowserViewEntry | null {
+  const originKey = localRequestOriginKey(url);
+  if (originKey === null) {
+    return null;
+  }
+
+  let match: BrowserViewEntry | null = null;
+  for (const entry of entriesByKey) {
+    if (entry.view.webContents.isDestroyed()) {
+      continue;
+    }
+    if (entry.pendingTrustedLocalTopLevelOriginKey !== originKey) {
+      continue;
+    }
+    if (match !== null) {
+      return null;
+    }
+    match = entry;
+  }
+  return match;
+}
+
 function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
   const committedOriginKey = localRequestOriginKey(url);
   clearEntryPendingMainFrameNavigation(entry);
@@ -514,15 +539,27 @@ export function createDesktopBrowserViewManager(
         targetWebContentsId === null
           ? null
           : (entriesByWebContentsId.get(targetWebContentsId) ?? null);
-      const liveEntry =
+      const attributedEntry =
         entry === null || entry.view.webContents.isDestroyed() ? null : entry;
       const isMainFrameRequest = details.resourceType === "mainFrame";
+      const liveEntry =
+        attributedEntry ??
+        (isMainFrameRequest
+          ? findUniquePendingTrustedLocalEntryForRequest(
+              entries.values(),
+              details.url,
+            )
+          : null);
+      const effectiveTargetWebContentsId =
+        attributedEntry === null
+          ? (liveEntry?.view.webContents.id ?? targetWebContentsId)
+          : targetWebContentsId;
       callback({
         cancel: shouldBlockBrowserRequest({
           url: details.url,
           resourceType: details.resourceType,
           isMainFrame: isMainFrameRequest,
-          targetWebContentsId,
+          targetWebContentsId: effectiveTargetWebContentsId,
           entryWebContentsId: liveEntry?.view.webContents.id ?? null,
           pendingTrustedLocalTopLevelOriginKey:
             liveEntry?.pendingTrustedLocalTopLevelOriginKey ?? null,

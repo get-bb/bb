@@ -680,6 +680,69 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(false);
   });
 
+  it("allows an initial trusted loopback tab load when Electron omits webContents attribution", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 53,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://localhost:5173/",
+    });
+    const view = requireFakeView(0);
+
+    expect(view.webContents.loadURLCalls).toEqual(["http://localhost:5173/"]);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+      }),
+    ).toBe(false);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+        webContentsId: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks an unattributed loopback request when multiple tabs have the same pending trusted origin", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 54,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://localhost:5173/",
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:b",
+      url: "http://localhost:5173/path",
+    });
+
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+      }),
+    ).toBe(true);
+  });
+
   it("clears pending local approval after a failed main-frame local load", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
