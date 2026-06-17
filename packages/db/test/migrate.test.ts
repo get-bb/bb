@@ -167,6 +167,22 @@ interface SeedEventLargeValueBackfillEventArgs {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const latestMigrationWhen = Math.max(
+  ...(
+    JSON.parse(
+      readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+    ) as { entries: { when: number }[] }
+  ).entries.map((entry) => entry.when),
+);
+
+function dropAutomationsSchema(db: DbConnection): void {
+  // Several tests migrate to head, rewind the schema to a legacy state, then
+  // re-apply forward. The automations tables (added by 0037) must be dropped as
+  // part of that rewind so the forward re-migrate can re-create them.
+  db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
+  db.$client.prepare("DROP TABLE IF EXISTS automations").run();
+}
+
 function requirePublishedMigrationWhen(tag: string): number {
   const when = publishedMigrationWhensByTag.get(tag);
   if (when === undefined) {
@@ -193,7 +209,6 @@ const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const eventLargeValuesMigrationWhen = 1781403656069;
 const eventLargeValuesRestoreMigrationWhen = 1781557200000;
-const automationRemovalMigrationWhen = 1781647572409;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -751,6 +766,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       db.$client.exec(`
         INSERT INTO projects (id, name, created_at, updated_at)
@@ -1524,6 +1540,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       addPre0017TerminalRuntimeColumns(db);
 
@@ -2154,6 +2171,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       seedPre0017TerminalSessionMigration({ db });
       db.$client
@@ -2245,6 +2263,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       seedEventLargeValueBackfillThread(db);
 
       const commandOutput = "command output ".repeat(48);
@@ -2335,9 +2354,7 @@ describe("migrate", () => {
       expect(readAppliedMigrationCreatedAts(db)).toContain(
         eventLargeValuesRestoreMigrationWhen,
       );
-      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
-        automationRemovalMigrationWhen,
-      );
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
 
       const commandData = JSON.parse(
