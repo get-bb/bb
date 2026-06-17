@@ -7,6 +7,7 @@ import {
   type RequestDiffFileContents,
 } from "./GitDiffCardBody";
 import {
+  GIT_DIFF_CARD_STICKY_SENTINEL_CLASS,
   GitDiffCardHeader,
   GitDiffCardImageSizeStat,
   gitDiffCardHeaderWrapperClass,
@@ -143,7 +144,13 @@ export const GitDiffCard = memo(function GitDiffCard({
         cardClassName,
       )}
     >
-      {stickyHeader ? <div ref={stickySentinelRef} className="h-0" /> : null}
+      {stickyHeader ? (
+        <div
+          ref={stickySentinelRef}
+          aria-hidden
+          className={GIT_DIFF_CARD_STICKY_SENTINEL_CLASS}
+        />
+      ) : null}
       <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader,

@@ -7,6 +7,7 @@ import {
   type RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import {
+  GIT_DIFF_CARD_STICKY_SENTINEL_CLASS,
   GitDiffCardHeader,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
@@ -163,7 +164,11 @@ export const DiffFileCard = memo(function DiffFileCard({
     // card's rounded bottom. `clip` (unlike `hidden`) is NOT a scroll container,
     // so it doesn't capture the sticky header — it still pins to the panel.
     <div className="overflow-clip rounded-lg border border-border bg-background">
-      <div ref={stickySentinelRef} className="h-0" />
+      <div
+        ref={stickySentinelRef}
+        aria-hidden
+        className={GIT_DIFF_CARD_STICKY_SENTINEL_CLASS}
+      />
       <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader: true,
