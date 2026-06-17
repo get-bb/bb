@@ -119,12 +119,14 @@ export function PullRequestGithubCheckIcon({
         <>
           <img
             src={checksSuccessIcon}
-            alt="Checks success"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "dark:hidden", className)}
           />
           <img
             src={checksSuccessDarkIcon}
-            alt="Checks success"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "hidden dark:block", className)}
           />
         </>
@@ -134,12 +136,14 @@ export function PullRequestGithubCheckIcon({
         <>
           <img
             src={checksFailureIcon}
-            alt="Checks failure"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "dark:hidden", className)}
           />
           <img
             src={checksFailureDarkIcon}
-            alt="Checks failure"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "hidden dark:block", className)}
           />
         </>
@@ -149,12 +153,14 @@ export function PullRequestGithubCheckIcon({
         <>
           <img
             src={checksPendingIcon}
-            alt="Checks pending"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "dark:hidden", className)}
           />
           <img
             src={checksPendingDarkIcon}
-            alt="Checks pending"
+            alt=""
+            aria-hidden="true"
             className={cn(checkStatusClassName, "hidden dark:block", className)}
           />
         </>

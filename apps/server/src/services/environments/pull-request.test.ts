@@ -117,6 +117,39 @@ describe("assembleThreadPullRequest", () => {
     });
   });
 
+  it("treats unstable merge state with pending checks as checks pending", () => {
+    expect(
+      assembleThreadPullRequest(
+        rawPullRequest({
+          mergeStateStatus: "UNSTABLE",
+          mergeable: "MERGEABLE",
+          checks: [
+            {
+              name: "Checks (ubuntu-latest, Node 22.x)",
+              status: "in_progress",
+              conclusion: null,
+              url: "https://github.com/acme/bb/actions/runs/1",
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({
+      checks: {
+        state: "pending",
+        totalCount: 1,
+        passedCount: 0,
+        failedCount: 0,
+        pendingCount: 1,
+      },
+      mergeability: {
+        state: "mergeable",
+        mergeStateStatus: "UNSTABLE",
+        mergeable: "MERGEABLE",
+      },
+      attention: "checks_pending",
+    });
+  });
+
   it("summarizes review requests and conflicts", () => {
     expect(
       assembleThreadPullRequest(

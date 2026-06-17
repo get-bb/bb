@@ -107,8 +107,7 @@ function assembleThreadPullRequestMergeability(
   } else if (
     raw.mergeStateStatus === "BLOCKED" ||
     raw.mergeStateStatus === "BEHIND" ||
-    raw.mergeStateStatus === "HAS_HOOKS" ||
-    raw.mergeStateStatus === "UNSTABLE"
+    raw.mergeStateStatus === "HAS_HOOKS"
   ) {
     state = "blocked";
   } else if (

@@ -620,9 +620,7 @@ export function Overview() {
         label="git — merge-base picker"
         hint="git is the only segment, so the merge-base action is pinned to the far right. It still carries data-promptbox-hide-compact."
       >
-        <div className="w-[40rem] max-w-full overflow-x-auto">
-          <Row section={committedSection} />
-        </div>
+        <Row section={committedSection} />
       </StoryRow>
       <StoryRow
         label="archived thread"
@@ -742,9 +740,15 @@ export function Overview() {
       ))}
       <StoryRow
         label="pull request + uncommitted"
-        hint="PR segment coexists with existing banner sections"
+        hint="PR number and the shared uncommitted diff label stay visible"
       >
         <Row pullRequest={pullRequestFixture} section={uncommittedSection} />
+      </StoryRow>
+      <StoryRow
+        label="pull request + committed"
+        hint="committed branch changes use the same label with or without PR context"
+      >
+        <Row pullRequest={pullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
         label="uncommitted (collapsed)"
