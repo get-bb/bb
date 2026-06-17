@@ -486,6 +486,11 @@ describe("internal event and tool-call routes", () => {
         projectId: project.id,
         environmentId: environment.id,
       });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-main-thread",
+        threadId: mainThread.id,
+      });
       const sideChatThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -518,15 +523,15 @@ describe("internal event and tool-call routes", () => {
         success: true,
         contentItems: [{ type: "inputText", text: "Sent to main thread." }],
       });
-      const startCommands = listQueuedThreadCommands(
+      const submitCommands = listQueuedThreadCommands(
         harness,
-        "thread.start",
+        "turn.submit",
         mainThread.id,
       );
-      expect(startCommands).toHaveLength(1);
-      const [command] = startCommands;
-      if (command?.type !== "thread.start") {
-        throw new Error("Expected thread.start command");
+      expect(submitCommands).toHaveLength(1);
+      const [command] = submitCommands;
+      if (command?.type !== "turn.submit") {
+        throw new Error("Expected turn.submit command");
       }
       expect(command?.input[0]).toMatchObject({
         type: "text",
@@ -540,7 +545,7 @@ describe("internal event and tool-call routes", () => {
       );
       expect(command.input[0].text).toContain(`thread:${sideChatThread.id}`);
       expect(
-        listQueuedThreadCommands(harness, "turn.submit", mainThread.id),
+        listQueuedThreadCommands(harness, "thread.start", mainThread.id),
       ).toHaveLength(0);
     });
   });
