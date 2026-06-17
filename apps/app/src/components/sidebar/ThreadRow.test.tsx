@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
@@ -121,5 +122,29 @@ describe("ThreadRow", () => {
     expect(
       screen.queryByLabelText("Managed worktree environment"),
     ).toBeNull();
+  });
+
+  it("keeps expanded parent carets hover-revealed in the shared caret column", () => {
+    renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 2,
+        isCompact: true,
+        isEnvGrouped: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+        onToggleCollapsed: vi.fn(),
+      },
+      thread: createThread({ title: "Parent thread" }),
+    });
+
+    const caret = screen.getByLabelText("Collapse Parent thread threads");
+    expect(caret.className).toContain("bb-sidebar-hover-actions");
+    expect(caret.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(caret.style.marginLeft).toBe("-24px");
+    expect(caret.style.marginRight).toBe("24px");
   });
 });

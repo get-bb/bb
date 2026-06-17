@@ -75,6 +75,7 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
+  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -679,6 +680,8 @@ function EnvironmentThreadGroupHeader({
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
+          alignDepth={rowDepth}
+          revealOnHover={!isCollapsed}
         />
         <span
           className={cn(
@@ -1187,7 +1190,8 @@ function ProjectRowComponent({
             <span
               className={cn(
                 SIDEBAR_LEADING_CLUSTER_CLASS,
-                "relative z-10 pl-1.5 text-left",
+                SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+                "relative z-10 text-left",
               )}
             >
               <SidebarChildToggleChevron
@@ -1197,6 +1201,7 @@ function ProjectRowComponent({
                 expandTitle="Expand project threads"
                 collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
+                revealOnHover={!isCollapsed}
               />
               <span
                 className={cn(

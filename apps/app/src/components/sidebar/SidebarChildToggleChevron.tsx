@@ -1,6 +1,10 @@
 import { Icon } from "@/components/ui/icon.js";
-import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
+import {
+  SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
+} from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@/lib/utils";
+import { getSidebarCaretAlignStyle } from "./sidebarRowClasses";
 
 export type SidebarChildToggleHandler = () => void;
 
@@ -11,6 +15,7 @@ export interface SidebarChildToggleChevronProps {
   expandTitle: string;
   collapseTitle: string;
   onToggle: SidebarChildToggleHandler;
+  alignDepth?: number;
   revealOnHover?: boolean;
 }
 
@@ -21,6 +26,7 @@ export function SidebarChildToggleChevron({
   expandTitle,
   collapseTitle,
   onToggle,
+  alignDepth,
   revealOnHover = false,
 }: SidebarChildToggleChevronProps) {
   return (
@@ -29,11 +35,19 @@ export function SidebarChildToggleChevron({
       aria-expanded={!isCollapsed}
       aria-label={isCollapsed ? expandLabel : collapseLabel}
       title={isCollapsed ? expandTitle : collapseTitle}
+      data-sidebar-hover-actions-mobile={
+        revealOnHover ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE : undefined
+      }
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
         onToggle();
       }}
+      style={
+        alignDepth === undefined
+          ? undefined
+          : getSidebarCaretAlignStyle(alignDepth)
+      }
       className={cn(
         revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
         "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2",

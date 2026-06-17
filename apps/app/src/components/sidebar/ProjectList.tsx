@@ -493,8 +493,14 @@ function TopLevelSidebarSection({
               }
               className={cn(
                 SIDEBAR_CARET_BOX_CLASS,
+                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-20 inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
               )}
+              data-sidebar-hover-actions-mobile={
+                collapseControl.isCollapsed
+                  ? undefined
+                  : SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+              }
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
               onKeyDown={stopCollapseControlKeyDown}

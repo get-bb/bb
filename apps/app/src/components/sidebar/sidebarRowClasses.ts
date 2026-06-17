@@ -45,7 +45,7 @@ export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
 
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
-const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 16;
+const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12;
 const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
@@ -55,6 +55,16 @@ export function getSidebarThreadRowPaddingLeft(depth: number): number {
     SIDEBAR_THREAD_ROW_BASE_PADDING_PX +
     depth * SIDEBAR_THREAD_ROW_DEPTH_STEP_PX
   );
+}
+
+export function getSidebarCaretAlignStyle(
+  depth: number,
+): { marginLeft?: number; marginRight?: number } | undefined {
+  const offset =
+    getSidebarThreadRowPaddingLeft(depth) -
+    getSidebarThreadRowPaddingLeft(0);
+  if (offset === 0) return undefined;
+  return { marginLeft: -offset, marginRight: offset };
 }
 
 export function getSidebarThreadGroupLineLeft(depth: number): number {

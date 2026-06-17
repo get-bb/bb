@@ -356,7 +356,8 @@ function ThreadRowComponent({
             expandTitle="Expand child threads"
             collapseTitle="Collapse child threads"
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover={false}
+            alignDepth={options.depth}
+            revealOnHover={!isParentCollapsed}
           />
         ) : (
           <span className={cn("shrink-0", SIDEBAR_CARET_BOX_CLASS)} />
