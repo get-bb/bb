@@ -115,7 +115,7 @@ export function PromptMentionPillNodeView({
     >
       <Icon
         name={promptMentionIconName(resource)}
-        className="size-3.5 shrink-0 self-center text-muted-foreground"
+        className="-ml-px size-4 shrink-0 self-center text-muted-foreground"
         aria-hidden
       />
       <span className={cn("truncate", activate && "group-hover:underline")}>
