@@ -953,7 +953,6 @@ export function SideChatTabContent({
     return (
       <ThreadEnvironmentSummary
         environmentLabel={display.modeLabel}
-        environmentCompactLabel={display.compactModeLabel}
         environmentIcon={getEnvironmentWorkspaceLabelIconName(
           display.workspaceDisplayKind,
         )}

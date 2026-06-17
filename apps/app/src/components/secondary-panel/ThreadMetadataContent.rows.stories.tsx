@@ -168,7 +168,7 @@ export function Environment() {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace path — the "Worktree path" or "Workspace path" row.
+// Directory row.
 // ---------------------------------------------------------------------------
 
 export function WorkspacePath() {
@@ -177,7 +177,6 @@ export function WorkspacePath() {
       <StoryRow label="managed worktree">
         <RowStage>
           <WorkspacePathRow
-            thread={makeThread()}
             environment={makeEnvironment({
               path: "/Users/michael/.bb-dev/worktrees/env_demo/bb",
             })}
@@ -187,7 +186,6 @@ export function WorkspacePath() {
       <StoryRow label="long path">
         <RowStage>
           <WorkspacePathRow
-            thread={makeThread()}
             environment={makeEnvironment({
               path: "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/components/right-panel",
             })}
@@ -197,7 +195,6 @@ export function WorkspacePath() {
       <StoryRow label="unmanaged worktree">
         <RowStage>
           <WorkspacePathRow
-            thread={makeThread()}
             environment={makeEnvironment({
               path: "/srv/repos/bb-linked-worktree",
               managed: false,
@@ -209,7 +206,6 @@ export function WorkspacePath() {
       <StoryRow label="projectless workspace">
         <RowStage>
           <WorkspacePathRow
-            thread={makeThread()}
             environment={makeEnvironment({
               path: "/Users/michael/Projects/bb",
               isWorktree: false,

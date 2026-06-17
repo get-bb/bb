@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { EnvironmentRow } from "./ThreadMetadataContent";
+import { EnvironmentRow, WorkspacePathRow } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local" } as const;
 
@@ -64,6 +64,10 @@ function renderEnvironmentRow(environment: Environment): string {
   );
 }
 
+function renderWorkspacePathRow(environment: Environment): string {
+  return renderToStaticMarkup(<WorkspacePathRow environment={environment} />);
+}
+
 describe("EnvironmentRow", () => {
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
@@ -96,5 +100,27 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain(
       'aria-label="Create new thread in this worktree"',
     );
+  });
+});
+
+describe("WorkspacePathRow", () => {
+  it("labels worktree paths as a directory", () => {
+    const markup = renderWorkspacePathRow(makeEnvironment());
+
+    expect(markup).toContain("Directory");
+    expect(markup).toContain("/workspace");
+    expect(markup).not.toContain("Worktree path");
+  });
+
+  it("shows non-worktree environment paths as a directory", () => {
+    const markup = renderWorkspacePathRow(
+      makeEnvironment({
+        isWorktree: false,
+        workspaceProvisionType: "unmanaged",
+      }),
+    );
+
+    expect(markup).toContain("Directory");
+    expect(markup).toContain("/workspace");
   });
 });

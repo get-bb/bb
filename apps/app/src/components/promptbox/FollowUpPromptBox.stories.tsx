@@ -155,7 +155,6 @@ function makeEnvironmentSummary({
   return (
     <ThreadEnvironmentSummary
       environmentLabel={display.modeLabel}
-      environmentCompactLabel={display.compactModeLabel}
       environmentIcon={getEnvironmentWorkspaceLabelIconName(
         display.workspaceDisplayKind,
       )}

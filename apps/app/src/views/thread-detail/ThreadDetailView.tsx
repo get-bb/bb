@@ -1781,7 +1781,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       environmentCheckout={threadCheckoutDisplay}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
-      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}

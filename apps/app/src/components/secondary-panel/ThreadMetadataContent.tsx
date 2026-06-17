@@ -315,15 +315,7 @@ export function EnvironmentRow({
 }
 
 export interface WorkspacePathRowProps {
-  thread: Thread;
   environment: Environment | null;
-}
-
-interface WorkspacePathRowDisplay {
-  rowLabel: string;
-  copyLabel: string;
-  successMessage: string;
-  errorMessage: string;
 }
 
 function isWorktreeEnvironment(environment: Environment): boolean {
@@ -341,53 +333,22 @@ function isProvisionedWorktreeEnvironment(environment: Environment): boolean {
   );
 }
 
-function getWorkspacePathRowDisplay(
-  environment: Environment,
-): WorkspacePathRowDisplay | null {
-  if (environment.workspaceProvisionType === "personal") {
-    return {
-      rowLabel: "Workspace path",
-      copyLabel: "Copy workspace path",
-      successMessage: "Workspace path copied",
-      errorMessage: "Failed to copy workspace path",
-    };
-  }
-
-  if (isWorktreeEnvironment(environment)) {
-    return {
-      rowLabel: "Worktree path",
-      copyLabel: "Copy worktree path",
-      successMessage: "Worktree path copied",
-      errorMessage: "Failed to copy worktree path",
-    };
-  }
-
-  return null;
-}
-
-export function WorkspacePathRow({
-  thread,
-  environment,
-}: WorkspacePathRowProps) {
+export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   if (!environment?.path) return null;
-  const display = getWorkspacePathRowDisplay(environment);
-  if (!display) return null;
 
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="FolderGit">
-          {display.rowLabel}
-        </DetailRowIconLabel>
+        <DetailRowIconLabel icon="FolderOpen">Directory</DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
         text={environment.path}
-        label={display.copyLabel}
+        label="Copy directory"
         title={environment.path}
-        successMessage={display.successMessage}
-        errorMessage={display.errorMessage}
+        successMessage="Directory copied"
+        errorMessage="Failed to copy directory"
       />
     </DetailRow>
   );
@@ -1005,7 +966,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         environment={environment}
         environmentDisplayHost={environmentDisplayHost}
       />
-      <WorkspacePathRow thread={thread} environment={environment} />
+      <WorkspacePathRow environment={environment} />
       <BranchRow thread={thread} workspaceStatus={workspaceStatus} />
       <MergeBaseRow
         thread={thread}
