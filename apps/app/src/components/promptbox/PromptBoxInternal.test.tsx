@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { useState } from "react";
+import { createRef, useState, type RefObject } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PromptBoxInternal,
   type PromptBoxAction,
+  type PromptBoxHandle,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
 
@@ -54,6 +56,7 @@ function buildTypeaheadConfig({
 function renderPromptBox(initialValue: string) {
   const changes: PromptChange[] = [];
   const onCommandQueryChange = vi.fn();
+  const promptBoxRef = createRef<PromptBoxHandle>();
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
@@ -70,12 +73,13 @@ function renderPromptBox(initialValue: string) {
         mentionMenuPlacement="bottom"
         attachments={{}}
         promptActions={promptActions}
+        promptBoxRef={promptBoxRef}
       />
     );
   }
 
   render(<PromptBoxHarness />);
-  return { changes, onCommandQueryChange };
+  return { changes, onCommandQueryChange, promptBoxRef };
 }
 
 async function selectPromptAction(label: string) {
@@ -98,19 +102,17 @@ function latestValue(changes: readonly PromptChange[]): string | undefined {
   return changes[changes.length - 1]?.value;
 }
 
+async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
+  await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+  await act(async () => {
+    promptBoxRef.current?.focusEnd();
+  });
+}
+
 afterEach(cleanup);
 
 describe("PromptBoxInternal prompt actions", () => {
   it("inserts the skills trigger with no trailing space", async () => {
-    const { changes, onCommandQueryChange } = renderPromptBox("");
-
-    await selectPromptAction("Skills");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("$"));
-    expect(onCommandQueryChange).toHaveBeenCalledWith("");
-  });
-
-  it("keeps the editor focused after selecting skills", async () => {
     const { changes, onCommandQueryChange } = renderPromptBox("");
 
     await selectPromptAction("Skills");
@@ -131,24 +133,27 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("replaces an active skills command token with plan mode", async () => {
-    const { changes } = renderPromptBox("Start $");
+    const { changes, promptBoxRef } = renderPromptBox("Start $");
 
+    await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Plan");
 
     await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
   });
 
   it("replaces an active partial skills command token with plan mode", async () => {
-    const { changes } = renderPromptBox("Start $pl");
+    const { changes, promptBoxRef } = renderPromptBox("Start $pl");
 
+    await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Plan");
 
     await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {
-    const { changes } = renderPromptBox("Start /goal ");
+    const { changes, promptBoxRef } = renderPromptBox("Start /goal ");
 
+    await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Goal");
 
     expect(changes).toHaveLength(0);
