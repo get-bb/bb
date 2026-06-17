@@ -1,18 +1,41 @@
-import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { Fragment, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   Automation,
   AutomationsOverviewResponse,
 } from "@bb/server-contract";
+import { Button } from "@/components/ui/button.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { SplitButton } from "@/components/ui/split-button.js";
-import { useAutomations } from "@/hooks/queries/automation-queries";
+import { useDialogState } from "@/hooks/useDialogState";
+import {
+  useAutomations,
+  useDeleteAutomation,
+  usePauseAutomation,
+  useResumeAutomation,
+  useRunAutomation,
+} from "@/hooks/queries/automation-queries";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { formatScheduleStatusLabel } from "@/lib/format-schedule";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getAutomationDetailRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 
 interface AutomationOverviewEntry {
@@ -26,14 +49,25 @@ interface AutomationStatusGroup {
   entries: AutomationOverviewEntry[];
 }
 
+/** Per-row action callbacks, supplied by the container so the presentational
+ * overview stays free of mutation hooks (and renderable in tests). */
+export interface AutomationRowActions {
+  onPause: (entry: AutomationOverviewEntry) => void;
+  onResume: (entry: AutomationOverviewEntry) => void;
+  onRun: (entry: AutomationOverviewEntry) => void;
+  onDelete: (entry: AutomationOverviewEntry) => void;
+}
+
 interface AutomationRowProps {
   entry: AutomationOverviewEntry;
+  actions: AutomationRowActions;
 }
 
 export interface AutomationsOverviewProps {
   entries: readonly AutomationOverviewEntry[];
   isLoading: boolean;
   hasInitialLoadError: boolean;
+  actions: AutomationRowActions;
   onCreateAgentAutomation: () => void;
   onCreateScriptAutomation: () => void;
 }
@@ -65,7 +99,88 @@ function groupAutomationsByStatus(
   return groups;
 }
 
-function AutomationRow({ entry }: AutomationRowProps) {
+export interface AutomationRowMenuItem {
+  key: "pause" | "resume" | "run" | "delete";
+  label: string;
+  destructive: boolean;
+  /** True when selecting should keep the menu open (the confirm dialog opens). */
+  preventClose: boolean;
+  run: () => void;
+}
+
+/**
+ * Pure description of a row's action-menu items, keyed off the automation's
+ * enabled state. Exported so tests assert the item set (Pause vs Resume, Run,
+ * Delete) without mounting the portaled Radix menu, which `renderToStaticMarkup`
+ * cannot capture.
+ */
+export function buildAutomationRowMenuItems(
+  entry: AutomationOverviewEntry,
+  actions: AutomationRowActions,
+): AutomationRowMenuItem[] {
+  const { automation } = entry;
+  return [
+    automation.enabled
+      ? {
+          key: "pause",
+          label: "Pause",
+          destructive: false,
+          preventClose: false,
+          run: () => actions.onPause(entry),
+        }
+      : {
+          key: "resume",
+          label: "Resume",
+          destructive: false,
+          preventClose: false,
+          run: () => actions.onResume(entry),
+        },
+    {
+      key: "run",
+      label: "Run now",
+      destructive: false,
+      preventClose: false,
+      run: () => actions.onRun(entry),
+    },
+    {
+      key: "delete",
+      label: "Delete",
+      destructive: true,
+      preventClose: true,
+      run: () => actions.onDelete(entry),
+    },
+  ];
+}
+
+function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
+  const items = buildAutomationRowMenuItems(entry, actions);
+  return (
+    <>
+      {items.map((item) => (
+        <Fragment key={item.key}>
+          {item.key === "delete" ? <DropdownMenuSeparator /> : null}
+          <DropdownMenuItem
+            className={
+              item.destructive
+                ? "text-destructive focus:text-destructive"
+                : undefined
+            }
+            onSelect={(event) => {
+              if (item.preventClose) {
+                event.preventDefault();
+              }
+              item.run();
+            }}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function AutomationRow({ entry, actions }: AutomationRowProps) {
   const { automation, project } = entry;
   const projectLabel =
     project.id === PERSONAL_PROJECT_ID ? null : project.name;
@@ -78,7 +193,15 @@ function AutomationRow({ entry }: AutomationRowProps) {
           automation.enabled ? "bg-success" : "bg-muted-foreground/50",
         )}
       />
-      <span className="min-w-0 flex-1 truncate">{automation.name}</span>
+      <Link
+        to={getAutomationDetailRoutePath({
+          projectId: automation.projectId,
+          automationId: automation.id,
+        })}
+        className="min-w-0 flex-1 truncate hover:underline"
+      >
+        {automation.name}
+      </Link>
       {projectLabel ? (
         <Pill variant="outline" className="shrink-0">
           {projectLabel}
@@ -100,6 +223,27 @@ function AutomationRow({ entry }: AutomationRowProps) {
           nextRunAt: automation.nextRunAt,
         })}
       </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground"
+            aria-label={`${automation.name} actions`}
+            title={`${automation.name} actions`}
+          >
+            <Icon name="MoreHorizontal" className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-40"
+          mobileTitle={`${automation.name} actions`}
+        >
+          <AutomationRowActionItems entry={entry} actions={actions} />
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -108,6 +252,7 @@ export function AutomationsOverview({
   entries,
   isLoading,
   hasInitialLoadError,
+  actions,
   onCreateAgentAutomation,
   onCreateScriptAutomation,
 }: AutomationsOverviewProps) {
@@ -159,6 +304,7 @@ export function AutomationsOverview({
                     <AutomationRow
                       key={entry.automation.id}
                       entry={entry}
+                      actions={actions}
                     />
                   ))}
                 </div>
@@ -189,6 +335,16 @@ export function AutomationsView() {
   const automationsQuery = useAutomations();
   const navigate = useNavigate();
   const createThread = useCreateThread();
+  const pauseAutomation = usePauseAutomation();
+  const resumeAutomation = useResumeAutomation();
+  const runAutomation = useRunAutomation();
+  const deleteAutomation = useDeleteAutomation();
+  const deleteDialog = useDialogState<AutomationOverviewEntry>();
+  const { mutate: pauseMutate } = pauseAutomation;
+  const { mutate: resumeMutate } = resumeAutomation;
+  const { mutate: runMutate } = runAutomation;
+  const { mutate: deleteMutate } = deleteAutomation;
+  const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
 
   const data: AutomationsOverviewResponse | undefined = automationsQuery.data;
   const entries = data?.automations ?? [];
@@ -196,6 +352,56 @@ export function AutomationsView() {
     automationsQuery.isError && data === undefined;
   const isLoading =
     automationsQuery.isFetching && data === undefined && !hasInitialLoadError;
+
+  const actions: AutomationRowActions = {
+    onPause: useCallback(
+      (entry: AutomationOverviewEntry) => {
+        pauseMutate({
+          projectId: entry.automation.projectId,
+          automationId: entry.automation.id,
+        });
+      },
+      [pauseMutate],
+    ),
+    onResume: useCallback(
+      (entry: AutomationOverviewEntry) => {
+        resumeMutate({
+          projectId: entry.automation.projectId,
+          automationId: entry.automation.id,
+        });
+      },
+      [resumeMutate],
+    ),
+    onRun: useCallback(
+      (entry: AutomationOverviewEntry) => {
+        runMutate({
+          projectId: entry.automation.projectId,
+          automationId: entry.automation.id,
+        });
+      },
+      [runMutate],
+    ),
+    onDelete: useCallback(
+      (entry: AutomationOverviewEntry) => {
+        openDeleteDialog(entry);
+      },
+      [openDeleteDialog],
+    ),
+  };
+
+  const confirmDelete = useCallback(() => {
+    const entry = deleteDialog.target;
+    if (!entry) {
+      return;
+    }
+    deleteMutate(
+      {
+        projectId: entry.automation.projectId,
+        automationId: entry.automation.id,
+      },
+      { onSuccess: () => closeDeleteDialog() },
+    );
+  }, [closeDeleteDialog, deleteDialog.target, deleteMutate]);
 
   const createViaChat = useCallback(
     async (prompt: string) => {
@@ -230,12 +436,32 @@ export function AutomationsView() {
   }, [createViaChat]);
 
   return (
-    <AutomationsOverview
-      entries={entries}
-      isLoading={isLoading}
-      hasInitialLoadError={hasInitialLoadError}
-      onCreateAgentAutomation={handleCreateAgentAutomation}
-      onCreateScriptAutomation={handleCreateScriptAutomation}
-    />
+    <>
+      <AutomationsOverview
+        entries={entries}
+        isLoading={isLoading}
+        hasInitialLoadError={hasInitialLoadError}
+        actions={actions}
+        onCreateAgentAutomation={handleCreateAgentAutomation}
+        onCreateScriptAutomation={handleCreateScriptAutomation}
+      />
+      <ConfirmDeleteDialog
+        open={deleteDialog.isOpen}
+        onOpenChange={deleteDialog.onOpenChange}
+      >
+        <ConfirmDeleteDialogContent
+          title="Delete automation?"
+          description={
+            deleteDialog.target
+              ? `"${deleteDialog.target.automation.name}" and its run history will be permanently removed.`
+              : ""
+          }
+          confirmLabel="Delete"
+          pending={deleteAutomation.isPending}
+          onConfirm={confirmDelete}
+          onCancel={closeDeleteDialog}
+        />
+      </ConfirmDeleteDialog>
+    </>
   );
 }

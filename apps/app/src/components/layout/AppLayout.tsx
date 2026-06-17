@@ -19,6 +19,7 @@ import {
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useThread,
@@ -45,6 +46,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
+  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
@@ -371,7 +373,16 @@ export function AppLayout({ children }: AppLayoutProps) {
     isArchivedView,
     isSettingsView,
     isRootView,
+    isAutomationDetailView,
+    automationId,
+    automationProjectId,
   } = useRouteState();
+  const { data: automationDetail } = useAutomationDetail(
+    automationProjectId ?? "",
+    automationId ?? "",
+    { enabled: isAutomationDetailView },
+  );
+  const automationName = automationDetail?.name ?? "Automation";
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -434,7 +445,16 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isArchivedView && projectId
+    : isAutomationDetailView
+      ? {
+          title: "",
+          subtitle: undefined,
+          breadcrumbs: [
+            { label: "Automations", to: getAutomationsRoutePath() },
+            { label: automationName },
+          ],
+        }
+      : isArchivedView && projectId
       ? {
           title: "",
           subtitle: undefined,
@@ -468,6 +488,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const documentTitle = (() => {
     if (isThreadView) {
       return threadDisplayTitle;
+    }
+    if (isAutomationDetailView) {
+      return `${automationName} · Automations`;
     }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;

@@ -46,6 +46,11 @@ const DEPRECATED_CACHE_SHIM_MODULES = new Set([
 const QUERY_KEYS_MODULE_PATH = "hooks/queries/query-keys";
 
 const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
+  "hooks/cache-owners/automation-cache-effects.ts": [
+    "automationDetailQueryKey",
+    "automationRunsQueryKey",
+    "automationsQueryKey",
+  ],
   "hooks/cache-owners/cache-invalidation-groups.ts": [
     "allProjectPathsQueryKeyPrefix",
     "allProjectSourceBranchesQueryKeyPrefix",
@@ -127,6 +132,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
+    "allAutomationDetailQueryKeyPrefix",
+    "allAutomationRunsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "automationsQueryKey",
     "allThreadStorageFilePreviewQueryKeyPrefix",

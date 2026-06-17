@@ -5,6 +5,8 @@ import type { Automation } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   AutomationsOverview,
+  buildAutomationRowMenuItems,
+  type AutomationRowActions,
   type AutomationsOverviewProps,
 } from "./AutomationsView";
 
@@ -59,6 +61,13 @@ function makeEntry(
 
 const NOOP = () => {};
 
+const NOOP_ACTIONS: AutomationRowActions = {
+  onPause: NOOP,
+  onResume: NOOP,
+  onRun: NOOP,
+  onDelete: NOOP,
+};
+
 function renderOverview(
   props: Partial<AutomationsOverviewProps> & {
     entries: readonly AutomationOverviewEntry[];
@@ -70,12 +79,14 @@ function renderOverview(
         entries={props.entries}
         isLoading={props.isLoading ?? false}
         hasInitialLoadError={props.hasInitialLoadError ?? false}
+        actions={props.actions ?? NOOP_ACTIONS}
         onCreateAgentAutomation={props.onCreateAgentAutomation ?? NOOP}
         onCreateScriptAutomation={props.onCreateScriptAutomation ?? NOOP}
       />
     </MemoryRouter>,
   );
 }
+
 
 describe("AutomationsOverview", () => {
   it("groups automations by status into Active and Paused sections", () => {
@@ -177,5 +188,72 @@ describe("AutomationsOverview", () => {
     });
     expect(markup).toContain("Failed to load automations.");
     expect(markup).toContain("text-destructive");
+  });
+
+  it("links each row name to its automation detail route", () => {
+    const markup = renderOverview({
+      entries: [
+        makeEntry(makeAutomation({ id: "auto_link", projectId: "proj_app" })),
+      ],
+    });
+    expect(markup).toContain('href="/automations/proj_app/auto_link"');
+  });
+
+  it("renders a per-row actions trigger", () => {
+    const markup = renderOverview({
+      entries: [makeEntry(makeAutomation({ name: "Watcher" }))],
+    });
+    expect(markup).toContain("Watcher actions");
+  });
+});
+
+describe("buildAutomationRowMenuItems", () => {
+  const ACTIONS: AutomationRowActions = NOOP_ACTIONS;
+
+  it("offers Pause for an enabled automation", () => {
+    const items = buildAutomationRowMenuItems(
+      makeEntry(makeAutomation({ enabled: true })),
+      ACTIONS,
+    );
+    const labels = items.map((item) => item.label);
+    expect(labels).toContain("Pause");
+    expect(labels).not.toContain("Resume");
+  });
+
+  it("offers Resume for a paused automation", () => {
+    const items = buildAutomationRowMenuItems(
+      makeEntry(makeAutomation({ enabled: false })),
+      ACTIONS,
+    );
+    const labels = items.map((item) => item.label);
+    expect(labels).toContain("Resume");
+    expect(labels).not.toContain("Pause");
+  });
+
+  it("always offers Run now and a destructive Delete", () => {
+    const items = buildAutomationRowMenuItems(makeEntry(makeAutomation()), ACTIONS);
+    const labels = items.map((item) => item.label);
+    expect(labels).toContain("Run now");
+    const deleteItem = items.find((item) => item.key === "delete");
+    expect(deleteItem?.label).toBe("Delete");
+    expect(deleteItem?.destructive).toBe(true);
+  });
+
+  it("routes each item to its action handler", () => {
+    const calls: string[] = [];
+    const actions: AutomationRowActions = {
+      onPause: () => calls.push("pause"),
+      onResume: () => calls.push("resume"),
+      onRun: () => calls.push("run"),
+      onDelete: () => calls.push("delete"),
+    };
+    const items = buildAutomationRowMenuItems(
+      makeEntry(makeAutomation({ enabled: true })),
+      actions,
+    );
+    for (const item of items) {
+      item.run();
+    }
+    expect(calls).toEqual(["pause", "run", "delete"]);
   });
 });

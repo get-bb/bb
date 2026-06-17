@@ -61,6 +61,8 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allAutomationDetailQueryKeyPrefix,
+  allAutomationRunsQueryKeyPrefix,
   automationsQueryKey,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
@@ -710,7 +712,16 @@ function dirtyProjectListQueries(): QueryKey[] {
 }
 
 function dirtyAutomationQueries(): QueryKey[] {
-  return [automationsQueryKey()];
+  // The realtime change kinds (`automations-changed`, `automation-runs-changed`)
+  // don't carry the affected automation's project + id, so dirty the whole
+  // detail/runs families by prefix alongside the cross-project overview. This
+  // keeps an open detail view live-updating after a run completes or the
+  // automation is paused/resumed elsewhere.
+  return [
+    automationsQueryKey(),
+    allAutomationDetailQueryKeyPrefix(),
+    allAutomationRunsQueryKeyPrefix(),
+  ];
 }
 
 function dirtyProjectSourceDependentQueries({

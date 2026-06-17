@@ -4,6 +4,7 @@ import type { Automation } from "@bb/server-contract";
 import { PROJECT_IDS, PROJECT_NAMES } from "../../.ladle/story-fixtures";
 import {
   AutomationsOverview,
+  type AutomationRowActions,
   type AutomationsOverviewProps,
 } from "./AutomationsView";
 
@@ -100,6 +101,13 @@ const sampleEntries: AutomationOverviewEntry[] = [
 
 const NOOP = () => {};
 
+const NOOP_ACTIONS: AutomationRowActions = {
+  onPause: NOOP,
+  onResume: NOOP,
+  onRun: NOOP,
+  onDelete: NOOP,
+};
+
 function Story(props: Partial<AutomationsOverviewProps>) {
   return (
     <MemoryRouter>
@@ -108,6 +116,7 @@ function Story(props: Partial<AutomationsOverviewProps>) {
           entries={props.entries ?? sampleEntries}
           isLoading={props.isLoading ?? false}
           hasInitialLoadError={props.hasInitialLoadError ?? false}
+          actions={props.actions ?? NOOP_ACTIONS}
           onCreateAgentAutomation={NOOP}
           onCreateScriptAutomation={NOOP}
         />
