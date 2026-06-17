@@ -1,8 +1,10 @@
 # Timeline Rendering Performance
 
-Status: **in progress.** W3 (server route cache) implemented + tested in this
-PR; W1/W2/W4/W5 remain (sequenced in §9). Investigation complete; design
-validated by adversarial review.
+Status: **W2, W3, W4, W5 implemented + tested in this PR.** W1 (visibility-gate
+side-chat) is **deferred** — gating its timeline query couples to a side-chat
+delete-safety check and risks deleting a side-chat with real content; W4's deltas
+already make hidden-tab refetches cheap, so the herd impact is largely mitigated.
+Investigation complete; design validated by adversarial review.
 Branch: `bb/timeline-rendering-performance-plan-*`.
 
 Grounded in measurements against the live packaged server (`http://127.0.0.1:38886`)
@@ -171,18 +173,21 @@ have seq > N and append" design and a resumable in-memory incremental projector
 to **keep reprojecting the bounded window server-side (correct by construction)
 and diff it** — plus cheap herd/cache wins.
 
-### W1 (S) — Visibility-gate hidden side-chat timelines → RC3
+### W1 (S) — Visibility-gate hidden side-chat timelines → RC3 **[DEFERRED]**
 
-Pass `enabled: false` to `useThreadTimeline` for inactive (`display:none`)
-side-chat tabs (`SideChatTabContent.tsx:180,412`; thread the active-tab flag from
-`SideChatTabDeck.tsx:53`). `useThreadDetailRealtimeSubscription` is gated by the
-same `enabled` flag, so this cleanly stops both the subscription and the refetch;
-`refetchOnMount` refreshes on show. No contract change. Collapses N mounted
-timelines to ~1 visible. _Product check:_ confirm which live badges (activity /
-thinking) must stay on hidden tabs; if any, keep only the lightweight status
-query active.
+The intent: pass `enabled: false` to `useThreadTimeline` for inactive
+(`display:none`) side-chat tabs. **Deferred after investigation:** the child
+timeline query (`SideChatTabContent.tsx:412`) and the conversation query (`:180`)
+share a query key, so both observers must be gated to actually stop the fetch —
+but `childHasUserMessage` (derived from that query) gates `deleteSideChatIfUnused`
+(`:443`). Gating it could make a reopened side-chat that already holds messages
+look "unused" and **delete it (data loss)** when its hidden tab is cleaned up.
+Doing W1 safely needs `childHasUserMessage` decoupled from the gated query (or a
+product call on hidden-tab live state). W4 already shrinks every hidden-tab
+refetch to a cheap delta, so the herd cost W1 targeted is largely mitigated; W1
+is tracked as a follow-up in §13.
 
-### W2 (S) — Don't invalidate turn-summary-details on every batch → RC5
+### W2 (S) — Don't invalidate turn-summary-details on every batch → RC5 **[IMPLEMENTED — this PR]**
 
 Remove `threadTimelineTurnSummaryDetailsQueryKeyPrefix` from the
 `events-appended` grouping in `getThreadTimelineInvalidationQueryKeys`
@@ -205,7 +210,7 @@ Eliminates warm-repeat and double-mount cost, and makes idle refetches free.
 Implemented in `apps/server/src/services/threads/timeline-cache.ts` (+ unit test);
 wired in `apps/server/src/routes/threads/data.ts`. (ETag/`304` deferred.)
 
-### W4 (L) — Server-computed row-patch delta → RC1, RC2 (the streaming win)
+### W4 (L) — Server-computed row-patch delta → RC1, RC2 (the streaming win) **[IMPLEMENTED — this PR]**
 
 The big lever. Correct _by construction_ because the server still reprojects the
 full bounded window (all eviction/collapse/finalize/backfill semantics
@@ -234,7 +239,7 @@ and makes the client re-render only changed rows. **Note:** W4 does _not_ reduce
 the ~130–264 ms server projection CPU (the server still reprojects); W1 + W3
 are what bound server CPU. Pair W4 with the §8 patch-diff-fidelity spike.
 
-### W5 (M) — Truncate giant inline outputs/diffs → RC7
+### W5 (M) — Truncate giant inline outputs/diffs → RC7 **[IMPLEMENTED — this PR]**
 
 For `item/completed` outputs/diffs above a threshold, ship a truncated preview
 with a "load full" affordance (the `turn-summary-details` endpoint already serves
@@ -356,14 +361,17 @@ Each probe: method, baseline, target, pass/fail. Harnesses in §12.
 Each step is independently shippable and reversible.
 
 1. Land the **probe harnesses** + Probe C golden-test infra (gates everything).
-2. **W1** visibility-gate side-chat (S, no contract) — immediate herd collapse;
-   gate on Probe D + Spike 2.
-3. **W2** drop turn-summary-details invalidation (S, no contract).
+2. **W1** visibility-gate side-chat — **deferred** (data-loss coupling; §13).
+3. **W2** drop turn-summary-details invalidation (S, no contract). **← done.**
 4. **W3** server route cache (S–M, server-only) — kills warm-repeat / idle /
-   double-mount; gate on Probe D + Spike 3. **← done in this PR.**
-5. **Spike 1**, then **W4** row-patch delta (L; WS contract change) — the
-   streaming payload win; gate on Probe B + C.
-6. **W5** truncation of giant outputs (gate on Probe A).
+   double-mount. **← done.**
+5. **W4** row-patch delta (`afterSequence` + diff; client merge) — the streaming
+   payload win; golden test in place of the separate Spike 1. **← done.**
+6. **W5** truncation of giant outputs. **← done.**
+
+Implemented W2–W5 this PR (no WS-message change needed — the client carries
+`maxSeq` from the response, so the delta works over the existing fetch path).
+W1 remains, tracked in §13.
 
 ---
 
@@ -397,22 +405,28 @@ Server CPU for redundant/idle refetches: **−~99%**.
 
 ### Scenario 3 — Streaming an active turn (the common, expensive case) → W4
 
-Measured by reprojecting the huge thread's 942-event turn as the active turn and
-diffing consecutive states (one refetch per appended item, **415 refetches**):
+Measured with the **shipped `computeTimelineRowDelta`** by reprojecting the huge
+thread's 942-event turn as the active turn and diffing consecutive states (one
+refetch per appended item, **415 refetches**):
 
 | per refetch      | **before** (full window)           | **after** (W4 row-patch)                                        |
 | ---------------- | ---------------------------------- | --------------------------------------------------------------- |
-| bytes sent       | median **495 KB**, peak **889 KB** | median **686 B**, p90 6.2 KB, max 64 KB                         |
-| rows re-rendered | all ~350 (deep-equal every row)    | **~0.74** changed rows                                          |
+| bytes sent       | median **495 KB**, peak **889 KB** | median **16 KB**, p90 **26 KB**                                 |
+| rows re-rendered | all ~350 (deep-equal every row)    | only changed rows (unchanged keep identity)                     |
 | server build     | ~250 ms reproject                  | ~250 ms reproject (unchanged; W4 fixes payload+render, not CPU) |
 
 | whole turn (cumulative wire) | before     | after                   |
 | ---------------------------- | ---------- | ----------------------- |
-| bytes transferred            | **214 MB** | **0.9 MB** (**−99.6%**) |
+| bytes transferred            | **214 MB** | **6.8 MB** (**−96.8%**) |
+
+The delta's floor is the `rowOrder` id list (every current row id, so the client
+can reorder exactly) — ~16 KB for a hundreds-of-rows active turn even when one
+row changed. Still a 31× per-refetch reduction; sending order only when it
+changes (follow-up) would push the median toward ~1 KB.
 
 This is the headline: streaming one big turn currently re-ships ~214 MB of
-mostly-unchanged rows; W4 cuts it to ~0.9 MB and shrinks each refetch from
-hundreds of KB to **< 1 KB median**. (W4 does **not** cut the ~250 ms per-build
+mostly-unchanged rows; W4 cuts it to ~6.8 MB and shrinks each refetch from
+hundreds of KB to **~16 KB median**. (W4 does **not** cut the ~250 ms per-build
 server CPU — that needs the deferred projector, §13; W1/W3 reduce how often the
 build runs.)
 
@@ -425,11 +439,11 @@ build runs.)
 
 ### Net effect by symptom
 
-| reported symptom          | before                                   | after                                    |
-| ------------------------- | ---------------------------------------- | ---------------------------------------- |
-| large payload (streaming) | up to ~950 KB/refetch                    | < 1 KB median, ≤ 64 KB worst (W4 + W5)   |
-| repeated refetches        | full rebuild + full window every batch   | delta patch; idle/warm served from cache |
-| thundering herd           | N mounted timelines × ~5 full rebuilds/s | ~1 focused timeline; hidden tabs silent  |
+| reported symptom          | before                                   | after                                         |
+| ------------------------- | ---------------------------------------- | --------------------------------------------- |
+| large payload (streaming) | up to ~950 KB/refetch                    | ~16 KB median (W4); giant outputs capped (W5) |
+| repeated refetches        | full rebuild + full window every batch   | delta patch; idle/warm served from cache      |
+| thundering herd           | N mounted timelines × ~5 full rebuilds/s | ~1 focused timeline; hidden tabs silent       |
 
 ---
 
@@ -437,8 +451,8 @@ build runs.)
 
 - Streaming on the huge thread: bytes-on-wire ↓ ≥ 80% and per-commit rendered
   rows ↓ ≥ 70% (Probe B/C), with patch output **proven equal** to full rebuild
-  across all §6 cases (Probe C). (Probe baseline target: ~214 MB → < 2 MB per
-  big turn; median refetch ~495 KB → < 8 KB.)
+  across all §6 cases (Probe C). (Measured: ~214 MB → 6.8 MB per big turn;
+  median refetch ~495 KB → ~16 KB.)
 - Idle: hidden side-chat tabs issue 0 `/timeline` GETs while another thread
   streams; warm-repeat ↓ ≥ 90% (Probe D).
 - Initial load: no cold-load regression; giant-output threads ship a smaller
@@ -480,8 +494,8 @@ collapsed (keep `turn/completed`) variant. Measured: 65 KB → **951 KB**.
 the active big turn at consecutive event prefixes (one item per step), diff rows
 by stable id (changed/new row JSON bytes + removed ids) to get the per-refetch
 patch size, and sum over the turn vs the per-refetch full-window bytes. Measured:
-median patch **686 B** (vs full-window median 495 KB); cumulative **214 MB →
-0.9 MB** over the turn. (`buildThreadTimelineFromEvents` with
+median patch **~16 KB** (vs full-window median 495 KB); cumulative **214 MB →
+6.8 MB** over the turn. (`buildThreadTimelineFromEvents` with
 `threadStatus: "active"` to keep the turn expanded.)
 
 Build-cost attribution: same tsx approach timing each stage with
@@ -502,6 +516,14 @@ plus the thread-view + server-contract suites.
 
 ## 13. Out of scope / follow-ups
 
+- **W1 — visibility-gate hidden side-chat timelines.** Deferred: gating couples to
+  `deleteSideChatIfUnused` via `childHasUserMessage`, risking deletion of a
+  side-chat with real content. Decouple that signal from the gated query (or get
+  a product call), then gate. Lower priority now that W4 makes hidden-tab
+  refetches cheap.
+- **Leaner W4 delta.** The `rowOrder` id list is the ~16 KB/refetch floor. Send
+  order only when membership/order changes (else just `upsertRows`) to push the
+  median toward ~1 KB.
 - **List virtualization** (render only visible rows) — deferred at request. The
   lever for huge-thread initial-load render and per-commit deep-equal cost. W4
   already cuts per-commit re-renders to the changed rows; without virtualization,
