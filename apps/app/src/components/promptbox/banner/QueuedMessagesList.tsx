@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
+  getQueuedMessageVisibleText,
 } from "@/views/thread-detail/threadQueuedMessages";
 import {
   buildQueuedMessageReorderRequest,
@@ -47,6 +48,11 @@ export interface QueuedMessagesListProps {
   onDelete: (id: string) => void;
 }
 
+interface QueuedMessagePreviewSegment {
+  kind: "quote" | "text";
+  text: string;
+}
+
 interface QueuedMessageRowProps {
   queuedMessage: ThreadQueuedMessage;
   index: number;
@@ -58,6 +64,116 @@ interface QueuedMessageRowProps {
   onSendImmediately: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+}
+
+function isQuoteLine(line: string): boolean {
+  return line === ">" || line.startsWith("> ");
+}
+
+function stripQuotePrefix(line: string): string {
+  if (line.startsWith("> ")) return line.slice(2);
+  if (line === ">") return "";
+  return line;
+}
+
+function normalizePreviewSegmentText(lines: readonly string[]): string {
+  return lines.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function buildQueuedMessagePreviewSegments(
+  queuedMessage: ThreadQueuedMessage,
+): QueuedMessagePreviewSegment[] {
+  const text = getQueuedMessageVisibleText(queuedMessage.content);
+  if (!text.split("\n").some(isQuoteLine)) {
+    return [
+      {
+        kind: "text",
+        text: formatQueuedMessagePreview(queuedMessage.content, {
+          truncate: false,
+        }),
+      },
+    ];
+  }
+
+  const lines = text.split("\n");
+  const segments: QueuedMessagePreviewSegment[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const quote = isQuoteLine(lines[index]!);
+    let end = index;
+    while (end < lines.length && isQuoteLine(lines[end]!) === quote) {
+      end += 1;
+    }
+    const groupLines = lines.slice(index, end);
+    const segmentText = normalizePreviewSegmentText(
+      quote ? groupLines.map(stripQuotePrefix) : groupLines,
+    );
+    if (segmentText.length > 0) {
+      segments.push({
+        kind: quote ? "quote" : "text",
+        text: segmentText,
+      });
+    }
+    index = end;
+  }
+
+  return segments.length > 0
+    ? segments
+    : [
+        {
+          kind: "text",
+          text: formatQueuedMessagePreview(queuedMessage.content, {
+            truncate: false,
+          }),
+        },
+      ];
+}
+
+function QueuedMessagePreview({
+  queuedMessage,
+}: {
+  queuedMessage: ThreadQueuedMessage;
+}) {
+  const preview = useMemo(
+    () =>
+      formatQueuedMessagePreview(queuedMessage.content, {
+        truncate: false,
+      }),
+    [queuedMessage.content],
+  );
+  const segments = useMemo(
+    () => buildQueuedMessagePreviewSegments(queuedMessage),
+    [queuedMessage],
+  );
+
+  return (
+    <div
+      className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
+      title={preview}
+    >
+      <div className="flex min-w-0 max-w-full items-center gap-1.5">
+        {segments.map((segment, index) =>
+          segment.kind === "quote" ? (
+            <blockquote
+              key={`${segment.kind}-${index}`}
+              className="m-0 inline-flex min-w-0 shrink items-center border-l-2 border-surface-selected-border pl-2 text-muted-foreground"
+            >
+              <span className="min-w-0 overflow-hidden whitespace-nowrap">
+                {segment.text}
+              </span>
+            </blockquote>
+          ) : (
+            <span
+              key={`${segment.kind}-${index}`}
+              className="min-w-0 shrink overflow-hidden whitespace-nowrap"
+            >
+              {segment.text}
+            </span>
+          ),
+        )}
+      </div>
+    </div>
+  );
 }
 
 const QueuedMessageRow = memo(function QueuedMessageRow({
@@ -72,10 +188,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onEdit,
   onDelete,
 }: QueuedMessageRowProps) {
-  const preview = useMemo(
-    () => formatQueuedMessagePreview(queuedMessage.content),
-    [queuedMessage.content],
-  );
   const attachmentCount = useMemo(
     () => countQueuedMessageAttachments(queuedMessage.content),
     [queuedMessage.content],
@@ -139,14 +251,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-            {/* Single line, no horizontal scroll — overflow is clipped with a
-                soft right-edge fade instead of a hard ellipsis. */}
-            <p
-              className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
-              title={preview}
-            >
-              {preview}
-            </p>
+            <QueuedMessagePreview queuedMessage={queuedMessage} />
             {attachmentCount > 0 ? (
               <span className="shrink-0 text-subtle-foreground opacity-70">
                 {attachmentCount === 1
@@ -233,7 +338,9 @@ export function QueuedMessagesList({
     }),
   );
   const [isExpanded, setIsExpanded] = useState(true);
-  const scrollOverflow = useScrollOverflowState<HTMLDivElement>();
+  const scrollOverflow = useScrollOverflowState<HTMLDivElement>({
+    measureOverflow: true,
+  });
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
@@ -353,6 +460,7 @@ export function QueuedMessagesList({
         <div className="relative isolate">
           <div
             ref={scrollOverflow.scrollRef}
+            data-queued-messages-scroll=""
             className="max-h-32 min-w-0 overflow-y-auto overflow-x-hidden pb-1"
             tabIndex={0}
           >
@@ -399,12 +507,14 @@ export function QueuedMessagesList({
           {scrollOverflow.aboveOverflow ? (
             <div
               aria-hidden
+              data-queued-messages-fade="above"
               className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface-recessed to-transparent"
             />
           ) : null}
           {scrollOverflow.belowOverflow ? (
             <div
               aria-hidden
+              data-queued-messages-fade="below"
               className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface-recessed to-transparent"
             />
           ) : null}

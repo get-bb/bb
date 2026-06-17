@@ -4,6 +4,10 @@ import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
 
 const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 140;
 
+interface FormatQueuedMessagePreviewOptions {
+  truncate?: boolean;
+}
+
 function visibleQueuedMessageInput(
   input: readonly PromptInput[],
 ): PromptInput[] {
@@ -28,21 +32,31 @@ export function countQueuedMessageAttachments(
   return count;
 }
 
-export function formatQueuedMessagePreview(
+export function getQueuedMessageVisibleText(
   input: readonly PromptInput[],
 ): string {
-  const visibleInput = visibleQueuedMessageInput(input);
-  const text = visibleInput
+  return visibleQueuedMessageInput(input)
     .filter(
       (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
         chunk.type === "text",
     )
     .map((chunk) => chunk.text.trim())
     .filter((chunk) => chunk.length > 0)
-    .join(" ");
+    .join("\n\n");
+}
+
+export function formatQueuedMessagePreview(
+  input: readonly PromptInput[],
+  options: FormatQueuedMessagePreviewOptions = {},
+): string {
+  const visibleInput = visibleQueuedMessageInput(input);
+  const text = getQueuedMessageVisibleText(visibleInput);
   const trimmedText = text.replace(/\s+/g, " ").trim();
   if (trimmedText.length > 0) {
-    if (trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS) {
+    if (
+      options.truncate === false ||
+      trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS
+    ) {
       return trimmedText;
     }
     return `${trimmedText.slice(0, QUEUED_MESSAGE_PREVIEW_MAX_CHARS - 1)}...`;
