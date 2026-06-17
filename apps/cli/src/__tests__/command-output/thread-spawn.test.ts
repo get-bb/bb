@@ -350,8 +350,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
-        childOrigin: null,
         startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
