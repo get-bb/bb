@@ -3,7 +3,10 @@ import { getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
 import type { PromptTextMention } from "@bb/domain";
-import { PromptMentionExtension } from "./prompt-mention-extension";
+import {
+  PromptMentionExtension,
+  promptMentionArgumentHintPlaceholder,
+} from "./prompt-mention-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
@@ -159,5 +162,33 @@ describe("prompt editor serialization", () => {
       },
       { type: "text", text: " " },
     ]);
+  });
+
+  it("does not render argument hint placeholders for skills", () => {
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "$",
+        name: "review",
+        source: "skill",
+        origin: "user",
+        label: "review",
+        argumentHint: "<files>",
+      }),
+    ).toBeNull();
+  });
+
+  it("renders argument hint placeholders for project commands", () => {
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "/",
+        name: "frontend:component",
+        source: "command",
+        origin: "project",
+        label: "frontend:component",
+        argumentHint: " $ARGUMENTS ",
+      }),
+    ).toBe("$ARGUMENTS");
   });
 });

@@ -4,6 +4,7 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+import type { PromptMentionResource } from "@bb/domain";
 import { PromptMentionPillNodeView } from "./PromptMentionPillNodeView";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 import {
@@ -34,9 +35,11 @@ function renderMentionTitle(attrs: ParsedMentionAttrs): string {
   return attrs ? promptMentionTooltipLabel(attrs.resource) : "@mention";
 }
 
-function commandArgumentHint(attrs: ParsedMentionAttrs): string | null {
-  if (attrs?.resource.kind !== "command") return null;
-  const argumentHint = attrs.resource.argumentHint?.trim();
+export function promptMentionArgumentHintPlaceholder(
+  resource: PromptMentionResource | null,
+): string | null {
+  if (resource?.kind !== "command" || resource.source === "skill") return null;
+  const argumentHint = resource.argumentHint?.trim();
   return argumentHint ? argumentHint : null;
 }
 
@@ -143,7 +146,9 @@ export const PromptMentionExtension = Mention.extend({
               if (node.type.name !== mentionName) return true;
 
               const attrs = parsePromptEditorMentionAttrs(node.attrs);
-              const argumentHint = commandArgumentHint(attrs);
+              const argumentHint = promptMentionArgumentHintPlaceholder(
+                attrs?.resource ?? null,
+              );
               if (!argumentHint) return false;
 
               const afterMentionPos = pos + node.nodeSize;
