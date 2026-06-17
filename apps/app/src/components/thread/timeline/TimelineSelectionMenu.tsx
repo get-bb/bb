@@ -9,7 +9,7 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 // hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
 // affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
 
 interface SelectionAction {
   icon: IconName;
@@ -71,9 +71,8 @@ export function TimelineSelectionMenu({
   // Constrain the floating menu to the thread column so it never overlaps the
   // sidebar or secondary panel. The anchor sits inside `[data-thread-window]`,
   // so resolve that ancestor as the Radix collision boundary.
-  const [collisionBoundary, setCollisionBoundary] = useState<HTMLElement | null>(
-    null,
-  );
+  const [collisionBoundary, setCollisionBoundary] =
+    useState<HTMLElement | null>(null);
   const anchorRef = useCallback((node: HTMLDivElement | null) => {
     setCollisionBoundary(
       node?.closest<HTMLElement>("[data-thread-window]") ?? null,

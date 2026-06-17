@@ -1525,7 +1525,7 @@ function TimelineRowsList({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col",
+        "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
         timelineRowsListGapClassName(spacing),
         className,
       )}
