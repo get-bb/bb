@@ -109,8 +109,9 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 
 interface ListThreadSearchMatchRowsArgs {
   archived: boolean;
+  anyTokenMatchQuery: string;
   limitPerGroup: number;
-  matchQuery: string;
+  tokenMatchQueries: readonly string[];
 }
 
 interface ThreadSearchMatchRow {
@@ -715,13 +716,23 @@ function listThreadSearchQueryTokens(query: string): string[] {
   return tokens;
 }
 
-function buildThreadSearchMatchQuery(tokens: readonly string[]): string | null {
-  if (tokens.length === 0) {
+function buildThreadSearchTokenMatchQuery(token: string): string {
+  return `"${token.replaceAll('"', '""')}"*`;
+}
+
+function listThreadSearchTokenMatchQueries(
+  tokens: readonly string[],
+): string[] {
+  return [...new Set(tokens.map(buildThreadSearchTokenMatchQuery))];
+}
+
+function buildThreadSearchAnyTokenMatchQuery(
+  tokenMatchQueries: readonly string[],
+): string | null {
+  if (tokenMatchQueries.length === 0) {
     return null;
   }
-  return tokens
-    .map((token) => `"${token.replaceAll('"', '""')}"*`)
-    .join(" ");
+  return tokenMatchQueries.join(" OR ");
 }
 
 function mergeHighlightRanges(
@@ -744,19 +755,27 @@ function findHighlightRanges(args: {
   tokens: readonly string[];
 }): ThreadSearchHighlightRange[] {
   const ranges: ThreadSearchHighlightRange[] = [];
-  const lowerText = args.text.toLocaleLowerCase();
+  const normalizedText = normalizeThreadSearchHighlightText(args.text);
   const uniqueTokens = [
-    ...new Set(args.tokens.map((token) => token.toLocaleLowerCase())),
+    ...new Set(
+      args.tokens
+        .map((token) => normalizeThreadSearchText(token))
+        .filter((token) => token.length > 0),
+    ),
   ];
 
   for (const token of uniqueTokens) {
     let offset = 0;
-    while (offset < lowerText.length) {
-      const start = lowerText.indexOf(token, offset);
+    while (offset < normalizedText.text.length) {
+      const start = normalizedText.text.indexOf(token, offset);
       if (start === -1) {
         break;
       }
-      ranges.push({ start, end: start + token.length });
+      const end = start + token.length;
+      ranges.push({
+        start: normalizedText.originalStarts[start] ?? 0,
+        end: normalizedText.originalEnds[end - 1] ?? args.text.length,
+      });
       offset = start + token.length;
     }
   }
@@ -766,27 +785,84 @@ function findHighlightRanges(args: {
   );
 }
 
+function normalizeThreadSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Mark}/gu, "")
+    .toLocaleLowerCase();
+}
+
+function normalizeThreadSearchHighlightText(text: string): {
+  originalEnds: number[];
+  originalStarts: number[];
+  text: string;
+} {
+  let normalizedText = "";
+  const originalStarts: number[] = [];
+  const originalEnds: number[] = [];
+
+  for (let index = 0; index < text.length; ) {
+    const codePoint = text.codePointAt(index);
+    if (codePoint === undefined) {
+      break;
+    }
+    const value = String.fromCodePoint(codePoint);
+    const end = index + value.length;
+    const normalizedValue = normalizeThreadSearchText(value);
+    for (
+      let normalizedIndex = 0;
+      normalizedIndex < normalizedValue.length;
+      normalizedIndex += 1
+    ) {
+      normalizedText += normalizedValue[normalizedIndex];
+      originalStarts.push(index);
+      originalEnds.push(end);
+    }
+    index = end;
+  }
+
+  return {
+    originalEnds,
+    originalStarts,
+    text: normalizedText,
+  };
+}
+
 function listThreadSearchLimitedThreadRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
 ): ThreadSearchLimitedThreadRow[] {
+  const tokenMatchSelects = args.tokenMatchQueries.map(
+    (matchQuery, tokenIndex) => sql`
+      SELECT
+        s.thread_id AS threadId,
+        ${tokenIndex} AS tokenIndex,
+        MIN(thread_search_segments_fts.rank) AS tokenRank
+      FROM thread_search_segments_fts
+      JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
+      WHERE thread_search_segments_fts MATCH ${matchQuery}
+      GROUP BY s.thread_id
+    `,
+  );
   const archiveFilter = args.archived
     ? sql`t.archived_at IS NOT NULL`
     : sql`t.archived_at IS NULL`;
 
   return db.all<ThreadSearchLimitedThreadRow>(sql`
-    WITH ranked_threads AS (
+    WITH token_matches AS (
+      ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
+    ),
+    ranked_threads AS (
       SELECT
-        s.thread_id AS threadId,
-        MIN(thread_search_segments_fts.rank) AS bestRank,
+        token_matches.threadId AS threadId,
+        MIN(token_matches.tokenRank) AS bestRank,
         MAX(t.updated_at) AS threadUpdatedAt
-      FROM thread_search_segments_fts
-      JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
-      JOIN threads AS t ON t.id = s.thread_id
-      WHERE thread_search_segments_fts MATCH ${args.matchQuery}
-        AND t.deleted_at IS NULL
+      FROM token_matches
+      JOIN threads AS t ON t.id = token_matches.threadId
+      WHERE t.deleted_at IS NULL
         AND ${archiveFilter}
       GROUP BY threadId
+      HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
     )
     SELECT
       threadId,
@@ -848,7 +924,7 @@ function listThreadSearchMatchRows(
     limitedThreadRows.map((row) => [row.threadId, row]),
   );
   const segmentRows = listThreadSearchSegmentMatchRows(db, {
-    matchQuery: args.matchQuery,
+    matchQuery: args.anyTokenMatchQuery,
     threadIds: limitedThreadRows.map((row) => row.threadId),
   });
 
@@ -933,8 +1009,9 @@ export function searchThreadsWithPendingInteractionState(
   args: SearchThreadsWithPendingInteractionStateArgs,
 ): ThreadSearchResults {
   const tokens = listThreadSearchQueryTokens(args.query);
-  const matchQuery = buildThreadSearchMatchQuery(tokens);
-  if (matchQuery === null) {
+  const tokenMatchQueries = listThreadSearchTokenMatchQueries(tokens);
+  const anyTokenMatchQuery = buildThreadSearchAnyTokenMatchQuery(tokenMatchQueries);
+  if (anyTokenMatchQuery === null) {
     return {
       active: { total: 0, results: [] },
       archived: { total: 0, results: [] },
@@ -950,16 +1027,18 @@ export function searchThreadsWithPendingInteractionState(
       tokens,
       rows: listThreadSearchMatchRows(db, {
         archived: false,
+        anyTokenMatchQuery,
         limitPerGroup,
-        matchQuery,
+        tokenMatchQueries,
       }),
     }),
     archived: hydrateThreadSearchGroup(db, {
       tokens,
       rows: listThreadSearchMatchRows(db, {
         archived: true,
+        anyTokenMatchQuery,
         limitPerGroup,
-        matchQuery,
+        tokenMatchQueries,
       }),
     }),
   };

@@ -9,6 +9,7 @@ import {
   useThreadSearch,
   type UseThreadSearchResult,
 } from "@/hooks/queries/thread-queries";
+import { isThreadSearchKeyboardEventTarget } from "./AppSidebar";
 import { ProjectListActionButtons } from "./ProjectList";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import {
@@ -199,5 +200,21 @@ describe("ProjectListActionButtons", () => {
     expect(
       screen.getByRole("combobox").getAttribute("aria-activedescendant"),
     ).toBe("active-option");
+  });
+});
+
+describe("AppSidebar thread search keyboard routing", () => {
+  it("handles search keys only from the input or search options", () => {
+    const input = document.createElement("input");
+    const closeButton = document.createElement("button");
+    const option = document.createElement("button");
+    const optionLabel = document.createElement("span");
+    option.setAttribute("role", "option");
+    option.append(optionLabel);
+
+    expect(isThreadSearchKeyboardEventTarget(input, input)).toBe(true);
+    expect(isThreadSearchKeyboardEventTarget(option, input)).toBe(true);
+    expect(isThreadSearchKeyboardEventTarget(optionLabel, input)).toBe(true);
+    expect(isThreadSearchKeyboardEventTarget(closeButton, input)).toBe(false);
   });
 });

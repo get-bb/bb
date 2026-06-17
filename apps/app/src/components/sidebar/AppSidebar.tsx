@@ -43,6 +43,19 @@ interface AppSidebarProps {
   showTopReserve: boolean;
 }
 
+export function isThreadSearchKeyboardEventTarget(
+  target: EventTarget | null,
+  input: HTMLInputElement | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target === input) {
+    return true;
+  }
+  return target.closest('[role="option"]') !== null;
+}
+
 export function AppSidebar({
   onResizeMouseDown,
   isResizing,
@@ -128,6 +141,14 @@ export function AppSidebar({
   >(
     (event) => {
       if (!isThreadSearchActive || event.defaultPrevented) {
+        return;
+      }
+      if (
+        !isThreadSearchKeyboardEventTarget(
+          event.target,
+          threadSearchInputRef.current,
+        )
+      ) {
         return;
       }
 

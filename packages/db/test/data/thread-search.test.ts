@@ -333,4 +333,62 @@ describe("thread search data", () => {
       closeConnection(db);
     }
   });
+
+  it("finds multi-token queries split across thread segments", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "alpha split title",
+      });
+      appendStoredThreadEvent(db, noopNotifier, {
+        threadId: thread.id,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: turnRequestData([textInput("beta split message")]),
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "alpha beta",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        thread.id,
+      ]);
+      expect(results.active.results[0]?.matches.map((match) => match.text)).toEqual([
+        "alpha split title",
+        "beta split message",
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("highlights unicode61 accent-folded matches", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "café planning",
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "cafe",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        thread.id,
+      ]);
+      expect(results.active.results[0]?.matches[0]).toMatchObject({
+        text: "café planning",
+        highlightRanges: [{ start: 0, end: 4 }],
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
 });
