@@ -126,6 +126,31 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain('alt="Checks success"');
   });
 
+  it("uses the selected pull request merge method as the action label without a merge icon", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={{
+          pullRequest: pullRequestFixture,
+          actions: {
+            onMerge: noop,
+            selectedMergeMethod: "squash",
+          },
+        }}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Squash merge");
+    expect(markup).not.toContain('data-icon="GitMerge"');
+  });
+
   it("does not label standalone pending checks", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
@@ -236,6 +261,32 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
     expect(markup).not.toContain("data-promptbox-hide-compact");
+  });
+
+  it("keeps the pull request action visible beside other context segments", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={makeGitSection("uncommitted")}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={{
+          pullRequest: pullRequestFixture,
+          actions: {
+            onMerge: noop,
+            selectedMergeMethod: "rebase",
+          },
+        }}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("PR #128");
+    expect(markup).toContain("Uncommitted");
+    expect(markup).toContain("Rebase and merge");
   });
 
   it("uses the shared committed git label beside pull request context", () => {

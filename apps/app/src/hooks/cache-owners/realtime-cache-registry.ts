@@ -72,6 +72,7 @@ import {
   allThreadTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
+  environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -641,6 +642,9 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
 }: EnvironmentRealtimeDirtyContext): void {
   queryClient.invalidateQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
+  });
+  queryClient.invalidateQueries({
+    queryKey: environmentPullRequestQueryKey(environmentId),
   });
   queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),

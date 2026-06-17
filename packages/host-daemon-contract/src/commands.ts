@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 37 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 38 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -562,6 +562,31 @@ const workspacePullRequestCommandSchema =
     type: z.literal("workspace.pull_request"),
   });
 
+const pullRequestMergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
+
+const workspacePullRequestReadyCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("ready"),
+  })
+  .strict();
+
+const workspacePullRequestMergeCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("merge"),
+    method: pullRequestMergeMethodSchema,
+  })
+  .strict();
+
+const workspacePullRequestActionCommandSchema = z.discriminatedUnion(
+  "operation",
+  [
+    workspacePullRequestReadyCommandSchema,
+    workspacePullRequestMergeCommandSchema,
+  ],
+);
+
 const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.commit"),
@@ -739,6 +764,7 @@ const workspaceCommitResultSchema = z.object({
 const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
   merged: z.boolean(),
 });
+const workspacePullRequestActionResultSchema = z.object({}).strict();
 const hostRunScriptResultSchema = z
   .object({
     exitCode: z.number().int().nullable(),
@@ -914,6 +940,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.squash_merge",
     schema: workspaceSquashMergeCommandSchema,
     resultSchema: workspaceSquashMergeResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "workspace.pull_request_action": defineHostDaemonCommandDescriptor({
+    type: "workspace.pull_request_action",
+    schema: workspacePullRequestActionCommandSchema,
+    resultSchema: workspacePullRequestActionResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

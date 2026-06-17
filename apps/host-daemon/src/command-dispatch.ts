@@ -186,6 +186,22 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
+  "workspace.pull_request_action": async (command, options) => {
+    const entry = await requireResolvedWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    await entry.workspace.runPullRequestAction(
+      command.operation === "ready"
+        ? { operation: "ready" }
+        : { operation: "merge", method: command.method },
+    );
+    return {};
+  },
   "host.run_script": runScript,
 };
 

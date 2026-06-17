@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
@@ -16,7 +17,10 @@ import {
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
-import type { TerminalSession } from "@bb/server-contract";
+import type {
+  PullRequestMergeMethod,
+  TerminalSession,
+} from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
@@ -75,6 +79,8 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getSurfaceAwareThreadRoutePath,
   isRoutePath,
@@ -190,6 +196,24 @@ const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
+const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY =
+  "bb.pullRequest.mergeMethod";
+
+function isPullRequestMergeMethod(
+  value: string,
+): value is PullRequestMergeMethod {
+  return value === "merge" || value === "squash" || value === "rebase";
+}
+
+const pullRequestMergeMethodAtom = atomWithStorage<PullRequestMergeMethod>(
+  PULL_REQUEST_MERGE_METHOD_STORAGE_KEY,
+  DEFAULT_PULL_REQUEST_MERGE_METHOD,
+  createLocalStorageEnumStorage<PullRequestMergeMethod>(
+    isPullRequestMergeMethod,
+  ),
+  { getOnInit: true },
+);
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
@@ -202,6 +226,19 @@ type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
 type OpenFilePreviewHandler = (relativePath: string) => void;
+
+function getPullRequestMergeLoadingTitle(
+  method: PullRequestMergeMethod,
+): string {
+  switch (method) {
+    case "merge":
+      return "Merging pull request";
+    case "squash":
+      return "Squash merging pull request";
+    case "rebase":
+      return "Rebase merging pull request";
+  }
+}
 
 interface RightPanelFileTabIconProps {
   path: string;
@@ -648,6 +685,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
+  const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
+    pullRequestMergeMethodAtom,
+  );
   const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
@@ -1187,6 +1227,63 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     enabled: canUseGitUi && environment !== undefined,
   });
   const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
+  const handlePullRequestReady = useCallback(async () => {
+    const environmentId = thread?.environmentId;
+    if (!environmentId) {
+      return;
+    }
+    const toastId = appToast.loading("Marking pull request ready");
+    try {
+      const response = await requestEnvironmentAction.mutateAsync({
+        id: environmentId,
+        action: "pull_request_ready",
+      });
+      if (response.action !== "pull_request_ready") {
+        throw new Error("Expected pull request ready action response.");
+      }
+      appToast.success(response.message, { id: toastId });
+    } catch (error) {
+      appToast.error("Failed to update pull request", {
+        id: toastId,
+        description: getMutationErrorMessage({
+          error,
+          fallbackMessage: "Pull request was not updated",
+        }),
+      });
+    }
+  }, [requestEnvironmentAction, thread?.environmentId]);
+  const handlePullRequestMerge = useCallback(
+    async (method: PullRequestMergeMethod) => {
+      const environmentId = thread?.environmentId;
+      if (!environmentId) {
+        return;
+      }
+      setPullRequestMergeMethod(method);
+      const toastId = appToast.loading(
+        getPullRequestMergeLoadingTitle(method),
+      );
+      try {
+        const response = await requestEnvironmentAction.mutateAsync({
+          id: environmentId,
+          action: "pull_request_merge",
+          options: { method },
+        });
+        if (response.action !== "pull_request_merge") {
+          throw new Error("Expected pull request merge action response.");
+        }
+        appToast.success(response.message, { id: toastId });
+      } catch (error) {
+        appToast.error("Failed to merge pull request", {
+          id: toastId,
+          description: getMutationErrorMessage({
+            error,
+            fallbackMessage: "Pull request was not merged",
+          }),
+        });
+      }
+    },
+    [requestEnvironmentAction, setPullRequestMergeMethod, thread?.environmentId],
+  );
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -1787,6 +1884,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onEscapeEmptyPrompt={
         props.surface === "popout" ? props.onPopoutHide : undefined
       }
+      onPullRequestMerge={handlePullRequestMerge}
+      onPullRequestReady={handlePullRequestReady}
+      pullRequestMergeMethod={pullRequestMergeMethod}
       composerQueriesEnabled={hasThreadComposerBootstrapReady}
       composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}

@@ -90,6 +90,14 @@ const commandResultOwners: CommandResultOwnerRegistry = {
       });
     },
   },
+  "workspace.pull_request_action": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationResult(deps, {
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
 } satisfies CommandResultOwnerRegistry;
 
 function getCommandResultOwner<TType extends ParsedCommandType>(

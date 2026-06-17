@@ -304,6 +304,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     commitSubject: "Merge feature",
     merged: true,
   },
+  "workspace.pull_request_action": {},
   "host.run_script": {
     exitCode: 0,
     output: "ok\n",
@@ -738,6 +739,50 @@ describe("host-daemon command schemas", () => {
       type: "workspace.commit",
       environmentId: "env_123",
     });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "ready",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "ready",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "merge",
+        method: "squash",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "merge",
+      method: "squash",
+    });
+
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "merge",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toThrow();
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
@@ -1813,7 +1858,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(37);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(38);
   });
 
   it("parses valid session open and event batch payloads", () => {
