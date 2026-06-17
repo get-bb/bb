@@ -339,7 +339,7 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="FolderOpen">Directory</DetailRowIconLabel>
+        <DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
