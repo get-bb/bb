@@ -32,7 +32,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
-  getAutomationsRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
@@ -123,11 +122,6 @@ export function AppSidebar({
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
-  }, [closeOnMobile, navigate]);
-
-  const handleOpenAutomations = useCallback(() => {
-    closeOnMobile();
-    void navigate(getAutomationsRoutePath());
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -251,7 +245,6 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
-            onOpenAutomations={handleOpenAutomations}
             threadSearch={{
               inputRef: threadSearchInputRef,
               isActive: isThreadSearchActive,

@@ -249,8 +249,7 @@ export function useTouchFixedPanelTabsState(
     updateState((current) => {
       if (
         !current.secondary.isOpen &&
-        current.secondary.tabs.length === 0 &&
-        current.bottom.tabs.length === 0
+        current.secondary.tabs.length === 0
       ) {
         return current;
       }

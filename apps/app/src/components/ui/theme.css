@@ -367,7 +367,7 @@
   --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
   /* App-shell horizontal seam: top nav and browser/panel top bars. It stays on
    * the neutral ink/canvas ramp but closer to canvas than vertical separators. */
-  --border-seam: color-mix(in oklch, var(--ink) 5.5%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 10.5%, var(--canvas));
   /* App-shell vertical seam: sidebar/content and resizable panel separators.
    * Stronger than horizontal seams, softer than the default content border. */
   --border-seam-vertical: color-mix(in oklch, var(--ink) 11.5%, var(--canvas));
@@ -520,7 +520,7 @@
   --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
   /* App-shell horizontal seam (dark): close to the dark background so top bars
    * stay quieter than vertical panel separators. */
-  --border-seam: color-mix(in oklch, var(--ink) 5%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 12%, var(--canvas));
   /* App-shell vertical seam (dark): stronger than the horizontal seam, softer
    * than the default content border. */
   --border-seam-vertical: color-mix(in oklch, var(--ink) 13%, var(--canvas));

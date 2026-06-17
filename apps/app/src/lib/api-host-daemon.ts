@@ -3,7 +3,6 @@ import {
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
   providerCliInstallEventSchema,
   providerCliStatusResponseSchema,
-  workspaceOpenTargetIdSchema,
   workspaceOpenTargetsResponseSchema,
   type OpenInTargetRequest,
   type ProviderCliInstallEvent,
@@ -11,7 +10,6 @@ import {
   type ProviderCliStatusResponse,
   type StatusResponse,
   type WorkspaceOpenTarget,
-  type WorkspaceOpenTargetCapabilities,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
@@ -24,51 +22,6 @@ const hostDaemonErrorResponseSchema = z.object({
   message: z.string().min(1),
 });
 
-const fullFileOpenCapabilities: WorkspaceOpenTargetCapabilities = {
-  openDirectory: true,
-  openFile: true,
-  openFileAtLine: true,
-};
-
-const basicFileOpenCapabilities: WorkspaceOpenTargetCapabilities = {
-  openDirectory: true,
-  openFile: true,
-  openFileAtLine: false,
-};
-
-const directoryOpenCapabilities: WorkspaceOpenTargetCapabilities = {
-  openDirectory: true,
-  openFile: false,
-  openFileAtLine: false,
-};
-
-const legacyWorkspaceOpenTargetKindSchema = z.enum([
-  "editor",
-  "file-browser",
-  "terminal",
-]);
-const legacyWorkspaceOpenTargetSchema = z.object({
-  id: workspaceOpenTargetIdSchema,
-  kind: legacyWorkspaceOpenTargetKindSchema,
-  label: z.string().min(1),
-});
-const legacyWorkspaceOpenTargetsResponseSchema = z.object({
-  targets: z.array(legacyWorkspaceOpenTargetSchema),
-});
-
-type LegacyWorkspaceOpenTarget = z.infer<
-  typeof legacyWorkspaceOpenTargetSchema
->;
-
-const legacyLineAwareTargetIds = new Set([
-  "vscode",
-  "cursor",
-  "sublime-text",
-  "zed",
-  "windsurf",
-  "xcode",
-]);
-
 export type ProviderCliInstallEventHandler = (
   event: ProviderCliInstallEvent,
 ) => void;
@@ -78,28 +31,6 @@ export interface InstallProviderCliArgs {
   request: ProviderCliInstallRequest;
   onEvent: ProviderCliInstallEventHandler;
   signal?: AbortSignal;
-}
-
-function resolveLegacyWorkspaceOpenTargetCapabilities(
-  target: LegacyWorkspaceOpenTarget,
-): WorkspaceOpenTargetCapabilities {
-  if (target.kind !== "editor") {
-    return directoryOpenCapabilities;
-  }
-
-  return legacyLineAwareTargetIds.has(target.id)
-    ? fullFileOpenCapabilities
-    : basicFileOpenCapabilities;
-}
-
-function normalizeLegacyWorkspaceOpenTarget(
-  target: LegacyWorkspaceOpenTarget,
-): WorkspaceOpenTarget {
-  return {
-    id: target.id,
-    label: target.label,
-    capabilities: resolveLegacyWorkspaceOpenTargetCapabilities(target),
-  };
 }
 
 /**
@@ -159,17 +90,7 @@ export async function fetchWorkspaceOpenTargets(
     throw new Error(`Workspace open target discovery failed: HTTP ${status}`);
   }
   const body = await res.json();
-  const currentBody = workspaceOpenTargetsResponseSchema.safeParse(body);
-  if (currentBody.success) {
-    return currentBody.data.targets;
-  }
-
-  const legacyBody = legacyWorkspaceOpenTargetsResponseSchema.safeParse(body);
-  if (legacyBody.success) {
-    return legacyBody.data.targets.map(normalizeLegacyWorkspaceOpenTarget);
-  }
-
-  throw currentBody.error;
+  return workspaceOpenTargetsResponseSchema.parse(body).targets;
 }
 
 export async function fetchProviderCliStatus(

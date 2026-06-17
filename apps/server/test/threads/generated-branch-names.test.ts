@@ -1,13 +1,17 @@
-import { getEnvironment, getThread, listEvents } from "@bb/db";
+import { createThread, getEnvironment, getThread, listEvents } from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
   threadSchema,
+  turnScope,
 } from "@bb/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  internalAuthHeaders,
   listQueuedEnvironmentCommands,
+  listQueuedThreadCommands,
   requireManagedWorktreeEnvironmentProvisionLiveCommand,
+  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
@@ -15,6 +19,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
+  seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -263,7 +268,7 @@ describe("generated managed branch names", () => {
       });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
-        status: "provisioning",
+        status: "starting",
         title: null,
         titleFallback: "Stop during metadata inference",
       });
@@ -277,7 +282,9 @@ describe("generated managed branch names", () => {
           workspaceProvisionType: "managed-worktree",
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input,
+        startedOnBehalfOf: null,
         thread,
         titleProvided: false,
       });
@@ -309,7 +316,6 @@ describe("generated managed branch names", () => {
       });
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
 
       resolveMetadata({
@@ -319,7 +325,6 @@ describe("generated managed branch names", () => {
 
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
       const events = listEvents(harness.db, { threadId: thread.id });
       expect(events.map((event) => event.type)).not.toContain("system/error");
@@ -427,7 +432,7 @@ describe("generated managed branch names", () => {
         preparedThread.environmentId,
       );
       expect(sweptEnvironment?.status).toBe("ready");
-      expect(getThread(harness.db, thread.id)?.status).toBe("provisioning");
+      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
       expect(
         listEvents(harness.db, { threadId: thread.id }).map(
           (event) => event.type,
@@ -692,6 +697,223 @@ describe("generated managed branch names", () => {
           100,
         ),
       ).rejects.toThrow("Timed out waiting for queued command");
+    });
+  });
+
+  it("renames an idle non-managed thread when its generated title lands late", async () => {
+    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
+      throw new Error("Metadata inference was not started");
+    };
+    piAiMocks.getModel.mockReturnValue({ provider: "test" });
+    piAiMocks.complete.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = (metadata) => {
+            resolve(mockThreadMetadataCompletion(metadata));
+          };
+        }),
+    );
+
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-idle-late-title-rename",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/idle-late-title-rename-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/idle-late-title-rename-workspace",
+        status: "ready",
+        workspaceProvisionType: "unmanaged",
+      });
+      const thread = createThread(harness.db, harness.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "starting",
+        title: null,
+        titleFallback: "Idle late title rename",
+      });
+
+      // Drive the non-managed provisioning path. The title is generated
+      // fire-and-forget (deferred mock), so provisioning continues and starts
+      // the thread before the title lands.
+      const context = requestThreadProvision(harness.deps, {
+        environmentIntent: {
+          type: "reuse",
+          environmentId: environment.id,
+        },
+        execution: THREAD_START_EXECUTION,
+        fork: null,
+        input: textInput("Generate a title for this non-managed reuse thread"),
+        startedOnBehalfOf: null,
+        thread,
+        titleProvided: false,
+      });
+      await advanceThreadProvisioning(harness.deps, {
+        context,
+        threadId: thread.id,
+      });
+
+      // The thread starts while its title is still pending.
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        start,
+        { providerThreadId: "provider-idle-late-title" },
+        { hostId: host.id },
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      expect(getThread(harness.db, thread.id)?.title).toBeNull();
+
+      // Finish the turn so the thread is idle by the time the title lands.
+      const eventsResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            events: [
+              {
+                threadId: thread.id,
+                event: {
+                  type: "turn/started",
+                  threadId: thread.id,
+                  providerThreadId: "provider-idle-late-title",
+                  scope: turnScope("turn-idle-late-title"),
+                },
+              },
+              {
+                threadId: thread.id,
+                event: {
+                  type: "turn/completed",
+                  threadId: thread.id,
+                  providerThreadId: "provider-idle-late-title",
+                  scope: turnScope("turn-idle-late-title"),
+                  status: "completed",
+                },
+              },
+            ],
+          }),
+        },
+      );
+      expect(eventsResponse.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+
+      // The generated title lands only now, while the thread is idle.
+      resolveMetadata({ title: "Late Idle Title" });
+
+      const rename = await waitForQueuedCommandAfter(
+        harness,
+        start.row.cursor,
+        ({ command }) =>
+          command.type === "thread.rename" && command.threadId === thread.id,
+      );
+      expect(rename.command).toMatchObject({
+        type: "thread.rename",
+        threadId: thread.id,
+        title: "Late Idle Title",
+      });
+      expect(getThread(harness.db, thread.id)?.title).toBe("Late Idle Title");
+    });
+  });
+
+  it("does not rename a non-managed thread that errored before its title landed", async () => {
+    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
+      throw new Error("Metadata inference was not started");
+    };
+    piAiMocks.getModel.mockReturnValue({ provider: "test" });
+    piAiMocks.complete.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = (metadata) => {
+            resolve(mockThreadMetadataCompletion(metadata));
+          };
+        }),
+    );
+
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-errored-late-title-no-rename",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/errored-late-title-no-rename-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/errored-late-title-no-rename-workspace",
+        status: "ready",
+        workspaceProvisionType: "unmanaged",
+      });
+      const thread = createThread(harness.db, harness.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "starting",
+        title: null,
+        titleFallback: "Errored late title no rename",
+      });
+
+      const context = requestThreadProvision(harness.deps, {
+        environmentIntent: {
+          type: "reuse",
+          environmentId: environment.id,
+        },
+        execution: THREAD_START_EXECUTION,
+        fork: null,
+        input: textInput("Generate a title for this non-managed reuse thread"),
+        startedOnBehalfOf: null,
+        thread,
+        titleProvided: false,
+      });
+      await advanceThreadProvisioning(harness.deps, {
+        context,
+        threadId: thread.id,
+      });
+
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      // The thread start fails, moving the thread to `error` before the title
+      // lands: the guard must drop the provider rename for a non-renamable
+      // thread.
+      await reportQueuedCommandError(
+        harness,
+        start,
+        {
+          errorCode: "thread_start_failed",
+          errorMessage: "Thread start failed",
+        },
+        { hostId: host.id },
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("error");
+
+      resolveMetadata({ title: "Errored Late Title" });
+
+      await expect(
+        waitForQueuedCommandAfter(
+          harness,
+          start.row.cursor,
+          ({ command }) =>
+            command.type === "thread.rename" && command.threadId === thread.id,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for queued command");
+      expect(
+        listQueuedThreadCommands(harness, "thread.rename", thread.id),
+      ).toEqual([]);
     });
   });
 

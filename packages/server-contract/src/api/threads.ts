@@ -11,19 +11,17 @@ import {
   reasoningLevelSchema,
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
+  threadChildOriginSchema,
+  threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
+  threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
-  workflowProgressSnapshotSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
-import {
-  timelineFeedDetailPartSchema,
-  timelineFeedRowSchema,
-  timelineRowSchema,
-} from "../thread-timeline.js";
+import { timelineRowSchema } from "../thread-timeline.js";
 import {
   environmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -75,20 +73,57 @@ export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
 
-export const createThreadRequestSchema = z.object({
-  projectId: z.string().min(1),
-  providerId: z.string().min(1).optional(),
-  origin: threadCreateOriginSchema,
-  title: z.string().min(1).optional(),
-  input: z.array(promptInputSchema).min(1),
-  model: z.string().min(1).optional(),
-  serviceTier: serviceTierSchema.optional(),
-  reasoningLevel: reasoningLevelSchema.optional(),
-  permissionMode: permissionModeSchema.optional(),
-  executionInputSources: createExecutionInputSourcesSchema.optional(),
-  environment: environmentArgsSchema,
-  parentThreadId: z.string().min(1).optional(),
+// "started on behalf of another thread/agent": the thread-start turn is
+// attributed to {initiator} and rendered as "Message from {senderThreadId}".
+// null ⇒ a normal user-initiated start. A non-null value also flags the
+// thread-start turn as seed-without-run (the started agent waits for the user's
+// first message), mirroring the `client/turn/requested` event whose
+// `senderThreadId` is non-null only for agent/system starts.
+export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
+export type StartedOnBehalfOfInitiator = z.infer<
+  typeof startedOnBehalfOfInitiatorSchema
+>;
+
+export const startedOnBehalfOfSchema = z.object({
+  initiator: startedOnBehalfOfInitiatorSchema,
+  senderThreadId: z.string().min(1),
 });
+export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
+
+export const createThreadRequestSchema = z
+  .object({
+    projectId: z.string().min(1),
+    providerId: z.string().min(1).optional(),
+    origin: threadCreateOriginSchema,
+    title: z.string().min(1).optional(),
+    // A source-derived native fork/side chat may establish the cloned provider
+    // session with an empty timeline, so it can carry no input. A normal thread
+    // start requires at least one input, enforced by the refinement below rather
+    // than a blanket `.min(1)`.
+    input: z.array(promptInputSchema),
+    model: z.string().min(1).optional(),
+    serviceTier: serviceTierSchema.optional(),
+    reasoningLevel: reasoningLevelSchema.optional(),
+    permissionMode: permissionModeSchema.optional(),
+    executionInputSources: createExecutionInputSourcesSchema.optional(),
+    environment: environmentArgsSchema,
+    parentThreadId: z.string().min(1).optional(),
+    sourceThreadId: z.string().min(1).optional(),
+    startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
+    originKind: threadOriginKindSchema.nullable().default(null),
+    /** @deprecated Use originKind. */
+    childOrigin: threadChildOriginSchema.nullable().default(null),
+  })
+  .superRefine((value, ctx) => {
+    const originKind = value.originKind ?? value.childOrigin;
+    if (originKind === null && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+  });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
 export const sendMessageRequestSchema = z.object({
@@ -193,7 +228,13 @@ export const threadSearchResponseSchema = z
   .strict();
 export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 
-export const threadResponseSchema = threadWithRuntimeSchema;
+// canSpawnChild is a server-derived policy flag: true when the thread's
+// hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH, so a fork/side-chat may
+// be created under it. Computed on the server so clients never recompute the
+// depth cap.
+export const threadResponseSchema = threadWithRuntimeSchema.extend({
+  canSpawnChild: z.boolean(),
+});
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
 export const threadIncludeOptionSchema = z.enum(["environment", "host"]);
@@ -314,9 +355,14 @@ export type ThreadArchiveAllResponse = z.infer<
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
+  sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind: threadOriginKindSchema.optional(),
+  /** @deprecated Use originKind. */
+  childOrigin: threadChildOriginSchema.optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });
@@ -348,15 +394,18 @@ export const timelinePageMetadataSchema = z
   })
   .strict();
 
-export const threadTimelineFeedQuerySchema = z
+export const threadTimelineQuerySchema = z
   .object({
+    includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
     beforeAnchorId: z.string().min(1),
     /**
-     * When `"true"`, the feed omits rows and returns only tail-state fields
-     * (`activeThinking`, `pendingTodos`, `contextWindowUsage`). Used by CLI
-     * status surfaces that do not render timeline rows.
+     * When `"true"`, the response omits row generation and returns
+     * `rows: []` with the tail-only fields (`activeThinking`, `pendingTodos`,
+     * `contextWindowUsage`) populated normally. Used by the CLI to read
+     * tail state without paying for the full row payload on every
+     * `bb status` invocation. Implies `latest` page semantics.
      */
     summaryOnly: z.enum(["true", "false"]),
   })
@@ -375,9 +424,7 @@ export const threadTimelineFeedQuerySchema = z
       path: hasBeforeAnchorSeq ? ["beforeAnchorId"] : ["beforeAnchorSeq"],
     });
   });
-export type ThreadTimelineFeedQuery = z.infer<
-  typeof threadTimelineFeedQuerySchema
->;
+export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
 export const timelineTurnSummaryDetailsQuerySchema = z.object({
   turnId: z.string().min(1),
@@ -386,38 +433,6 @@ export const timelineTurnSummaryDetailsQuerySchema = z.object({
 });
 export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
->;
-
-export const timelineWorkOutputDetailQuerySchema = z.object({
-  callId: z.string().min(1),
-  workKind: z.enum(["command", "tool"]),
-  sourceSeqStart: z.string().regex(/^\d+$/),
-  sourceSeqEnd: z.string().regex(/^\d+$/),
-});
-export type TimelineWorkOutputDetailQuery = z.infer<
-  typeof timelineWorkOutputDetailQuerySchema
->;
-
-export const timelineRowDetailQuerySchema = z.object({
-  sourceSeqStart: z.string().regex(/^\d+$/),
-  sourceSeqEnd: z.string().regex(/^\d+$/),
-  parts: z
-    .string()
-    .min(1)
-    .superRefine((value, context) => {
-      for (const part of value.split(",")) {
-        if (timelineFeedDetailPartSchema.safeParse(part).success) {
-          continue;
-        }
-        context.addIssue({
-          code: "custom",
-          message: `Invalid timeline row detail part: ${part}`,
-        });
-      }
-    }),
-});
-export type TimelineRowDetailQuery = z.infer<
-  typeof timelineRowDetailQuerySchema
 >;
 
 export const threadEventsQuerySchema = z
@@ -490,44 +505,16 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
 >;
 
-export const timelineWorkOutputDetailResponseSchema = z.object({
-  output: z.string(),
-});
-export type TimelineWorkOutputDetailResponse = z.infer<
-  typeof timelineWorkOutputDetailResponseSchema
->;
-
-export const threadTimelineFeedResponseSchema = z.object({
-  threadId: z.string(),
-  rows: z.array(timelineFeedRowSchema),
+export const threadTimelineResponseSchema = z.object({
+  rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
+  goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
 });
-export type ThreadTimelineFeedResponse = z.infer<
-  typeof threadTimelineFeedResponseSchema
->;
-
-export const timelineRowDetailResponseSchema = z.object({
-  rowKey: z.string(),
-  source: z.object({
-    start: z.number().int().nonnegative(),
-    end: z.number().int().nonnegative(),
-  }),
-  parts: z.object({
-    text: z.string().nullable(),
-    output: z.string().nullable(),
-    systemDetail: z.string().nullable(),
-    fileDiff: z.string().nullable(),
-    stdout: z.string().nullable(),
-    stderr: z.string().nullable(),
-    children: z.array(timelineFeedRowSchema).nullable(),
-    workflow: workflowProgressSnapshotSchema.nullable(),
-  }),
-});
-export type TimelineRowDetailResponse = z.infer<
-  typeof timelineRowDetailResponseSchema
+export type ThreadTimelineResponse = z.infer<
+  typeof threadTimelineResponseSchema
 >;
 
 export const threadStorageFileListResponseSchema =

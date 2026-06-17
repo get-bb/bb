@@ -229,15 +229,64 @@
     {
       "idx": 32,
       "version": "6",
-      "when": 1781403656070,
-      "tag": "0032_thread_search",
+      "when": 1781557200000,
+      "tag": "0032_restore_event_large_values",
       "breakpoints": true
     },
     {
       "idx": 33,
       "version": "6",
-      "when": 1781403656071,
-      "tag": "0033_thread_search_rowid_fts",
+      "when": 1781557300000,
+      "tag": "0033_drop_cleanup_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1781557400000,
+      "tag": "0034_drop_stop_requested_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1781557500000,
+      "tag": "0035_warm_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1781647572409,
+      "tag": "0036_drop_automations_feature",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1781653023172,
+      "tag": "0037_gifted_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1781660000000,
+      "tag": "0038_thread_source_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1781660000001,
+      "tag": "0039_thread_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1781660000002,
+      "tag": "0040_thread_search_rowid_fts",
       "breakpoints": true
     }
   ]

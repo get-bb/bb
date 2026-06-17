@@ -85,13 +85,11 @@ function useStreamingTick(
 
 const PROVISIONING_LINES: readonly string[] = [
   "Creating worktree (305ms)",
-  "git worktree add -B bb/investigate-thread-timeline-load /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb",
   "HEAD is now at 37eeec85 Refactor timeline row titles",
   "Preparing worktree (new branch 'bb/investigate-thread-timeline-load')",
   "Created worktree (305ms)",
   "Using workspace: /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb",
   "Running .bb-env-setup.sh",
-  "env bash .bb-env-setup.sh",
   "[bb-env-setup] Running: pnpm install",
   "Scope: all 35 workspace projects",
   "Lockfile is up to date, resolution step is skipped",
@@ -171,11 +169,11 @@ const COMMAND_OUTPUT_CHUNKS: readonly string[] = [
   "@bb/server:test:  RUN  v4.1.1 /Users/michael/.bb-dev/worktrees/env_33i22gvcqe/bb/apps/server\n",
   "@bb/server:test:  ✓ test/public/public-thread-interactions.test.ts (11 tests) 347ms\n",
   "@bb/server:test:  ✓ test/public/public-thread-data.test.ts (27 tests) 328ms\n",
-  "@bb/server:test:  ✓ test/public/public-automations.test.ts (12 tests) 373ms\n",
+  "@bb/server:test:  ✓ test/public/public-thread-lifecycle-regressions.test.ts (12 tests) 373ms\n",
   "@bb/server:test:  ✓ test/host-join-enroll.test.ts (16 tests) 451ms\n",
   "@bb/server:test:  ✓ test/internal/internal-command-result-idempotency.test.ts (16 tests) 451ms\n",
   "@bb/server:test:  ✓ test/internal/internal-event-side-effects.test.ts (16 tests) 508ms\n",
-  "@bb/server:test:  ✓ test/scheduling/thread-schedule-sweep.test.ts (4 tests) 595ms\n",
+  "@bb/server:test:  ✓ test/services/pending-interactions.test.ts (4 tests) 595ms\n",
   "@bb/server:test:  ✓ test/public/public-thread-lifecycle-regressions.test.ts (12 tests) 580ms\n",
   "@bb/server:test:  ✓ test/services/pending-interactions.test.ts (15 tests) 510ms\n",
   "@bb/server:test:  ✓ test/public/public-projects-hosts.test.ts (23 tests) 654ms\n",
@@ -463,8 +461,8 @@ export function RowDetails() {
       <StoryRow
         label={
           <StreamingLabel
-            title="provisioning"
-            hint="system row detail streams in line-by-line, status flips on completion"
+            title="provisioning, cleaned transcript"
+            hint="command echo lines are omitted; real git and setup output still streams"
             onRestart={() => setProvisioningKey((k) => k + 1)}
           />
         }

@@ -9,8 +9,11 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import {
+  threadChildOriginValues,
+  threadOriginKindValues,
+} from "@bb/domain/thread-child-origin";
 import type {
-  EnvironmentCleanupMode,
   EnvironmentStatus,
   HostType,
   PendingInteractionStatus,
@@ -22,7 +25,6 @@ import type {
   TerminalSessionCloseReason,
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
-  ThreadScheduleKind,
   ThreadSearchSourceKind,
   ThreadEventItemType,
   ThreadEventScopeKind,
@@ -30,10 +32,6 @@ import type {
   WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
-import type {
-  StoredEventLargeValueKind,
-  StoredEventLargeValueStorageKind,
-} from "./event-large-values.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -207,8 +205,6 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
-    cleanupRequestedAt: integer("cleanup_requested_at"),
-    cleanupMode: text("cleanup_mode").$type<EnvironmentCleanupMode>(),
     destroyAttemptId: text("destroy_attempt_id"),
     workspaceProvisionType: text("workspace_provision_type")
       .$type<WorkspaceProvisionType>()
@@ -223,39 +219,7 @@ export const environments = sqliteTable(
   (table) => [
     uniqueIndex("environments_host_path_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
-    index("environments_cleanup_requested_idx").on(table.cleanupRequestedAt),
     index("environments_status_idx").on(table.status),
-  ],
-);
-
-export const automations = sqliteTable(
-  "automations",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-    triggerType: text("trigger_type").notNull(),
-    triggerConfig: text("trigger_config").notNull(),
-    action: text("action").notNull(),
-    autoArchive: integer("auto_archive", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    nextRunAt: integer("next_run_at"),
-    lastRunAt: integer("last_run_at"),
-    runCount: integer("run_count").notNull().default(0),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    index("automations_project_idx").on(table.projectId),
-    index("automations_due_idx").on(
-      table.enabled,
-      table.triggerType,
-      table.nextRunAt,
-    ),
   ],
 );
 
@@ -267,9 +231,6 @@ export const threads = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     environmentId: text("environment_id").references(() => environments.id, {
-      onDelete: "set null",
-    }),
-    automationId: text("automation_id").references(() => automations.id, {
       onDelete: "set null",
     }),
     providerId: text("provider_id").notNull(),
@@ -285,15 +246,26 @@ export const threads = sqliteTable(
     titleFallback: text("title_fallback"),
     status: text("status", { enum: threadStatusValues })
       .notNull()
-      .default("created"),
+      .default("starting"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
+    sourceThreadId: text("source_thread_id").references(
+      (): AnySQLiteColumn => threads.id,
+      { onDelete: "set null" },
+    ),
+    originKind: text("origin_kind", {
+      enum: threadOriginKindValues,
+    }),
+    // Deprecated compatibility column for older migrated data. New fork and
+    // side-chat provenance uses source_thread_id + origin_kind.
+    childOrigin: text("child_origin", {
+      enum: threadChildOriginValues,
+    }),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),
-    stopRequestedAt: integer("stop_requested_at"),
     deletedAt: integer("deleted_at"),
     lastReadAt: integer("last_read_at"),
     latestAttentionAt: integer("latest_attention_at").notNull(),
@@ -312,13 +284,11 @@ export const threads = sqliteTable(
       .on(table.archivedAt, table.deletedAt, table.pinSortKey, table.id)
       .where(sql`${table.pinnedAt} IS NOT NULL`),
     index("threads_environment_idx").on(table.environmentId),
-    index("threads_automation_runtime_idx").on(
-      table.automationId,
-      table.archivedAt,
-      table.deletedAt,
-      table.status,
-    ),
     index("threads_parent_idx").on(table.parentThreadId),
+    index("threads_source_origin_idx").on(
+      table.sourceThreadId,
+      table.originKind,
+    ),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,
@@ -352,39 +322,6 @@ export const threadSearchSegments = sqliteTable(
       table.sourceKey,
     ),
     index("thread_search_segments_thread_idx").on(table.threadId),
-  ],
-);
-
-export const threadSchedules = sqliteTable(
-  "thread_schedules",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-    // Intentionally single-valued today; persisted as the discriminator for
-    // future non-cron schedule kinds.
-    kind: text("kind").$type<ThreadScheduleKind>().notNull(),
-    cron: text("cron").notNull(),
-    timezone: text("timezone").notNull(),
-    prompt: text("prompt").notNull(),
-    nextFireAt: integer("next_fire_at").notNull(),
-    lastFiredAt: integer("last_fired_at"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    index("thread_schedules_due_idx").on(table.enabled, table.nextFireAt),
-    index("thread_schedules_project_idx").on(table.projectId),
-    uniqueIndex("thread_schedules_thread_name_idx").on(
-      table.threadId,
-      table.name,
-    ),
   ],
 );
 
@@ -465,47 +402,6 @@ export const events = sqliteTable(
         OR
         (${table.scopeKind} = 'thread' AND ${table.turnId} IS NULL)
       )`,
-    ),
-  ],
-);
-
-export const eventLargeValues = sqliteTable(
-  "event_large_values",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id")
-      .notNull()
-      .references(() => events.id, { onDelete: "cascade" }),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    sequence: integer("sequence").notNull(),
-    itemId: text("item_id"),
-    itemKind: text("item_kind").$type<ThreadEventItemType>().notNull(),
-    valueKind: text("value_kind").$type<StoredEventLargeValueKind>().notNull(),
-    jsonPath: text("json_path").notNull(),
-    storageKind: text("storage_kind")
-      .$type<StoredEventLargeValueStorageKind>()
-      .notNull(),
-    value: text("value").notNull(),
-    originalLength: integer("original_length").notNull(),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("event_large_values_event_path_idx").on(
-      table.eventId,
-      table.jsonPath,
-    ),
-    index("event_large_values_thread_sequence_idx").on(
-      table.threadId,
-      table.sequence,
-    ),
-    index("event_large_values_thread_item_idx").on(
-      table.threadId,
-      table.itemId,
-      table.itemKind,
-      table.valueKind,
-      table.sequence,
     ),
   ],
 );

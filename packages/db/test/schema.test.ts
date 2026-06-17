@@ -1,9 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
-  automations,
   createConnection,
-  createAutomationId,
   createQueuedThreadMessageId,
   createEnvironmentId,
   createEnvironmentProvisioningId,
@@ -13,7 +11,6 @@ import {
   createProjectId,
   createPromptHistoryEntryId,
   createProjectSourceId,
-  createThreadScheduleId,
   createThreadId,
   environments,
   events,
@@ -25,7 +22,6 @@ import {
   projects,
   queuedThreadMessages,
   threadDynamicContextFileStates,
-  threadSchedules,
   threads,
 } from "../src/index.js";
 
@@ -150,9 +146,7 @@ describe("db rebuild schema", () => {
     const projectId = createProjectId();
     const sourceId = createProjectSourceId();
     const environmentId = createEnvironmentId();
-    const automationId = createAutomationId();
     const threadId = createThreadId();
-    const scheduleId = createThreadScheduleId();
     const sessionId = createHostDaemonSessionId();
     const eventId = createEventId();
     const promptHistoryEntryId = createPromptHistoryEntryId();
@@ -201,49 +195,14 @@ describe("db rebuild schema", () => {
         updatedAt: now,
       })
       .run();
-    db.insert(automations)
-      .values({
-        id: automationId,
-        projectId,
-        name: "Daily sync",
-        enabled: true,
-        triggerType: "schedule",
-        triggerConfig:
-          '{"triggerType":"schedule","cron":"0 8 * * 1-5","timezone":"UTC"}',
-        action:
-          '{"actionType":"scheduled-thread","threadRequest":{"providerId":"codex","model":"gpt-5","input":[{"type":"text","text":"Run daily sync"}],"environment":{"type":"host","hostId":"host_1","workspace":{"type":"managed-worktree","baseBranch":{"kind":"default"}}}}}',
-        autoArchive: false,
-        nextRunAt: now + 60_000,
-        runCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(threads)
       .values({
         id: threadId,
         projectId,
         environmentId,
-        automationId,
         providerId: "codex",
         status: "idle",
         latestAttentionAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(threadSchedules)
-      .values({
-        id: scheduleId,
-        projectId,
-        threadId,
-        name: "status-check",
-        kind: "cron",
-        cron: "0 * * * *",
-        timezone: "UTC",
-        prompt: "Check status.",
-        enabled: true,
-        nextFireAt: now + 30_000,
         createdAt: now,
         updatedAt: now,
       })
@@ -318,27 +277,18 @@ describe("db rebuild schema", () => {
 
     const insertedThread = db.select().from(threads).get();
     expect(insertedThread?.environmentId).toBe(environmentId);
-    expect(insertedThread?.automationId).toBe(automationId);
     expect(db.select().from(events).get()).toMatchObject({
       scopeKind: "turn",
       turnId: "turn_1",
       providerThreadId: "provider-thread-1",
     });
-    expect(db.select().from(automations).get()).toMatchObject({
-      triggerType: "schedule",
-      autoArchive: false,
+    expect(
+      db.select().from(threadDynamicContextFileStates).get(),
+    ).toMatchObject({
+      fileKey: "manager-preferences",
+      contentStatus: "present",
+      contentHash: "sha256:abc",
     });
-    expect(db.select().from(threadSchedules).get()).toMatchObject({
-      name: "status-check",
-      timezone: "UTC",
-    });
-    expect(db.select().from(threadDynamicContextFileStates).get()).toMatchObject(
-      {
-        fileKey: "manager-preferences",
-        contentStatus: "present",
-        contentHash: "sha256:abc",
-      },
-    );
     expect(db.select().from(promptHistoryEntries).get()).toMatchObject({
       projectId,
       scope: "project",
@@ -457,75 +407,6 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
-  it("sets thread automation ids to null when an automation is deleted", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-
-    const now = Date.now();
-    const hostId = createHostId();
-    const projectId = createProjectId();
-    const automationId = createAutomationId();
-    const threadId = createThreadId();
-
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(projects)
-      .values({
-        id: projectId,
-        name: "Rebuild",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(automations)
-      .values({
-        id: automationId,
-        projectId,
-        name: "Daily sync",
-        enabled: true,
-        triggerType: "schedule",
-        triggerConfig:
-          '{"triggerType":"schedule","cron":"0 8 * * 1-5","timezone":"UTC"}',
-        action:
-          '{"actionType":"scheduled-thread","threadRequest":{"providerId":"codex","model":"gpt-5","input":[{"type":"text","text":"Run daily sync"}],"environment":{"type":"host","hostId":"host_1","workspace":{"type":"managed-worktree","baseBranch":{"kind":"default"}}}}}',
-        autoArchive: false,
-        nextRunAt: now + 60_000,
-        runCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(threads)
-      .values({
-        id: threadId,
-        projectId,
-        automationId,
-        providerId: "codex",
-        status: "idle",
-        latestAttentionAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-
-    db.delete(automations).where(eq(automations.id, automationId)).run();
-
-    expect(
-      db.select().from(threads).where(eq(threads.id, threadId)).get()
-        ?.automationId,
-    ).toBeNull();
-
-    closeConnection(db);
-  });
-
   it("cascades thread deletion to thread-owned rows", () => {
     const db = createConnection(":memory:");
     migrate(db);
@@ -534,7 +415,6 @@ describe("db rebuild schema", () => {
     const hostId = createHostId();
     const projectId = createProjectId();
     const threadId = createThreadId();
-    const scheduleId = createThreadScheduleId();
 
     db.insert(hosts)
       .values({
@@ -561,22 +441,6 @@ describe("db rebuild schema", () => {
         providerId: "codex",
         status: "idle",
         latestAttentionAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(threadSchedules)
-      .values({
-        id: scheduleId,
-        projectId,
-        threadId,
-        name: "morning-check",
-        kind: "cron",
-        cron: "0 9 * * *",
-        timezone: "UTC",
-        prompt: "Run the morning check.",
-        enabled: true,
-        nextFireAt: now + 60_000,
         createdAt: now,
         updatedAt: now,
       })
@@ -595,7 +459,6 @@ describe("db rebuild schema", () => {
 
     db.delete(threads).where(eq(threads.id, threadId)).run();
 
-    expect(db.select().from(threadSchedules).all()).toHaveLength(0);
     expect(db.select().from(threadDynamicContextFileStates).all()).toHaveLength(
       0,
     );
@@ -884,8 +747,6 @@ describe("db rebuild schema", () => {
     expect(createEnvironmentId()).toMatch(/^env_/u);
     expect(createEnvironmentProvisioningId()).toMatch(/^epv_/u);
     expect(createThreadId()).toMatch(/^thr_/u);
-    expect(createAutomationId()).toMatch(/^auto_/u);
-    expect(createThreadScheduleId()).toMatch(/^tsched_/u);
     expect(createEventId()).toMatch(/^evt_/u);
     expect(createPromptHistoryEntryId()).toMatch(/^phist_/u);
     expect(createQueuedThreadMessageId()).toMatch(/^qmsg_/u);

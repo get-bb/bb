@@ -64,21 +64,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("nothing to commit");
   });
 
-  it("renders bbGuideSchedules", () => {
-    const templates = listTemplates();
-    expect(
-      templates.some((template) => template.id === "bbGuideSchedules"),
-    ).toBe(true);
-
-    const rendered = renderTemplate("bbGuideSchedules", {});
-
-    expect(rendered).toContain("Thread schedules");
-    expect(rendered).toContain("bb thread schedule create");
-    expect(rendered).toContain("--timezone America/Los_Angeles");
-    expect(rendered).toContain("Schedule names are unique per thread.");
-    expect(rendered).toContain("The cron month field must stay `*`.");
-  });
-
   it("renders standardAgentAppendInstructions without user-question guidance", () => {
     const rendered = renderTemplate("standardAgentAppendInstructions", {});
 
@@ -89,16 +74,49 @@ describe("@bb/templates", () => {
     );
   });
 
-  it("renders due thread schedule messages with schedule system chrome", () => {
-    const rendered = renderTemplate("systemMessageThreadScheduleDue", {
-      prompt: "Run the daily recap.",
-      scheduleId: "tsched_daily",
+  it("renders child thread needs-attention messages with blocker summaries", () => {
+    const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
+      blockerSummary: ["Blocked on command approval:", "Command: git push"].join(
+        "\n",
+      ),
+      threadMention: "@thread:thr_child",
     });
 
     expect(rendered).toBe(
-      ["[bb schedule due:tsched_daily]", "", "Run the daily recap."].join(
-        "\n",
-      ),
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child needs help.",
+        "Blocked on command approval:",
+        "Command: git push",
+        "",
+        "Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
+      ].join("\n"),
+    );
+  });
+
+  it("renders child thread ownership messages", () => {
+    expect(
+      renderTemplate("systemMessageThreadOwnershipAssigned", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child is now a child of this thread.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageThreadOwnershipRemoved", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child is no longer a child of this thread.",
+      ].join("\n"),
     );
   });
 

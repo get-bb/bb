@@ -60,8 +60,8 @@ export interface ResolveCommandWorkspaceArgs {
  *   3. else the primary host with `cwd: null`.
  * Unlike the path-search resolvers (which require a concrete path and throw),
  * command discovery is valid with `cwd: null`, so each step falls through to
- * the next instead of surfacing an error. In particular an environment that is
- * still provisioning (or ended in error/destroyed) must NOT fail here — it
+   * the next instead of surfacing an error. In particular an environment that is
+   * still provisioning or otherwise unavailable must NOT fail here — it
  * degrades to the project source / user-home roots — so this reads the
  * environment with the non-throwing `getEnvironment` rather than
  * `requireReadyEnvironment`.
@@ -169,6 +169,7 @@ function compareForQuery(
 export interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
   limit: number;
+  offset: number;
   query: string | undefined;
 }
 
@@ -176,10 +177,11 @@ export interface BuildCommandListResponseArgs {
  * Server policy over the daemon's raw command set: case-insensitive filter,
  * de-dup by `(source, name)` (project wins), section-grouped
  * (skills → project commands → user commands) then prefix-then-alphabetical
- * sort, and truncation to `limit`. The section grouping mirrors the composer
- * menu's visual order so the flat response and the rendered sections stay in
- * lockstep. `truncated` reflects the filtered set size before the cap, so the
- * client can show a "more results" affordance.
+ * sort, offset, and truncation to `limit`. The section grouping mirrors the
+ * composer menu's visual order so the flat response and the rendered sections
+ * stay in lockstep. `truncated` reflects whether more rows remain after this
+ * page, so the client can fetch the next page while keyboard navigation
+ * approaches the end.
  */
 export function buildCommandListResponse(
   args: BuildCommandListResponseArgs,
@@ -190,9 +192,10 @@ export function buildCommandListResponse(
       .map(toProviderCommand)
       .filter((command) => matchesQuery(command, query)),
   ).sort((a, b) => compareForQuery(a, b, query));
+  const end = args.offset + args.limit;
 
   return {
-    commands: filtered.slice(0, args.limit),
-    truncated: filtered.length > args.limit,
+    commands: filtered.slice(args.offset, end),
+    truncated: filtered.length > end,
   };
 }

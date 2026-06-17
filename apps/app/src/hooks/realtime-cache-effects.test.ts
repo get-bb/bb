@@ -10,7 +10,8 @@ import {
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   archivedThreadsListQueryKey,
-  environmentGitDiffQueryKey,
+  environmentDiffFilesQueryKey,
+  environmentDiffPatchQueryKey,
   environmentWorkStatusQueryKey,
   localPathExistenceQueryKey,
   projectPathsQueryKey,
@@ -25,9 +26,7 @@ import {
   threadSearchQueryKey,
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
-  threadTimelineFeedQueryKey,
-  threadTimelineRowDetailQueryKey,
-  threadTimelineTurnSummaryDetailsQueryKey,
+  threadTimelineQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -211,7 +210,6 @@ describe("createRealtimeCacheEffects", () => {
       projectId: "project-1",
     });
     const firstProjectArchivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     const secondProjectThreadListKey = threadListQueryKey({
@@ -341,7 +339,6 @@ describe("createRealtimeCacheEffects", () => {
       hasParent: false,
     });
     const archivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     queryClient.setQueryData(activeProjectThreadListKey, []);
@@ -385,9 +382,8 @@ describe("createRealtimeCacheEffects", () => {
     const unsubscribeRootThreadList = rootThreadListObserver.subscribe(
       () => {},
     );
-    const unsubscribeChildThreadList = childThreadListObserver.subscribe(
-      () => {},
-    );
+    const unsubscribeChildThreadList =
+      childThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalActiveThreadList =
       globalActiveThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalRootThreadList =
@@ -559,30 +555,44 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active git diff queries for work-status changes", async () => {
+  it("refetches the active diff TOC and work-status queries but evicts the observer-less patch cache for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const gitDiffKey = environmentGitDiffQueryKey("env-1", "all", "main");
+    const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
+    const diffPatchKey = environmentDiffPatchQueryKey(
+      "env-1",
+      "all",
+      "main",
+      "file.ts",
+    );
     const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
-    queryClient.setQueryData(gitDiffKey, {
-      diff: "diff --git a/file.ts b/file.ts\n",
-      files: "M\tfile.ts\n",
-      mergeBaseRef: "base-ref",
+    queryClient.setQueryData(diffFilesKey, {
+      outcome: "available",
+      files: [],
       shortstat: "1 file changed",
+      mergeBaseRef: "base-ref",
+    });
+    // The per-file patch cache is imperative and observer-less in production —
+    // it is written with setQueryData and read with getQueryData, with no
+    // useQuery/queryFn. Seed it the same way (no observer) so the assertion
+    // catches a real bug: invalidateQueries would only mark it stale and leave
+    // getQueryData returning the stale patch, while removeQueries evicts it.
+    queryClient.setQueryData(diffPatchKey, {
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
       truncated: false,
     });
     queryClient.setQueryData(workStatusKey, null);
-    const gitDiffQueryFn = vi.fn(async () => ({
-      diff: "",
-      files: "",
-      mergeBaseRef: "base-ref",
+    const diffFilesQueryFn = vi.fn(async () => ({
+      outcome: "available" as const,
+      files: [],
       shortstat: "",
-      truncated: false,
+      mergeBaseRef: "base-ref",
     }));
     const workStatusQueryFn = vi.fn(async () => null);
-    const gitDiffObserver = new QueryObserver(queryClient, {
-      queryKey: gitDiffKey,
-      queryFn: gitDiffQueryFn,
+    const diffFilesObserver = new QueryObserver(queryClient, {
+      queryKey: diffFilesKey,
+      queryFn: diffFilesQueryFn,
       staleTime: Infinity,
     });
     const workStatusObserver = new QueryObserver(queryClient, {
@@ -590,9 +600,9 @@ describe("createRealtimeCacheEffects", () => {
       queryFn: workStatusQueryFn,
       staleTime: Infinity,
     });
-    const unsubscribeGitDiff = gitDiffObserver.subscribe(() => {});
+    const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
     const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
-    gitDiffQueryFn.mockClear();
+    diffFilesQueryFn.mockClear();
     workStatusQueryFn.mockClear();
 
     effects.handleChanged({
@@ -603,10 +613,14 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(gitDiffQueryFn).toHaveBeenCalledTimes(1);
+    // The observer-backed TOC and work-status queries refetch.
+    expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
+    // The observer-less patch entry is evicted, not left stale — so the panel's
+    // readDiffPatchEntry returns undefined and re-fetches a fresh patch.
+    expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
 
-    unsubscribeGitDiff();
+    unsubscribeDiffFiles();
     unsubscribeWorkStatus();
     effects.dispose();
   });
@@ -718,7 +732,7 @@ describe("createRealtimeCacheEffects", () => {
 
   it("does not invalidate timeline queries for status-only thread changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const timelineKey = threadTimelineFeedQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
@@ -749,7 +763,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineFeedQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
     queryClient.setQueryData(threadKey, { id: "thr_1" });
     queryClient.setQueryData(promptHistoryKey, []);
@@ -776,58 +790,6 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(threadKey)?.isInvalidated).not.toBe(true);
     expect(queryClient.getQueryState(promptHistoryKey)?.isInvalidated).not.toBe(
-      true,
-    );
-
-    effects.dispose();
-  });
-
-  it("keeps expanded timeline detail queries warm for appended events", () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const timelineKey = threadTimelineFeedQueryKey("thr_1");
-    const rowDetailKey = threadTimelineRowDetailQueryKey({
-      detail: {
-        rowKey: "p_4_step",
-        source: { start: 4, end: 9 },
-        parts: ["children"],
-      },
-      parts: ["children"],
-      threadId: "thr_1",
-    });
-    const turnDetailKey = threadTimelineTurnSummaryDetailsQueryKey({
-      sourceSeqEnd: 30,
-      sourceSeqStart: 10,
-      threadId: "thr_1",
-      turnId: "turn-1",
-    });
-    queryClient.setQueryData(timelineKey, {
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-    queryClient.setQueryData(rowDetailKey, { parts: {} });
-    queryClient.setQueryData(turnDetailKey, { rows: [] });
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
-      changes: ["events-appended"],
-    });
-    vi.advanceTimersByTime(50);
-
-    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(rowDetailKey)?.isInvalidated).not.toBe(
-      true,
-    );
-    expect(queryClient.getQueryState(turnDetailKey)?.isInvalidated).not.toBe(
       true,
     );
 
@@ -952,7 +914,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineFeedQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
     const threadListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",
@@ -1014,7 +976,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineFeedQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
     const firstProjectThreadListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",

@@ -35,7 +35,7 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
-  contextParentThread?: boolean;
+  parentSelf?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -57,6 +57,27 @@ function resolveSpawnEnvironmentValue(flagValue?: string): string | undefined {
     flagName: "--environment flag",
     value: trimmedValue,
   });
+}
+
+function resolveSpawnParentThreadId(args: {
+  parentSelf?: boolean;
+  parentThread?: string;
+}): string | undefined {
+  const explicitParentThreadId = resolveExplicitIdFlag({
+    flagName: "--parent-thread",
+    value: args.parentThread,
+  });
+  if (explicitParentThreadId && args.parentSelf) {
+    throw new Error("Cannot combine --parent-thread with --parent-self.");
+  }
+  if (args.parentSelf) {
+    const selfThreadId = resolveThreadId();
+    if (!selfThreadId) {
+      throw new Error("--parent-self requires BB_THREAD_ID to be set.");
+    }
+    return selfThreadId;
+  }
+  return explicitParentThreadId;
 }
 
 export function buildSpawnEnvironment(args: {
@@ -144,8 +165,9 @@ export function registerSpawnCommand(
     )
     .option(
       "--parent-thread <id>",
-      "Parent thread ID for worker thread links (defaults to BB_THREAD_ID)",
+      "Parent thread ID for worker thread links",
     )
+    .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option(
       "--provider <id>",
       "Provider ID for the thread. Omit to use the project's remembered provider choice",
@@ -161,18 +183,8 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option(
-      "--no-context-parent-thread",
-      "Do not default parent thread context to BB_THREAD_ID",
-    )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        if (opts.parentThread && opts.contextParentThread === false) {
-          throw new Error(
-            "Cannot combine --parent-thread with --no-context-parent-thread.",
-          );
-        }
-
         const projectId = resolveProjectId(opts.project) ?? PERSONAL_PROJECT_ID;
         const environmentValue = resolveSpawnEnvironmentValue(
           opts.environment,
@@ -196,13 +208,10 @@ export function registerSpawnCommand(
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
-        const explicitParentThreadId = resolveExplicitIdFlag({
-          flagName: "--parent-thread",
-          value: opts.parentThread,
+        const parentThreadId = resolveSpawnParentThreadId({
+          parentSelf: opts.parentSelf,
+          parentThread: opts.parentThread,
         });
-        const parentThreadId =
-          explicitParentThreadId ??
-          (opts.contextParentThread === false ? undefined : resolveThreadId());
 
         let thread: Thread;
         try {
@@ -218,6 +227,16 @@ export function registerSpawnCommand(
             ...(serviceTier ? { serviceTier } : {}),
             ...(permissionMode ? { permissionMode } : {}),
             environment,
+            // The typed $post client types this body against the schema's
+            // output shape, where startedOnBehalfOf/originKind/childOrigin
+            // (`.default(null)`) are required — so a normal spawn passes the
+            // explicit null the server would otherwise fill. (A fork/side-chat
+            // sets these; the CLI never does. z.input would re-optionalize the
+            // SDK arg type but the underlying $post still requires them, so the
+            // null lives here.)
+            startedOnBehalfOf: null,
+            originKind: null,
+            childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
           });
         } catch (err: unknown) {

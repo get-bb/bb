@@ -5,11 +5,12 @@ import type {
   Host,
   PendingInteraction,
   ProjectSource,
+  ResolvedThreadExecutionOptions,
+  ThreadChildOrigin,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
-  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -19,7 +20,9 @@ import type {
   EnvironmentActionRequest,
   EnvironmentActionResponse,
   EnvironmentDiffBranchesResponse,
-  EnvironmentDiffResponse,
+  EnvironmentDiffQuery,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
@@ -48,7 +51,6 @@ import type {
   ThreadListResponse,
   ThreadSearchResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadWithIncludesResponse,
   PathListIncludeQueryValue,
   BranchListQuery,
@@ -58,13 +60,9 @@ import type {
   ThreadStoragePathsQuery,
   TerminalSession,
   ThreadTerminalListResponse,
-  ThreadTimelineFeedResponse,
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-  TimelineRowDetailResponse,
+  ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
-  TimelineWorkOutputDetailResponse,
   CloseThreadTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
@@ -93,28 +91,15 @@ import type { ThreadStorageFileListOptions } from "./thread-storage-files";
 import type { PathListOptions } from "./path-list-options";
 export type { FilePreview } from "./file-preview";
 
-interface GetThreadTimelineFeedArgs {
+interface GetThreadTimelineArgs {
   beforeCursor?: TimelinePaginationCursor;
   id: string;
+  includeNestedRows?: boolean;
   segmentLimit?: number;
-}
-
-interface GetThreadTimelineRowDetailArgs {
-  detail: TimelineFeedDetailRef;
-  id: string;
-  parts: readonly TimelineFeedDetailPart[];
 }
 
 interface GetThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsRequest {
   id: string;
-}
-
-interface GetThreadTimelineWorkOutputDetailArgs {
-  callId: string;
-  id: string;
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  workKind: "command" | "tool";
 }
 
 interface GetEnvironmentFilePreviewArgs {
@@ -135,7 +120,23 @@ export interface EnvironmentBranchListRequest extends BranchListRequest {
 
 export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
-export type AppCreateThreadRequest = Omit<CreateThreadRequest, "origin">;
+// Built by the client and sent to POST /threads, which parses with
+// createThreadRequestSchema. `startedOnBehalfOf`, `originKind`, and
+// `childOrigin` are
+// `.nullable().default(null)` in the schema, so callers (only the fork /
+// side-chat paths) may omit them; the explicit `null` is supplied once in
+// `createThread` because the wire body type is the schema's *output* shape,
+// where those defaulted fields are required.
+export type AppCreateThreadRequest = Omit<
+  CreateThreadRequest,
+  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
+> &
+  Partial<
+    Pick<
+      CreateThreadRequest,
+      "startedOnBehalfOf" | "originKind" | "childOrigin"
+    >
+  >;
 
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
 const ERROR_EXTRACT_OPTS = {
@@ -490,14 +491,6 @@ export async function reorderProject(
   );
 }
 
-export async function listAutomationsOverview(
-  signal?: AbortSignal,
-): Promise<AutomationsOverviewResponse> {
-  return request<AutomationsOverviewResponse>(
-    apiClient.automations.$get(undefined, requestOptions(signal)),
-  );
-}
-
 export async function listProjectPromptHistory(
   projectId: string,
   signal?: AbortSignal,
@@ -624,6 +617,7 @@ interface ListProjectCommandsArgs {
   environmentId: string | null;
   query: string;
   limit: number;
+  offset: number;
 }
 
 /**
@@ -646,6 +640,7 @@ export async function listProjectCommands(
         environmentId: args.environmentId ?? "",
         ...(args.query.length > 0 ? { query: args.query } : {}),
         limit: String(args.limit),
+        ...(args.offset > 0 ? { offset: String(args.offset) } : {}),
       },
     }),
   );
@@ -696,6 +691,9 @@ export async function createThread(
       json: {
         ...req,
         origin: "app",
+        startedOnBehalfOf: req.startedOnBehalfOf ?? null,
+        originKind: req.originKind ?? req.childOrigin ?? null,
+        childOrigin: req.childOrigin ?? null,
       },
     }),
   );
@@ -704,7 +702,12 @@ export async function createThread(
 export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
+  sourceThreadId?: string;
   hasParent?: boolean;
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind?: ThreadChildOrigin;
+  /** @deprecated Use originKind. */
+  childOrigin?: ThreadChildOrigin;
   /** App callers must choose active or archived; server omission intentionally means both. */
   archived: boolean;
   limit?: number;
@@ -732,9 +735,14 @@ export async function listThreads(
           ...(filters.parentThreadId
             ? { parentThreadId: filters.parentThreadId }
             : {}),
+          ...(filters.sourceThreadId
+            ? { sourceThreadId: filters.sourceThreadId }
+            : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),
+          ...(filters.originKind ? { originKind: filters.originKind } : {}),
+          ...(filters.childOrigin ? { childOrigin: filters.childOrigin } : {}),
           archived: toBooleanQueryValue(filters.archived),
           ...(filters.limit !== undefined
             ? { limit: String(filters.limit) }
@@ -819,18 +827,6 @@ export async function getThreadChildSummary(
 ): Promise<ThreadChildSummaryResponse> {
   return request<ThreadChildSummaryResponse>(
     apiClient.threads[":id"]["child-summary"].$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function listThreadSchedules(
-  id: string,
-  signal?: AbortSignal,
-): Promise<ThreadSchedule[]> {
-  return request<ThreadSchedule[]>(
-    apiClient.threads[":id"].schedules.$get(
       { param: { id } },
       requestOptions(signal),
     ),
@@ -1075,6 +1071,16 @@ export async function stopThread(id: string): Promise<void> {
   await requestVoid(apiClient.threads[":id"].stop.$post({ param: { id } }));
 }
 
+export async function getThreadDefaultExecutionOptions(
+  id: string,
+): Promise<ResolvedThreadExecutionOptions | null> {
+  return request<ResolvedThreadExecutionOptions | null>(
+    apiClient.threads[":id"]["default-execution-options"].$get({
+      param: { id },
+    }),
+  );
+}
+
 export async function listThreadPendingInteractions(
   id: string,
   signal?: AbortSignal,
@@ -1229,15 +1235,17 @@ export async function archiveEnvironmentThreads(
   );
 }
 
-export async function getThreadTimelineFeed({
+export async function getThreadTimeline({
   beforeCursor,
   id,
+  includeNestedRows = false,
   segmentLimit,
-}: GetThreadTimelineFeedArgs): Promise<ThreadTimelineFeedResponse> {
-  return request<ThreadTimelineFeedResponse>(
-    apiClient.threads[":id"].timeline.feed.$get({
+}: GetThreadTimelineArgs): Promise<ThreadTimelineResponse> {
+  return request<ThreadTimelineResponse>(
+    apiClient.threads[":id"].timeline.$get({
       param: { id },
       query: {
+        ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
         ...(segmentLimit !== undefined
           ? { segmentLimit: String(segmentLimit) }
           : {}),
@@ -1247,23 +1255,6 @@ export async function getThreadTimelineFeed({
               beforeAnchorId: beforeCursor.anchorId,
             }
           : {}),
-      },
-    }),
-  );
-}
-
-export async function getThreadTimelineRowDetail({
-  detail,
-  id,
-  parts,
-}: GetThreadTimelineRowDetailArgs): Promise<TimelineRowDetailResponse> {
-  return request<TimelineRowDetailResponse>(
-    apiClient.threads[":id"].timeline.rows[":rowKey"].detail.$get({
-      param: { id, rowKey: detail.rowKey },
-      query: {
-        sourceSeqStart: String(detail.source.start),
-        sourceSeqEnd: String(detail.source.end),
-        parts: parts.join(","),
       },
     }),
   );
@@ -1280,26 +1271,6 @@ export async function getThreadTimelineTurnSummaryDetails({
       param: { id },
       query: {
         turnId,
-        sourceSeqStart: String(sourceSeqStart),
-        sourceSeqEnd: String(sourceSeqEnd),
-      },
-    }),
-  );
-}
-
-export async function getThreadTimelineWorkOutputDetail({
-  callId,
-  id,
-  sourceSeqEnd,
-  sourceSeqStart,
-  workKind,
-}: GetThreadTimelineWorkOutputDetailArgs): Promise<TimelineWorkOutputDetailResponse> {
-  return request<TimelineWorkOutputDetailResponse>(
-    apiClient.threads[":id"].timeline["work-output"].$get({
-      param: { id },
-      query: {
-        callId,
-        workKind,
         sourceSeqStart: String(sourceSeqStart),
         sourceSeqEnd: String(sourceSeqEnd),
       },
@@ -1364,40 +1335,72 @@ export async function getEnvironmentDiffFile(
   );
 }
 
-export async function getEnvironmentDiff(
+/**
+ * Encode a {@link WorkspaceDiffTarget} into the flat query shape shared by the
+ * `/diff`, `/diff/files`, and (inside its JSON body) `/diff/patch` routes.
+ */
+function buildEnvironmentDiffTargetQuery(
+  target: WorkspaceDiffTarget,
+): EnvironmentDiffQuery {
+  switch (target.type) {
+    case "uncommitted":
+      return { target: "uncommitted" };
+    case "branch_committed":
+      return {
+        target: "branch_committed",
+        mergeBaseBranch: target.mergeBaseBranch,
+      };
+    case "all":
+      return {
+        target: "all",
+        mergeBaseBranch: target.mergeBaseBranch,
+      };
+    case "commit":
+      return {
+        target: "commit",
+        sha: target.sha,
+      };
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Fetch the diff tab's table of contents (one {@link DiffFileEntry} per changed
+ * file, no patch text).
+ */
+export async function getEnvironmentDiffFiles(
   id: string,
   target: WorkspaceDiffTarget,
-): Promise<EnvironmentDiffResponse> {
-  const query = (() => {
-    switch (target.type) {
-      case "uncommitted":
-        return { target: "uncommitted" as const };
-      case "branch_committed":
-        return {
-          target: "branch_committed" as const,
-          mergeBaseBranch: target.mergeBaseBranch,
-        };
-      case "all":
-        return {
-          target: "all" as const,
-          mergeBaseBranch: target.mergeBaseBranch,
-        };
-      case "commit":
-        return {
-          target: "commit" as const,
-          sha: target.sha,
-        };
-      default: {
-        const _exhaustive: never = target;
-        return _exhaustive;
-      }
-    }
-  })();
-
-  return request<EnvironmentDiffResponse>(
-    apiClient.environments[":id"].diff.$get({
+): Promise<EnvironmentDiffFilesResponse> {
+  return request<EnvironmentDiffFilesResponse>(
+    apiClient.environments[":id"].diff.files.$get({
       param: { id },
-      query,
+      query: buildEnvironmentDiffTargetQuery(target),
+    }),
+  );
+}
+
+interface GetEnvironmentDiffPatchesArgs {
+  target: WorkspaceDiffTarget;
+  paths: string[];
+}
+
+/**
+ * Fetch unified patch text for a subset of changed files. POST (not GET)
+ * because the repeated `paths` array cannot survive flat query parsing; the
+ * server re-derives each file's rename/copy pairing from its own TOC.
+ */
+export async function getEnvironmentDiffPatches(
+  id: string,
+  { target, paths }: GetEnvironmentDiffPatchesArgs,
+): Promise<EnvironmentDiffPatchResponse> {
+  return request<EnvironmentDiffPatchResponse>(
+    apiClient.environments[":id"].diff.patch.$post({
+      param: { id },
+      json: { target, paths },
     }),
   );
 }

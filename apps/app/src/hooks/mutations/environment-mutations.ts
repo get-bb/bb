@@ -52,7 +52,7 @@ export function useArchiveEnvironmentThreads() {
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to archive worktree threads.",
+      errorMessage: "Failed to archive threads.",
     },
     mutationFn: ({
       id,

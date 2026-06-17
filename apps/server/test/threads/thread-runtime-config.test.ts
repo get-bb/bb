@@ -377,6 +377,7 @@ describe("thread runtime config", () => {
       const command = await buildThreadStartCommand(harness.deps, {
         environment,
         execution,
+        fork: null,
         permissionEscalation: "ask",
         input: textInput("hello"),
         projectId: project.id,
@@ -433,6 +434,7 @@ describe("thread runtime config", () => {
         buildThreadStartCommand(harness.deps, {
           environment,
           execution,
+          fork: null,
           permissionEscalation: "ask",
           input: textInput("hello"),
           projectId: project.id,
@@ -582,7 +584,6 @@ describe("thread runtime config", () => {
         {
           thread,
           environment: {
-            cleanupRequestedAt: environment.cleanupRequestedAt,
             hostId: environment.hostId,
             id: environment.id,
             path: environment.path,

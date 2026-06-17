@@ -47,6 +47,7 @@ function createFakeWorkspace(path: string) {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateFingerprint: vi.fn(async () => {
@@ -74,6 +75,12 @@ function createFakeWorkspace(path: string) {
       files: "",
       mergeBaseRef: null,
     })),
+    diffFiles: vi.fn(async () => ({
+      files: [],
+      shortstat: "",
+      mergeBaseRef: null,
+    })),
+    diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => null),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),

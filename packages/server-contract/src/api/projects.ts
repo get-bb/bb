@@ -109,7 +109,11 @@ export const projectBranchesQuerySchema = branchListQuerySchema.extend({
 });
 export type ProjectBranchesQuery = z.infer<typeof projectBranchesQuerySchema>;
 
-export const projectBranchesResponseSchema = projectSourceCheckoutSchema;
+export const projectBranchesResponseSchema = projectSourceCheckoutSchema.extend(
+  {
+    defaultWorktreeBaseBranch: z.string().min(1).nullable(),
+  },
+);
 export type ProjectBranchesResponse = z.infer<
   typeof projectBranchesResponseSchema
 >;
@@ -242,6 +246,7 @@ export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
   /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
   provider: z.string().min(1),
+  offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 

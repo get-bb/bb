@@ -1,10 +1,13 @@
-import { memo, useCallback, type ReactNode } from "react";
-import type { ThreadGitDiffResponse } from "@bb/domain";
+import { useCallback, useEffect, type ReactNode } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
+import {
+  useEnvironmentDiffFiles,
+  useEnvironmentFilePreview,
+} from "@/hooks/queries/environment-queries";
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
@@ -18,15 +21,12 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
-import { describeLifecycleError } from "@/lib/lifecycle-errors";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@/lib/utils";
-import {
-  GitDiffCard,
-  type GitDiffViewOptions,
-  type RequestDiffFileContents,
-} from "../git-diff/GitDiffCard";
-import type { ParsedGitDiffFile } from "../git-diff/git-diff-parsing";
+import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
+import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
+import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
+import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequester";
+import { pendingGitDiffScrollPathAtom } from "./threadSecondaryPanelAtoms";
 import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
@@ -40,42 +40,13 @@ interface ThreadDiffSkeletonProps {
   count?: number;
 }
 
-interface GitDiffFileCardContainerProps {
-  fileDiff: ParsedGitDiffFile;
-  fileKey: string;
-  diffViewOptions: GitDiffViewOptions;
-  filePathRoot?: string | null;
-  isCollapsed: boolean;
-  isRendering: boolean;
-  onOpenFileInEditor?: (path: string) => void;
-  onOpenFilePreview?: (path: string) => void;
-  onRequestFileContents?: RequestDiffFileContents;
-  setGitDiffFileRef: (fileKey: string, element: HTMLDivElement | null) => void;
-  toggleGitDiffFileCollapsed: (fileKey: string) => void;
-}
-
-export interface ParsedGitDiffFileEntry {
-  fileDiff: ParsedGitDiffFile;
-  key: string;
-}
-
 export interface GitDiffTabContentProps {
-  collapsedGitDiffFileKeys: ReadonlySet<string>;
-  currentGitDiff: string;
-  gitDiffError: Error | null;
-  gitDiffUnavailableMessage: string | null;
-  gitDiffViewOptions: GitDiffViewOptions;
-  isParsingGitDiffFiles: boolean;
-  isPreparingGitDiff: boolean;
-  loadingGitDiffFileKeys: ReadonlySet<string>;
+  environmentId?: string;
+  target: WorkspaceDiffTarget | undefined;
+  isDiffPanelActive: boolean;
+  gitDiffViewOptions: Record<string, string | boolean | number>;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
-  onRequestFileContents?: RequestDiffFileContents;
-  parsedGitDiffFileEntries: readonly ParsedGitDiffFileEntry[];
-  queuedGitDiffFileRenderKeys: ReadonlySet<string>;
-  setGitDiffFileRef: (fileKey: string, element: HTMLDivElement | null) => void;
-  threadGitDiff?: ThreadGitDiffResponse;
-  toggleGitDiffFileCollapsed: (fileKey: string) => void;
   workspaceRootPath?: string | null;
 }
 
@@ -145,181 +116,168 @@ function ThreadDiffSkeleton({
   );
 }
 
-const GitDiffFileCardContainer = memo(function GitDiffFileCardContainer({
-  fileKey,
-  fileDiff,
-  diffViewOptions,
-  filePathRoot,
-  onOpenFileInEditor,
-  onOpenFilePreview,
-  isCollapsed,
-  isRendering,
-  setGitDiffFileRef,
-  toggleGitDiffFileCollapsed,
-  onRequestFileContents,
-}: GitDiffFileCardContainerProps) {
-  const handleToggleCollapsed = useCallback(() => {
-    toggleGitDiffFileCollapsed(fileKey);
-  }, [fileKey, toggleGitDiffFileCollapsed]);
-  const handleCardRef = useCallback(
-    (element: HTMLDivElement | null) => {
-      setGitDiffFileRef(fileKey, element);
-    },
-    [fileKey, setGitDiffFileRef],
-  );
-
-  return (
-    <GitDiffCard
-      fileDiff={fileDiff}
-      diffViewOptions={diffViewOptions}
-      filePathRoot={filePathRoot}
-      onOpenFileInEditor={onOpenFileInEditor}
-      onOpenFilePreview={onOpenFilePreview}
-      isCollapsed={isCollapsed}
-      onToggleCollapsed={handleToggleCollapsed}
-      stickyHeader
-      isRendering={isRendering}
-      cardRef={handleCardRef}
-      onRequestFileContents={onRequestFileContents}
-    />
-  );
-});
-
+/**
+ * The diff tab body. Fetches the diff's table of contents
+ * ({@link useEnvironmentDiffFiles}) and renders it through the virtualized
+ * {@link DiffFilesPanel}, which fetches per-file patches on demand as rows
+ * scroll into view. Handles the TOC's loading / empty / `not_applicable`
+ * (`too_many_files`) / `unavailable` states; per-file patch errors surface as
+ * retryable card errors inside the panel.
+ */
 export function GitDiffTabContent({
-  collapsedGitDiffFileKeys,
-  currentGitDiff,
-  gitDiffError,
-  gitDiffUnavailableMessage,
+  environmentId,
+  target,
+  isDiffPanelActive,
   gitDiffViewOptions,
-  isParsingGitDiffFiles,
-  isPreparingGitDiff,
-  loadingGitDiffFileKeys,
   onOpenFileInEditor,
   onOpenFilePreview,
-  onRequestFileContents,
-  parsedGitDiffFileEntries,
-  queuedGitDiffFileRenderKeys,
-  setGitDiffFileRef,
-  threadGitDiff,
-  toggleGitDiffFileCollapsed,
   workspaceRootPath,
 }: GitDiffTabContentProps) {
-  const hasCurrentGitDiff = currentGitDiff.trim().length > 0;
-  const gitDiffLifecycleErrorDescription = gitDiffError
-    ? describeLifecycleError({
-        error: gitDiffError,
-        operation: "load_diff",
-      })
-    : null;
-  const gitDiffErrorMessage =
-    gitDiffLifecycleErrorDescription?.body ??
-    (gitDiffError
-      ? getMutationErrorMessage({
-          error: gitDiffError,
-          fallbackMessage: "Failed to load git diff",
-          lifecycleOperation: "load_diff",
-        })
-      : null);
-  return (
-    <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-      {isPreparingGitDiff ? (
+  const isQueryEnabled =
+    isDiffPanelActive && Boolean(environmentId) && target !== undefined;
+  const {
+    data: diffFilesResponse,
+    dataUpdatedAt: diffFilesUpdatedAt,
+    isLoading: isDiffFilesLoading,
+    isPlaceholderData: isDiffFilesPlaceholder,
+    error: diffFilesError,
+  } = useEnvironmentDiffFiles(environmentId ?? "", {
+    enabled: isQueryEnabled,
+    target,
+  });
+
+  const mergeBaseRef =
+    diffFilesResponse?.outcome === "available"
+      ? diffFilesResponse.mergeBaseRef
+      : null;
+  const diffIdentity = buildGitDiffIdentity({
+    environmentId,
+    mergeBaseRef,
+    target,
+  });
+  const onRequestFileContents = useDiffFileContentsRequester({
+    environmentId,
+    target,
+    mergeBaseRef,
+  });
+
+  // A file opened from the info tab / prompt banner sets this path;
+  // useGitDiffPanelState resets the diff to all-changes so the file is in the
+  // slice, and the panel scrolls it into view, then clears the request here.
+  const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
+  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
+  const clearPendingGitDiffScrollPath = useCallback(
+    () => setPendingGitDiffScrollPath(null),
+    [setPendingGitDiffScrollPath],
+  );
+
+  // Drop per-card UI state belonging to any other diff slice once a new target
+  // / environment resolves, so collapse defaults are re-derived fresh rather
+  // than inheriting a previous diff's choices at a shared path.
+  useEffect(() => {
+    clearDiffFileCardStates(diffIdentity);
+  }, [diffIdentity]);
+
+  const isPreparing =
+    isQueryEnabled &&
+    (target === undefined ||
+      isDiffFilesLoading ||
+      (diffFilesResponse === undefined && diffFilesError === null));
+
+  if (isPreparing) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
         <ThreadDiffSkeleton />
-      ) : gitDiffError ? (
-        <div
-          className={cn(
-            "rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-destructive",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          {gitDiffLifecycleErrorDescription ? (
-            <p className="font-medium">
-              {gitDiffLifecycleErrorDescription.title}
-            </p>
-          ) : null}
-          <p
-            className={
-              gitDiffLifecycleErrorDescription ? "mt-1 leading-5" : undefined
-            }
-          >
-            {gitDiffErrorMessage}
+      </div>
+    );
+  }
+
+  if (diffFilesError) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <div className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">
+          <p>
+            {diffFilesError instanceof Error
+              ? diffFilesError.message
+              : "Failed to load git diff"}
           </p>
         </div>
-      ) : gitDiffUnavailableMessage ? (
-        <div
-          className={cn(
-            "rounded-lg border border-border bg-surface-raised px-3 py-2 text-muted-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          <p className="font-medium text-foreground">Workspace unavailable</p>
-          <p className="mt-1 leading-5">{gitDiffUnavailableMessage}</p>
-        </div>
-      ) : threadGitDiff && hasCurrentGitDiff ? (
-        <>
-          {parsedGitDiffFileEntries.length > 0 ? (
-            <div className="space-y-2">
-              {parsedGitDiffFileEntries.map(({ key, fileDiff }) => {
-                const isCollapsed = collapsedGitDiffFileKeys.has(key);
-                const hasQueuedFileRender =
-                  queuedGitDiffFileRenderKeys.has(key);
-                const isRendering =
-                  !hasQueuedFileRender || loadingGitDiffFileKeys.has(key);
+      </div>
+    );
+  }
 
-                return (
-                  <GitDiffFileCardContainer
-                    key={key}
-                    fileKey={key}
-                    fileDiff={fileDiff}
-                    diffViewOptions={gitDiffViewOptions}
-                    filePathRoot={workspaceRootPath}
-                    onOpenFileInEditor={onOpenFileInEditor}
-                    onOpenFilePreview={onOpenFilePreview}
-                    isCollapsed={isCollapsed}
-                    isRendering={isRendering}
-                    setGitDiffFileRef={setGitDiffFileRef}
-                    toggleGitDiffFileCollapsed={toggleGitDiffFileCollapsed}
-                    onRequestFileContents={onRequestFileContents}
-                  />
-                );
-              })}
-              {isParsingGitDiffFiles ? (
-                <div className="rounded-lg border border-border bg-surface-raised px-3 py-3">
-                  <div className="space-y-1.5">
-                    <Skeleton className="h-3 w-52 max-w-full rounded-sm" />
-                    <Skeleton className="h-3 w-5/6 rounded-sm" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <pre
-              className={cn(
-                "overflow-auto rounded-lg border border-border bg-surface-raised p-3 font-mono text-xs text-foreground",
-                gitDiffViewOptions.overflow === "wrap"
-                  ? "whitespace-pre-wrap break-words"
-                  : "whitespace-pre",
-              )}
-            >
-              {threadGitDiff.diff}
-            </pre>
-          )}
-          {threadGitDiff.truncated ? (
-            <p
-              className={cn(
-                "pt-2 text-muted-foreground",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            >
-              Diff output was truncated for display.
-            </p>
-          ) : null}
-        </>
-      ) : (
+  if (diffFilesResponse === undefined) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
         <EmptyStatePanel className="rounded-lg">
           No diff to display.
         </EmptyStatePanel>
-      )}
-    </div>
+      </div>
+    );
+  }
+
+  if (diffFilesResponse.outcome === "unavailable") {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Workspace unavailable</p>
+          <p className="mt-1 leading-5">
+            {diffFilesResponse.failure.message}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (diffFilesResponse.outcome === "not_applicable") {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+          <p className="mt-1 leading-5">{diffFilesResponse.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (diffFilesResponse.files.length === 0) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <EmptyStatePanel className="rounded-lg">
+          No diff to display.
+        </EmptyStatePanel>
+      </div>
+    );
+  }
+
+  // The panel needs a concrete target to drive its patch fetches; `isQueryEnabled`
+  // above already guarantees both once an `available` outcome resolved.
+  if (!environmentId || target === undefined) {
+    return (
+      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+        <EmptyStatePanel className="rounded-lg">
+          No diff to display.
+        </EmptyStatePanel>
+      </div>
+    );
+  }
+
+  return (
+    <DiffFilesPanel
+      environmentId={environmentId}
+      target={target}
+      diffIdentity={diffIdentity}
+      files={diffFilesResponse.files}
+      initialPatches={diffFilesResponse.initialPatches}
+      filesUpdatedAt={diffFilesUpdatedAt}
+      diffViewOptions={gitDiffViewOptions}
+      filePathRoot={workspaceRootPath}
+      isPlaceholderData={isDiffFilesPlaceholder}
+      scrollToPath={pendingGitDiffScrollPath}
+      onScrolledToPath={clearPendingGitDiffScrollPath}
+      onOpenFileInEditor={onOpenFileInEditor}
+      onOpenFilePreview={onOpenFilePreview}
+      onRequestFileContents={onRequestFileContents}
+    />
   );
 }
 

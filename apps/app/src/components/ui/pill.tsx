@@ -7,6 +7,8 @@ export type PillVariant =
   | "outline"
   | "emphasis";
 
+export type PillSize = "default" | "sm";
+
 const PILL_VARIANT_CLASS: Record<PillVariant, string> = {
   secondary: "border-transparent bg-secondary text-secondary-foreground",
   destructive: "border-transparent bg-destructive text-destructive-foreground",
@@ -14,17 +16,24 @@ const PILL_VARIANT_CLASS: Record<PillVariant, string> = {
   emphasis: "border-transparent bg-foreground text-background",
 };
 
+const PILL_SIZE_CLASS: Record<PillSize, string> = {
+  default: "px-2 py-0.5",
+  sm: "px-1.5 py-0",
+};
+
 export interface PillProps {
   variant: PillVariant;
+  size?: PillSize;
   className?: string;
   children: ReactNode;
 }
 
-export function Pill({ variant, className, children }: PillProps) {
+export function Pill({ variant, size = "default", className, children }: PillProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm border px-1.5 py-0 text-xs leading-none",
+        "inline-flex items-center rounded border text-xs",
+        PILL_SIZE_CLASS[size],
         PILL_VARIANT_CLASS[variant],
         className,
       )}

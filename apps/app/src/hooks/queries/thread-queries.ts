@@ -6,32 +6,29 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
-import type { PendingInteraction } from "@bb/domain";
 import type {
-  AutomationsOverviewResponse,
+  PendingInteraction,
+  ResolvedThreadExecutionOptions,
+  ThreadWithRuntime,
+} from "@bb/domain";
+import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadSearchResponse,
   ThreadWithIncludesResponse,
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
-  ThreadTimelineFeedResponse,
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-  TimelineRowDetailResponse,
+  ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
-  TimelineWorkOutputDetailResponse,
 } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
 import {
-  useProjectListRealtimeSubscription,
   useThreadDetailRealtimeSubscription,
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
@@ -45,7 +42,7 @@ import {
 } from "../cache-owners/thread-list-cache-data";
 import {
   resolveThreadPlaceholder,
-  resolveThreadTimelineFeedPlaceholder,
+  resolveThreadTimelinePlaceholder,
 } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
@@ -53,29 +50,23 @@ import {
 } from "./query-helpers";
 import {
   archivedThreadsListQueryKey,
-  automationsOverviewQueryKey,
   disabledThreadListQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
-  threadSchedulesQueryKey,
   threadSearchQueryKey,
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadHostFilePreviewQueryKey,
-  threadTimelineFeedQueryKey,
-  threadTimelineRowDetailQueryKey,
+  threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
-  threadTimelineWorkOutputDetailQueryKey,
   threadsQueryKey,
-  type ThreadTimelineRowDetailQueryIdentity,
-  type ThreadTimelineWorkOutputDetailQueryIdentity,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  type ArchivedThreadsKindFilter,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
@@ -98,17 +89,15 @@ interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   timelinePrefetch?: boolean;
 }
 
-type ThreadTimelineFeedQueryOptions = QueryOptions;
-
-type ThreadTimelineRowDetailQueryOptions = QueryOptions;
+type ThreadTimelineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
-
-type ThreadTimelineWorkOutputDetailQueryOptions = QueryOptions;
 
 type ThreadQueuedMessagesQueryOptions = QueryOptions;
 
 type ThreadPromptHistoryQueryOptions = QueryOptions;
+
+type ThreadDefaultExecutionOptionsQueryOptions = QueryOptions;
 
 type ThreadPendingInteractionsQueryOptions = QueryOptions;
 
@@ -172,17 +161,6 @@ export interface UseThreadMentionCandidatesArgs {
 
 type ThreadListItem = ThreadListResponse[number];
 
-export interface ThreadTimelineRowDetailRequest {
-  detail: TimelineFeedDetailRef | null;
-  parts: readonly TimelineFeedDetailPart[];
-  threadId: string | undefined;
-}
-
-interface RequestedTimelineRowDetailPartsArgs {
-  detail: TimelineFeedDetailRef | null;
-  parts: readonly TimelineFeedDetailPart[];
-}
-
 interface GetThreadMentionCandidatePlaceholderArgs {
   limit: number;
   queryClient: QueryClient;
@@ -195,36 +173,6 @@ const THREAD_MENTION_CANDIDATE_FILTERS = {
 
 function requireThreadId(id: string, hookName: string): string {
   return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
-}
-
-function requestedTimelineRowDetailParts({
-  detail,
-  parts,
-}: RequestedTimelineRowDetailPartsArgs): TimelineFeedDetailPart[] {
-  if (detail === null) {
-    return [];
-  }
-  const availableParts = new Set(detail.parts);
-  return parts.filter((part) => availableParts.has(part));
-}
-
-function buildThreadTimelineRowDetailQueryIdentity({
-  detail,
-  parts,
-  threadId,
-}: ThreadTimelineRowDetailRequest): ThreadTimelineRowDetailQueryIdentity {
-  return {
-    detail: detail ?? {
-      rowKey: "",
-      source: {
-        start: 0,
-        end: 0,
-      },
-      parts: [],
-    },
-    parts: requestedTimelineRowDetailParts({ detail, parts }),
-    threadId: threadId ?? "",
-  };
 }
 
 function buildThreadSubsetListFilters({
@@ -320,28 +268,14 @@ export function hasThreadSearchableQuery(value: string): boolean {
 
 export interface UseArchivedThreadsFilters {
   projectId: string | undefined;
-  kind: ArchivedThreadsKindFilter;
-}
-
-interface ArchivedThreadsApiFilters {
-  hasParent?: ThreadListFilters["hasParent"];
-}
-
-function archivedThreadsKindToApiFilters(
-  kind: ArchivedThreadsKindFilter,
-): ArchivedThreadsApiFilters {
-  if (kind === "root") return { hasParent: false };
-  if (kind === "child") return { hasParent: true };
-  return {};
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, kind } = filters;
+  const { projectId } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
-  const apiFilters = archivedThreadsKindToApiFilters(kind);
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -353,14 +287,12 @@ export function useArchivedThreads(
   >({
     queryKey: archivedThreadsListQueryKey({
       projectId: projectId ?? "",
-      kind,
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
           archived: true,
-          ...apiFilters,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,
         },
@@ -548,8 +480,21 @@ export function useThread(id: string, options?: QueryOptions) {
     refetchOnMount: options?.refetchOnMount ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
-      getCachedThreadListPlaceholder(queryClient, id),
+      liftThreadListPlaceholder(getCachedThreadListPlaceholder(queryClient, id)),
   });
+}
+
+// A thread primed from the sidebar list cache has no spawn-policy flag (the
+// list response omits it). Conservatively hide the spawn affordance on the
+// placeholder; the real single-thread response, which carries the server-
+// computed value, resolves moments later.
+function liftThreadListPlaceholder(
+  thread: ThreadWithRuntime | undefined,
+): ThreadResponse | undefined {
+  if (thread === undefined) {
+    return undefined;
+  }
+  return { ...thread, canSpawnChild: false };
 }
 
 export function useThreadDetailBootstrap(
@@ -616,6 +561,23 @@ export function useThreadPromptHistory(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
+  });
+}
+
+export function useThreadDefaultExecutionOptions(
+  id: string,
+  options?: ThreadDefaultExecutionOptionsQueryOptions,
+) {
+  return useQuery<ResolvedThreadExecutionOptions | null>({
+    queryKey: threadDefaultExecutionOptionsQueryKey(id),
+    queryFn: () =>
+      api.getThreadDefaultExecutionOptions(
+        requireThreadId(id, "useThreadDefaultExecutionOptions"),
+      ),
+    enabled: (options?.enabled ?? true) && Boolean(id),
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
   });
 }
 
@@ -709,21 +671,6 @@ export function useThreadStorageFilePreview(
   });
 }
 
-export function useAutomationsOverview(options?: QueryOptions) {
-  const enabled = options?.enabled ?? true;
-  useProjectListRealtimeSubscription({ enabled });
-  useThreadListRealtimeSubscription({ enabled });
-
-  return useQuery<AutomationsOverviewResponse>({
-    queryKey: automationsOverviewQueryKey(),
-    queryFn: ({ signal }) => api.listAutomationsOverview(signal),
-    enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
-  });
-}
-
 export function useThreadHostFilePreview(
   id: string,
   environmentId: string | null | undefined,
@@ -750,36 +697,18 @@ export function useThreadHostFilePreview(
   });
 }
 
-export function useThreadSchedules(id: string, options?: QueryOptions) {
-  const enabled = (options?.enabled ?? true) && Boolean(id);
-  useThreadDetailRealtimeSubscription(id, { enabled });
-
-  return useQuery<ThreadSchedule[]>({
-    queryKey: threadSchedulesQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.listThreadSchedules(
-        requireThreadId(id, "useThreadSchedules"),
-        signal,
-      ),
-    enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
-  });
-}
-
-export function useThreadTimelineFeed(
+export function useThreadTimeline(
   id: string,
-  options?: ThreadTimelineFeedQueryOptions,
+  options?: ThreadTimelineQueryOptions,
 ) {
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
-  return useQuery<ThreadTimelineFeedResponse>({
-    queryKey: threadTimelineFeedQueryKey(id),
+  return useQuery<ThreadTimelineResponse>({
+    queryKey: threadTimelineQueryKey(id),
     queryFn: () =>
-      api.getThreadTimelineFeed({
-        id: requireThreadId(id, "useThreadTimelineFeed"),
+      api.getThreadTimeline({
+        id: requireThreadId(id, "useThreadTimeline"),
       }),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -787,38 +716,11 @@ export function useThreadTimelineFeed(
       ? {}
       : { staleTime: options.staleTime }),
     placeholderData: (previousData, previousQuery) =>
-      resolveThreadTimelineFeedPlaceholder(
+      resolveThreadTimelinePlaceholder(
         previousData,
         previousQuery?.queryKey,
         id,
       ),
-  });
-}
-
-export function useThreadTimelineRowDetail(
-  request: ThreadTimelineRowDetailRequest,
-  options?: ThreadTimelineRowDetailQueryOptions,
-) {
-  const identity = buildThreadTimelineRowDetailQueryIdentity(request);
-  return useQuery<TimelineRowDetailResponse>({
-    queryKey: threadTimelineRowDetailQueryKey(identity),
-    queryFn: () =>
-      api.getThreadTimelineRowDetail({
-        detail: identity.detail,
-        id: requireThreadId(identity.threadId, "useThreadTimelineRowDetail"),
-        parts: identity.parts,
-      }),
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(request.threadId) &&
-      request.detail !== null &&
-      identity.parts.length > 0,
-    meta: {
-      errorMessage: "Failed to load timeline row detail.",
-      showErrorToast: false,
-    },
-    refetchOnMount: options?.refetchOnMount ?? true,
-    staleTime: options?.staleTime ?? Infinity,
   });
 }
 
@@ -844,36 +746,6 @@ export function useThreadTimelineTurnSummaryDetails(
       Boolean(identity.turnId),
     meta: {
       errorMessage: "Failed to load turn summary details.",
-      showErrorToast: false,
-    },
-    refetchOnMount: options?.refetchOnMount ?? true,
-    staleTime: options?.staleTime ?? Infinity,
-  });
-}
-
-export function useThreadTimelineWorkOutputDetail(
-  identity: ThreadTimelineWorkOutputDetailQueryIdentity,
-  options?: ThreadTimelineWorkOutputDetailQueryOptions,
-) {
-  return useQuery<TimelineWorkOutputDetailResponse>({
-    queryKey: threadTimelineWorkOutputDetailQueryKey(identity),
-    queryFn: () =>
-      api.getThreadTimelineWorkOutputDetail({
-        callId: identity.callId,
-        id: requireThreadId(
-          identity.threadId,
-          "useThreadTimelineWorkOutputDetail",
-        ),
-        sourceSeqEnd: identity.sourceSeqEnd,
-        sourceSeqStart: identity.sourceSeqStart,
-        workKind: identity.workKind,
-      }),
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(identity.threadId) &&
-      Boolean(identity.callId),
-    meta: {
-      errorMessage: "Failed to load timeline row output.",
       showErrorToast: false,
     },
     refetchOnMount: options?.refetchOnMount ?? true,

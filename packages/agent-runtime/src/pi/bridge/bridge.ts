@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
-import { readFileSync, realpathSync } from "node:fs";
-import { extname } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { dirname, extname } from "node:path";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -13,9 +20,10 @@ import {
   type BridgeToolCallRequest,
 } from "../../shared/bridge-tool-calls.js";
 import type { ThreadEventContextWindowUsage } from "@bb/domain";
-import type {
-  AgentSessionEvent,
-  ContextUsage,
+import {
+  SessionManager,
+  type AgentSessionEvent,
+  type ContextUsage,
 } from "@mariozechner/pi-coding-agent";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import {
@@ -23,7 +31,10 @@ import {
   type PiSdkSessionOptions,
   type ShellEnvOverrides,
 } from "./sdk-session.js";
-import { resolvePiSessionFilePath } from "./session-paths.js";
+import {
+  resolvePiBridgeSessionDir,
+  resolvePiSessionFilePath,
+} from "./session-paths.js";
 import {
   buildDynamicTools,
   type DynamicToolDefinition,
@@ -125,6 +136,32 @@ const piThreadResumeParamsSchema = z
     piInstructionOverrideSchemaOptions,
   );
 
+const piThreadForkParamsSchema = z
+  .object({
+    threadId: z.string(),
+    sourceProviderThreadId: z.string(),
+    cwd: z.string(),
+    additionalSkillPaths: piAdditionalSkillPathsSchema,
+    baseInstructions: z.string().optional(),
+    appendSystemPrompt: z.string().optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
+    model: z.string().optional(),
+    reasoningLevel: piReasoningLevelSchema.optional(),
+    dynamicTools: z
+      .array(
+        z.object({
+          name: z.string(),
+          description: z.string(),
+          inputSchema: z.unknown(),
+        }),
+      )
+      .optional(),
+  })
+  .refine(
+    hasAtMostOnePiInstructionOverride,
+    piInstructionOverrideSchemaOptions,
+  );
+
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -143,6 +180,10 @@ const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/resume"),
     params: piThreadResumeParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/fork"),
+    params: piThreadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
@@ -536,6 +577,9 @@ async function handleRequest(
     case "thread/resume":
       await handleThreadResume(request.id, request.params);
       break;
+    case "thread/fork":
+      await handleThreadFork(request.id, request.params);
+      break;
     case "turn/start":
       await handleTurnStart(request.id, request.params);
       break;
@@ -556,10 +600,14 @@ type ThreadResumeParams = Extract<
   PiCommand,
   { method: "thread/resume" }
 >["params"];
+type ThreadForkParams = Extract<
+  PiCommand,
+  { method: "thread/fork" }
+>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
 type ThreadStopParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
-type PiSessionParams = ThreadStartParams | ThreadResumeParams;
+type PiSessionParams = ThreadStartParams | ThreadResumeParams | ThreadForkParams;
 
 function buildPiSessionParams(
   params: PiSessionParams,
@@ -657,6 +705,75 @@ async function handleThreadResume(
   params: ThreadResumeParams,
 ): Promise<void> {
   await startPiThreadSession({ id, params, threadId: params.threadId });
+}
+
+// Pi keeps no provider-minted session id: provider identity == bb threadId, and
+// the session file is the deterministic path for that threadId. Forking therefore
+// means materializing the source thread's full history at the NEW thread's
+// deterministic path, then launching like thread/start (which SessionManager.open's
+// that path). A dedicated handler — rather than a sessionPath hint on thread/start —
+// keeps "open my own file fresh" (start) distinct from "copy another file's history
+// into my file" (fork). SessionManager.forkFrom picks its own filename inside the
+// bridge session dir, so we rename the forked file onto the new thread's path before
+// startPiThreadSession opens it. The forked header's parentSession still points at
+// the source file, preserving lineage.
+async function handleThreadFork(
+  id: string | number,
+  params: ThreadForkParams,
+): Promise<void> {
+  const sourceSessionFile = resolvePiSessionFilePath({
+    env: process.env,
+    threadId: params.sourceProviderThreadId,
+  });
+  if (!existsSync(sourceSessionFile)) {
+    sendError(
+      id,
+      -32000,
+      `Cannot fork: source pi session file not found for thread "${params.sourceProviderThreadId}"`,
+    );
+    return;
+  }
+
+  const targetSessionFile = resolvePiSessionFilePath({
+    env: process.env,
+    threadId: params.threadId,
+  });
+
+  const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
+  const forked = SessionManager.forkFrom(
+    sourceSessionFile,
+    params.cwd,
+    bridgeSessionDir,
+  );
+  const forkedFile = forked.getSessionFile();
+  if (!forkedFile) {
+    sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
+    return;
+  }
+  try {
+    const targetDir = dirname(targetSessionFile);
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
+    }
+    if (forkedFile !== targetSessionFile) {
+      renameSync(forkedFile, targetSessionFile);
+    }
+  } catch (error) {
+    // forkFrom already wrote the forked session to its own filename; if moving
+    // it onto the target path fails, that file would be orphaned in the bridge
+    // session dir. Best-effort remove it before surfacing the error.
+    rmSync(forkedFile, { force: true });
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
+    return;
+  }
+
+  await startPiThreadSession({ id, params, threadId: params.threadId });
+  send({
+    jsonrpc: "2.0",
+    method: "thread/identity",
+    params: { threadId: params.threadId, providerThreadId: params.threadId },
+  });
 }
 
 async function handleTurnStart(

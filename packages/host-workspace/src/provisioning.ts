@@ -260,8 +260,6 @@ export async function createWorktree(
     args.targetPath,
     baseBranch,
   ];
-  const commandText = `git ${gitArgs.join(" ")}`;
-
   const worktreeStartedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -270,7 +268,6 @@ export async function createWorktree(
     status: "started",
     startedAt: worktreeStartedAt,
   });
-  emitOutput(args.onProgress, "git-worktree-command", commandText);
   let worktreeCreated = false;
   try {
     const result = await runGitWithWorktreeMetadataLock(gitArgs, {
@@ -333,7 +330,6 @@ export async function runSetupScript(
     platform: process.platform,
     scriptPath,
   });
-  const commandText = command.text;
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -342,7 +338,6 @@ export async function runSetupScript(
     status: "started",
     startedAt,
   });
-  emitOutput(args.onProgress, "setup-command", commandText);
 
   const { timeoutMs } = args;
   const child = spawnPortableOutputProcess({

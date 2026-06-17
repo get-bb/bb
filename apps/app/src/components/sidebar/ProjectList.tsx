@@ -83,6 +83,7 @@ import {
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
@@ -116,7 +117,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenAutomations?: () => void;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -201,6 +201,7 @@ interface TopLevelSidebarSectionProps {
   children: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  actionsMobileAlways?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
@@ -228,12 +229,26 @@ function hasSameStringList(
   return left.every((sectionId, index) => sectionId === right[index]);
 }
 
+function removeCollapsedIds<T extends string>(
+  current: T[],
+  idsToRemove: ReadonlySet<string>,
+): T[] {
+  if (idsToRemove.size === 0) {
+    return current;
+  }
+  let removed = false;
+  const next = current.filter((id) => {
+    if (!idsToRemove.has(id)) {
+      return true;
+    }
+    removed = true;
+    return false;
+  });
+  return removed ? next : current;
+}
+
 function isSidebarSectionId(value: string): value is SidebarSectionId {
-  return (
-    value === "pinned" ||
-    value === "projects" ||
-    value === "threads"
-  );
+  return value === "pinned" || value === "projects" || value === "threads";
 }
 
 function isCollapsibleSidebarSectionId(
@@ -417,6 +432,7 @@ function TopLevelSidebarSection({
   children,
   actions,
   actionsAlwaysVisible = false,
+  actionsMobileAlways = false,
   collapseControl,
   dragBindings,
   sectionRef,
@@ -498,8 +514,8 @@ function TopLevelSidebarSection({
                   : `Collapse ${label}`
               }
               className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
+                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -519,6 +535,11 @@ function TopLevelSidebarSection({
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
             <span
+              data-sidebar-hover-actions-mobile={
+                actionsMobileAlways
+                  ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                  : undefined
+              }
               className={cn(
                 "inline-flex shrink-0 items-center",
                 !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -558,10 +579,10 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenAutomations,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
+  const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
   const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
   const threadSearchTitle = `Search threads - ${threadSearchShortcut}`;
   const handleSearchClose = useCallback(() => {
@@ -616,6 +637,7 @@ export function ProjectListActionButtons({
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
+            title={newChatTitle}
           >
             <Icon name="MessageSquarePlus" />
             <span className="min-w-0 flex-1 truncate text-left">
@@ -635,23 +657,6 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={PROJECT_LIST_ACTION_BUTTON_CLASS}
-          onClick={onOpenAutomations}
-          title="Automations"
-        >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
-          <span
-            className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
-            aria-hidden="true"
-          />
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -700,6 +705,13 @@ function ProjectListComponent({
     namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
     return namesById;
   }, [sidebarNavigation]);
+  const threadById = useMemo(() => {
+    const map = new Map<string, ThreadListEntry>();
+    for (const thread of threads) {
+      map.set(thread.id, thread);
+    }
+    return map;
+  }, [threads]);
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -891,6 +903,75 @@ function ProjectListComponent({
       }),
     [hasPinnedSection, sidebarSectionOrder],
   );
+  useEffect(() => {
+    if (!selectedThreadId) {
+      return;
+    }
+
+    const selectedThread = threadById.get(selectedThreadId);
+    if (!selectedThread) {
+      return;
+    }
+    if (
+      (selectedThread.originKind ?? selectedThread.childOrigin) === "side-chat"
+    ) {
+      return;
+    }
+
+    const threadIdsToExpand = new Set<string>();
+    const environmentIdsToExpand = new Set<string>();
+    let currentThread: ThreadListEntry | undefined = selectedThread;
+    let remainingHops = threadById.size;
+    while (currentThread && remainingHops > 0) {
+      if (currentThread.environmentId !== null) {
+        environmentIdsToExpand.add(currentThread.environmentId);
+      }
+      const parentThreadId = currentThread.parentThreadId;
+      if (parentThreadId === null) {
+        break;
+      }
+      const parentThread = threadById.get(parentThreadId);
+      if (!parentThread) {
+        break;
+      }
+      threadIdsToExpand.add(parentThread.id);
+      currentThread = parentThread;
+      remainingHops -= 1;
+    }
+
+    setCollapsedThreadIdList((current) =>
+      removeCollapsedIds(current, threadIdsToExpand),
+    );
+    setCollapsedEnvironmentIdList((current) =>
+      removeCollapsedIds(current, environmentIdsToExpand),
+    );
+
+    if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
+      return;
+    }
+
+    if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
+      setCollapsedSidebarSectionIdList((current) =>
+        removeCollapsedIds(current, new Set(["threads"])),
+      );
+      return;
+    }
+
+    setCollapsedProjectIdList((current) =>
+      removeCollapsedIds(current, new Set([selectedThread.projectId])),
+    );
+    setCollapsedSidebarSectionIdList((current) =>
+      removeCollapsedIds(current, new Set(["projects"])),
+    );
+  }, [
+    pinnedSidebarState.effectivePinnedThreadIds,
+    selectedThreadId,
+    setCollapsedEnvironmentIdList,
+    setCollapsedProjectIdList,
+    setCollapsedSidebarSectionIdList,
+    setCollapsedThreadIdList,
+    threadById,
+  ]);
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
 
@@ -1169,6 +1250,7 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),
                     onToggleCollapsed: () =>

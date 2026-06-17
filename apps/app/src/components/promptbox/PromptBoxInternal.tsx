@@ -2,11 +2,8 @@ import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptTextMention } from "@bb/domain";
 import Placeholder from "@tiptap/extension-placeholder";
-import {
-  EditorContent,
-  useEditor,
-  type Editor,
-} from "@tiptap/react";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   useCallback,
@@ -31,7 +28,9 @@ import type {
   TypeaheadMenuState,
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
+import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
+import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -56,6 +55,7 @@ import {
 } from "./editor/prompt-mention-link";
 import { PromptMentionExtension } from "./editor/prompt-mention-extension";
 import {
+  promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
@@ -109,6 +109,20 @@ const RICH_PASTE_IGNORED_TAGS = new Set([
   "STYLE",
   "TITLE",
 ]);
+
+function hasWhitespaceAfterPosition(
+  doc: ProseMirrorNode,
+  position: number,
+): boolean {
+  const nextNode = doc.resolve(position).nodeAfter;
+  if (!nextNode) {
+    return false;
+  }
+  if (nextNode.isText) {
+    return /^\s/u.test(nextNode.text ?? "");
+  }
+  return nextNode.type.name === "hardBreak";
+}
 
 type ZenModeLayout = "thread" | "root-compose";
 
@@ -169,6 +183,9 @@ export interface TypeaheadCommandConfig {
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMore: () => void;
   /** Called whenever the active command query changes; null when no command trigger is active. */
   onQueryChange: (query: string | null) => void;
 }
@@ -195,6 +212,9 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   suggestions: [],
   isLoading: false,
   isError: false,
+  hasMore: false,
+  isLoadingMore: false,
+  loadMore: () => {},
   onQueryChange: () => {},
 };
 
@@ -277,6 +297,13 @@ export interface PromptBoxInternalProps {
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
   voice?: PromptVoiceConfig;
   promptBoxRef?: Ref<PromptBoxHandle>;
+  /**
+   * Changing this re-focuses the editor caret to the end. Used by explicit
+   * draft-restore actions (e.g. editing a queued message) so the user can type
+   * immediately. Unlike the scope autofocus it fires even on coarse pointers,
+   * since it follows a deliberate click.
+   */
+  focusEndKey?: string | number;
 }
 
 interface DismissedTriggerRange {
@@ -349,9 +376,7 @@ function promptEditorValueFromPlainText(text: string): PromptEditorValue {
   return { text: normalizePastedPlainText(text), mentions: [] };
 }
 
-function promptEditorValueFromRichHtml(
-  html: string,
-): ParsedRichClipboardValue {
+function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
   let hasMentions = false;
@@ -563,6 +588,7 @@ export function PromptBoxInternal({
   history,
   voice,
   promptBoxRef,
+  focusEndKey,
 }: PromptBoxInternalProps) {
   const {
     isSubmitting = false,
@@ -712,10 +738,7 @@ export function PromptBoxInternal({
     if (commandTriggerChar === null) {
       return [MENTION_TRIGGER];
     }
-    return [
-      MENTION_TRIGGER,
-      { char: commandTriggerChar, kind: "command" },
-    ];
+    return [MENTION_TRIGGER, { char: commandTriggerChar, kind: "command" }];
   }, [commandTriggerChar]);
 
   // Fan the active query out to the matching data source and null the other,
@@ -792,7 +815,7 @@ export function PromptBoxInternal({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        blockquote: false,
+        blockquote: {},
         bold: false,
         bulletList: false,
         code: false,
@@ -968,6 +991,24 @@ export function PromptBoxInternal({
     value,
   ]);
 
+  // An explicit draft-restore action (e.g. editing a queued message) bumps
+  // `focusEndKey` so the caret lands at the END of the restored text. It is a
+  // passive effect defined AFTER the content-sync effect above, so React's
+  // definition-order guarantee runs it once that effect has applied
+  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
+  // an effect ordered before content-sync, would focus("end") against the
+  // pre-edit content and setContent would then map the caret to the start.)
+  // Not gated by the coarse-pointer guard since it follows a deliberate click.
+  const lastFocusEndKeyRef = useRef(focusEndKey);
+  useEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastFocusEndKeyRef.current) return;
+    if (!editor) return;
+    lastFocusEndKeyRef.current = focusEndKey;
+    editor.commands.focus("end");
+    scheduleRevealEditorSelection();
+  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
+
   useEffect(() => {
     if (zenModeResetKey === undefined) return;
     if (resolvedZenModeStorageKey) {
@@ -1070,6 +1111,16 @@ export function PromptBoxInternal({
   const hasSubmittableInput = trimmedValue.length > 0 || hasAttachments;
 
   const activeTriggerKind = activeTrigger?.kind ?? null;
+  const commandHasMore = typeahead.command.hasMore;
+  const commandIsLoadingMore = typeahead.command.isLoadingMore;
+  const loadMoreCommands = typeahead.command.loadMore;
+  const canLoadMoreCommands =
+    activeTriggerKind === "command" &&
+    canLoadMoreCommandResults({
+      hasMore: commandHasMore,
+      isError: commandError,
+      isLoadingMore: commandIsLoadingMore,
+    });
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
   // handler's useCallback identity is stable across renders.
@@ -1123,6 +1174,26 @@ export function PromptBoxInternal({
     }
   }, [activeSuggestions.length, selectedIndex]);
 
+  useEffect(() => {
+    if (
+      activeTriggerKind !== "command" ||
+      !canLoadMoreCommands ||
+      activeSuggestions.length === 0
+    ) {
+      return;
+    }
+    const prefetchIndex = Math.max(0, activeSuggestions.length - 3);
+    if (selectedIndex >= prefetchIndex) {
+      loadMoreCommands();
+    }
+  }, [
+    activeSuggestions.length,
+    activeTriggerKind,
+    canLoadMoreCommands,
+    loadMoreCommands,
+    selectedIndex,
+  ]);
+
   // After applying any suggestion the editor content changed outside React's
   // controlled flow; emit the controlled change, then re-focus, re-sync the
   // trigger state, and reveal the caret on the next frame. Shared by the
@@ -1155,13 +1226,12 @@ export function PromptBoxInternal({
 
       const serializedText = `@${item.replacement.trim()}`;
       const resource = promptMentionResourceFromSuggestion(item);
-      const followingText = currentEditor.state.doc.textBetween(
+      const trailingText = hasWhitespaceAfterPosition(
+        currentEditor.state.doc,
         activeTrigger.to,
-        Math.min(activeTrigger.to + 1, currentEditor.state.doc.content.size),
-        "\n",
-        "\n",
-      );
-      const trailingText = /^\s/u.test(followingText) ? "" : " ";
+      )
+        ? ""
+        : " ";
       triggerKeyRef.current = "";
       // Mention dismissed-range basis is node width: trigger char + the 1-wide
       // pill atom in the post-replacement doc (`from` → `from + 2`). Do not
@@ -1205,17 +1275,27 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
+      if (activeTrigger.char !== "/" && activeTrigger.char !== "$") return;
 
-      // Commands insert the provider-native token as PLAIN TEXT (no pill):
-      // `<char><name> ` with a trailing space, caret after it.
-      const tokenText = `${activeTrigger.char}${item.name} `;
+      const serializedText = `${activeTrigger.char}${item.name}`;
+      const resource = promptCommandResourceFromSuggestion({
+        suggestion: item,
+        trigger: activeTrigger.char,
+      });
+      const trailingText = hasWhitespaceAfterPosition(
+        currentEditor.state.doc,
+        activeTrigger.to,
+      )
+        ? ""
+        : " ";
       triggerKeyRef.current = "";
-      // Command dismissed-range is the typed token span (variable length), so an
-      // Escape after applying still suppresses re-trigger across the whole
-      // inserted token while the caret stays inside it.
+      // Argument hints render as placeholder decorations, not editor text.
       dismissedTriggerRef.current = {
         start: activeTrigger.from,
-        end: activeTrigger.from + tokenText.length,
+        end: commandPillDismissedRangeEnd({
+          triggerPosition: activeTrigger.from,
+          trailingText,
+        }),
         hasLeftRange: false,
       };
       isRestoringAppliedMentionRef.current = true;
@@ -1229,7 +1309,16 @@ export function PromptBoxInternal({
           .chain()
           .focus()
           .deleteRange({ from: activeTrigger.from, to: activeTrigger.to })
-          .insertContent(tokenText)
+          .insertContent([
+            {
+              type: "mention",
+              attrs: {
+                resource,
+                serializedText,
+              },
+            },
+            ...(trailingText ? [{ type: "text", text: trailingText }] : []),
+          ])
           .run();
       } finally {
         skipEditorChangeRef.current = false;
@@ -1472,6 +1561,17 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
+          if (
+            activeTriggerKind === "command" &&
+            !commandError &&
+            selectedIndex >= activeSuggestions.length - 1 &&
+            (commandHasMore || commandIsLoadingMore)
+          ) {
+            if (canLoadMoreCommands) {
+              loadMoreCommands();
+            }
+            return true;
+          }
           setSelectedIndex((prev) => (prev + 1) % activeSuggestions.length);
           return true;
         }
@@ -1586,11 +1686,17 @@ export function PromptBoxInternal({
       activeHistoryIndex,
       activeSuggestions,
       activeTrigger,
+      activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
+      canLoadMoreCommands,
       canSubmitWithEnterKey,
+      commandError,
+      commandHasMore,
+      commandIsLoadingMore,
       history,
       isZenMode,
+      loadMoreCommands,
       onCommandQueryChange,
       onMentionQueryChange,
       onModifierSubmit,
@@ -1703,6 +1809,7 @@ export function PromptBoxInternal({
                 "h-full min-h-full",
                 "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
+                "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
@@ -1739,6 +1846,9 @@ export function PromptBoxInternal({
             state={typeaheadMenuState}
             selectedIndex={selectedIndex}
             onApply={applyTrigger}
+            onCommandLoadMore={
+              canLoadMoreCommands ? loadMoreCommands : undefined
+            }
           />
         </div>
       ) : null}

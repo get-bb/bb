@@ -12,6 +12,11 @@
       "source": "./src/thread-status.ts",
       "types": "./src/thread-status.ts",
       "default": "./src/thread-status.ts"
+    },
+    "./thread-child-origin": {
+      "source": "./src/thread-child-origin.ts",
+      "types": "./src/thread-child-origin.ts",
+      "default": "./src/thread-child-origin.ts"
     }
   },
   "types": "./src/index.ts",

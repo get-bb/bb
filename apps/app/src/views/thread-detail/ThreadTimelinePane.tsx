@@ -5,8 +5,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
-import type { TimelineFeedRow } from "@bb/server-contract";
+import type {
+  ActiveThinking,
+  ThreadChildOrigin,
+  ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
+import type { TimelineRow } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
@@ -15,6 +19,10 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   ThreadTimelineRows,
+  type ThreadTimelineForkMessageHandler,
+  type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSelectionAddToChatHandler,
+  type ThreadTimelineSelectionReplyInSideChatHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineUnreadDividerPlacement,
@@ -29,6 +37,8 @@ import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 
 interface ThreadTimelinePaneProps {
   activeThinking: ActiveThinking | null;
+  canSpawnChild: boolean;
+  threadChildOrigin: ThreadChildOrigin | null;
   footer: ReactNode;
   hasOlderTimelineRows: boolean;
   header: ReactNode;
@@ -36,7 +46,11 @@ interface ThreadTimelinePaneProps {
   isLoadingOlderTimelineRows: boolean;
   isThreadTimelinePending: boolean;
   timelineError: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onForkMessage?: ThreadTimelineForkMessageHandler;
+  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
+  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
+  onLoadOlderRows: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -44,8 +58,9 @@ interface ThreadTimelinePaneProps {
   resolveMentionLink: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
-  stopRequestedAt: number | null;
-  timelineRows: readonly TimelineFeedRow[];
+  isStopping: boolean;
+  stoppingAnchorAt: number;
+  timelineRows: TimelineRow[];
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll: boolean;
@@ -59,75 +74,70 @@ export interface HostConnectionNotice {
 }
 
 interface BuildStopRequestedTimelineRowArgs {
-  stopRequestedAt: number;
+  stoppingAnchorAt: number;
   threadId: string;
 }
 
 interface UseTimelineRowsWithPendingStopArgs {
-  rows: readonly TimelineFeedRow[];
-  stopRequestedAt: number | null;
+  rows: TimelineRow[];
+  isStopping: boolean;
+  stoppingAnchorAt: number;
   threadId: string;
 }
 
 function buildStopRequestedTimelineRow({
-  stopRequestedAt,
+  stoppingAnchorAt,
   threadId,
-}: BuildStopRequestedTimelineRowArgs): TimelineFeedRow {
+}: BuildStopRequestedTimelineRowArgs): TimelineRow {
   return {
-    key: `pending-stop_${threadId}_${stopRequestedAt}`,
+    id: `${threadId}:pending-stop`,
+    threadId,
     turnId: null,
-    source: {
-      start: 0,
-      end: 0,
-    },
-    startedAt: stopRequestedAt,
-    createdAt: stopRequestedAt,
-    detail: null,
+    sourceSeqStart: 0,
+    sourceSeqEnd: 0,
+    startedAt: stoppingAnchorAt,
+    createdAt: stoppingAnchorAt,
     kind: "system",
     systemKind: "operation",
     operationKind: "thread-interrupted",
     title: "Stop requested",
-    detailPreview: null,
+    detail: null,
     status: "pending",
     completedAt: null,
   };
 }
 
-function hasConfirmedStopRow(
-  rows: readonly TimelineFeedRow[],
-  stopRequestedAt: number,
-): boolean {
+function hasConfirmedStopRow(rows: readonly TimelineRow[]): boolean {
   return rows.some(
     (row) =>
       row.kind === "system" &&
       row.systemKind === "operation" &&
-      row.operationKind === "thread-interrupted" &&
-      row.createdAt >= stopRequestedAt,
+      row.operationKind === "thread-interrupted",
   );
 }
 
 function useTimelineRowsWithPendingStop({
   rows,
-  stopRequestedAt,
+  isStopping,
+  stoppingAnchorAt,
   threadId,
-}: UseTimelineRowsWithPendingStopArgs): readonly TimelineFeedRow[] {
+}: UseTimelineRowsWithPendingStopArgs): TimelineRow[] {
   return useMemo(() => {
-    if (
-      stopRequestedAt === null ||
-      hasConfirmedStopRow(rows, stopRequestedAt)
-    ) {
+    if (!isStopping || hasConfirmedStopRow(rows)) {
       return rows;
     }
 
     return [
       ...rows,
-      buildStopRequestedTimelineRow({ stopRequestedAt, threadId }),
+      buildStopRequestedTimelineRow({ stoppingAnchorAt, threadId }),
     ];
-  }, [rows, stopRequestedAt, threadId]);
+  }, [rows, isStopping, stoppingAnchorAt, threadId]);
 }
 
 export function ThreadTimelinePane({
   activeThinking,
+  canSpawnChild,
+  threadChildOrigin,
   footer,
   hasOlderTimelineRows,
   header,
@@ -135,6 +145,10 @@ export function ThreadTimelinePane({
   isLoadingOlderTimelineRows,
   isThreadTimelinePending,
   timelineError,
+  onForkMessage,
+  onSideChatMessage,
+  onSelectionAddToChat,
+  onSelectionReplyInSideChat,
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
@@ -143,7 +157,8 @@ export function ThreadTimelinePane({
   resolveMentionLink,
   showOngoingIndicator,
   ongoingIndicatorLabel,
-  stopRequestedAt,
+  isStopping,
+  stoppingAnchorAt,
   timelineRows,
   threadId,
   threadRuntimeDisplayStatus,
@@ -165,16 +180,21 @@ export function ThreadTimelinePane({
       : (ongoingIndicatorLabel ?? "working");
   const timelineRowsWithPendingStop = useTimelineRowsWithPendingStop({
     rows: timelineRows,
-    stopRequestedAt,
+    isStopping,
+    stoppingAnchorAt,
     threadId,
   });
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-clip">
+    <div
+      data-thread-window=""
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
+    >
       {header}
       <PageShell
         key={threadId}
         scrollBehavior="bottom-anchor"
+        scrollAnchorThreadId={threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
@@ -198,6 +218,12 @@ export function ThreadTimelinePane({
             />
           ) : timelineRowsWithPendingStop.length > 0 ? (
             <ThreadTimelineRows
+              canSpawnChild={canSpawnChild}
+              threadChildOrigin={threadChildOrigin}
+              onForkMessage={onForkMessage}
+              onSideChatMessage={onSideChatMessage}
+              onSelectionAddToChat={onSelectionAddToChat}
+              onSelectionReplyInSideChat={onSelectionReplyInSideChat}
               onOpenLink={onOpenLink}
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}
@@ -205,7 +231,7 @@ export function ThreadTimelinePane({
               resolveMentionLink={resolveMentionLink}
               resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
               themeType={preferredTheme}
-              timelineFeedRows={timelineRowsWithPendingStop}
+              timelineRows={timelineRowsWithPendingStop}
               threadId={threadId}
               threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
               unreadDividerAutoScroll={unreadDividerAutoScroll}
@@ -242,15 +268,12 @@ function LoadOlderMessagesButton({
   onLoadOlderRows,
 }: {
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onLoadOlderRows: () => void;
 }) {
   const bottomAnchor = useBottomAnchoredScroll();
   const handleClick = useCallback(() => {
-    if (bottomAnchor) {
-      void bottomAnchor.preserveScrollAnchorDuring(onLoadOlderRows);
-      return;
-    }
-    void onLoadOlderRows();
+    bottomAnchor?.captureScrollAnchor();
+    onLoadOlderRows();
   }, [bottomAnchor, onLoadOlderRows]);
 
   return (

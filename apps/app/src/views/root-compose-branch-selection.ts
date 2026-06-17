@@ -1,34 +1,9 @@
-import { useAtom } from "jotai";
-import { atomFamily } from "jotai-family";
-import { atomWithStorage } from "jotai/utils";
-import { useCallback, useMemo, useState } from "react";
-import { rawStringLocalStorage } from "@/lib/browser-storage";
-import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
+import { useCallback, useState } from "react";
 import type { RootComposeSelectedBranch } from "./root-compose-thread-environment";
 
-const WORKTREE_BASE_BRANCH_STORAGE_KEY = "bb.promptbox.worktree-base-branch";
-const INACTIVE_WORKTREE_BASE_BRANCH_STORAGE_KEY =
-  "bb.promptbox.worktree-base-branch.inactive";
-
-interface BranchSelectionScope {
-  environmentValue: string;
-  projectId: string;
-}
-
-interface BranchSelectionScopeArgs {
+export interface BranchSelectionScopeArgs {
   environmentValue: string;
   projectId: string | undefined;
-}
-
-interface ScopedSelectedBranch {
-  branch: RootComposeSelectedBranch;
-  scope: BranchSelectionScope;
-}
-
-type PersistedBranchNameSetter = (value: string) => void;
-
-export interface UseScopedBranchSelectionArgs extends BranchSelectionScopeArgs {
-  rememberSelection: boolean;
 }
 
 export interface UseScopedBranchSelectionResult {
@@ -39,232 +14,90 @@ export interface UseScopedBranchSelectionResult {
   selectedBranch: RootComposeSelectedBranch | null;
 }
 
-export interface ResolveSelectedBranchArgs {
-  rememberedBranchName: string;
-  rememberSelection: boolean;
-  selectedBranch: RootComposeSelectedBranch | null;
-}
-
-interface PersistedWorktreeBaseBranchSelection {
-  setValue: PersistedBranchNameSetter;
-  value: string;
-}
-
-interface WorktreeBaseBranchStorageKeyArgs {
-  environmentValue: string;
-  projectId: string;
-}
-
-const worktreeBaseBranchAtomFamily = atomFamily((storageKey: string) =>
-  atomWithStorage<string>(storageKey, "", rawStringLocalStorage, {
-    getOnInit: true,
-  }),
-);
-
-function getWorktreeBaseBranchStorageKey({
-  environmentValue,
-  projectId,
-}: WorktreeBaseBranchStorageKeyArgs): string {
-  return getProjectScopedStorageKey(
-    `${WORKTREE_BASE_BRANCH_STORAGE_KEY}.${encodeURIComponent(
-      environmentValue.trim(),
-    )}`,
-    projectId,
-  );
-}
-
-function resolveBranchSelectionScope(
+// Identifies the picker's active scope. A null key means there is no usable
+// scope yet (missing project or environment), so branch picks are inert.
+export function getBranchSelectionScopeKey(
   args: BranchSelectionScopeArgs,
-): BranchSelectionScope | null {
+): string | null {
   if (!args.projectId || !args.environmentValue) {
     return null;
   }
-
-  return {
-    environmentValue: args.environmentValue,
-    projectId: args.projectId,
-  };
+  // NUL separates the parts so distinct (project, environment) pairs can never
+  // collide into the same key.
+  return `${args.projectId}\u0000${args.environmentValue}`;
 }
 
-function matchesBranchSelectionScope(
-  left: BranchSelectionScope | undefined,
-  right: BranchSelectionScope | null,
-) {
-  return (
-    left !== undefined &&
-    right !== null &&
-    left.projectId === right.projectId &&
-    left.environmentValue === right.environmentValue
-  );
-}
-
-function usePersistedWorktreeBaseBranchSelection(
-  scope: BranchSelectionScope | null,
-): PersistedWorktreeBaseBranchSelection {
-  const storageKey = useMemo(
-    () =>
-      scope
-        ? getWorktreeBaseBranchStorageKey(scope)
-        : INACTIVE_WORKTREE_BASE_BRANCH_STORAGE_KEY,
-    [scope],
-  );
-  const [value, setAtomValue] = useAtom(
-    worktreeBaseBranchAtomFamily(storageKey),
-  );
-  const setValue = useCallback(
-    (nextValue: string) => {
-      if (!scope) {
-        return;
-      }
-
-      setAtomValue(nextValue);
-    },
-    [scope, setAtomValue],
-  );
-
-  return {
-    setValue,
-    value: scope ? value : "",
-  };
-}
-
-export function resolveSelectedBranch({
-  rememberedBranchName,
-  rememberSelection,
-  selectedBranch,
-}: ResolveSelectedBranchArgs): RootComposeSelectedBranch | null {
-  if (selectedBranch) {
-    return selectedBranch;
-  }
-
-  if (!rememberSelection || rememberedBranchName.length === 0) {
-    return null;
-  }
-
-  return {
-    name: rememberedBranchName,
-    isNew: false,
-  };
+// Carries a picked branch only while the scope is unchanged. Switching
+// environment mode (e.g. New Worktree -> Working Locally) or project changes
+// the scope key and drops the pick, so re-entering a mode re-seeds from its
+// fresh default instead of restoring a stale selection.
+export function carryBranchSelectionAcrossScope(args: {
+  previousScopeKey: string | null;
+  currentScopeKey: string | null;
+  selectedBranch: RootComposeSelectedBranch | null;
+}): RootComposeSelectedBranch | null {
+  return args.currentScopeKey === args.previousScopeKey
+    ? args.selectedBranch
+    : null;
 }
 
 export function useScopedBranchSelection(
-  args: UseScopedBranchSelectionArgs,
+  args: BranchSelectionScopeArgs,
 ): UseScopedBranchSelectionResult {
+  const scopeKey = getBranchSelectionScopeKey(args);
+  const scopeUsable = scopeKey !== null;
   const [selectedBranchState, setSelectedBranchState] =
-    useState<ScopedSelectedBranch | null>(null);
-  const rememberSelection = args.rememberSelection;
-  const scope = useMemo(
-    () =>
-      resolveBranchSelectionScope({
-        environmentValue: args.environmentValue,
-        projectId: args.projectId,
-      }),
-    [args.environmentValue, args.projectId],
+    useState<RootComposeSelectedBranch | null>(null);
+  const [trackedScopeKey, setTrackedScopeKey] = useState<string | null>(
+    scopeKey,
   );
-  const { setValue: setRememberedBranchName, value: rememberedBranchName } =
-    usePersistedWorktreeBaseBranchSelection(
-      rememberSelection ? scope : null,
-    );
-  const selectedBranchFromState =
-    selectedBranchState !== null &&
-    matchesBranchSelectionScope(selectedBranchState.scope, scope)
-      ? selectedBranchState.branch
-      : null;
-  const selectedBranch = resolveSelectedBranch({
-    rememberedBranchName,
-    rememberSelection,
-    selectedBranch: selectedBranchFromState,
+
+  const selectedBranch = carryBranchSelectionAcrossScope({
+    previousScopeKey: trackedScopeKey,
+    currentScopeKey: scopeKey,
+    selectedBranch: selectedBranchState,
   });
 
-  const rememberBranchName = useCallback(
-    (name: string) => {
-      if (rememberSelection) {
-        setRememberedBranchName(name);
-      }
-    },
-    [rememberSelection, setRememberedBranchName],
-  );
+  // Reset during render (not in an effect) so a stale pick never paints for a
+  // frame before clearing when the scope changes.
+  if (trackedScopeKey !== scopeKey) {
+    setTrackedScopeKey(scopeKey);
+    if (selectedBranchState !== null) {
+      setSelectedBranchState(null);
+    }
+  }
 
   const onBranchChange = useCallback(
     (name: string) => {
-      if (!scope) {
-        return;
-      }
-
-      rememberBranchName(name);
-      setSelectedBranchState({
-        scope,
-        branch: {
-          name,
-          isNew: false,
-        },
-      });
+      if (!scopeUsable) return;
+      setSelectedBranchState({ name, isNew: false });
     },
-    [rememberBranchName, scope],
+    [scopeUsable],
   );
 
   const onCreateBranch = useCallback(
     (currentBranch: string | null) => {
-      if (!scope) {
-        return;
-      }
-
+      if (!scopeUsable) return;
       const branchName = selectedBranch?.name ?? currentBranch;
-      if (!branchName) {
-        if (rememberSelection) {
-          setRememberedBranchName("");
-        }
-        setSelectedBranchState((previous) =>
-          matchesBranchSelectionScope(previous?.scope, scope) ? null : previous,
-        );
-        return;
-      }
-
-      rememberBranchName(branchName);
-      setSelectedBranchState({
-        scope,
-        branch: {
-          name: branchName,
-          isNew: true,
-        },
-      });
+      setSelectedBranchState(
+        branchName ? { name: branchName, isNew: true } : null,
+      );
     },
-    [
-      rememberBranchName,
-      rememberSelection,
-      scope,
-      selectedBranch?.name,
-      setRememberedBranchName,
-    ],
+    [scopeUsable, selectedBranch?.name],
   );
 
   const onCreateBranchFrom = useCallback(
     (name: string) => {
-      if (!scope) {
-        return;
-      }
-
-      rememberBranchName(name);
-      setSelectedBranchState({
-        scope,
-        branch: { name, isNew: true },
-      });
+      if (!scopeUsable) return;
+      setSelectedBranchState({ name, isNew: true });
     },
-    [rememberBranchName, scope],
+    [scopeUsable],
   );
 
   const onClearBranch = useCallback(() => {
-    if (!scope) {
-      return;
-    }
-
-    if (rememberSelection) {
-      setRememberedBranchName("");
-    }
-    setSelectedBranchState((previous) =>
-      matchesBranchSelectionScope(previous?.scope, scope) ? null : previous,
-    );
-  }, [rememberSelection, scope, setRememberedBranchName]);
+    if (!scopeUsable) return;
+    setSelectedBranchState(null);
+  }, [scopeUsable]);
 
   return {
     onBranchChange,

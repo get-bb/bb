@@ -94,20 +94,20 @@ can run alongside each other and the packaged `npx bb-app@latest` instance.
 To use the dev app from another machine, for example over Tailscale, run:
 
 ```bash
-BB_DEV_REMOTE=true pnpm dev
+pnpm dev
 ```
 
-Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Without
-`BB_DEV_REMOTE=true`, source dev keeps the browser app on localhost-only Vite
-defaults.
+Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Source dev binds
+the browser app to all interfaces and uses the browser host for WebSockets by
+default.
 
 To use the component storybook from another machine, run:
 
 ```bash
-REMOTE=true pnpm storybook
+pnpm storybook
 ```
 
-That binds Ladle to all interfaces and configures its HMR WebSocket to use the
+Ladle also binds to all interfaces and configures its HMR WebSocket to use the
 browser's current host instead of `localhost`.
 
 Development behavior is intentionally split:

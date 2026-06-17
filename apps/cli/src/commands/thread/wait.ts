@@ -172,10 +172,12 @@ function getThreadWaitUnreachableReason(
         `Thread ${threadId} is in status error and will not reach idle by waiting alone. ` +
         `Inspect it with 'bb thread show ${threadId}' and recover by sending a follow-up.`
       );
-    case "created":
-    case "provisioning":
+    case "starting":
     case "idle":
     case "active":
+    // A stopping thread is winding down toward a settled state; it can still
+    // reach idle by waiting (the stop settles to idle on completion).
+    case "stopping":
       return undefined;
     default:
       return assertNever(currentStatus);

@@ -5,14 +5,12 @@ import type {
   HostDaemonOnlineRpcCommandType,
   HostDaemonOnlineRpcResult,
   HostDaemonSettledCommandType,
-  WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
   requireExistingEnvironment,
   type CommandDispatchOptions,
-  type CommandOf,
 } from "./command-dispatch-support.js";
 import {
   cancelEnvironmentProvision,
@@ -73,74 +71,6 @@ function throwExpectedWorkspacePathNotFoundOrRethrow(error: unknown): never {
     throw new ExpectedCommandDispatchError(error.code, error.message);
   }
   throw error;
-}
-
-function cleanupPreflightFailureResult(
-  failure: WorkspaceResolutionFailure,
-): HostDaemonOnlineRpcResult<"environment.cleanup_preflight"> {
-  if (failure.code === "path_not_found") {
-    return { outcome: "already_missing", failure };
-  }
-  if (failure.code === "not_git_repo") {
-    return { outcome: "not_inspectable", failure };
-  }
-  return { outcome: "probe_failed", failure };
-}
-
-async function environmentCleanupPreflight(
-  command: CommandOf<"environment.cleanup_preflight">,
-  options: CommandDispatchOptions,
-): Promise<HostDaemonOnlineRpcResult<"environment.cleanup_preflight">> {
-  const resolution = await resolveWorkspaceForCommand({
-    dataDir: options.dataDir,
-    environmentId: command.environmentId,
-    runtimeManager: options.runtimeManager,
-    workspaceContext: command.workspaceContext,
-  });
-  if (!resolution.ok) {
-    return cleanupPreflightFailureResult(resolution.failure);
-  }
-
-  const { entry } = resolution;
-  if (!entry.workspace.isGitRepo) {
-    return cleanupPreflightFailureResult({
-      code: "not_git_repo",
-      message: `Path is not a git repository: ${entry.workspace.path}`,
-      workspacePath: entry.workspace.path,
-    });
-  }
-  if (
-    command.workspaceContext.workspaceProvisionType === "managed-worktree" &&
-    !entry.workspace.isWorktree
-  ) {
-    return cleanupPreflightFailureResult({
-      code: "not_worktree",
-      message: `Path is not a git worktree: ${entry.workspace.path}`,
-      workspacePath: entry.workspace.path,
-    });
-  }
-
-  try {
-    const workspaceStatus = await entry.workspace.getStatus({
-      mergeBaseBranch: command.mergeBaseBranch,
-    });
-    if (
-      workspaceStatus.workingTree.hasUncommittedChanges ||
-      workspaceStatus.mergeBase?.hasCommittedUnmergedChanges === true
-    ) {
-      return {
-        outcome: "blocked_by_changes",
-        message: "Workspace has uncommitted or unmerged changes",
-      };
-    }
-    return { outcome: "safe_to_destroy" };
-  } catch (error) {
-    const failure = workspaceResolutionFailureFromError({
-      error,
-      workspacePath: command.workspaceContext.workspacePath,
-    });
-    return cleanupPreflightFailureResult(failure);
-  }
 }
 
 const commandHandlers: CommandHandlerMap = {
@@ -269,7 +199,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
     }),
-  "environment.cleanup_preflight": environmentCleanupPreflight,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -318,6 +247,66 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
           target: command.target,
           maxDiffBytes: command.maxDiffBytes,
           maxFileListBytes: command.maxFileListBytes,
+        }),
+      };
+    } catch (error) {
+      return {
+        outcome: "unavailable",
+        failure: workspaceResolutionFailureFromError({
+          error,
+          workspacePath: command.workspaceContext.workspacePath,
+        }),
+      };
+    }
+  },
+  "workspace.diffFiles": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    if (!resolution.ok) {
+      return { outcome: "unavailable", failure: resolution.failure };
+    }
+    try {
+      return {
+        outcome: "available",
+        ...(await resolution.entry.workspace.diffFiles({
+          target: command.target,
+        })),
+      };
+    } catch (error) {
+      return {
+        outcome: "unavailable",
+        failure: workspaceResolutionFailureFromError({
+          error,
+          workspacePath: command.workspaceContext.workspacePath,
+        }),
+      };
+    }
+  },
+  "workspace.diffPatch": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    if (!resolution.ok) {
+      return { outcome: "unavailable", failure: resolution.failure };
+    }
+    try {
+      return {
+        outcome: "available",
+        patches: await resolution.entry.workspace.diffPatch({
+          target: command.target,
+          paths: command.paths,
+          maxBytesPerFile: command.maxBytesPerFile,
         }),
       };
     } catch (error) {

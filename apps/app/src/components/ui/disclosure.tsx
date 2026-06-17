@@ -71,7 +71,7 @@ export function CollapsibleHeader({
   const rootClassName = cn(
     COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS,
     toneClassName,
-    onToggle ? "group/toggle" : null,
+    onToggle ? "group/toggle cursor-pointer" : null,
     className,
   );
   const summaryClass = summaryClassName ?? COLLAPSIBLE_HEADER_TEXT_CLASS;

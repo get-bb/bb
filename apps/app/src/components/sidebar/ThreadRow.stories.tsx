@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
@@ -65,6 +65,13 @@ const childOption: ThreadRowOptions = {
   isCompact: true,
   isEnvGrouped: false,
 };
+// Projectless threads are top-level rows (depth 0), flush with project headers.
+const projectlessOption: ThreadRowOptions = {
+  kind: "default",
+  depth: 0,
+  isCompact: false,
+  isEnvGrouped: false,
+};
 function parentOption(
   overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
 ): ThreadRowOptions {
@@ -96,13 +103,47 @@ const childThread = makeThread({
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="idle" hint="quiet thread, no leading icon">
+      <StoryRow label="idle" hint="quiet thread, title then trailing slot">
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
             thread={makeThread()}
             isActive={false}
             options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="projectless"
+        hint="no project (Threads section): a normal navigable row at depth 0"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId={PERSONAL_PROJECT_ID}
+            thread={makeThread({
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Sketch launch checklist",
+              titleFallback: "Sketch launch checklist",
+            })}
+            isActive={false}
+            options={projectlessOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="projectless (active)"
+        hint="the selected projectless thread still shows the active background"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId={PERSONAL_PROJECT_ID}
+            thread={makeThread({
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Sketch launch checklist",
+              titleFallback: "Sketch launch checklist",
+            })}
+            isActive
+            options={projectlessOption}
           />
         </SidebarStage>
       </StoryRow>
@@ -304,7 +345,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, no children"
-        hint="leading user icon, no chevron"
+        hint="no disclosure chevron when there are no children"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -316,8 +357,8 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="parent, expanded with child"
-        hint="parent row above its child — user icon swaps to a rotated chevron on hover, child text aligns with the parent title"
+        label="parent, expanded with delegated child"
+        hint="parent row above its delegated child — the disclosure chevron sits after the title and rotates open"
       >
         <SidebarStage>
           <StoryThreadRow

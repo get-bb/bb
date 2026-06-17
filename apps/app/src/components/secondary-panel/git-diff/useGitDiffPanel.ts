@@ -3,7 +3,11 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import { selectedMergeBaseBranchAtom } from "../threadSecondaryPanelAtoms";
+import {
+  pendingGitDiffCommitShaAtom,
+  pendingGitDiffScrollPathAtom,
+  selectedMergeBaseBranchAtom,
+} from "../threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelSetter = (
   panel: ThreadSecondaryPanelTab | null,
@@ -15,8 +19,6 @@ interface UseGitDiffPanelParams {
   defaultMergeBaseBranch?: string;
   environmentId?: string;
   mergeBaseBranchOptionsEnabled?: boolean;
-  onRequestCommitDiffSelection: (sha: string) => void;
-  onRequestDiffFileFocus: (path: string) => void;
   setThreadSecondaryPanel: ThreadSecondaryPanelSetter;
 }
 
@@ -26,12 +28,12 @@ export function useGitDiffPanel({
   defaultMergeBaseBranch,
   environmentId,
   mergeBaseBranchOptionsEnabled = false,
-  onRequestCommitDiffSelection,
-  onRequestDiffFileFocus,
   setThreadSecondaryPanel,
 }: UseGitDiffPanelParams) {
   const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
   const setSelectedMergeBaseBranch = useSetAtom(selectedMergeBaseBranchAtom);
+  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
+  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =
     useState("");
   const requestedMergeBaseBranch =
@@ -73,6 +75,11 @@ export function useGitDiffPanel({
       ? [selectedMergeBaseBranchRef.name, ...mergeBaseRemoteBranchList]
       : mergeBaseRemoteBranchList;
   }, [mergeBaseRemoteBranchList, selectedMergeBaseBranchRef]);
+  const mergeBaseBranchOptionsTruncated = Boolean(
+    mergeBaseBranches?.branchesTruncated ||
+    mergeBaseBranches?.remoteBranchesTruncated,
+  );
+
   useEffect(() => {
     setSelectedMergeBaseBranch(undefined);
     setMergeBaseBranchSearchQuery("");
@@ -96,19 +103,19 @@ export function useGitDiffPanel({
   const openDiffFile = useCallback(
     (path: string) => {
       clearActiveFileTabs();
-      onRequestDiffFileFocus(path);
+      setPendingGitDiffScrollPath(path);
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, onRequestDiffFileFocus, openThreadDiffPanel],
+    [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffScrollPath],
   );
 
   const openCommitDiff = useCallback(
     (sha: string) => {
       clearActiveFileTabs();
-      onRequestCommitDiffSelection(sha);
+      setPendingGitDiffCommitSha(sha);
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, onRequestCommitDiffSelection, openThreadDiffPanel],
+    [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffCommitSha],
   );
 
   return {
@@ -116,6 +123,7 @@ export function useGitDiffPanel({
     defaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
+    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     openCommitDiff,
     openDiffFile,

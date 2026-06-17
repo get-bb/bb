@@ -86,7 +86,9 @@ const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
 export type FollowUpBlockedReason =
   | "loading-execution-options"
   | "pending-interaction"
-  | "stopping";
+  | "provisioning"
+  | "stopping"
+  | "unavailable";
 
 export type FollowUpSubmitMode =
   /** Idle thread — submit creates a new turn; no stop affordance. */
@@ -128,7 +130,7 @@ export interface FollowUpPromptBoxProps {
    * and passes it as a single element. Pass null to hide the stack entirely.
    */
   stack: ReactNode | null;
-  composer: FollowUpComposerProps;
+  composer: FollowUpComposerProps | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
   /**
@@ -146,12 +148,44 @@ export interface FollowUpPromptBoxProps {
   execution: ExecutionControlsProps;
   /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
+  /**
+   * Render the footer controls (model/reasoning + permission pickers) as
+   * non-interactive, dimmed labels. Used by the side chat, which inherits the
+   * parent thread's model and is always read-only: it renders the SAME pickers
+   * as the main thread, just disabled. The composer text input stays editable.
+   */
+  readOnly?: boolean;
   typeahead: TypeaheadConfig;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
+  /**
+   * Changing this refocuses the composer caret to the end — e.g. after editing a
+   * queued message restores its text into the draft.
+   */
+  focusEndKey?: string | number;
 }
 
-export const FollowUpPromptBox = memo(function FollowUpPromptBox({
+type FollowUpPromptBoxWithComposerProps = Omit<
+  FollowUpPromptBoxProps,
+  "composer"
+> & {
+  composer: FollowUpComposerProps;
+};
+
+function FollowUpPromptBoxStackOnly({
+  stack,
+}: Pick<FollowUpPromptBoxProps, "stack">) {
+  if (!stack) {
+    return null;
+  }
+  return (
+    <div data-promptbox-shell="" className="space-y-2">
+      <div className="space-y-2">{stack}</div>
+    </div>
+  );
+}
+
+function FollowUpPromptBoxWithComposer({
   id,
   attachments,
   stack,
@@ -160,9 +194,11 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   contextWindowUsage,
   execution,
   permission,
+  readOnly,
   typeahead,
   zenModeResetKey,
-}: FollowUpPromptBoxProps) {
+  focusEndKey,
+}: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
   const canQueueFollowUp = submitMode.kind === "queue";
   const canSubmit = submitMode.kind === "ready" || submitMode.kind === "queue";
@@ -171,6 +207,10 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   const isLoadingExecutionOptions =
     submitMode.kind === "blocked" &&
     submitMode.reason === "loading-execution-options";
+  const isProvisioning =
+    submitMode.kind === "blocked" && submitMode.reason === "provisioning";
+  const isUnavailable =
+    submitMode.kind === "blocked" && submitMode.reason === "unavailable";
   const onStopRuntime =
     submitMode.kind === "queue" || submitMode.kind === "stop-only"
       ? submitMode.onStop
@@ -182,8 +222,30 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
     ? composer.onModifierSubmit
     : undefined;
   const footerStart = useMemo(
-    () => <ExecutionControls {...execution} />,
-    [execution],
+    () => <ExecutionControls {...execution} disabled={readOnly} />,
+    [execution, readOnly],
+  );
+  // The side chat renders the SAME permission picker as the main thread, just
+  // disabled (read-only) — identical label and position. No static-label
+  // special-casing: `readOnly` flows to the picker's `disabled`.
+  const permissionControl = useMemo(
+    () => (
+      <PermissionModePicker
+        value={permission.value}
+        options={permission.options}
+        onChange={permission.onChange}
+        supported={permission.supported}
+        disabled={readOnly}
+        className="h-6"
+      />
+    ),
+    [
+      permission.onChange,
+      permission.options,
+      permission.supported,
+      permission.value,
+      readOnly,
+    ],
   );
   const stackRef = useRef<HTMLDivElement>(null);
   const [stackHeight, setStackHeight] = useState(0);
@@ -215,10 +277,18 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const elasticTextareaMinHeight = Math.max(
-    FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT,
-    FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT - stackHeight,
-  );
+  // The elastic pre-size keeps the prompt area's total height constant as the
+  // stack (context banner + queued messages) mounts/unmounts so the timeline
+  // doesn't shift. A composer with no stack (the side chat) has nothing to
+  // compensate for, so it uses the plain default height — matching the main
+  // thread composer's input box instead of rendering a banner-height taller.
+  const elasticTextareaMinHeight =
+    stack === null
+      ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT
+      : Math.max(
+          FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT,
+          FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT - stackHeight,
+        );
 
   return (
     <>
@@ -239,6 +309,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
           onChange={composer.onChangeMessage}
           onSubmit={composer.onSubmit}
           history={composer.history}
+          focusEndKey={focusEndKey}
           placeholder={composer.promptPlaceholder}
           mentionMenuPlacement="top"
           submission={{
@@ -252,7 +323,11 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
                 ? "Stopping run..."
                 : isLoadingExecutionOptions
                   ? "Loading models..."
-                  : "Submit (Enter)",
+                  : isProvisioning
+                    ? "Provisioning..."
+                    : isUnavailable
+                      ? "Unavailable"
+                      : "Submit (Enter)",
             isRunning: canStopRuntime,
           }}
           typeahead={typeahead}
@@ -270,13 +345,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
             {environmentSummary}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <PermissionModePicker
-              value={permission.value}
-              options={permission.options}
-              onChange={permission.onChange}
-              supported={permission.supported}
-              className="h-6"
-            />
+            {permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />
             ) : null}
@@ -285,4 +354,13 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
       </div>
     </>
   );
+}
+
+export const FollowUpPromptBox = memo(function FollowUpPromptBox(
+  props: FollowUpPromptBoxProps,
+) {
+  if (props.composer === null) {
+    return <FollowUpPromptBoxStackOnly stack={props.stack} />;
+  }
+  return <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />;
 });

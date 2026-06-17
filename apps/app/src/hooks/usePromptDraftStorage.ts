@@ -5,6 +5,7 @@ import type {
   PromptDraftState,
 } from "@/lib/prompt-draft";
 import {
+  appendQuoteToDraftText,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
   isPromptDraftEmpty,
@@ -16,10 +17,9 @@ const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";
 const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
-export interface PromptDraftScope {
-  projectId?: string | null;
-  threadId?: string | null;
-}
+export type PromptDraftScope =
+  | { kind: "new-thread" }
+  | { kind: "thread"; projectId: string; threadId: string };
 
 interface PromptDraftCacheEntry {
   rawValue: string | null;
@@ -220,28 +220,18 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
-function getPromptDraftStorageKey({
-  projectId,
-  threadId,
-}: PromptDraftScope): string | null {
-  if (!projectId) return null;
-  const normalizedProjectId = normalizeStorageSegment(projectId);
-  if (threadId) {
-    const normalizedThreadId = normalizeStorageSegment(threadId);
-    return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+function getPromptDraftStorageKey(scope: PromptDraftScope): string | null {
+  if (scope.kind === "new-thread") {
+    return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
-  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+
+  const normalizedProjectId = normalizeStorageSegment(scope.projectId);
+  const normalizedThreadId = normalizeStorageSegment(scope.threadId);
+  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
 }
 
 export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = useMemo(
-    () =>
-      getPromptDraftStorageKey({
-        projectId: scope.projectId,
-        threadId: scope.threadId,
-      }),
-    [scope.projectId, scope.threadId],
-  );
+  const storageKey = getPromptDraftStorageKey(scope);
   const draft = useSyncExternalStore(
     useCallback(
       (listener) => subscribePromptDraft(storageKey, listener),
@@ -311,6 +301,21 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
+  const addQuote = useCallback(
+    (text: string) => {
+      const currentDraft = readPromptDraft(storageKey);
+      const nextDraft = appendQuoteToDraftText(currentDraft, text);
+      // `appendQuoteToDraftText` no-ops on whitespace-only text; skip the write
+      // so an empty selection can't mark an otherwise-empty draft dirty.
+      if (nextDraft.text === currentDraft.text) {
+        return;
+      }
+
+      writePromptDraft(storageKey, nextDraft);
+    },
+    [storageKey],
+  );
+
   const clear = useCallback(() => {
     setDraftAndPersist(EMPTY_PROMPT_DRAFT);
   }, [setDraftAndPersist]);
@@ -359,12 +364,14 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       addAttachment,
       removeAttachment,
+      addQuote,
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
     }),
     [
       addAttachment,
+      addQuote,
       clear,
       clearIfCurrentMatches,
       draft.attachments,
@@ -382,14 +389,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
 }
 
 export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
-  const storageKey = useMemo(
-    () =>
-      getPromptDraftStorageKey({
-        projectId: scope.projectId,
-        threadId: scope.threadId,
-      }),
-    [scope.projectId, scope.threadId],
-  );
+  const storageKey = getPromptDraftStorageKey(scope);
 
   return useSyncExternalStore(
     useCallback(

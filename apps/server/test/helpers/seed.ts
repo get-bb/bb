@@ -30,6 +30,7 @@ import type {
   ThreadEventScope,
   ThreadEventItemType,
   ThreadEventType,
+  ThreadOriginKind,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { AppDeps } from "../../src/types.js";
@@ -168,9 +169,11 @@ export function seedThread(
     projectId: string;
     environmentId?: string | null;
     providerId?: string;
-    status?: "created" | "provisioning" | "idle" | "active" | "error";
+    status?: "idle" | "starting" | "active" | "stopping" | "error";
     title?: string | null;
     parentThreadId?: string | null;
+    sourceThreadId?: string | null;
+    originKind?: ThreadOriginKind | null;
     titleFallback?: string | null;
   },
 ) {
@@ -182,6 +185,8 @@ export function seedThread(
     title: args.title ?? "Test Thread",
     titleFallback: args.titleFallback ?? "Test Thread",
     parentThreadId: args.parentThreadId ?? null,
+    sourceThreadId: args.sourceThreadId ?? null,
+    originKind: args.originKind ?? null,
   });
 }
 

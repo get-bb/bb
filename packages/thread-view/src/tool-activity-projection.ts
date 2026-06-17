@@ -5,7 +5,6 @@ import type {
   EventProjection,
   EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
-  EventProjectionWorkOutputDetail,
 } from "./event-projection-types.js";
 import type { EventMeta } from "./event-decode.js";
 import type {
@@ -48,7 +47,7 @@ type InterruptibleToolMessage =
   | ViewWebActivityMessage;
 type InterruptibleToolCall = Pick<
   ViewProviderExecutionMessage,
-  "completedAt" | "output" | "outputDetail" | "status"
+  "completedAt" | "output" | "status"
 >;
 interface ExecutionCompletionTarget {
   completedAt: number | null;
@@ -70,7 +69,6 @@ interface RunningExecutionBase {
   createdAt: number;
   startedAt: number;
   output: string;
-  outputDetail?: EventProjectionWorkOutputDetail;
   completedAt: number | null;
   status: ViewProviderExecutionMessage["status"];
   outputBuffer: VisibleTextBuffer;
@@ -247,19 +245,6 @@ function syncRunningCallVisibleOutput(call: RunningExecCall): void {
   call.output = getVisibleTextBufferText(call.outputBuffer) ?? "";
 }
 
-function mergeOutputDetail(
-  current: EventProjectionWorkOutputDetail | undefined,
-  incoming: EventProjectionWorkOutputDetail | undefined,
-): EventProjectionWorkOutputDetail | undefined {
-  if (!incoming) {
-    return current;
-  }
-  if (!current || incoming.fullLength >= current.fullLength) {
-    return incoming;
-  }
-  return current;
-}
-
 function setBufferedExecutionOutput(
   target: BufferedExecutionOutput,
   text: string,
@@ -307,7 +292,6 @@ function createRunningExecutionBase({
       ? { parentToolCallId: incoming.parentToolCallId }
       : {}),
     output: getVisibleTextBufferText(outputBuffer) ?? "",
-    ...(incoming.outputDetail ? { outputDetail: incoming.outputDetail } : {}),
     completedAt: incoming.completedAt ?? null,
     status: incoming.status ?? "pending",
     sourceSeqStart: meta.seq,
@@ -544,10 +528,6 @@ function upsertRunningExecCall(
   }
   mergeRunningExecutionMetadata(existing, incoming);
   mergeExecutionCompletion(existing, incoming);
-  existing.outputDetail = mergeOutputDetail(
-    existing.outputDetail,
-    incoming.outputDetail,
-  );
   if (!existing.parentToolCallId && incoming.parentToolCallId) {
     existing.parentToolCallId = incoming.parentToolCallId;
   }
@@ -764,10 +744,6 @@ function mergeExecutionOutput(
   incoming: ExecutionMergeSource,
   options: MergeCallSummaryOptions,
 ): void {
-  target.outputDetail = mergeOutputDetail(
-    target.outputDetail,
-    incoming.outputDetail,
-  );
   const { appendOutput, replaceOutput, visibleOutput } = options;
   if (visibleOutput !== undefined) {
     target.output = visibleOutput;
@@ -827,13 +803,11 @@ function syncProjectedCallOutput(
   );
   if (activeCall) {
     activeCall.output = call.output;
-    activeCall.outputDetail = call.outputDetail;
   }
 
   const historyMatch = findExecMessageInHistoryCells(state, call.callId);
   if (historyMatch) {
     historyMatch.call.output = call.output;
-    historyMatch.call.outputDetail = call.outputDetail;
   }
 }
 
@@ -937,7 +911,6 @@ function createExecMessage(
       : {}),
     callId: call.callId,
     output: call.output,
-    ...(call.outputDetail ? { outputDetail: call.outputDetail } : {}),
     completedAt: call.completedAt,
     status: call.status,
   };

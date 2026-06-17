@@ -1,15 +1,10 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
-  buildParsedGitDiffFileEntries,
-  doesGitDiffFileMatchPath,
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
-  getGitDiffParseKey,
   getOpenableGitDiffPath,
-  getParsedGitDiffFileKey,
-  parseGitShortstat,
   parseGitDiffFiles,
-  splitGitDiffIntoPatchChunks,
   summarizeGitDiff,
 } from "./git-diff-parsing";
 
@@ -70,53 +65,11 @@ const RENAME_ONLY_DIFF = [
 ].join("\n");
 
 describe("threadDetailGitDiff", () => {
-  it("parses git shortstat without reading the patch body", () => {
-    expect(
-      parseGitShortstat(" 3 files changed, 12 insertions(+), 4 deletions(-)"),
-    ).toEqual({
-      filesCount: 3,
-      insertions: 12,
-      deletions: 4,
-    });
-    expect(parseGitShortstat("1 file changed, 1 insertion(+)")).toEqual({
-      filesCount: 1,
-      insertions: 1,
-      deletions: 0,
-    });
-    expect(parseGitShortstat("2 files changed")).toEqual({
-      filesCount: 2,
-      insertions: 0,
-      deletions: 0,
-    });
-    expect(parseGitShortstat("")).toEqual({
-      filesCount: 0,
-      insertions: 0,
-      deletions: 0,
-    });
-  });
-
-  it("splits multi-file diffs into patch chunks", () => {
-    const diff = [
-      SAMPLE_DIFF.trimEnd(),
-      "diff --git a/src/second.ts b/src/second.ts",
-      "index 3333333..4444444 100644",
-      "--- a/src/second.ts",
-      "+++ b/src/second.ts",
-      "@@ -1 +1 @@",
-      "-before",
-      "+after",
-      "",
-    ].join("\n");
-
-    expect(splitGitDiffIntoPatchChunks(diff)).toHaveLength(2);
-  });
-
-  it("matches git diff files against normalized paths", () => {
+  it("normalizes the openable path and label from a renamed file's sides", () => {
     const [file] = parseGitDiffFiles(SAMPLE_DIFF);
     expect(file).toBeDefined();
     if (!file) return;
 
-    expect(doesGitDiffFileMatchPath(file, "src/new.ts")).toBe(true);
     expect(getOpenableGitDiffPath(file)).toBe("src/new.ts");
     expect(formatGitDiffFileLabel(file)).toBe("src/new.ts");
   });
@@ -166,28 +119,4 @@ describe("threadDetailGitDiff", () => {
     );
   });
 
-  it("builds stable file entry keys without depending on file order", () => {
-    const files = parseGitDiffFiles(
-      [SAMPLE_DIFF.trimEnd(), NEW_FILE_DIFF.trimEnd()].join("\n"),
-    );
-    const entries = buildParsedGitDiffFileEntries(files);
-
-    expect(entries.map((entry) => entry.key)).toEqual(
-      files.map((file) => getParsedGitDiffFileKey(file)),
-    );
-  });
-
-  it("changes the parse key when diff edges change", () => {
-    const middle = "middle\n".repeat(40);
-    const base = `first\n${middle}last`;
-    const changedPrefix = `changed\n${middle}last`;
-    const changedSuffix = `first\n${middle}changed`;
-
-    expect(getGitDiffParseKey(base)).not.toBe(
-      getGitDiffParseKey(changedPrefix),
-    );
-    expect(getGitDiffParseKey(base)).not.toBe(
-      getGitDiffParseKey(changedSuffix),
-    );
-  });
 });

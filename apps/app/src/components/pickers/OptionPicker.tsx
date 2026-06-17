@@ -65,6 +65,13 @@ interface OptionPickerProps<T extends string> {
   modal?: boolean;
   /** How the menu aligns to the trigger. Defaults to "start". */
   align?: "start" | "end" | "center";
+  /**
+   * Render the trigger as a non-interactive, dimmed label showing the same
+   * selected value — the menu never opens. Used by read-only surfaces (e.g. the
+   * side chat) so they render the identical control as their interactive
+   * counterpart, just disabled.
+   */
+  disabled?: boolean;
 }
 
 export function OptionDisplay({
@@ -126,6 +133,7 @@ export function OptionPicker<T extends string>({
   defaultOpen,
   modal,
   align = "start",
+  disabled,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
   const selectedIsWarning = selectedOption?.tone === "warning";
@@ -136,54 +144,72 @@ export function OptionPicker<T extends string>({
     ? `${label}: ${selectedLabel} - ${selectedOption.description}`
     : `${label}: ${selectedLabel}`;
 
+  // The trigger renders identically whether interactive or disabled — the only
+  // difference is the `disabled` button state — so the disabled read-only
+  // surface (e.g. the side chat) shows the same label in the same position as
+  // its editable counterpart.
+  const trigger = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={label}
+      title={selectedTitle}
+      disabled={disabled}
+      className={cn(
+        OPTION_BASE_CLASS_NAME,
+        OPTION_INTERACTIVE_CLASS_NAME,
+        muted && OPTION_MUTED_CLASS_NAME,
+        selectedIsWarning && OPTION_WARNING_TEXT_CLASS_NAME,
+        selectedIsWarning && OPTION_WARNING_INTERACTIVE_CLASS_NAME,
+        // Disabled triggers stay legible (no opacity-50 dimming on top of the
+        // muted treatment) and drop the affordance cursor.
+        disabled && "cursor-default disabled:opacity-100",
+        className,
+      )}
+    >
+      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+        {SelectedIcon ? (
+          <SelectedIcon className="size-3.5 shrink-0" />
+        ) : null}
+        {selectedCompactLabel ? (
+          <>
+            <span className="min-w-0 truncate" data-promptbox-full-label="">
+              {selectedLabel}
+            </span>
+            <span
+              className="min-w-0 truncate"
+              data-promptbox-compact-label=""
+            >
+              {selectedCompactLabel}
+            </span>
+          </>
+        ) : (
+          <span className="min-w-0 truncate">{selectedLabel}</span>
+        )}
+      </span>
+      {/* Disabled triggers drop the chevron entirely — there is no menu to open. */}
+      {disabled ? null : (
+        <Icon
+          name="ChevronDown"
+          className={cn(
+            "size-3.5 shrink-0",
+            selectedIsWarning
+              ? OPTION_WARNING_ICON_CLASS_NAME
+              : "text-muted-foreground",
+          )}
+        />
+      )}
+    </Button>
+  );
+
+  if (disabled) {
+    return trigger;
+  }
+
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={label}
-          title={selectedTitle}
-          className={cn(
-            OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
-            muted && OPTION_MUTED_CLASS_NAME,
-            selectedIsWarning && OPTION_WARNING_TEXT_CLASS_NAME,
-            selectedIsWarning && OPTION_WARNING_INTERACTIVE_CLASS_NAME,
-            className,
-          )}
-        >
-          <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            {SelectedIcon ? (
-              <SelectedIcon className="size-3.5 shrink-0" />
-            ) : null}
-            {selectedCompactLabel ? (
-              <>
-                <span className="min-w-0 truncate" data-promptbox-full-label="">
-                  {selectedLabel}
-                </span>
-                <span
-                  className="min-w-0 truncate"
-                  data-promptbox-compact-label=""
-                >
-                  {selectedCompactLabel}
-                </span>
-              </>
-            ) : (
-              <span className="min-w-0 truncate">{selectedLabel}</span>
-            )}
-          </span>
-          <Icon name="ChevronDown"
-            className={cn(
-              "size-3.5 shrink-0",
-              selectedIsWarning
-                ? OPTION_WARNING_ICON_CLASS_NAME
-                : "text-muted-foreground",
-            )}
-          />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
         className={cn("min-w-52 max-w-96", contentClassName)}

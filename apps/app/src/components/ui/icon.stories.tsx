@@ -31,8 +31,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   CircleCheck: "Auth callback success state",
   CircleDashed: "Thread row busy spinner, child-thread busy section indicator",
   CircleX: "Auth callback failure state",
-  Clock:
-    "Automations nav button in sidebar, automation rows in Automations view",
+  Clock: "Thread duration and timestamp affordances",
   Code: "Right-panel source file visual, Mermaid source toggle",
   Columns2: "Git diff toolbar “split view”",
   Container: "Container icon",

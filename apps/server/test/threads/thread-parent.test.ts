@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   assertValidParentThread,
+  isAgentDelegatedChildThread,
   MAX_THREAD_HIERARCHY_DEPTH,
 } from "../../src/services/threads/thread-parent.js";
 
@@ -230,5 +231,31 @@ describe("thread parent validation", () => {
       reason: "too_deep",
       subject: "parent",
     });
+  });
+});
+
+describe("isAgentDelegatedChildThread", () => {
+  it("is true for a thread with a parent", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: "thr_parent",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for a fork-style root", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a root thread with no parent", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: null,
+      }),
+    ).toBe(false);
   });
 });

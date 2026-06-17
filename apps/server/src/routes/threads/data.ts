@@ -4,12 +4,10 @@ import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
   publicApiRoutes,
-  timelineFeedDetailPartSchema,
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
-  type TimelineFeedDetailPart,
-  type ThreadTimelineFeedQuery,
+  type ThreadTimelineQuery,
 } from "@bb/server-contract";
 import type {
   AppDeps,
@@ -36,10 +34,8 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  buildThreadTimelineFeed,
-  buildTimelineRowDetail,
+  buildThreadTimeline,
   buildTimelineTurnSummaryDetails,
-  buildTimelineWorkOutputDetail,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
   type ThreadTimelinePageKind,
@@ -169,16 +165,9 @@ function parseThreadTimelineSegmentLimit(
 }
 
 function parseThreadTimelinePage(
-  query: ThreadTimelineFeedQuery,
+  query: ThreadTimelineQuery,
 ): ThreadTimelinePageRequest {
   const hasBeforeAnchorSeq = query.beforeAnchorSeq !== undefined;
-  if (query.summaryOnly === "true" && hasBeforeAnchorSeq) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "summaryOnly cannot be used with older timeline pagination",
-    );
-  }
   const kind: ThreadTimelinePageKind = hasBeforeAnchorSeq ? "older" : "latest";
   const segmentLimit = parseThreadTimelineSegmentLimit(
     THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -211,19 +200,6 @@ function parseThreadTimelinePage(
     kind,
     segmentLimit,
   };
-}
-
-function parseTimelineRowDetailParts(
-  rawParts: string,
-): TimelineFeedDetailPart[] {
-  const parts: TimelineFeedDetailPart[] = [];
-  for (const rawPart of rawParts.split(",")) {
-    const part = timelineFeedDetailPartSchema.parse(rawPart);
-    if (!parts.includes(part)) {
-      parts.push(part);
-    }
-  }
-  return parts;
 }
 
 export async function requireThreadStorageTarget(
@@ -335,26 +311,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.threads;
 
-  get(routes.timelineFeed, (context, query) => {
+  get(routes.timeline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      buildThreadTimelineFeed(deps.db, thread, {
+      buildThreadTimeline(deps.db, thread, {
         isDevelopment: deps.config.isDevelopment,
+        includeNestedRows: query.includeNestedRows === "true",
         page: parseThreadTimelinePage(query),
         summaryOnly: query.summaryOnly === "true",
-      }),
-    );
-  });
-
-  get(routes.timelineRowDetail, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      buildTimelineRowDetail(deps.db, thread, {
-        isDevelopment: deps.config.isDevelopment,
-        parts: parseTimelineRowDetailParts(query.parts),
-        rowKey: context.req.param("rowKey"),
-        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
       }),
     );
   });
@@ -367,19 +331,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-      }),
-    );
-  });
-
-  get(routes.timelineWorkOutputDetail, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      buildTimelineWorkOutputDetail(deps.db, thread, {
-        callId: query.callId,
-        isDevelopment: deps.config.isDevelopment,
-        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-        workKind: query.workKind,
       }),
     );
   });

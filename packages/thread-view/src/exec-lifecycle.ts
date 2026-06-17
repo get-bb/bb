@@ -11,7 +11,6 @@ import type {
   EventProjectionFileEditMessage,
   EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
-  EventProjectionWorkOutputDetail,
 } from "./event-projection-types.js";
 import { getFirstStringField } from "./format-helpers.js";
 import {
@@ -29,10 +28,6 @@ import {
 interface DelegationMetadata {
   subagentType?: string;
   description?: string;
-}
-
-interface ThreadEventOutputTruncation {
-  originalLength: number;
 }
 
 function parseToolArgs(
@@ -91,7 +86,6 @@ export function itemStatusToFileEditStatus(
 export interface ExecutionUpdateBase {
   callId: string;
   output?: string;
-  outputDetail?: EventProjectionWorkOutputDetail;
   /**
    * Wall-clock millis when the work reached a terminal status. `null` while
    * pending. The projection records this on `end` events so the renderer
@@ -134,7 +128,6 @@ export type ProviderExecutionUpdate =
 export interface ExecutionOutputUpdate {
   callId: string;
   output: string;
-  outputDetail?: EventProjectionWorkOutputDetail;
   status?: EventProjectionToolCallMessage["status"];
   parentToolCallId?: string;
 }
@@ -151,53 +144,11 @@ export type ExecLifecycleEvent =
       replaceOutput?: boolean;
     };
 
-interface ParsedCommandProjection {
-  command: string | undefined;
-  parsedIntents: EventProjectionToolParsedIntent[];
-}
-
-export interface ExecLifecycleParseCache {
-  commandProjectionByRawCommand: Map<string, ParsedCommandProjection>;
-}
-
-interface ParseExecLifecycleEventArgs {
-  cache: ExecLifecycleParseCache;
-  decoded: ThreadEvent;
-  meta: EventMeta;
-  parentToolCallIdOverride: string | undefined;
-}
-
-interface ParseToolCallLifecycleEventArgs {
-  decoded: ThreadEvent;
-  includeStaticMetadata: boolean;
-  meta: EventMeta;
-  parentToolCallIdOverride: string | undefined;
-}
-
-export function createExecLifecycleParseCache(): ExecLifecycleParseCache {
-  return {
-    commandProjectionByRawCommand: new Map(),
-  };
-}
-
 function toExecDefaultStatus(
   kind: "begin" | "end",
 ): EventProjectionToolCallMessage["status"] {
   if (kind === "begin") return "pending";
   return "completed";
-}
-
-function outputDetailFromTruncation(
-  truncation: ThreadEventOutputTruncation | undefined,
-  preview: string | undefined,
-): EventProjectionWorkOutputDetail | undefined {
-  if (!truncation || truncation.originalLength <= (preview?.length ?? 0)) {
-    return undefined;
-  }
-  return {
-    fullLength: truncation.originalLength,
-    previewLength: preview?.length ?? 0,
-  };
 }
 
 function buildStructuredReadIntents(
@@ -292,39 +243,18 @@ function getDelegationMetadata(
   };
 }
 
-function parseCommandProjection(
-  rawCommand: string,
-  cache: ExecLifecycleParseCache,
-): ParsedCommandProjection {
-  const cached = cache.commandProjectionByRawCommand.get(rawCommand);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const command = extractShellCommandFromString(rawCommand);
-  const parsed = {
-    command,
-    parsedIntents: parseShellCommandIntents(command),
-  };
-  cache.commandProjectionByRawCommand.set(rawCommand, parsed);
-  return parsed;
-}
-
-export function formatToolCallResultOutput(
-  toolName: string,
-  output: string,
-): string {
+function formatToolCallResultOutput(toolName: string, output: string): string {
   if (baseToolName(toolName) === "Agent") {
     return stripAgentOutputMetadata(output);
   }
   return output;
 }
 
-export function parseExecLifecycleEvent({
-  cache,
-  decoded,
-  meta,
-  parentToolCallIdOverride,
-}: ParseExecLifecycleEventArgs): ExecLifecycleEvent | null {
+export function parseExecLifecycleEvent(
+  decoded: ThreadEvent,
+  meta: EventMeta,
+  parentToolCallIdOverride?: string,
+): ExecLifecycleEvent | null {
   const parentToolCallId =
     parentToolCallIdOverride ?? getEventParentToolCallId(decoded);
   if (decoded.type === "item/commandExecution/outputDelta") {
@@ -358,20 +288,16 @@ export function parseExecLifecycleEvent({
           toExecDefaultStatus(kind));
     const completedAt = kind === "end" ? meta.createdAt : null;
 
-    const parsedCommand = parseCommandProjection(decoded.item.command, cache);
+    const command = extractShellCommandFromString(decoded.item.command);
     return {
       kind,
       call: {
         kind: "command",
         callId,
-        command: parsedCommand.command,
+        command,
         cwd: decoded.item.cwd,
-        parsedIntents: parsedCommand.parsedIntents,
+        parsedIntents: parseShellCommandIntents(command),
         output: decoded.item.aggregatedOutput,
-        outputDetail: outputDetailFromTruncation(
-          decoded.item.truncation?.aggregatedOutput,
-          decoded.item.aggregatedOutput,
-        ),
         exitCode,
         completedAt,
         approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
@@ -384,12 +310,11 @@ export function parseExecLifecycleEvent({
   return null;
 }
 
-export function parseToolCallLifecycleEvent({
-  decoded,
-  includeStaticMetadata,
-  meta,
-  parentToolCallIdOverride,
-}: ParseToolCallLifecycleEventArgs): ExecLifecycleEvent | null {
+export function parseToolCallLifecycleEvent(
+  decoded: ThreadEvent,
+  meta: EventMeta,
+  parentToolCallIdOverride?: string,
+): ExecLifecycleEvent | null {
   const parentToolCallId =
     parentToolCallIdOverride ?? getEventParentToolCallId(decoded);
   if (
@@ -435,25 +360,20 @@ export function parseToolCallLifecycleEvent({
         ? formatToolCallResultOutput(fullToolName, rawOutput)
         : undefined;
     const errorField = decoded.item.error;
+    const parsedIntents = getStructuredToolParsedIntents(
+      fullToolName,
+      parsedArgs,
+    );
     const executionKind = isDelegationToolName(fullToolName)
       ? "delegation"
       : "tool-call";
-    const parsedIntents = includeStaticMetadata
-      ? getStructuredToolParsedIntents(fullToolName, parsedArgs)
-      : [];
-    const delegationMetadata = includeStaticMetadata
-      ? getDelegationMetadata(fullToolName, parsedArgs)
-      : {};
-    const toolArgs = includeStaticMetadata ? parseToolArgs(parsedArgs) : null;
+    const delegationMetadata = getDelegationMetadata(fullToolName, parsedArgs);
+    const toolArgs = parseToolArgs(parsedArgs);
 
     const baseCall = {
       callId,
       toolName: fullToolName,
       output: kind === "end" ? (output ?? errorField) : undefined,
-      outputDetail:
-        kind === "end"
-          ? outputDetailFromTruncation(decoded.item.truncation?.result, output)
-          : undefined,
       completedAt,
       status,
       ...(parentToolCallId ? { parentToolCallId } : {}),
@@ -475,7 +395,8 @@ export function parseToolCallLifecycleEvent({
       call: {
         ...baseCall,
         kind: executionKind,
-        ...(includeStaticMetadata ? { toolArgs, parsedIntents } : {}),
+        toolArgs,
+        parsedIntents,
         ...delegationMetadata,
       },
     };

@@ -5,13 +5,13 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract";
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
 
 type TerminalFitScheduler = () => void;
-type TerminalWebLinkHandler = (event: MouseEvent, uri: string) => void;
 
 interface HasVisibleTerminalSizeArgs {
   containerElement: HTMLElement;
@@ -71,6 +71,7 @@ function buildTerminalTheme(): ITheme {
 
 interface ThreadTerminalViewProps {
   isPanelOpen: boolean;
+  onOpenLink?: MarkdownPreviewLinkHandler;
   onTitleChange?: TerminalTitleChangeHandler;
   onUserInput?: () => void;
   session: TerminalSession;
@@ -94,6 +95,12 @@ interface TerminalOutputWriteArgs {
   replayWriteState: TerminalReplayWriteState;
   terminal: XTermTerminal;
   text: string;
+}
+
+interface OpenTerminalWebLinkArgs {
+  event: MouseEvent;
+  onOpenLink: MarkdownPreviewLinkHandler | undefined;
+  uri: string;
 }
 
 interface TerminalReplayWriteState {
@@ -156,9 +163,17 @@ function writeTerminalStatus({ terminal, text }: WriteTerminalStatusArgs): void 
   terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
 }
 
-const openTerminalWebLink: TerminalWebLinkHandler = (_event, uri) => {
+function openTerminalWebLink({
+  event,
+  onOpenLink,
+  uri,
+}: OpenTerminalWebLinkArgs): void {
+  if (onOpenLink?.({ href: uri })) {
+    event.preventDefault();
+    return;
+  }
   window.open(uri, "_blank", "noopener,noreferrer");
-};
+}
 
 function writeTerminalOutput({
   isReplay,
@@ -219,6 +234,7 @@ function handleTerminalServerMessage({
 
 export function ThreadTerminalView({
   isPanelOpen,
+  onOpenLink,
   onTitleChange,
   onUserInput,
   session,
@@ -229,12 +245,16 @@ export function ThreadTerminalView({
   const onTitleChangeRef = useRef<TerminalTitleChangeHandler | undefined>(
     onTitleChange,
   );
+  const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler | undefined>(
+    onOpenLink,
+  );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
   const isPanelOpenRef = useRef(isPanelOpen);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const preferredTheme = usePreferredTheme();
 
   isPanelOpenRef.current = isPanelOpen;
+  onOpenLinkRef.current = onOpenLink;
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
 
@@ -281,7 +301,15 @@ export function ThreadTerminalView({
       terminalRef.current = terminal;
       fitAddon = new LoadedFitAddon();
       terminal.loadAddon(fitAddon);
-      terminal.loadAddon(new WebLinksAddon(openTerminalWebLink));
+      terminal.loadAddon(
+        new WebLinksAddon((event, uri) => {
+          openTerminalWebLink({
+            event,
+            onOpenLink: onOpenLinkRef.current,
+            uri,
+          });
+        }),
+      );
       terminal.open(containerElement);
       const fitTerminal = () => {
         if (!fitAddon || !terminal) {

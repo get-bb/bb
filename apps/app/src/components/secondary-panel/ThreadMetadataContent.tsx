@@ -12,13 +12,13 @@ import type {
   WorkspaceCommitSummary,
   WorkspaceStatus,
 } from "@bb/domain";
-import type { ThreadSchedule } from "@bb/server-contract";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -28,16 +28,13 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
+import { TruncatedList } from "@/components/ui/truncated-list.js";
 import {
   DetailCard,
   DetailRow,
   DetailRowIconLabel,
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
-import {
-  formatCronCadence,
-  formatScheduleStatusLabel,
-} from "@/lib/format-schedule";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   DropdownMenu,
@@ -52,7 +49,6 @@ import {
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
-import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import {
   selectWorkspaceAheadCommits,
@@ -61,8 +57,10 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
+import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -214,6 +212,48 @@ export function ParentSelectorRow({
   );
 }
 
+export interface ForksRowProps {
+  thread: Thread;
+  projectId: string;
+}
+
+/**
+ * Lists the thread's forks (threads created with `originKind === "fork"`),
+ * each linking to the fork. The fork links back here via the source-thread link.
+ * Fetched with a targeted list query filtered by `sourceThreadId` + `originKind`
+ * — no load-all-and-filter. Renders nothing when the thread has no forks.
+ */
+export function ForksRow({ thread, projectId }: ForksRowProps) {
+  const forksQuery = useThreads({
+    projectId: thread.projectId,
+    sourceThreadId: thread.id,
+    originKind: "fork",
+    archived: false,
+  });
+  const forks = forksQuery.data ?? [];
+  if (forks.length === 0) {
+    return null;
+  }
+
+  return (
+    <DetailRow label="Forks" align="start" valueClassName="min-w-0">
+      <TruncatedList
+        items={forks}
+        getKey={(fork) => fork.id}
+        renderItem={(fork) => (
+          <Link
+            to={getThreadRoutePath({ projectId, threadId: fork.id })}
+            className="block min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+            title={getThreadDisplayTitle(fork)}
+          >
+            {getThreadDisplayTitle(fork)}
+          </Link>
+        )}
+      />
+    </DetailRow>
+  );
+}
+
 export interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
@@ -246,7 +286,7 @@ export function EnvironmentRow({
     environment,
     host: environmentDisplayHost,
   });
-  const showCreateThreadButton = isWorktreeEnvironment(environment);
+  const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
   return (
     <DetailRow
       label={
@@ -293,6 +333,14 @@ function isWorktreeEnvironment(environment: Environment): boolean {
   );
 }
 
+function isProvisionedWorktreeEnvironment(environment: Environment): boolean {
+  return (
+    environment.status === "ready" &&
+    environment.path !== null &&
+    isWorktreeEnvironment(environment)
+  );
+}
+
 function getWorkspacePathRowDisplay(
   environment: Environment,
 ): WorkspacePathRowDisplay | null {
@@ -328,7 +376,9 @@ export function WorkspacePathRow({
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="FolderGit">{display.rowLabel}</DetailRowIconLabel>
+        <DetailRowIconLabel icon="FolderGit">
+          {display.rowLabel}
+        </DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
@@ -408,7 +458,9 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       <a
@@ -627,48 +679,6 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   );
 }
 
-export interface ThreadSchedulesRowProps {
-  schedules: readonly ThreadSchedule[];
-}
-
-export function ThreadSchedulesRow({ schedules }: ThreadSchedulesRowProps) {
-  if (schedules.length === 0) return null;
-
-  return (
-    <DetailRow
-      label="Schedules"
-      align="start"
-      className="mt-3"
-      valueClassName="min-w-0"
-    >
-      <TruncatedList
-        items={schedules}
-        getKey={(schedule) => schedule.id}
-        renderItem={(schedule) => (
-          <div
-            className={cn(
-              "min-w-0 leading-snug",
-              !schedule.enabled && "opacity-60",
-            )}
-          >
-            <div className="truncate font-medium text-foreground">
-              {schedule.name}
-            </div>
-            <div className="truncate text-muted-foreground">
-              {`${formatCronCadence(schedule.cron)} · ${formatScheduleStatusLabel(
-                {
-                  enabled: schedule.enabled,
-                  nextRunAt: schedule.nextFireAt,
-                },
-              )}`}
-            </div>
-          </div>
-        )}
-      />
-    </DetailRow>
-  );
-}
-
 export interface ThreadCommitsRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   /** When provided, each commit becomes a button that opens its diff. */
@@ -680,32 +690,48 @@ interface ThreadCommitListItemProps {
   onCommitClick?: (sha: string) => void;
 }
 
+const COMMIT_SHA_CHIP_CLASS_NAME =
+  "inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground";
+
 function ThreadCommitListItem({
   commit,
   onCommitClick,
 }: ThreadCommitListItemProps) {
-  const detail = (
-    <div className="flex min-w-0 items-baseline justify-between gap-2">
-      <span className="min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
-        {commit.subject}
-      </span>
-      <span className="shrink-0 font-mono text-subtle-foreground">
-        {commit.shortSha}
-      </span>
-    </div>
-  );
-  if (!onCommitClick) {
-    return detail;
-  }
-  return (
+  const subject = onCommitClick ? (
     <button
       type="button"
       onClick={() => onCommitClick(commit.sha)}
       title={commit.subject}
-      className="group block w-full text-left"
+      className="group min-w-0 flex-1 text-left"
     >
-      {detail}
+      <span className="block min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
+        {commit.subject}
+      </span>
     </button>
+  ) : (
+    <span className="min-w-0 flex-1 truncate text-readback-foreground">
+      {commit.subject}
+    </span>
+  );
+
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2">
+      {subject}
+      <button
+        type="button"
+        aria-label={`Copy commit ${commit.shortSha} SHA`}
+        title={commit.sha}
+        className={COMMIT_SHA_CHIP_CLASS_NAME}
+        onClick={() => {
+          void copyToClipboardWithToast(commit.sha, {
+            successMessage: "Commit SHA copied",
+            errorMessage: "Failed to copy commit SHA",
+          });
+        }}
+      >
+        <span className="truncate">{commit.shortSha}</span>
+      </button>
+    </div>
   );
 }
 
@@ -776,10 +802,10 @@ export function ThreadStorageRow({
   isFilesLoading,
 }: ThreadStorageRowProps) {
   const { isSearchOpen, openSearch } = controller;
-  // Mirror the other metadata rows (e.g. ThreadSchedulesRow): render nothing
-  // when there is no content to show. With no files there is nothing to browse,
-  // so the row would otherwise sit as an empty "No files yet." box competing for
-  // panel height. Stay visible on error so load failures still surface.
+  // Render nothing when there is no content to show. With no files there is
+  // nothing to browse, so the row would otherwise sit as an empty "No files yet."
+  // box competing for panel height. Stay visible on error so load failures still
+  // surface.
   if (controller.loadedFiles.length === 0 && filesError == null) {
     return null;
   }
@@ -841,7 +867,6 @@ export interface ThreadMetadataContentProps {
   mergeBaseBranchOptions: readonly string[] | undefined;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
-  threadSchedules: readonly ThreadSchedule[];
   updateThreadPending: boolean;
   storage?: ThreadStorageRowProps;
   onAssignParent: (parentThreadId: string | null) => void;
@@ -857,26 +882,31 @@ export interface ThreadMetadataContentProps {
  * The caller can use this to decide between rendering the card and rendering
  * its "no thread details available" fallback.
  */
-export function hasAnyThreadMetadata({
-  thread,
-  parentThreadDisplayName,
-  environment,
-  workspaceStatus,
-  workspaceStatusError,
-  workspaceUnavailable,
-  pullRequest,
-  threadSchedules,
-}: Pick<
-  ThreadMetadataContentProps,
-  | "thread"
-  | "parentThreadDisplayName"
-  | "environment"
-  | "workspaceStatus"
-  | "workspaceStatusError"
-  | "workspaceUnavailable"
-  | "pullRequest"
-  | "threadSchedules"
->): boolean {
+export function hasAnyThreadMetadata(
+  {
+    thread,
+    parentThreadDisplayName,
+    environment,
+    workspaceStatus,
+    workspaceStatusError,
+    workspaceUnavailable,
+    pullRequest,
+  }: Pick<
+    ThreadMetadataContentProps,
+    | "thread"
+    | "parentThreadDisplayName"
+    | "environment"
+    | "workspaceStatus"
+    | "workspaceStatusError"
+    | "workspaceUnavailable"
+    | "pullRequest"
+  >,
+  // The Forks row is fetched lazily; the caller passes its presence so the
+  // visibility gate and the rendered card agree on the same row set (otherwise
+  // a forks-only thread briefly shows the empty fallback while the environment
+  // query is still loading).
+  hasForks: boolean,
+): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const showWorkspaceStatus =
@@ -897,9 +927,9 @@ export function hasAnyThreadMetadata({
     pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
-    threadSchedules.length > 0 ||
     thread.archivedAt != null ||
-    (parentThreadDisplayName && parentThreadId),
+    (parentThreadDisplayName && parentThreadId) ||
+    hasForks,
   );
 }
 
@@ -947,7 +977,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     mergeBaseBranchOptions,
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
-    threadSchedules,
     updateThreadPending,
     storage,
     onAssignParent,
@@ -970,6 +999,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         updateThreadPending={updateThreadPending}
         onAssignParent={onAssignParent}
       />
+      <ForksRow thread={thread} projectId={projectId} />
       <EnvironmentRow
         thread={thread}
         environment={environment}
@@ -999,7 +1029,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       />
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      <ThreadSchedulesRow schedules={threadSchedules} />
       <ThreadCommitsRow
         workspaceStatus={workspaceStatus}
         onCommitClick={onCommitClick}

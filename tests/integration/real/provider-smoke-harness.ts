@@ -10,7 +10,7 @@ import {
   type ThreadEventRow,
   type ThreadExecutionOptions,
 } from "@bb/domain";
-import type { ThreadTimelineFeedResponse } from "@bb/server-contract";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
 import {
   getAvailableModels,
@@ -469,7 +469,7 @@ export function expectNonEmptyOutput(
 }
 
 export function hasAssistantTimelineMessage(
-  timeline: ThreadTimelineFeedResponse,
+  timeline: ThreadTimelineResponse,
 ): boolean {
   return timelineHasAssistantConversation(timeline);
 }

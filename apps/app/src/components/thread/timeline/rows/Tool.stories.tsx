@@ -224,6 +224,151 @@ const deniedTool: TimelineRow = toolRow({
   durationMs: 500,
 });
 
+interface SkillReadToolArgs {
+  idSuffix: string;
+  sequenceOffset: number;
+  skillName: string;
+  skillPath: string;
+}
+
+interface SkillReadStoryState {
+  hint: string;
+  label: string;
+  row: TimelineRow;
+}
+
+function createSkillReadTool(args: SkillReadToolArgs): TimelineRow {
+  return toolRow({
+    id: `thr_skill_read:tool:toolu_skill_read_${args.idSuffix}`,
+    threadId: "thr_skill_read",
+    turnId: "turn_skill_read_1",
+    sourceSeqStart: 970 + args.sequenceOffset,
+    sourceSeqEnd: 971 + args.sequenceOffset,
+    startedAt: 1777933920000 + args.sequenceOffset,
+    createdAt: 1777933920000 + args.sequenceOffset,
+    status: "completed",
+    callId: `toolu_skill_read_${args.idSuffix}`,
+    toolName: "Read",
+    toolArgs: {
+      file_path: args.skillPath,
+    },
+    output: `---\nname: ${args.skillName}\ndescription: ${args.skillName} skill instructions.\n---\n`,
+    approvalStatus: null,
+    activityIntents: [
+      {
+        type: "read",
+        command: "Read",
+        name: "SKILL.md",
+        path: args.skillPath,
+      },
+    ],
+    durationMs: 130,
+  });
+}
+
+const projectClaudeSkillReadTool = createSkillReadTool({
+  idSuffix: "project_claude",
+  sequenceOffset: 0,
+  skillName: "moss-hardening-review",
+  skillPath:
+    "/Users/brsbl/Code/bb/.claude/skills/moss-hardening-review/SKILL.md",
+});
+
+const userClaudeSymlinkSkillReadTool = createSkillReadTool({
+  idSuffix: "user_claude_symlink",
+  sequenceOffset: 2,
+  skillName: "personal-review",
+  skillPath: "/Users/brsbl/.claude/skills/personal-review/SKILL.md",
+});
+
+const projectCodexSkillReadTool = createSkillReadTool({
+  idSuffix: "project_codex",
+  sequenceOffset: 4,
+  skillName: "workspace-tools",
+  skillPath: "/Users/brsbl/Code/bb/.codex/skills/workspace-tools/SKILL.md",
+});
+
+const userCodexSkillReadTool = createSkillReadTool({
+  idSuffix: "user_codex",
+  sequenceOffset: 6,
+  skillName: "html-previews",
+  skillPath: "/Users/brsbl/.codex/skills/html-previews/SKILL.md",
+});
+
+const codexSystemSkillReadTool = createSkillReadTool({
+  idSuffix: "codex_system",
+  sequenceOffset: 8,
+  skillName: "openai-docs",
+  skillPath: "/Users/brsbl/.codex/skills/.system/openai-docs/SKILL.md",
+});
+
+const codexPluginNestedSkillReadTool = createSkillReadTool({
+  idSuffix: "codex_plugin_nested",
+  sequenceOffset: 10,
+  skillName: "control-in-app-browser",
+  skillPath:
+    "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/skills/control-in-app-browser/SKILL.md",
+});
+
+const claudePluginNestedSkillReadTool = createSkillReadTool({
+  idSuffix: "claude_plugin_nested",
+  sequenceOffset: 12,
+  skillName: "frontend-design",
+  skillPath:
+    "/Users/brsbl/.claude/plugins/cache/claude-plugins-official/frontend-design/bd7cf41fc8a4/skills/frontend-design/SKILL.md",
+});
+
+const pluginRootSkillReadTool = createSkillReadTool({
+  idSuffix: "plugin_root",
+  sequenceOffset: 14,
+  skillName: "browser",
+  skillPath:
+    "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/SKILL.md",
+});
+
+const skillReadStoryStates: SkillReadStoryState[] = [
+  {
+    label: "Project Claude skill",
+    hint: ".claude/skills/<skill>/SKILL.md",
+    row: projectClaudeSkillReadTool,
+  },
+  {
+    label: "User Claude skill",
+    hint: "personal install path, including symlinked entries",
+    row: userClaudeSymlinkSkillReadTool,
+  },
+  {
+    label: "Project Codex skill",
+    hint: ".codex/skills/<skill>/SKILL.md",
+    row: projectCodexSkillReadTool,
+  },
+  {
+    label: "User Codex skill",
+    hint: "$CODEX_HOME/skills/<skill>/SKILL.md",
+    row: userCodexSkillReadTool,
+  },
+  {
+    label: "Codex system skill",
+    hint: "$CODEX_HOME/skills/.system/<skill>/SKILL.md",
+    row: codexSystemSkillReadTool,
+  },
+  {
+    label: "Codex plugin skill",
+    hint: "plugins/cache/<market>/<plugin>/<version>/skills/<skill>/SKILL.md",
+    row: codexPluginNestedSkillReadTool,
+  },
+  {
+    label: "Claude plugin skill",
+    hint: "plugins/cache/<market>/<plugin>/<version>/skills/<skill>/SKILL.md",
+    row: claudePluginNestedSkillReadTool,
+  },
+  {
+    label: "Plugin root skill",
+    hint: "plugins/cache/<market>/<plugin>/<version>/SKILL.md",
+    row: pluginRootSkillReadTool,
+  },
+];
+
 export function Overview() {
   return (
     <StoryCard>
@@ -306,6 +451,20 @@ export function Overview() {
           <ThreadTimelineRows {...baseProps} timelineRows={[deniedTool]} />
         </TimelineStage>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function SkillReads() {
+  return (
+    <StoryCard labelWidth="260px">
+      {skillReadStoryStates.map((state) => (
+        <StoryRow key={state.row.id} label={state.label} hint={state.hint}>
+          <TimelineStage>
+            <ThreadTimelineRows {...baseProps} timelineRows={[state.row]} />
+          </TimelineStage>
+        </StoryRow>
+      ))}
     </StoryCard>
   );
 }

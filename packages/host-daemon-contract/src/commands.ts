@@ -10,6 +10,7 @@ import {
   workspaceProvisionTypeSchema,
   runtimeThreadExecutionOptionsSchema,
   provisioningTranscriptEntrySchema,
+  rawDiffFileStatSchema,
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
   gitHostPullRequestSchema,
@@ -143,10 +144,26 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.start"),
     requestId: clientTurnRequestIdSchema,
-    input: z.array(promptInputSchema).min(1),
+    // A fork start establishes the cloned provider session with an empty
+    // timeline (the runtime's no-input-no-turn guard leaves it idle), so it
+    // carries no input. A non-fork start always runs a first turn and requires
+    // at least one input, enforced by the refinement below.
+    input: z.array(promptInputSchema),
     threadStoragePath: z.string().min(1).optional(),
+    /** Present means fork the new thread from this source provider session
+     *  instead of starting fresh; absent means a normal start. */
+    fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.fork === undefined && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+  });
 
 export const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
   z.object({
@@ -514,13 +531,6 @@ const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
-const environmentCleanupPreflightCommandSchema = hostDaemonWorkspaceTargetSchema
-  .extend({
-    type: z.literal("environment.cleanup_preflight"),
-    mergeBaseBranch: gitBranchNameSchema,
-  })
-  .strict();
-
 const workspaceStatusCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.status"),
   mergeBaseBranch: gitBranchNameSchema.optional(),
@@ -531,6 +541,18 @@ const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   target: workspaceDiffTargetSchema,
   maxDiffBytes: z.number().int().positive(),
   maxFileListBytes: z.number().int().positive(),
+});
+
+const workspaceDiffFilesCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffFiles"),
+  target: workspaceDiffTargetSchema,
+});
+
+const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffPatch"),
+  target: workspaceDiffTargetSchema,
+  paths: z.array(z.string()),
+  maxBytesPerFile: z.number().int().positive(),
 });
 
 // The daemon derives the branch from the workspace HEAD, so the command needs
@@ -570,37 +592,6 @@ const fileMetadataResultSchema = z.object({
   sizeBytes: z.number().int().nonnegative(),
 });
 
-const environmentCleanupPreflightResultSchema = z.discriminatedUnion(
-  "outcome",
-  [
-    z.object({ outcome: z.literal("safe_to_destroy") }).strict(),
-    z
-      .object({
-        outcome: z.literal("blocked_by_changes"),
-        message: z.string().min(1),
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("already_missing"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("not_inspectable"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("probe_failed"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-  ],
-);
-
 const workspaceStatusResultSchema = z.discriminatedUnion("outcome", [
   z
     .object({
@@ -621,6 +612,46 @@ const workspaceDiffResultSchema = z.discriminatedUnion("outcome", [
     .object({
       outcome: z.literal("available"),
       diff: threadGitDiffResponseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffFilesResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      files: z.array(rawDiffFileStatSchema),
+      shortstat: z.string(),
+      mergeBaseRef: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      patches: z.array(
+        z
+          .object({
+            path: z.string(),
+            patch: z.string(),
+            truncated: z.boolean(),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
@@ -934,15 +965,6 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "environment.cleanup_preflight": defineHostDaemonCommandDescriptor({
-    type: "environment.cleanup_preflight",
-    schema: environmentCleanupPreflightCommandSchema,
-    resultSchema: environmentCleanupPreflightResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: "read",
-  }),
   "workspace.status": defineHostDaemonCommandDescriptor({
     type: "workspace.status",
     schema: workspaceStatusCommandSchema,
@@ -956,6 +978,24 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.diff",
     schema: workspaceDiffCommandSchema,
     resultSchema: workspaceDiffResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diffFiles": defineHostDaemonCommandDescriptor({
+    type: "workspace.diffFiles",
+    schema: workspaceDiffFilesCommandSchema,
+    resultSchema: workspaceDiffFilesResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diffPatch": defineHostDaemonCommandDescriptor({
+    type: "workspace.diffPatch",
+    schema: workspaceDiffPatchCommandSchema,
+    resultSchema: workspaceDiffPatchResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

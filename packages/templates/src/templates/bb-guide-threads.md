@@ -16,7 +16,8 @@ Spawning:
     --prompt <prompt>              Initial prompt (required)
     --title <title>                Thread title
     --project <id>                 Project (defaults to BB_PROJECT_ID)
-    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)
+    --parent-thread <id>           Parent thread
+    --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
@@ -24,10 +25,9 @@ Spawning:
     --new-environment <kind>       Create a new environment (worktree)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
-    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
-  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.
+  Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
 
 Listing:
 

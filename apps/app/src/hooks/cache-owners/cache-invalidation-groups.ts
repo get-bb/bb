@@ -6,8 +6,7 @@ import {
   allThreadPendingInteractionsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
-  allThreadTimelineFeedQueryKeyPrefix,
-  allThreadTimelineRowDetailQueryKeyPrefix,
+  allThreadTimelineQueryKeyPrefix,
   allThreadTimelineTurnSummaryDetailsQueryKeyPrefix,
   localPathExistenceQueryKeyPrefix,
   projectPathsQueryKeyPrefix,
@@ -23,8 +22,7 @@ import {
   threadQueryKey,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
-  threadTimelineFeedQueryKeyPrefix,
-  threadTimelineRowDetailQueryKeyPrefix,
+  threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
 
@@ -106,23 +104,13 @@ export function getThreadTimelineInvalidationQueryKeys({
 }: ThreadScopedInvalidationArgs): QueryKey[] {
   return threadId
     ? [
-        threadTimelineFeedQueryKeyPrefix(threadId),
-        threadTimelineRowDetailQueryKeyPrefix(threadId),
+        threadTimelineQueryKeyPrefix(threadId),
         threadTimelineTurnSummaryDetailsQueryKeyPrefix(threadId),
       ]
     : [
-        allThreadTimelineFeedQueryKeyPrefix(),
-        allThreadTimelineRowDetailQueryKeyPrefix(),
+        allThreadTimelineQueryKeyPrefix(),
         allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
       ];
-}
-
-export function getThreadTimelineFeedInvalidationQueryKeys({
-  threadId,
-}: ThreadScopedInvalidationArgs): QueryKey[] {
-  return threadId
-    ? [threadTimelineFeedQueryKeyPrefix(threadId)]
-    : [allThreadTimelineFeedQueryKeyPrefix()];
 }
 
 export function getThreadQueueContentInvalidationQueryKeys({

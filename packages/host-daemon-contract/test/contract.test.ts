@@ -175,10 +175,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       headSha: "abc123",
     },
     defaultBranch: "main",
+    defaultBranchRelation: "equal",
     hasUncommittedChanges: false,
     operation: {
       kind: "none",
     },
+    originDefaultBranch: "origin/main",
     remoteBranches: ["origin/main"],
     remoteBranchesTruncated: false,
     selectedBranch: {
@@ -224,11 +226,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
-  "environment.cleanup_preflight": {
-    outcome: "safe_to_destroy",
-  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
     pullRequest: {
       number: 42,
@@ -290,6 +291,34 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   },
 };
 
+const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  files: [
+    {
+      path: "src/renamed.ts",
+      previousPath: "src/original.ts",
+      statusLetter: "R",
+      additions: 3,
+      deletions: 1,
+      binary: false,
+      origin: "tracked",
+    },
+  ],
+  shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
+  mergeBaseRef: "abc123",
+};
+
+const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  patches: [
+    {
+      path: "src/renamed.ts",
+      patch: "diff --git a/src/original.ts b/src/renamed.ts\n",
+      truncated: true,
+    },
+  ],
+};
+
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
@@ -301,6 +330,16 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
       name: "workspace.diff available result",
       commandType: "workspace.diff",
       result: WORKSPACE_DIFF_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffFiles available result",
+      commandType: "workspace.diffFiles",
+      result: WORKSPACE_DIFF_FILES_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffPatch available result",
+      commandType: "workspace.diffPatch",
+      result: WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT,
     },
     {
       name: "workspace.pull_request no-PR result",
@@ -395,6 +434,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
+  "hostDaemonCommandSchema.fork":
+    "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
@@ -910,15 +951,6 @@ describe("host-daemon command schemas", () => {
         dotfiles: "deny",
       },
       { type: "provider.list_models", providerId: "codex" },
-      {
-        type: "environment.cleanup_preflight",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "managed-worktree",
-        },
-        mergeBaseBranch: "main",
-      },
       {
         type: "workspace.status",
         environmentId: "env_123",
@@ -1621,8 +1653,10 @@ describe("host-daemon command schemas", () => {
           headSha: "abc123",
         },
         defaultBranch: "main",
+        defaultBranchRelation: "equal",
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
+        originDefaultBranch: "origin/main",
         remoteBranches: ["origin/main"],
         remoteBranchesTruncated: false,
         selectedBranch: { name: "origin/main", kind: "remote" },
@@ -1674,36 +1708,6 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       modifiedAtMs: 1234.5,
       sizeBytes: 26_214_401,
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "safe_to_destroy",
-      }),
-    ).toEqual({
-      outcome: "safe_to_destroy",
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "already_missing",
-        failure: {
-          code: "path_not_found",
-          workspacePath: "/tmp/missing",
-          message: "Managed workspace path does not exist: /tmp/missing",
-        },
-      }),
-    ).toEqual({
-      outcome: "already_missing",
-      failure: {
-        code: "path_not_found",
-        workspacePath: "/tmp/missing",
-        message: "Managed workspace path does not exist: /tmp/missing",
-      },
     });
 
     expect(

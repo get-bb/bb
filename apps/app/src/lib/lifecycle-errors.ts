@@ -178,6 +178,7 @@ function describeEnvironmentNotReady({
         title: "Workspace setup failed",
         body: "Workspace setup failed.",
       });
+    case "retiring":
     case "destroying":
       return info({
         operation,
@@ -261,17 +262,11 @@ function describeThreadNotWritable({
         body: "This thread was deleted.",
       });
     case "not_started":
-      return details.threadStatus === "provisioning"
-        ? info({
-            operation,
-            title: "Thread starting",
-            body: "The thread is still starting.",
-          })
-        : info({
-            operation,
-            title: "Thread not started",
-            body: "The thread has not started yet.",
-          });
+      return info({
+        operation,
+        title: "Thread starting",
+        body: "The thread is still starting.",
+      });
     case "not_active":
       return warning({
         operation,

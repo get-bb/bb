@@ -23,7 +23,7 @@ import {
   backgroundTaskUsageSchema,
   workflowProgressSnapshotSchema,
 } from "./background-task.js";
-import { findLegacyClientRequestSequenceIssues } from "./thread-event-legacy.js";
+import { threadTimelineGoalStatusSchema } from "./thread-timeline-goal.js";
 
 export const threadEventItemStatusSchema = z.enum([
   "pending",
@@ -391,6 +391,21 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string(),
   }),
   z.object({
+    type: z.literal("thread/goal/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    objective: z.string(),
+    status: threadTimelineGoalStatusSchema,
+    tokenBudget: z.number().nullable(),
+    tokensUsed: z.number(),
+    timeUsedSeconds: z.number(),
+  }),
+  z.object({
+    type: z.literal("thread/goal/cleared"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+  }),
+  z.object({
     type: z.literal("item/started"),
     threadId: z.string(),
     providerThreadId: z.string(),
@@ -623,14 +638,35 @@ export const systemEventSchema = unscopedSystemEventSchema.and(
   scopedEventDataSchema,
 );
 
+const eventPropertyBagSchema = z.record(z.string(), z.unknown());
+const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
 const rejectLegacyClientRequestSequenceSchema = z
   .unknown()
   .superRefine((value, ctx) => {
-    for (const issue of findLegacyClientRequestSequenceIssues(value)) {
+    const eventResult = eventPropertyBagSchema.safeParse(value);
+    if (!eventResult.success) {
+      return;
+    }
+
+    if (Object.hasOwn(eventResult.data, legacyClientRequestKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: issue.message,
-        path: issue.path,
+        message: "legacy request sequence field is no longer accepted",
+        path: [legacyClientRequestKey],
+      });
+    }
+
+    const itemResult = eventPropertyBagSchema.safeParse(eventResult.data.item);
+    if (
+      itemResult.success &&
+      itemResult.data.type === "userMessage" &&
+      Object.hasOwn(itemResult.data, legacyClientRequestKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "legacy user-message request sequence field is no longer accepted",
+        path: ["item", legacyClientRequestKey],
       });
     }
   });

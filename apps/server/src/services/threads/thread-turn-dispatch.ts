@@ -15,13 +15,18 @@ import {
   MANAGED_REPROVISION_STARTED,
 } from "../environments/environment-provisioning-internal.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
+import {
+  goneThreadEnvironmentDetails,
+  throwEnvironmentNotReady,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
 import {
   appendThreadProvisioningEvent,
   getLastProviderThreadId,
 } from "./thread-events.js";
 import { requestThreadReprovision } from "./thread-provisioning.js";
-import { tryTransition } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 export interface ReadyThreadEnvironment extends Environment {
   path: string;
@@ -88,6 +93,23 @@ export async function dispatchTurnDuringReprovision(
     return false;
   }
 
+  if (args.environment.status === "retiring") {
+    applyLoggedEnvironmentLifecycleEvent(args.deps, {
+      environmentId: args.environment.id,
+      event: { type: "retire.cancelled" },
+    });
+    return false;
+  }
+
+  // A destroying/destroyed environment is gone and is never reprovisioned.
+  // Surface the "environment is gone" condition the frontend banner keys off
+  // instead of dispatching a reprovision. Error-recovery reprovision for an
+  // `error`-status environment is still legitimate and falls through.
+  const goneDetails = goneThreadEnvironmentDetails(args.environment);
+  if (goneDetails) {
+    throwThreadEnvironmentUnavailable(goneDetails);
+  }
+
   if (!args.environment.managed || args.environment.status === "provisioning") {
     throwEnvironmentNotReady(args.environment);
   }
@@ -106,11 +128,17 @@ export async function dispatchTurnDuringReprovision(
     hostId: args.environment.hostId,
   });
 
+  // Stronger than the run.preparing table cell on purpose: an errored
+  // thread may reprovision only when it never started (no provider thread id),
+  // an event-log condition the thread row cannot express.
   if (
     args.thread.status === "idle" ||
     canRecoverPreStartErroredThread(args.deps, args.thread)
   ) {
-    tryTransition(args.deps.db, args.deps.hub, args.thread.id, "provisioning");
+    applyLoggedThreadLifecycleEvent(args.deps, {
+      event: { type: "run.preparing" },
+      threadId: args.thread.id,
+    });
   }
   const provisioningId = createThreadProvisioningId();
   const provisionEventSequence = appendThreadProvisioningEvent(args.deps, {

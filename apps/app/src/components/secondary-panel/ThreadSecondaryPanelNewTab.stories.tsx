@@ -392,6 +392,7 @@ function SeededNewTabPage({
       focusRequest={0}
       initialQuery={initialQuery}
       onSelect={onSelect}
+      onStartSideChat={() => undefined}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
     />
@@ -535,7 +536,6 @@ function NewTabPanelStory({
         fileTabContent={content}
         isOpen
         metadataContent={null}
-        threadId={SEARCH_THREAD_ID}
         onCollapse={noop}
         onClose={noop}
         onFileTabReorder={noop}

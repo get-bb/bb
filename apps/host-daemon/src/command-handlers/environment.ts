@@ -50,10 +50,15 @@ export async function provisionEnvironment(
       ),
     });
 
+    const [branchName, resolvedDefaultBranch] = await Promise.all([
+      entry.workspace.getCurrentBranch(),
+      entry.workspace.isGitRepo
+        ? entry.workspace.getDefaultBranch()
+        : Promise.resolve(null),
+    ]);
     const defaultBranch = entry.workspace.isGitRepo
-      ? (await entry.workspace.getStatus()).branch.defaultBranch || null
+      ? (resolvedDefaultBranch ?? branchName)
       : null;
-    const branchName = await entry.workspace.getCurrentBranch();
 
     // For fresh provisions, emit cwd (for unmanaged) and branch/SHA entries.
     if (!alreadyExists) {

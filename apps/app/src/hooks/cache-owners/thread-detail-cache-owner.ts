@@ -15,7 +15,7 @@ import {
   hostQueryKey,
   hostsQueryKey,
   threadQueryKey,
-  threadTimelineFeedQueryKey,
+  threadTimelineQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -90,9 +90,9 @@ export function ingestThreadDetailBootstrap({
 
   if (timelinePrefetch) {
     void queryClient.prefetchQuery({
-      queryKey: threadTimelineFeedQueryKey(thread.id),
+      queryKey: threadTimelineQueryKey(thread.id),
       queryFn: () =>
-        api.getThreadTimelineFeed({
+        api.getThreadTimeline({
           id: thread.id,
         }),
     });

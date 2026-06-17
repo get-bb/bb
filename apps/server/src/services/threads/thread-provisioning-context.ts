@@ -59,15 +59,30 @@ export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(
   ],
 );
 
+export const threadForkDescriptorSchema = z.object({
+  sourceProviderThreadId: z.string().min(1),
+});
+
 export const threadProvisionCommonPayloadSchema = z.object({
   branchSlug: z.string().nullable().default(null),
   clientRequestId: clientTurnRequestIdSchema,
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   execution: resolvedThreadExecutionOptionsSchema,
+  // Non-null ⇒ provision this thread by cloning the source provider session at
+  // its branch point (native fork) instead of starting a fresh session. null ⇒
+  // not a fork. Only populated for forkable forks; the server gates on
+  // originKind/provider capability/source session/host at create time.
+  fork: threadForkDescriptorSchema.nullable().default(null),
   input: z.array(promptInputSchema),
   titleProvided: z.boolean(),
+  // When true the thread-start turn is persisted/displayed but no provider run
+  // is dispatched — the started agent waits for the user's first message (fork
+  // and side-chat anchors). The thread lands in `idle` once the workspace is
+  // ready. Defaults false (a normal start dispatches immediately).
+  seedWithoutRun: z.boolean().default(false),
 });
 
+export type ThreadForkDescriptor = z.infer<typeof threadForkDescriptorSchema>;
 export type ThreadProvisionEnvironmentIntent = z.infer<
   typeof threadProvisionEnvironmentIntentSchema
 >;
@@ -178,7 +193,9 @@ export interface CreateMetadataPendingContextArgs {
   clientRequestId: ClientTurnRequestId;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
+  fork: ThreadForkDescriptor | null;
   input: PromptInput[];
+  seedWithoutRun: boolean;
   titleProvided: boolean;
 }
 
@@ -317,8 +334,10 @@ export function createMetadataPendingContext(
       clientRequestId: args.clientRequestId,
       environmentIntent: args.environmentIntent,
       execution: args.execution,
+      fork: args.fork,
       input: args.input,
       titleProvided: args.titleProvided,
+      seedWithoutRun: args.seedWithoutRun,
     },
     state: {
       environmentId: null,
@@ -422,8 +441,11 @@ export function createReprovisioningContext(
       },
       clientRequestId: args.clientRequestId,
       execution: args.execution,
+      // Reprovision is a new turn on an existing thread, never a fork.
+      fork: null,
       input: args.input,
       titleProvided: true,
+      seedWithoutRun: false,
     },
     state: {
       environmentId: args.environmentId,

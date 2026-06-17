@@ -253,7 +253,6 @@ export function listIdleThreadsWithQueuedMessages(
         eq(threads.status, "idle"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNull(threads.stopRequestedAt),
         isNotNull(threads.environmentId),
         isNull(queuedThreadMessages.claimedAt),
         isNull(queuedThreadMessages.claimToken),

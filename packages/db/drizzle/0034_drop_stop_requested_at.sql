@@ -1,0 +1,1 @@
+ALTER TABLE `threads` DROP COLUMN `stop_requested_at`;

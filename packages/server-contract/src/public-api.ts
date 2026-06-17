@@ -26,24 +26,18 @@ import {
 import type {
   EmptyInput,
   PathId,
-  PathProjectAutomationId,
   PathProjectId,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathThreadAndTerminal,
-  PathThreadScheduleId,
 } from "./common.js";
 import type {
-  Automation,
-  AutomationsOverviewResponse,
   CloseThreadTerminalRequest,
   CommandListResponse,
-  CreateAutomationRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
   CreateThreadRequest,
-  CreateThreadScheduleRequest,
   CreateThreadTerminalRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
@@ -54,6 +48,9 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchRequest,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
   EnvironmentDiffResponse,
   EnvironmentPathsQuery,
@@ -103,7 +100,6 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadSearchQuery,
   ThreadSearchResponse,
   ThreadStorageContentQuery,
@@ -112,21 +108,15 @@ import type {
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
   ThreadTerminalListResponse,
-  ThreadTimelineFeedQuery,
-  ThreadTimelineFeedResponse,
-  TimelineRowDetailQuery,
-  TimelineRowDetailResponse,
+  ThreadTimelineQuery,
+  ThreadTimelineResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
-  TimelineWorkOutputDetailQuery,
-  TimelineWorkOutputDetailResponse,
-  UpdateAutomationRequest,
   UpdateEnvironmentRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
-  UpdateThreadScheduleRequest,
   UpdateThreadTerminalRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
@@ -134,17 +124,16 @@ import type {
 } from "./api-types.js";
 import {
   closeThreadTerminalRequestSchema,
-  createAutomationRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
-  createThreadScheduleRequestSchema,
   createThreadTerminalRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
+  environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
@@ -173,16 +162,12 @@ import {
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
   threadStoragePathsQuerySchema,
-  threadTimelineFeedQuerySchema,
-  timelineRowDetailQuerySchema,
+  threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
-  timelineWorkOutputDetailQuerySchema,
-  updateAutomationRequestSchema,
   updateEnvironmentRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
-  updateThreadScheduleRequestSchema,
   updateThreadTerminalRequestSchema,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
@@ -191,20 +176,8 @@ type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
-type PathThreadTimelineRow = {
-  param: { id: string; rowKey: string };
-};
 
 export const publicApiRoutes = {
-  automations: {
-    list: defineRoute({
-      path: "/automations",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<AutomationsOverviewResponse>(),
-    }),
-  },
-
   projects: {
     list: defineRoute({
       path: "/projects",
@@ -294,36 +267,6 @@ export const publicApiRoutes = {
       path: "/projects/:id/sources/:sourceId",
       method: "delete",
       request: noRequest<PathProjectSourceId>(),
-      response: jsonResponse<{ ok: true }>(),
-    }),
-    listAutomations: defineRoute({
-      path: "/projects/:id/automations",
-      method: "get",
-      request: noRequest<PathProjectId>(),
-      response: jsonResponse<Automation[]>(),
-    }),
-    createAutomation: defineRoute({
-      path: "/projects/:id/automations",
-      method: "post",
-      request: jsonRequest<
-        PathProjectId,
-        CreateAutomationRequest,
-        typeof createAutomationRequestSchema
-      >(createAutomationRequestSchema),
-      response: jsonResponse<Automation>({ status: 201 }),
-    }),
-    updateAutomation: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "patch",
-      request: jsonRequest<PathProjectAutomationId, UpdateAutomationRequest>(
-        updateAutomationRequestSchema,
-      ),
-      response: jsonResponse<Automation>(),
-    }),
-    deleteAutomation: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "delete",
-      request: noRequest<PathProjectAutomationId>(),
       response: jsonResponse<{ ok: true }>(),
     }),
     files: defineRoute({
@@ -429,6 +372,22 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<EnvironmentDiffResponse>(),
     }),
+    diffFiles: defineRoute({
+      path: "/environments/:id/diff/files",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentDiffQuery>(
+        environmentDiffQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDiffFilesResponse>(),
+    }),
+    diffPatch: defineRoute({
+      path: "/environments/:id/diff/patch",
+      method: "post",
+      request: jsonRequest<PathId, EnvironmentDiffPatchRequest>(
+        environmentDiffPatchRequestSchema,
+      ),
+      response: jsonResponse<EnvironmentDiffPatchResponse>(),
+    }),
     diffFile: defineRoute({
       path: "/environments/:id/diff/file",
       method: "get",
@@ -531,36 +490,6 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadChildSummaryResponse>(),
-    }),
-    listSchedules: defineRoute({
-      path: "/threads/:id/schedules",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<ThreadSchedule[]>(),
-    }),
-    createSchedule: defineRoute({
-      path: "/threads/:id/schedules",
-      method: "post",
-      request: jsonRequest<
-        PathId,
-        CreateThreadScheduleRequest,
-        typeof createThreadScheduleRequestSchema
-      >(createThreadScheduleRequestSchema),
-      response: jsonResponse<ThreadSchedule>({ status: 201 }),
-    }),
-    updateSchedule: defineRoute({
-      path: "/threads/:id/schedules/:scheduleId",
-      method: "patch",
-      request: jsonRequest<PathThreadScheduleId, UpdateThreadScheduleRequest>(
-        updateThreadScheduleRequestSchema,
-      ),
-      response: jsonResponse<ThreadSchedule>(),
-    }),
-    deleteSchedule: defineRoute({
-      path: "/threads/:id/schedules/:scheduleId",
-      method: "delete",
-      request: noRequest<PathThreadScheduleId>(),
-      response: jsonResponse<{ ok: true }>(),
     }),
     /**
      * Send a message to a thread.
@@ -744,21 +673,13 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<TerminalSession>(),
     }),
-    timelineFeed: defineRoute({
-      path: "/threads/:id/timeline/feed",
+    timeline: defineRoute({
+      path: "/threads/:id/timeline",
       method: "get",
-      request: optionalQueryRequest<PathId, ThreadTimelineFeedQuery>(
-        threadTimelineFeedQuerySchema,
+      request: optionalQueryRequest<PathId, ThreadTimelineQuery>(
+        threadTimelineQuerySchema,
       ),
-      response: jsonResponse<ThreadTimelineFeedResponse>(),
-    }),
-    timelineRowDetail: defineRoute({
-      path: "/threads/:id/timeline/rows/:rowKey/detail",
-      method: "get",
-      request: queryRequest<PathThreadTimelineRow, TimelineRowDetailQuery>(
-        timelineRowDetailQuerySchema,
-      ),
-      response: jsonResponse<TimelineRowDetailResponse>(),
+      response: jsonResponse<ThreadTimelineResponse>(),
     }),
     timelineTurnSummaryDetails: defineRoute({
       path: "/threads/:id/timeline/turn-summary-details",
@@ -767,14 +688,6 @@ export const publicApiRoutes = {
         timelineTurnSummaryDetailsQuerySchema,
       ),
       response: jsonResponse<TimelineTurnSummaryDetailsResponse>(),
-    }),
-    timelineWorkOutputDetail: defineRoute({
-      path: "/threads/:id/timeline/work-output",
-      method: "get",
-      request: queryRequest<PathId, TimelineWorkOutputDetailQuery>(
-        timelineWorkOutputDetailQuerySchema,
-      ),
-      response: jsonResponse<TimelineWorkOutputDetailResponse>(),
     }),
     output: defineRoute({
       path: "/threads/:id/output",

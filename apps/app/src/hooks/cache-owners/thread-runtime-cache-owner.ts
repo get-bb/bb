@@ -8,15 +8,24 @@ import type {
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
+  ThreadResponse,
+  TimelineConversationAttachments,
+  TimelineRow,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api";
+import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
 import type { SendThreadMessageMutationRequest } from "../mutations/mutation-request-types";
-import { optimisticallyInsertThread, updateCachedThread } from "./query-cache";
+import {
+  insertOptimisticTimelineRow,
+  optimisticallyInsertThread,
+  removeOptimisticTimelineRow,
+  updateCachedThread,
+} from "./query-cache";
 import {
   applyToCachedThreadLists,
   getCachedThreadLists,
@@ -29,7 +38,7 @@ import {
   threadQueryKey,
   threadQueuedMessagesQueryKey,
   threadsQueryKey,
-  threadTimelineFeedQueryKeyPrefix,
+  threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
 import {
@@ -54,7 +63,7 @@ interface BeginCreateThreadTransactionArgs {
 interface CreateThreadSuccessArgs {
   queryClient: QueryClient;
   request: AppCreateThreadRequest;
-  thread: ThreadWithRuntime;
+  thread: ThreadResponse;
 }
 
 interface SendThreadMessageTransactionArgs {
@@ -124,10 +133,26 @@ interface BuildAcceptedPromptHistoryEntryArgs {
 
 interface ApplyOptimisticStopRequestArgs extends StopThreadTransactionArgs {}
 
+interface BuildOptimisticUserMessageRowParams {
+  createdAt: number;
+  input: SendThreadMessageMutationRequest["input"];
+  mode: SendThreadMessageMutationRequest["mode"];
+  threadId: string;
+  threadStatus: ThreadWithRuntime["status"] | null;
+}
+
+type OptimisticTurnRequestKind = "message" | "steer";
+
+interface OptimisticTurnRequestKindArgs {
+  mode: SendThreadMessageMutationRequest["mode"];
+  threadStatus: ThreadWithRuntime["status"] | null;
+}
+
 export interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
-  previousThread: ThreadWithRuntime | undefined;
+  optimisticRowId: string;
+  previousThread: ThreadResponse | undefined;
 }
 
 export interface SendThreadMessageQueuedTransaction {
@@ -143,7 +168,7 @@ export interface ReorderQueuedMessageTransaction {
 }
 
 export interface StopThreadTransaction {
-  previousThread: ThreadWithRuntime | undefined;
+  previousThread: ThreadResponse | undefined;
   previousThreadLists: ThreadListSnapshot;
 }
 
@@ -211,11 +236,73 @@ function restoreThreadLists(
   }
 }
 
+function optimisticTurnRequestKind({
+  mode,
+  threadStatus,
+}: OptimisticTurnRequestKindArgs): OptimisticTurnRequestKind {
+  if (mode === "steer" || mode === "steer-if-active") {
+    return "steer";
+  }
+  if (mode === "auto" && threadStatus === "active") {
+    return "steer";
+  }
+  return "message";
+}
+
 function requestWillQueueForActiveThread(
   request: SendThreadMessageMutationRequest,
   thread: ThreadWithRuntime | undefined,
 ): boolean {
   return request.mode === "queue-if-active" && thread?.status === "active";
+}
+
+function buildOptimisticUserMessageRow({
+  createdAt,
+  input,
+  mode,
+  threadId,
+  threadStatus,
+}: BuildOptimisticUserMessageRowParams): TimelineRow {
+  const id = `optimistic-user-${nanoid()}`;
+  const text = input
+    .filter(
+      (entry): entry is Extract<typeof entry, { type: "text" }> =>
+        entry.type === "text" && entry.visibility !== "agent-only",
+    )
+    .map((entry) => entry.text)
+    .join("\n\n");
+  const attachments = collectPromptAttachments(input);
+  const timelineAttachments: TimelineConversationAttachments | null =
+    attachments
+      ? {
+          webImages: attachments.webImages,
+          localImages: attachments.localImages,
+          localFiles: attachments.localFiles,
+          imageUrls: attachments.imageUrls ?? [],
+          localImagePaths: attachments.localImagePaths ?? [],
+          localFilePaths: attachments.localFilePaths ?? [],
+        }
+      : null;
+  return {
+    id,
+    kind: "conversation",
+    role: "user",
+    threadId,
+    turnId: null,
+    sourceSeqStart: 0,
+    sourceSeqEnd: 0,
+    startedAt: createdAt,
+    createdAt,
+    text,
+    mentions: [],
+    attachments: timelineAttachments,
+    initiator: "user",
+    senderThreadId: null,
+    turnRequest: {
+      kind: optimisticTurnRequestKind({ mode, threadStatus }),
+      status: "pending",
+    },
+  };
 }
 
 function applyOptimisticStopRequest({
@@ -225,7 +312,8 @@ function applyOptimisticStopRequest({
 }: ApplyOptimisticStopRequestArgs): void {
   updateCachedThread(queryClient, threadId, (thread) => ({
     ...thread,
-    stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+    status: "stopping",
+    runtime: { ...thread.runtime, displayStatus: "stopping" },
     updatedAt: Math.max(thread.updatedAt, requestedAt),
   }));
 
@@ -236,7 +324,8 @@ function applyOptimisticStopRequest({
         thread.id === threadId
           ? {
               ...thread,
-              stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+              status: "stopping",
+              runtime: { ...thread.runtime, displayStatus: "stopping" },
               updatedAt: Math.max(thread.updatedAt, requestedAt),
             }
           : thread,
@@ -255,7 +344,7 @@ export function applyCreateThreadResult({
   request,
   thread,
 }: CreateThreadSuccessArgs): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(thread.id),
     thread,
   );
@@ -286,7 +375,7 @@ export async function beginSendThreadMessageTransaction({
 }: SendThreadMessageTransactionArgs): Promise<SendThreadMessageTransaction> {
   await queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) });
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(request.id),
   );
   if (requestWillQueueForActiveThread(request, previousThread)) {
@@ -298,7 +387,7 @@ export async function beginSendThreadMessageTransaction({
 
   await Promise.all([
     queryClient.cancelQueries({
-      queryKey: threadTimelineFeedQueryKeyPrefix(request.id),
+      queryKey: threadTimelineQueryKeyPrefix(request.id),
     }),
     queryClient.cancelQueries({
       queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(request.id),
@@ -323,10 +412,20 @@ export async function beginSendThreadMessageTransaction({
     },
   }));
 
+  const optimisticRow = buildOptimisticUserMessageRow({
+    createdAt: optimisticCreatedAt,
+    input: request.input,
+    mode: request.mode,
+    threadId: request.id,
+    threadStatus: previousThread?.status ?? null,
+  });
+  insertOptimisticTimelineRow(queryClient, request.id, optimisticRow);
+
   return {
     kind: "accepted-turn",
     previousThread,
     optimisticCreatedAt,
+    optimisticRowId: optimisticRow.id,
   };
 }
 
@@ -338,11 +437,18 @@ export function rollbackSendThreadMessageTransaction({
   if (transaction?.kind !== "accepted-turn") {
     return;
   }
+  if (transaction.optimisticRowId) {
+    removeOptimisticTimelineRow(
+      queryClient,
+      request.id,
+      transaction.optimisticRowId,
+    );
+  }
   if (!transaction?.previousThread) {
     return;
   }
 
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(request.id),
     transaction.previousThread,
   );
@@ -474,7 +580,7 @@ export async function beginStopThreadTransaction({
     queryClient.cancelQueries({ queryKey: threadsQueryKey() }),
   ]);
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(threadId),
   );
   const previousThreadLists = snapshotThreadLists(queryClient);

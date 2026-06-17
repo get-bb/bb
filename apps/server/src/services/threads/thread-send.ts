@@ -1,4 +1,8 @@
-import { getThread, transitionThreadStatusInTransaction } from "@bb/db";
+import {
+  getEnvironment,
+  getThread,
+  requireThreadLifecycleEventApplied,
+} from "@bb/db";
 import type { DbConnection, DbTransaction } from "@bb/db";
 import type {
   ClientTurnRequestId,
@@ -32,6 +36,7 @@ import {
   prepareReadyThreadTurnCommand,
   prepareReadyThreadTurnDispatchInTransaction,
 } from "./thread-lifecycle.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
@@ -140,7 +145,7 @@ export function ensureThreadIsWritable(thread: Thread): void {
   if (thread.archivedAt) {
     throwThreadNotWritable(thread, "archived", "Thread is archived");
   }
-  if (thread.stopRequestedAt !== null) {
+  if (thread.status === "stopping") {
     throwThreadNotWritable(thread, "stopping", "Thread is stopping");
   }
   if (thread.deletedAt !== null) {
@@ -228,6 +233,14 @@ export function resolveMessageSenderThreadId(
   }
   if (senderThread.deletedAt !== null) {
     throwSenderThreadInvalid("deleted");
+  }
+  // The cross-thread message template instructs the receiving agent to reply
+  // via `bb thread tell {{senderThreadId}}`, so a sender from another project
+  // would become a cross-project write primitive. Mirror the create-path guard
+  // (assertValidParentThread) here so both the immediate-send and queued
+  // paths, which share this resolver, reject project mismatches.
+  if (senderThread.projectId !== args.targetThread.projectId) {
+    throwSenderThreadInvalid("wrong_project");
   }
 
   return senderThread.id;
@@ -393,7 +406,9 @@ export async function sendThreadMessage(
   ) {
     return;
   }
-  const readyEnvironment = requireReadyThreadEnvironment(environment);
+  const readyEnvironment = requireReadyThreadEnvironment(
+    getEnvironment(deps.db, environment.id) ?? environment,
+  );
   let target: TurnRequestTarget;
   if (mode === "start") {
     target = { kind: "new-turn" };
@@ -409,6 +424,9 @@ export async function sendThreadMessage(
   if (mode === "start") {
     const command = await prepareReadyThreadTurnCommand(deps, {
       thread,
+      // A send/steer always targets an already-started thread; forking only
+      // happens at create time.
+      fork: null,
       input,
       requestId,
       execution,
@@ -416,7 +434,6 @@ export async function sendThreadMessage(
       environment: {
         id: readyEnvironment.id,
         hostId: readyEnvironment.hostId,
-        cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
         path: readyEnvironment.path,
         status: readyEnvironment.status,
         workspaceProvisionType: readyEnvironment.workspaceProvisionType,
@@ -440,14 +457,24 @@ export async function sendThreadMessage(
           thread,
         });
         const currentThread = getThread(tx, thread.id);
+        // Dispatching a turn IS the thread becoming active. A warm
+        // `turn.submit` and a cold `thread.start` are the same event from the
+        // thread's view, so an `idle` cold-start activates exactly like an
+        // `error` cold-start — a failed start walks either back through
+        // `run.failed`. (Other statuses fall through unchanged: pre-start
+        // threads are already rejected by `ensureThreadCanStartRequest`, and a
+        // `stopping`/superseded thread must not be reactivated here.)
         if (
           dispatchKind === "turn.submit" ||
-          currentThread?.status === "error"
+          currentThread?.status === "error" ||
+          currentThread?.status === "idle"
         ) {
-          transitionThreadStatusInTransaction(tx, {
-            id: thread.id,
-            newStatus: "active",
-          });
+          requireThreadLifecycleEventApplied(
+            applyLoggedThreadLifecycleEventInTransaction(
+              { db: tx, logger: deps.logger },
+              { event: { type: "run.started" }, threadId: thread.id },
+            ),
+          );
           return { threadBecameActive: true };
         }
         return { threadBecameActive: false };
@@ -496,7 +523,6 @@ export async function sendThreadMessage(
     environment: {
       id: readyEnvironment.id,
       hostId: readyEnvironment.hostId,
-      cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
       path: readyEnvironment.path,
       status: readyEnvironment.status,
       workspaceProvisionType: readyEnvironment.workspaceProvisionType,

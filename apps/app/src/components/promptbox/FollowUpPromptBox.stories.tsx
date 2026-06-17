@@ -10,7 +10,10 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import type { ThreadContextWindowUsage } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsModelLoadError,
+  ThreadContextWindowUsage,
+} from "@bb/server-contract";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
@@ -35,8 +38,13 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  STORY_CODEX_MODELS,
   STORY_PROVIDER_OPTIONS,
 } from "../../../.ladle/story-fixtures";
+import type {
+  ExecutionControlsProps,
+  ExecutionPermissionConfig,
+} from "@/components/promptbox/ExecutionControls";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -55,6 +63,10 @@ const baseExecution = makeExecutionControlsProps({
     displayName: "Codex",
   },
 });
+const codexModelLoadError = {
+  providerId: "codex",
+  code: "failed",
+} satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "full", label: "Full Access", tone: "warning" },
@@ -62,8 +74,37 @@ const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "readonly", label: "Readonly" },
 ];
 
-const basePermission = {
-  value: "workspace-write" as PermissionMode,
+const basePermission: ExecutionPermissionConfig = {
+  value: "workspace-write",
+  options: permissionModeOptions,
+  onChange: noop,
+  supported: true,
+};
+
+// Read-only footer (side chat): the side chat inherits its parent thread's
+// provider/model and is always read-only. It renders the SAME model/reasoning
+// and permission pickers the main thread does — just disabled via the
+// FollowUpPromptBox `readOnly` flag — so labels and positions match exactly.
+// The configs carry real onChange handlers (they never fire while disabled).
+const readOnlyExecution = makeExecutionControlsProps({
+  provider: {
+    options: STORY_PROVIDER_OPTIONS,
+    selectedId: "codex",
+    onChange: noop,
+    hasMultiple: false,
+  },
+  model: {
+    active: { model: "gpt-5.5" },
+    selected: "gpt-5.5",
+    options: STORY_CODEX_MODELS,
+    isLoading: false,
+    loadFailed: false,
+    onChange: noop,
+  },
+});
+
+const readOnlyPermission: ExecutionPermissionConfig = {
+  value: "readonly",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -230,7 +271,11 @@ const attachmentsBase: AttachmentsConfig = {
 
 const historyEntries = [
   { text: "review thread workspace", mentions: [], attachments: [] },
-  { text: "investigate timeline pagination", mentions: [], attachments: [] },
+  {
+    text: "investigate timeline pagination",
+    mentions: [],
+    attachments: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -284,6 +329,7 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
   <ThreadPromptContextBanner
     todoSection={null}
     archivedSection={null}
+    environmentGoneSection={null}
     gitSection={{
       changedFiles: dirtyContextBannerSection,
       mergeBase: {
@@ -300,6 +346,34 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     onToggleSection={noop}
   />
 ) : null;
+
+const archivedContextBannerElement: ReactNode = (
+  <ThreadPromptContextBanner
+    todoSection={null}
+    archivedSection={{ archivedAt: 1_731_456_000_000 }}
+    environmentGoneSection={null}
+    gitSection={null}
+    gitSectionPending={false}
+    parentThreadSection={null}
+    childThreadsSection={null}
+    expandedSection={null}
+    onToggleSection={noop}
+  />
+);
+
+const environmentGoneContextBannerElement: ReactNode = (
+  <ThreadPromptContextBanner
+    todoSection={null}
+    archivedSection={null}
+    environmentGoneSection={{ status: "destroyed" }}
+    gitSection={null}
+    gitSectionPending={false}
+    parentThreadSection={null}
+    childThreadsSection={null}
+    expandedSection={null}
+    onToggleSection={noop}
+  />
+);
 
 const queuedMessages: readonly ThreadQueuedMessage[] = [
   {
@@ -354,21 +428,30 @@ const queuedMessagesElement: ReactNode = (
 // Per-row component
 // ---------------------------------------------------------------------------
 
+type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
+
 interface RowConfig {
   initialMessage?: string;
   submitMode: FollowUpSubmitMode;
   isFollowUpSubmitting?: boolean;
-  threadRuntimeDisplayStatus?: ComposerCoreRuntimeStatus;
+  threadRuntimeDisplayStatus?: FollowUpComposerRuntimeStatus;
   promptPlaceholder?: string;
   environmentSummary?: ReactNode | null;
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   zenModeResetKey?: string;
+  hideComposer?: boolean;
+  /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
+  execution?: ExecutionControlsProps;
+  /** Defaults to the editable permission picker; override to show the read-only permission config. */
+  permission?: RowPermission;
+  /** Render the footer pickers disabled (side chat). The same controls, non-interactive. */
+  readOnly?: boolean;
 }
 
-type ComposerCoreRuntimeStatus = Parameters<
-  typeof FollowUpPromptBox
->[0]["composer"]["threadRuntimeDisplayStatus"];
+type FollowUpComposerRuntimeStatus = NonNullable<
+  Parameters<typeof FollowUpPromptBox>[0]["composer"]
+>["threadRuntimeDisplayStatus"];
 
 // Match production: ThreadTimelinePane's PageShell footer caps content at
 // 760px. The story's StoryRow value cell uses flex-wrap, which would
@@ -391,6 +474,10 @@ function Row({
   contextWindowUsage = null,
   stack = null,
   zenModeResetKey = "thr_demo",
+  hideComposer = false,
+  execution = baseExecution,
+  permission = basePermission,
+  readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -409,31 +496,36 @@ function Row({
       <FollowUpPromptBox
         attachments={attachmentsBase}
         stack={stack}
-        composer={{
-          history: {
-            currentDraft: {
-              text: message,
-              mentions: mentionRanges,
-              attachments: [],
-            },
-            entries: historyEntries,
-            onSelectEntry: noop,
-          },
-          isFollowUpSubmitting,
-          message,
-          mentionRanges,
-          onChangeMessage: handleChangeMessage,
-          onModifierSubmit: noop,
-          onSubmit: noop,
-          promptPlaceholder: resolvedPlaceholder,
-          canModifierSubmit: submitMode.kind === "queue",
-          submitMode,
-          threadRuntimeDisplayStatus,
-        }}
+        composer={
+          hideComposer
+            ? null
+            : {
+                history: {
+                  currentDraft: {
+                    text: message,
+                    mentions: mentionRanges,
+                    attachments: [],
+                  },
+                  entries: historyEntries,
+                  onSelectEntry: noop,
+                },
+                isFollowUpSubmitting,
+                message,
+                mentionRanges,
+                onChangeMessage: handleChangeMessage,
+                onModifierSubmit: noop,
+                onSubmit: noop,
+                promptPlaceholder: resolvedPlaceholder,
+                canModifierSubmit: submitMode.kind === "queue",
+                submitMode,
+                threadRuntimeDisplayStatus,
+              }
+        }
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
-        execution={baseExecution}
-        permission={basePermission}
+        execution={execution}
+        permission={permission}
+        readOnly={readOnly}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
@@ -473,12 +565,12 @@ export function Overview() {
         <Row submitMode={{ kind: "blocked", reason: "pending-interaction" }} />
       </StoryRow>
       <StoryRow
-        label="stop-only: provisioning"
+        label="stop-only: starting"
         hint="environment still spinning up — follow-up locked; only Stop available"
       >
         <Row
           submitMode={{ kind: "stop-only", onStop: noop }}
-          threadRuntimeDisplayStatus="provisioning"
+          threadRuntimeDisplayStatus="starting"
           environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
@@ -494,6 +586,62 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="loading models"
+        hint="locked provider while execution options load"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: true,
+              loadFailed: false,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow
+        label="model load failed"
+        hint="locked provider with structured modelLoadError"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: true,
+              loadError: codexModelLoadError,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow label="no models" hint="locked provider with empty catalog">
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: false,
+              loadError: null,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow
         label="with queued messages"
         hint="queued cards stack above the prompt input"
       >
@@ -506,6 +654,26 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="with promptbox context banner">
         <Row submitMode={{ kind: "ready" }} stack={contextBannerElement} />
+      </StoryRow>
+      <StoryRow
+        label="archived: composer hidden"
+        hint="read-only banner remains; prompt input and footer controls are collapsed"
+      >
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          stack={archivedContextBannerElement}
+          hideComposer
+        />
+      </StoryRow>
+      <StoryRow
+        label="environment gone: composer hidden"
+        hint="same prompt context banner path for destroyed/destroying environments"
+      >
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          stack={environmentGoneContextBannerElement}
+          hideComposer
+        />
       </StoryRow>
       <StoryRow
         label="stacked cards"
@@ -539,6 +707,17 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="read-only footer (side chat)"
+        hint="inherits parent provider/model; always read-only — same model & permission pickers as the main thread, just disabled"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={readOnlyExecution}
+          permission={readOnlyPermission}
+          readOnly
         />
       </StoryRow>
     </StoryCard>

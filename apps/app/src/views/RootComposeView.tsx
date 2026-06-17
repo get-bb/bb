@@ -241,7 +241,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     useNavigateToThreadAfterCreatePreference();
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
-  const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
+  const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
   const promptMentions = usePromptMentions(
@@ -300,7 +300,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
-    projectId,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -326,6 +325,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeModel,
     modelOptions,
     isLoadingModels,
+    modelLoadFailed,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -417,7 +417,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
-    rememberSelection: branchEnvironmentMode === "worktree",
   });
   const selectedBranchName = selectedBranch?.name ?? "";
   const hostBranchesQuery = useProjectSourceBranches(
@@ -463,7 +462,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeBranchesQuery.data?.checkout.kind === "branch"
       ? activeBranchesQuery.data.checkout.branchName
       : branchEnvironmentMode === "worktree"
-        ? (activeBranchesQuery.data?.defaultBranch ?? null)
+        ? (activeBranchesQuery.data?.defaultWorktreeBaseBranch ??
+          activeBranchesQuery.data?.defaultBranch ??
+          null)
         : null;
   const handleCreateBranchFromSeed = useCallback(() => {
     handleCreateBranch(branchSelectionSeed);
@@ -498,11 +499,20 @@ export function RootComposeView(props: RootComposeViewProps) {
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
+        defaultBranch: activeBranchesQuery.data?.defaultBranch,
+        defaultWorktreeBaseBranch:
+          activeBranchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
         projectId,
         selectedBranch,
       }),
-    [effectiveEnvironmentValue, projectId, selectedBranch],
+    [
+      activeBranchesQuery.data?.defaultBranch,
+      activeBranchesQuery.data?.defaultWorktreeBaseBranch,
+      effectiveEnvironmentValue,
+      projectId,
+      selectedBranch,
+    ],
   );
 
   const projectOptions = useMemo(
@@ -705,17 +715,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     [navigate, projectId, props.surface],
   );
   // Mirrors the @-mention plumbing: the composer feeds the text typed after the
-  // command trigger into `commandQuery`, which drives the project+provider-
-  // scoped command typeahead. When the picker reuses an existing environment,
-  // scope discovery to that environment's workspace; otherwise fall back to the
-  // project's default source (null).
+  // command trigger into `commandQuery`, which drives command typeahead. In
+  // projectless compose, the server resolves the personal project to user-home
+  // command discovery with cwd: null.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const reuseEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
   const commandSuggestions = useCommandSuggestions({
-    projectId: isProjectless ? undefined : projectId,
+    projectId,
     providerId: selectedProviderId,
     environmentId: reuseEnvironmentId,
     query: commandQuery,
@@ -734,6 +743,9 @@ export function RootComposeView(props: RootComposeViewProps) {
         suggestions: commandSuggestions.suggestions,
         isLoading: commandSuggestions.isLoading,
         isError: commandSuggestions.isError,
+        hasMore: commandSuggestions.hasMore,
+        isLoadingMore: commandSuggestions.isLoadingMore,
+        loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
       },
     }),
@@ -744,7 +756,10 @@ export function RootComposeView(props: RootComposeViewProps) {
       promptMentions.suggestions,
       resolveMentionLink,
       commandSuggestions.isError,
+      commandSuggestions.hasMore,
       commandSuggestions.isLoading,
+      commandSuggestions.isLoadingMore,
+      commandSuggestions.loadMore,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
     ],
@@ -780,6 +795,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         selected: selectedModel,
         options: modelOptions,
         isLoading: isLoadingModels,
+        loadFailed: modelLoadFailed,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -799,6 +815,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeModel,
       hasMultipleProviders,
       isLoadingModels,
+      modelLoadFailed,
       modelLoadError,
       modelOptions,
       providerOptions,

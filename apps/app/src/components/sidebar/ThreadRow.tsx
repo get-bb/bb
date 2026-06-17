@@ -11,7 +11,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -31,10 +31,6 @@ import {
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
-import {
-  getEnvironmentWorkspaceDisplayIconLabel,
-  getEnvironmentWorkspaceDisplayIconName,
-} from "@/lib/environment-workspace-display";
 import {
   isBusyThread,
   isUnreadDoneThread,
@@ -212,14 +208,9 @@ function getThreadUnreadBadgeLabel({
     : "Unread thread requires attention";
 }
 
-interface ThreadTrailingIndicatorProps extends ThreadStatusGlyphProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
-}
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
-  environmentIcon,
-  environmentIconLabel,
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
@@ -245,30 +236,7 @@ function ThreadTrailingIndicator({
     );
   }
 
-  return (
-    <ThreadTrailingIcon
-      environmentIcon={environmentIcon}
-      environmentIconLabel={environmentIconLabel}
-    />
-  );
-}
-
-function ThreadTrailingIcon({
-  environmentIcon,
-  environmentIconLabel,
-}: ThreadTrailingIconProps) {
-  return environmentIcon ? (
-    <Icon
-      name={environmentIcon}
-      className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
-      aria-label={environmentIconLabel ?? undefined}
-    />
-  ) : null;
-}
-
-interface ThreadTrailingIconProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
+  return null;
 }
 
 function ThreadRowComponent({
@@ -317,18 +285,6 @@ function ThreadRowComponent({
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
   const linkTitle = linkLabel;
-  // Env-grouped children sit under a header that already shows the
-  // worktree branch + icon, so suppress the redundant trailing icon.
-  const environmentIcon = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconName(
-        thread.environmentWorkspaceDisplayKind,
-      );
-  const environmentIconLabel = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconLabel(
-        thread.environmentWorkspaceDisplayKind,
-      );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -382,6 +338,7 @@ function ThreadRowComponent({
             expandTitle="Expand child threads"
             collapseTitle="Collapse child threads"
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            revealOnHover={!isParentCollapsed}
           />
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
@@ -406,8 +363,6 @@ function ThreadRowComponent({
             )}
           >
             <ThreadTrailingIndicator
-              environmentIcon={environmentIcon}
-              environmentIconLabel={environmentIconLabel}
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
               showUnreadBadge={trailingShowUnreadBadge}

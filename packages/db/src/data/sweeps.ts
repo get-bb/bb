@@ -3,7 +3,6 @@ import {
   and,
   sql,
   lt,
-  ne,
   inArray,
 } from "drizzle-orm";
 import { type ThreadEventItemType } from "@bb/domain";
@@ -406,8 +405,7 @@ export function sweepExpiredLeases(
 }
 
 /**
- * Sweep managed environments with recorded cleanup intent and zero
- * non-archived threads.
+ * Sweep retiring managed environments with zero non-archived threads.
  * Returns the list of environment records that are candidates for cleanup.
  * The caller decides what to do (e.g., queue destroy commands).
  */
@@ -418,8 +416,7 @@ export function sweepManagedEnvironments(db: DbConnection) {
     .where(
       and(
         eq(environments.managed, true),
-        sql`${environments.cleanupRequestedAt} IS NOT NULL`,
-        ne(environments.status, "destroyed"),
+        eq(environments.status, "retiring"),
         sql`NOT EXISTS (
           SELECT 1 FROM threads
           WHERE threads.environment_id = ${environments.id}

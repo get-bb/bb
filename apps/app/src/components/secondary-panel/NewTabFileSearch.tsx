@@ -15,7 +15,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
@@ -57,8 +57,11 @@ export interface NewTabFileSearchProps {
 
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
+export type StartSideChatHandler = () => void;
 
 export interface NewTabActionsProps {
+  /** Open a session-based side chat of the current thread in its own tab. */
+  onStartSideChat?: StartSideChatHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
@@ -128,15 +131,10 @@ interface LauncherTileProps {
   children: ReactNode;
 }
 
-interface OpenBrowserTileProps {
+interface NewTabActionTileProps {
   id: string;
-  isActive: boolean;
-  onActivate: () => void;
-  onSelect: () => void;
-}
-
-interface StartTerminalTileProps {
-  id: string;
+  iconName: IconName;
+  label: string;
   isActive: boolean;
   onActivate: () => void;
   onSelect: () => void;
@@ -166,6 +164,7 @@ const FILE_SEARCH_SOURCE_LABELS = {
   "thread-storage": "Thread storage",
 } satisfies Record<FileSearchSource, string>;
 
+const START_SIDE_CHAT_ENTRY_ID = "file-search-result-start-side-chat";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
@@ -311,12 +310,14 @@ function LauncherTile({
   );
 }
 
-function OpenBrowserTile({
+function NewTabActionTile({
   id,
+  iconName,
+  label,
   isActive,
   onActivate,
   onSelect,
-}: OpenBrowserTileProps) {
+}: NewTabActionTileProps) {
   return (
     <LauncherTile
       id={id}
@@ -327,42 +328,12 @@ function OpenBrowserTile({
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
         <Icon
-          name="Globe"
+          name={iconName}
           className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
           aria-hidden
         />
       </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">
-        Open browser
-      </span>
-    </LauncherTile>
-  );
-}
-
-function StartTerminalTile({
-  id,
-  isActive,
-  onActivate,
-  onSelect,
-}: StartTerminalTileProps) {
-  return (
-    <LauncherTile
-      id={id}
-      isActive={isActive}
-      variant="action"
-      onActivate={onActivate}
-      onSelect={onSelect}
-    >
-      <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon
-          name="Terminal"
-          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-          aria-hidden
-        />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">
-        Start terminal
-      </span>
+      <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
     </LauncherTile>
   );
 }
@@ -746,13 +717,19 @@ export function NewTabFileSearch({
 }
 
 export function NewTabActions({
+  onStartSideChat,
   onOpenBrowser,
   onStartTerminal,
 }: NewTabActionsProps) {
+  const showStartSideChatEntry = onStartSideChat !== undefined;
   const showOpenBrowserEntry =
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable();
   const showStartTerminalEntry = onStartTerminal !== undefined;
+
+  const handleStartSideChat = useCallback(() => {
+    onStartSideChat?.();
+  }, [onStartSideChat]);
 
   const handleOpenBrowser = useCallback(() => {
     onOpenBrowser?.();
@@ -762,7 +739,8 @@ export function NewTabActions({
     onStartTerminal?.();
   }, [onStartTerminal]);
 
-  const hasOpenActions = showOpenBrowserEntry || showStartTerminalEntry;
+  const hasOpenActions =
+    showStartSideChatEntry || showOpenBrowserEntry || showStartTerminalEntry;
 
   if (!hasOpenActions) {
     return null;
@@ -776,17 +754,31 @@ export function NewTabActions({
           className="pb-1"
         />
         <div className="flex flex-col gap-px">
+          {showStartSideChatEntry ? (
+            <NewTabActionTile
+              id={START_SIDE_CHAT_ENTRY_ID}
+              iconName="SideChat"
+              label="Start side chat"
+              isActive={false}
+              onActivate={() => undefined}
+              onSelect={handleStartSideChat}
+            />
+          ) : null}
           {showOpenBrowserEntry ? (
-            <OpenBrowserTile
+            <NewTabActionTile
               id={OPEN_BROWSER_ENTRY_ID}
+              iconName="Globe"
+              label="Open browser"
               isActive={false}
               onActivate={() => undefined}
               onSelect={handleOpenBrowser}
             />
           ) : null}
           {showStartTerminalEntry ? (
-            <StartTerminalTile
+            <NewTabActionTile
               id={START_TERMINAL_ENTRY_ID}
+              iconName="Terminal"
+              label="Start terminal"
               isActive={false}
               onActivate={() => undefined}
               onSelect={handleStartTerminal}

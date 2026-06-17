@@ -11,11 +11,9 @@ export type {
 
 export * from "./schema.js";
 export {
-  createAutomationId,
   createQueuedThreadMessageClaimToken,
   createQueuedThreadMessageId,
   createEnvironmentId,
-  createEventLargeValueId,
   createEventId,
   createEnvironmentProvisioningId,
   createHostDaemonSessionId,
@@ -25,19 +23,11 @@ export {
   createPromptHistoryEntryId,
   createProjectSourceId,
   createTerminalSessionId,
-  createThreadScheduleId,
   createThreadId,
   createThreadProvisioningId,
 } from "./ids.js";
 
 export { migrate } from "./migrate.js";
-export type {
-  StoredEventLargeValueItemKind,
-  StoredEventLargeValueJsonPath,
-  StoredEventLargeValueKind,
-  StoredEventLargeValueStorageKind,
-  StoredEventLargeValueTruncationPath,
-} from "./event-large-values.js";
 export { isSqliteUniqueConstraintOnColumns } from "./sqlite-errors.js";
 export type {
   FutureAppliedMigration,

@@ -29,7 +29,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideOverview",
-    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources\n  schedules      Managing recurring thread schedules\n  async          Alias for schedules",
+    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources",
     "fileName": "bb-guide-overview.md",
     "kind": "instruction",
     "title": "bb Guide Overview",
@@ -61,19 +61,8 @@ export const templateDefinitions = [
     "variables": {}
   },
   {
-    "id": "bbGuideSchedules",
-    "body": "Thread schedules\n\nUse thread schedules when the system should wake an existing thread later for\nreminders, recurring check-ins, or follow-up work. A schedule stores its cron\nexpression, timezone, enabled state, and the prompt that will be submitted when\nit fires.\n\nCreate a schedule:\n\n```bash\nbb thread schedule create <thread-id> \\\n  --name daily-recap \\\n  --cron \"0 8 * * 1-5\" \\\n  --timezone America/Los_Angeles \\\n  --prompt \"Review current project state and send a concise recap if there is useful progress to report.\"\n```\n\nList schedules:\n\n```bash\nbb thread schedule list <thread-id>\nbb thread schedule list --self\n```\n\nUpdate a schedule:\n\n```bash\nbb thread schedule update <thread-id> <schedule-id> \\\n  --cron \"0 */2 * * *\" \\\n  --timezone UTC \\\n  --prompt \"Check whether any deployment follow-up is needed.\"\n```\n\nEnable, disable, or delete a schedule:\n\n```bash\nbb thread schedule disable <thread-id> <schedule-id>\nbb thread schedule enable <thread-id> <schedule-id>\nbb thread schedule delete <thread-id> <schedule-id>\n```\n\nConstraints:\n\n- Schedule names are unique per thread.\n- Cron expressions are five-field expressions. Numeric lists and ranges are\n  supported for fixed minute, hour, and day-of-week fields, such as\n  `10 7-11 * * 1-5`.\n- The cron month field must stay `*`.\n- Schedules must not run more frequently than every 5 minutes.\n- Scheduled turns deny permission escalation.\n\nFor one-off reminders, create a schedule for the next desired occurrence and\ninclude instructions in the prompt to delete or disable the schedule after it\nfires.",
-    "fileName": "bb-guide-schedules.md",
-    "kind": "instruction",
-    "title": "bb Guide - Thread Schedules",
-    "summary": "Thread schedule reference for recurring wakeups.",
-    "intent": "Explain how to create, inspect, update, and remove thread schedules.",
-    "editingNotes": "Keep this as the canonical thread schedule CLI reference. Do not describe storage-file schedule syntax.",
-    "variables": {}
-  },
-  {
     "id": "bbGuideThreads",
-    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID\n\n  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.\n  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent thread\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n\n  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode: queue (default), steer, or auto\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent thread\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
+    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread\n    --parent-self                  Parent to the current thread (BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n\n  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.\n  Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent thread\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n\n  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode: queue (default), steer, or auto\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent thread\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
     "fileName": "bb-guide-threads.md",
     "kind": "instruction",
     "title": "bb Guide — Threads",
@@ -124,14 +113,15 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageChildThreadNeedsAttention",
-    "body": "[bb system]\n\n{{threadMention}} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the worker is stuck on the wrong assumption, send it a clarifying instruction.",
+    "body": "[bb system]\n\n{{threadMention}} needs help.\n{{blockerSummary}}\n\nReview the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
     "fileName": "system-message-child-thread-needs-attention.md",
     "kind": "prompt",
-    "title": "Child Thread Needs Attention",
+    "title": "Child thread needs attention",
     "summary": "Notifies a parent thread that one of its child threads is blocked on a pending interaction.",
-    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the worker's assumption.",
+    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the child thread's assumption.",
     "editingNotes": "Keep this focused on parent-thread triage; do not imply the parent can approve or reject on the user's behalf.",
     "variables": {
+      "blockerSummary": "Compact summary of the pending interaction, or a fallback sentence when no safe summary is available.",
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
     }
   },
@@ -140,9 +130,9 @@ export const templateDefinitions = [
     "body": "[bb system]\n\n{{updates}}",
     "fileName": "system-message-child-thread-outcome-batch.md",
     "kind": "prompt",
-    "title": "Child Thread Outcome Batch",
+    "title": "Child thread outcome batch",
     "summary": "Notifies a parent thread about one or more child thread outcomes.",
-    "intent": "Give the parent thread batched outcome context without forcing immediate action for every child thread.",
+    "intent": "Give the parent thread compact outcome context without forcing immediate action for every child thread.",
     "editingNotes": "Keep this concise. The updates variable is a server-formatted singular or plural outcome body with rich thread mention ranges attached by the server.",
     "variables": {
       "updates": "Rendered child thread outcome message body."
@@ -150,10 +140,10 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipAssigned",
-    "body": "[bb system]\n\n{{threadMention}} was assigned to you.",
+    "body": "[bb system]\n\n{{threadMention}} is now a child of this thread.",
     "fileName": "system-message-thread-ownership-assigned.md",
     "kind": "prompt",
-    "title": "Thread Ownership Assigned",
+    "title": "Thread ownership assigned",
     "summary": "Notifies a parent thread that a child thread is now assigned to it.",
     "intent": "Let the new parent know a thread is now assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
@@ -163,29 +153,15 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipRemoved",
-    "body": "[bb system]\n\n{{threadMention}} was unassigned from you.",
+    "body": "[bb system]\n\n{{threadMention}} is no longer a child of this thread.",
     "fileName": "system-message-thread-ownership-removed.md",
     "kind": "prompt",
-    "title": "Thread Ownership Removed",
+    "title": "Thread ownership removed",
     "summary": "Notifies a parent thread that a child thread is no longer assigned to it.",
     "intent": "Let the previous parent know a thread is no longer assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
-    }
-  },
-  {
-    "id": "systemMessageThreadScheduleDue",
-    "body": "[bb schedule due:{{scheduleId}}]\n\n{{prompt}}",
-    "fileName": "system-message-thread-schedule-due.md",
-    "kind": "prompt",
-    "title": "Thread Schedule Due",
-    "summary": "Wraps a due thread schedule prompt in bb system chrome.",
-    "intent": "Make system-initiated schedule wakeups explicit without changing the schedule author's prompt.",
-    "editingNotes": "Keep the schedule prompt body verbatim after the prefix.",
-    "variables": {
-      "scheduleId": "The due thread schedule ID.",
-      "prompt": "The schedule prompt text."
     }
   },
   {
@@ -241,7 +217,6 @@ export interface TemplateVariables {
   bbGuideOverview: Record<string, never>;
   bbGuideProjects: Record<string, never>;
   bbGuideProviders: Record<string, never>;
-  bbGuideSchedules: Record<string, never>;
   bbGuideThreads: Record<string, never>;
   generateCommitMessage: {
     diffDescription: string;
@@ -254,6 +229,7 @@ export interface TemplateVariables {
   };
   standardAgentAppendInstructions: Record<string, never>;
   systemMessageChildThreadNeedsAttention: {
+    blockerSummary: string;
     threadMention: string;
   };
   systemMessageChildThreadOutcomeBatch: {
@@ -264,10 +240,6 @@ export interface TemplateVariables {
   };
   systemMessageThreadOwnershipRemoved: {
     threadMention: string;
-  };
-  systemMessageThreadScheduleDue: {
-    scheduleId: string;
-    prompt: string;
   };
   threadOperationCommitFailureFollowUp: {
     errorMessage?: string;

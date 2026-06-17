@@ -425,7 +425,12 @@ describe("buildTimelineRowTitle", () => {
       "Ran pnpm exec turbo run test --filter=@bb/app (3s, interrupted)",
     );
     expect(title.decorations).toEqual([
-      { kind: "status", status: "interrupted", durationMs: 3_000, emphasis: false },
+      {
+        kind: "status",
+        status: "interrupted",
+        durationMs: 3_000,
+        emphasis: false,
+      },
     ]);
   });
 
@@ -446,7 +451,12 @@ describe("buildTimelineRowTitle", () => {
       "Ran tool LookupTool { query: select:TodoWrite } (3s, interrupted)",
     );
     expect(title.decorations).toEqual([
-      { kind: "status", status: "interrupted", durationMs: 3_000, emphasis: false },
+      {
+        kind: "status",
+        status: "interrupted",
+        durationMs: 3_000,
+        emphasis: false,
+      },
     ]);
   });
 
@@ -793,12 +803,7 @@ describe("buildTimelineRowTitle", () => {
     status: Exclude<TimelineSystemRow["status"], "completed" | null>;
   }>)(
     "renders parent change $status status with typed wording",
-    ({
-      expectedPlain,
-      expectedShimmer,
-      expectedDecorationText,
-      status,
-    }) => {
+    ({ expectedPlain, expectedShimmer, expectedDecorationText, status }) => {
       const title = buildTimelineRowTitle(
         parentChangeSystemRow({
           parentChange: {
@@ -1061,9 +1066,7 @@ describe("buildTimelineRowTitle", () => {
 
     const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
 
-    expect(title.plain).toBe(
-      "Ran pnpm exec turbo run test --filter=@bb/app",
-    );
+    expect(title.plain).toBe("Ran pnpm exec turbo run test --filter=@bb/app");
   });
 
   it("hides one-second turn durations", () => {
@@ -1118,7 +1121,8 @@ describe("buildTimelineRowTitle", () => {
         status: "interrupted",
         completedAt: 3_001,
       } satisfies TimelineWebSearchWorkRow,
-      expectedPlain: "Interrupted web search: timeline renderer (3s, interrupted)",
+      expectedPlain:
+        "Interrupted web search: timeline renderer (3s, interrupted)",
     },
     {
       row: {
@@ -1145,7 +1149,12 @@ describe("buildTimelineRowTitle", () => {
 
       expect(title.plain).toBe(expectedPlain);
       expect(title.decorations).toEqual([
-        { kind: "status", status: "interrupted", durationMs: 3_000, emphasis: false },
+        {
+          kind: "status",
+          status: "interrupted",
+          durationMs: 3_000,
+          emphasis: false,
+        },
       ]);
     },
   );
@@ -1191,14 +1200,10 @@ describe("buildTimelineRowTitle", () => {
       workStyle: "default",
     });
 
-    expect(bundleTitle.plain).toBe(
-      "Researched 1 search query, 1 web page",
-    );
+    expect(bundleTitle.plain).toBe("Researched 1 search query, 1 web page");
     expect(bundleTitle.segments[0]?.text).toBe("Researched");
     expect(bundleTitle.segments[1]?.text).toBe("1 search query, 1 web page");
-    expect(backgroundTitle.plain).toBe(
-      "Researched 1 search query, 1 web page",
-    );
+    expect(backgroundTitle.plain).toBe("Researched 1 search query, 1 web page");
     expect(backgroundTitle.segments).toEqual([
       {
         text: "Researched 1 search query, 1 web page",
@@ -1220,11 +1225,7 @@ describe("buildTimelineRowTitle", () => {
 
   it("summarizes file changes by action", () => {
     const title = buildTimelineRowTitle(
-      workSummaryRow([
-        createdFileRow(),
-        deletedFileRow(),
-        editedFileRow(),
-      ]),
+      workSummaryRow([createdFileRow(), deletedFileRow(), editedFileRow()]),
       DEFAULT_OPTIONS,
     );
 
@@ -1383,6 +1384,42 @@ describe("buildTimelineRowTitle", () => {
     ).toBe(true);
   });
 
+  it("includes the skill name when compacting SKILL.md read titles", () => {
+    const skillPath =
+      "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/skills/control-in-app-browser/SKILL.md";
+    const row = {
+      ...toolRow(),
+      toolArgs: { file_path: skillPath },
+      activityIntents: [readIntent(skillPath)],
+    } satisfies TimelineToolWorkRow;
+
+    const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+
+    expect(title.segments.map((segment) => segment.text)).toEqual([
+      "Read",
+      "control-in-app-browser/SKILL.md",
+    ]);
+    expect(title.plain).toBe(`Read ${skillPath}`);
+  });
+
+  it("uses the plugin name when compacting plugin-root SKILL.md read titles", () => {
+    const skillPath =
+      "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/SKILL.md";
+    const row = {
+      ...toolRow(),
+      toolArgs: { file_path: skillPath },
+      activityIntents: [readIntent(skillPath)],
+    } satisfies TimelineToolWorkRow;
+
+    const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+
+    expect(title.segments.map((segment) => segment.text)).toEqual([
+      "Read",
+      "browser/SKILL.md",
+    ]);
+    expect(title.plain).toBe(`Read ${skillPath}`);
+  });
+
   it("uses active wording for pending compact exploration intent titles", () => {
     const row = {
       ...commandRow(),
@@ -1434,7 +1471,12 @@ describe("buildTimelineRowTitle", () => {
       "Searched for TODO in src (interrupted)",
     );
     expect(titles[0]?.title.decorations).toEqual([
-      { kind: "status", status: "interrupted", durationMs: null, emphasis: false },
+      {
+        kind: "status",
+        status: "interrupted",
+        durationMs: null,
+        emphasis: false,
+      },
     ]);
   });
 });
@@ -1490,7 +1532,9 @@ describe("buildTimelineRowTitle question rows", () => {
       DEFAULT_OPTIONS,
     );
 
-    expect(title.plain).toBe("Waiting for answer Which branch should I update?");
+    expect(title.plain).toBe(
+      "Waiting for answer Which branch should I update?",
+    );
   });
 
   it("appends the chosen answer for a single answered question", () => {
@@ -1541,7 +1585,12 @@ describe("buildTimelineRowTitle question rows", () => {
 
     expect(title.plain).toContain("Asked Which branch should I update?");
     expect(title.decorations).toEqual([
-      { kind: "status", status: "interrupted", durationMs: null, emphasis: false },
+      {
+        kind: "status",
+        status: "interrupted",
+        durationMs: null,
+        emphasis: false,
+      },
     ]);
   });
 });

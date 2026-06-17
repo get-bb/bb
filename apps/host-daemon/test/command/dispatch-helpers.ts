@@ -123,6 +123,9 @@ export function createFakeWorkspace(pathname: string) {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    async getDefaultBranch() {
+      return "main";
+    },
     async getCurrentBranch() {
       return "main";
     },
@@ -177,6 +180,16 @@ export function createFakeWorkspace(pathname: string) {
         files: "",
         mergeBaseRef: null,
       };
+    },
+    async diffFiles() {
+      return {
+        files: [],
+        shortstat: "",
+        mergeBaseRef: null,
+      };
+    },
+    async diffPatch() {
+      return [];
     },
     async getPullRequest() {
       return state.pullRequest;

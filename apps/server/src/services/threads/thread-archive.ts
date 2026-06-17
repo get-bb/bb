@@ -1,7 +1,7 @@
 import {
-  disableThreadSchedulesByThread,
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
+  listUnarchivedSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -26,7 +26,7 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
     hostId: string;
     id: string;
   };
-  thread: Pick<Thread, "environmentId" | "id" | "status" | "stopRequestedAt">;
+  thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
 interface ArchiveEnvironmentThreadsArgs {
@@ -48,20 +48,16 @@ export function archiveThreadWithLifecycleEffects(
     return null;
   }
 
-  // Archiving pauses scheduled work. Unarchive keeps schedules disabled until
-  // the user intentionally re-enables them.
-  disableThreadSchedulesByThread(deps.db, deps.hub, {
-    now: Date.now(),
-    projectId: archivedThread.projectId,
-    threadId: archivedThread.id,
-  });
-
   deps.terminalSessions.closeArchivedThreadTerminals({
     threadId: archivedThread.id,
   });
   // Archive only stops active runtime work; manual stop is the pre-start
   // provisioning cancellation entrypoint.
-  requestActiveRuntimeThreadStopIfNeeded(deps, archivedThread, args.environment);
+  requestActiveRuntimeThreadStopIfNeeded(
+    deps,
+    archivedThread,
+    args.environment,
+  );
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: archivedThread.id,
   });
@@ -118,8 +114,14 @@ export function archiveThreadAndChildren(
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
-  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] =
-    childThreads.filter((thread) => thread.id !== args.parentThread.id);
+  const sideChatThreads = listUnarchivedSourceThreads(deps.db, {
+    sourceThreadId: args.parentThread.id,
+    originKind: "side-chat",
+  });
+  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] = [
+    ...childThreads,
+    ...sideChatThreads,
+  ].filter((thread) => thread.id !== args.parentThread.id);
   if (args.parentThread.archivedAt === null) {
     threads.push(args.parentThread);
   }

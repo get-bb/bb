@@ -12,6 +12,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
   turnScope,
 } from "@bb/domain";
 
@@ -280,6 +281,7 @@ describe("codex provider adapter", () => {
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,
+      supportsFork: true,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     });
   });
@@ -337,6 +339,7 @@ describe("codex provider adapter", () => {
           item: {
             type: "userMessage",
             id: "provider-user-2",
+            clientId: null,
             content: [{ type: "text", text: "steer turn", text_elements: [] }],
           },
         }),
@@ -413,6 +416,7 @@ describe("codex provider adapter", () => {
         item: {
           type: "userMessage",
           id: "provider-user-1",
+          clientId: null,
           content: [{ type: "text", text: "normal turn", text_elements: [] }],
         },
       }),
@@ -466,6 +470,7 @@ describe("codex provider adapter", () => {
         item: {
           type: "userMessage",
           id: "provider-user-1",
+          clientId: null,
           content: [{ type: "text", text: "provider echo", text_elements: [] }],
         },
       }),
@@ -1559,6 +1564,51 @@ describe("codex provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/fork forwards dynamic tools", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "codex-parent-thread",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+      dynamicTools: [
+        {
+          name: "bb_side_chat_context",
+          description: "Read side chat context",
+          inputSchema: {
+            type: "object",
+            properties: {
+              threadId: { type: "string" },
+            },
+            required: ["threadId"],
+          },
+        },
+      ],
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        threadId: "codex-parent-thread",
+        dynamicTools: [
+          {
+            name: "bb_side_chat_context",
+            description: "Read side chat context",
+            inputSchema: {
+              type: "object",
+              properties: {
+                threadId: { type: "string" },
+              },
+              required: ["threadId"],
+            },
+          },
+        ],
+      },
+    });
+  });
+
   it("buildCommand rejects max reasoning level because Codex does not support it", () => {
     const adapter = createCodexProviderAdapter();
 
@@ -2023,6 +2073,7 @@ describe("codex provider adapter", () => {
           id: "codex-uuid-123",
           sessionId: "session-1",
           forkedFromId: null,
+          parentThreadId: null,
           preview: "Fix the tests",
           ephemeral: false,
           modelProvider: "openai",
@@ -2104,14 +2155,21 @@ describe("codex provider adapter", () => {
     ).toEqual([]);
   });
 
-  it("translateEvent ignores native thread goal notifications", () => {
+  it("translateEvent maps native thread goal notifications", () => {
     const adapter = createCodexProviderAdapter();
 
     expect(
       adapter.translateEvent(
         codexEvent("thread/goal/cleared", { threadId: "t1" }),
       ),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        type: "thread/goal/cleared",
+        threadId: "t1",
+        providerThreadId: "t1",
+        scope: threadScope(),
+      },
+    ]);
     expect(
       adapter.translateEvent(
         codexEvent("thread/goal/updated", {
@@ -2129,7 +2187,19 @@ describe("codex provider adapter", () => {
           },
         }),
       ),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        type: "thread/goal/updated",
+        threadId: "t1",
+        providerThreadId: "t1",
+        scope: threadScope(),
+        objective: "Finish the task",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+      },
+    ]);
   });
 
   it("translateEvent thread/compacted emits a compacted event", () => {
@@ -2186,6 +2256,7 @@ describe("codex provider adapter", () => {
         item: {
           type: "userMessage",
           id: "user-1",
+          clientId: null,
           content: [
             { type: "text", text: "hello", text_elements: [] },
             { type: "image", url: "https://example.com/image.png" },
@@ -3110,6 +3181,7 @@ describe("codex provider adapter", () => {
           id: "mcp-1",
           server: "myserver",
           tool: "search",
+          pluginId: null,
           status: "completed",
           arguments: { query: "test" },
           result: null,
@@ -4060,6 +4132,7 @@ describe("codex provider adapter", () => {
           primary: null,
           secondary: null,
           credits: null,
+          individualLimit: null,
           planType: null,
           rateLimitReachedType: null,
         },

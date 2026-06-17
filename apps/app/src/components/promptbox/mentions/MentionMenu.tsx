@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type UIEvent,
+} from "react";
 import {
   PROVIDER_COMMAND_SECTIONS,
   providerCommandSection,
@@ -7,6 +14,7 @@ import {
 import { directoryFromPath } from "@bb/thread-view";
 import { promptMentionResourceFromSuggestion } from "@/components/promptbox/editor/prompt-editor-serialization";
 import { promptMentionIconName } from "@/components/promptbox/mentions/prompt-mention-display";
+import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@/lib/utils";
@@ -31,6 +39,7 @@ interface MentionMenuProps {
   /** Currently-highlighted index in the results list (for keyboard nav). */
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
+  onCommandLoadMore?: () => void;
 }
 
 interface MenuSectionItem<TItem> {
@@ -393,8 +402,29 @@ export function MentionMenu({
   state,
   selectedIndex,
   onApply,
+  onCommandLoadMore,
 }: MentionMenuProps) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const handleScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (onCommandLoadMore === undefined) {
+        return;
+      }
+      const target = event.currentTarget;
+      if (
+        shouldLoadMoreCommandResults({
+          trigger: state.trigger,
+          hasLoadMoreCallback: true,
+          scrollHeight: target.scrollHeight,
+          scrollTop: target.scrollTop,
+          clientHeight: target.clientHeight,
+        })
+      ) {
+        onCommandLoadMore();
+      }
+    },
+    [onCommandLoadMore, state.trigger],
+  );
 
   const innerState = state.state;
   const resultsLength =
@@ -415,7 +445,7 @@ export function MentionMenu({
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-      <div className="max-h-48 overflow-y-auto">
+      <div className="max-h-48 overflow-y-auto" onScroll={handleScroll}>
         {innerState.kind === "hint" ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             Type to search mentions
@@ -437,14 +467,18 @@ export function MentionMenu({
           </div>
         ) : state.trigger === "command" ? (
           <CommandResults
-            suggestions={state.state.kind === "results" ? state.state.suggestions : []}
+            suggestions={
+              state.state.kind === "results" ? state.state.suggestions : []
+            }
             selectedIndex={selectedIndex}
             onApply={onApply}
             itemRefs={itemRefs}
           />
         ) : (
           <MentionResults
-            suggestions={state.state.kind === "results" ? state.state.suggestions : []}
+            suggestions={
+              state.state.kind === "results" ? state.state.suggestions : []
+            }
             selectedIndex={selectedIndex}
             onApply={onApply}
             itemRefs={itemRefs}

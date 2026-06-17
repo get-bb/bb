@@ -3,7 +3,6 @@ import type { WorkspaceContext } from "@bb/host-daemon-contract";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 
 interface WorkspaceCommandTargetEnvironment {
-  cleanupRequestedAt: number | null;
   hostId: string;
   id: string;
   path: string | null;
@@ -34,6 +33,8 @@ export function workspaceContextFromPath(
 export function requireWorkspaceCommandTarget(
   environment: WorkspaceCommandTargetEnvironment,
 ): WorkspaceCommandTarget {
+  // Not lifecycle: API boundary validation — workspace commands need a ready
+  // workspace and answer with a 4xx otherwise; no transition is written here.
   if (environment.status !== "ready" || !environment.path) {
     throwEnvironmentNotReady(environment);
   }

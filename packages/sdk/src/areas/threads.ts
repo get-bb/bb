@@ -3,7 +3,6 @@ import {
   type PendingInteractionResolution,
 } from "@bb/domain";
 import type {
-  CreateThreadScheduleRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
   SendMessageRequest,
@@ -11,10 +10,7 @@ import type {
   ThreadEventWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
-  ThreadTimelineFeedQuery,
-  UpdateThreadScheduleConfigRequest,
-  UpdateThreadScheduleEnabledRequest,
-  UpdateThreadScheduleRequest,
+  ThreadTimelineQuery,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
@@ -39,18 +35,6 @@ export type ThreadOutputResponse = PublicApiOutput<
 >;
 export type ThreadMutationResult = PublicApiOutput<"/threads/:id", "$patch">;
 export type ThreadSpawnResult = PublicApiOutput<"/threads", "$post">;
-export type ThreadScheduleCreateResult = PublicApiOutput<
-  "/threads/:id/schedules",
-  "$post"
->;
-export type ThreadScheduleListResult = PublicApiOutput<
-  "/threads/:id/schedules",
-  "$get"
->;
-export type ThreadScheduleUpdateResult = PublicApiOutput<
-  "/threads/:id/schedules/:scheduleId",
-  "$patch"
->;
 export type ThreadInteractionGetResult = PublicApiOutput<
   "/threads/:id/interactions/:interactionId",
   "$get"
@@ -71,8 +55,8 @@ export type ThreadEventWaitResult = PublicApiOutput<
   "/threads/:id/events/wait",
   "$get"
 >;
-export type ThreadTimelineFeedResult = PublicApiOutput<
-  "/threads/:id/timeline/feed",
+export type ThreadTimelineResult = PublicApiOutput<
+  "/threads/:id/timeline",
   "$get"
 >;
 export type ThreadArchiveResult = PublicApiOutput<
@@ -80,10 +64,6 @@ export type ThreadArchiveResult = PublicApiOutput<
   "$post"
 >;
 export type ThreadDeleteResult = PublicApiOutput<"/threads/:id", "$delete">;
-export type ThreadScheduleDeleteResult = PublicApiOutput<
-  "/threads/:id/schedules/:scheduleId",
-  "$delete"
->;
 export type ThreadSendResult = PublicApiOutput<"/threads/:id/send", "$post">;
 export type ThreadStopResult = PublicApiOutput<"/threads/:id/stop", "$post">;
 export type ThreadUnarchiveResult = PublicApiOutput<
@@ -121,46 +101,12 @@ export interface ThreadEventWaitArgs {
   waitMs: string;
 }
 
-export interface ThreadTimelineFeedArgs extends ThreadTimelineFeedQuery {
+export interface ThreadTimelineArgs extends ThreadTimelineQuery {
   threadId: string;
 }
 
 export interface ThreadOutputArgs {
   threadId: string;
-}
-
-export interface ThreadScheduleListArgs {
-  threadId: string;
-}
-
-export interface ThreadScheduleCreateArgs extends CreateThreadScheduleRequest {
-  threadId: string;
-}
-
-export interface ThreadScheduleConfigUpdateArgs extends UpdateThreadScheduleConfigRequest {
-  scheduleId: string;
-  threadId: string;
-}
-
-export interface ThreadScheduleEnabledUpdateArgs extends UpdateThreadScheduleEnabledRequest {
-  scheduleId: string;
-  threadId: string;
-}
-
-export type ThreadScheduleUpdateArgs =
-  | ThreadScheduleConfigUpdateArgs
-  | ThreadScheduleEnabledUpdateArgs;
-
-export interface ThreadScheduleDeleteArgs {
-  scheduleId: string;
-  threadId: string;
-}
-
-export interface ThreadSchedulesArea {
-  create(args: ThreadScheduleCreateArgs): Promise<ThreadScheduleCreateResult>;
-  delete(args: ThreadScheduleDeleteArgs): Promise<ThreadScheduleDeleteResult>;
-  list(args: ThreadScheduleListArgs): Promise<ThreadScheduleListResult>;
-  update(args: ThreadScheduleUpdateArgs): Promise<ThreadScheduleUpdateResult>;
 }
 
 export interface ThreadInteractionListArgs {
@@ -197,11 +143,10 @@ export interface ThreadsArea {
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
-  schedules: ThreadSchedulesArea;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-  timelineFeed(args: ThreadTimelineFeedArgs): Promise<ThreadTimelineFeedResult>;
+  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
   unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
   unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
@@ -220,14 +165,10 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
-    ...(args.title !== undefined ? { title: args.title } : {}),
-    ...(args.parentThreadId !== undefined
-      ? { parentThreadId: args.parentThreadId }
-      : {}),
-    ...(args.model !== undefined ? { model: args.model } : {}),
-    ...(args.reasoningLevel !== undefined
-      ? { reasoningLevel: args.reasoningLevel }
-      : {}),
+    title: args.title,
+    parentThreadId: args.parentThreadId,
+    model: args.model,
+    reasoningLevel: args.reasoningLevel,
   };
 }
 
@@ -235,48 +176,12 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
     input: args.input,
     mode: args.mode,
-    ...(args.model !== undefined ? { model: args.model } : {}),
-    ...(args.permissionMode !== undefined
-      ? { permissionMode: args.permissionMode }
-      : {}),
-    ...(args.reasoningLevel !== undefined
-      ? { reasoningLevel: args.reasoningLevel }
-      : {}),
-    ...(args.senderThreadId !== undefined
-      ? { senderThreadId: args.senderThreadId }
-      : {}),
-    ...(args.serviceTier !== undefined
-      ? { serviceTier: args.serviceTier }
-      : {}),
-    ...(args.executionInputSources !== undefined
-      ? { executionInputSources: args.executionInputSources }
-      : {}),
-  };
-}
-
-function scheduleCreateJson(
-  args: ThreadScheduleCreateArgs,
-): CreateThreadScheduleRequest {
-  return {
-    name: args.name,
-    cron: args.cron,
-    timezone: args.timezone,
-    prompt: args.prompt,
-    ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
-  };
-}
-
-function scheduleUpdateJson(
-  args: ThreadScheduleUpdateArgs,
-): UpdateThreadScheduleRequest {
-  if ("enabled" in args) {
-    return { enabled: args.enabled };
-  }
-  return {
-    ...(args.name !== undefined ? { name: args.name } : {}),
-    ...(args.cron !== undefined ? { cron: args.cron } : {}),
-    ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
-    ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
+    model: args.model,
+    permissionMode: args.permissionMode,
+    reasoningLevel: args.reasoningLevel,
+    senderThreadId: args.senderThreadId,
+    serviceTier: args.serviceTier,
+    executionInputSources: args.executionInputSources,
   };
 }
 
@@ -294,11 +199,14 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   };
 }
 
-function timelineFeedQuery(
-  args: ThreadTimelineFeedArgs,
-): ThreadTimelineFeedQuery {
+function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
   return {
-    ...(args.summaryOnly !== undefined ? { summaryOnly: args.summaryOnly } : {}),
+    ...(args.includeNestedRows !== undefined
+      ? { includeNestedRows: args.includeNestedRows }
+      : {}),
+    ...(args.summaryOnly !== undefined
+      ? { summaryOnly: args.summaryOnly }
+      : {}),
     ...(args.segmentLimit !== undefined
       ? { segmentLimit: args.segmentLimit }
       : {}),
@@ -377,46 +285,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
-  const schedules: ThreadSchedulesArea = {
-    async create(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].schedules.$post({
-          param: { id: input.threadId },
-          json: scheduleCreateJson(input),
-        }),
-      );
-    },
-    async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].schedules[":scheduleId"].$delete({
-          param: {
-            id: input.threadId,
-            scheduleId: input.scheduleId,
-          },
-        }),
-      );
-      return { ok: true };
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].schedules.$get({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].schedules[":scheduleId"].$patch({
-          param: {
-            id: input.threadId,
-            scheduleId: input.scheduleId,
-          },
-          json: scheduleUpdateJson(input),
-        }),
-      );
-    },
-  };
-
   return {
     async archive(input) {
       await transport.readVoid(
@@ -459,7 +327,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }),
       );
     },
-    schedules,
     async send(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].send.$post({
@@ -484,11 +351,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
-    async timelineFeed(input) {
+    async timeline(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].timeline.feed.$get({
+        transport.api.v1.threads[":id"].timeline.$get({
           param: { id: input.threadId },
-          query: timelineFeedQuery(input),
+          query: timelineQuery(input),
         }),
       );
     },

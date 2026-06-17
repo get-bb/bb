@@ -1,8 +1,5 @@
+import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { ThreadListFilters, ThreadSearchFilters } from "@/lib/api";
-import type {
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-} from "@bb/server-contract";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -22,19 +19,21 @@ export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
 export const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
-export const AUTOMATIONS_OVERVIEW_QUERY_KEY = "automationsOverview";
 export const THREADS_QUERY_KEY = "threads";
 export const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
+export const THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY = "threadComposerBootstrap";
+export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
+  "threadDefaultExecutionOptions";
 export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
   "threadPendingInteractions";
-export const THREAD_SCHEDULES_QUERY_KEY = "threadSchedules";
 export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
+export const PROJECT_COMMANDS_PAGES_QUERY_KEY = "projectCommandsPages";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
@@ -44,16 +43,14 @@ export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
 export const ENVIRONMENT_PULL_REQUEST_QUERY_KEY = "environmentPullRequest";
 export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
   "environmentMergeBaseBranches";
-export const ENVIRONMENT_GIT_DIFF_QUERY_KEY = "environmentGitDiff";
+export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
+export const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
 export const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
 export const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
 export const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
-export const THREAD_TIMELINE_FEED_QUERY_KEY = "threadTimelineFeed";
-export const THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY = "threadTimelineRowDetail";
+export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
 export const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
-export const THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY =
-  "threadTimelineWorkOutputDetail";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
@@ -64,6 +61,9 @@ export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
   parentThreadId?: string;
+  sourceThreadId?: string;
+  originKind?: ThreadListFilters["originKind"];
+  childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;
 }
@@ -77,7 +77,6 @@ export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
   projectId: string;
-  kind: ArchivedThreadsKindFilter;
 }
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
@@ -131,9 +130,6 @@ export type ProjectSourceBranchesQueryKey = readonly [
 export type SidebarNavigationQueryKey = readonly [
   typeof SIDEBAR_NAVIGATION_QUERY_KEY,
 ];
-export type AutomationsOverviewQueryKey = readonly [
-  typeof AUTOMATIONS_OVERVIEW_QUERY_KEY,
-];
 export type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
 export type ThreadListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
@@ -161,6 +157,22 @@ export type ThreadDetailBootstrapQueryKey = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
   string,
 ];
+export type ThreadComposerBootstrapQueryKey = readonly [
+  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
+  string | null,
+  string,
+];
+export type ThreadComposerBootstrapEnvironmentQueryKeyPrefix = readonly [
+  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
+  string | null,
+];
+export type ThreadDefaultExecutionOptionsQueryKeyPrefix = readonly [
+  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
+];
+export type ThreadDefaultExecutionOptionsQueryKey = readonly [
+  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
+  string,
+];
 export type ThreadQueuedMessagesQueryKeyPrefix = readonly [
   typeof THREAD_QUEUED_MESSAGES_QUERY_KEY,
 ];
@@ -182,13 +194,6 @@ export type ThreadPendingInteractionsQueryKey = readonly [
   typeof THREAD_PENDING_INTERACTIONS_QUERY_KEY,
   string,
 ];
-export type ThreadSchedulesQueryKeyPrefix = readonly [
-  typeof THREAD_SCHEDULES_QUERY_KEY,
-];
-export type ThreadSchedulesQueryKey = readonly [
-  typeof THREAD_SCHEDULES_QUERY_KEY,
-  string,
-];
 export type AllThreadTerminalsQueryKeyPrefix = readonly [
   typeof THREAD_TERMINALS_QUERY_KEY,
 ];
@@ -202,6 +207,16 @@ export type ProjectCommandsQueryKey = readonly [
   string | undefined,
   string | null,
   string,
+  number,
+  number,
+];
+export type ProjectCommandsPagesQueryKey = readonly [
+  typeof PROJECT_COMMANDS_PAGES_QUERY_KEY,
+  string | undefined,
+  string | undefined,
+  string | null,
+  string,
+  number,
 ];
 export type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
@@ -280,49 +295,15 @@ export type EnvironmentMergeBaseBranchesQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
   string,
 ];
-export type ThreadTimelineFeedQueryKey = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
+export type ThreadTimelineQueryKey = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
   string,
-];
-export type ThreadTimelineFeedQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
-  string,
-];
-export type AllThreadTimelineFeedQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
-];
-export interface ThreadTimelineRowDetailQueryIdentity {
-  detail: TimelineFeedDetailRef;
-  parts: readonly TimelineFeedDetailPart[];
-  threadId: string;
-}
-export type ThreadTimelineRowDetailQueryKey = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-  string,
-  string,
-  number,
-  number,
-  string,
-];
-export type ThreadTimelineRowDetailQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-  string,
-];
-export type AllThreadTimelineRowDetailQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
 ];
 export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
   turnId: string;
-}
-export interface ThreadTimelineWorkOutputDetailQueryIdentity {
-  callId: string;
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  threadId: string;
-  workKind: "command" | "tool";
 }
 export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
@@ -331,13 +312,12 @@ export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   number,
   number,
 ];
-export type ThreadTimelineWorkOutputDetailQueryKey = readonly [
-  typeof THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY,
+export type ThreadTimelineQueryKeyPrefix = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
   string,
-  string,
-  "command" | "tool",
-  number,
-  number,
+];
+export type AllThreadTimelineQueryKeyPrefix = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
 ];
 export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
@@ -346,17 +326,31 @@ export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
 export type AllThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
 ];
-export type EnvironmentGitDiffQueryKey = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKey = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   string,
   string | null,
   string | null,
 ];
-export type EnvironmentGitDiffQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKeyRootPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
 ];
-export type EnvironmentGitDiffQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKeyPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
+  string,
+];
+export type EnvironmentDiffPatchQueryKey = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+  string,
+  string | null,
+  string | null,
+  string,
+];
+export type EnvironmentDiffPatchQueryKeyRootPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+];
+export type EnvironmentDiffPatchQueryKeyPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
   string,
 ];
 export type EnvironmentDiffFileQueryKey = readonly [
@@ -539,10 +533,6 @@ export function sidebarNavigationQueryKey(): SidebarNavigationQueryKey {
   return [SIDEBAR_NAVIGATION_QUERY_KEY];
 }
 
-export function automationsOverviewQueryKey(): AutomationsOverviewQueryKey {
-  return [AUTOMATIONS_OVERVIEW_QUERY_KEY];
-}
-
 export function threadsQueryKey(): ThreadsQueryKey {
   return [THREADS_QUERY_KEY];
 }
@@ -587,8 +577,31 @@ export function threadDetailBootstrapQueryKey(
   return [THREAD_DETAIL_BOOTSTRAP_QUERY_KEY, threadId];
 }
 
+export function threadComposerBootstrapQueryKey(
+  threadId: string,
+  environmentId: string | null,
+): ThreadComposerBootstrapQueryKey {
+  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId, threadId];
+}
+
+export function threadComposerBootstrapEnvironmentQueryKeyPrefix(
+  environmentId: string | null,
+): ThreadComposerBootstrapEnvironmentQueryKeyPrefix {
+  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId];
+}
+
 export function allThreadQueryKeyPrefix(): ThreadQueryKeyPrefix {
   return [THREAD_QUERY_KEY];
+}
+
+export function threadDefaultExecutionOptionsQueryKey(
+  threadId: string,
+): ThreadDefaultExecutionOptionsQueryKey {
+  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, threadId];
+}
+
+export function allThreadDefaultExecutionOptionsQueryKeyPrefix(): ThreadDefaultExecutionOptionsQueryKeyPrefix {
+  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY];
 }
 
 export function threadQueuedMessagesQueryKey(
@@ -621,16 +634,6 @@ export function allThreadPendingInteractionsQueryKeyPrefix(): ThreadPendingInter
   return [THREAD_PENDING_INTERACTIONS_QUERY_KEY];
 }
 
-export function threadSchedulesQueryKey(
-  threadId: string,
-): ThreadSchedulesQueryKey {
-  return [THREAD_SCHEDULES_QUERY_KEY, threadId];
-}
-
-export function allThreadSchedulesQueryKeyPrefix(): ThreadSchedulesQueryKeyPrefix {
-  return [THREAD_SCHEDULES_QUERY_KEY];
-}
-
 export function threadTerminalsQueryKey(
   threadId: string,
 ): ThreadTerminalsQueryKey {
@@ -646,6 +649,8 @@ export function projectCommandsQueryKey(
   providerId: string | undefined,
   environmentId: string | null,
   query: string,
+  offset: number,
+  limit: number,
 ): ProjectCommandsQueryKey {
   return [
     PROJECT_COMMANDS_QUERY_KEY,
@@ -653,6 +658,25 @@ export function projectCommandsQueryKey(
     providerId,
     environmentId,
     query,
+    offset,
+    limit,
+  ];
+}
+
+export function projectCommandsPagesQueryKey(
+  projectId: string | undefined,
+  providerId: string | undefined,
+  environmentId: string | null,
+  query: string,
+  limit: number,
+): ProjectCommandsPagesQueryKey {
+  return [
+    PROJECT_COMMANDS_PAGES_QUERY_KEY,
+    projectId,
+    providerId,
+    environmentId,
+    query,
+    limit,
   ];
 }
 
@@ -773,25 +797,10 @@ export function environmentMergeBaseBranchesQueryKeyPrefix(
   return [ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY, environmentId];
 }
 
-export function threadTimelineFeedQueryKey(
+export function threadTimelineQueryKey(
   threadId: string,
-): ThreadTimelineFeedQueryKey {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY, threadId];
-}
-
-export function threadTimelineRowDetailQueryKey({
-  detail,
-  parts,
-  threadId,
-}: ThreadTimelineRowDetailQueryIdentity): ThreadTimelineRowDetailQueryKey {
-  return [
-    THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-    threadId,
-    detail.rowKey,
-    detail.source.start,
-    detail.source.end,
-    parts.join(","),
-  ];
+): ThreadTimelineQueryKey {
+  return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKey({
@@ -809,41 +818,14 @@ export function threadTimelineTurnSummaryDetailsQueryKey({
   ];
 }
 
-export function threadTimelineWorkOutputDetailQueryKey({
-  callId,
-  sourceSeqEnd,
-  sourceSeqStart,
-  threadId,
-  workKind,
-}: ThreadTimelineWorkOutputDetailQueryIdentity): ThreadTimelineWorkOutputDetailQueryKey {
-  return [
-    THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY,
-    threadId,
-    callId,
-    workKind,
-    sourceSeqStart,
-    sourceSeqEnd,
-  ];
-}
-
-export function threadTimelineFeedQueryKeyPrefix(
+export function threadTimelineQueryKeyPrefix(
   threadId: string,
-): ThreadTimelineFeedQueryKeyPrefix {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY, threadId];
+): ThreadTimelineQueryKeyPrefix {
+  return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
-export function threadTimelineRowDetailQueryKeyPrefix(
-  threadId: string,
-): ThreadTimelineRowDetailQueryKeyPrefix {
-  return [THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY, threadId];
-}
-
-export function allThreadTimelineFeedQueryKeyPrefix(): AllThreadTimelineFeedQueryKeyPrefix {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY];
-}
-
-export function allThreadTimelineRowDetailQueryKeyPrefix(): AllThreadTimelineRowDetailQueryKeyPrefix {
-  return [THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY];
+export function allThreadTimelineQueryKeyPrefix(): AllThreadTimelineQueryKeyPrefix {
+  return [THREAD_TIMELINE_QUERY_KEY];
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKeyPrefix(
@@ -856,22 +838,72 @@ export function allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(): AllThreadTi
   return [THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY];
 }
 
-export function environmentGitDiffQueryKey(
+/**
+ * The discriminating second component of a diff query key: the merge-base
+ * branch for `branch_committed`/`all`, the SHA for `commit`, and `null` for
+ * `uncommitted` (and for an absent target). Shared by every environment-diff
+ * query family so they key off the same target identity.
+ */
+export function environmentDiffTargetKey(
+  target: WorkspaceDiffTarget | null | undefined,
+): string | null {
+  switch (target?.type) {
+    case "commit":
+      return target.sha;
+    case "branch_committed":
+    case "all":
+      return target.mergeBaseBranch;
+    default:
+      return null;
+  }
+}
+
+export function environmentDiffFilesQueryKey(
   environmentId: string,
   targetType: string | null,
   targetKey: string | null,
-): EnvironmentGitDiffQueryKey {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId, targetType, targetKey];
+): EnvironmentDiffFilesQueryKey {
+  return [
+    ENVIRONMENT_DIFF_FILES_QUERY_KEY,
+    environmentId,
+    targetType,
+    targetKey,
+  ];
 }
 
-export function allEnvironmentGitDiffQueryKeyPrefix(): EnvironmentGitDiffQueryKeyRootPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY];
+export function allEnvironmentDiffFilesQueryKeyPrefix(): EnvironmentDiffFilesQueryKeyRootPrefix {
+  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY];
 }
 
-export function environmentGitDiffQueryKeyPrefix(
+export function environmentDiffFilesQueryKeyPrefix(
   environmentId: string,
-): EnvironmentGitDiffQueryKeyPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId];
+): EnvironmentDiffFilesQueryKeyPrefix {
+  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY, environmentId];
+}
+
+export function environmentDiffPatchQueryKey(
+  environmentId: string,
+  targetType: string | null,
+  targetKey: string | null,
+  path: string,
+): EnvironmentDiffPatchQueryKey {
+  return [
+    ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+    environmentId,
+    targetType,
+    targetKey,
+    path,
+  ];
+}
+
+export function allEnvironmentDiffPatchQueryKeyPrefix(): EnvironmentDiffPatchQueryKeyRootPrefix {
+  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY];
+}
+
+export function environmentDiffPatchQueryKeyPrefix(
+  environmentId: string,
+): EnvironmentDiffPatchQueryKeyPrefix {
+  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY, environmentId];
 }
 
 export function environmentDiffFileQueryKey(

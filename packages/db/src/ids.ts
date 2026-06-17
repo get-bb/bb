@@ -40,20 +40,8 @@ export function createThreadProvisioningId(): string {
   return createId("tpv");
 }
 
-export function createAutomationId(): string {
-  return createId("auto");
-}
-
-export function createThreadScheduleId(): string {
-  return createId("tsched");
-}
-
 export function createEventId(): string {
   return createId("evt");
-}
-
-export function createEventLargeValueId(): string {
-  return createId("elv");
 }
 
 export function createPromptHistoryEntryId(): string {

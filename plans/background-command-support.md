@@ -1,6 +1,6 @@
 # Background Command Support Plan
 
-Last refreshed: 2026-06-12
+Last refreshed: 2026-05-19
 
 ## Goal
 
@@ -23,10 +23,10 @@ Add first-class support for provider-native background commands so BB can:
 
 This feature is still not implemented end to end.
 
-- `ThreadTimelineFeedResponse` currently contains `rows`, `activeThinking`, `pendingTodos`, optional `contextWindowUsage`, and `timelinePage`. It does not expose active background commands.
+- `ThreadTimelineResponse` currently contains `rows`, `activeThinking`, `pendingTodos`, optional `contextWindowUsage`, and `timelinePage`. It does not expose active background commands.
 - Timeline pagination is segment-based through `segmentLimit`, `beforeAnchorSeq`, and `beforeAnchorId`. The old plan's top-level limit terminology is stale.
-- CLI/status consumers now read timeline metadata through `/threads/:id/timeline/feed`; the legacy tail-only timeline route has been removed.
-- Nested turn rows lazy-load through `/threads/:id/timeline/turn-summary-details`, and command/tool output lazy-loads through `/threads/:id/timeline/work-output`.
+- `summaryOnly=true` now exists for tail-only CLI/status consumers. Any active background-command metadata added to the timeline response needs an explicit decision about whether it is populated in summary-only responses.
+- Nested turn rows lazy-load through `/threads/:id/timeline/turn-summary-details`, but there is no lazy output route.
 - Command rows render through the current canonical path: `apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx`, `TimelineRowDetails.tsx`, and `TerminalOutputBlock.tsx`.
 - The prompt-area extension point is now `ThreadPromptContextBanner` inside `apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx`.
 - Realtime invalidation is registry-driven in `apps/app/src/hooks/realtime-cache-registry.ts`, not handwritten directly in `realtime-cache-effects.ts`.
@@ -90,7 +90,7 @@ Keep output bytes on `item/commandExecution/outputDelta`.
 
 ### Add Thread-Scoped Active Metadata To Timeline Responses
 
-Add `activeBackgroundCommands` to `ThreadTimelineFeedResponse`.
+Add `activeBackgroundCommands` to `ThreadTimelineResponse`.
 
 Recommended public fields:
 
@@ -115,7 +115,7 @@ Recommended `availableActions` values:
 
 The server is authoritative for this field. The app and CLI should render only the actions returned by the server and should not reimplement provider-specific safety checks.
 
-This list is thread-scoped metadata. It must not depend on which timeline page is loaded. Populate it on latest-page feed reads unless profiling shows a real cost.
+This list is thread-scoped metadata. It must not depend on which timeline page is loaded. Populate it on latest-page and summary-only timeline reads unless profiling shows a real cost.
 
 Timeline command rows should not gain a background-only row field in v1. The app can cross-reference `activeBackgroundCommands` by `TimelineCommandWorkRow.callId`, which is the command item id. This keeps historical command rows compatible and limits timeline contract churn.
 
@@ -187,7 +187,7 @@ Implementation detail:
 2. Add scope policy entries in `packages/domain/src/thread-event-scope.ts`.
 3. Land the provider-originated and server-originated lifecycle event shapes sketched above.
 4. Add `BackgroundCommandHandle`, `ActiveBackgroundCommand`, lazy output response, stop request, and stop response schemas in `packages/server-contract`.
-5. Add `activeBackgroundCommands` to `threadTimelineFeedResponseSchema`.
+5. Add `activeBackgroundCommands` to `threadTimelineResponseSchema`.
 6. Add public API entries for lazy output, stop one, and stop all.
 7. Add daemon command contract entries for background stop and stop-all, then bump `HOST_DAEMON_PROTOCOL_VERSION`.
 
@@ -331,7 +331,7 @@ Relevant code:
 2. Add `bb thread background stop <thread-id> <item-id>`.
 3. Add `bb thread background stop-all <thread-id>`.
 4. Update `bb thread show` to surface active background commands through the existing timeline/status formatting path.
-5. Ensure `bb status` can read active background metadata cheaply from the timeline feed if product wants it there.
+5. Ensure `bb status` can read active background metadata cheaply if product wants it there; use `summaryOnly=true` if available.
 
 Relevant code:
 
@@ -345,7 +345,7 @@ Relevant code:
 - provider-native background commands normalize into an explicit BB background-command lifecycle
 - public background-command identity is the existing command `itemId`
 - inline history remains the existing nested command row inside the current turn grouping model
-- `ThreadTimelineFeedResponse.activeBackgroundCommands` is thread-scoped and independent of the loaded timeline page
+- `ThreadTimelineResponse.activeBackgroundCommands` is thread-scoped and independent of the loaded timeline page
 - default timeline and turn-summary reads do not eagerly return full active background output
 - lazy output reads reconstruct the correct command body for `threadId + itemId`
 - lazy output queries live-refresh on `events-appended`

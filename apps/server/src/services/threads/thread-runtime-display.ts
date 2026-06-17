@@ -13,7 +13,9 @@ import type {
   ThreadStatus,
   ThreadWithRuntime,
 } from "@bb/domain";
+import type { ThreadResponse } from "@bb/server-contract";
 import { DAEMON_DISCONNECT_GRACE_MS } from "../../constants.js";
+import { canThreadSpawnChild } from "./thread-parent.js";
 
 interface ThreadRuntimeDisplayDeps {
   db: DbConnection;
@@ -54,10 +56,10 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
-    case "created":
-    case "provisioning":
+    case "starting":
     case "idle":
     case "active":
+    case "stopping":
     case "error":
       return {
         displayStatus: status,
@@ -86,15 +88,16 @@ function toPublicThread(thread: Thread): Thread {
     id: thread.id,
     projectId: thread.projectId,
     environmentId: thread.environmentId,
-    automationId: thread.automationId,
     providerId: thread.providerId,
     title: thread.title,
     titleFallback: thread.titleFallback,
     status: thread.status,
     parentThreadId: thread.parentThreadId,
+    sourceThreadId: thread.sourceThreadId,
+    originKind: thread.originKind,
+    childOrigin: thread.originKind ?? thread.childOrigin,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
-    stopRequestedAt: thread.stopRequestedAt,
     deletedAt: thread.deletedAt,
     lastReadAt: thread.lastReadAt,
     latestAttentionAt: thread.latestAttentionAt,
@@ -182,11 +185,15 @@ export function toThreadResponseWithHost(
 export function toThreadResponseFromThread(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadResponseFromThreadArgs,
-): ThreadWithRuntime {
-  return toThreadResponseWithHost(deps, {
+): ThreadResponse {
+  const threadWithRuntime = toThreadResponseWithHost(deps, {
     ...args,
     environmentHostId: resolveThreadEnvironmentHostId(deps, args.thread),
   });
+  return {
+    ...threadWithRuntime,
+    canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
+  };
 }
 
 export function toThreadListEntryResponses(

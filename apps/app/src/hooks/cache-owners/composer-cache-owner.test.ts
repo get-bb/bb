@@ -4,9 +4,9 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
-import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   systemExecutionOptionsQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
@@ -24,6 +24,7 @@ const EXISTING_EXECUTION_OPTIONS: SystemExecutionOptionsResponse = {
         supportsRename: true,
         supportsServiceTier: true,
         supportsUserQuestion: true,
+        supportsFork: true,
         supportedPermissionModes: ["full", "workspace-write", "readonly"],
       },
     },

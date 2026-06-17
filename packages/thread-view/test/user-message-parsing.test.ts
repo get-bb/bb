@@ -55,7 +55,7 @@ function systemMessageRequest(): ClientTurnRequestedEventRow {
     initiator: "system",
     senderThreadId: null,
     target: { kind: "new-turn" },
-    text: "[bb system] Scheduled turn: daily.",
+    text: "[bb system] Maintenance notice.",
   });
 }
 
@@ -208,7 +208,7 @@ describe("user message parsing", () => {
   it("preserves mentions for system-initiated messages", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
     const mentionText = "@thread:thr_child";
-    const text = `[bb system]\n\n${mentionText} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context.`;
+    const text = `[bb system]\n\n${mentionText} needs help.\nIt is blocked on a pending interaction.\n\nReview the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.`;
     const mentionStart = "[bb system]\n\n".length;
     const mention: PromptTextMention = {
       start: mentionStart,
@@ -370,7 +370,7 @@ describe("user message parsing", () => {
     ).toMatchObject({
       initiator: "system",
       kind: "user",
-      text: "[bb system] Scheduled turn: daily.",
+      text: "[bb system] Maintenance notice.",
       turnRequest: { kind: "message", status: "pending" },
     });
   });

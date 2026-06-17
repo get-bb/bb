@@ -109,6 +109,7 @@ export async function startThread(
       dynamicTools: command.dynamicTools,
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
+      ...(command.fork ? { fork: command.fork } : {}),
     });
     return result;
   } catch (error) {

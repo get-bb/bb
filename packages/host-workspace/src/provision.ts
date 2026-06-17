@@ -10,6 +10,10 @@ import type {
   CommitResult,
   DiffOptions,
   DiffResult,
+  DiffFilesArgs,
+  DiffFilesResult,
+  DiffPatchArgs,
+  DiffPatchEntry,
   FetchOptions,
   StatusOptions,
   SquashMergeOptions,
@@ -28,6 +32,7 @@ import {
   hasUncommittedChanges,
   listBranches,
   pathExists,
+  readDefaultBranch,
   runGit,
   WorkspaceError,
 } from "./git.js";
@@ -123,6 +128,8 @@ export interface ValidatePersonalWorkspaceTargetPathArgs {
 // HostWorkspace interface
 // ---------------------------------------------------------------------------
 
+const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
+
 export interface HostWorkspace {
   /** Absolute path to the workspace directory */
   readonly path: string;
@@ -134,6 +141,7 @@ export interface HostWorkspace {
   readonly isWorktree: boolean;
 
   // Git queries
+  getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
   getLocalStateFingerprint(): Promise<string>;
@@ -141,6 +149,8 @@ export interface HostWorkspace {
   getAdditionalWorkspaceWriteRoots(): Promise<string[]>;
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus>;
   getDiff(options?: DiffOptions): Promise<DiffResult>;
+  diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult>;
+  diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
   getPullRequest(): Promise<GitHostPullRequest | null>;
   listBranches(): Promise<string[]>;
   listFiles(): Promise<string[]>;
@@ -204,6 +214,17 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return (await this.ws.currentBranch) ?? null;
   }
 
+  async getDefaultBranch(): Promise<string | null> {
+    if (!this.isGitRepo) {
+      return null;
+    }
+    return (
+      (await readDefaultBranch(this.path, {
+        timeoutMs: WORKSPACE_BRANCH_GIT_TIMEOUT_MS,
+      })) ?? null
+    );
+  }
+
   getHeadSha(): Promise<string | null> {
     return this.ws.getHeadSha();
   }
@@ -229,6 +250,14 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   getDiff(options?: DiffOptions): Promise<DiffResult> {
     return this.ws.getDiff(options);
+  }
+
+  diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult> {
+    return this.ws.diffFiles(args);
+  }
+
+  diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]> {
+    return this.ws.diffPatch(args);
   }
 
   getPullRequest(): Promise<GitHostPullRequest | null> {
