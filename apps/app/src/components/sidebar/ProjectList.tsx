@@ -56,6 +56,7 @@ import {
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
@@ -183,7 +184,7 @@ const PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS =
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
   "inline-flex items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 disabled:opacity-50",
-  "h-6 w-7",
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 interface ProjectThreadListStateArgs {
@@ -360,8 +361,10 @@ function ProjectListSectionIconButton({
   );
 
   return (
-    <button
+    <Button
       type="button"
+      size="icon"
+      variant="ghost"
       title={title}
       aria-label={ariaLabel}
       disabled={disabled}
@@ -369,7 +372,7 @@ function ProjectListSectionIconButton({
       onClick={handleClick}
     >
       <Icon name={iconName} className={COARSE_POINTER_ICON_SIZE_CLASS} />
-    </button>
+    </Button>
   );
 }
 
