@@ -90,6 +90,12 @@ interface WriteTerminalStatusArgs {
   text: string;
 }
 
+interface WriteTerminalSessionStatusNoticeArgs {
+  lastNotice: TerminalSessionStatusNoticeRef;
+  session: TerminalSession;
+  terminal: XTermTerminal;
+}
+
 interface TerminalOutputWriteArgs {
   isReplay: boolean;
   replayWriteState: TerminalReplayWriteState;
@@ -106,6 +112,11 @@ interface OpenTerminalWebLinkArgs {
 interface TerminalReplayWriteState {
   suppressedWriteCount: number;
 }
+
+type TerminalSessionStatusNotice = "disconnected" | "exited";
+type TerminalSessionStatusNoticeRef = {
+  current: TerminalSessionStatusNotice | null;
+};
 
 interface HandleTerminalServerMessageArgs {
   message: TerminalServerMessage;
@@ -161,6 +172,39 @@ function hasVisibleTerminalSize({
 
 function writeTerminalStatus({ terminal, text }: WriteTerminalStatusArgs): void {
   terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
+}
+
+function writeTerminalSessionStatusNotice({
+  lastNotice,
+  session,
+  terminal,
+}: WriteTerminalSessionStatusNoticeArgs): void {
+  switch (session.status) {
+    case "disconnected":
+      if (lastNotice.current === "disconnected") {
+        return;
+      }
+      lastNotice.current = "disconnected";
+      writeTerminalStatus({ terminal, text: "Terminal disconnected" });
+      return;
+    case "exited":
+      if (lastNotice.current === "exited") {
+        return;
+      }
+      lastNotice.current = "exited";
+      writeTerminalStatus({
+        terminal,
+        text:
+          session.exitCode === null
+            ? "Terminal exited"
+            : `Terminal exited with code ${session.exitCode}`,
+      });
+      return;
+    case "starting":
+    case "running":
+      lastNotice.current = null;
+      return;
+  }
 }
 
 function openTerminalWebLink({
@@ -250,10 +294,15 @@ export function ThreadTerminalView({
   );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
   const isPanelOpenRef = useRef(isPanelOpen);
+  const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
+  const sessionRef = useRef(session);
+  const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const preferredTheme = usePreferredTheme();
 
   isPanelOpenRef.current = isPanelOpen;
+  sessionStatusRef.current = session.status;
+  sessionRef.current = session;
   onOpenLinkRef.current = onOpenLink;
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
@@ -311,6 +360,11 @@ export function ThreadTerminalView({
         }),
       );
       terminal.open(containerElement);
+      writeTerminalSessionStatusNotice({
+        lastNotice: lastStatusNoticeRef,
+        session: sessionRef.current,
+        terminal,
+      });
       const fitTerminal = () => {
         if (!fitAddon || !terminal) {
           return;
@@ -392,6 +446,9 @@ export function ThreadTerminalView({
         if (replayWriteState.suppressedWriteCount > 0) {
           return;
         }
+        if (sessionStatusRef.current !== "running") {
+          return;
+        }
         if (activeSocket.readyState !== WebSocket.OPEN) {
           return;
         }
@@ -405,6 +462,9 @@ export function ThreadTerminalView({
       });
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
+          return;
+        }
+        if (sessionStatusRef.current !== "running") {
           return;
         }
         onTitleChangeRef.current?.(title);
@@ -446,6 +506,18 @@ export function ThreadTerminalView({
     terminalRef.current?.focus();
     scheduleFitRef.current?.();
   }, [isPanelOpen]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    writeTerminalSessionStatusNotice({
+      lastNotice: lastStatusNoticeRef,
+      session,
+      terminal,
+    });
+  }, [session]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

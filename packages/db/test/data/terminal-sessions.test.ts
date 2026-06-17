@@ -5,6 +5,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
   listTerminalSessionsByThread,
+  listVisibleTerminalSessionsByThread,
   markDaemonTerminalSessionsDisconnected,
   markEnvironmentTerminalSessionsExited,
   markTerminalSessionUserInput,
@@ -232,6 +233,67 @@ describe("terminal sessions", () => {
         status: "disconnected",
       }),
     ]);
+  });
+
+  it("lists starting, running, and disconnected terminals as visible", () => {
+    const fixture = setup();
+    const starting = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      rows: 24,
+      status: "starting",
+      threadId: fixture.thread.id,
+      title: "Starting terminal",
+    });
+    const running = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Running terminal",
+    });
+    const disconnected = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: null,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      rows: 24,
+      status: "disconnected",
+      threadId: fixture.thread.id,
+      title: "Disconnected terminal",
+    });
+    const exited = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: null,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      rows: 24,
+      status: "exited",
+      threadId: fixture.thread.id,
+      title: "Exited terminal",
+    });
+
+    expect(
+      listVisibleTerminalSessionsByThread(fixture.db, fixture.thread.id),
+    ).toEqual([
+      expect.objectContaining({ id: starting.id }),
+      expect.objectContaining({ id: running.id }),
+      expect.objectContaining({ id: disconnected.id }),
+    ]);
+    expect(
+      listVisibleTerminalSessionsByThread(fixture.db, fixture.thread.id),
+    ).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: exited.id })]),
+    );
   });
 
   it("does not mark a starting terminal running for another daemon session", () => {
