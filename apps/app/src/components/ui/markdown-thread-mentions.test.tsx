@@ -10,18 +10,28 @@ import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { setPreferredTheme } from "@/hooks/useTheme";
 
+function markdownTree(node: ReactNode) {
+  return (
+    <MemoryRouter>
+      <RouteNavigationProvider>{node}</RouteNavigationProvider>
+    </MemoryRouter>
+  );
+}
+
 function resolveThreadLink(link: TimelineTitleLink): string | null {
   return link.kind === "thread"
     ? `/projects/proj_demo/threads/${link.threadId}`
     : null;
 }
 
+function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
+  return link.kind === "thread"
+    ? `/projects/proj_demo/threads/${link.threadId}?updated=1`
+    : null;
+}
+
 function renderMarkdown(node: ReactNode) {
-  return render(
-    <MemoryRouter>
-      <RouteNavigationProvider>{node}</RouteNavigationProvider>
-    </MemoryRouter>,
-  );
+  return render(markdownTree(node));
 }
 
 const THREAD_MENTION: PromptTextMention = {
@@ -32,6 +42,14 @@ const THREAD_MENTION: PromptTextMention = {
     threadId: "thr_child",
     projectId: "proj_demo",
     label: "Rebuild comments",
+  },
+};
+
+const UPDATED_THREAD_MENTION: PromptTextMention = {
+  ...THREAD_MENTION,
+  resource: {
+    ...THREAD_MENTION.resource,
+    label: "Updated child",
   },
 };
 
@@ -56,6 +74,39 @@ describe("MarkdownPreview thread mentions", () => {
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
       "/projects/proj_demo/threads/thr_child",
+    );
+  });
+
+  it("updates rendered mention pills when thread mention props change without content changing", () => {
+    const { rerender } = renderMarkdown(
+      <MarkdownPreview
+        content="See @thread:thr_child for the report."
+        threadMentions={{
+          mentions: [THREAD_MENTION],
+          resolveLinkHref: resolveThreadLink,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Rebuild comments")).toBeTruthy();
+
+    rerender(
+      markdownTree(
+        <MarkdownPreview
+          content="See @thread:thr_child for the report."
+          threadMentions={{
+            mentions: [UPDATED_THREAD_MENTION],
+            resolveLinkHref: resolveUpdatedThreadLink,
+          }}
+        />,
+      ),
+    );
+
+    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    const pill = screen.getByText("Updated child").closest("a");
+    expect(pill).not.toBeNull();
+    expect(pill?.getAttribute("href")).toBe(
+      "/projects/proj_demo/threads/thr_child?updated=1",
     );
   });
 

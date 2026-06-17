@@ -129,6 +129,11 @@ interface AreMarkdownLinkRoutingsEqualArgs {
   previous: MarkdownLinkRouting | undefined;
 }
 
+interface AreMarkdownThreadMentionsEqualArgs {
+  next: MarkdownThreadMentions | undefined;
+  previous: MarkdownThreadMentions | undefined;
+}
+
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
 
 interface SetMarkdownContentWidthVariableArgs {
@@ -236,6 +241,18 @@ function areMarkdownLinkRoutingsEqual({
   );
 }
 
+function areMarkdownThreadMentionsEqual({
+  next,
+  previous,
+}: AreMarkdownThreadMentionsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.mentions === next.mentions &&
+    previous.resolveLinkHref === next.resolveLinkHref
+  );
+}
+
 const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous,
   next,
@@ -248,6 +265,10 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   (previous.imageLightboxTitle ?? "Expanded image preview") ===
     (next.imageLightboxTitle ?? "Expanded image preview") &&
   previous.urlTransform === next.urlTransform &&
+  areMarkdownThreadMentionsEqual({
+    next: next.threadMentions,
+    previous: previous.threadMentions,
+  }) &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
     previous: previous.linkRouting,

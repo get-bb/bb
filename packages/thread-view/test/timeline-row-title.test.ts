@@ -818,6 +818,76 @@ describe("buildTimelineRowTitle", () => {
     expect(title.segments[0]?.link).toBeUndefined();
   });
 
+  it.each([
+    {
+      action: "assign",
+      threadName: "Cleanup assigned to Sam",
+      parentChange: {
+        action: "assign" as const,
+        previousParentThreadId: null,
+        previousParentThreadTitle: null,
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Frontend Parent",
+      },
+      expectedSegments: [
+        "Cleanup assigned to Sam",
+        "assigned to",
+        "Frontend Parent",
+      ],
+    },
+    {
+      action: "release",
+      threadName: "Cleanup released from Sam",
+      parentChange: {
+        action: "release" as const,
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: null,
+        nextParentThreadTitle: null,
+      },
+      expectedSegments: [
+        "Cleanup released from Sam",
+        "released from",
+        "Frontend Parent",
+      ],
+    },
+    {
+      action: "transfer",
+      threadName: "Cleanup transferred to Sam",
+      parentChange: {
+        action: "transfer" as const,
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Backend Parent",
+      },
+      expectedSegments: [
+        "Cleanup transferred to Sam",
+        "transferred to",
+        "Backend Parent",
+      ],
+    },
+  ] satisfies Array<{
+    action: TimelineParentChange["action"];
+    expectedSegments: string[];
+    parentChange: TimelineParentChange;
+    threadName: string;
+  }>)(
+    "preserves parent-change thread names containing the $action verb phrase",
+    ({ expectedSegments, parentChange, threadName }) => {
+      const title = buildTimelineRowTitle(
+        parentChangeSystemRow({ parentChange, threadName }),
+        DEFAULT_OPTIONS,
+      );
+
+      expect(title.segments.map((s) => s.text)).toEqual(expectedSegments);
+      expect(title.segments[0]?.link).toEqual({
+        kind: "thread",
+        threadId: "thread-1",
+      });
+    },
+  );
+
   it("falls back to an unlinked 'parent' segment when the parent title is null", () => {
     const title = buildTimelineRowTitle(
       parentChangeSystemRow({

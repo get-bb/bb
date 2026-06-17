@@ -1264,18 +1264,26 @@ function parentChangeParentSegment(
 /**
  * Recover the thread name from a parent-change row's flat title. The projection
  * builds the title as `"{threadName} {verb} {parent}"` (see
- * `ownershipChangeOperationTitle`); splitting on the shared ownership verb yields
- * the leading thread name. Returns the row's thread id as a fallback when the
- * flat title doesn't carry the verb (e.g. non-completed statuses whose title is
- * a generic "Ownership change …" string), so the row still names something
+ * `ownershipChangeOperationTitle`); removing the exact trailing verb+parent
+ * suffix yields the leading thread name without truncating names that themselves
+ * contain ownership verbs. Returns the row's thread id as a fallback when the
+ * flat title doesn't carry that suffix (e.g. non-completed statuses whose title
+ * is a generic "Ownership change …" string), so the row still names something
  * linkable rather than rendering a bare verb.
  */
 function parentChangeThreadName(row: TimelineParentChangeSystemRow): string {
   const verb = OWNERSHIP_CHANGE_VERBS[row.parentChange.action];
-  const marker = ` ${verb} `;
-  const index = row.title.indexOf(marker);
-  if (index > 0) {
-    return row.title.slice(0, index);
+  const parentTitle =
+    row.parentChange.action === "release"
+      ? row.parentChange.previousParentThreadTitle
+      : row.parentChange.nextParentThreadTitle;
+  const parent =
+    parentTitle !== null && parentTitle.trim().length > 0
+      ? parentTitle.trim()
+      : "parent";
+  const suffix = ` ${verb} ${parent}`;
+  if (row.title.endsWith(suffix) && row.title.length > suffix.length) {
+    return row.title.slice(0, row.title.length - suffix.length);
   }
   return row.threadId;
 }
