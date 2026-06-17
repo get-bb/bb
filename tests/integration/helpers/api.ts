@@ -200,6 +200,7 @@ export async function createHostThread(
       providerId,
       title: options.title,
       startedOnBehalfOf: null,
+      originKind: null,
       childOrigin: null,
     },
   });
@@ -229,6 +230,7 @@ export async function createReuseThread(
       providerId,
       title: options.title,
       startedOnBehalfOf: null,
+      originKind: null,
       childOrigin: null,
     },
   });
