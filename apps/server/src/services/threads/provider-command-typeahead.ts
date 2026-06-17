@@ -60,8 +60,8 @@ export interface ResolveCommandWorkspaceArgs {
  *   3. else the primary host with `cwd: null`.
  * Unlike the path-search resolvers (which require a concrete path and throw),
  * command discovery is valid with `cwd: null`, so each step falls through to
-   * the next instead of surfacing an error. In particular an environment that is
-   * still provisioning or otherwise unavailable must NOT fail here — it
+ * the next instead of surfacing an error. In particular an environment that is
+ * still provisioning or otherwise unavailable must NOT fail here — it
  * degrades to the project source / user-home roots — so this reads the
  * environment with the non-throwing `getEnvironment` rather than
  * `requireReadyEnvironment`.
@@ -83,11 +83,7 @@ export function resolveCommandWorkspace(
   }
 
   const primaryHostId = requirePrimaryHostId(deps);
-  const source = getProjectSourceByHost(
-    deps.db,
-    args.projectId,
-    primaryHostId,
-  );
+  const source = getProjectSourceByHost(deps.db, args.projectId, primaryHostId);
   if (source && source.type === "local_path") {
     return { hostId: source.hostId, cwd: source.path };
   }
@@ -105,11 +101,23 @@ function toProviderCommand(command: HostProviderCommand): ProviderCommand {
   };
 }
 
+function commandSearchNames(command: ProviderCommand): string[] {
+  const name = command.name.toLowerCase();
+  if (command.source !== "skill") {
+    return [name];
+  }
+  const separatorIndex = name.lastIndexOf(":");
+  if (separatorIndex < 0 || separatorIndex === name.length - 1) {
+    return [name];
+  }
+  return [name, name.slice(separatorIndex + 1)];
+}
+
 function matchesQuery(command: ProviderCommand, query: string): boolean {
   if (query === "") {
     return true;
   }
-  if (command.name.toLowerCase().includes(query)) {
+  if (commandSearchNames(command).some((name) => name.includes(query))) {
     return true;
   }
   return command.description !== null
@@ -123,14 +131,15 @@ function matchesQuery(command: ProviderCommand, query: string): boolean {
  * `command` with the same name) are intentionally retained — they are distinct
  * invocations.
  */
-function dedupeBySourceAndName(
-  commands: ProviderCommand[],
-): ProviderCommand[] {
+function dedupeBySourceAndName(commands: ProviderCommand[]): ProviderCommand[] {
   const byKey = new Map<string, ProviderCommand>();
   for (const command of commands) {
     const key = `${command.source} ${command.name}`;
     const existing = byKey.get(key);
-    if (!existing || (existing.origin === "user" && command.origin === "project")) {
+    if (
+      !existing ||
+      (existing.origin === "user" && command.origin === "project")
+    ) {
       byKey.set(key, command);
     }
   }
@@ -148,13 +157,18 @@ function compareForQuery(
   // the shared `providerCommandSectionRank` keeps highlight/Arrow/Enter aligned
   // with the rendered sections. Within a section we keep the existing
   // prefix-then-alphabetical ordering.
-  const bySection = providerCommandSectionRank(a) - providerCommandSectionRank(b);
+  const bySection =
+    providerCommandSectionRank(a) - providerCommandSectionRank(b);
   if (bySection !== 0) {
     return bySection;
   }
   if (query !== "") {
-    const aPrefix = a.name.toLowerCase().startsWith(query);
-    const bPrefix = b.name.toLowerCase().startsWith(query);
+    const aPrefix = commandSearchNames(a).some((name) =>
+      name.startsWith(query),
+    );
+    const bPrefix = commandSearchNames(b).some((name) =>
+      name.startsWith(query),
+    );
     if (aPrefix !== bPrefix) {
       return aPrefix ? -1 : 1;
     }

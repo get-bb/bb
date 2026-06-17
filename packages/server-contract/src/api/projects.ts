@@ -242,6 +242,8 @@ export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
  * (`query`/`limit`/`environmentId`, including the empty-string→null wire
  * convention) with the `provider` whose skill/command surface to discover.
  * `query` here is a case-insensitive substring filter on command name/description.
+ * Namespaced skills also match on their local name after `:` (for example,
+ * `review` matches `ottonomous:review`).
  */
 export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
   /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */

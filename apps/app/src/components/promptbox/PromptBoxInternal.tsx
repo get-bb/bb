@@ -62,6 +62,7 @@ import {
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
+import { exitTrailingBlockquoteBreak } from "./editor/prompt-editor-blockquote";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1671,6 +1672,21 @@ export function PromptBoxInternal({
       if (isModifierSubmitKey && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
+        return true;
+      }
+
+      const isBlockquoteExitKey =
+        event.key === "Enter" &&
+        event.shiftKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey;
+      if (
+        isBlockquoteExitKey &&
+        currentEditor &&
+        exitTrailingBlockquoteBreak(currentEditor)
+      ) {
+        event.preventDefault();
         return true;
       }
 

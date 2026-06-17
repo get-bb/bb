@@ -17,6 +17,7 @@ import {
   type HistoryConfig,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
@@ -41,12 +42,14 @@ import {
   renderMessageBodyWithQuotes,
 } from "@/components/thread/timeline/ConversationMessageMentions";
 import { Skeleton } from "@/components/ui/skeleton.js";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   isRunningThreadRuntimeDisplayStatus,
   TimelineStatusIndicator,
   TimelineWorkingIndicator,
   ThreadTimelineRows,
   type ThreadTimelineSendToMainMessageHandler,
+  type ThreadTimelineSelectionAddToChatHandler,
 } from "@/components/thread/timeline";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -74,6 +77,7 @@ import {
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { appendQuoteToDraftText } from "@/lib/prompt-draft";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
@@ -137,6 +141,7 @@ interface SideChatConversationProps {
    * keeps the action out of the bar until the reply is final.
    */
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
 }
 
 function timelineRowsContainUserMessage(rows: readonly TimelineRow[]): boolean {
@@ -174,6 +179,7 @@ function SideChatConversation({
   isSideChatTurnSubmitting,
   threadId,
   onSendToMainMessage,
+  onSelectionAddToChat,
 }: SideChatConversationProps) {
   const preferredTheme = usePreferredTheme();
   const threadQuery = useThread(threadId);
@@ -270,6 +276,7 @@ function SideChatConversation({
           threadId={threadId}
           threadRuntimeDisplayStatus={displayStatus}
           onSendToMainMessage={onSendToMainMessage}
+          onSelectionAddToChat={onSelectionAddToChat}
           workspaceRootPath={undefined}
         />
       ) : null}
@@ -350,6 +357,7 @@ export function SideChatTabContent({
 
   const [message, setMessage] = useState("");
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
   const [sideChatPreloadFailed, setSideChatPreloadFailed] = useState(false);
@@ -589,6 +597,24 @@ export function SideChatTabContent({
     },
     [childThreadId, sendThreadMessage, sourceThread.id],
   );
+  const handleSelectionAddToChat =
+    useCallback<ThreadTimelineSelectionAddToChatHandler>(
+      (text) => {
+        const nextDraft = appendQuoteToDraftText(
+          {
+            text: message,
+            mentions: mentionRanges,
+            attachments: [],
+          },
+          text,
+        );
+        if (nextDraft.text === message) return;
+        setMessage(nextDraft.text);
+        setMentionRanges(nextDraft.mentions);
+        setComposerFocusNonce((nonce) => nonce + 1);
+      },
+      [mentionRanges, message],
+    );
 
   const sideChatRuntimeDisplayStatus =
     childThreadQuery.data?.runtime.displayStatus ??
@@ -972,9 +998,36 @@ export function SideChatTabContent({
     );
   }, [isLocalDaemonHost, sourceEnvironment]);
 
+  const sideChatFooter = (
+    <div className="relative bg-background">
+      <OverflowFade placement="above" tone="background" />
+      <div className="px-4 pb-4 pt-2">
+        <FollowUpPromptBox
+          attachments={SIDE_CHAT_ATTACHMENTS}
+          stack={queuedMessagesStack}
+          composer={composerConfig}
+          environmentSummary={environmentSummary}
+          contextWindowUsage={null}
+          execution={executionConfig}
+          permission={permissionConfig}
+          readOnly
+          typeahead={SIDE_CHAT_TYPEAHEAD}
+          zenModeResetKey={childThreadId ?? tab.id}
+          focusEndKey={composerFocusNonce}
+        />
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
+    <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
+      <BottomAnchoredScrollBody
+        scrollAreaClassName="bg-background"
+        contentClassName="!px-2 !pb-3 !pt-3"
+        maxWidthClassName="max-w-none"
+        footer={sideChatFooter}
+        scrollAnchorThreadId={childThreadId ?? undefined}
+      >
         {hasTriggerMessage ? (
           // The agent message this side chat replies to, rendered like a steer
           // message — a "Replying to" header above a left-aligned bubble — so
@@ -1009,6 +1062,7 @@ export function SideChatTabContent({
             isSideChatTurnSubmitting={isSideChatTurnSubmitting}
             threadId={childThreadId}
             onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
+            onSelectionAddToChat={handleSelectionAddToChat}
           />
         ) : sideChatPreloadFailed ? (
           <TimelineStatusIndicator
@@ -1020,21 +1074,7 @@ export function SideChatTabContent({
             <TimelineWorkingIndicator label="Provisioning side chat..." />
           </div>
         )}
-      </div>
-      <div className="px-4 pb-4 pt-2">
-        <FollowUpPromptBox
-          attachments={SIDE_CHAT_ATTACHMENTS}
-          stack={queuedMessagesStack}
-          composer={composerConfig}
-          environmentSummary={environmentSummary}
-          contextWindowUsage={null}
-          execution={executionConfig}
-          permission={permissionConfig}
-          readOnly
-          typeahead={SIDE_CHAT_TYPEAHEAD}
-          zenModeResetKey={childThreadId ?? tab.id}
-        />
-      </div>
+      </BottomAnchoredScrollBody>
     </div>
   );
 }
