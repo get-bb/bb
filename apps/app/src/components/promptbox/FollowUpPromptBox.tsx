@@ -28,17 +28,22 @@ import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/Thread
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 
-type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal>;
+type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
+  scrollToBottomOnSubmit?: boolean;
+};
 
 function PromptBoxWithScrollAnchor({
   onSubmit,
+  scrollToBottomOnSubmit = true,
   submission,
   ...promptBoxProps
 }: PromptBoxWithScrollAnchorProps) {
   const bottomAnchor = useBottomAnchoredScroll();
   const handleSubmit = () => {
     onSubmit();
-    bottomAnchor?.scrollToBottom();
+    if (scrollToBottomOnSubmit) {
+      bottomAnchor?.scrollToBottom();
+    }
   };
   const handleModifierSubmit =
     submission?.onModifierSubmit === undefined
@@ -308,6 +313,7 @@ function FollowUpPromptBoxWithComposer({
           mentionRanges={composer.mentionRanges}
           onChange={composer.onChangeMessage}
           onSubmit={composer.onSubmit}
+          scrollToBottomOnSubmit={submitMode.kind !== "queue"}
           history={composer.history}
           focusEndKey={focusEndKey}
           placeholder={composer.promptPlaceholder}
