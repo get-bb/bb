@@ -157,6 +157,7 @@ export async function executeAgentRun(
       model: args.execution.model,
       permissionMode: args.execution.permissionMode,
       origin: "automation",
+      startedOnBehalfOf: null,
     });
     setAutomationRunThread(deps.db, { runId: args.run.id, threadId: thread.id });
     notifyRuns(deps, args.automation.projectId);
