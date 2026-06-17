@@ -137,7 +137,7 @@ describe("bb thread list command output", () => {
     ]);
   });
 
-  it("bb thread list honors BB_PROJECT_ID when --project is omitted", async () => {
+  it("bb thread list ignores BB_PROJECT_ID when --project is omitted", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });
 
@@ -145,9 +145,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: {
-        projectId: "proj-env",
-      },
+      query: {},
     });
   });
 
@@ -161,9 +159,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: {
-        projectId: "proj-env",
-      },
+      query: {},
     });
   });
 });

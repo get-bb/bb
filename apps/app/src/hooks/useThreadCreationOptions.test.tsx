@@ -147,14 +147,18 @@ describe("useThreadCreationOptions", () => {
     );
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith({
-        environmentId: undefined,
-        providerId: GLOBAL_PROVIDER_ID,
-      });
-      expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith({
-        environmentId: undefined,
-        providerId: PROJECT_PROVIDER_ID,
-      });
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: GLOBAL_PROVIDER_ID,
+        }),
+      );
+      expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: PROJECT_PROVIDER_ID,
+        }),
+      );
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
         { kind: "skills", trigger: "$" },
@@ -192,10 +196,12 @@ describe("useThreadCreationOptions", () => {
     );
 
     await waitFor(() => {
-      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith({
-        environmentId: undefined,
-        providerId: GLOBAL_PROVIDER_ID,
-      });
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: GLOBAL_PROVIDER_ID,
+        }),
+      );
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
         { kind: "skills", trigger: "$" },

@@ -5,15 +5,6 @@ import { cn } from "@/lib/utils";
 
 const GOAL_CARD_ROW_HEIGHT = 32;
 
-function GoalActiveBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs leading-none text-success">
-      <span className="size-1.5 shrink-0 rounded-full bg-success" />
-      Active
-    </span>
-  );
-}
-
 function formatDuration(seconds: number): string {
   if (seconds < 60) {
     return `${Math.round(seconds)}s`;
@@ -48,10 +39,10 @@ const TOGGLE_ID = "thread-goal-card-toggle";
 /**
  * Collapsible goal card for the prompt stack above the composer. Surfaces the
  * provider's current durable objective (Codex `thread/goal/*` events projected
- * onto the timeline). Collapsed: objective + Active badge. Expanded: full
- * objective + token/time usage. Mirrors the ThreadPromptContextBanner section
- * chrome. Only rendered while the goal is active — once the provider marks it
- * complete (or paused / budget-limited) it drops out of the prompt stack.
+ * onto the timeline). Collapsed: objective. Expanded: full objective +
+ * token/time usage. Mirrors the ThreadPromptContextBanner section chrome. Only
+ * rendered while the goal is active — once the provider marks it complete (or
+ * paused / budget-limited) it drops out of the prompt stack.
  */
 export function ThreadGoalCard({
   goal,
@@ -82,7 +73,10 @@ export function ThreadGoalCard({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1 truncate text-left" title={goal.objective}>
+          <span
+            className="min-w-0 flex-1 truncate text-left"
+            title={goal.objective}
+          >
             {goal.objective}
           </span>
           <Icon
@@ -94,7 +88,6 @@ export function ThreadGoalCard({
             aria-hidden="true"
           />
         </button>
-        <GoalActiveBadge />
       </div>
       <section
         id={BODY_ID}
@@ -115,7 +108,11 @@ export function ThreadGoalCard({
             </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="Zap" className="size-3.5 shrink-0" aria-hidden="true" />
+                <Icon
+                  name="Zap"
+                  className="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
                 {formatTokenUsage(goal)}
               </span>
               <span className="inline-flex items-center gap-1.5">

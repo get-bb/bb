@@ -91,7 +91,12 @@ export {
   applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
   requireThreadLifecycleEventApplied,
+  searchThreadsWithPendingInteractionState,
+  upsertThreadSearchSegments,
+  upsertThreadTitleSearchSegments,
   ThreadLifecycleEventNotAppliedError,
+  THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
+  THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
 } from "./threads.js";
 export type {
   ApplyThreadLifecycleEventArgs,
@@ -114,10 +119,19 @@ export type {
   ReorderPinnedThreadArgs,
   ReorderPinnedThreadResult,
   ThreadEnvironmentAssignmentRow,
+  ThreadSearchHighlightRange,
+  ThreadSearchMatch,
+  ThreadSearchResult,
+  ThreadSearchResultGroup,
+  ThreadSearchResults,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,
+  SearchThreadsWithPendingInteractionStateArgs,
   SetThreadExecutionOverrideInput,
   UnpinThreadArgs,
+  UpsertThreadSearchSegmentInput,
+  UpsertThreadSearchSegmentsArgs,
+  UpsertThreadTitleSearchSegmentsArgs,
   UpdateThreadInput,
 } from "./threads.js";
 

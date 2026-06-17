@@ -2210,4 +2210,3 @@ function truncatePatchToMaxBytes(
   }
   return { patch: truncateToMaxBytes(patch, maxBytes), truncated: true };
 }
-

@@ -8,13 +8,13 @@ describe("ThreadPromptContextBanner", () => {
   it("renders the archived read-only status without an action", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
-        todoSection={null}
         gitSection={null}
         gitSectionPending={false}
         archivedSection={{ archivedAt: 1_731_456_000_000 }}
         environmentGoneSection={null}
         parentThreadSection={null}
         childThreadsSection={null}
+        pullRequestSection={null}
         expandedSection={null}
         onToggleSection={noop}
       />,
@@ -28,13 +28,13 @@ describe("ThreadPromptContextBanner", () => {
   it("renders the environment-gone read-only status without a provision action", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
-        todoSection={null}
         gitSection={null}
         gitSectionPending={false}
         archivedSection={null}
         environmentGoneSection={{ status: "destroyed" }}
         parentThreadSection={null}
         childThreadsSection={null}
+        pullRequestSection={null}
         expandedSection={null}
         onToggleSection={noop}
       />,

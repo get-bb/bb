@@ -72,8 +72,11 @@ export function useEnvironment(
 
   return useQuery<Environment>({
     queryKey: environmentQueryKey(environmentId),
-    queryFn: () =>
-      api.getEnvironment(requireEnvironmentId(environmentId, "useEnvironment")),
+    queryFn: ({ signal }) =>
+      api.getEnvironment(
+        requireEnvironmentId(environmentId, "useEnvironment"),
+        signal,
+      ),
     enabled,
     staleTime: options?.staleTime,
   });
@@ -93,10 +96,11 @@ export function useEnvironmentWorkStatus(
       environmentId,
       normalizedMergeBaseBranch,
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getEnvironmentWorkStatus(
         requireEnvironmentId(environmentId, "useEnvironmentWorkStatus"),
         mergeBaseBranch,
+        signal,
       ),
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
@@ -124,9 +128,10 @@ export function useEnvironmentPullRequest(
 
   return useQuery<EnvironmentPullRequestResponse>({
     queryKey: environmentPullRequestQueryKey(environmentId),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getEnvironmentPullRequest(
         requireEnvironmentId(environmentId, "useEnvironmentPullRequest"),
+        signal,
       ),
     enabled,
     refetchOnWindowFocus: false,
@@ -150,12 +155,16 @@ export function useEnvironmentMergeBaseBranches(
       limit,
       selectedBranch ?? "",
     ),
-    queryFn: () =>
-      api.getEnvironmentDiffBranches(environmentId, {
-        ...(query ? { query } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
-        limit,
-      }),
+    queryFn: ({ signal }) =>
+      api.getEnvironmentDiffBranches(
+        environmentId,
+        {
+          ...(query ? { query } : {}),
+          ...(selectedBranch ? { selectedBranch } : {}),
+          limit,
+        },
+        signal,
+      ),
     enabled,
     refetchOnWindowFocus: false,
     staleTime: MERGE_BASE_BRANCHES_STALE_MS,
@@ -242,7 +251,7 @@ export function useEnvironmentPathSuggestions(
       includeFiles,
       includeDirectories,
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.searchEnvironmentPaths({
         environmentId: requireEnvironmentId(
           environmentId,
@@ -252,6 +261,7 @@ export function useEnvironmentPathSuggestions(
         limit,
         includeFiles,
         includeDirectories,
+        signal,
       }),
     enabled,
     staleTime: 15_000,
@@ -281,7 +291,7 @@ export function useEnvironmentDiffFiles(
       target?.type ?? null,
       environmentDiffTargetKey(target),
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getEnvironmentDiffFiles(
         environmentId,
         requireEnabledQueryArg({
@@ -289,6 +299,7 @@ export function useEnvironmentDiffFiles(
           hookName: "useEnvironmentDiffFiles",
           argName: "target",
         }),
+        signal,
       ),
     enabled,
     placeholderData: (previousData, previousQuery) =>

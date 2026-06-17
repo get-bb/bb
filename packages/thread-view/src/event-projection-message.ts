@@ -7,6 +7,8 @@ import type {
   PendingInteractionUserQuestionQuestion,
   ProviderErrorInfo,
   PromptTextMention,
+  SystemMessageKind,
+  SystemMessageSubject,
   Thread,
   ThreadEventRow,
   ThreadEventScope,
@@ -84,6 +86,10 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
+  // Family-B taxonomy fields carried from the decoded `client/turn/requested`
+  // event. Legacy events lacking them project as `unlabeled` / `null`.
+  systemMessageKind: SystemMessageKind;
+  systemMessageSubject: SystemMessageSubject | null;
   turnRequest: EventProjectionTurnRequest;
   text: string;
   mentions: PromptTextMention[];
@@ -412,4 +418,10 @@ export interface BuildEventProjectionMessagesOptions {
   includeDebugRawEvents?: boolean;
   includeProviderUnhandledOperations?: boolean;
   threadStatus?: Thread["status"];
+  /**
+   * Display name of the thread these messages belong to. Family-A operation-row
+   * titles interpolate it (e.g. "Fix auth bug provisioned"). Empty string when
+   * the thread has no name; the title builders fall back to a bare verb.
+   */
+  threadName: string;
 }

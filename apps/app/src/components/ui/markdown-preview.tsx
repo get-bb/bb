@@ -18,6 +18,7 @@ import type {
 } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
@@ -39,7 +40,13 @@ import type {
   MarkdownLinkRouting,
   MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
+import {
+  buildThreadMentionComponent,
+  remarkThreadMentions,
+} from "./markdown-thread-mentions.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
+import type { PromptTextMention } from "@bb/domain";
+import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
@@ -51,7 +58,22 @@ export interface MarkdownPreviewProps {
   expandedImageAlt?: string;
   imageLightboxTitle?: string;
   linkRouting?: MarkdownLinkRouting;
+  /**
+   * When supplied, the literal `@thread:<id>` token in the markdown source
+   * renders as the canonical thread-mention pill (display name resolved from
+   * `mentions`, falling back to the id) with its link routed through
+   * `resolveLinkHref` (the same resolver the timeline title links use). The two
+   * fields are coupled — a pill is only useful when it can resolve both its
+   * display resource and its href — so they travel together. Absent for
+   * assistant content, which carries no mentions; that path is unaffected.
+   */
+  threadMentions?: MarkdownThreadMentions;
   urlTransform?: UrlTransform;
+}
+
+export interface MarkdownThreadMentions {
+  mentions: readonly PromptTextMention[];
+  resolveLinkHref: TimelineTitleLinkResolver;
 }
 
 interface MarkdownAnchorProps
@@ -67,6 +89,7 @@ interface BuildMarkdownComponentsArgs {
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
   setExpandedImageUrl: ExpandedImageUrlSetter;
+  threadMentions?: MarkdownThreadMentions;
 }
 
 interface BuildLocalFileAwareUrlTransformArgs {
@@ -104,6 +127,11 @@ interface AreMarkdownLocalFileLinkRoutingsEqualArgs {
 interface AreMarkdownLinkRoutingsEqualArgs {
   next: MarkdownLinkRouting | undefined;
   previous: MarkdownLinkRouting | undefined;
+}
+
+interface AreMarkdownThreadMentionsEqualArgs {
+  next: MarkdownThreadMentions | undefined;
+  previous: MarkdownThreadMentions | undefined;
 }
 
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
@@ -213,6 +241,18 @@ function areMarkdownLinkRoutingsEqual({
   );
 }
 
+function areMarkdownThreadMentionsEqual({
+  next,
+  previous,
+}: AreMarkdownThreadMentionsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.mentions === next.mentions &&
+    previous.resolveLinkHref === next.resolveLinkHref
+  );
+}
+
 const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous,
   next,
@@ -225,6 +265,10 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   (previous.imageLightboxTitle ?? "Expanded image preview") ===
     (next.imageLightboxTitle ?? "Expanded image preview") &&
   previous.urlTransform === next.urlTransform &&
+  areMarkdownThreadMentionsEqual({
+    next: next.threadMentions,
+    previous: previous.threadMentions,
+  }) &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
     previous: previous.linkRouting,
@@ -570,6 +614,7 @@ function buildMarkdownComponents({
   linkRouting,
   preferredTheme,
   setExpandedImageUrl,
+  threadMentions,
 }: BuildMarkdownComponentsArgs): Components {
   function MarkdownLink(props: MarkdownAnchorProps) {
     return <MarkdownAnchor {...props} linkRouting={linkRouting} />;
@@ -607,7 +652,7 @@ function buildMarkdownComponents({
     );
   }
 
-  return {
+  const components: Components = {
     a: MarkdownLink,
     blockquote: MarkdownBlockquote,
     code: MarkdownCodeRenderer,
@@ -630,6 +675,15 @@ function buildMarkdownComponents({
     thead: MarkdownTableHead,
     ul: MarkdownUnorderedList,
   };
+
+  if (threadMentions !== undefined) {
+    components["bb-thread-mention"] = buildThreadMentionComponent({
+      mentions: threadMentions.mentions,
+      resolveSegmentLinkHref: threadMentions.resolveLinkHref,
+    });
+  }
+
+  return components;
 }
 
 function setMarkdownContentWidthVariable({
@@ -743,6 +797,7 @@ function MarkdownPreviewComponent({
   expandedImageAlt = "Expanded image",
   imageLightboxTitle = "Expanded image preview",
   linkRouting,
+  threadMentions,
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -767,8 +822,21 @@ function MarkdownPreviewComponent({
         linkRouting,
         preferredTheme,
         setExpandedImageUrl,
+        threadMentions,
       }),
-    [linkRouting, preferredTheme],
+    [linkRouting, preferredTheme, threadMentions],
+  );
+  // The thread-mention pipeline only activates when `threadMentions` is set.
+  // Assistant content (no mentions) keeps the unchanged `[remarkGfm]` pipeline,
+  // including CommonMark soft breaks. The mention branch adds `remark-breaks` so
+  // a single `\n` stays a line break — generated bodies (child-outcome reports,
+  // provisioning transcripts) rely on the prior `whitespace-pre-wrap` behavior.
+  const remarkPlugins = useMemo(
+    () =>
+      threadMentions !== undefined
+        ? [remarkGfm, remarkBreaks, remarkThreadMentions]
+        : [remarkGfm],
+    [threadMentions],
   );
   const resolvedUrlTransform = useMemo(
     () =>
@@ -795,7 +863,7 @@ function MarkdownPreviewComponent({
         ) : null}
         <ReactMarkdown
           rehypePlugins={allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : undefined}
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={remarkPlugins}
           components={markdownComponents}
           urlTransform={resolvedUrlTransform}
         >

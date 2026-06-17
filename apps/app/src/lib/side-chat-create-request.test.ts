@@ -32,6 +32,8 @@ function conversationRow(
         role: "user",
         initiator: "user",
         senderThreadId: null,
+        systemMessageKind: "unlabeled",
+        systemMessageSubject: null,
         turnRequest: { kind: "message", status: "accepted" },
         mentions: [],
       }

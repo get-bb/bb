@@ -26,7 +26,11 @@ import type {
   TimelineWebSearchWorkRow,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type { ThreadTurnInitiator } from "@bb/domain";
+import type {
+  SystemMessageKind,
+  SystemMessageSubject,
+  ThreadTurnInitiator,
+} from "@bb/domain";
 
 export interface RowBaseOverrideArgs {
   createdAt?: number;
@@ -51,6 +55,8 @@ export interface ConversationRowArgs extends RowBaseOverrideArgs {
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
+  systemMessageKind?: SystemMessageKind;
+  systemMessageSubject?: SystemMessageSubject | null;
   text: string;
   turnId?: string | null;
   turnRequest?: TimelineConversationTurnRequest;
@@ -405,6 +411,8 @@ export function conversationRow({
   sourceSeqEnd,
   sourceSeqStart,
   startedAt,
+  systemMessageKind = "unlabeled",
+  systemMessageSubject = null,
   text,
   threadId,
   turnId,
@@ -436,6 +444,8 @@ export function conversationRow({
           : resolvedInitiator === "agent"
             ? "thr_sender"
             : null,
+      systemMessageKind,
+      systemMessageSubject,
       turnRequest: turnRequest ?? { kind: "message", status: "accepted" },
     };
   }

@@ -1,4 +1,10 @@
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEventHandler,
+} from "react";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
@@ -11,6 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
+  useSidebar,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
@@ -24,12 +31,29 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  haveSameSidebarThreadSearchNavigationItems,
+  type SidebarThreadSearchNavigationItem,
+} from "./sidebarThreadSearch";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   showTopReserve: boolean;
+}
+
+export function isThreadSearchKeyboardEventTarget(
+  target: EventTarget | null,
+  input: HTMLInputElement | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target === input) {
+    return true;
+  }
+  return target.closest('[role="option"]') !== null;
 }
 
 export function AppSidebar({
@@ -40,8 +64,70 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
+  const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
+  const [threadSearchQuery, setThreadSearchQuery] = useState("");
+  const [threadSearchActiveIndex, setThreadSearchActiveIndex] = useState(0);
+  const [threadSearchNavigationItems, setThreadSearchNavigationItems] =
+    useState<readonly SidebarThreadSearchNavigationItem[]>([]);
+  const threadSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const threadSearchActiveDescendantId =
+    threadSearchNavigationItems[threadSearchActiveIndex]?.optionId;
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+
+  const focusThreadSearchInput = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      threadSearchInputRef.current?.focus();
+    });
+  }, []);
+
+  const handleThreadSearchActivate = useCallback(() => {
+    setIsThreadSearchActive(true);
+    if (isCompactViewport) {
+      setOpenMobile(true);
+    } else {
+      setOpen(true);
+    }
+    focusThreadSearchInput();
+  }, [focusThreadSearchInput, isCompactViewport, setOpen, setOpenMobile]);
+
+  const handleThreadSearchClose = useCallback(() => {
+    setIsThreadSearchActive(false);
+    setThreadSearchQuery("");
+    setThreadSearchActiveIndex(0);
+    setThreadSearchNavigationItems([]);
+  }, []);
+
+  const handleThreadSearchNavigationItemsChange = useCallback(
+    (items: readonly SidebarThreadSearchNavigationItem[]) => {
+      setThreadSearchNavigationItems((current) =>
+        haveSameSidebarThreadSearchNavigationItems(current, items)
+          ? current
+          : items,
+      );
+      setThreadSearchActiveIndex((current) => {
+        if (items.length === 0) {
+          return 0;
+        }
+        return Math.min(current, items.length - 1);
+      });
+    },
+    [],
+  );
+
+  const handleThreadSearchSelectItem = useCallback(
+    (item: SidebarThreadSearchNavigationItem) => {
+      void navigate(
+        getThreadRoutePath({
+          projectId: item.projectId,
+          threadId: item.threadId,
+        }),
+      );
+      closeOnMobile();
+    },
+    [closeOnMobile, navigate],
+  );
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -50,9 +136,96 @@ export function AppSidebar({
     });
   }, [closeOnMobile, navigate]);
 
+  const handleThreadSearchKeyDown = useCallback<
+    KeyboardEventHandler<HTMLDivElement>
+  >(
+    (event) => {
+      if (!isThreadSearchActive || event.defaultPrevented) {
+        return;
+      }
+      if (
+        !isThreadSearchKeyboardEventTarget(
+          event.target,
+          threadSearchInputRef.current,
+        )
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        if (threadSearchNavigationItems.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        setThreadSearchActiveIndex((current) =>
+          current >= threadSearchNavigationItems.length - 1 ? 0 : current + 1,
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        if (threadSearchNavigationItems.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        setThreadSearchActiveIndex((current) =>
+          current <= 0 ? threadSearchNavigationItems.length - 1 : current - 1,
+        );
+        return;
+      }
+
+      if (event.key === "Enter") {
+        const item = threadSearchNavigationItems[threadSearchActiveIndex];
+        if (!item) {
+          return;
+        }
+        event.preventDefault();
+        handleThreadSearchSelectItem(item);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (threadSearchQuery.length > 0) {
+          setThreadSearchQuery("");
+          focusThreadSearchInput();
+          return;
+        }
+        handleThreadSearchClose();
+      }
+    },
+    [
+      focusThreadSearchInput,
+      handleThreadSearchClose,
+      handleThreadSearchSelectItem,
+      isThreadSearchActive,
+      threadSearchActiveIndex,
+      threadSearchNavigationItems,
+      threadSearchQuery.length,
+    ],
+  );
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "k" ||
+        event.shiftKey ||
+        event.altKey ||
+        (!event.metaKey && !event.ctrlKey)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      handleThreadSearchActivate();
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [handleThreadSearchActivate]);
+
   return (
     <>
-      <Sidebar>
+      <Sidebar onKeyDown={handleThreadSearchKeyDown}>
         {showTopReserve ? (
           /* Top reserve that keeps the sidebar's content (New Thread / New
              Projects) anchored below the title-bar chrome, mirroring
@@ -90,7 +263,18 @@ export function AppSidebar({
           data-testid="app-sidebar-primary-actions"
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
-          <ProjectListActionButtons onNewChat={handleNewChat} />
+          <ProjectListActionButtons
+            onNewChat={handleNewChat}
+            threadSearch={{
+              activeDescendantId: threadSearchActiveDescendantId,
+              inputRef: threadSearchInputRef,
+              isActive: isThreadSearchActive,
+              onActivate: handleThreadSearchActivate,
+              onClose: handleThreadSearchClose,
+              onQueryChange: setThreadSearchQuery,
+              query: threadSearchQuery,
+            }}
+          />
         </div>
         <SidebarContent>
           <ProjectList
@@ -101,6 +285,14 @@ export function AppSidebar({
             }
             onProjectSelect={closeOnMobile}
             isCreatingProject={quickCreateProject.isCreating}
+            threadSearch={{
+              activeIndex: threadSearchActiveIndex,
+              isActive: isThreadSearchActive,
+              onActiveIndexChange: setThreadSearchActiveIndex,
+              onNavigationItemsChange: handleThreadSearchNavigationItemsChange,
+              onSelectItem: handleThreadSearchSelectItem,
+              query: threadSearchQuery,
+            }}
           />
         </SidebarContent>
         <SidebarFooter className="relative">

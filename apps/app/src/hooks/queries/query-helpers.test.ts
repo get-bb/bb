@@ -95,7 +95,7 @@ function makeProjectBranchesResponse(): ProjectBranchesResponse {
     },
     defaultBranch: "main",
     defaultBranchRelation: "equal",
-    defaultWorktreeBaseBranch: "main",
+    defaultWorktreeBaseBranch: "origin/main",
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",

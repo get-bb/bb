@@ -34,6 +34,8 @@ import type {
   ResolvedThreadExecutionOptions,
   SystemErrorEventData,
   SystemThreadInterruptedReason,
+  SystemMessageKind,
+  SystemMessageSubject,
   ThreadEventScope,
   ThreadTurnInitiator,
   ThreadChangeKind,
@@ -61,6 +63,12 @@ export interface ClientTurnRequestedEventArgs {
   requestMethod: "thread/start" | "turn/start";
   senderThreadId: string | null;
   source: "spawn" | "tell";
+  // Family-B taxonomy stamping for `initiator: "system"` messages. Omitted for
+  // user/agent turns (legacy/non-system messages project as unlabeled/null).
+  // `senderThreadId` is null for system messages, so the subject is stamped
+  // here at emit time or it is unrecoverable downstream.
+  systemMessageKind?: SystemMessageKind;
+  systemMessageSubject?: SystemMessageSubject | null;
   target: TurnRequestTarget;
   threadId: string;
   type: "client/turn/requested";
@@ -233,6 +241,15 @@ function buildClientTurnRequestedEventData(
     ...buildClientTurnBaseEventData(args),
     requestId,
     senderThreadId: args.senderThreadId,
+    // Stamp the Family-B taxonomy fields when present. Omitted entirely for
+    // non-system turns so legacy events keep parsing via the schema's optional
+    // defaults (unlabeled / null) rather than carrying redundant payload.
+    ...(args.systemMessageKind !== undefined
+      ? { systemMessageKind: args.systemMessageKind }
+      : {}),
+    ...(args.systemMessageSubject !== undefined
+      ? { systemMessageSubject: args.systemMessageSubject }
+      : {}),
     input: args.input,
     target: args.target,
     execution: args.execution,
@@ -645,6 +662,8 @@ export function parseStoredTurnRequestEvent(
       source: event.source,
       initiator: event.initiator,
       senderThreadId: event.senderThreadId,
+      systemMessageKind: event.systemMessageKind,
+      systemMessageSubject: event.systemMessageSubject,
       input: event.input,
       target: event.target,
       request: event.request,

@@ -5,13 +5,13 @@ import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
-  "flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
+  "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} transition-colors hover:bg-state-hover hover:text-foreground`;
 
 export interface ThreadEnvironmentSummaryProps {
-  /** Mode label (e.g. "Working locally" / "Worktree"). Never truncates. */
+  /** Full mode label used for the title (e.g. "Working locally" / "Worktree"). */
   environmentLabel?: string;
-  /** Compact label for constrained promptbox layouts. */
+  /** Visible label used in the promptbox footer. */
   environmentCompactLabel?: string;
   /** Icon for the environment (e.g. monitor / git branch). */
   environmentIcon?: IconName;
@@ -29,11 +29,11 @@ export interface ThreadEnvironmentSummaryProps {
  * Read-only — environment editing happens elsewhere.
  *
  * Responsive behavior:
- * - Promptbox container queries collapse the environment label to a concise value.
+ * - The visible environment label always uses the compact display string.
  * - The summary can shrink inside the follow-up strip so permission/context
  *   controls stay pinned and text truncates instead of wrapping.
- * - Branch chip hides in compact promptbox shells and truncates within its
- *   available space above that breakpoint.
+ * - Branch chip hides only in very narrow promptbox shells and truncates
+ *   within its available space above that breakpoint.
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentLabel,
@@ -47,30 +47,27 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   }
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
+  const visibleEnvironmentLabel = environmentCompactLabel ?? environmentLabel;
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       <OptionDisplay
         label="Environment"
-        value={
-          <span className="flex items-center gap-1.5">
-            <span>{environmentLabel}</span>
-          </span>
-        }
-        compactValue={environmentCompactLabel ?? environmentLabel}
-        compactValueHiddenWhenTiny
+        value={visibleEnvironmentLabel}
+        compactValue={visibleEnvironmentLabel}
         leading={
           environmentIcon ? (
             <Icon name={environmentIcon} className="size-4 shrink-0" />
           ) : null
         }
-        className="h-6 min-w-0"
+        className="h-6 max-w-[10rem] shrink-0"
+        title={`Environment: ${environmentLabel}`}
         muted
       />
       {environmentCheckout && checkoutCopyValue !== null ? (
         <button
           type="button"
-          data-promptbox-hide-compact=""
+          data-promptbox-hide-branch-compact=""
           className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
           title={environmentCheckout.title}
           onClick={() => {
@@ -87,7 +84,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         </button>
       ) : environmentCheckout ? (
         <span
-          data-promptbox-hide-compact=""
+          data-promptbox-hide-branch-compact=""
           className={CHECKOUT_CHIP_BASE_CLASS_NAME}
           title={environmentCheckout.title}
         >

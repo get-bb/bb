@@ -549,6 +549,7 @@ function buildFlatProjectionData(
     const operation = parseOperationMessage(decoded, meta, {
       includeProviderUnhandledOperations:
         args.options?.includeProviderUnhandledOperations,
+      threadName: args.options?.threadName ?? "",
     });
     if (operation) {
       flushToolActivityBeforeNonToolMessage(state);

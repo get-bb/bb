@@ -142,10 +142,80 @@ export const workspaceStatusSchema = z.object({
 });
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
+export const gitHostPullRequestCheckStatusSchema = z.enum([
+  "queued",
+  "in_progress",
+  "completed",
+  "unknown",
+]);
+export type GitHostPullRequestCheckStatus = z.infer<
+  typeof gitHostPullRequestCheckStatusSchema
+>;
+
+export const gitHostPullRequestCheckConclusionSchema = z.enum([
+  "success",
+  "failure",
+  "cancelled",
+  "skipped",
+  "neutral",
+  "timed_out",
+  "action_required",
+  "startup_failure",
+  "stale",
+  "unknown",
+]);
+export type GitHostPullRequestCheckConclusion = z.infer<
+  typeof gitHostPullRequestCheckConclusionSchema
+>;
+
+export const gitHostPullRequestCheckSchema = z
+  .object({
+    name: z.string().min(1),
+    status: gitHostPullRequestCheckStatusSchema,
+    conclusion: gitHostPullRequestCheckConclusionSchema.nullable(),
+    url: z.string().url().nullable(),
+  })
+  .strict();
+export type GitHostPullRequestCheck = z.infer<
+  typeof gitHostPullRequestCheckSchema
+>;
+
+export const gitHostPullRequestReviewDecisionSchema = z.enum([
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "REVIEW_REQUIRED",
+]);
+export type GitHostPullRequestReviewDecision = z.infer<
+  typeof gitHostPullRequestReviewDecisionSchema
+>;
+
+export const gitHostPullRequestMergeStateStatusSchema = z.enum([
+  "BEHIND",
+  "BLOCKED",
+  "CLEAN",
+  "DIRTY",
+  "DRAFT",
+  "HAS_HOOKS",
+  "UNKNOWN",
+  "UNSTABLE",
+]);
+export type GitHostPullRequestMergeStateStatus = z.infer<
+  typeof gitHostPullRequestMergeStateStatusSchema
+>;
+
+export const gitHostPullRequestMergeableSchema = z.enum([
+  "CONFLICTING",
+  "MERGEABLE",
+  "UNKNOWN",
+]);
+export type GitHostPullRequestMergeable = z.infer<
+  typeof gitHostPullRequestMergeableSchema
+>;
+
 /**
- * Raw pull request data as emitted by the host git-host CLI (`gh pr view
- * --json number,title,state,url,isDraft`). The host daemon returns this
- * verbatim; the server maps it onto the product-facing `ThreadPullRequest`.
+ * Pull request data normalized from the host git-host CLI (`gh pr view`).
+ * The host daemon returns this verbatim; the server maps it onto the
+ * product-facing `ThreadPullRequest`.
  */
 export const gitHostPullRequestSchema = z
   .object({
@@ -154,6 +224,14 @@ export const gitHostPullRequestSchema = z
     state: z.enum(["OPEN", "CLOSED", "MERGED"]),
     url: z.string().url(),
     isDraft: z.boolean(),
+    baseRefName: z.string(),
+    headRefName: z.string(),
+    updatedAt: z.string().datetime(),
+    checks: z.array(gitHostPullRequestCheckSchema),
+    reviewDecision: gitHostPullRequestReviewDecisionSchema.nullable(),
+    reviewRequestCount: z.number().int().nonnegative(),
+    mergeStateStatus: gitHostPullRequestMergeStateStatusSchema.nullable(),
+    mergeable: gitHostPullRequestMergeableSchema.nullable(),
   })
   .strict();
 export type GitHostPullRequest = z.infer<typeof gitHostPullRequestSchema>;
@@ -166,6 +244,90 @@ export const pullRequestStateSchema = z.enum([
 ]);
 export type PullRequestState = z.infer<typeof pullRequestStateSchema>;
 
+export const threadPullRequestChecksStateSchema = z.enum([
+  "passing",
+  "failing",
+  "pending",
+  "no_checks",
+  "unknown",
+]);
+export type ThreadPullRequestChecksState = z.infer<
+  typeof threadPullRequestChecksStateSchema
+>;
+
+export const threadPullRequestChecksSchema = z
+  .object({
+    state: threadPullRequestChecksStateSchema,
+    totalCount: z.number().int().nonnegative(),
+    passedCount: z.number().int().nonnegative(),
+    failedCount: z.number().int().nonnegative(),
+    pendingCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadPullRequestChecks = z.infer<
+  typeof threadPullRequestChecksSchema
+>;
+
+export const threadPullRequestReviewStateSchema = z.enum([
+  "approved",
+  "changes_requested",
+  "review_required",
+  "review_requested",
+  "none",
+]);
+export type ThreadPullRequestReviewState = z.infer<
+  typeof threadPullRequestReviewStateSchema
+>;
+
+export const threadPullRequestReviewSchema = z
+  .object({
+    state: threadPullRequestReviewStateSchema,
+    reviewRequestCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadPullRequestReview = z.infer<
+  typeof threadPullRequestReviewSchema
+>;
+
+export const threadPullRequestMergeabilityStateSchema = z.enum([
+  "mergeable",
+  "conflicts",
+  "blocked",
+  "draft",
+  "unknown",
+]);
+export type ThreadPullRequestMergeabilityState = z.infer<
+  typeof threadPullRequestMergeabilityStateSchema
+>;
+
+export const threadPullRequestMergeabilitySchema = z
+  .object({
+    state: threadPullRequestMergeabilityStateSchema,
+    mergeStateStatus: gitHostPullRequestMergeStateStatusSchema.nullable(),
+    mergeable: gitHostPullRequestMergeableSchema.nullable(),
+  })
+  .strict();
+export type ThreadPullRequestMergeability = z.infer<
+  typeof threadPullRequestMergeabilitySchema
+>;
+
+export const threadPullRequestAttentionStateSchema = z.enum([
+  "checks_failed",
+  "checks_pending",
+  "changes_requested",
+  "review_requested",
+  "conflicts",
+  "blocked",
+  "draft",
+  "ready_to_merge",
+  "merged",
+  "closed",
+  "none",
+]);
+export type ThreadPullRequestAttentionState = z.infer<
+  typeof threadPullRequestAttentionStateSchema
+>;
+
 /**
  * A pull request associated with a thread's branch, assembled by the server
  * from {@link gitHostPullRequestSchema} (the server folds `isDraft` into the
@@ -177,6 +339,13 @@ export const threadPullRequestSchema = z
     title: z.string(),
     state: pullRequestStateSchema,
     url: z.string().url(),
+    baseRefName: z.string(),
+    headRefName: z.string(),
+    updatedAt: z.string().datetime(),
+    checks: threadPullRequestChecksSchema,
+    review: threadPullRequestReviewSchema,
+    mergeability: threadPullRequestMergeabilitySchema,
+    attention: threadPullRequestAttentionStateSchema,
   })
   .strict();
 export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;

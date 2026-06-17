@@ -17,7 +17,9 @@ message agents, or inspect projects, providers, and environments.
 
 ## Spawning Threads
 
-- Use `bb thread spawn --prompt "..."` to create another thread.
+- Use `bb thread spawn --project <project-id> --prompt "..."` to create another
+  thread. Inside a thread, pass the current project explicitly with
+  `--project "$BB_PROJECT_ID"` when appropriate.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.

@@ -34,6 +34,7 @@ function buildTimelineRows(events: ThreadEventWithMeta[]): TimelineRow[] {
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
+      threadName: "",
       turnMessageDetail: "full",
       workspaceRoot: null,
     },

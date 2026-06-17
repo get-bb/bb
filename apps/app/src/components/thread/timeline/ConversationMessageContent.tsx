@@ -74,6 +74,11 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
    * so a message handed back from a side chat reads "Message from side chat". */
   senderChildOrigin: ThreadChildOrigin | null;
+  // Family-B taxonomy fields off the row, required and always supplied (legacy
+  // rows carry `unlabeled` + `null`). They drive the `system`-initiated message
+  // title, icon, and title-only collapse in `GeneratedConversationMessage`.
+  systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
+  systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -150,6 +155,8 @@ interface UserConversationMessageProps {
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
   senderChildOrigin: ThreadChildOrigin | null;
+  systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
+  systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
@@ -294,6 +301,8 @@ function UserConversationMessage({
   senderThreadId,
   senderThreadTitle,
   senderChildOrigin,
+  systemMessageKind,
+  systemMessageSubject,
   text,
   turnRequest,
 }: UserConversationMessageProps) {
@@ -322,6 +331,8 @@ function UserConversationMessage({
         }
         sourceThreadId={senderThreadId}
         sourceIsSideChat={senderChildOrigin === "side-chat"}
+        systemMessageKind={systemMessageKind}
+        systemMessageSubject={systemMessageSubject}
         text={body.text}
         turnRequest={turnRequest}
       />
@@ -349,6 +360,8 @@ function UserConversationMessage({
         sourceName="BB"
         sourceThreadId={null}
         sourceIsSideChat={false}
+        systemMessageKind={systemMessageKind}
+        systemMessageSubject={systemMessageSubject}
         text={body.text}
         turnRequest={turnRequest}
       />
@@ -503,6 +516,8 @@ export function ConversationMessageContent(
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
         senderChildOrigin={props.senderChildOrigin}
+        systemMessageKind={props.systemMessageKind}
+        systemMessageSubject={props.systemMessageSubject}
         text={text}
         turnRequest={props.turnRequest}
       />

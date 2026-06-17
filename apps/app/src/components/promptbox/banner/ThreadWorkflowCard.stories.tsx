@@ -5,7 +5,7 @@ import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
-  title: "promptbox/banner/ThreadWorkflowCard",
+  title: "promptbox/banner/Workflow Card",
 };
 
 function Stage({ children }: { children: React.ReactNode }) {
@@ -112,7 +112,10 @@ export function Overview() {
           </div>
         </Stage>
       </StoryRow>
-      <StoryRow label="collapsed" hint="single-line glance: name, agent count, live time">
+      <StoryRow
+        label="collapsed"
+        hint="single-line glance: name, agent count, live time"
+      >
         <Stage>
           <ThreadWorkflowCard
             workflow={runningWorkflow}

@@ -20,7 +20,7 @@ export function useHosts(options?: QueryOptions) {
 
   return useQuery<Host[]>({
     queryKey: hostsQueryKey(),
-    queryFn: () => api.listHosts(),
+    queryFn: ({ signal }) => api.listHosts(signal),
     enabled,
     staleTime: 60_000,
   });

@@ -65,6 +65,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadPromptHistoryQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadQueuedMessagesQueryKey",
     "threadTimelineQueryKeyPrefix",
     "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
@@ -88,12 +89,14 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/environment-workspace-cache-owner.ts": [
     "environmentQueryKey",
+    "threadSearchQueryKeyPrefix",
   ],
   "hooks/cache-owners/mutation-cache-effects.ts": [
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadQueuedMessagesQueryKey",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
@@ -141,6 +144,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemConfigQueryKey",
     "systemProvidersQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
     "threadStoragePathsForThreadQueryKeyPrefix",
@@ -173,6 +177,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemExecutionOptionsQueryKey",
     "systemProvidersQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
   "hooks/cache-owners/system-config-cache-owner.ts": ["systemConfigQueryKey"],
@@ -191,6 +196,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   "hooks/cache-owners/thread-list-cache-owner.ts": [
     "sidebarNavigationQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
   "hooks/cache-owners/thread-runtime-cache-owner.ts": [
@@ -207,6 +213,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "projectsQueryKey",
     "sidebarNavigationQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
 };

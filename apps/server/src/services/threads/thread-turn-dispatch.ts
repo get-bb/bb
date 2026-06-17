@@ -2,6 +2,8 @@ import type {
   Environment,
   PromptInput,
   ResolvedThreadExecutionOptions,
+  SystemMessageKind,
+  SystemMessageSubject,
   Thread,
   ThreadTurnInitiator,
 } from "@bb/domain";
@@ -41,6 +43,11 @@ export interface DispatchTurnDuringReprovisionArgs {
   input: PromptInput[];
   onStarted?: () => void;
   senderThreadId: string | null;
+  // Family-B taxonomy fields for `initiator: "system"` reprovision dispatches.
+  // Threaded onto the deferred `client/turn/requested` event the reprovision
+  // queues once the workspace is ready.
+  systemMessageKind?: SystemMessageKind;
+  systemMessageSubject?: SystemMessageSubject | null;
   thread: Thread;
 }
 
@@ -165,6 +172,8 @@ export async function dispatchTurnDuringReprovision(
     initiator: args.initiator,
     provisioningId,
     senderThreadId: args.senderThreadId,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
   });
 
   const reprovisionResult = await dispatchManagedEnvironmentReprovision(

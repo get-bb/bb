@@ -1779,9 +1779,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
+      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
-      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
@@ -1822,6 +1822,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       activeWorkflow={activeWorkflow}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
+      pullRequest={pullRequest}
       thread={thread}
     />
   );

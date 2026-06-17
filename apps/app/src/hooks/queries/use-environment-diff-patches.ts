@@ -78,6 +78,17 @@ const EMPTY_IN_FLIGHT: InFlightState = {
   errors: new Map(),
 };
 
+function abortPatchRequests(controllers: Set<AbortController>): void {
+  for (const controller of controllers) {
+    controller.abort();
+  }
+  controllers.clear();
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function dedupeOrderedPaths(args: PendingPaths): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -162,6 +173,7 @@ export function useEnvironmentDiffPatches(
   const targetIdentityRef = useRef(targetIdentity);
   const inFlightRef = useRef(inFlight);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllersRef = useRef<Set<AbortController>>(new Set());
 
   // Mirror in-flight state into a ref from an effect — never during render, which
   // is unsafe under concurrent rendering — so the debounced settle tick can dedupe
@@ -179,14 +191,17 @@ export function useEnvironmentDiffPatches(
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
+    abortPatchRequests(abortControllersRef.current);
     setInFlight(EMPTY_IN_FLIGHT);
   }, [targetIdentity]);
 
   useEffect(() => {
+    const abortControllers = abortControllersRef.current;
     return () => {
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
       }
+      abortPatchRequests(abortControllers);
     };
   }, []);
 
@@ -203,11 +218,17 @@ export function useEnvironmentDiffPatches(
       // `loading` without caching lets the panel's already-re-fired
       // `requestPaths` dispatch re-fetch them fresh.
       const evictionGeneration = getDiffPatchEvictionGeneration(environmentId);
+      const controller = new AbortController();
+      abortControllersRef.current.add(controller);
       try {
         const response = await api.getEnvironmentDiffPatches(environmentId, {
           target,
           paths,
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) {
+          return;
+        }
         // Drop the response if the target changed while it was in flight.
         if (targetIdentityRef.current !== generationTarget) {
           return;
@@ -238,6 +259,9 @@ export function useEnvironmentDiffPatches(
           );
         }
       } catch (caught) {
+        if (isAbortError(caught) || controller.signal.aborted) {
+          return;
+        }
         if (targetIdentityRef.current !== generationTarget) {
           return;
         }
@@ -254,6 +278,8 @@ export function useEnvironmentDiffPatches(
         setInFlight((previous) =>
           settlePage({ previous, paths, error: message }),
         );
+      } finally {
+        abortControllersRef.current.delete(controller);
       }
     },
     [environmentId, target, identity, queryClient],

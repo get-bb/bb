@@ -10,6 +10,7 @@ import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
 import { removeEnvironmentScopedQueries } from "./environment-cache-effects";
@@ -478,6 +479,7 @@ export function settleArchiveThreadsTransaction({
 }: SettleArchiveThreadsTransactionArgs): void {
   queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
   queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
+  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   for (const threadId of response?.archivedThreadIds ??
     transaction?.archivedThreadIds ??
     []) {

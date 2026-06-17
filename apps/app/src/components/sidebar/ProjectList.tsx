@@ -54,11 +54,13 @@ import {
   SidebarStickyTier,
 } from "@/components/ui/sidebar.js";
 import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectThreadTree } from "./ProjectRow";
+import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
   ProjectListProjects,
@@ -86,6 +88,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
@@ -100,15 +103,23 @@ import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
+import {
+  getSidebarThreadSearchShortcutLabel,
+  SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
+  type SidebarThreadSearchInputController,
+  type SidebarThreadSearchPanelController,
+} from "./sidebarThreadSearch";
 
 interface ProjectListProps {
   onNewProject?: () => void;
   onProjectSelect?: () => void;
   isCreatingProject?: boolean;
+  threadSearch?: SidebarThreadSearchPanelController;
 }
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
+  threadSearch?: SidebarThreadSearchInputController;
 }
 
 interface ProjectListShellProps {
@@ -149,10 +160,26 @@ const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   "min-w-0 justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
 );
 
-const PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS = cn(
-  "inline-flex shrink-0 items-center justify-center",
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
+  "inline-flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:opacity-50",
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+  "w-8",
 );
+
+const PROJECT_LIST_SEARCH_INPUT_ROW_CLASS = cn(
+  SIDEBAR_ROW_BASE_CLASS,
+  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+  COARSE_POINTER_ROW_HEIGHT_CLASS,
+  "min-w-0 overflow-hidden bg-sidebar-accent pr-1 font-normal text-sidebar-foreground shadow-[0_0_0_1px_var(--sidebar-accent)] transition-shadow focus-within:shadow-[0_0_0_1px_var(--sidebar-border)]",
+);
+
+const PROJECT_LIST_SEARCH_INPUT_CLASS = cn(
+  "min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground",
+  COARSE_POINTER_TEXT_SM_CLASS,
+);
+
+const PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS =
+  "h-6 w-6 shrink-0 rounded-md p-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-border/60 hover:text-sidebar-foreground focus-visible:ring-2 max-md:pointer-coarse:h-8 max-md:pointer-coarse:w-8";
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
   "inline-flex items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 disabled:opacity-50",
@@ -557,28 +584,92 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
+  threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
+  const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
+  const threadSearchTitle = `Search threads - ${threadSearchShortcut}`;
+  const handleSearchClose = useCallback(() => {
+    if (threadSearch?.query.trim()) {
+      threadSearch.onQueryChange("");
+      threadSearch.inputRef.current?.focus();
+      return;
+    }
+    threadSearch?.onClose();
+  }, [threadSearch]);
 
   return (
     <div className="space-y-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className={PROJECT_LIST_ACTION_BUTTON_CLASS}
-        onClick={onNewChat}
-        disabled={isNewChatDisabled}
-        title={newChatTitle}
-      >
-        <Icon name="MessageSquarePlus" />
-        <span className="min-w-0 flex-1 truncate text-left">New thread</span>
-        <span
-          className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
-          aria-hidden="true"
-        />
-      </Button>
+      {threadSearch?.isActive ? (
+        <div className={PROJECT_LIST_SEARCH_INPUT_ROW_CLASS}>
+          <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}>
+            <Icon
+              name="Search"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+              aria-hidden="true"
+            />
+          </span>
+          <input
+            ref={threadSearch.inputRef}
+            value={threadSearch.query}
+            role="combobox"
+            aria-label="Search threads"
+            aria-autocomplete="list"
+            aria-activedescendant={threadSearch.activeDescendantId}
+            aria-controls={SIDEBAR_THREAD_SEARCH_LISTBOX_ID}
+            aria-expanded="true"
+            placeholder="Search threads"
+            className={PROJECT_LIST_SEARCH_INPUT_CLASS}
+            onChange={(event) =>
+              threadSearch.onQueryChange(event.currentTarget.value)
+            }
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label={
+              threadSearch.query.trim() ? "Clear search" : "Close search"
+            }
+            title={threadSearch.query.trim() ? "Clear search" : "Close search"}
+            className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
+            onClick={handleSearchClose}
+          >
+            <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
+            onClick={onNewChat}
+            disabled={isNewChatDisabled}
+            title={newChatTitle}
+          >
+            <Icon name="MessageSquarePlus" />
+            <span className="min-w-0 flex-1 truncate text-left">
+              New thread
+            </span>
+          </Button>
+          {threadSearch ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={`Search threads (${threadSearchShortcut})`}
+              title={threadSearchTitle}
+              className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+              onClick={threadSearch.onActivate}
+            >
+              <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+            </Button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -595,6 +686,7 @@ function ProjectListComponent({
   onNewProject,
   onProjectSelect,
   isCreatingProject = false,
+  threadSearch,
 }: ProjectListProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -614,6 +706,17 @@ function ProjectListComponent({
     }
     sidebarThreads.push(...sidebarNavigation.personalProject.threads);
     return sidebarThreads;
+  }, [sidebarNavigation]);
+  const projectNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    if (!sidebarNavigation) {
+      return namesById;
+    }
+    for (const project of sidebarNavigation.projects) {
+      namesById.set(project.id, project.name);
+    }
+    namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
+    return namesById;
   }, [sidebarNavigation]);
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
@@ -1087,6 +1190,23 @@ function ProjectListComponent({
       onNewThread={handleCreateProjectlessThread}
     />
   );
+
+  if (threadSearch?.isActive) {
+    return (
+      <ProjectListShell>
+        <SidebarThreadSearchPanel
+          activeIndex={threadSearch.activeIndex}
+          isRecentsLoading={projectsState.status === "loading"}
+          onActiveIndexChange={threadSearch.onActiveIndexChange}
+          onNavigationItemsChange={threadSearch.onNavigationItemsChange}
+          onSelect={threadSearch.onSelectItem}
+          projectNamesById={projectNamesById}
+          query={threadSearch.query}
+          recentThreads={threads}
+        />
+      </ProjectListShell>
+    );
+  }
 
   if (projectsState.status === "loading") {
     return (

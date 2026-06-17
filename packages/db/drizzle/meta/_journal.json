@@ -274,6 +274,20 @@
       "when": 1781660000000,
       "tag": "0038_thread_source_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1781660000001,
+      "tag": "0039_thread_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1781660000002,
+      "tag": "0040_thread_search_rowid_fts",
+      "breakpoints": true
     }
   ]
 }

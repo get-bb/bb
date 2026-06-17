@@ -120,6 +120,10 @@ interface MigratedEventDataRow {
   data: string;
 }
 
+interface MigratedThreadSearchSegmentRow {
+  threadId: string;
+}
+
 interface MigratedPendingInteractionStatusRow {
   id: string;
   resolvedAt: number | null;
@@ -135,6 +139,10 @@ interface MigratedPendingInteractionEventStatusRow {
 }
 
 interface PersonalProjectMigrationRow {
+  count: number;
+}
+
+interface MigrationCountRow {
   count: number;
 }
 
@@ -199,6 +207,12 @@ const eventProducerColumnsMigrationWhen = 1780692763264;
 const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
+const threadSearchMigrationWhen = 1781660000001;
+const threadSearchRowidFtsMigrationWhen = 1781660000002;
+const branchLocalThreadSearchMigrationWhen = 1781403656070;
+const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
+const rowidThreadSearchMigrationHash =
+  "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const eventLargeValuesMigrationWhen = 1781403656069;
 const cleanupModeDropMigrationWhen = 1781557300000;
 const stopRequestedAtDropMigrationWhen = 1781557400000;
@@ -299,6 +313,14 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_insert;
+    DROP TABLE IF EXISTS thread_search_segments_fts;
+    DROP TABLE IF EXISTS thread_search_segments;
+  `);
+
   for (const table of [
     "workflow_run_events",
     "workflow_run_operations",
@@ -435,6 +457,13 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
     .run();
   db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `origin_kind`").run();
   db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`").run();
+  db.$client.exec(`
+    DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_insert;
+    DROP TABLE IF EXISTS thread_search_segments_fts;
+    DROP TABLE IF EXISTS thread_search_segments;
+  `);
 }
 
 function seedEventLargeValueBackfillThread(db: DbConnection): void {
@@ -757,6 +786,235 @@ describe("migrate", () => {
     }
   });
 
+  it("applies rowid thread search rebuild after the compatible thread search hash", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: threadSearchMigrationWhen,
+        hash: rowidThreadSearchMigrationHash,
+      });
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadSearchRowidFtsMigrationWhen);
+
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>(
+            "PRAGMA table_info(thread_search_segments_fts)",
+          )
+          .all()
+          .map((row) => row.name),
+      ).toEqual(["text"]);
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(threadSearchRowidFtsMigrationWhen),
+      ).toEqual({ count: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays canonical thread search migrations after branch-local thread search migrations", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO projects (id, name, created_at, updated_at)
+        VALUES ('proj_branch_thread_search', 'Branch Thread Search', 1000, 1000);
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          title,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_branch_thread_search',
+          'proj_branch_thread_search',
+          'codex',
+          'branchcompatneedle',
+          1000,
+          1000,
+          1000
+        );
+      `);
+      db.$client
+        .prepare<DeleteMigrationsParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at IN (?, ?, ?, ?)
+          `,
+        )
+        .run(
+          threadSearchMigrationWhen,
+          threadSearchRowidFtsMigrationWhen,
+          branchLocalThreadSearchMigrationWhen,
+          branchLocalThreadSearchRowidFtsMigrationWhen,
+        );
+      db.$client
+        .prepare<InsertMigrationParameters>(
+          `
+            INSERT INTO __drizzle_migrations (hash, created_at)
+            VALUES (?, ?)
+          `,
+        )
+        .run(
+          "branch-local-thread-search-hash",
+          branchLocalThreadSearchMigrationWhen,
+        );
+      db.$client
+        .prepare<InsertMigrationParameters>(
+          `
+            INSERT INTO __drizzle_migrations (hash, created_at)
+            VALUES (?, ?)
+          `,
+        )
+        .run(
+          "branch-local-thread-search-rowid-fts-hash",
+          branchLocalThreadSearchRowidFtsMigrationWhen,
+        );
+
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>(
+            "PRAGMA table_info(thread_search_segments_fts)",
+          )
+          .all()
+          .map((row) => row.name),
+      ).toEqual(["text"]);
+      expect(
+        db.$client
+          .prepare<[], MigratedThreadSearchSegmentRow>(
+            `
+              SELECT s.thread_id AS threadId
+              FROM thread_search_segments_fts
+              JOIN thread_search_segments AS s
+                ON s.rowid = thread_search_segments_fts.rowid
+              WHERE thread_search_segments_fts MATCH 'branchcompatneedle'
+            `,
+          )
+          .get(),
+      ).toEqual({ threadId: "thr_branch_thread_search" });
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(threadSearchMigrationWhen),
+      ).toEqual({ count: 1 });
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(branchLocalThreadSearchMigrationWhen),
+      ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays canonical thread search migrations when pre-canonical search tables exist without ledger rows", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO projects (id, name, created_at, updated_at)
+        VALUES ('proj_precanonical_thread_search', 'Precanonical Thread Search', 1000, 1000);
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          title,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_precanonical_thread_search',
+          'proj_precanonical_thread_search',
+          'codex',
+          'precanonicalneedle',
+          1000,
+          1000,
+          1000
+        );
+      `);
+      db.$client
+        .prepare<DeleteMigrationsParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at IN (?, ?, ?, ?)
+          `,
+        )
+        .run(
+          threadSearchMigrationWhen,
+          threadSearchRowidFtsMigrationWhen,
+          branchLocalThreadSearchMigrationWhen,
+          branchLocalThreadSearchRowidFtsMigrationWhen,
+        );
+
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(
+        db.$client
+          .prepare<[], MigratedThreadSearchSegmentRow>(
+            `
+              SELECT s.thread_id AS threadId
+              FROM thread_search_segments_fts
+              JOIN thread_search_segments AS s
+                ON s.rowid = thread_search_segments_fts.rowid
+              WHERE thread_search_segments_fts MATCH 'precanonicalneedle'
+            `,
+          )
+          .get(),
+      ).toEqual({ threadId: "thr_precanonical_thread_search" });
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(threadSearchMigrationWhen),
+      ).toEqual({ count: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("removes manager thread type schema while preserving existing threads", () => {
     const db = createConnection(":memory:");
 
@@ -951,6 +1209,13 @@ describe("migrate", () => {
           `,
         )
         .run(threadSourceOriginMigrationWhen);
+      db.$client.exec(`
+        DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
+        DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
+        DROP TRIGGER IF EXISTS thread_search_segments_after_insert;
+        DROP TABLE IF EXISTS thread_search_segments_fts;
+        DROP TABLE IF EXISTS thread_search_segments;
+      `);
 
       db.$client.exec(`
         INSERT INTO projects (id, kind, name, sort_key, created_at, updated_at)
@@ -1786,12 +2051,7 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
-      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_events").run();
-      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_operations").run();
-      db.$client.prepare("DROP TABLE IF EXISTS workflow_runs").run();
-      db.$client
-        .prepare("DROP TABLE IF EXISTS project_workflow_policies")
-        .run();
+      dropPost0023Tables(db);
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
@@ -2556,10 +2816,10 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
-      // The restore migration and every migration after it (through 0038)
+      // The restore migration and every migration after it (through 0040)
       // re-apply, so the latest applied migration is the most recent in the journal.
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
-        threadSourceOriginMigrationWhen,
+        threadSearchRowidFtsMigrationWhen,
       );
       expect(readTableNames(db)).not.toContain("event_large_values");
 
