@@ -15,8 +15,8 @@ interface PromptChange {
 
 const promptActions: readonly PromptBoxAction[] = [
   { kind: "skills", text: "$" },
-  { kind: "plan", text: "$plan " },
-  { kind: "goal", text: "$goal " },
+  { kind: "plan", text: "/plan " },
+  { kind: "goal", text: "/goal " },
 ];
 
 function buildTypeaheadConfig({
@@ -111,16 +111,24 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(changes).toHaveLength(0);
   });
 
-  it("replaces an active partial command token and preserves trailing space", async () => {
+  it("replaces an active skills command token with plan mode", async () => {
+    const { changes } = renderPromptBox("Start $");
+
+    await selectPromptAction("Plan");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
+  });
+
+  it("replaces an active partial skills command token with plan mode", async () => {
     const { changes } = renderPromptBox("Start $pl");
 
     await selectPromptAction("Plan");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("Start $plan "));
+    await waitFor(() => expect(latestValue(changes)).toBe("Start /plan "));
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {
-    const { changes } = renderPromptBox("Start $goal ");
+    const { changes } = renderPromptBox("Start /goal ");
 
     await selectPromptAction("Goal");
 

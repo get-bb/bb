@@ -628,19 +628,11 @@ function getPromptActionInsertionRange({
     return { from: selection.from, to: selection.to };
   }
 
-  if (isActiveCommand) {
-    const activeText = editor.state.doc.textBetween(
-      activeCommandTrigger.from,
-      activeCommandTrigger.to,
-      "\n",
-      "\n",
-    );
-    if (activeText.length > 0 && action.text.startsWith(activeText)) {
-      return {
-        from: activeCommandTrigger.from,
-        to: activeCommandTrigger.to,
-      };
-    }
+  if (isActiveCommand && activeCommandTrigger.to === selection.from) {
+    return {
+      from: activeCommandTrigger.from,
+      to: activeCommandTrigger.to,
+    };
   }
 
   return { from: selection.from, to: selection.to };
