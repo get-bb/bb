@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button.js";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
+import { cn } from "@/lib/utils";
 
 /**
  * Build the file label for a TOC entry. Renames/copies read as `old -> new`;
@@ -165,11 +166,15 @@ export const DiffFileCard = memo(function DiffFileCard({
     <div className="overflow-clip rounded-lg border border-border bg-background">
       <div ref={stickySentinelRef} className="h-0" />
       <div
-        className={gitDiffCardHeaderWrapperClass({
-          stickyHeader: true,
-          isBodyHidden,
-          isStuck: isHeaderStuck,
-        })}
+        className={cn(
+          gitDiffCardHeaderWrapperClass({
+            stickyHeader: true,
+            isBodyHidden,
+            isStuck: isHeaderStuck,
+            showStuckHeaderEdge: false,
+          }),
+          "-mt-px border-t border-border",
+        )}
       >
         <GitDiffCardHeader
           model={headerModel}
