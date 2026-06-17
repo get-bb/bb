@@ -5,6 +5,7 @@ import {
   buildCreateQueuedFollowUpRequest,
   buildFollowUpShortcutRequest,
   buildFollowUpSubmitMode,
+  buildSideChatSubmitMode,
   canSubmitFollowUpShortcut,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
@@ -285,5 +286,33 @@ describe("threadDetailPromptSubmission", () => {
         runtimeDisplayStatus: "starting",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
+  });
+
+  it("keeps side-chat preload submit-ready until a child thread exists", () => {
+    const onStop = () => undefined;
+
+    expect(
+      buildSideChatSubmitMode({
+        childThreadId: null,
+        isDefaultExecutionOptionsLoading: true,
+        isStopRequested: false,
+        onStop,
+        runtimeDisplayStatus: "provisioning",
+      }),
+    ).toEqual({ kind: "ready" });
+  });
+
+  it("offers stop-capable queue mode for active side-chat child threads", () => {
+    const onStop = () => undefined;
+
+    expect(
+      buildSideChatSubmitMode({
+        childThreadId: "thr_side",
+        isDefaultExecutionOptionsLoading: false,
+        isStopRequested: false,
+        onStop,
+        runtimeDisplayStatus: "active",
+      }),
+    ).toEqual({ kind: "queue", onStop });
   });
 });

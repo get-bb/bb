@@ -66,6 +66,7 @@ import {
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
   useSendThreadMessage,
+  useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useDeleteThread } from "@/hooks/mutations/thread-state-mutations";
 import {
@@ -81,6 +82,7 @@ import { appendQuoteToDraftText } from "@/lib/prompt-draft";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
+import { buildSideChatSubmitMode } from "@/views/thread-detail/threadDetailPromptSubmission";
 
 const noop = () => {};
 
@@ -106,10 +108,6 @@ const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
   isAttaching: false,
   error: null,
 };
-
-const SIDE_CHAT_READY_SUBMIT_MODE = {
-  kind: "ready",
-} satisfies FollowUpComposerProps["submitMode"];
 
 export interface SetSideChatThreadId {
   (args: { tabId: string; threadId: string }): void;
@@ -318,6 +316,7 @@ export function SideChatTabContent({
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const sendThreadMessage = useSendThreadMessage();
+  const stopThread = useStopThread();
   const { isLocalDaemonHost } = useHostDaemon();
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     sourceThread.id,
@@ -615,16 +614,46 @@ export function SideChatTabContent({
   const sideChatRuntimeDisplayStatus =
     childThreadQuery.data?.runtime.displayStatus ??
     (childThreadId === null ? "provisioning" : "idle");
+  const isDefaultExecutionOptionsLoading =
+    defaultExecutionOptions === undefined && executionOptionsQuery.isLoading;
+  const isSideChatStopRequested =
+    childThreadId !== null &&
+    (childThreadQuery.data?.status === "stopping" ||
+      (stopThread.isPending && stopThread.variables === childThreadId));
+  const handleStopSideChatThread = useCallback(() => {
+    if (childThreadId === null) {
+      return;
+    }
+    stopThread.mutate(childThreadId);
+  }, [childThreadId, stopThread]);
+  const sideChatSubmitMode = useMemo<FollowUpComposerProps["submitMode"]>(
+    () =>
+      buildSideChatSubmitMode({
+        childThreadId,
+        isDefaultExecutionOptionsLoading,
+        isStopRequested: isSideChatStopRequested,
+        onStop: handleStopSideChatThread,
+        runtimeDisplayStatus: sideChatRuntimeDisplayStatus,
+      }),
+    [
+      childThreadId,
+      handleStopSideChatThread,
+      isDefaultExecutionOptionsLoading,
+      isSideChatStopRequested,
+      sideChatRuntimeDisplayStatus,
+    ],
+  );
   const isSideChatProvisioning =
     childThreadId === null ||
     sideChatRuntimeDisplayStatus === "provisioning" ||
     sideChatRuntimeDisplayStatus === "starting";
-  const sideChatSubmitMode = SIDE_CHAT_READY_SUBMIT_MODE;
-  const composerPlaceholder = sideChatPreloadFailed
-    ? "Retry side chat..."
-    : isSideChatProvisioning
-      ? "Provisioning side chat..."
-      : "Reply in the side chat…";
+  const composerPlaceholder = isSideChatStopRequested
+    ? "Stopping side chat..."
+    : sideChatPreloadFailed
+      ? "Retry side chat..."
+      : isSideChatProvisioning
+        ? "Provisioning side chat..."
+        : "Reply in the side chat…";
   const handleSubmit = useCallback(() => {
     const trimmed = message.trim();
     if (trimmed.length === 0 || isSideChatTurnSubmitting) {
