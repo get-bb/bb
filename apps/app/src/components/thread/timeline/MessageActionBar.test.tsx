@@ -21,7 +21,7 @@ describe("MessageActionBar", () => {
     expect(findMessageActionTooltipCollisionBoundary(actionBar)).toBe(
       threadWindow,
     );
-    expect(findMessageActionTooltipCollisionBoundary(sidePanel)).toBeNull();
+    expect(findMessageActionTooltipCollisionBoundary(sidePanel)).toBeUndefined();
   });
 
   it("renders the send-to-main action and fires its handler when supplied", () => {

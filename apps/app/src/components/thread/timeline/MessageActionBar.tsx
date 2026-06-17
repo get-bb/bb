@@ -35,8 +35,8 @@ const HOVER_REVEAL_CLASS =
 
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
-): HTMLElement | null {
-  return node?.closest<HTMLElement>("[data-thread-window]") ?? null;
+): HTMLElement | undefined {
+  return node?.closest<HTMLElement>("[data-thread-window]") ?? undefined;
 }
 
 /**
@@ -57,11 +57,10 @@ export function MessageActionBar({
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
   const [collisionBoundary, setCollisionBoundary] =
-    useState<HTMLElement | null>(null);
+    useState<HTMLElement | undefined>();
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
   }, []);
-  const tooltipCollisionBoundary = collisionBoundary ?? undefined;
 
   if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
     return null;
@@ -90,10 +89,7 @@ export function MessageActionBar({
                 )}
               />
             </TooltipTrigger>
-            <TooltipContent
-              collisionBoundary={tooltipCollisionBoundary}
-              collisionPadding={8}
-            >
+            <TooltipContent collisionBoundary={collisionBoundary}>
               Copy message
             </TooltipContent>
           </Tooltip>
@@ -111,10 +107,7 @@ export function MessageActionBar({
                 <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent
-              collisionBoundary={tooltipCollisionBoundary}
-              collisionPadding={8}
-            >
+            <TooltipContent collisionBoundary={collisionBoundary}>
               Fork into new thread
             </TooltipContent>
           </Tooltip>
@@ -132,10 +125,7 @@ export function MessageActionBar({
                 <Icon name="SideChat" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent
-              collisionBoundary={tooltipCollisionBoundary}
-              collisionPadding={8}
-            >
+            <TooltipContent collisionBoundary={collisionBoundary}>
               Reply in side chat
             </TooltipContent>
           </Tooltip>
@@ -152,10 +142,7 @@ export function MessageActionBar({
                 <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent
-              collisionBoundary={tooltipCollisionBoundary}
-              collisionPadding={8}
-            >
+            <TooltipContent collisionBoundary={collisionBoundary}>
               Send to main thread
             </TooltipContent>
           </Tooltip>
