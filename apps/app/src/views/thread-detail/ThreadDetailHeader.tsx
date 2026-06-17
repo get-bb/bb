@@ -28,10 +28,8 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
-  /** Pill shown beside the title for child threads: "fork" for forks, "side
-   * chat" for side chats, "child" for any other child, null for a root thread
-   * (no pill). */
-  childPillLabel: "child" | "fork" | "side chat" | null;
+  /** Pill shown beside the title for side chats and hierarchical child threads. */
+  childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;

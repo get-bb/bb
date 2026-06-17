@@ -36,16 +36,16 @@ export function isThreadForkable(
 
 /**
  * Builds the create-thread request for forking a thread. A fork establishes the
- * cloned provider session — the server clones the parent's session at its branch
- * point because the request carries `childOrigin: "fork"` + a forkable
- * same-host parent — and lands the new thread idle with an empty timeline. The
+ * cloned provider session — the server clones the source session at its branch
+ * point because the request carries `originKind: "fork"` + a forkable
+ * same-host source — and lands the new thread idle with an empty timeline. The
  * user steers the first executed turn; the "Forked from <parent>" banner conveys
  * lineage. The request therefore carries empty input (no anchor seed, no context
  * snapshot): the runtime's no-input-no-turn guard runs no first turn, so the
  * cloned session is established without dispatching a run.
  *
- * `startedOnBehalfOf` is null: the fork is linked purely via `childOrigin` +
- * `parentThreadId` (the server gates the native fork on those, not on
+ * `startedOnBehalfOf` is null: the fork is linked purely via `originKind` +
+ * `sourceThreadId` (the server gates the native fork on those, not on
  * `startedOnBehalfOf`), and with empty input there is no first turn to attribute
  * to the parent.
  *
@@ -77,8 +77,8 @@ export function buildForkThreadRequest({
     // runtime starts no first turn), and the user steers the first turn.
     input: [],
     environment: resolveChildThreadEnvironment(sourceEnvironment),
-    parentThreadId: sourceThread.id,
+    sourceThreadId: sourceThread.id,
     startedOnBehalfOf: null,
-    childOrigin: "fork",
+    originKind: "fork",
   };
 }

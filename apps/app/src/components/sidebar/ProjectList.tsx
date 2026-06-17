@@ -440,10 +440,6 @@ function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
-          // Sidebar section labels ("Projects"/"Threads") read as dividers, not
-          // rows: a touch more weight and full subtle-foreground separate them
-          // from the thread list below at a scan.
-          "font-medium text-subtle-foreground",
           "rounded-md pr-1 transition-colors",
           dragBindings &&
             !dragBindings.disabled &&
@@ -475,9 +471,6 @@ function TopLevelSidebarSection({
                   : `Collapse ${label}`
               }
               className={cn(
-                // Hidden until the section label is hovered, except when the
-                // section is collapsed — then it stays visible as the only
-                // affordance that hidden content sits below.
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
               )}

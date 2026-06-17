@@ -6,16 +6,14 @@ import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 export const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
 /**
- * Whether a thread is an agent-delegated child: it has a parent but was not
- * created as a user-initiated fork or side chat. Only these children post
- * turn-completion / failure / needs-attention notifications back to their
- * parent; forks and side chats are branches the user drives directly, so
- * notifying their parent would be noise.
+ * Whether a thread is an agent-delegated child. Forks and side chats keep
+ * provenance in sourceThreadId/originKind instead of parentThreadId, so a
+ * non-null parent is now the hierarchy signal.
  */
 export function isAgentDelegatedChildThread<
-  T extends Pick<Thread, "parentThreadId" | "childOrigin">,
+  T extends Pick<Thread, "parentThreadId">,
 >(thread: T): thread is T & { parentThreadId: string } {
-  return thread.parentThreadId !== null && thread.childOrigin === null;
+  return thread.parentThreadId !== null;
 }
 
 export type ParentThread = Pick<

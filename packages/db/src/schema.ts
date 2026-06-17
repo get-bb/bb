@@ -9,7 +9,10 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
-import { threadChildOriginValues } from "@bb/domain/thread-child-origin";
+import {
+  threadChildOriginValues,
+  threadOriginKindValues,
+} from "@bb/domain/thread-child-origin";
 import type {
   EnvironmentStatus,
   HostType,
@@ -247,9 +250,15 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
-    // How this thread was spawned from its parent (fork vs side-chat). NULL for
-    // threads created normally. Explicit discriminator because the thread-start
-    // turn shape alone is ambiguous between fork and side-chat.
+    sourceThreadId: text("source_thread_id").references(
+      (): AnySQLiteColumn => threads.id,
+      { onDelete: "set null" },
+    ),
+    originKind: text("origin_kind", {
+      enum: threadOriginKindValues,
+    }),
+    // Deprecated compatibility column for older migrated data. New fork and
+    // side-chat provenance uses source_thread_id + origin_kind.
     childOrigin: text("child_origin", {
       enum: threadChildOriginValues,
     }),
@@ -275,6 +284,10 @@ export const threads = sqliteTable(
       .where(sql`${table.pinnedAt} IS NOT NULL`),
     index("threads_environment_idx").on(table.environmentId),
     index("threads_parent_idx").on(table.parentThreadId),
+    index("threads_source_origin_idx").on(
+      table.sourceThreadId,
+      table.originKind,
+    ),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,

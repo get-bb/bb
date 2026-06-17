@@ -9,19 +9,25 @@ import {
 } from "../../src/services/threads/thread-parent.js";
 import {
   listQueuedThreadCommands,
+  reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedQueuedMessage,
   seedThread,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-function threadStartTurnRequest(harness: { db: Parameters<typeof listEvents>[0] }, threadId: string) {
+function threadStartTurnRequest(
+  harness: { db: Parameters<typeof listEvents>[0] },
+  threadId: string,
+) {
   const events = listEvents(harness.db, { threadId });
   const turnRequest = events.find(
     (event) => event.type === "client/turn/requested",
@@ -56,17 +62,20 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       });
 
       const fork = await createThreadFromRequest(harness.deps, {
-        childOrigin: "fork",
         environment: {
           type: "host",
           hostId: host.id,
-          workspace: { type: "unmanaged", path: "/tmp/seed-without-run-project" },
+          workspace: {
+            type: "unmanaged",
+            path: "/tmp/seed-without-run-project",
+          },
         },
         input: textInput("Forked anchor message"),
         origin: "app",
-        parentThreadId: sourceThread.id,
+        originKind: "fork",
         projectId: project.id,
         providerId: "codex",
+        sourceThreadId: sourceThread.id,
         startedOnBehalfOf: {
           initiator: "agent",
           senderThreadId: sourceThread.id,
@@ -92,7 +101,10 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.start", fork.id),
       ).toEqual([]);
-      expect(getThread(harness.db, fork.id)?.childOrigin).toBe("fork");
+      const persistedFork = getThread(harness.db, fork.id);
+      expect(persistedFork?.originKind).toBe("fork");
+      expect(persistedFork?.sourceThreadId).toBe(sourceThread.id);
+      expect(persistedFork?.parentThreadId).toBeNull();
     });
   });
 
@@ -178,8 +190,8 @@ describe("canThreadSpawnChild", () => {
 });
 
 describe("thread creation child-thread boundary validation", () => {
-  // Each case shares one project + ready source environment so a parent thread
-  // is a live, same-project thread and child creation resolves an environment.
+  // Each case shares one project + ready source environment so the source
+  // thread is live, same-project, and creation resolves an environment.
   async function withChildBoundaryHarness(
     name: string,
     run: (args: {
@@ -228,13 +240,12 @@ describe("thread creation child-thread boundary validation", () => {
     throw new Error("Expected createThreadFromRequest to throw an ApiError");
   }
 
-  it("rejects startedOnBehalfOf whose senderThreadId differs from parentThreadId", async () => {
+  it("rejects startedOnBehalfOf whose senderThreadId differs from sourceThreadId", async () => {
     await withChildBoundaryHarness(
       "behalf-sender-mismatch",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: "fork",
             environment: {
               type: "host",
               hostId,
@@ -242,9 +253,10 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("Forged sender"),
             origin: "app",
-            parentThreadId: sourceThreadId,
+            originKind: "fork",
             projectId,
             providerId: "codex",
+            sourceThreadId,
             startedOnBehalfOf: {
               initiator: "agent",
               senderThreadId: "thr_someone_else",
@@ -254,19 +266,18 @@ describe("thread creation child-thread boundary validation", () => {
         expect(error.status).toBe(400);
         expect(error.body.code).toBe("invalid_request");
         expect(error.body.message).toBe(
-          "startedOnBehalfOf.senderThreadId must match parentThreadId",
+          "startedOnBehalfOf.senderThreadId must match sourceThreadId",
         );
       },
     );
   });
 
-  it("rejects startedOnBehalfOf without a parentThreadId", async () => {
+  it("rejects startedOnBehalfOf without a sourceThreadId", async () => {
     await withChildBoundaryHarness(
-      "behalf-no-parent",
+      "behalf-no-source",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: null,
             environment: {
               type: "host",
               hostId,
@@ -274,6 +285,7 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("Orphan anchor"),
             origin: "app",
+            originKind: "fork",
             projectId,
             providerId: "codex",
             startedOnBehalfOf: {
@@ -284,20 +296,17 @@ describe("thread creation child-thread boundary validation", () => {
         );
         expect(error.status).toBe(400);
         expect(error.body.code).toBe("invalid_request");
-        expect(error.body.message).toBe(
-          "startedOnBehalfOf requires a parentThreadId",
-        );
+        expect(error.body.message).toBe("originKind requires a sourceThreadId");
       },
     );
   });
 
-  it("rejects childOrigin without a parentThreadId", async () => {
+  it("rejects originKind without a sourceThreadId", async () => {
     await withChildBoundaryHarness(
-      "child-origin-no-parent",
+      "origin-kind-no-source",
       async ({ harness, hostId, path, projectId }) => {
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: "side-chat",
             environment: {
               type: "host",
               hostId,
@@ -305,6 +314,7 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("Parentless side chat"),
             origin: "app",
+            originKind: "side-chat",
             projectId,
             providerId: "codex",
             startedOnBehalfOf: null,
@@ -312,12 +322,12 @@ describe("thread creation child-thread boundary validation", () => {
         );
         expect(error.status).toBe(400);
         expect(error.body.code).toBe("invalid_request");
-        expect(error.body.message).toBe("childOrigin requires a parentThreadId");
+        expect(error.body.message).toBe("originKind requires a sourceThreadId");
       },
     );
   });
 
-  it("rejects startedOnBehalfOf without a childOrigin", async () => {
+  it("rejects startedOnBehalfOf without an originKind", async () => {
     await withChildBoundaryHarness(
       "started-on-behalf-no-origin",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
@@ -343,7 +353,7 @@ describe("thread creation child-thread boundary validation", () => {
         expect(error.status).toBe(400);
         expect(error.body.code).toBe("invalid_request");
         expect(error.body.message).toBe(
-          "startedOnBehalfOf requires a childOrigin",
+          "startedOnBehalfOf requires an originKind",
         );
       },
     );
@@ -354,7 +364,6 @@ describe("thread creation child-thread boundary validation", () => {
       "valid-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const fork = await createThreadFromRequest(harness.deps, {
-          childOrigin: "fork",
           environment: {
             type: "host",
             hostId,
@@ -362,27 +371,78 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: textInput("Forked anchor"),
           origin: "app",
-          parentThreadId: sourceThreadId,
+          originKind: "fork",
           projectId,
           providerId: "codex",
+          sourceThreadId,
           startedOnBehalfOf: {
             initiator: "agent",
             senderThreadId: sourceThreadId,
           },
         });
-        expect(getThread(harness.db, fork.id)?.childOrigin).toBe("fork");
-        expect(getThread(harness.db, fork.id)?.parentThreadId).toBe(
-          sourceThreadId,
-        );
+        const persistedFork = getThread(harness.db, fork.id);
+        expect(persistedFork?.originKind).toBe("fork");
+        expect(persistedFork?.sourceThreadId).toBe(sourceThreadId);
+        expect(persistedFork?.parentThreadId).toBeNull();
       },
     );
   });
 
-  it("forks a side chat from the parent's provider session and runs its question", async () => {
+  it("settles an empty-input native fork to idle after cloning the provider session", async () => {
+    await withChildBoundaryHarness(
+      "empty-native-fork-idle",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedTurnStarted(harness.deps, {
+          threadId: sourceThreadId,
+          turnId: "turn-parent",
+          providerThreadId: "provider-parent-session",
+        });
+
+        const fork = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: [],
+          origin: "app",
+          originKind: "fork",
+          projectId,
+          providerId: "codex",
+          sourceThreadId,
+          startedOnBehalfOf: {
+            initiator: "agent",
+            senderThreadId: sourceThreadId,
+          },
+        });
+
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === fork.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queuedStart.command.input).toEqual([]);
+        expect(queuedStart.command.fork).toEqual({
+          sourceProviderThreadId: "provider-parent-session",
+        });
+
+        await reportQueuedCommandSuccess(harness, queuedStart, {
+          providerThreadId: "provider-fork-session",
+        });
+
+        expect(getThread(harness.db, fork.id)?.status).toBe("idle");
+      },
+    );
+  });
+
+  it("forks a side chat from the source provider session and runs its question", async () => {
     await withChildBoundaryHarness(
       "side-chat-native-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
-        // Give the parent a live provider session so the side chat clones it.
+        // Give the source a live provider session so the side chat clones it.
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-parent",
@@ -390,7 +450,6 @@ describe("thread creation child-thread boundary validation", () => {
         });
 
         const sideChat = await createThreadFromRequest(harness.deps, {
-          childOrigin: "side-chat",
           environment: {
             type: "host",
             hostId,
@@ -398,21 +457,21 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: textInput("What did this code do?"),
           origin: "app",
-          parentThreadId: sourceThreadId,
+          originKind: "side-chat",
           projectId,
           providerId: "codex",
+          sourceThreadId,
           startedOnBehalfOf: null,
         });
 
         // The side chat is provisioned as a native fork: the dispatched
-        // thread.start carries the parent's provider session id so the child
+        // thread.start carries the source provider session id so the side chat
         // clones the full history, AND it still carries the user's question so
         // the question turn runs immediately.
         const queuedStart = await waitForQueuedCommand(
           harness,
           ({ command }) =>
-            command.type === "thread.start" &&
-            command.threadId === sideChat.id,
+            command.type === "thread.start" && command.threadId === sideChat.id,
         );
         if (queuedStart.command.type !== "thread.start") {
           throw new Error("Expected a thread.start command");
@@ -429,17 +488,129 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
-  it("rejects a fork when the parent has no active provider session", async () => {
+  it("preloads an empty-input side chat by cloning the source provider session", async () => {
     await withChildBoundaryHarness(
-      "fork-no-parent-session",
+      "empty-side-chat-preload",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
-        // Parent has no turn/started ⇒ no provider session to clone. A fork is
+        seedTurnStarted(harness.deps, {
+          threadId: sourceThreadId,
+          turnId: "turn-parent",
+          providerThreadId: "provider-parent-session",
+        });
+
+        const sideChat = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: [],
+          origin: "app",
+          originKind: "side-chat",
+          projectId,
+          providerId: "codex",
+          sourceThreadId,
+          startedOnBehalfOf: null,
+        });
+
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === sideChat.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queuedStart.command.input).toEqual([]);
+        expect(queuedStart.command.fork).toEqual({
+          sourceProviderThreadId: "provider-parent-session",
+        });
+
+        await reportQueuedCommandSuccess(harness, queuedStart, {
+          providerThreadId: "provider-side-chat-session",
+        });
+
+        const persistedSideChat = getThread(harness.db, sideChat.id);
+        expect(persistedSideChat?.status).toBe("idle");
+        expect(persistedSideChat?.originKind).toBe("side-chat");
+        expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
+        expect(persistedSideChat?.parentThreadId).toBeNull();
+      },
+    );
+  });
+
+  it("auto-sends a queued first side-chat message after preload settles idle", async () => {
+    await withChildBoundaryHarness(
+      "empty-side-chat-preload-queued-message",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedTurnStarted(harness.deps, {
+          threadId: sourceThreadId,
+          turnId: "turn-parent",
+          providerThreadId: "provider-parent-session",
+        });
+
+        const sideChat = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: [],
+          origin: "app",
+          originKind: "side-chat",
+          projectId,
+          providerId: "codex",
+          sourceThreadId,
+          startedOnBehalfOf: null,
+        });
+
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === sideChat.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+
+        seedQueuedMessage(harness.deps, {
+          threadId: sideChat.id,
+          content: textInput("Queued first side-chat question"),
+          permissionMode: "readonly",
+        });
+
+        await reportQueuedCommandSuccess(harness, queuedStart, {
+          providerThreadId: "provider-side-chat-session",
+        });
+
+        const queuedTurnSubmit = await waitForQueuedCommandAfter(
+          harness,
+          queuedStart.row.cursor,
+          ({ command }) =>
+            command.type === "turn.submit" && command.threadId === sideChat.id,
+        );
+        if (queuedTurnSubmit.command.type !== "turn.submit") {
+          throw new Error("Expected a turn.submit command");
+        }
+        const turnSubmitText = queuedTurnSubmit.command.input
+          .filter((entry) => entry.type === "text")
+          .map((entry) => entry.text)
+          .join("\n");
+        expect(turnSubmitText).toContain("Queued first side-chat question");
+      },
+    );
+  });
+
+  it("rejects a fork when the source has no active provider session", async () => {
+    await withChildBoundaryHarness(
+      "fork-no-source-session",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        // Source has no turn/started ⇒ no provider session to clone. A fork is
         // sent with empty input, so there is nothing to run a fresh turn with
         // either. The create must fail rather than dispatch an empty,
         // session-less start.
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: "fork",
             environment: {
               type: "host",
               hostId,
@@ -447,9 +618,10 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: [],
             origin: "app",
-            parentThreadId: sourceThreadId,
+            originKind: "fork",
             projectId,
             providerId: "codex",
+            sourceThreadId,
             startedOnBehalfOf: {
               initiator: "agent",
               senderThreadId: sourceThreadId,
@@ -459,18 +631,17 @@ describe("thread creation child-thread boundary validation", () => {
         expect(error.status).toBe(400);
         expect(error.body.code).toBe("invalid_request");
         expect(error.body.message).toBe(
-          "Cannot fork: parent has no active session to clone",
+          "Cannot fork: source has no active session to clone",
         );
       },
     );
   });
 
-  it("accepts a side chat with a parent and null startedOnBehalfOf", async () => {
+  it("accepts a side chat with a source and null startedOnBehalfOf", async () => {
     await withChildBoundaryHarness(
       "valid-side-chat",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const sideChat = await createThreadFromRequest(harness.deps, {
-          childOrigin: "side-chat",
           environment: {
             type: "host",
             hostId,
@@ -478,17 +649,16 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: textInput("Side chat opener"),
           origin: "app",
-          parentThreadId: sourceThreadId,
+          originKind: "side-chat",
           projectId,
           providerId: "codex",
+          sourceThreadId,
           startedOnBehalfOf: null,
         });
-        expect(getThread(harness.db, sideChat.id)?.childOrigin).toBe(
-          "side-chat",
-        );
-        expect(getThread(harness.db, sideChat.id)?.parentThreadId).toBe(
-          sourceThreadId,
-        );
+        const persistedSideChat = getThread(harness.db, sideChat.id);
+        expect(persistedSideChat?.originKind).toBe("side-chat");
+        expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
+        expect(persistedSideChat?.parentThreadId).toBeNull();
       },
     );
   });

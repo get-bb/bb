@@ -120,16 +120,22 @@ export interface EnvironmentBranchListRequest extends BranchListRequest {
 export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
 // Built by the client and sent to POST /threads, which parses with
-// createThreadRequestSchema. `startedOnBehalfOf` and `childOrigin` are
+// createThreadRequestSchema. `startedOnBehalfOf`, `originKind`, and
+// `childOrigin` are
 // `.nullable().default(null)` in the schema, so callers (only the fork /
 // side-chat paths) may omit them; the explicit `null` is supplied once in
 // `createThread` because the wire body type is the schema's *output* shape,
 // where those defaulted fields are required.
 export type AppCreateThreadRequest = Omit<
   CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "childOrigin"
+  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
 > &
-  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "childOrigin">>;
+  Partial<
+    Pick<
+      CreateThreadRequest,
+      "startedOnBehalfOf" | "originKind" | "childOrigin"
+    >
+  >;
 
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
 const ERROR_EXTRACT_OPTS = {
@@ -685,6 +691,7 @@ export async function createThread(
         ...req,
         origin: "app",
         startedOnBehalfOf: req.startedOnBehalfOf ?? null,
+        originKind: req.originKind ?? req.childOrigin ?? null,
         childOrigin: req.childOrigin ?? null,
       },
     }),
@@ -694,8 +701,11 @@ export async function createThread(
 export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
+  sourceThreadId?: string;
   hasParent?: boolean;
-  /** Restrict to child threads spawned with this origin (fork or side-chat). */
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind?: ThreadChildOrigin;
+  /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin;
   /** App callers must choose active or archived; server omission intentionally means both. */
   archived: boolean;
@@ -719,9 +729,13 @@ export async function listThreads(
           ...(filters.parentThreadId
             ? { parentThreadId: filters.parentThreadId }
             : {}),
+          ...(filters.sourceThreadId
+            ? { sourceThreadId: filters.sourceThreadId }
+            : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),
+          ...(filters.originKind ? { originKind: filters.originKind } : {}),
           ...(filters.childOrigin ? { childOrigin: filters.childOrigin } : {}),
           archived: toBooleanQueryValue(filters.archived),
           ...(filters.limit !== undefined

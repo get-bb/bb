@@ -235,36 +235,27 @@ describe("thread parent validation", () => {
 });
 
 describe("isAgentDelegatedChildThread", () => {
-  it("is true for a child with a parent and no childOrigin (agent-delegated)", () => {
+  it("is true for a thread with a parent", () => {
     expect(
       isAgentDelegatedChildThread({
         parentThreadId: "thr_parent",
-        childOrigin: null,
       }),
     ).toBe(true);
   });
 
-  it("is false for a fork (user-initiated branch)", () => {
+  it("is false for a fork-style root", () => {
     expect(
       isAgentDelegatedChildThread({
-        parentThreadId: "thr_source",
-        childOrigin: "fork",
-      }),
-    ).toBe(false);
-  });
-
-  it("is false for a side chat (user-initiated branch)", () => {
-    expect(
-      isAgentDelegatedChildThread({
-        parentThreadId: "thr_main",
-        childOrigin: "side-chat",
+        parentThreadId: null,
       }),
     ).toBe(false);
   });
 
   it("is false for a root thread with no parent", () => {
     expect(
-      isAgentDelegatedChildThread({ parentThreadId: null, childOrigin: null }),
+      isAgentDelegatedChildThread({
+        parentThreadId: null,
+      }),
     ).toBe(false);
   });
 });

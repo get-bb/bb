@@ -2,9 +2,10 @@ import {
   deleteThread,
   findEnvironmentByHostPath,
   getEnvironment,
+  getThread,
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
-import type { Project, Thread } from "@bb/domain";
+import type { Project, Thread, ThreadOriginKind } from "@bb/domain";
 import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
@@ -78,29 +79,29 @@ interface CreateProvisioningThreadArgs {
 
 interface ResolveForkDescriptorArgs {
   childHostId: string | null;
-  childOrigin: ThreadCreateServiceRequest["childOrigin"];
-  parentThread: Thread | null;
+  originKind: ThreadOriginKind | null;
   providerId: string;
+  sourceThread: Thread | null;
 }
 
 /**
- * Resolve the native-fork descriptor for a child thread, or null when the child
- * cannot be provisioned as a fork. Both forks and side chats are native forks:
- * they clone the parent's provider session at its branch point so the child
- * carries the full conversation history (a fork then waits idle; a side chat
- * runs its question turn). Forking requires: a child of a live parent (any
- * non-null childOrigin), a provider that supports native fork, a parent that
- * already has a provider session, and a child whose workspace lands on the same
- * host as the parent (a cross-host clone of a provider session is not possible).
- * Returns null when the child is not a child thread (no parent) or the parent's
- * session cannot be cloned; the consumer treats a null descriptor for an
+ * Resolve the native-fork descriptor for a source-derived thread, or null when
+ * it cannot be provisioned as a fork. Both forks and side chats are native
+ * forks: they clone the source thread's provider session at its branch point so
+ * the new thread carries the full conversation history (a fork then waits idle;
+ * a side chat runs its question turn). Forking requires: a live source thread
+ * (any non-null originKind), a provider that supports native fork, a source that
+ * already has a provider session, and a new workspace on the same host as the
+ * source (a cross-host clone of a provider session is not possible).
+ * Returns null when the request has no source provenance or the source session
+ * cannot be cloned; the consumer treats a null descriptor for an
  * empty-input child as an unforkable error rather than a silent fresh start.
  */
 function resolveForkDescriptor(
   deps: Pick<ThreadCreateDeps, "db">,
   args: ResolveForkDescriptorArgs,
 ): ThreadForkDescriptor | null {
-  if (args.childOrigin === null || args.parentThread === null) {
+  if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
   if (
@@ -111,17 +112,20 @@ function resolveForkDescriptor(
   }
   const sourceProviderThreadId = getLastProviderThreadId(
     deps,
-    args.parentThread.id,
+    args.sourceThread.id,
   );
   if (sourceProviderThreadId === null) {
     return null;
   }
-  const parentEnvironmentId = args.parentThread.environmentId;
-  if (parentEnvironmentId === null || args.childHostId === null) {
+  const sourceEnvironmentId = args.sourceThread.environmentId;
+  if (sourceEnvironmentId === null || args.childHostId === null) {
     return null;
   }
-  const parentEnvironment = getEnvironment(deps.db, parentEnvironmentId);
-  if (parentEnvironment === null || parentEnvironment.hostId !== args.childHostId) {
+  const sourceEnvironment = getEnvironment(deps.db, sourceEnvironmentId);
+  if (
+    sourceEnvironment === null ||
+    sourceEnvironment.hostId !== args.childHostId
+  ) {
     return null;
   }
   return { sourceProviderThreadId };
@@ -207,6 +211,41 @@ function assertProjectWorkspaceCompatibility(
       "Personal workspaces are only supported for the personal project",
     );
   }
+}
+
+function requireLiveSourceThread(
+  deps: Pick<ThreadCreateDeps, "db">,
+  args: {
+    projectId: string;
+    sourceThreadId: string;
+  },
+): Thread {
+  const sourceThread = getThread(deps.db, args.sourceThreadId);
+  if (sourceThread === null) {
+    throw new ApiError(400, "invalid_request", "sourceThreadId not found");
+  }
+  if (sourceThread.projectId !== args.projectId) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceThreadId must belong to the same project",
+    );
+  }
+  if (sourceThread.archivedAt !== null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceThreadId must reference an unarchived thread",
+    );
+  }
+  if (sourceThread.deletedAt !== null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceThreadId must reference a non-deleted thread",
+    );
+  }
+  return sourceThread;
 }
 
 async function ensureCreateHostOnline(
@@ -384,54 +423,71 @@ export async function createThreadFromRequest(
     requestInput.projectId,
   );
   assertProjectWorkspaceCompatibility(project, requestInput);
-  const parentThread = requestInput.parentThreadId
+  const originKind =
+    requestInput.originKind ?? requestInput.childOrigin ?? null;
+  const sourceThreadId =
+    requestInput.sourceThreadId ??
+    (originKind !== null ? requestInput.parentThreadId : undefined);
+  const hierarchyParentThreadId =
+    originKind === null ? requestInput.parentThreadId : undefined;
+  const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
-        parentThreadId: requestInput.parentThreadId,
+        parentThreadId: hierarchyParentThreadId,
         projectId: requestInput.projectId,
       })
     : null;
-  // Child-thread coherence + anti-forgery. assertValidParentThread above has
-  // already proven parentThreadId is a live, same-project thread, so anchoring
-  // senderThreadId to it transitively validates the sender — a caller cannot
-  // claim a thread was started on behalf of an arbitrary or cross-project
-  // thread.
-  if (requestInput.startedOnBehalfOf !== null) {
-    if (parentThread === null) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "startedOnBehalfOf requires a parentThreadId",
-      );
-    }
-    if (requestInput.startedOnBehalfOf.senderThreadId !== parentThread.id) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "startedOnBehalfOf.senderThreadId must match parentThreadId",
-      );
-    }
-    // Seeding a thread-start without a provider run (startedOnBehalfOf) is only
-    // meaningful for a tagged child spawn. Requiring childOrigin keeps the two
-    // signals coupled: a single source of truth for "this is a child spawn",
-    // so a seed-without-run thread is always tagged and is excluded from
-    // reshaping the project's stored execution defaults.
-    if (requestInput.childOrigin === null) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "startedOnBehalfOf requires a childOrigin",
-      );
-    }
-  }
-  // Both fork and side-chat are child threads, so they require a parent. Note a
-  // side chat legitimately has startedOnBehalfOf null, so this is independent of
-  // the check above.
-  if (requestInput.childOrigin !== null && parentThread === null) {
+  if (originKind === null && sourceThreadId !== undefined) {
     throw new ApiError(
       400,
       "invalid_request",
-      "childOrigin requires a parentThreadId",
+      "sourceThreadId requires an originKind",
     );
+  }
+  const sourceThread = sourceThreadId
+    ? requireLiveSourceThread(deps, {
+        projectId: requestInput.projectId,
+        sourceThreadId,
+      })
+    : null;
+  if (originKind !== null && sourceThread === null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "originKind requires a sourceThreadId",
+    );
+  }
+  // Provenance coherence + anti-forgery. The validated source/parent thread
+  // anchors senderThreadId so a caller cannot claim a start on behalf of an
+  // arbitrary or cross-project thread.
+  if (requestInput.startedOnBehalfOf !== null) {
+    const senderThread = sourceThread ?? parentThread;
+    if (senderThread === null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "startedOnBehalfOf requires a sourceThreadId or parentThreadId",
+      );
+    }
+    if (requestInput.startedOnBehalfOf.senderThreadId !== senderThread.id) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        sourceThread === null
+          ? "startedOnBehalfOf.senderThreadId must match parentThreadId"
+          : "startedOnBehalfOf.senderThreadId must match sourceThreadId",
+      );
+    }
+    // Seeding a thread-start without a provider run (startedOnBehalfOf) is
+    // only meaningful for a tagged source-derived spawn. Requiring originKind
+    // keeps the two signals coupled so the thread is excluded from reshaping
+    // the project's stored execution defaults.
+    if (originKind === null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "startedOnBehalfOf requires an originKind",
+      );
+    }
   }
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
@@ -445,10 +501,23 @@ export async function createThreadFromRequest(
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
+  const {
+    childOrigin: _requestedChildOrigin,
+    originKind: _requestedOriginKind,
+    parentThreadId: _requestedParentThreadId,
+    sourceThreadId: _requestedSourceThreadId,
+    ...requestRest
+  } = requestInput;
   const request: ThreadCreateServiceRequest = {
-    ...requestInput,
+    ...requestRest,
+    ...(hierarchyParentThreadId
+      ? { parentThreadId: hierarchyParentThreadId }
+      : {}),
+    ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
+    originKind,
+    childOrigin: originKind,
     environment: resolveCreateThreadEnvironment({
-      parentThread,
+      parentThread: sourceThread ?? parentThread,
       projectId: requestInput.projectId,
       requestedEnvironment: requestInput.environment,
     }),
@@ -549,9 +618,9 @@ export async function createThreadFromRequest(
 
   const fork = resolveForkDescriptor(deps, {
     childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
-    childOrigin: request.childOrigin,
-    parentThread,
+    originKind: request.originKind ?? null,
     providerId: request.providerId,
+    sourceThread,
   });
 
   // A fork/side-chat must clone the parent's provider session. When that clone
@@ -559,17 +628,17 @@ export async function createThreadFromRequest(
   // support, or a cross-host mismatch) AND there is no input to run a fresh
   // turn, starting the thread would dispatch an empty, session-less start that
   // the daemon rejects and that would land as a history-less dead end. Forks
-  // are sent with empty input, so they hit this; side chats carry the user's
-  // question, so they do not. Fail the create with an actionable error instead.
+  // are sent with empty input, and proactively-provisioned side chats are too,
+  // so both hit this. Fail the create with an actionable error instead.
   if (
-    request.childOrigin !== null &&
+    request.originKind !== null &&
     fork === null &&
     request.input.length === 0
   ) {
     throw new ApiError(
       400,
       "invalid_request",
-      "Cannot fork: parent has no active session to clone",
+      "Cannot fork: source has no active session to clone",
     );
   }
 

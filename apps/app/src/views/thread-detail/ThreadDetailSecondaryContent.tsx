@@ -32,6 +32,7 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { useThreads } from "@/hooks/queries/thread-queries";
+import { isRunningThreadRuntimeDisplayStatus } from "@/components/thread/timeline";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
@@ -243,8 +244,9 @@ export function ThreadDetailSecondaryContent({
   const isConversationCollapsedActive =
     canCollapseConversation && isConversationCollapsed;
   // Real, in-scope activity signal for the collapsed rail: the agent is running.
-  const isConversationWorking =
-    stableTimeline.threadRuntimeDisplayStatus === "active";
+  const isConversationWorking = isRunningThreadRuntimeDisplayStatus(
+    stableTimeline.threadRuntimeDisplayStatus,
+  );
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
@@ -281,8 +283,8 @@ export function ThreadDetailSecondaryContent({
   // accounts for the lazily-fetched Forks row.
   const forksQuery = useThreads({
     projectId: stableMetadata.thread.projectId,
-    parentThreadId: stableMetadata.thread.id,
-    childOrigin: "fork",
+    sourceThreadId: stableMetadata.thread.id,
+    originKind: "fork",
     archived: false,
   });
   const hasForks = (forksQuery.data?.length ?? 0) > 0;

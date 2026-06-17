@@ -1,6 +1,9 @@
 import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { buildForkThreadRequest, isThreadForkable } from "./fork-thread-request";
+import {
+  buildForkThreadRequest,
+  isThreadForkable,
+} from "./fork-thread-request";
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   const base: Thread = {
@@ -12,6 +15,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     titleFallback: null,
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -103,10 +108,8 @@ describe("buildForkThreadRequest", () => {
       providerId: "codex",
       model: "gpt-5",
       permissionMode: "workspace-write",
-      parentThreadId: "thr_source",
-      childOrigin: "fork",
-      // The fork is linked purely via childOrigin + parentThreadId; the server
-      // gates the native fork on those, not on startedOnBehalfOf.
+      sourceThreadId: "thr_source",
+      originKind: "fork",
       startedOnBehalfOf: null,
     });
     // Empty input: a native fork establishes the cloned session idle (no first
@@ -114,7 +117,7 @@ describe("buildForkThreadRequest", () => {
     expect(request?.input).toEqual([]);
   });
 
-  it("omits the title so the fork auto-titles from its first turn (no \"(fork)\" suffix)", () => {
+  it('omits the title so the fork auto-titles from its first turn (no "(fork)" suffix)', () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread({ title: "Investigate flaky test" }),
       sourceEnvironment: makeEnvironment(),

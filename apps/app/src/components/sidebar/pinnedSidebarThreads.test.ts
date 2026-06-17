@@ -16,6 +16,8 @@ function createThread(
     titleFallback: "Thread",
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -100,12 +102,10 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "manager-child",
           parentThreadId: "standard-parent",
-          childOrigin: null,
         }),
         createThread({
           id: "standard-grandchild",
           parentThreadId: "manager-child",
-          childOrigin: null,
         }),
         createThread({
           id: "root",
@@ -131,7 +131,6 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "child",
           parentThreadId: "parent",
-          childOrigin: null,
           pinnedAt: 1_000,
           pinSortKey: "a",
         }),
@@ -139,6 +138,26 @@ describe("buildPinnedSidebarState", () => {
     });
 
     expect(rootIds(state)).toEqual(["child"]);
+  });
+
+  it("does not pull source-derived forks in as pinned descendants", () => {
+    const state = buildPinnedSidebarState({
+      threads: [
+        createThread({
+          id: "parent",
+          pinnedAt: 1_000,
+          pinSortKey: "a",
+        }),
+        createThread({
+          id: "fork",
+          sourceThreadId: "parent",
+          originKind: "fork",
+        }),
+      ],
+    });
+
+    expect(rootIds(state)).toEqual(["parent"]);
+    expect(state.rootNodes[0]?.stats.childCount).toBe(0);
   });
 
   it("hides an explicitly pinned child under its pinned ancestor root", () => {
@@ -152,7 +171,6 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "child",
           parentThreadId: "parent",
-          childOrigin: null,
           pinnedAt: 1_000,
           pinSortKey: "b",
         }),

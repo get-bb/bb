@@ -24,6 +24,8 @@ function createThread(
     titleFallback: "Thread",
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -98,19 +100,16 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "standard-child",
         parentThreadId: "manager-root",
-        childOrigin: null,
         createdAt: 20,
       }),
       createThread({
         id: "standard-grandchild",
         parentThreadId: "standard-child",
-        childOrigin: null,
         createdAt: 30,
       }),
       createThread({
         id: "manager-grandchild",
         parentThreadId: "standard-grandchild",
-        childOrigin: null,
         createdAt: 40,
       }),
     ]);
@@ -134,27 +133,33 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
   });
 
-  it("renders forks as top-level rows and excludes side-chat children", () => {
-    const items = buildProjectThreadGroups([
-      createThread({ id: "thr_parent", createdAt: 10 }),
+  it("renders forks as roots and excludes side chats", () => {
+    const rootItems = buildProjectThreadGroups([
+      createThread({
+        id: "thr_parent",
+        createdAt: 10,
+        latestAttentionAt: 30,
+      }),
       createThread({
         id: "thr_fork",
-        parentThreadId: "thr_parent",
-        childOrigin: "fork",
+        sourceThreadId: "thr_parent",
+        originKind: "fork",
         createdAt: 20,
+        latestAttentionAt: 20,
       }),
       createThread({
         id: "thr_sidechat",
-        parentThreadId: "thr_parent",
-        childOrigin: "side-chat",
+        sourceThreadId: "thr_parent",
+        originKind: "side-chat",
         createdAt: 30,
+        latestAttentionAt: 40,
       }),
     ]);
 
-    // A fork is a top-level row, not nested under its parent; the side chat
-    // (panel-only) never appears in the sidebar tree.
-    expect(summarizeItems(items)).toEqual(["thr_fork", "thr_parent"]);
-    expect(findNode(items, "thr_sidechat")).toBeNull();
+    expect(summarizeItems(rootItems)).toEqual(["thr_parent", "thr_fork"]);
+    expect(findNode(rootItems, "thr_parent")?.children).toEqual([]);
+    expect(findNode(rootItems, "thr_fork")?.depth).toBe(0);
+    expect(findNode(rootItems, "thr_sidechat")).toBeNull();
   });
 
   it("keeps orphaned children as project roots", () => {
@@ -162,7 +167,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "orphan-child",
         parentThreadId: "missing-parent",
-        childOrigin: null,
         createdAt: 20,
         latestAttentionAt: 20,
       }),
@@ -181,13 +185,11 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "cycle-a",
         parentThreadId: "cycle-b",
-        childOrigin: null,
         createdAt: 10,
       }),
       createThread({
         id: "cycle-b",
         parentThreadId: "cycle-a",
-        childOrigin: null,
         createdAt: 20,
       }),
     ]);
@@ -209,7 +211,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "worktree-a",
         parentThreadId: "parent",
-        childOrigin: null,
         environmentId: "env_shared",
         environmentWorkspaceDisplayKind: "managed-worktree",
         createdAt: 10,
@@ -218,7 +219,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "worktree-b",
         parentThreadId: "parent",
-        childOrigin: null,
         environmentId: "env_shared",
         environmentWorkspaceDisplayKind: "managed-worktree",
         createdAt: 20,
@@ -227,7 +227,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "loose-child",
         parentThreadId: "parent",
-        childOrigin: null,
         createdAt: 5,
         latestAttentionAt: 50,
       }),
@@ -244,23 +243,6 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
-  it("keeps a solo worktree thread loose instead of forming a single-child group", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "worktree-solo",
-        environmentId: "env_solo",
-        environmentWorkspaceDisplayKind: "managed-worktree",
-        createdAt: 10,
-      }),
-      createThread({
-        id: "plain-root",
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["plain-root", "worktree-solo"]);
-  });
-
   it("sorts siblings with active rows first, then inactive attention recency", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
@@ -269,7 +251,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "active-older-created",
         parentThreadId: "root",
-        childOrigin: null,
         status: "active",
         createdAt: 10,
         latestAttentionAt: 2_000,
@@ -281,7 +262,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "active-newer-created",
         parentThreadId: "root",
-        childOrigin: null,
         status: "active",
         createdAt: 20,
         latestAttentionAt: 1_500,
@@ -293,14 +273,12 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "idle-newer-attention",
         parentThreadId: "root",
-        childOrigin: null,
         createdAt: 40,
         latestAttentionAt: 900,
       }),
       createThread({
         id: "idle-older-attention",
         parentThreadId: "root",
-        childOrigin: null,
         createdAt: 30,
         latestAttentionAt: 750,
       }),
@@ -327,12 +305,10 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "quiet-child",
         parentThreadId: "parent",
-        childOrigin: null,
       }),
       createThread({
         id: "busy-grandchild",
         parentThreadId: "quiet-child",
-        childOrigin: null,
         status: "active",
         runtime: {
           displayStatus: "active",
@@ -342,7 +318,6 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "pending-grandchild",
         parentThreadId: "quiet-child",
-        childOrigin: null,
         hasPendingInteraction: true,
       }),
     ]);

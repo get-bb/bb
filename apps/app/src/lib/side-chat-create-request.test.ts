@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Environment } from "@bb/domain";
 import type { TimelineConversationRow } from "@bb/server-contract";
 import {
-  buildSideChatCreateRequest,
+  buildSideChatMessageInput,
+  buildSideChatPreloadRequest,
   resolveSideChatReplyReference,
 } from "./side-chat-create-request";
 
@@ -129,14 +130,12 @@ describe("resolveSideChatReplyReference", () => {
   });
 });
 
-describe("buildSideChatCreateRequest", () => {
-  it("links the side chat to the main thread as a read-only same-project child", () => {
-    const request = buildSideChatCreateRequest({
+describe("buildSideChatPreloadRequest", () => {
+  it("builds an empty-input preload request for a read-only side chat", () => {
+    const request = buildSideChatPreloadRequest({
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment(),
-      question: "Why this approach?",
-      replyReference: null,
       providerId: "codex",
       model: "gpt-5",
       title: "Why this approach?",
@@ -147,21 +146,49 @@ describe("buildSideChatCreateRequest", () => {
       providerId: "codex",
       model: "gpt-5",
       permissionMode: "readonly",
-      parentThreadId: "thr_main",
-      childOrigin: "side-chat",
+      sourceThreadId: "thr_main",
+      originKind: "side-chat",
+      startedOnBehalfOf: null,
+      input: [],
+      environment: {
+        type: "host",
+        hostId: "hst_local",
+        workspace: {
+          type: "managed-worktree",
+          baseBranch: { kind: "named", name: "feature/source-branch" },
+        },
+      },
+    });
+  });
+
+  it("links the side chat to the main thread as a read-only same-project child", () => {
+    const request = buildSideChatPreloadRequest({
+      projectId: "proj_test",
+      sourceThreadId: "thr_main",
+      sourceEnvironment: makeEnvironment(),
+      providerId: "codex",
+      model: "gpt-5",
+      title: "Why this approach?",
+    });
+
+    expect(request).toMatchObject({
+      projectId: "proj_test",
+      providerId: "codex",
+      model: "gpt-5",
+      permissionMode: "readonly",
+      sourceThreadId: "thr_main",
+      originKind: "side-chat",
       startedOnBehalfOf: null,
     });
   });
 
   it("runs a standard-project side chat in a fresh managed worktree off the source branch", () => {
-    const request = buildSideChatCreateRequest({
+    const request = buildSideChatPreloadRequest({
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({
         branchName: "feature/source-branch",
       }),
-      question: "Why this approach?",
-      replyReference: null,
       providerId: "codex",
       model: "gpt-5",
       title: "Why this approach?",
@@ -181,12 +208,10 @@ describe("buildSideChatCreateRequest", () => {
   });
 
   it("defers to the source's default branch when no branch is known", () => {
-    const request = buildSideChatCreateRequest({
+    const request = buildSideChatPreloadRequest({
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({ branchName: null }),
-      question: "Why this approach?",
-      replyReference: null,
       providerId: "codex",
       model: "gpt-5",
       title: "Why this approach?",
@@ -202,12 +227,10 @@ describe("buildSideChatCreateRequest", () => {
   });
 
   it("falls back to the personal workspace only when the source has no host", () => {
-    const request = buildSideChatCreateRequest({
+    const request = buildSideChatPreloadRequest({
       projectId: "proj_personal",
       sourceThreadId: "thr_main",
       sourceEnvironment: null,
-      question: "Why this approach?",
-      replyReference: null,
       providerId: "codex",
       model: "gpt-5",
       title: "Why this approach?",
@@ -224,15 +247,13 @@ describe("buildSideChatCreateRequest", () => {
     // The resolver previously saw the host and built a managed worktree, which
     // the server rejects ("Personal project threads must use a personal
     // workspace"). It must keep the personal workspace, carrying the host.
-    const request = buildSideChatCreateRequest({
+    const request = buildSideChatPreloadRequest({
       projectId: "proj_personal",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({
         projectId: "proj_personal",
         workspaceProvisionType: "personal",
       }),
-      question: "Why this approach?",
-      replyReference: null,
       providerId: "codex",
       model: "gpt-5",
       title: "Why this approach?",
@@ -244,21 +265,18 @@ describe("buildSideChatCreateRequest", () => {
       workspace: { type: "personal" },
     });
   });
+});
 
+describe("buildSideChatMessageInput", () => {
   it("sends a question-only first turn when there is no reply reference", () => {
-    const request = buildSideChatCreateRequest({
-      projectId: "proj_test",
-      sourceThreadId: "thr_main",
-      sourceEnvironment: makeEnvironment(),
+    const input = buildSideChatMessageInput({
+      includeReplyReference: true,
       question: "Standalone question",
       replyReference: null,
-      providerId: "codex",
-      model: "gpt-5",
-      title: "Standalone question",
     });
 
-    expect(request.input).toHaveLength(1);
-    expect(request.input[0]).toEqual({
+    expect(input).toHaveLength(1);
+    expect(input[0]).toEqual({
       type: "text",
       text: "Standalone question",
       mentions: [],
@@ -266,19 +284,14 @@ describe("buildSideChatCreateRequest", () => {
   });
 
   it("prepends an agent-only reply reference before the visible question", () => {
-    const request = buildSideChatCreateRequest({
-      projectId: "proj_test",
-      sourceThreadId: "thr_main",
-      sourceEnvironment: makeEnvironment(),
+    const input = buildSideChatMessageInput({
+      includeReplyReference: true,
       question: "Why this approach?",
       replyReference: "An earlier message worth discussing.",
-      providerId: "codex",
-      model: "gpt-5",
-      title: "Why this approach?",
     });
 
-    expect(request.input).toHaveLength(2);
-    const [reference, question] = request.input;
+    expect(input).toHaveLength(2);
+    const [reference, question] = input;
     expect(reference).toMatchObject({
       type: "text",
       visibility: "agent-only",
@@ -292,5 +305,15 @@ describe("buildSideChatCreateRequest", () => {
       text: "Why this approach?",
       mentions: [],
     });
+  });
+
+  it("does not repeat the reply reference after the first user-visible turn", () => {
+    const input = buildSideChatMessageInput({
+      includeReplyReference: false,
+      question: "Follow up",
+      replyReference: "Earlier context",
+    });
+
+    expect(input).toEqual([{ type: "text", text: "Follow up", mentions: [] }]);
   });
 });

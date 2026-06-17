@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
-import type {
-  ThreadTimelineForkMessageHandler,
-  ThreadTimelineSideChatMessageHandler,
-  ThreadTimelineLinkHandler,
-  ThreadTimelineLocalFileLink,
-  ThreadTimelineLocalFileLinkHandler,
-  TimelineTitleActionResolver,
+import {
+  isRunningThreadRuntimeDisplayStatus,
+  type ThreadTimelineForkMessageHandler,
+  type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineLinkHandler,
+  type ThreadTimelineLocalFileLink,
+  type ThreadTimelineLocalFileLinkHandler,
+  type TimelineTitleActionResolver,
 } from "@/components/thread/timeline";
 import {
   isActiveTerminalSessionStatus,
@@ -467,7 +468,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const composerHydratedDataStaleTime = hasThreadComposerBootstrapData
     ? 10_000
     : undefined;
+  const threadOriginKind = thread?.originKind ?? thread?.childOrigin ?? null;
+  const threadSourceThreadId =
+    thread?.sourceThreadId ??
+    (thread && threadOriginKind ? thread.parentThreadId : null);
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
+  const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
   const { data: pendingInteractions = [] } = useThreadPendingInteractions(
     composerQueryThreadId,
     {
@@ -678,9 +684,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     sourceThread: thread ?? null,
     sourceEnvironment: environment ?? null,
   });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(() => {
-    void forkThreadFromMessage();
-  }, [forkThreadFromMessage]);
+  const handleForkMessage =
+    useCallback<ThreadTimelineForkMessageHandler>(() => {
+      void forkThreadFromMessage();
+    }, [forkThreadFromMessage]);
   // A fork always runs in a fresh managed worktree branched off the source's
   // host. Drop the Fork handler (not just disable it) for a host-less source
   // (a personal-project thread with no environment) — matching the
@@ -689,16 +696,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // Same predicate `buildForkThreadRequest` gates on, so the button and the
   // request stay in lockstep.
   const isForkAvailable = isThreadForkable(environment ?? null);
-  const handleSideChatMessage = useCallback<ThreadTimelineSideChatMessageHandler>(
-    (target) => {
-      if (!threadId) return;
-      openSideChat({
-        sourceThreadId: threadId,
-        sourceMessageText: target.messageText,
-      });
-    },
-    [openSideChat, threadId],
-  );
+  const handleSideChatMessage =
+    useCallback<ThreadTimelineSideChatMessageHandler>(
+      (target) => {
+        if (!threadId) return;
+        openSideChat({
+          sourceThreadId: threadId,
+          sourceMessageText: target.messageText,
+        });
+      },
+      [openSideChat, threadId],
+    );
   // A side chat started from the new-tab page has no anchor message, so it forks
   // from the thread's tip (empty source text ⇒ no "replying to" reference).
   const handleStartSideChat = useCallback(() => {
@@ -1153,51 +1161,56 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
-      if (!thread?.parentThreadId) return null;
+      const relatedThreadId =
+        threadOriginKind !== null
+          ? threadSourceThreadId
+          : thread?.parentThreadId;
+      if (!thread || !relatedThreadId) return null;
       const href = getSurfaceAwareThreadRoutePath({
         projectId: thread.projectId,
         surface: props.surface,
-        threadId: thread.parentThreadId,
+        threadId: relatedThreadId,
       });
-      // A fork links back as "Forked from …", a side chat as "Side chat of …";
-      // any other child renders the generic "Parent …". The banner supplies the
-      // verb, so the title here is just the linked thread's name (or an id
-      // fallback while it loads).
       const relationship =
-        thread.childOrigin === "fork"
+        threadOriginKind === "fork"
           ? "fork"
-          : thread.childOrigin === "side-chat"
+          : threadOriginKind === "side-chat"
             ? "side-chat"
             : "parent";
-      if (parentThread === undefined) {
-        // Parent record not yet loaded — show id-based fallback so the user
-        // doesn't get a flicker of "no parent" before resolution.
+      const relatedThread =
+        relationship === "parent" ? parentThread : sourceThread;
+      if (relatedThread === undefined) {
+        // Related record not yet loaded — show id-based fallback so the user
+        // doesn't get a flicker of "no related thread" before resolution.
         return {
-          parentThreadTitle: thread.parentThreadId.slice(0, 8),
+          parentThreadTitle: relatedThreadId.slice(0, 8),
           href,
           relationship,
         };
       }
       // Plan ownership invariants: silently exclude dirty references rather
-      // than rendering a stale or unreachable parent link.
+      // than rendering a stale or unreachable related-thread link.
       if (
-        parentThread.archivedAt !== null ||
-        parentThread.deletedAt !== null ||
-        parentThread.projectId !== thread.projectId
+        relatedThread.archivedAt !== null ||
+        relatedThread.deletedAt !== null ||
+        relatedThread.projectId !== thread.projectId
       ) {
         return null;
       }
       return {
-        parentThreadTitle: getThreadDisplayTitle(parentThread),
+        parentThreadTitle: getThreadDisplayTitle(relatedThread),
         href,
         relationship,
       };
     }, [
       parentThread,
       props.surface,
-      thread?.childOrigin,
+      sourceThread,
+      thread,
       thread?.parentThreadId,
       thread?.projectId,
+      threadOriginKind,
+      threadSourceThreadId,
     ]);
   const childThreadsSection: ThreadPromptChildThreadsSection | null =
     useMemo(() => {
@@ -1615,8 +1628,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // destroyed) is read-only — un-archive never resurrects it, so the composer is
   // replaced with the "environment is gone" banner instead of allowing a send.
   const threadEnvironmentGoneStatus =
-    environment?.status === "destroying" ||
-    environment?.status === "destroyed"
+    environment?.status === "destroying" || environment?.status === "destroyed"
       ? environment.status
       : null;
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
@@ -1678,13 +1690,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       <ThreadDetailHeader
         actionsMenu={threadActionsMenu}
         childPillLabel={
-          parentThreadId
-            ? thread?.childOrigin === "fork"
-              ? "fork"
-              : thread?.childOrigin === "side-chat"
-                ? "side chat"
-                : "child"
-            : null
+          threadOriginKind === "side-chat"
+            ? "side chat"
+            : parentThreadId
+              ? "child"
+              : null
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         activeTerminalCount={activeTerminalCount}
@@ -1892,7 +1902,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         timeline={{
           activeThinking,
           canSpawnChild: thread.canSpawnChild,
-          threadChildOrigin: thread.childOrigin,
+          threadChildOrigin: threadOriginKind,
           hasOlderTimelineRows,
           hostConnectionNotice,
           isLoadingOlderTimelineRows,
@@ -1914,8 +1924,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             // own inline shimmer row, so the bottom indicator would just
             // duplicate it.
             !hasPendingInteraction &&
-            (thread.runtime.displayStatus === "active" ||
-              thread.runtime.displayStatus === "host-reconnecting") &&
+            isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
             !isThreadTimelinePending,
           ongoingIndicatorLabel:
             thread.runtime.displayStatus === "host-reconnecting"

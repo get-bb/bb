@@ -217,16 +217,16 @@ export interface ForksRowProps {
 }
 
 /**
- * Lists the thread's forks (children created with `childOrigin === "fork"`),
- * each linking to the fork. The fork links back here via the parent-thread link.
- * Fetched with a targeted list query filtered by `parentThreadId` + `childOrigin`
+ * Lists the thread's forks (threads created with `originKind === "fork"`),
+ * each linking to the fork. The fork links back here via the source-thread link.
+ * Fetched with a targeted list query filtered by `sourceThreadId` + `originKind`
  * — no load-all-and-filter. Renders nothing when the thread has no forks.
  */
 export function ForksRow({ thread, projectId }: ForksRowProps) {
   const forksQuery = useThreads({
     projectId: thread.projectId,
-    parentThreadId: thread.id,
-    childOrigin: "fork",
+    sourceThreadId: thread.id,
+    originKind: "fork",
     archived: false,
   });
   const forks = forksQuery.data ?? [];
@@ -285,8 +285,7 @@ export function EnvironmentRow({
     environment,
     host: environmentDisplayHost,
   });
-  const showCreateThreadButton =
-    isProvisionedWorktreeEnvironment(environment);
+  const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
   return (
     <DetailRow
       label={

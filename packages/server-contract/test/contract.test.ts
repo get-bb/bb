@@ -72,6 +72,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.permissionMode",
       "createThreadRequestSchema.reasoningLevel",
       "createThreadRequestSchema.serviceTier",
+      "createThreadRequestSchema.sourceThreadId",
       "createThreadRequestSchema.title",
     ],
   },
@@ -182,8 +183,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.offset",
+      "threadListQuerySchema.originKind",
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
+      "threadListQuerySchema.sourceThreadId",
     ],
   },
   {
@@ -712,6 +715,8 @@ describe("server-contract canonical schemas", () => {
           titleFallback: "Pending thread",
           status: "idle",
           parentThreadId: null,
+          sourceThreadId: null,
+          originKind: null,
           childOrigin: null,
           archivedAt: null,
           pinnedAt: null,
@@ -973,7 +978,7 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("defaults startedOnBehalfOf and childOrigin to null", () => {
+  it("defaults startedOnBehalfOf, originKind, and childOrigin to null", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",
       providerId: "codex",
@@ -986,7 +991,46 @@ describe("server-contract canonical schemas", () => {
       },
     });
     expect(parsed.startedOnBehalfOf).toBeNull();
+    expect(parsed.originKind).toBeNull();
     expect(parsed.childOrigin).toBeNull();
+  });
+
+  it("rejects empty input for a normal thread start", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+      }),
+    ).toThrow("input must contain at least one entry");
+  });
+
+  it("accepts empty input for a source-derived side chat preload", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+      originKind: "side-chat",
+      sourceThreadId: "thr_source",
+      startedOnBehalfOf: null,
+    });
+
+    expect(parsed.input).toEqual([]);
+    expect(parsed.originKind).toBe("side-chat");
+    expect(parsed.sourceThreadId).toBe("thr_source");
+    expect(parsed.startedOnBehalfOf).toBeNull();
   });
 
   it("accepts an agent startedOnBehalfOf with a sender thread", () => {

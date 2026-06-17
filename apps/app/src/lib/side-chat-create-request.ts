@@ -69,91 +69,80 @@ export function resolveSideChatReplyReference(args: {
   return anchor;
 }
 
-/**
- * Inputs for building a side chat's create-thread request. A side chat is a
- * child thread of the main thread, created lazily on the user's first submit.
- */
-export interface BuildSideChatCreateRequestArgs {
-  /** Project the main thread belongs to (the side chat shares it). */
-  projectId: string;
-  /** Main thread the side chat is anchored to; becomes its parent. */
-  sourceThreadId: string;
-  /**
-   * The main thread's environment (host + branch), or null when not yet loaded
-   * / for a personal-project source. Resolves the side chat's own workspace.
-   */
-  sourceEnvironment: Environment | null;
-  /** The user's visible question (the first executed turn's prompt). */
-  question: string;
-  /**
-   * The anchored-message reply reference (see {@link resolveSideChatReplyReference}),
-   * or null when the anchor is the parent's last message. When present it is
-   * prepended to the runtime input as agent-only context (not rendered in the
-   * side-chat timeline) so the agent knows which message the question replies to.
-   */
-  replyReference: string | null;
-  /** Provider the side chat inherits from the main thread. */
-  providerId: string;
-  /** Resolved model the side chat inherits from the main thread. */
+interface BuildSideChatBaseRequestArgs {
   model: string;
-  /** Title derived from the source message (the side-chat tab's title). */
+  projectId: string;
+  providerId: string;
+  sourceEnvironment: Environment | null;
+  sourceThreadId: string;
   title: string;
 }
 
-/**
- * Builds the create-thread request for a message-anchored side chat. The side
- * chat is a native fork of the main thread (`childOrigin: "side-chat"` +
- * `parentThreadId` ⇒ the server clones the parent's provider session, so the
- * full conversation history is behind it) that runs the user's question
- * immediately with read-only reach. When the anchor is not the parent's last
- * message, an agent-only reply reference precedes the visible question so the
- * agent knows which earlier message is being discussed.
- *
- * The side chat runs in the **same project** as its source — a fresh managed
- * worktree branched off the source's host + branch (its own checkout), via the
- * shared {@link resolveChildThreadEnvironment} resolver also used by forks. It
- * falls back to the personal workspace only when the source has no host (a
- * personal-project source); routing a standard-project side chat into the
- * personal project is not viable (it would break the same-project
- * `parentThreadId` guard and the cross-project send-back).
- *
- * `startedOnBehalfOf` is null: unlike a fork's idle establish, a side chat's
- * first turn is the user's question (a normal user-initiated start). The
- * side-chat ↔ main-thread link is `childOrigin` + `parentThreadId`, which
- * satisfies the create boundary (`childOrigin != null` requires `parentThreadId`).
- */
-export function buildSideChatCreateRequest({
-  projectId,
-  sourceThreadId,
-  sourceEnvironment,
-  question,
-  replyReference,
-  providerId,
+function buildSideChatBaseRequest({
   model,
+  projectId,
+  providerId,
+  sourceEnvironment,
+  sourceThreadId,
   title,
-}: BuildSideChatCreateRequestArgs): AppCreateThreadRequest {
-  const permissionMode = SIDE_CHAT_PERMISSION_MODE;
+}: BuildSideChatBaseRequestArgs): Omit<AppCreateThreadRequest, "input"> {
   return {
     projectId,
     providerId,
     model,
-    permissionMode,
+    permissionMode: SIDE_CHAT_PERMISSION_MODE,
     title,
-    input:
-      replyReference === null
-        ? [{ type: "text", text: question, mentions: [] }]
-        : [
-            {
-              type: "text",
-              text: `Replying to this earlier message in the conversation:\n\n${replyReference}`,
-              mentions: [],
-              visibility: "agent-only",
-            },
-            { type: "text", text: question, mentions: [] },
-          ],
     environment: resolveChildThreadEnvironment(sourceEnvironment),
-    parentThreadId: sourceThreadId,
+    sourceThreadId,
     startedOnBehalfOf: null,
-    childOrigin: "side-chat",
+    originKind: "side-chat",
+  };
+}
+
+export interface BuildSideChatMessageInputArgs {
+  /** True only for the first user-visible side-chat turn. */
+  includeReplyReference: boolean;
+  /** The user's visible question. */
+  question: string;
+  /**
+   * The anchored-message reply reference (see {@link resolveSideChatReplyReference}),
+   * or null when the anchor is the parent's last message. When included, it is
+   * prepended as agent-only context so the model knows which earlier message
+   * the visible question replies to.
+   */
+  replyReference: string | null;
+}
+
+export function buildSideChatMessageInput({
+  includeReplyReference,
+  question,
+  replyReference,
+}: BuildSideChatMessageInputArgs): AppCreateThreadRequest["input"] {
+  if (!includeReplyReference || replyReference === null) {
+    return [{ type: "text", text: question, mentions: [] }];
+  }
+  return [
+    {
+      type: "text",
+      text: `Replying to this earlier message in the conversation:\n\n${replyReference}`,
+      mentions: [],
+      visibility: "agent-only",
+    },
+    { type: "text", text: question, mentions: [] },
+  ];
+}
+
+/**
+ * Builds the create-thread request used to warm up a side chat before the user
+ * submits. It clones the source provider session into a fresh side-chat thread
+ * and lands idle with no visible first message, so the user's first real
+ * question can be a fast `send` against an already-provisioned thread.
+ */
+export function buildSideChatPreloadRequest(
+  args: BuildSideChatBaseRequestArgs,
+): AppCreateThreadRequest {
+  return {
+    ...buildSideChatBaseRequest(args),
+    input: [],
   };
 }

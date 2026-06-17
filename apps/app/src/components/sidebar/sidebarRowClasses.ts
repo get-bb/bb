@@ -66,3 +66,16 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
 
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+
+/**
+ * Hairline that runs through an expanded project's thread list, sitting
+ * under the center of the project chevron/folder icon. The coarse-pointer
+ * variant nudges the line a few px right to follow the larger icon.
+ *
+ * Z-index sits between the parent tiers (z-40 and below) and the project
+ * tier (z-50) so the line paints over parent rows and ordinary thread rows
+ * (showing through their hover/active backgrounds) but a stuck project row
+ * covers it cleanly.
+ */
+export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
+  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-40 before:content-[''] max-md:pointer-coarse:before:left-5";

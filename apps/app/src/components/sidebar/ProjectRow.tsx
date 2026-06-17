@@ -42,6 +42,7 @@ import {
 } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+  COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
@@ -53,7 +54,6 @@ import {
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -70,9 +70,9 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 import {
-  SIDEBAR_LEADING_CLUSTER_CLASS,
-  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+  SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
+  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -135,6 +135,9 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
+const PROJECT_ROW_LEADING_SLOT_CLASS =
+  "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
+
 interface ProjectThreadTreeGroupProps {
   children: ReactNode;
   variant: ProjectThreadTreeVariant;
@@ -304,10 +307,16 @@ function getProjectThreadTreeEmptyStateMessageClassName(
   );
 }
 
-// A project's threads sit one level under its (pad-0) project header, while a
-// projectless thread IS a top-level row — so it renders at depth 0, flush with
-// the project headers, aligning its no-project glyph with the project folder
-// icons.
+function getProjectThreadTreeGroupLineClassName(
+  variant: ProjectThreadTreeVariant,
+): string | undefined {
+  if (variant === "project") {
+    return SIDEBAR_PROJECT_GROUP_LINE_CLASS;
+  }
+
+  return undefined;
+}
+
 function getProjectThreadTreeRootDepthOffset(
   variant: ProjectThreadTreeVariant,
 ): number {
@@ -399,7 +408,7 @@ function getThreadNodeStickyLevel({
 function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
   return (
     <span
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline"
+      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline opacity-40"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -411,7 +420,7 @@ function ThreadTreeLineContinuation({
 }: ThreadTreeLineContinuationProps) {
   return (
     <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline"
+      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-40"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -426,7 +435,10 @@ function ProjectThreadTreeGroup({
   return (
     <div
       data-sidebar-sticky-section={variant === "section" ? "" : undefined}
-      className="relative space-y-0.5 group-data-[collapsible=icon]:hidden"
+      className={cn(
+        "relative space-y-0.5 group-data-[collapsible=icon]:hidden",
+        getProjectThreadTreeGroupLineClassName(variant),
+      )}
       onClickCapture={onClickCapture}
     >
       {children}
@@ -621,17 +633,14 @@ function EnvironmentThreadGroupHeader({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const environmentName = representativeThread.environmentName;
   const branchName = representativeThread.environmentBranchName;
-  // The folder-git icon already signals "worktree", so the branch alone reads as
-  // the group label (no redundant "Worktree:" prefix); fall back to "Worktree"
-  // only when there's neither a name nor a branch to show.
   const headerTitle = environmentName
     ? branchName
       ? `${environmentName} (${branchName})`
       : environmentName
-    : (branchName ?? "Worktree");
-  const iconName = getEnvironmentWorkspaceLabelIconName(
-    representativeThread.environmentWorkspaceDisplayKind,
-  );
+    : branchName
+      ? `Worktree: ${branchName}`
+      : "Worktree";
+  const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
   // glyph (pending > working > unread). Expanded: the children show their own
   // glyphs, and the synthetic header has no status of its own.
@@ -647,9 +656,7 @@ function EnvironmentThreadGroupHeader({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    // No SIDEBAR_ROW_INTERACTIVE_STATE_CLASS: this row is expand/collapse-only
-    // with nothing to open, so the body is inert and must not show the clickable
-    // hover highlight threads use. Only the leading caret toggles.
+    "cursor-default",
   );
   const style = {
     paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
@@ -659,57 +666,38 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      {/*
-        Leading cluster: caret + folder + label share the SAME gap-1.5 column
-        spacing ThreadRow uses (caret slot, then a w-4 glyph, then the text), so
-        the folder lands in the thread-glyph column and the label in the
-        thread-title column at the same depth. Only the caret toggles (its own
-        hover style); the folder is a decorative grouping glyph and the label is
-        inert. A worktree group header is pure UI grouping, not a navigable
-        thread, so it reads lighter than the worktree THREAD rows.
-      */}
-      <span
-        className={cn(
-          SIDEBAR_LEADING_CLUSTER_CLASS,
-          "relative z-10 text-left text-subtle-foreground/70",
-        )}
-      >
-        <span className="inline-flex shrink-0">
-          <SidebarChildToggleChevron
-            isCollapsed={isCollapsed}
-            expandLabel={`Expand ${headerTitle} threads`}
-            collapseLabel={`Collapse ${headerTitle} threads`}
-            expandTitle="Expand worktree threads"
-            collapseTitle="Collapse worktree threads"
-            onToggle={() => onToggleCollapsed(environmentId)}
-            revealOnHover={!isCollapsed}
-          />
-        </span>
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
         <span
-          className={cn(SIDEBAR_LEADING_GLYPH_SLOT_CLASS, "pointer-events-none")}
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center",
+            COARSE_POINTER_GLYPH_BOX_CLASS,
+          )}
           aria-hidden="true"
         >
-          <Icon name={iconName} className="size-3.5" />
+          <Icon
+            name={iconName}
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+            aria-hidden="true"
+          />
         </span>
-        <span className="pointer-events-none min-w-0 truncate">
-          {environmentName ? (
+        <span className="min-w-0 truncate">
+          <span>{environmentName ?? "Worktree"}</span>
+          {branchName ? (
             <>
-              <span>{environmentName}</span>
-              {branchName ? (
-                <>
-                  <span> · </span>
-                  <span>{branchName}</span>
-                </>
-              ) : null}
+              <span>{environmentName ? " · " : ": "}</span>
+              <span>{branchName}</span>
             </>
-          ) : branchName ? (
-            // No custom env name: the folder-git icon already says "worktree",
-            // so the branch alone is the group label (no "Worktree:" prefix).
-            <span>{branchName}</span>
-          ) : (
-            <span>Worktree</span>
-          )}
+          ) : null}
         </span>
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Expand ${headerTitle} threads`}
+          collapseLabel={`Collapse ${headerTitle} threads`}
+          expandTitle="Expand worktree threads"
+          collapseTitle="Collapse worktree threads"
+          onToggle={() => onToggleCollapsed(environmentId)}
+          revealOnHover={!isCollapsed}
+        />
       </span>
       <span
         className={cn(
@@ -1179,57 +1167,40 @@ function ProjectRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
-              // A disclosure header, not a selectable row: subtle text, no
-              // whole-row hover, no selection background (the caret + folder
-              // cluster is the only toggle). The active project — the one the
-              // open thread belongs to — only brightens its text for wayfinding.
-              isActive ? "text-foreground" : "text-subtle-foreground",
+              isActive
+                ? "bg-sidebar-border text-sidebar-foreground"
+                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",
             )}
-            // Depth-0 base inset, matching every other row so the folder icon
-            // aligns with projectless-thread glyphs (and the caret clears the
-            // row's rounded edge).
-            style={{ paddingLeft: getSidebarThreadRowPaddingLeft(0) }}
             title={project.name}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            {/* Leading cluster: caret + folder + name share the SAME gap-1.5
-                column spacing ThreadRow and the worktree header use, so the
-                folder lands in the thread-glyph column and the name in the
-                thread-title column. Only the caret toggles; the folder is
-                decorative and the name is inert (expand/collapse only). */}
             <span
-              className={cn(SIDEBAR_LEADING_CLUSTER_CLASS, "relative z-10 text-left")}
+              className={cn(
+                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
+                PROJECT_ROW_LEADING_SLOT_CLASS,
+              )}
+              aria-hidden
             >
-              <span className="inline-flex shrink-0">
-                <SidebarChildToggleChevron
-                  isCollapsed={isCollapsed}
-                  expandLabel={`Expand ${project.name}`}
-                  collapseLabel={`Collapse ${project.name}`}
-                  expandTitle="Expand project threads"
-                  collapseTitle="Collapse project threads"
-                  onToggle={handleProjectRowToggle}
-                  revealOnHover={!isCollapsed}
-                />
-              </span>
-              <span
-                className={cn(
-                  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-                  "pointer-events-none text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
-                )}
-                aria-hidden="true"
-              >
-                <Icon
-                  name={isCollapsed ? "Folder" : "FolderOpen"}
-                  className="size-3.5"
-                />
-              </span>
-              <span className="pointer-events-none min-w-0 truncate">
-                {project.name}
-              </span>
+              <Icon
+                name={isCollapsed ? "Folder" : "FolderOpen"}
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </span>
+            <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+              <span className="min-w-0 truncate">{project.name}</span>
+              <SidebarChildToggleChevron
+                isCollapsed={isCollapsed}
+                expandLabel={`Expand ${project.name}`}
+                collapseLabel={`Collapse ${project.name}`}
+                expandTitle="Expand project threads"
+                collapseTitle="Collapse project threads"
+                onToggle={handleProjectRowToggle}
+                revealOnHover={!isCollapsed}
+              />
             </span>
             {isLocalPathInvalid ? (
               <NavLink

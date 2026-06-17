@@ -215,43 +215,28 @@ function buildThreadNode({
   };
 }
 
-// A fork is a sibling, not a child: it branches off its parent's history but
-// reads as its own top-level conversation, so it renders as a root rather than
-// nesting under the parent (matching delegated children, which do nest).
-function isForkThread(thread: ThreadListEntry): boolean {
-  return thread.childOrigin === "fork";
-}
-
 function isRootThread(
   thread: ThreadListEntry,
   projectThreadIds: ReadonlySet<string>,
 ): boolean {
   return (
     thread.parentThreadId === null ||
-    !projectThreadIds.has(thread.parentThreadId) ||
-    isForkThread(thread)
+    !projectThreadIds.has(thread.parentThreadId)
   );
 }
 
 export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
 ): ProjectThreadItem[] {
-  // Side chats live in the right-panel tab, not the sidebar tree — drop them up
-  // front so they neither nest under a parent (nor inflate its rolled-up stats)
-  // nor resurface as orphan roots in the cycle-recovery pass below.
   const projectThreads = allProjectThreads.filter(
-    (thread) => thread.childOrigin !== "side-chat",
+    (thread) => (thread.originKind ?? thread.childOrigin) !== "side-chat",
   );
-  const projectThreadIds = new Set(
-    projectThreads.map((thread) => thread.id),
-  );
+  const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
   const childrenByParentId = new Map<string, ThreadListEntry[]>();
 
   for (const thread of projectThreads) {
     if (thread.parentThreadId === null) continue;
     if (!projectThreadIds.has(thread.parentThreadId)) continue;
-    // Forks render as roots, so they never join a parent's child list.
-    if (isForkThread(thread)) continue;
 
     const children = childrenByParentId.get(thread.parentThreadId);
     if (children) {
@@ -299,10 +284,8 @@ export function buildProjectThreadGroups(
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group
-// when >=2 sibling nodes share the environment; a solo worktree thread stays a
-// loose, navigable thread row (with a leading worktree glyph) rather than a
-// disclosure-only group header — a 1-thread "header" that toggles looks just
-// like a thread and is the main source of sidebar nav/disclosure confusion.
+// when >=2 sibling nodes share the environment; solo threads stay loose so we
+// don't render degenerate 1-thread groups.
 function bucketWorktreeEnvironmentGroups(
   nodes: ProjectThreadNode[],
 ): BucketWorktreeEnvironmentGroupsResult {
@@ -328,7 +311,9 @@ function bucketWorktreeEnvironmentGroups(
       compareStandardThreads(left.thread, right.thread),
     );
     groupedEnvironmentIds.add(environmentId);
-    environmentThreadGroups.push(buildEnvironmentThreadGroup(environmentId, bucket));
+    environmentThreadGroups.push(
+      buildEnvironmentThreadGroup(environmentId, bucket),
+    );
   }
 
   const looseNodes = nodes.filter(

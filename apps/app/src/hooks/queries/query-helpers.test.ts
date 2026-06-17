@@ -131,6 +131,8 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -466,7 +468,9 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
     expect(queryKeys).toContainEqual(
       environmentWorkStatusQueryKey("env-1", "main"),
     );
-    expect(queryKeys).toContainEqual(environmentDiffFilesQueryKeyPrefix("env-1"));
+    expect(queryKeys).toContainEqual(
+      environmentDiffFilesQueryKeyPrefix("env-1"),
+    );
     expect(queryKeys).not.toContainEqual(
       environmentDiffPatchQueryKeyPrefix("env-1"),
     );
@@ -509,13 +513,13 @@ describe("optimisticallyInsertThread", () => {
     });
   });
 
-  it("respects the childOrigin filter when inserting child threads", () => {
+  it("respects the originKind filter when inserting source-derived threads", () => {
     const { queryClient } = createQueryClientTestHarness();
     const forkListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",
-      parentThreadId: "parent-1",
-      childOrigin: "fork",
+      sourceThreadId: "source-1",
+      originKind: "fork",
     });
     queryClient.setQueryData(forkListKey, []);
 
@@ -525,19 +529,21 @@ describe("optimisticallyInsertThread", () => {
       queryClient,
       makeThreadWithRuntime({
         id: "side-chat-1",
-        parentThreadId: "parent-1",
-        childOrigin: "side-chat",
+        sourceThreadId: "source-1",
+        originKind: "side-chat",
       }),
     );
-    expect(queryClient.getQueryData<ThreadListEntry[]>(forkListKey)).toEqual([]);
+    expect(queryClient.getQueryData<ThreadListEntry[]>(forkListKey)).toEqual(
+      [],
+    );
 
     // A fork of the same parent does belong in the fork list.
     optimisticallyInsertThread(
       queryClient,
       makeThreadWithRuntime({
         id: "fork-1",
-        parentThreadId: "parent-1",
-        childOrigin: "fork",
+        sourceThreadId: "source-1",
+        originKind: "fork",
       }),
     );
     expect(

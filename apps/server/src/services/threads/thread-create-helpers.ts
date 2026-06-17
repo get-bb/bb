@@ -169,7 +169,8 @@ export function createThreadRecord(
     title: args.request.title ?? null,
     titleFallback: deriveTitleFallback(args.request.input),
     parentThreadId: args.request.parentThreadId ?? null,
-    childOrigin: args.request.childOrigin,
+    sourceThreadId: args.request.sourceThreadId ?? null,
+    originKind: args.request.originKind ?? args.request.childOrigin,
     status: args.status ?? "starting",
   });
 }

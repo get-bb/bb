@@ -16,6 +16,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     titleFallback: null,
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,

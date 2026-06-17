@@ -44,9 +44,9 @@ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 interface RequestThreadProvisionArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
-  // Non-null ⇒ provision this child by cloning the parent's provider session
+  // Non-null ⇒ provision this thread by cloning the source provider session
   // (native fork) instead of starting fresh. null ⇒ not a fork. Resolved by the
-  // server at create time (childOrigin/provider capability/parent session/host).
+  // server at create time (originKind/provider capability/source session/host).
   fork: ThreadForkDescriptor | null;
   input: PromptInput[];
   // Non-null ⇒ the thread-start turn is attributed to another agent/thread and
@@ -170,7 +170,10 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Workspace ready event sequence was not recorded");
   }
 
-  if (args.context.request.seedWithoutRun && args.context.request.fork === null) {
+  if (
+    args.context.request.seedWithoutRun &&
+    args.context.request.fork === null
+  ) {
     // Non-fork seed anchor: the thread-start turn is already persisted and
     // displayed (initiator agent/system) but no provider session was cloned.
     // The started agent must wait for the user's first message, so we do not

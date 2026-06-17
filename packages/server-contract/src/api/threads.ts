@@ -12,6 +12,7 @@ import {
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
+  threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadTimelineGoalSchema,
@@ -94,10 +95,10 @@ export const createThreadRequestSchema = z
     providerId: z.string().min(1).optional(),
     origin: threadCreateOriginSchema,
     title: z.string().min(1).optional(),
-    // A native fork establishes the cloned provider session with an empty
-    // timeline and lets the user steer the first turn, so it carries no input.
-    // Every other start (normal thread, side chat) requires at least one input,
-    // enforced by the refinement below rather than a blanket `.min(1)`.
+    // A source-derived native fork/side chat may establish the cloned provider
+    // session with an empty timeline, so it can carry no input. A normal thread
+    // start requires at least one input, enforced by the refinement below rather
+    // than a blanket `.min(1)`.
     input: z.array(promptInputSchema),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
@@ -106,11 +107,15 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: environmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
+    sourceThreadId: z.string().min(1).optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
+    originKind: threadOriginKindSchema.nullable().default(null),
+    /** @deprecated Use originKind. */
     childOrigin: threadChildOriginSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
-    if (value.childOrigin !== "fork" && value.input.length === 0) {
+    const originKind = value.originKind ?? value.childOrigin;
+    if (originKind === null && value.input.length === 0) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
@@ -301,10 +306,13 @@ export type ThreadArchiveAllResponse = z.infer<
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
+  sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
-  /** Restrict to child threads spawned with this origin (fork or side-chat). */
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind: threadOriginKindSchema.optional(),
+  /** @deprecated Use originKind. */
   childOrigin: threadChildOriginSchema.optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),

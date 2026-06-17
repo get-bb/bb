@@ -480,8 +480,20 @@ function threadMatchesListFilters(
     return false;
   }
   if (
+    filters?.sourceThreadId !== undefined &&
+    thread.sourceThreadId !== filters.sourceThreadId
+  ) {
+    return false;
+  }
+  if (
+    filters?.originKind !== undefined &&
+    (thread.originKind ?? thread.childOrigin) !== filters.originKind
+  ) {
+    return false;
+  }
+  if (
     filters?.childOrigin !== undefined &&
-    thread.childOrigin !== filters.childOrigin
+    (thread.originKind ?? thread.childOrigin) !== filters.childOrigin
   ) {
     return false;
   }

@@ -234,6 +234,7 @@ describe("threadDetailPromptSubmission", () => {
     const immediateStatuses: ThreadRuntimeDisplayStatus[] = [
       "error",
       "idle",
+      "provisioning",
       "starting",
       "waiting-for-host",
     ];
@@ -248,7 +249,10 @@ describe("threadDetailPromptSubmission", () => {
 
   it("offers stop-only mode while a thread is starting", () => {
     const onStop = () => undefined;
-    const stoppableStatuses: ThreadRuntimeDisplayStatus[] = ["starting"];
+    const stoppableStatuses: ThreadRuntimeDisplayStatus[] = [
+      "provisioning",
+      "starting",
+    ];
 
     for (const runtimeDisplayStatus of stoppableStatuses) {
       expect(

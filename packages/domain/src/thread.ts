@@ -8,17 +8,26 @@ import {
   serviceTierSchema,
 } from "./shared-types.js";
 import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
-import { threadChildOriginSchema } from "./thread-child-origin.js";
+import {
+  threadChildOriginSchema,
+  threadOriginKindSchema,
+} from "./thread-child-origin.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export {
   threadChildOriginSchema,
   threadChildOriginValues,
+  threadOriginKindSchema,
+  threadOriginKindValues,
 } from "./thread-child-origin.js";
-export type { ThreadChildOrigin } from "./thread-child-origin.js";
+export type {
+  ThreadChildOrigin,
+  ThreadOriginKind,
+} from "./thread-child-origin.js";
 
 export const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
+  "provisioning",
   "host-reconnecting",
   "waiting-for-host",
 ] as const;
@@ -193,6 +202,9 @@ export const threadSchema = z.object({
   titleFallback: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
+  sourceThreadId: z.string().nullable(),
+  originKind: threadOriginKindSchema.nullable(),
+  /** @deprecated Use originKind. */
   childOrigin: threadChildOriginSchema.nullable(),
   archivedAt: z.number().nullable(),
   pinnedAt: z.number().nullable(),

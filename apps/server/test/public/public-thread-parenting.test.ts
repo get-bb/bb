@@ -178,4 +178,53 @@ describe("public thread parenting routes", () => {
       expect(archivedChildThread?.parentThreadId).toBe(parentThread.id);
     });
   });
+
+  it("archives source-derived side chats when archiving a source thread and children", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        parentThreadId: sourceThread.id,
+        projectId: project.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "side-chat",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${sourceThread.id}/archive-all`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      const archiveResult = threadArchiveAllResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(archiveResult.archivedThreadIds).toEqual([
+        childThread.id,
+        sideChatThread.id,
+        sourceThread.id,
+      ]);
+      expect(getThread(harness.db, sourceThread.id)?.archivedAt).not.toBeNull();
+      expect(getThread(harness.db, childThread.id)?.archivedAt).not.toBeNull();
+      const archivedSideChat = getThread(harness.db, sideChatThread.id);
+      expect(archivedSideChat?.archivedAt).not.toBeNull();
+      expect(archivedSideChat?.sourceThreadId).toBe(sourceThread.id);
+      expect(archivedSideChat?.parentThreadId).toBeNull();
+    });
+  });
 });

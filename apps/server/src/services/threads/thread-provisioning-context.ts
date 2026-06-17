@@ -68,10 +68,10 @@ export const threadProvisionCommonPayloadSchema = z.object({
   clientRequestId: clientTurnRequestIdSchema,
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   execution: resolvedThreadExecutionOptionsSchema,
-  // Non-null ⇒ provision this child by cloning the parent's provider session at
+  // Non-null ⇒ provision this thread by cloning the source provider session at
   // its branch point (native fork) instead of starting a fresh session. null ⇒
   // not a fork. Only populated for forkable forks; the server gates on
-  // childOrigin/provider capability/parent session/host at create time.
+  // originKind/provider capability/source session/host at create time.
   fork: threadForkDescriptorSchema.nullable().default(null),
   input: z.array(promptInputSchema),
   titleProvided: z.boolean(),

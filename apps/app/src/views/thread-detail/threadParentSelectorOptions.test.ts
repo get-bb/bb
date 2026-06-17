@@ -27,6 +27,8 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     pinSortKey: null,
     projectId: "proj_1",
     providerId: "codex",
+    originKind: null,
+    sourceThreadId: null,
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

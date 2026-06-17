@@ -56,6 +56,14 @@ describe("thread-activity", () => {
     expect(
       isBusyThread({
         runtime: {
+          displayStatus: "provisioning",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isBusyThread({
+        runtime: {
           displayStatus: "waiting-for-host",
           hostReconnectGraceExpiresAt: null,
         },
