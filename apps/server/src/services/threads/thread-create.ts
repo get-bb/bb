@@ -449,6 +449,14 @@ export async function createThreadFromRequest(
         sourceThreadId,
       })
     : null;
+  if (originKind !== null && sourceThread !== null) {
+    // Forks and side chats are not hierarchy children, but they still consume
+    // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
+    assertValidParentThread(deps, {
+      parentThreadId: sourceThread.id,
+      projectId: requestInput.projectId,
+    });
+  }
   if (originKind !== null && sourceThread === null) {
     throw new ApiError(
       400,

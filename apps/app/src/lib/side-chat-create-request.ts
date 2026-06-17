@@ -1,4 +1,9 @@
-import type { Environment, PermissionMode } from "@bb/domain";
+import type {
+  Environment,
+  PermissionMode,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
@@ -73,6 +78,8 @@ interface BuildSideChatBaseRequestArgs {
   model: string;
   projectId: string;
   providerId: string;
+  reasoningLevel: ReasoningLevel;
+  serviceTier: ServiceTier | undefined;
   sourceEnvironment: Environment | null;
   sourceThreadId: string;
   title: string;
@@ -82,6 +89,8 @@ function buildSideChatBaseRequest({
   model,
   projectId,
   providerId,
+  reasoningLevel,
+  serviceTier,
   sourceEnvironment,
   sourceThreadId,
   title,
@@ -90,6 +99,8 @@ function buildSideChatBaseRequest({
     projectId,
     providerId,
     model,
+    reasoningLevel,
+    ...(serviceTier ? { serviceTier } : {}),
     permissionMode: SIDE_CHAT_PERMISSION_MODE,
     title,
     environment: resolveChildThreadEnvironment(sourceEnvironment),

@@ -394,6 +394,21 @@ export function SideChatTabContent({
     childThreadId === null &&
     defaultExecutionOptions !== undefined &&
     sourceEnvironmentReady;
+  const sideChatExecutionRequestFields = useMemo(
+    () => ({
+      ...(defaultExecutionOptions
+        ? {
+            model: defaultExecutionOptions.model,
+            reasoningLevel: defaultExecutionOptions.reasoningLevel,
+            ...(defaultExecutionOptions.serviceTier
+              ? { serviceTier: defaultExecutionOptions.serviceTier }
+              : {}),
+          }
+        : {}),
+      permissionMode: SIDE_CHAT_PERMISSION_MODE,
+    }),
+    [defaultExecutionOptions],
+  );
   const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
     enabled: childThreadId !== null,
   });
@@ -462,6 +477,8 @@ export function SideChatTabContent({
       sourceEnvironment,
       providerId: sourceThread.providerId,
       model: executionOptions.model,
+      reasoningLevel: executionOptions.reasoningLevel,
+      serviceTier: executionOptions.serviceTier,
       title: tab.title,
     });
     const promise = createThread
@@ -529,16 +546,14 @@ export function SideChatTabContent({
         await createQueuedMessage.mutateAsync({
           id: targetThreadId,
           input,
-          permissionMode: SIDE_CHAT_PERMISSION_MODE,
-          ...(defaultExecutionOptions?.model
-            ? { model: defaultExecutionOptions.model }
-            : {}),
+          ...sideChatExecutionRequestFields,
         });
       } else {
         await sendThreadMessage.mutateAsync({
           id: targetThreadId,
           input,
           mode: "queue-if-active",
+          ...sideChatExecutionRequestFields,
         });
       }
       hasAcceptedUserMessageRef.current = true;
@@ -546,10 +561,10 @@ export function SideChatTabContent({
     [
       childThreadQuery.data?.runtime.displayStatus,
       createQueuedMessage,
-      defaultExecutionOptions?.model,
       ensureSideChatThread,
       replyReference,
       sendThreadMessage,
+      sideChatExecutionRequestFields,
     ],
   );
 

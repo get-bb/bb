@@ -138,6 +138,8 @@ describe("buildSideChatPreloadRequest", () => {
       sourceEnvironment: makeEnvironment(),
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       title: "Why this approach?",
     });
 
@@ -145,6 +147,8 @@ describe("buildSideChatPreloadRequest", () => {
       projectId: "proj_test",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       permissionMode: "readonly",
       sourceThreadId: "thr_main",
       originKind: "side-chat",
@@ -168,6 +172,8 @@ describe("buildSideChatPreloadRequest", () => {
       sourceEnvironment: makeEnvironment(),
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       title: "Why this approach?",
     });
 
@@ -175,6 +181,8 @@ describe("buildSideChatPreloadRequest", () => {
       projectId: "proj_test",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       permissionMode: "readonly",
       sourceThreadId: "thr_main",
       originKind: "side-chat",
@@ -191,6 +199,8 @@ describe("buildSideChatPreloadRequest", () => {
       }),
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       title: "Why this approach?",
     });
 
@@ -214,6 +224,8 @@ describe("buildSideChatPreloadRequest", () => {
       sourceEnvironment: makeEnvironment({ branchName: null }),
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       title: "Why this approach?",
     });
 
@@ -233,6 +245,8 @@ describe("buildSideChatPreloadRequest", () => {
       sourceEnvironment: null,
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: undefined,
       title: "Why this approach?",
     });
 
@@ -256,6 +270,8 @@ describe("buildSideChatPreloadRequest", () => {
       }),
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       title: "Why this approach?",
     });
 

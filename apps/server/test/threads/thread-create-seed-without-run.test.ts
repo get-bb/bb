@@ -187,6 +187,69 @@ describe("canThreadSpawnChild", () => {
       expect(canThreadSpawnChild(harness.deps, { thread: level4 })).toBe(false);
     });
   });
+
+  it("applies the depth cap to source-derived side chats", async () => {
+    await withTestHarness(async (harness) => {
+      const path = "/tmp/source-derived-depth-cap-project";
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-source-derived-depth-cap",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+      });
+
+      const root = seedThread(harness.deps, { projectId: project.id });
+      const level2 = seedThread(harness.deps, {
+        projectId: project.id,
+        parentThreadId: root.id,
+      });
+      const level3 = seedThread(harness.deps, {
+        projectId: project.id,
+        parentThreadId: level2.id,
+      });
+      const level4 = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: level3.id,
+      });
+
+      let caught: ApiError | null = null;
+      try {
+        await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Side chat from a max-depth source"),
+          origin: "app",
+          originKind: "side-chat",
+          projectId: project.id,
+          providerId: "codex",
+          sourceThreadId: level4.id,
+          startedOnBehalfOf: null,
+        });
+      } catch (error) {
+        if (!(error instanceof ApiError)) {
+          throw error;
+        }
+        caught = error;
+      }
+
+      expect(caught?.status).toBe(400);
+      expect(caught?.body.code).toBe("parent_thread_invalid");
+      expect(caught?.body.details).toEqual({
+        reason: "too_deep",
+        subject: "parent",
+      });
+    });
+  });
 });
 
 describe("thread creation child-thread boundary validation", () => {

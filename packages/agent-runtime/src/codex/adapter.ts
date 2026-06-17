@@ -98,6 +98,7 @@ type BbThreadForkParams = {
   config?: { [key in string]?: JsonValue } | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
+  dynamicTools?: DynamicToolSpec[];
   persistExtendedHistory?: boolean;
 };
 
@@ -725,7 +726,7 @@ function buildCodexConfig(
 
 type CodexDynamicToolCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 function toCodexDynamicTools(
@@ -1425,6 +1426,7 @@ export function createCodexProviderAdapter(
           };
         }
         case "thread/fork": {
+          const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
           const params: BbThreadForkParams = {
             threadId: command.sourceProviderThreadId,
@@ -1436,6 +1438,9 @@ export function createCodexProviderAdapter(
             serviceTier: toCodexServiceTier(command.options?.serviceTier),
             config: preparedGitRoots.config ?? undefined,
             persistExtendedHistory: false,
+            ...(dynamicTools && dynamicTools.length > 0
+              ? { dynamicTools }
+              : {}),
           };
           return {
             kind: "request",

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { events, getThread } from "@bb/db";
-import { threadScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import {
   hostDaemonEventBatchResponseSchema,
   type HostDaemonEventEnvelope,
@@ -134,6 +134,79 @@ describe("internal event append ownership", () => {
         },
         {
           sequence: 5,
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns original event indexes after dropping orphan turn snapshots", async () => {
+    const { harness, session, thread } = await setupEventRoute();
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/tokenUsage/updated",
+              threadId: thread.id,
+              scope: turnScope("turn-from-source-thread"),
+              providerThreadId: "provider-fork-session",
+              tokenUsage: {
+                total: {
+                  totalTokens: 42,
+                  inputTokens: 20,
+                  cachedInputTokens: 5,
+                  outputTokens: 12,
+                  reasoningOutputTokens: 5,
+                },
+                last: {
+                  totalTokens: 42,
+                  inputTokens: 20,
+                  cachedInputTokens: 5,
+                  outputTokens: 12,
+                  reasoningOutputTokens: 5,
+                },
+                modelContextWindow: 200_000,
+              },
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/error",
+              threadId: thread.id,
+              scope: threadScope(),
+              message: "accepted after skipped",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        acceptedEvents: [
+          {
+            eventIndex: 1,
+            threadId: thread.id,
+            sequence: 1,
+          },
+        ],
+        rejectedEvents: [],
+      });
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toMatchObject([
+        {
+          sequence: 1,
+          type: "system/error",
         },
       ]);
     } finally {

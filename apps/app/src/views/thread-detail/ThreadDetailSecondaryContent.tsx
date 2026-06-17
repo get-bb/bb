@@ -137,6 +137,8 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.fileTabContent === next.fileTabContent &&
   previous.browserDeck === next.browserDeck &&
   previous.isBrowserTabActive === next.isBrowserTabActive &&
+  previous.sideChatDeck === next.sideChatDeck &&
+  previous.isSideChatTabActive === next.isSideChatTabActive &&
   previous.isOpen === next.isOpen &&
   previous.showGitDiffTab === next.showGitDiffTab &&
   previous.onPanelFocus === next.onPanelFocus &&
@@ -153,11 +155,15 @@ const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   next,
 ) =>
   previous.activeThinking === next.activeThinking &&
+  previous.canSpawnChild === next.canSpawnChild &&
+  previous.threadChildOrigin === next.threadChildOrigin &&
   previous.hasOlderTimelineRows === next.hasOlderTimelineRows &&
   previous.hostConnectionNotice === next.hostConnectionNotice &&
   previous.isLoadingOlderTimelineRows === next.isLoadingOlderTimelineRows &&
   previous.isThreadTimelinePending === next.isThreadTimelinePending &&
   previous.timelineError === next.timelineError &&
+  previous.onForkMessage === next.onForkMessage &&
+  previous.onSideChatMessage === next.onSideChatMessage &&
   previous.onLoadOlderRows === next.onLoadOlderRows &&
   previous.onSelectionAddToChat === next.onSelectionAddToChat &&
   previous.onSelectionReplyInSideChat === next.onSelectionReplyInSideChat &&
@@ -165,6 +171,7 @@ const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   previous.onOpenLocalFileLink === next.onOpenLocalFileLink &&
   previous.onTitleAction === next.onTitleAction &&
   previous.projectId === next.projectId &&
+  previous.resolveMentionLink === next.resolveMentionLink &&
   previous.showOngoingIndicator === next.showOngoingIndicator &&
   previous.ongoingIndicatorLabel === next.ongoingIndicatorLabel &&
   previous.isStopping === next.isStopping &&

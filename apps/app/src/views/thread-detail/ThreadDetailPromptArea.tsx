@@ -981,6 +981,7 @@ export function ThreadDetailPromptArea({
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
+      runtimeDisplayStatus,
       shouldHideComposer,
       submitMode.kind,
       thread.archivedAt,

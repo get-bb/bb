@@ -122,7 +122,7 @@ const sideChatFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("side-chat"),
-    sourceMessageText: z.string().min(1),
+    sourceMessageText: z.string(),
     threadId: z.string().min(1).nullable(),
     title: z.string().min(1),
   })

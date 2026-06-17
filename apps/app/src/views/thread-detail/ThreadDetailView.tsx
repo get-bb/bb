@@ -696,23 +696,24 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // Same predicate `buildForkThreadRequest` gates on, so the button and the
   // request stay in lockstep.
   const isForkAvailable = isThreadForkable(environment ?? null);
+  const canUseSideChatPanel = props.surface !== "popout";
   const handleSideChatMessage =
     useCallback<ThreadTimelineSideChatMessageHandler>(
       (target) => {
-        if (!threadId) return;
+        if (!canUseSideChatPanel || !threadId) return;
         openSideChat({
           sourceThreadId: threadId,
           sourceMessageText: target.messageText,
         });
       },
-      [openSideChat, threadId],
+      [canUseSideChatPanel, openSideChat, threadId],
     );
   // A side chat started from the new-tab page has no anchor message, so it forks
   // from the thread's tip (empty source text ⇒ no "replying to" reference).
   const handleStartSideChat = useCallback(() => {
-    if (!threadId) return;
+    if (!canUseSideChatPanel || !threadId) return;
     openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
-  }, [openSideChat, threadId]);
+  }, [canUseSideChatPanel, openSideChat, threadId]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one
   // localStorage-backed draft — the quoted text is appended to the draft as a
@@ -1207,8 +1208,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       props.surface,
       sourceThread,
       thread,
-      thread?.parentThreadId,
-      thread?.projectId,
       threadOriginKind,
       threadSourceThreadId,
     ]);
@@ -1772,7 +1771,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
-      onStartSideChat={handleStartSideChat}
+      onStartSideChat={canUseSideChatPanel ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
@@ -1909,9 +1908,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           isThreadTimelinePending,
           timelineError: Boolean(timelineError),
           onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-          onSideChatMessage: handleSideChatMessage,
+          onSideChatMessage: canUseSideChatPanel
+            ? handleSideChatMessage
+            : undefined,
           onSelectionAddToChat: handleSelectionAddToChat,
-          onSelectionReplyInSideChat: handleSelectionReplyInSideChat,
+          onSelectionReplyInSideChat: canUseSideChatPanel
+            ? handleSelectionReplyInSideChat
+            : undefined,
           onLoadOlderRows: loadOlderTimelineRows,
           onOpenLink: handleOpenTimelineLink,
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,

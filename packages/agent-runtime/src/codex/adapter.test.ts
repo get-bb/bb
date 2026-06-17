@@ -1564,6 +1564,51 @@ describe("codex provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/fork forwards dynamic tools", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "codex-parent-thread",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+      dynamicTools: [
+        {
+          name: "bb_side_chat_context",
+          description: "Read side chat context",
+          inputSchema: {
+            type: "object",
+            properties: {
+              threadId: { type: "string" },
+            },
+            required: ["threadId"],
+          },
+        },
+      ],
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        threadId: "codex-parent-thread",
+        dynamicTools: [
+          {
+            name: "bb_side_chat_context",
+            description: "Read side chat context",
+            inputSchema: {
+              type: "object",
+              properties: {
+                threadId: { type: "string" },
+              },
+              required: ["threadId"],
+            },
+          },
+        ],
+      },
+    });
+  });
+
   it("buildCommand rejects max reasoning level because Codex does not support it", () => {
     const adapter = createCodexProviderAdapter();
 
