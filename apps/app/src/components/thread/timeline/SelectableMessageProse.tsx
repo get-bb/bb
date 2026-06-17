@@ -45,6 +45,51 @@ export function isSelectionWithinNode(
   );
 }
 
+function firstClientRect(range: Range): DOMRect | null {
+  const rects = range.getClientRects();
+  for (let index = 0; index < rects.length; index += 1) {
+    const rect = rects.item(index);
+    if (rect === null) {
+      continue;
+    }
+    if (rect.width > 0 || rect.height > 0) {
+      return rect;
+    }
+  }
+  const rect = range.getBoundingClientRect();
+  return rect.width > 0 || rect.height > 0 ? rect : null;
+}
+
+function readRangeIntersectionWithinNode(
+  node: HTMLElement,
+  range: Range,
+): MessageProseSelection | null {
+  if (!range.intersectsNode(node)) {
+    return null;
+  }
+
+  const nodeRange = document.createRange();
+  nodeRange.selectNodeContents(node);
+  const intersection = range.cloneRange();
+
+  if (intersection.compareBoundaryPoints(Range.START_TO_START, nodeRange) < 0) {
+    intersection.setStart(nodeRange.startContainer, nodeRange.startOffset);
+  }
+  if (intersection.compareBoundaryPoints(Range.END_TO_END, nodeRange) > 0) {
+    intersection.setEnd(nodeRange.endContainer, nodeRange.endOffset);
+  }
+
+  const text = intersection.toString().trim();
+  const rect = firstClientRect(intersection);
+  intersection.detach();
+  nodeRange.detach();
+
+  if (text.length === 0 || rect === null) {
+    return null;
+  }
+  return { text, rect };
+}
+
 function readSelectionWithinNode(
   node: HTMLElement | null,
 ): MessageProseSelection | null {
@@ -52,20 +97,21 @@ function readSelectionWithinNode(
 
   const selection = window.getSelection();
   if (selection === null || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
 
   const accepted = isSelectionWithinNode(node, {
     isCollapsed: selection.isCollapsed,
     anchorNode: selection.anchorNode,
     focusNode: selection.focusNode,
-    commonAncestorContainer: selection.getRangeAt(0).commonAncestorContainer,
+    commonAncestorContainer: range.commonAncestorContainer,
   });
-  if (!accepted) return null;
+  if (accepted) {
+    const text = selection.toString().trim();
+    const rect = firstClientRect(range);
+    return text.length > 0 && rect !== null ? { text, rect } : null;
+  }
 
-  const text = selection.toString().trim();
-  if (text.length === 0) return null;
-
-  const rect = selection.getRangeAt(0).getBoundingClientRect();
-  return { text, rect };
+  return readRangeIntersectionWithinNode(node, range);
 }
 
 /**

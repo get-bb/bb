@@ -205,6 +205,24 @@ function hasSameStringList(
   return left.every((sectionId, index) => sectionId === right[index]);
 }
 
+function removeCollapsedIds<T extends string>(
+  current: T[],
+  idsToRemove: ReadonlySet<string>,
+): T[] {
+  if (idsToRemove.size === 0) {
+    return current;
+  }
+  let removed = false;
+  const next = current.filter((id) => {
+    if (!idsToRemove.has(id)) {
+      return true;
+    }
+    removed = true;
+    return false;
+  });
+  return removed ? next : current;
+}
+
 function isSidebarSectionId(value: string): value is SidebarSectionId {
   return value === "pinned" || value === "projects" || value === "threads";
 }
@@ -589,6 +607,13 @@ function ProjectListComponent({
     sidebarThreads.push(...sidebarNavigation.personalProject.threads);
     return sidebarThreads;
   }, [sidebarNavigation]);
+  const threadById = useMemo(() => {
+    const map = new Map<string, ThreadListEntry>();
+    for (const thread of threads) {
+      map.set(thread.id, thread);
+    }
+    return map;
+  }, [threads]);
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -780,6 +805,75 @@ function ProjectListComponent({
       }),
     [hasPinnedSection, sidebarSectionOrder],
   );
+  useEffect(() => {
+    if (!selectedThreadId) {
+      return;
+    }
+
+    const selectedThread = threadById.get(selectedThreadId);
+    if (!selectedThread) {
+      return;
+    }
+    if (
+      (selectedThread.originKind ?? selectedThread.childOrigin) === "side-chat"
+    ) {
+      return;
+    }
+
+    const threadIdsToExpand = new Set<string>();
+    const environmentIdsToExpand = new Set<string>();
+    let currentThread: ThreadListEntry | undefined = selectedThread;
+    let remainingHops = threadById.size;
+    while (currentThread && remainingHops > 0) {
+      if (currentThread.environmentId !== null) {
+        environmentIdsToExpand.add(currentThread.environmentId);
+      }
+      const parentThreadId = currentThread.parentThreadId;
+      if (parentThreadId === null) {
+        break;
+      }
+      const parentThread = threadById.get(parentThreadId);
+      if (!parentThread) {
+        break;
+      }
+      threadIdsToExpand.add(parentThread.id);
+      currentThread = parentThread;
+      remainingHops -= 1;
+    }
+
+    setCollapsedThreadIdList((current) =>
+      removeCollapsedIds(current, threadIdsToExpand),
+    );
+    setCollapsedEnvironmentIdList((current) =>
+      removeCollapsedIds(current, environmentIdsToExpand),
+    );
+
+    if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
+      return;
+    }
+
+    if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
+      setCollapsedSidebarSectionIdList((current) =>
+        removeCollapsedIds(current, new Set(["threads"])),
+      );
+      return;
+    }
+
+    setCollapsedProjectIdList((current) =>
+      removeCollapsedIds(current, new Set([selectedThread.projectId])),
+    );
+    setCollapsedSidebarSectionIdList((current) =>
+      removeCollapsedIds(current, new Set(["projects"])),
+    );
+  }, [
+    pinnedSidebarState.effectivePinnedThreadIds,
+    selectedThreadId,
+    setCollapsedEnvironmentIdList,
+    setCollapsedProjectIdList,
+    setCollapsedSidebarSectionIdList,
+    setCollapsedThreadIdList,
+    threadById,
+  ]);
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
 

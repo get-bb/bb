@@ -442,14 +442,17 @@ export function ThreadDetailPromptArea({
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
-    if (submittedInput.length === 0 || isDefaultExecutionOptionsLoading) {
+    const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
+    if (
+      submittedInput.length === 0 ||
+      (!isQueuingMessage && isDefaultExecutionOptionsLoading)
+    ) {
       return;
     }
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setAttachmentError(null);
 
-    const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
     try {
       if (isQueuingMessage) {
         const request = buildCreateQueuedFollowUpRequest({
@@ -941,6 +944,9 @@ export function ThreadDetailPromptArea({
             queuedMessages={queuedMessages}
             sendDisabled={
               !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+              runtimeDisplayStatus === "provisioning" ||
+              runtimeDisplayStatus === "starting" ||
+              runtimeDisplayStatus === "waiting-for-host" ||
               isFollowUpSubmitting ||
               isQueueMutationPending
             }
