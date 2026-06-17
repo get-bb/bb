@@ -1031,6 +1031,7 @@ export function ThreadDetailPromptArea({
       isWorkflowExpanded,
       parentThreadSection,
       childThreadsSection,
+      pullRequestSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
