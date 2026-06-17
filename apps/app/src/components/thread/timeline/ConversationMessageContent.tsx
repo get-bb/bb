@@ -124,6 +124,7 @@ export interface ConversationMessageContentAssistantProps
    */
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   turnRequest: null;
+  workspaceRootPath?: string;
 }
 
 /**
@@ -165,6 +166,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   text: string;
+  workspaceRootPath?: string;
 }
 
 interface CollapsibleMessageTextProps {
@@ -410,6 +412,7 @@ function AssistantConversationMessage({
   onOpenLocalFileLink,
   projectId,
   text,
+  workspaceRootPath,
 }: AssistantConversationMessageProps) {
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
     if (!onOpenLink && !onOpenLocalFileLink) {
@@ -427,9 +430,15 @@ function AssistantConversationMessage({
         },
         onOpenLink: onOpenLocalFileLink,
       };
+      if (workspaceRootPath !== undefined) {
+        routing.localFile.relativeLinks = {
+          baseDir: workspaceRootPath,
+          rootPath: workspaceRootPath,
+        };
+      }
     }
     return routing;
-  }, [onOpenLink, onOpenLocalFileLink]);
+  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
 
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
@@ -528,6 +537,7 @@ export function ConversationMessageContent(
       text={text}
       threadId={props.threadId}
       turnId={props.turnId}
+      workspaceRootPath={props.workspaceRootPath}
     />
   );
 }

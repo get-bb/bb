@@ -776,6 +776,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
+    workspaceRootPath,
   } = useTimelineRendererStaticContext();
   if (row.role === "user") {
     const senderThreadMetadata =
@@ -850,6 +851,7 @@ function ConversationRow({ row }: ConversationRowProps) {
       threadId={row.threadId}
       turnId={row.turnId}
       turnRequest={row.turnRequest}
+      workspaceRootPath={workspaceRootPath}
     />
   );
 }
@@ -1017,6 +1019,7 @@ function TimelineExpandableBody({
                   threadId={row.threadId}
                   turnId={row.turnId}
                   turnRequest={null}
+                  workspaceRootPath={workspaceRootPath}
                 />
               ) : null}
             </div>
