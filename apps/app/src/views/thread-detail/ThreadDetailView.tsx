@@ -1779,6 +1779,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
+      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}

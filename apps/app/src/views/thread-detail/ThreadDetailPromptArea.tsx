@@ -87,6 +87,7 @@ interface ThreadDetailPromptAreaProps {
   composerQueriesStaleTime?: number;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
+  environmentCompactLabel?: string;
   /**
    * Set when the thread's environment is gone (`destroying` or `destroyed`).
    * Collapses the composer and shows a read-only context-banner row — the
@@ -158,6 +159,7 @@ export function ThreadDetailPromptArea({
   composerQueriesStaleTime,
   contextWindowUsage,
   environmentCheckout,
+  environmentCompactLabel,
   environmentGoneStatus,
   environmentIcon,
   environmentLabel,
@@ -898,6 +900,7 @@ export function ThreadDetailPromptArea({
       environmentLabel ? (
         <ThreadEnvironmentSummary
           environmentLabel={environmentLabel}
+          environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
           environmentCheckout={environmentCheckout}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
@@ -905,6 +908,7 @@ export function ThreadDetailPromptArea({
       ) : null,
     [
       environmentCheckout,
+      environmentCompactLabel,
       environmentIcon,
       environmentLabel,
       onCreateNewThreadInWorktree,

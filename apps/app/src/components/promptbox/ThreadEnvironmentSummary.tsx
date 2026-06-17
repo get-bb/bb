@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
@@ -8,8 +9,10 @@ const CHECKOUT_CHIP_BASE_CLASS_NAME =
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} transition-colors hover:bg-state-hover hover:text-foreground`;
 
 export interface ThreadEnvironmentSummaryProps {
-  /** Mode label (e.g. "Working locally" / "Worktree"). Never truncates. */
+  /** Full mode label used for the title (e.g. "Working locally" / "Worktree"). */
   environmentLabel?: string;
+  /** Visible label used in the promptbox footer. */
+  environmentCompactLabel?: string;
   /** Icon for the environment (e.g. monitor / git branch). */
   environmentIcon?: IconName;
   /** Live checkout label for this environment. Branch checkouts are copyable. */
@@ -26,7 +29,7 @@ export interface ThreadEnvironmentSummaryProps {
  * Read-only — environment editing happens elsewhere.
  *
  * Responsive behavior:
- * - The environment label renders as an icon-only affordance.
+ * - The visible environment label always uses the compact display string.
  * - The summary can shrink inside the follow-up strip so permission/context
  *   controls stay pinned and text truncates instead of wrapping.
  * - Branch chip hides only in very narrow promptbox shells and truncates
@@ -34,6 +37,7 @@ export interface ThreadEnvironmentSummaryProps {
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentLabel,
+  environmentCompactLabel,
   environmentIcon,
   environmentCheckout,
   onCreateNewThreadInWorktree,
@@ -43,19 +47,23 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   }
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
+  const visibleEnvironmentLabel = environmentCompactLabel ?? environmentLabel;
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
-      {environmentIcon ? (
-        <span
-          aria-label={`Environment: ${environmentLabel}`}
-          title={`Environment: ${environmentLabel}`}
-          className="inline-flex h-6 shrink-0 items-center justify-center px-1 text-muted-foreground"
-          role="img"
-        >
-          <Icon name={environmentIcon} className="size-4 shrink-0" />
-        </span>
-      ) : null}
+      <OptionDisplay
+        label="Environment"
+        value={visibleEnvironmentLabel}
+        compactValue={visibleEnvironmentLabel}
+        leading={
+          environmentIcon ? (
+            <Icon name={environmentIcon} className="size-4 shrink-0" />
+          ) : null
+        }
+        className="h-6 max-w-[10rem] shrink-0"
+        title={`Environment: ${environmentLabel}`}
+        muted
+      />
       {environmentCheckout && checkoutCopyValue !== null ? (
         <button
           type="button"
