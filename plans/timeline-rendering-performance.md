@@ -373,6 +373,13 @@ Implemented W2–W5 this PR (no WS-message change needed — the client carries
 `maxSeq` from the response, so the delta works over the existing fetch path).
 W1 remains, tracked in §13.
 
+Drive-by fix in the same PR: removed a `staleTime: Infinity` on the live timeline
+query (added by `cb78596611`) that silently defeated `refetchOnMount`, leaving a
+revisited thread frozen on stale rows until the next live event. It also never
+reduced streaming rerenders (those are invalidation-driven). The query now
+inherits the app-wide 2s `staleTime`; safe to do now that a revisit/focus refetch
+is a cheap delta (W4) or cached/no-op response (W3) rather than a full rebuild.
+
 ---
 
 ## 10. Before / after (concrete numbers)
