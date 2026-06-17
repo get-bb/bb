@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDebounceValue } from "usehooks-ts";
-import { commandTriggerForProvider } from "@/components/promptbox/mentions/command-trigger";
+import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
@@ -13,6 +13,7 @@ const COMMAND_SUGGESTION_PAGE_SIZE = 50;
 export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
+  skillsTrigger: PromptMentionCommandTrigger | null;
   /**
    * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
    * a reused environment in the new-thread composer), or `null` to fall back to
@@ -25,7 +26,7 @@ export interface UseCommandSuggestionsArgs {
 
 export interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
-  trigger: "/" | "$" | null;
+  trigger: PromptMentionCommandTrigger | null;
   suggestions: ProviderCommandSuggestion[];
   /**
    * `true` only before the first result lands (and not yet placeholder-backed).
@@ -41,23 +42,24 @@ export interface UseCommandSuggestionsResult {
 
 /**
  * Project+provider-scoped command typeahead data source, parallel to
- * `usePromptMentions`. Resolves the provider's trigger char and, when present,
- * fetches the discoverable skills/commands for the project (debounced like path
- * suggestions). Serves both the existing-thread follow-up composer and the
- * new-thread composer. The hook is inert — never fetches, returns an empty list
- * — when there is no project, no command trigger for the provider, or no active
+ * `usePromptMentions`. The selected provider's `skills` composer action owns
+ * the trigger char; when present, this hook fetches the discoverable
+ * skills/commands for the project (debounced like path suggestions). Serves
+ * both the existing-thread follow-up composer and the new-thread composer. The
+ * hook is inert — never fetches, returns an empty list — when there is no
+ * project, no provider, no command trigger for the provider, or no active
  * command query. Unlike mentions, it is enabled even when `query` is empty —
  * `/`/`$` show the full available list.
  */
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,
 ): UseCommandSuggestionsResult {
-  const trigger =
-    args.providerId !== undefined
-      ? commandTriggerForProvider(args.providerId)
-      : null;
+  const trigger = args.skillsTrigger;
   const isActive =
-    args.projectId !== undefined && trigger !== null && args.query !== null;
+    args.projectId !== undefined &&
+    args.providerId !== undefined &&
+    trigger !== null &&
+    args.query !== null;
 
   const [debouncedNonNullQuery] = useDebounceValue(
     args.query,
@@ -75,6 +77,7 @@ export function useCommandSuggestions(
     args.environmentId,
     args.projectId,
     args.providerId,
+    trigger,
     debouncedTrimmedQuery,
   ]);
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -273,12 +274,6 @@ export function ThreadDetailPromptArea({
   // Called unconditionally (hooks rules); inert when the provider has no
   // command trigger.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const commandSuggestions = useCommandSuggestions({
-    projectId: thread.projectId,
-    providerId: thread.providerId,
-    environmentId: thread.environmentId,
-    query: commandQuery,
-  });
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
@@ -295,6 +290,7 @@ export function ThreadDetailPromptArea({
     providerOptions,
     hasMultipleProviders,
     selectedProviderDisplayName,
+    selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
     serviceTier,
@@ -325,6 +321,21 @@ export function ThreadDetailPromptArea({
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
     initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
+  });
+  const providerPromptActions = useMemo(
+    () => buildProviderPromptActionProps(selectedProviderComposerActions),
+    [selectedProviderComposerActions],
+  );
+  const providerPromptActionProps = useMemo(
+    () => ({ promptActions: providerPromptActions.promptActions }),
+    [providerPromptActions.promptActions],
+  );
+  const commandSuggestions = useCommandSuggestions({
+    projectId: thread.projectId,
+    providerId: thread.providerId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
+    environmentId: thread.environmentId,
+    query: commandQuery,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
   const isStopRequested =
@@ -1031,6 +1042,7 @@ export function ThreadDetailPromptArea({
       execution={executionConfig}
       permission={permissionConfig}
       typeahead={typeaheadConfig}
+      {...providerPromptActionProps}
     />
   );
 }

@@ -1,6 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { AvailableModel, ProviderInfo, ReasoningLevel } from "@bb/domain";
+import type {
+  AvailableModel,
+  ProviderComposerAction,
+  ProviderInfo,
+  ReasoningLevel,
+} from "@bb/domain";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
@@ -20,11 +25,27 @@ const supportedPermissionModes = [
   "readonly",
 ] as const;
 
+const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
+  string,
+  readonly ProviderComposerAction[]
+> = {
+  codex: [
+    { kind: "skills", trigger: "$" },
+    { kind: "plan", insertText: "/plan " },
+    { kind: "goal", insertText: "/goal " },
+  ],
+  "claude-code": [{ kind: "skills", trigger: "/" }],
+  pi: [],
+};
+
 const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
   (provider) => ({
     id: provider.value,
     displayName: provider.label,
     available: true,
+    composerActions: [
+      ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
+    ],
     capabilities: {
       supportsArchive: true,
       supportsRename: true,

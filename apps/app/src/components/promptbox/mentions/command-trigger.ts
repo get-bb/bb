@@ -1,25 +1,54 @@
+import type {
+  PromptMentionCommandTrigger,
+  ProviderComposerAction,
+} from "@bb/domain";
+
+export interface ProviderPromptAction {
+  kind: "goal" | "plan" | "skills";
+  text: string;
+}
+
+export interface ProviderPromptActionProps {
+  skillsTrigger: PromptMentionCommandTrigger | null;
+  promptActions: readonly ProviderPromptAction[];
+}
+
 /**
- * The trigger character a provider uses to invoke skills/commands in the
- * composer, or `null` when the provider has no command surface.
- *
- * - `claude-code` → `/` (skills + legacy `.claude/commands`)
- * - `codex` → `$` (Codex skills; `/<skill>` is unrecognized by Codex)
- * - anything else (e.g. `pi`) → `null` (the command typeahead is inert)
- *
- * Takes a plain `string` because callers receive the provider id from thread
- * data / new-thread options where it is not yet narrowed to a known provider.
+ * Maps provider-owned composer metadata into the prompt action shape consumed
+ * by app hosts.
  */
-export function commandTriggerForProvider(
-  providerId: string,
-): "/" | "$" | null {
-  switch (providerId) {
-    case "claude-code":
-      return "/";
-    case "codex":
-      return "$";
-    default:
-      return null;
+export function buildProviderPromptActionProps(
+  composerActions: readonly ProviderComposerAction[],
+): ProviderPromptActionProps {
+  const promptActions: ProviderPromptAction[] = [];
+  let skillsTrigger: PromptMentionCommandTrigger | null = null;
+
+  for (const action of composerActions) {
+    switch (action.kind) {
+      case "skills":
+        skillsTrigger = action.trigger;
+        promptActions.push({
+          kind: action.kind,
+          text: action.trigger,
+        });
+        break;
+      case "goal":
+      case "plan":
+        promptActions.push({
+          kind: action.kind,
+          text: action.insertText,
+        });
+        break;
+    }
   }
+
+  return { skillsTrigger, promptActions };
+}
+
+export function commandTriggerForComposerActions(
+  composerActions: readonly ProviderComposerAction[],
+): PromptMentionCommandTrigger | null {
+  return buildProviderPromptActionProps(composerActions).skillsTrigger;
 }
 
 /**

@@ -27,6 +27,10 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         id: GLOBAL_PROVIDER_ID,
         displayName: "Global Provider",
         available: true,
+        composerActions: [
+          { kind: "skills", trigger: "$" },
+          { kind: "plan", insertText: "/plan " },
+        ],
         capabilities: {
           supportsArchive: true,
           supportsRename: true,
@@ -40,6 +44,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         id: PROJECT_PROVIDER_ID,
         displayName: "Project Provider",
         available: true,
+        composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsArchive: true,
           supportsRename: true,
@@ -148,6 +153,10 @@ describe("useThreadCreationOptions", () => {
         providerId: PROJECT_PROVIDER_ID,
       });
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedProviderComposerActions).toEqual([
+        { kind: "skills", trigger: "$" },
+        { kind: "plan", insertText: "/plan " },
+      ]);
       expect(result.current.selectedModel).toBe("global-model");
       expect(result.current.serviceTier).toBe("default");
       expect(result.current.reasoningLevel).toBe("high");

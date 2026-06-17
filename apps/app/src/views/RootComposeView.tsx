@@ -6,6 +6,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
@@ -311,6 +312,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     setSelectedProviderId,
     providerOptions,
     hasMultipleProviders,
+    selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
     serviceTier,
@@ -719,6 +721,14 @@ export function RootComposeView(props: RootComposeViewProps) {
   // projectless compose, the server resolves the personal project to user-home
   // command discovery with cwd: null.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const providerPromptActions = useMemo(
+    () => buildProviderPromptActionProps(selectedProviderComposerActions),
+    [selectedProviderComposerActions],
+  );
+  const providerPromptActionProps = useMemo(
+    () => ({ promptActions: providerPromptActions.promptActions }),
+    [providerPromptActions.promptActions],
+  );
   const reuseEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
@@ -726,6 +736,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
     environmentId: reuseEnvironmentId,
     query: commandQuery,
   });
@@ -993,6 +1004,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       history={historyConfig}
       typeahead={typeaheadConfig}
       attachments={attachmentsConfig}
+      {...providerPromptActionProps}
       modeConfig={{
         environment: environmentConfig,
         branch: branchConfig,
