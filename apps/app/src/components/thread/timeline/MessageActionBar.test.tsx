@@ -2,11 +2,28 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageActionBar } from "./MessageActionBar";
+import {
+  findMessageActionTooltipCollisionBoundary,
+  MessageActionBar,
+} from "./MessageActionBar";
 
 afterEach(cleanup);
 
 describe("MessageActionBar", () => {
+  it("uses the nearest thread window as the tooltip collision boundary", () => {
+    const threadWindow = document.createElement("div");
+    threadWindow.setAttribute("data-thread-window", "");
+    const sidePanel = document.createElement("aside");
+    const actionBar = document.createElement("div");
+    threadWindow.append(actionBar);
+    document.body.append(threadWindow, sidePanel);
+
+    expect(findMessageActionTooltipCollisionBoundary(actionBar)).toBe(
+      threadWindow,
+    );
+    expect(findMessageActionTooltipCollisionBoundary(sidePanel)).toBeNull();
+  });
+
   it("renders the send-to-main action and fires its handler when supplied", () => {
     const onSendToMain = vi.fn();
     render(

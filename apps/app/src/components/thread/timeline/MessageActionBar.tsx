@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -32,6 +33,12 @@ const ACTION_BUTTON_CLASS =
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 max-md:pointer-coarse:opacity-100";
 
+export function findMessageActionTooltipCollisionBoundary(
+  node: HTMLElement | null,
+): HTMLElement | null {
+  return node?.closest<HTMLElement>("[data-thread-window]") ?? null;
+}
+
 /**
  * Hover-revealed footer of per-message actions (copy, and — when wired —
  * fork / side chat). Renders an action only when it is meaningful: copy when
@@ -49,6 +56,13 @@ export function MessageActionBar({
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
+  const [collisionBoundary, setCollisionBoundary] =
+    useState<HTMLElement | null>(null);
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+  }, []);
+  const tooltipCollisionBoundary = collisionBoundary ?? undefined;
+
   if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
     return null;
   }
@@ -56,6 +70,7 @@ export function MessageActionBar({
   return (
     <TooltipProvider delayDuration={300}>
       <div
+        ref={containerRef}
         className={cn(
           "flex items-center gap-2",
           alignment === "end" ? "justify-end" : "justify-start",
@@ -75,7 +90,12 @@ export function MessageActionBar({
                 )}
               />
             </TooltipTrigger>
-            <TooltipContent>Copy message</TooltipContent>
+            <TooltipContent
+              collisionBoundary={tooltipCollisionBoundary}
+              collisionPadding={8}
+            >
+              Copy message
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onFork ? (
@@ -91,7 +111,12 @@ export function MessageActionBar({
                 <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Fork into new thread</TooltipContent>
+            <TooltipContent
+              collisionBoundary={tooltipCollisionBoundary}
+              collisionPadding={8}
+            >
+              Fork into new thread
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onSideChat ? (
@@ -107,7 +132,12 @@ export function MessageActionBar({
                 <Icon name="SideChat" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Reply in side chat</TooltipContent>
+            <TooltipContent
+              collisionBoundary={tooltipCollisionBoundary}
+              collisionPadding={8}
+            >
+              Reply in side chat
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onSendToMain ? (
@@ -122,7 +152,12 @@ export function MessageActionBar({
                 <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Send to main thread</TooltipContent>
+            <TooltipContent
+              collisionBoundary={tooltipCollisionBoundary}
+              collisionPadding={8}
+            >
+              Send to main thread
+            </TooltipContent>
           </Tooltip>
         ) : null}
       </div>
