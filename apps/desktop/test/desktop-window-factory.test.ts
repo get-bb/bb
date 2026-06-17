@@ -47,12 +47,23 @@ afterEach(async () => {
 
 class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public devToolsOpenCount = 0;
+  public id: number;
+  public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
+    [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
+
+  constructor(id: number) {
+    this.id = id;
+  }
 
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void {
     if (options.mode === "detach") {
       this.devToolsOpenCount += 1;
     }
+  }
+
+  send(channel: string, payload: unknown): void {
+    this.sentMessages.push({ channel, payload });
   }
 
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void {
@@ -63,7 +74,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 class FakeDesktopWindow implements DesktopBrowserWindow {
   public readonly loadedUrls: string[] = [];
   public readonly options: BrowserWindowConstructorOptions;
-  public readonly webContents = new FakeDesktopWindowWebContents();
+  public readonly webContents: FakeDesktopWindowWebContents;
   public focused = false;
   public fullScreen = false;
   public maximized = false;
@@ -76,6 +87,10 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   constructor(args: FakeDesktopWindowArgs) {
     this.options = args.options;
+    this.webContents = new FakeDesktopWindowWebContents(
+      FakeDesktopWindow.nextWebContentsId,
+    );
+    FakeDesktopWindow.nextWebContentsId += 1;
     this.bounds = {
       height: args.options.height ?? 0,
       width: args.options.width ?? 0,
@@ -83,6 +98,8 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
       y: args.options.y ?? 0,
     };
   }
+
+  private static nextWebContentsId = 1;
 
   emitClosed(): void {
     this.destroyed = true;
@@ -352,5 +369,116 @@ describe("desktop window factory", () => {
     expect(createdWindows).toHaveLength(1);
     expect(openedExternalUrls).toEqual(["https://example.com/from-markdown"]);
     expect(result).toEqual({ action: "deny" });
+  });
+
+  it("loads and focuses an existing first window when navigating by URL", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return "window-navigation-test";
+      },
+      displayWorkAreas: [
+        {
+          height: 900,
+          width: 1440,
+          x: 0,
+          y: 0,
+        },
+      ],
+      icon: undefined,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+    const initialUrl = "http://127.0.0.1:38886";
+    const threadUrl = "http://127.0.0.1:38886/projects/proj_a/threads/thr_a";
+
+    expect(await factory.loadUrlInFirstWindow({ url: threadUrl })).toBe(false);
+
+    await factory.createWindow({
+      initialUrl,
+      stateKey: null,
+    });
+    const browserWindow = createdWindows[0];
+    if (browserWindow === undefined) {
+      throw new Error("Expected desktop window");
+    }
+    browserWindow.minimized = true;
+
+    await expect(
+      factory.loadUrlInFirstWindow({ url: threadUrl }),
+    ).resolves.toBe(true);
+
+    expect(browserWindow.loadedUrls).toEqual([initialUrl, threadUrl]);
+    expect(browserWindow.minimized).toBe(false);
+    expect(browserWindow.focused).toBe(true);
+    expect(createdWindows).toHaveLength(1);
+  });
+
+  it("sends a renderer message to the first open window without reloading it", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return "window-send-test";
+      },
+      displayWorkAreas: [
+        {
+          height: 900,
+          width: 1440,
+          x: 0,
+          y: 0,
+        },
+      ],
+      icon: undefined,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+
+    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
+      false,
+    );
+
+    await factory.createWindow({
+      initialUrl: "http://127.0.0.1:38886",
+      stateKey: null,
+    });
+    const browserWindow = createdWindows[0];
+    if (browserWindow === undefined) {
+      throw new Error("Expected desktop window");
+    }
+
+    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
+      true,
+    );
+    expect(browserWindow.webContents.sentMessages).toEqual([
+      { channel: "bb:test", payload: { path: "/threads/thr_a" } },
+    ]);
+    expect(browserWindow.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
+    expect(browserWindow.focused).toBe(true);
   });
 });

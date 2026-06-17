@@ -2,7 +2,7 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopInfo,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 /**
  * A no-op {@link BbDesktopBrowserApi} for tests that build a full
@@ -42,6 +42,19 @@ export function createBbDesktopApi(
   return {
     ...info,
     browser,
+    popout: {
+      getCurrentThread() {
+        return Promise.resolve(null);
+      },
+      toggle() {},
+      setThread() {},
+      stateChanged() {},
+      openInMain() {},
+      setMouseEventsIgnored() {},
+      onThreadChanged() {
+        return () => {};
+      },
+    },
     async checkForUpdates() {
       return info;
     },

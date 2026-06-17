@@ -5,6 +5,17 @@ import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
 export const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
+/**
+ * Whether a thread is an agent-delegated child. Forks and side chats keep
+ * provenance in sourceThreadId/originKind instead of parentThreadId, so a
+ * non-null parent is now the hierarchy signal.
+ */
+export function isAgentDelegatedChildThread<
+  T extends Pick<Thread, "parentThreadId">,
+>(thread: T): thread is T & { parentThreadId: string } {
+  return thread.parentThreadId !== null;
+}
+
 export type ParentThread = Pick<
   Thread,
   | "archivedAt"
@@ -103,6 +114,25 @@ function resolveThreadSubtreeDepth(
   args.visitedThreadIds.delete(args.threadId);
 
   return maxChildDepth + 1;
+}
+
+export interface CanThreadSpawnChildArgs {
+  thread: ParentThread;
+}
+
+/**
+ * True when a fork/side-chat may be created under this thread, i.e. its current
+ * hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH so a new child would not
+ * exceed the cap. Server-derived policy so clients never recompute the cap.
+ */
+export function canThreadSpawnChild(
+  deps: Pick<AppDeps, "db">,
+  args: CanThreadSpawnChildArgs,
+): boolean {
+  const depth = resolveParentDepth(deps, {
+    parentThread: args.thread,
+  });
+  return depth < MAX_THREAD_HIERARCHY_DEPTH;
 }
 
 export function assertValidParentThread(

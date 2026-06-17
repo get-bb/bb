@@ -16,28 +16,19 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type {
-  AppSummary,
-  ProjectResponse,
-  WorkflowRunResponse,
-} from "@bb/server-contract";
+import type { ProjectResponse } from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
 } from "@bb/domain";
-import { useAppRoute } from "@/hooks/useAppRoute";
-import { useApps } from "@/hooks/queries/thread-queries";
+import { useRouteState } from "@/hooks/useRouteState";
 import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
 } from "@/hooks/queries/connection-aware-query-state";
-import {
-  stripProjectThreads,
-  useSidebarNavigation,
-} from "@/hooks/queries/project-queries";
-import { useExperiments } from "@/hooks/queries/system-queries";
-import { useRecentWorkflowRuns } from "@/hooks/queries/workflow-queries";
+import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
@@ -45,14 +36,12 @@ import {
   useLocalPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
-import {
-  useSetRootComposeProjectId,
-} from "@/lib/root-compose-selection";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
@@ -70,8 +59,6 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectThreadTree } from "./ProjectRow";
-import { SidebarAppsSection } from "./SidebarAppsSection";
-import { SidebarWorkflowsSection } from "./SidebarWorkflowsSection";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
   ProjectListProjects,
@@ -95,6 +82,7 @@ import {
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
@@ -121,7 +109,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenAutomations?: () => void;
 }
 
 interface ProjectListShellProps {
@@ -192,6 +179,7 @@ interface TopLevelSidebarSectionProps {
   children: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  actionsMobileAlways?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
@@ -219,25 +207,32 @@ function hasSameStringList(
   return left.every((sectionId, index) => sectionId === right[index]);
 }
 
+function removeCollapsedIds<T extends string>(
+  current: T[],
+  idsToRemove: ReadonlySet<string>,
+): T[] {
+  if (idsToRemove.size === 0) {
+    return current;
+  }
+  let removed = false;
+  const next = current.filter((id) => {
+    if (!idsToRemove.has(id)) {
+      return true;
+    }
+    removed = true;
+    return false;
+  });
+  return removed ? next : current;
+}
+
 function isSidebarSectionId(value: string): value is SidebarSectionId {
-  return (
-    value === "pinned" ||
-    value === "projects" ||
-    value === "threads" ||
-    value === "workflows" ||
-    value === "apps"
-  );
+  return value === "pinned" || value === "projects" || value === "threads";
 }
 
 function isCollapsibleSidebarSectionId(
   value: string,
 ): value is CollapsibleSidebarSectionId {
-  return (
-    value === "projects" ||
-    value === "threads" ||
-    value === "workflows" ||
-    value === "apps"
-  );
+  return value === "projects" || value === "threads";
 }
 
 function normalizeSidebarSectionOrder(
@@ -269,9 +264,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
   status: "loading",
 };
 
-const EMPTY_APPS: readonly AppSummary[] = [];
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
-const EMPTY_WORKFLOW_RUNS: readonly WorkflowRunResponse[] = [];
 
 function getProjectId(project: ProjectResponse): string {
   return project.id;
@@ -417,6 +410,7 @@ function TopLevelSidebarSection({
   children,
   actions,
   actionsAlwaysVisible = false,
+  actionsMobileAlways = false,
   collapseControl,
   dragBindings,
   sectionRef,
@@ -498,8 +492,8 @@ function TopLevelSidebarSection({
                   : `Collapse ${label}`
               }
               className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
+                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -519,6 +513,11 @@ function TopLevelSidebarSection({
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
             <span
+              data-sidebar-hover-actions-mobile={
+                actionsMobileAlways
+                  ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                  : undefined
+              }
               className={cn(
                 "inline-flex shrink-0 items-center",
                 !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -558,7 +557,6 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenAutomations,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
@@ -581,23 +579,6 @@ export function ProjectListActionButtons({
           aria-hidden="true"
         />
       </Button>
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={PROJECT_LIST_ACTION_BUTTON_CLASS}
-          onClick={onOpenAutomations}
-          title="Automations"
-        >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
-          <span
-            className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
-            aria-hidden="true"
-          />
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -619,13 +600,6 @@ function ProjectListComponent({
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
-  const appsQuery = useApps();
-  const apps = appsQuery.data ?? EMPTY_APPS;
-  const experiments = useExperiments();
-  const recentWorkflowRunsQuery = useRecentWorkflowRuns({
-    enabled: experiments.workflows,
-  });
-  const workflowRuns = recentWorkflowRunsQuery.data ?? EMPTY_WORKFLOW_RUNS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -641,13 +615,20 @@ function ProjectListComponent({
     sidebarThreads.push(...sidebarNavigation.personalProject.threads);
     return sidebarThreads;
   }, [sidebarNavigation]);
+  const threadById = useMemo(() => {
+    const map = new Map<string, ThreadListEntry>();
+    for (const thread of threads) {
+      map.set(thread.id, thread);
+    }
+    return map;
+  }, [threads]);
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
     isLoadingError: sidebarNavigationQuery.isLoadingError,
   });
   const { localDaemonHostId } = useHostDaemon();
-  const { threadId: selectedThreadId } = useAppRoute();
+  const { threadId: selectedThreadId } = useRouteState();
 
   const localSourceTargets = useMemo(() => {
     if (!localDaemonHostId || !projects) return [];
@@ -824,22 +805,83 @@ function ProjectListComponent({
     [threads],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
-  // No apps → no section: the empty Apps list adds nothing, so it stays hidden
-  // (like the Pinned section) until at least one global app exists.
-  const hasAppsSection = apps.length > 0;
-  // Same rule for Workflows — plus the experiment opt-in: hidden until the
-  // user enables it in Settings and at least one recent run exists.
-  const hasWorkflowsSection = experiments.workflows && workflowRuns.length > 0;
   const visibleSidebarSectionOrder = useMemo(
     () =>
       sidebarSectionOrder.filter((sectionId) => {
         if (sectionId === "pinned") return hasPinnedSection;
-        if (sectionId === "workflows") return hasWorkflowsSection;
-        if (sectionId === "apps") return hasAppsSection;
         return true;
       }),
-    [hasAppsSection, hasPinnedSection, hasWorkflowsSection, sidebarSectionOrder],
+    [hasPinnedSection, sidebarSectionOrder],
   );
+  useEffect(() => {
+    if (!selectedThreadId) {
+      return;
+    }
+
+    const selectedThread = threadById.get(selectedThreadId);
+    if (!selectedThread) {
+      return;
+    }
+    if (
+      (selectedThread.originKind ?? selectedThread.childOrigin) === "side-chat"
+    ) {
+      return;
+    }
+
+    const threadIdsToExpand = new Set<string>();
+    const environmentIdsToExpand = new Set<string>();
+    let currentThread: ThreadListEntry | undefined = selectedThread;
+    let remainingHops = threadById.size;
+    while (currentThread && remainingHops > 0) {
+      if (currentThread.environmentId !== null) {
+        environmentIdsToExpand.add(currentThread.environmentId);
+      }
+      const parentThreadId = currentThread.parentThreadId;
+      if (parentThreadId === null) {
+        break;
+      }
+      const parentThread = threadById.get(parentThreadId);
+      if (!parentThread) {
+        break;
+      }
+      threadIdsToExpand.add(parentThread.id);
+      currentThread = parentThread;
+      remainingHops -= 1;
+    }
+
+    setCollapsedThreadIdList((current) =>
+      removeCollapsedIds(current, threadIdsToExpand),
+    );
+    setCollapsedEnvironmentIdList((current) =>
+      removeCollapsedIds(current, environmentIdsToExpand),
+    );
+
+    if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
+      return;
+    }
+
+    if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
+      setCollapsedSidebarSectionIdList((current) =>
+        removeCollapsedIds(current, new Set(["threads"])),
+      );
+      return;
+    }
+
+    setCollapsedProjectIdList((current) =>
+      removeCollapsedIds(current, new Set([selectedThread.projectId])),
+    );
+    setCollapsedSidebarSectionIdList((current) =>
+      removeCollapsedIds(current, new Set(["projects"])),
+    );
+  }, [
+    pinnedSidebarState.effectivePinnedThreadIds,
+    selectedThreadId,
+    setCollapsedEnvironmentIdList,
+    setCollapsedProjectIdList,
+    setCollapsedSidebarSectionIdList,
+    setCollapsedThreadIdList,
+    threadById,
+  ]);
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
 
@@ -1032,8 +1074,6 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
   );
-  const workflowsSectionContent = <SidebarWorkflowsSection runs={workflowRuns} />;
-  const appsSectionContent = <SidebarAppsSection apps={apps} />;
   const projectsSectionActions = onNewProject ? (
     <ProjectListProjectsSectionActions
       onNewProject={onNewProject}
@@ -1103,6 +1143,7 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),
                     onToggleCollapsed: () =>
@@ -1114,41 +1155,7 @@ function ProjectListComponent({
                 >
                   {threadsSectionContent}
                 </SortableSidebarSection>
-              ) : sectionId === "workflows" ? (
-                <SortableSidebarSection
-                  key={sectionId}
-                  id={sectionId}
-                  label="Workflows"
-                  disabled={visibleSidebarSectionOrder.length < 2}
-                  collapseControl={{
-                    isCollapsed: collapsedSidebarSectionIds.has("workflows"),
-                    onToggleCollapsed: () =>
-                      toggleSidebarSectionCollapsed("workflows"),
-                  }}
-                  consumeClickSuppression={
-                    consumeSidebarSectionClickSuppression
-                  }
-                >
-                  {workflowsSectionContent}
-                </SortableSidebarSection>
-              ) : (
-                <SortableSidebarSection
-                  key={sectionId}
-                  id={sectionId}
-                  label="Apps"
-                  disabled={visibleSidebarSectionOrder.length < 2}
-                  collapseControl={{
-                    isCollapsed: collapsedSidebarSectionIds.has("apps"),
-                    onToggleCollapsed: () =>
-                      toggleSidebarSectionCollapsed("apps"),
-                  }}
-                  consumeClickSuppression={
-                    consumeSidebarSectionClickSuppression
-                  }
-                >
-                  {appsSectionContent}
-                </SortableSidebarSection>
-              ),
+              ) : null,
             )}
           </div>
         </SortableContext>

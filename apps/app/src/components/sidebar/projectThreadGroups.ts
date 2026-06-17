@@ -220,16 +220,18 @@ function isRootThread(
   projectThreadIds: ReadonlySet<string>,
 ): boolean {
   return (
-    thread.parentThreadId === null || !projectThreadIds.has(thread.parentThreadId)
+    thread.parentThreadId === null ||
+    !projectThreadIds.has(thread.parentThreadId)
   );
 }
 
 export function buildProjectThreadGroups(
-  projectThreads: readonly ThreadListEntry[],
+  allProjectThreads: readonly ThreadListEntry[],
 ): ProjectThreadItem[] {
-  const projectThreadIds = new Set(
-    projectThreads.map((thread) => thread.id),
+  const projectThreads = allProjectThreads.filter(
+    (thread) => (thread.originKind ?? thread.childOrigin) !== "side-chat",
   );
+  const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
   const childrenByParentId = new Map<string, ThreadListEntry[]>();
 
   for (const thread of projectThreads) {
@@ -309,7 +311,9 @@ function bucketWorktreeEnvironmentGroups(
       compareStandardThreads(left.thread, right.thread),
     );
     groupedEnvironmentIds.add(environmentId);
-    environmentThreadGroups.push(buildEnvironmentThreadGroup(environmentId, bucket));
+    environmentThreadGroups.push(
+      buildEnvironmentThreadGroup(environmentId, bucket),
+    );
   }
 
   const looseNodes = nodes.filter(

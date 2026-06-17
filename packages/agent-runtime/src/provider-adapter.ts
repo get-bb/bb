@@ -3,7 +3,6 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
-  JsonObject,
   PendingInteractionPayload,
   PendingInteractionResolution,
   PromptInput,
@@ -131,12 +130,6 @@ export type AdapterCommand =
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
-      /**
-       * JSON Schema for session-level structured output. Only claude-code
-       * supports it (the SDK fixes `outputFormat` at query creation); other
-       * adapters throw when it is set so the field is never silently ignored.
-       */
-      outputSchema?: JsonObject;
     }
   | {
       type: "thread/resume";
@@ -149,18 +142,22 @@ export type AdapterCommand =
       instructionMode: InstructionMode;
     }
   | {
+      type: "thread/fork";
+      threadId: string;
+      cwd: string;
+      sourceProviderThreadId: string;
+      options: ProviderExecutionContext;
+      dynamicTools?: DynamicTool[];
+      disallowedTools?: readonly string[];
+      instructionMode: InstructionMode;
+    }
+  | {
       type: "turn/start";
       threadId: string;
       providerThreadId: string;
       input: PromptInput[];
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
-      /**
-       * JSON Schema constraining this turn's final assistant message. Only
-       * codex supports it (app-server `turn/start.outputSchema`); other
-       * adapters throw when it is set so the field is never silently ignored.
-       */
-      outputSchema?: JsonObject;
     }
   | {
       type: "turn/steer";

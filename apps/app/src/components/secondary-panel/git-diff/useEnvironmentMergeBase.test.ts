@@ -13,8 +13,6 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
   return {
     baseBranch: null,
     branchName: "bb/thread",
-    cleanupMode: null,
-    cleanupRequestedAt: null,
     createdAt: 1,
     defaultBranch: "main",
     hostId: "host-1",
@@ -40,6 +38,11 @@ function makeWorkspaceStatus(
     branch: {
       currentBranch: "bb/thread",
       defaultBranch: "main",
+    },
+    checkout: {
+      kind: "branch",
+      branchName: "bb/thread",
+      headSha: null,
     },
     mergeBase: null,
     workingTree: {

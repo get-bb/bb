@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { useAtomValue } from "jotai";
+import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -28,17 +29,23 @@ import type {
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
+import {
+  DEFAULT_CODE_OVERFLOW_MODE,
+  type CodeOverflowMode,
+} from "@/lib/code-overflow-mode";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
+import {
+  summarizeDiffFileEntries,
+  useDiffFilesCollapseControls,
+} from "./git-diff/diffFilesStore";
+import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import {
   type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
-import {
-  gitDiffCollapsedFileKeysAtom,
-  gitDiffLoadingFileKeysAtom,
-  threadSecondaryPanelResizingAtom,
-} from "./threadSecondaryPanelAtoms";
+import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import {
   GitDiffTabContent,
@@ -66,11 +73,14 @@ const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
 const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+// Stable empty TOC reference so the collapse-controls hook's derived atom and
+// the stats memo are not rebuilt every render while the diff is loading/absent.
+const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 
 interface ResolveActiveFixedPanelArgs {
   activeTab: SecondaryFixedPanelTab | null;
@@ -87,10 +97,8 @@ export interface ThreadSecondaryPanelProps {
   fileTabContent?: ReactNode;
   onFileTabReorder: SecondaryPanelTabReorderHandler;
   /**
-   * The persistent browser-tab deck. Rendered in the content region and kept
-   * mounted across tab switches so each browser tab's native view (and page)
-   * survives deactivation; it self-manages visibility, collapsing to
-   * `display:none` when no browser tab is active. Absent on the web build / in
+   * The browser-tab deck slot. Rendered in the content region so the deck can
+   * own browser-view visibility and retention; absent on the web build / in
    * tests with no browser tabs.
    */
   browserDeck?: ReactNode;
@@ -99,6 +107,18 @@ export interface ThreadSecondaryPanelProps {
    * content region and the normal content slot is suppressed.
    */
   isBrowserTabActive?: boolean;
+  /**
+   * The persistent side-chat deck. Like the browser deck, it stays mounted
+   * across tab switches so each side chat's composer text + streaming child
+   * thread survive deactivation; it self-manages visibility, collapsing to
+   * `display:none` when no side-chat tab is active.
+   */
+  sideChatDeck?: ReactNode;
+  /**
+   * Whether the active panel tab is a side-chat tab. When true the deck fills
+   * the content region and the normal content slot is suppressed.
+   */
+  isSideChatTabActive?: boolean;
   isOpen: boolean;
   showGitDiffTab?: boolean;
   onPanelFocus: () => void;
@@ -156,10 +176,10 @@ function resolveActiveFixedPanel({
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
-    case "app":
     case "browser":
     case "terminal":
     case "new-tab":
+    case "side-chat":
       return null;
   }
 }
@@ -175,6 +195,8 @@ export function ThreadSecondaryPanel({
   onFileTabReorder,
   browserDeck,
   isBrowserTabActive = false,
+  sideChatDeck,
+  isSideChatTabActive = false,
   isOpen,
   showGitDiffTab = true,
   onPanelFocus,
@@ -233,53 +255,72 @@ export function ThreadSecondaryPanel({
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
+  const shouldRenderFileTabContent = isOpen;
   const {
-    currentGitDiff,
-    gitDiffError,
-    gitDiffUnavailableMessage,
+    gitDiffTarget,
     gitDiffSelectOptions,
     gitDiffSelectValue,
-    gitDiffStats,
-    hasParsedGitDiffFiles,
-    isGitDiffLoading,
-    isParsingGitDiffFiles,
-    isPreparingGitDiff,
     onGitDiffSelectionChange,
-    onRequestFileContents,
-    parsedGitDiffFileEntries,
-    queuedGitDiffFileRenderKeys,
-    setGitDiffFileRef,
-    threadGitDiff,
-    toggleAllGitDiffFilesCollapsed,
-    toggleGitDiffFileCollapsed,
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive,
     defaultMergeBaseBranch,
   });
-  const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
-  const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
+  // Share the diff tab's table of contents with the body: React Query dedupes
+  // this against GitDiffTabContent's own fetch (same key), so the toolbar reads
+  // the file list, stats, and merge-base ref without a second round-trip. The
+  // toolbar's stats + collapse-all derive from this TOC, not the (removed)
+  // whole-diff blob.
+  const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
+    useEnvironmentDiffFiles(environmentId ?? "", {
+      enabled:
+        isDiffPanelActive &&
+        Boolean(environmentId) &&
+        gitDiffTarget !== undefined,
+      target: gitDiffTarget,
+    });
+  const diffFiles = useMemo(
+    () =>
+      diffFilesResponse?.outcome === "available"
+        ? diffFilesResponse.files
+        : EMPTY_DIFF_FILES,
+    [diffFilesResponse],
+  );
+  const diffMergeBaseRef =
+    diffFilesResponse?.outcome === "available"
+      ? diffFilesResponse.mergeBaseRef
+      : null;
+  const diffIdentity = useMemo(
+    () =>
+      buildGitDiffIdentity({
+        environmentId,
+        mergeBaseRef: diffMergeBaseRef,
+        target: gitDiffTarget,
+      }),
+    [diffMergeBaseRef, environmentId, gitDiffTarget],
+  );
+  const gitDiffStats = useMemo(
+    () => summarizeDiffFileEntries(diffFiles),
+    [diffFiles],
+  );
+  const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
+    useDiffFilesCollapseControls(diffIdentity, diffFiles);
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
+    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const areAllGitDiffFilesCollapsed = useMemo(
-    () =>
-      hasParsedGitDiffFiles &&
-      parsedGitDiffFileEntries.every(({ key }) =>
-        collapsedGitDiffFileKeys.has(key),
-      ),
-    [collapsedGitDiffFileKeys, hasParsedGitDiffFiles, parsedGitDiffFileEntries],
-  );
   const preferredTheme = usePreferredTheme();
   const gitDiffViewOptions = useMemo(
     () => ({
       ...GIT_DIFF_VIEW_BASE_OPTIONS,
       diffStyle: gitDiffDisplayMode,
+      overflow: gitDiffLineOverflowMode,
       themeType: preferredTheme,
     }),
-    [gitDiffDisplayMode, preferredTheme],
+    [gitDiffDisplayMode, gitDiffLineOverflowMode, preferredTheme],
   );
   const handlePanelFocusCapture = (event: FocusEvent<HTMLElement>) => {
     const previousTarget = event.relatedTarget;
@@ -314,10 +355,10 @@ export function ThreadSecondaryPanel({
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
             CHROME_ROW_CLASS,
-            // Border on the h-12 row itself (border-box, inside the 48px) so the
-            // bottom edge aligns 1:1 with the chat header's border rather than
-            // sitting 1px lower on an auto-height wrapper.
-            "min-w-0 justify-between gap-2 border-b border-border-seam-vertical px-4",
+            // No bottom border: the top nav sits flush over the panel body so
+            // each view's background (info, diff, new-tab, terminal) runs
+            // straight up to the top with no seam.
+            "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             reserveLeftForDesktopTrafficLights &&
               MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
@@ -422,25 +463,27 @@ export function ThreadSecondaryPanel({
             selectionValue={gitDiffSelectValue}
             selectionOptions={gitDiffSelectOptions}
             onSelectionChange={onGitDiffSelectionChange}
-            isSelectorDisabled={isGitDiffLoading || threadGitDiff === undefined}
+            isSelectorDisabled={isDiffFilesLoading || gitDiffTarget === undefined}
             stats={gitDiffStats}
-            areAllFilesCollapsed={areAllGitDiffFilesCollapsed}
-            isCollapseAllDisabled={!hasParsedGitDiffFiles || isGitDiffLoading}
-            onToggleAllCollapsed={toggleAllGitDiffFilesCollapsed}
+            areAllFilesCollapsed={areAllCollapsed}
+            isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
+            onToggleAllCollapsed={toggleAllCollapsed}
             displayMode={gitDiffDisplayMode}
             onDisplayModeChange={handleGitDiffDisplayModeChange}
+            lineOverflowMode={gitDiffLineOverflowMode}
+            onLineOverflowModeChange={setGitDiffLineOverflowMode}
           />
         ) : null}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         {/*
-          The browser deck stays mounted regardless of the active tab so its
-          native views survive switching away; it shows itself only when a
-          browser tab is active. The normal content slot is suppressed in that
-          case (the deck fills the region).
+          The browser deck owns native-view visibility/retention and renders
+          content only when a browser tab is active. The normal content slot is
+          suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : hasActiveFileTab ? (
+        {sideChatDeck}
+        {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
           <div
             className={
               isTerminalTabActive
@@ -451,36 +494,22 @@ export function ThreadSecondaryPanel({
               isTerminalTabActive ? undefined : ""
             }
           >
-            {fileTabContent ?? (
-              <EmptyStatePanel className="mx-4 rounded-lg">
-                No file preview content provided.
-              </EmptyStatePanel>
-            )}
+            {shouldRenderFileTabContent
+              ? (fileTabContent ?? (
+                  <EmptyStatePanel className="mx-4 rounded-lg">
+                    No file preview content provided.
+                  </EmptyStatePanel>
+                ))
+              : null}
           </div>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
-            collapsedGitDiffFileKeys={collapsedGitDiffFileKeys}
-            currentGitDiff={currentGitDiff}
-            gitDiffError={
-              gitDiffError instanceof Error
-                ? gitDiffError
-                : gitDiffError
-                  ? new Error("Failed to load git diff")
-                  : null
-            }
-            gitDiffUnavailableMessage={gitDiffUnavailableMessage}
+            environmentId={environmentId}
+            target={gitDiffTarget}
+            isDiffPanelActive={isDiffPanelActive}
             gitDiffViewOptions={gitDiffViewOptions}
-            isParsingGitDiffFiles={isParsingGitDiffFiles}
-            isPreparingGitDiff={isPreparingGitDiff}
-            loadingGitDiffFileKeys={loadingGitDiffFileKeys}
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
-            onRequestFileContents={onRequestFileContents}
-            parsedGitDiffFileEntries={parsedGitDiffFileEntries}
-            queuedGitDiffFileRenderKeys={queuedGitDiffFileRenderKeys}
-            setGitDiffFileRef={setGitDiffFileRef}
-            threadGitDiff={threadGitDiff}
-            toggleGitDiffFileCollapsed={toggleGitDiffFileCollapsed}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (
@@ -540,10 +569,7 @@ interface NewTabButtonProps {
   usesDesktopChrome: boolean;
 }
 
-function NewTabButton({
-  onOpenNewTab,
-  usesDesktopChrome,
-}: NewTabButtonProps) {
+function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
   return (
     <Button
       type="button"

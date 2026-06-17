@@ -3,7 +3,6 @@ import { isAbsolute, join, relative } from "node:path";
 
 export interface ExpectedDevPortSet {
   appPort: number;
-  devEnvPort: number;
   hostDaemonPort: number;
   serverPort: number;
 }
@@ -31,7 +30,6 @@ export function expectedDevPorts(repoRoot: string): ExpectedDevPortSet {
   const offset = expectedPortOffset(repoRoot);
   return {
     appPort: 11_000 + offset,
-    devEnvPort: 43_000 + offset,
     hostDaemonPort: 27_000 + offset,
     serverPort: 19_000 + offset,
   };

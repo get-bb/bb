@@ -4,7 +4,10 @@ import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
-} from "@bb/server-contract";
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
+  bbDesktopPopoutThreadChangedPayloadSchema,
+  bbDesktopPopoutThreadRefSchema,
+} from "@bb/desktop-contract";
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
@@ -14,6 +17,7 @@ import {
   isLoopbackBrowserRequestHost,
   isPrivateBrowserRequestHost,
   localRequestOriginKey,
+  resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
   type ShouldBlockBrowserRequestArgs,
@@ -155,6 +159,56 @@ describe("browser IPC payload schemas", () => {
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("popout IPC payload schemas", () => {
+  it("accepts only strict thread references and nullable thread changes", () => {
+    const threadRef = {
+      projectId: "proj_abc",
+      threadId: "thr_abc",
+    };
+
+    expect(bbDesktopPopoutThreadRefSchema.safeParse(threadRef).success).toBe(
+      true,
+    );
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(threadRef).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(null).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        ...threadRef,
+        extra: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        projectId: "",
+        threadId: "thr_abc",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only strict mouse passthrough requests", () => {
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+        extra: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: "true",
       }).success,
     ).toBe(false);
   });
@@ -586,5 +640,104 @@ describe("evaluatePopupRate", () => {
     const decision = evaluatePopupRate({ ...args, timestamps, now: 11_000 });
     expect(decision.allowed).toBe(true);
     expect(decision.timestamps).toEqual([11_000]);
+  });
+});
+
+describe("resolveRequestingFrameLocalOriginKey", () => {
+  const loopbackKey = localRequestOriginKey("http://localhost:5173/");
+
+  it("uses the frame origin when it is reported", () => {
+    expect(
+      resolveRequestingFrameLocalOriginKey({
+        origin: "http://localhost:5173",
+        url: "http://localhost:5173/src/main.tsx",
+        isTopFrame: true,
+      }),
+    ).toBe(loopbackKey);
+  });
+
+  it("falls back to the top frame's URL when the origin is blank (Vite initial load)", () => {
+    expect(
+      resolveRequestingFrameLocalOriginKey({
+        origin: "",
+        url: "http://localhost:5173/@vite/client",
+        isTopFrame: true,
+      }),
+    ).toBe(loopbackKey);
+  });
+
+  it("does not fall back for a sub-iframe with a blank origin", () => {
+    expect(
+      resolveRequestingFrameLocalOriginKey({
+        origin: "",
+        url: "http://localhost:5173/embedded",
+        isTopFrame: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not resolve a non-loopback top-frame URL", () => {
+    expect(
+      resolveRequestingFrameLocalOriginKey({
+        origin: "",
+        url: "https://example.com/app.js",
+        isTopFrame: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when neither origin nor URL is available", () => {
+    expect(
+      resolveRequestingFrameLocalOriginKey({
+        origin: undefined,
+        url: undefined,
+        isTopFrame: true,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("loopback SPA subresource firewall (regression)", () => {
+  const originKey = localRequestOriginKey("http://localhost:5173/");
+  const baseArgs: Omit<
+    ShouldBlockBrowserRequestArgs,
+    "requestingFrameOriginKey"
+  > = {
+    url: "http://localhost:5173/src/main.tsx",
+    resourceType: "script",
+    isMainFrame: false,
+    targetWebContentsId: 1,
+    entryWebContentsId: 1,
+    pendingTrustedLocalTopLevelOriginKey: null,
+    currentMainFrameLocalOriginKey: originKey,
+    mainFrameInitiatorOriginKey: null,
+  };
+
+  it("allows a same-origin top-frame subresource resolved via the URL fallback", () => {
+    // Reproduces the blank-Vite-page bug: the page's own JS module, requested
+    // with a blank frame origin during initial load, must not be blocked.
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseArgs,
+        requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
+          origin: "",
+          url: "http://localhost:5173/",
+          isTopFrame: true,
+        }),
+      }),
+    ).toBe(false);
+  });
+
+  it("still blocks a blank-origin sub-iframe reaching the loopback origin", () => {
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseArgs,
+        requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
+          origin: "",
+          url: "https://ads.example.com/frame",
+          isTopFrame: false,
+        }),
+      }),
+    ).toBe(true);
   });
 });

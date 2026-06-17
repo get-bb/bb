@@ -42,9 +42,9 @@ export interface CreateWorkspaceArgs {
   /** Name of the new branch to create on the workspace. */
   branchName: string;
   /**
-   * Branch or commit to base the new branch on (start point for git worktree
-   * add / git checkout). Pass `null` to use the source's default branch
-   * (resolved by the daemon).
+   * Branch to base the new branch on (start point for git worktree add / git
+   * checkout). Pass `null` to use the source's default branch (resolved by
+   * the daemon).
    */
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
@@ -260,8 +260,6 @@ export async function createWorktree(
     args.targetPath,
     baseBranch,
   ];
-  const commandText = `git ${gitArgs.join(" ")}`;
-
   const worktreeStartedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -270,7 +268,6 @@ export async function createWorktree(
     status: "started",
     startedAt: worktreeStartedAt,
   });
-  emitOutput(args.onProgress, "git-worktree-command", commandText);
   let worktreeCreated = false;
   try {
     const result = await runGitWithWorktreeMetadataLock(gitArgs, {
@@ -333,7 +330,6 @@ export async function runSetupScript(
     platform: process.platform,
     scriptPath,
   });
-  const commandText = command.text;
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -342,7 +338,6 @@ export async function runSetupScript(
     status: "started",
     startedAt,
   });
-  emitOutput(args.onProgress, "setup-command", commandText);
 
   const { timeoutMs } = args;
   const child = spawnPortableOutputProcess({
@@ -356,7 +351,7 @@ export async function runSetupScript(
   const outputChunks: string[] = [];
   const outputLineReader = createTerminalOutputLineReader();
   let outputIndex = 0;
-  let abortKillTimeout: NodeJS.Timeout | undefined;
+  let abortKillTimeout: ReturnType<typeof setTimeout> | undefined;
   let abortRequested = false;
   let timedOut = false;
 

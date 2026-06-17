@@ -41,6 +41,19 @@ Links render with an underline: [Anthropic](https://www.anthropic.com).
 
 Text after the horizontal rule.`;
 
+const FRONTMATTER_MARKDOWN = `---
+title: Prompt Plus Menu
+status: In review
+owner: design-systems
+updated: 2026-06-15
+tags: spec, command-menu, ui
+---
+
+# Prompt Plus Menu
+
+The **prompt-plus menu** opens when you type \`/\` for Claude or \`$\` for Codex
+in the promptbox, offering inline command completions.`;
+
 const LISTS_MARKDOWN = `Unordered:
 
 - First item
@@ -84,6 +97,41 @@ Fenced code block without a language tag:
 \`\`\`
 $ pnpm exec turbo run typecheck --filter=@bb/app
 ✓ typecheck (2.7s)
+\`\`\``;
+
+const MERMAID_MARKDOWN = `A Mermaid flowchart renders as a diagram:
+
+\`\`\`mermaid
+flowchart TD
+  A[Plan feature] --> B{Needs API change?}
+  B -- yes --> C[Update contracts]
+  B -- no --> D[Keep it in the app]
+  C --> E[Validate]
+  D --> E
+\`\`\`
+
+Regular code fences still use the code-block renderer:
+
+\`\`\`ts
+export const status = "ready";
+\`\`\`
+
+A sequence diagram uses the same renderer:
+
+\`\`\`mermaid
+sequenceDiagram
+  participant User
+  participant App
+  User->>App: Open README.md
+  App-->>User: Rendered preview
+\`\`\``;
+
+const INVALID_MERMAID_MARKDOWN = `Invalid Mermaid syntax falls back inside the
+same block instead of breaking the whole preview:
+
+\`\`\`mermaid
+flowchart TD
+  A -->
 \`\`\``;
 
 const NARROW_TABLE_MARKDOWN = `Sometimes a table only needs a couple of columns. It sits at the left edge of
@@ -133,6 +181,14 @@ export function Overview() {
           <MarkdownPreview content={BASICS_MARKDOWN} />
         </PreviewStage>
       </StoryRow>
+      <StoryRow
+        label="frontmatter"
+        hint="a leading --- YAML block renders as a subtle aligned key/value table above the body, not as a code block or hr"
+      >
+        <PreviewStage>
+          <MarkdownPreview content={FRONTMATTER_MARKDOWN} />
+        </PreviewStage>
+      </StoryRow>
       <StoryRow label="lists" hint="unordered, ordered, nested, GFM task list">
         <PreviewStage>
           <MarkdownPreview content={LISTS_MARKDOWN} />
@@ -144,6 +200,22 @@ export function Overview() {
       >
         <PreviewStage>
           <MarkdownPreview content={CODE_MARKDOWN} />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="mermaid"
+        hint="fenced Mermaid blocks render as diagrams with open, zoom, pan, and source-copy controls"
+      >
+        <PreviewStage>
+          <MarkdownPreview content={MERMAID_MARKDOWN} />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="mermaid error"
+        hint="invalid Mermaid syntax is contained to the block"
+      >
+        <PreviewStage>
+          <MarkdownPreview content={INVALID_MERMAID_MARKDOWN} />
         </PreviewStage>
       </StoryRow>
       <StoryRow

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   onClientSocketMessage,
   onClientSocketOpen,
@@ -6,19 +6,30 @@ import {
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
+function createProtocolDeps(hub: NotificationHub) {
+  return {
+    hub,
+    watchInterests: {
+      releaseSocket: vi.fn(),
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+    },
+  };
+}
+
 describe("client websocket protocol", () => {
   it("subscribes valid client messages parsed through the shared schema", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "subscribe",
-        entity: "thread",
-        id: "thread-1",
+        target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
     hub.notifyThread("thread-1", ["events-appended"]);
@@ -33,18 +44,18 @@ describe("client websocket protocol", () => {
     });
   });
 
-  it("rejects subscribe messages whose id is not a string", () => {
+  it("rejects subscribe messages whose target id is not a string", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "subscribe",
-        entity: "thread",
-        id: 123,
+        target: { kind: "thread-detail", threadId: 123 },
       }),
     );
     hub.notifyThread("thread-1", ["events-appended"]);
@@ -55,25 +66,24 @@ describe("client websocket protocol", () => {
 
   it("removes subscriptions after unsubscribe messages", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "subscribe",
-        entity: "thread",
-        id: "thread-1",
+        target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "unsubscribe",
-        entity: "thread",
-        id: "thread-1",
+        target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
     hub.notifyThread("thread-1", ["events-appended"]);
@@ -82,17 +92,18 @@ describe("client websocket protocol", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
-  it("rejects subscribe messages for unknown entities", () => {
+  it("rejects subscribe messages for unknown targets", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "subscribe",
-        entity: "bogus",
+        target: { kind: "bogus" },
       }),
     );
 
@@ -102,11 +113,12 @@ describe("client websocket protocol", () => {
 
   it("rejects client messages with missing required fields", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
-      hub,
+      deps,
       socket,
       JSON.stringify({
         type: "subscribe",
@@ -119,11 +131,67 @@ describe("client websocket protocol", () => {
 
   it("closes the socket instead of throwing on malformed JSON", () => {
     const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
     const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
 
-    expect(() => onClientSocketMessage(hub, socket, "{")).not.toThrow();
+    expect(() => onClientSocketMessage(deps, socket, "{")).not.toThrow();
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
+  });
+
+  it("updates watch interests from subscribe and unsubscribe messages", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+
+    onClientSocketOpen(hub, socket);
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({
+        type: "subscribe",
+        target: { kind: "environment-detail", environmentId: "env-1" },
+      }),
+    );
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({
+        type: "unsubscribe",
+        target: { kind: "environment-detail", environmentId: "env-1" },
+      }),
+    );
+
+    expect(deps.watchInterests.subscribe).toHaveBeenCalledWith(socket, {
+      kind: "environment-detail",
+      environmentId: "env-1",
+    });
+    expect(deps.watchInterests.unsubscribe).toHaveBeenCalledWith(socket, {
+      kind: "environment-detail",
+      environmentId: "env-1",
+    });
+  });
+
+  it("rejects direct watch messages", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+
+    onClientSocketOpen(hub, socket);
+    onClientSocketMessage(
+      deps,
+      socket,
+      JSON.stringify({
+        type: "watch.acquire",
+        target: {
+          kind: "environment-workspace",
+          environmentId: "env-1",
+        },
+      }),
+    );
+
+    expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
+    expect(deps.watchInterests.subscribe).not.toHaveBeenCalled();
   });
 });

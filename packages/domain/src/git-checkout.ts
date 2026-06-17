@@ -100,14 +100,27 @@ export type GitBranchRefClassification = z.infer<
   typeof gitBranchRefClassificationSchema
 >;
 
+export const defaultBranchRelationSchema = z.enum([
+  "equal",
+  "local-behind",
+  "local-ahead",
+  "diverged",
+  "unknown",
+]);
+export type DefaultBranchRelation = z.infer<
+  typeof defaultBranchRelationSchema
+>;
+
 export const projectSourceCheckoutSchema = z.object({
   /** Local branches under refs/heads, safe for checkout and write targets. */
   branches: z.array(z.string()),
   branchesTruncated: z.boolean(),
   checkout: gitCheckoutRefSchema,
   defaultBranch: z.string().min(1).nullable(),
+  defaultBranchRelation: defaultBranchRelationSchema.nullable(),
   hasUncommittedChanges: z.boolean(),
   operation: workspaceGitOperationSchema,
+  originDefaultBranch: z.string().min(1).nullable(),
   /** Remote-tracking branches under refs/remotes, for base/diff selection. */
   remoteBranches: z.array(z.string()),
   remoteBranchesTruncated: z.boolean(),

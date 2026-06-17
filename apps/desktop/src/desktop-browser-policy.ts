@@ -356,6 +356,39 @@ export function localRequestOriginKey(url: string): string | null {
   return `${protocolClass}|${parsed.originHost}|${parsed.port}`;
 }
 
+export interface ResolveRequestingFrameLocalOriginKeyArgs {
+  /** The requesting frame's reported origin (`details.frame?.origin`). */
+  origin: string | undefined;
+  /** The requesting frame's committed URL (`details.frame?.url`). */
+  url: string | undefined;
+  /** Whether the requesting frame is the top frame (`frame.parent === null`). */
+  isTopFrame: boolean;
+}
+
+/**
+ * Resolves the comparable local-origin key for the frame that initiated a
+ * request. Prefers the frame's reported `origin`; for a **top** frame whose
+ * origin is not yet populated — Electron reports an empty origin for a
+ * document's initial subresource requests, before it has run script and
+ * committed its origin (which blanks SPA dev servers like Vite) — it falls
+ * back to the frame's committed `url`. The URL fallback is restricted to the
+ * top frame so a sub-iframe presenting an empty origin can never be mistaken
+ * for the trusted main frame.
+ */
+export function resolveRequestingFrameLocalOriginKey(
+  args: ResolveRequestingFrameLocalOriginKeyArgs,
+): string | null {
+  const fromOrigin =
+    args.origin === undefined ? null : localRequestOriginKey(args.origin);
+  if (fromOrigin !== null) {
+    return fromOrigin;
+  }
+  if (args.isTopFrame && args.url !== undefined) {
+    return localRequestOriginKey(args.url);
+  }
+  return null;
+}
+
 /**
  * Trusted top-level local navigations may only target loopback `http(s)` URLs.
  */

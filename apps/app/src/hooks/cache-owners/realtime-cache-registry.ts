@@ -6,7 +6,8 @@
  * each `REALTIME_*_CHANGE_REGISTRY` entry lists the dirty handlers that turn one
  * change kind into the precise set of queries to invalidate. New change kinds
  * are added here, in one place, and the `satisfies *Registry` constraints force
- * every kind to be mapped (verified by `realtime-cache-effects.test.ts`).
+ * mapped kinds to use the right context shape (verified by
+ * `realtime-cache-effects.test.ts`).
  *
  * Why this isn't a flat `invalidateQueries(prefix)` table:
  * - Scoping uses notification metadata, not just the change kind. Thread changes
@@ -34,7 +35,6 @@
  */
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
-  AppChangeKind,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -42,7 +42,6 @@ import type {
   ThreadChangeKind,
   ThreadEventType,
   ThreadWithRuntime,
-  WorkflowRunChangeKind,
 } from "@bb/domain";
 import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
@@ -53,6 +52,7 @@ import {
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
+  removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
 } from "./query-cache";
 import {
@@ -61,19 +61,14 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
-  allThreadSchedulesQueryKeyPrefix,
-  automationsOverviewQueryKey,
-  allAppMarkdownPreviewQueryKeyPrefix,
-  allAppQueryKeyPrefix,
-  allAppsQueryKeyPrefix,
+  allThreadStorageFilePreviewQueryKeyPrefix,
+  allThreadStorageFilesQueryKeyPrefix,
+  allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
-  appMarkdownPreviewQueryKeyPrefix,
-  appQueryKey,
-  appSourcesQueryKey,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
+  environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -85,13 +80,6 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
-  allWorkflowRunAgentEventsQueryKeyPrefix,
-  allWorkflowRunEventsQueryKeyPrefix,
-  allWorkflowRunQueryKeyPrefix,
-  allWorkflowRunsQueryKeyPrefix,
-  workflowRunAgentEventsQueryKeyPrefix,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
 } from "../queries/query-keys";
 import {
   getProjectListInvalidationQueryKeys,
@@ -123,7 +111,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "thread-deleted": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows include thread schedule targets.
       dirtyThreadListQueries, // Deleted thread must disappear from lists.
       dirtyThreadDetailQueries, // Active detail should reconcile to deleted/not-found.
       dirtyThreadTimelineQueries, // Active timeline should stop showing stale rows.
@@ -154,7 +141,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "title-changed": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render schedule target titles.
       dirtyThreadListQueries, // List rows render display title.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
     ],
@@ -168,7 +154,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "archived-changed": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render archived target state.
       dirtyThreadListQueries, // Archive state moves threads between active/archived lists.
       dirtyThreadDetailQueries, // Detail controls and banners depend on archive state.
       dirtyProjectPromptHistoryQueries, // Archived prompts may leave project history.
@@ -186,6 +171,14 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // Sidebar grouping and child filters depend on parentThreadId.
       dirtyThreadDetailQueries, // Detail metadata and parent UI render parentThreadId.
+    ],
+  },
+  "environment-changed": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadListQueries, // Thread rows render environment/worktree metadata.
+      dirtyThreadDetailQueries, // Detail views use the attached environment for workspace UI.
+      dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
     ],
   },
   "read-state-changed": {
@@ -265,13 +258,11 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   },
   "project-updated": {
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render project names.
       dirtyProjectListQueries, // Name/settings fields are embedded in sidebar navigation/project caches.
     ],
   },
   "project-deleted": {
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows hide deleted projects.
       dirtyProjectListQueries, // Deleted projects must disappear from navigation/pickers.
     ],
   },
@@ -289,19 +280,6 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-order-changed": {
     dirty: [
       dirtyProjectListQueries, // Sidebar order depends on project ordering.
-    ],
-  },
-  "automations-changed": {
-    dirty: [
-      dirtyAutomationOverviewQueries, // Overview lists project automation rows directly.
-      dirtyProjectListQueries, // Sidebar/project caches still carry project-level change context.
-    ],
-  },
-  "thread-schedules-changed": {
-    dirty: [
-      dirtyAutomationOverviewQueries, // Overview lists thread schedule rows directly.
-      dirtyThreadScheduleQueries, // Info tabs read per-thread schedules.
-      dirtyProjectListQueries, // Sidebar/project caches still carry project-level change context.
     ],
   },
 } satisfies ProjectChangeRegistry;
@@ -330,40 +308,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemExecutionOptionQueries,
     ],
   },
-  "apps-changed": {
-    dirty: [dirtyAppListQueries],
-  },
 } satisfies SystemChangeRegistry;
-
-export const REALTIME_APP_CHANGE_REGISTRY = {
-  "apps-changed": {
-    dirty: [], // List-level invalidation rides system:apps-changed (the canonical path); handling it here too would double-invalidate.
-  },
-  "content-changed": {
-    dirty: [dirtyAppContentQueries], // Served public/ files changed; reload just that app's open surfaces.
-  },
-} satisfies AppChangeRegistry;
-
-/**
- * Workflow-run changes arrive per ingested daemon batch (the hub does not
- * throttle them), so the dispatcher accumulates per-run kinds and flushes on
- * the shared debounce window — a 30-agent fan-out must not thrash react-query.
- */
-export const REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY = {
-  "run-updated": {
-    dirty: [
-      dirtyWorkflowRunDetailQueries, // Run page header renders status/usage/result.
-      dirtyWorkflowRunListQueries, // Run lists render status badges per run.
-    ],
-  },
-  "events-appended": {
-    dirty: [
-      dirtyWorkflowRunDetailQueries, // progressSnapshot folds per batch; the agent tree reads it from the run row.
-      dirtyWorkflowRunEventsQueries, // Run event stream appends.
-      dirtyWorkflowRunAgentEventsQueries, // Per-agent drill-in timelines refetch their logs.
-    ],
-  },
-} satisfies WorkflowRunChangeRegistry;
 
 export type ThreadChangeFlushPriority = "debounced" | "immediate";
 
@@ -388,14 +333,6 @@ export interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
 }
 
 export type HostRealtimeDirtyContext = RealtimeDirtyContext;
-
-export interface AppRealtimeDirtyContext extends RealtimeDirtyContext {
-  applicationId: string | undefined;
-}
-
-export interface WorkflowRunRealtimeDirtyContext extends RealtimeDirtyContext {
-  workflowRunId: string | undefined;
-}
 
 export type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
   context: Context,
@@ -443,21 +380,8 @@ export interface SystemChangeRule {
   dirty: readonly RealtimeDirtyHandler<RealtimeDirtyContext>[];
 }
 
-export type SystemChangeRegistry = Record<SystemChangeKind, SystemChangeRule>;
-
-export interface AppChangeRule {
-  dirty: readonly RealtimeDirtyHandler<AppRealtimeDirtyContext>[];
-}
-
-export type AppChangeRegistry = Record<AppChangeKind, AppChangeRule>;
-
-export interface WorkflowRunChangeRule {
-  dirty: readonly RealtimeDirtyHandler<WorkflowRunRealtimeDirtyContext>[];
-}
-
-export type WorkflowRunChangeRegistry = Record<
-  WorkflowRunChangeKind,
-  WorkflowRunChangeRule
+export type SystemChangeRegistry = Partial<
+  Record<SystemChangeKind, SystemChangeRule>
 >;
 
 export function executeRealtimeDirtyHandlers<
@@ -581,6 +505,23 @@ function dirtyThreadTerminalQueries({
     : [allThreadTerminalsQueryKeyPrefix()];
 }
 
+function dirtyThreadStorageQueriesForThread({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  if (!threadId) {
+    return [
+      allThreadStorageFilesQueryKeyPrefix(),
+      allThreadStoragePathsQueryKeyPrefix(),
+      allThreadStorageFilePreviewQueryKeyPrefix(),
+    ];
+  }
+  return [
+    threadStorageFilesForThreadQueryKeyPrefix(threadId),
+    threadStoragePathsForThreadQueryKeyPrefix(threadId),
+    threadStorageFilePreviewQueryKeyPrefix(threadId),
+  ];
+}
+
 function dirtyProjectPromptHistoryQueries({
   projectId,
 }: ProjectRealtimeDirtyContext | ThreadRealtimeDirtyContext): QueryKey[] {
@@ -658,8 +599,14 @@ function dirtyEnvironmentRecordQueries(
 
 function dirtyEnvironmentWorkspaceStateQueries(
   context: EnvironmentRealtimeDirtyContext,
-): QueryKey[] {
-  return getEnvironmentWorkspaceStateInvalidationQueryKeys(context);
+): void {
+  for (const queryKey of getEnvironmentWorkspaceStateInvalidationQueryKeys(
+    context,
+  )) {
+    context.queryClient.invalidateQueries({ queryKey });
+  }
+  // The observer-less patch cache must be evicted, not invalidated.
+  removeEnvironmentDiffPatchQueries(context);
 }
 
 function dirtyEnvironmentLiveWorkspaceStateQueries({
@@ -673,18 +620,28 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
+    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
+  // Evict (not invalidate) the observer-less per-file patch cache so a
+  // content-only edit re-fetches fresh patches: `getQueryData` returning
+  // undefined is what makes the panel re-request a visible path. The TOC
+  // refetch above bumps `dataUpdatedAt`, which retriggers that re-request.
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
   environmentId,
   queryClient,
-}: EnvironmentRealtimeDirtyContext): QueryKey[] {
-  return getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
+}: EnvironmentRealtimeDirtyContext): void {
+  for (const queryKey of getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     queryClient,
     { environmentId },
-  );
+  )) {
+    queryClient.invalidateQueries({ queryKey });
+  }
+  // A moved merge base affects every ref-derived diff target; evict the
+  // observer-less patch cache so the panel re-requests fresh patches.
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentBranchListQueries(
@@ -736,14 +693,6 @@ function dirtyProjectListQueries(): QueryKey[] {
   return getProjectListInvalidationQueryKeys();
 }
 
-function dirtyAutomationOverviewQueries(): QueryKey[] {
-  return [automationsOverviewQueryKey()];
-}
-
-function dirtyThreadScheduleQueries(): QueryKey[] {
-  return [allThreadSchedulesQueryKeyPrefix()];
-}
-
 function dirtyProjectSourceDependentQueries({
   projectId,
 }: ProjectRealtimeDirtyContext): QueryKey[] {
@@ -764,56 +713,4 @@ function dirtySystemProviderQueries(): QueryKey[] {
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
-}
-
-function dirtyAppListQueries(): QueryKey[] {
-  return [
-    allAppsQueryKeyPrefix(),
-    allAppQueryKeyPrefix(),
-    allAppMarkdownPreviewQueryKeyPrefix(),
-    // App-source syncs broadcast apps-changed; source status (commit,
-    // per-app states) moves together with the app list.
-    appSourcesQueryKey(),
-  ];
-}
-
-function dirtyWorkflowRunDetailQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunQueryKey(workflowRunId)]
-    : [allWorkflowRunQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunListQueries(): QueryKey[] {
-  // The change message carries no projectId, so all cached run lists go stale.
-  return [allWorkflowRunsQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunEventsQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunEventsQueryKey(workflowRunId)]
-    : [allWorkflowRunEventsQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunAgentEventsQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunAgentEventsQueryKeyPrefix(workflowRunId)]
-    : [allWorkflowRunAgentEventsQueryKeyPrefix()];
-}
-
-function dirtyAppContentQueries(context: AppRealtimeDirtyContext): QueryKey[] {
-  if (context.applicationId === undefined) {
-    // Defensive: a content change without app identity falls back to the
-    // every-app scope so no open surface misses the reload.
-    return [allAppQueryKeyPrefix(), allAppMarkdownPreviewQueryKeyPrefix()];
-  }
-  return [
-    appQueryKey(context.applicationId), // Detail refetch bumps dataUpdatedAt, which busts the iframe reloadToken.
-    appMarkdownPreviewQueryKeyPrefix(context.applicationId), // Markdown entries re-render from the refetched content.
-  ];
 }

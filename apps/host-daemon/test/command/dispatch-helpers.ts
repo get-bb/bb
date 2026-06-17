@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
+  AgentRuntimeProviderSession,
 } from "@bb/agent-runtime";
 import type {
   ClientTurnRequestId,
@@ -49,6 +50,20 @@ interface FakeWorkspaceState {
   pullRequest: GitHostPullRequest | null;
   resetCount: number;
   statusReads: number;
+}
+
+/**
+ * Direct mutators for the fake runtime's thread state, replacing what the
+ * deleted RuntimeManager thread bookkeeping used to provide in tests.
+ */
+export interface FakeRuntimeThreadControls {
+  clearProviderSession: (threadId: string) => void;
+  endActiveTurn: (threadId: string) => void;
+  setActiveTurn: (threadId: string, turnId: string) => void;
+  setProviderSession: (
+    threadId: string,
+    session: AgentRuntimeProviderSession,
+  ) => void;
 }
 
 interface FakeRuntimeState {
@@ -108,6 +123,9 @@ export function createFakeWorkspace(pathname: string) {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    async getDefaultBranch() {
+      return "main";
+    },
     async getCurrentBranch() {
       return "main";
     },
@@ -162,6 +180,16 @@ export function createFakeWorkspace(pathname: string) {
         files: "",
         mergeBaseRef: null,
       };
+    },
+    async diffFiles() {
+      return {
+        files: [],
+        shortstat: "",
+        mergeBaseRef: null,
+      };
+    },
+    async diffPatch() {
+      return [];
     },
     async getPullRequest() {
       return state.pullRequest;
@@ -237,6 +265,34 @@ export function createFakeRuntime() {
     unarchivedProviderThreadId: undefined,
     unarchivedThreadId: undefined,
   };
+  const activeTurnsByThreadId = new Map<string, string>();
+  const providerSessionsByThreadId = new Map<
+    string,
+    AgentRuntimeProviderSession
+  >();
+  let nextTurnNumber = 1;
+  const threadControls: FakeRuntimeThreadControls = {
+    clearProviderSession(threadId) {
+      providerSessionsByThreadId.delete(threadId);
+    },
+    endActiveTurn(threadId) {
+      activeTurnsByThreadId.delete(threadId);
+    },
+    setActiveTurn(threadId, turnId) {
+      // An active turn implies a hosted thread, mirroring the real runtime
+      // where turn/started can only be observed for a registered thread.
+      if (!providerSessionsByThreadId.has(threadId)) {
+        providerSessionsByThreadId.set(threadId, {
+          providerId: "fake",
+          providerThreadId: `provider-${threadId}`,
+        });
+      }
+      activeTurnsByThreadId.set(threadId, turnId);
+    },
+    setProviderSession(threadId, session) {
+      providerSessionsByThreadId.set(threadId, session);
+    },
+  };
   const runtime: AgentRuntime = {
     async ensureProvider() {},
     async startThread(args) {
@@ -246,6 +302,13 @@ export function createFakeRuntime() {
       state.startedInput = args.input;
       state.startedOptions = args.options;
       state.startedInstructions = args.instructions;
+      providerSessionsByThreadId.set(args.threadId, {
+        providerId: args.providerId,
+        providerThreadId: `provider-${args.threadId}`,
+      });
+      if (args.input && args.input.length > 0) {
+        activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
+      }
       return { providerThreadId: `provider-${args.threadId}` };
     },
     async resumeThread(args) {
@@ -255,9 +318,13 @@ export function createFakeRuntime() {
       state.resumedOptions = args.options;
       state.resumedInstructions = args.instructions;
       state.resumedProviderThreadId = args.providerThreadId;
-      return {
-        providerThreadId: args.providerThreadId ?? `provider-${args.threadId}`,
-      };
+      const providerThreadId =
+        args.providerThreadId ?? `provider-${args.threadId}`;
+      providerSessionsByThreadId.set(args.threadId, {
+        providerId: args.providerId,
+        providerThreadId,
+      });
+      return { providerThreadId };
     },
     async runTurn(args) {
       const firstInput = args.input[0];
@@ -267,6 +334,7 @@ export function createFakeRuntime() {
       state.ranTurnInput = args.input;
       state.ranTurnOptions = args.options;
       state.ranTurnInstructions = args.instructions;
+      activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
     },
     async steerTurn(args) {
       state.steeredTurnId = args.expectedTurnId;
@@ -277,6 +345,8 @@ export function createFakeRuntime() {
     },
     async stopThread(args) {
       state.stoppedThreadId = args.threadId;
+      activeTurnsByThreadId.delete(args.threadId);
+      providerSessionsByThreadId.delete(args.threadId);
     },
     async renameThread(args) {
       state.renamedTitle = args.title;
@@ -285,6 +355,8 @@ export function createFakeRuntime() {
       state.archivedThreadId = args.threadId;
       state.archivedProviderId = args.providerId;
       state.archivedProviderThreadId = args.providerThreadId;
+      activeTurnsByThreadId.delete(args.threadId);
+      providerSessionsByThreadId.delete(args.threadId);
     },
     async unarchiveThread(args) {
       state.unarchivedThreadId = args.threadId;
@@ -293,6 +365,26 @@ export function createFakeRuntime() {
     },
     listRunningProviders() {
       return state.runningProviders;
+    },
+    getActiveTurnId(threadId) {
+      return activeTurnsByThreadId.get(threadId) ?? null;
+    },
+    async waitForActiveTurn(threadId) {
+      // The fake resolves immediately with the current state; waiting
+      // semantics are covered by the real runtime's tests.
+      return activeTurnsByThreadId.get(threadId) ?? null;
+    },
+    getProviderSession(threadId) {
+      return providerSessionsByThreadId.get(threadId) ?? null;
+    },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
+    hasThread(threadId) {
+      return providerSessionsByThreadId.has(threadId);
+    },
+    getActiveThreadIds() {
+      return [...activeTurnsByThreadId.keys()];
     },
     async listModels(args) {
       state.listedModelsProviderId = args.providerId;
@@ -309,6 +401,7 @@ export function createFakeRuntime() {
   return {
     runtime,
     state,
+    threadControls,
   };
 }
 
@@ -324,7 +417,11 @@ export function createHarness(
   );
   workspace.getCurrentBranch = async () => args.currentBranch ?? "main";
   workspace.isWorktree = args.isWorktree ?? false;
-  const { runtime, state: runtimeState } = createFakeRuntime();
+  const {
+    runtime,
+    state: runtimeState,
+    threadControls,
+  } = createFakeRuntime();
   const provisions: ProvisionWorkspaceArgs[] = [];
   const manager = new RuntimeManager({
     provisionWorkspace: async (options) => {
@@ -342,6 +439,7 @@ export function createHarness(
     provisions,
     runtime,
     runtimeState,
+    threadControls,
     workspaceState,
     workspace,
     /** Default dispatch options with threadStorageRootPath for tests. */

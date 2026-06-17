@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadCliConfig } from "../src/cli.js";
 import { loadCommonConfig } from "../src/common.js";
 import { loadDatabaseConfig } from "../src/database.js";
-import { loadDevEnvConfig } from "../src/dev-env.js";
+import { loadDevAppConfig } from "../src/dev-app.js";
 import { loadHostDaemonEntrypointConfig } from "../src/host-daemon-entrypoint.js";
 import {
   loadHostDaemonConfig,
@@ -23,7 +23,7 @@ import {
 import { loadServerPortConfig } from "../src/server-port.js";
 import { loadServerConfig } from "../src/server.js";
 import { loadViteDevConfig } from "../src/vite-dev.js";
-import { resolveDataDirSkillsRootPath } from "../src/app-storage-paths.js";
+import { resolveDataDirSkillsRootPath } from "../src/skill-storage-paths.js";
 
 async function importConfigModules(): Promise<void> {
   vi.resetModules();
@@ -31,7 +31,7 @@ async function importConfigModules(): Promise<void> {
     import("../src/cli.js"),
     import("../src/common.js"),
     import("../src/database.js"),
-    import("../src/dev-env.js"),
+    import("../src/dev-app.js"),
     import("../src/host-daemon-entrypoint.js"),
     import("../src/host-daemon.js"),
     import("../src/logger.js"),
@@ -342,52 +342,6 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_FF_PLACEHOLDER/u);
   });
 
-  it("defaults and parses the per-host workflow run cap (positive integer only)", () => {
-    expect(
-      loadServerConfig({ env: createServerRuntimeEnv({}) })
-        .BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-    ).toBe(4);
-    expect(
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: "9",
-        }),
-      }).BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-    ).toBe(9);
-    for (const invalid of ["0", "-2", "1.5", "many"]) {
-      expect(() =>
-        loadServerConfig({
-          env: createServerRuntimeEnv({
-            BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: invalid,
-          }),
-        }),
-      ).toThrow(/BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST/u);
-    }
-  });
-
-  it("defaults and parses the daemon workflow provider-process cap", () => {
-    const baseEnv = {
-      BB_DATA_DIR: "/tmp/bb-data",
-      BB_HOST_DAEMON_PORT: "3999",
-      BB_SERVER_URL: "http://localhost:9999",
-      NODE_ENV: "development",
-    };
-    expect(
-      loadHostDaemonConfig({ env: baseEnv })
-        .BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
-    ).toBe(8);
-    expect(
-      loadHostDaemonConfig({
-        env: { ...baseEnv, BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: "12" },
-      }).BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
-    ).toBe(12);
-    expect(() =>
-      loadHostDaemonConfig({
-        env: { ...baseEnv, BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: "0" },
-      }),
-    ).toThrow(/BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES/u);
-  });
-
   it("uses 0.0.0-dev as the default BB_APP_VERSION in production", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({
@@ -462,16 +416,6 @@ describe("consumer-specific config", () => {
         }),
       }),
     ).toThrow(/BB_TRANSCRIPTION/u);
-  });
-
-  it("accepts envsafe-compatible boolean forms from env", () => {
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({
-      env: createHostDaemonRuntimeEnv({
-        BB_DEV_REPLAY_CAPTURE: "0",
-      }),
-    });
-
-    expect(hostDaemonConfig.BB_DEV_REPLAY_CAPTURE).toBe(false);
   });
 
   it("requires a valid server URL for the daemon and CLI", () => {
@@ -669,22 +613,20 @@ describe("consumer-specific config", () => {
   });
 
   it("reads dev app host from its dedicated config scope", () => {
-    const devEnvConfig = loadDevEnvConfig({
+    const devAppConfig = loadDevAppConfig({
       env: {
         BB_DEV_APP_HOST: "0.0.0.0",
         NODE_ENV: "development",
       },
     });
 
-    expect(devEnvConfig.BB_DEV_APP_HOST).toBe("0.0.0.0");
-    expect(devEnvConfig.BB_DEV_APP_PORT).toBeUndefined();
-    expect(devEnvConfig.BB_DEV_ENV_PORT).toBeUndefined();
+    expect(devAppConfig.BB_DEV_APP_HOST).toBe("0.0.0.0");
+    expect(devAppConfig.BB_DEV_APP_PORT).toBeUndefined();
   });
 
   it("builds app Vite dev config from the app dev entrypoint scope", () => {
     const viteDevConfig = loadViteDevConfig({
       env: {
-        BB_DEV_APP_HOST: "0.0.0.0",
         BB_DEV_APP_PORT: "4173",
         BB_SERVER_PORT: "4444",
         NODE_ENV: "development",
@@ -696,7 +638,10 @@ describe("consumer-specific config", () => {
       appPort: 4173,
       serverHttpOrigin: "http://localhost:4444",
       serverPort: 4444,
-      serverWsOrigin: "ws://localhost:4444",
+      serverWsOrigin: {
+        kind: "browser-host",
+        port: 4444,
+      },
     });
   });
 

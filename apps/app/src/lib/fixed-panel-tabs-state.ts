@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
@@ -19,23 +19,10 @@ export const FIXED_PANEL_TABS_STATE_STORAGE_PREFIX =
 export const FIXED_PANEL_TABS_STATE_STORAGE_VERSION = 1;
 export const FIXED_PANEL_TABS_IDLE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
 
-const THREAD_INFO_TAB_ID = "thread-info";
-const GIT_DIFF_TAB_ID = "git-diff";
-const NEW_TAB_TAB_ID = "new-tab";
-
-function stripLegacyLineNumberField(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
-
-  const nextValue: Record<string, unknown> = {};
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (key !== "lineNumber") {
-      nextValue[key] = fieldValue;
-    }
-  }
-  return nextValue;
-}
+const SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE = "none";
+const THREAD_INFO_TAB_ID = "thread-info:thread-info:none";
+const GIT_DIFF_TAB_ID = "git-diff:git-diff:none";
+const NEW_TAB_TAB_ID = "new-tab:new-tab:none";
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
   z.discriminatedUnion("kind", [
@@ -67,71 +54,60 @@ const filePreviewLineRangeSchema: z.ZodType<FilePreviewLineRange> = z
   .refine((range) => range.startLineNumber <= range.endLineNumber);
 const threadInfoFixedPanelTabSchema = z
   .object({
-    id: z.literal(THREAD_INFO_TAB_ID),
+    id: z.string().min(1),
     kind: z.literal("thread-info"),
   })
   .strict();
 const gitDiffFixedPanelTabSchema = z
   .object({
-    id: z.literal(GIT_DIFF_TAB_ID),
+    id: z.string().min(1),
     kind: z.literal("git-diff"),
   })
   .strict();
-const workspaceFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      environmentId: z.string().min(1).nullable(),
-      id: z.string().min(1),
-      kind: z.literal("workspace-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-      source: environmentFilePreviewSourceSchema,
-      statusLabel: workspaceFilePreviewStatusLabelSchema,
-    })
-    .strict(),
-);
-const hostFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      id: z.string().min(1),
-      kind: z.literal("host-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-    })
-    .strict(),
-);
-const threadStorageFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      id: z.string().min(1),
-      isPinned: z.boolean(),
-      kind: z.literal("thread-storage-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-    })
-    .strict(),
-);
-const appFixedPanelTabSchema = z
+const workspaceFilePreviewFixedPanelTabSchema = z
   .object({
-    applicationId: z.string().min(1),
+    environmentId: z.string().min(1).nullable(),
     id: z.string().min(1),
-    kind: z.literal("app"),
+    kind: z.literal("workspace-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
+    source: environmentFilePreviewSourceSchema,
+    statusLabel: workspaceFilePreviewStatusLabelSchema,
+  })
+  .strict();
+const hostFilePreviewFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("host-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
+  })
+  .strict();
+const threadStorageFilePreviewFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    isPinned: z.boolean(),
+    kind: z.literal("thread-storage-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
   })
   .strict();
 const browserFixedPanelTabSchema = z
   .object({
+    environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("browser"),
-    title: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    title: z
+      .string()
+      .min(1)
+      .max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH)
+      .nullable(),
     url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
   })
   .strict();
 const newTabFixedPanelTabSchema = z
   .object({
-    id: z.literal(NEW_TAB_TAB_ID),
+    id: z.string().min(1),
     kind: z.literal("new-tab"),
   })
   .strict();
@@ -142,18 +118,24 @@ const terminalFixedPanelTabSchema = z
     terminalId: z.string().min(1),
   })
   .strict();
+const sideChatFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("side-chat"),
+    sourceMessageText: z.string(),
+    threadId: z.string().min(1).nullable(),
+    title: z.string().min(1),
+  })
+  .strict();
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
-  appFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
-  terminalFixedPanelTabSchema,
-]);
-const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
+  sideChatFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
 ]);
 const secondaryFixedPanelTabGroupStateSchema = z
@@ -163,44 +145,21 @@ const secondaryFixedPanelTabGroupStateSchema = z
     isOpen: z.boolean(),
   })
   .strict();
-const legacySecondaryFixedPanelTabGroupStateSchema = z
-  .object({
-    tabs: z.array(secondaryFixedPanelTabSchema),
-    activeTabId: z.string().min(1).nullable(),
-  })
-  .strict();
-const bottomFixedPanelTabGroupStateSchema = z
-  .object({
-    tabs: z.array(bottomFixedPanelTabSchema),
-    activeTabId: z.string().min(1).nullable(),
-  })
-  .strict();
 const fixedPanelTabsStateSchema = z
   .object({
     version: z.literal(FIXED_PANEL_TABS_STATE_STORAGE_VERSION),
     secondary: secondaryFixedPanelTabGroupStateSchema,
-    bottom: bottomFixedPanelTabGroupStateSchema,
     lastUsedAt: z.number().int().nonnegative(),
   })
-  .strict();
-const legacyFixedPanelTabsStateSchema = z
-  .object({
-    version: z.literal(FIXED_PANEL_TABS_STATE_STORAGE_VERSION),
-    secondary: legacySecondaryFixedPanelTabGroupStateSchema,
-    bottom: bottomFixedPanelTabGroupStateSchema,
-    lastUsedAt: z.number().int().nonnegative(),
-  })
-  .strict();
-
-export type FixedPanelRegion = "secondary" | "bottom";
+  .passthrough();
 
 export interface ThreadInfoFixedPanelTab {
-  id: typeof THREAD_INFO_TAB_ID;
+  id: string;
   kind: "thread-info";
 }
 
 export interface GitDiffFixedPanelTab {
-  id: typeof GIT_DIFF_TAB_ID;
+  id: string;
   kind: "git-diff";
 }
 
@@ -229,12 +188,6 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   path: string;
 }
 
-export interface AppFixedPanelTab {
-  applicationId: string;
-  id: string;
-  kind: "app";
-}
-
 /**
  * A web browser tab hosted by a native Electron `WebContentsView` (desktop
  * only). `url` is the last-loaded page (empty string = the new-tab screen) and
@@ -244,6 +197,7 @@ export interface AppFixedPanelTab {
  * Live loading state is not persisted — it is held by the active tab's chrome.
  */
 export interface BrowserFixedPanelTab {
+  environmentId: string | null;
   id: string;
   kind: "browser";
   title: string | null;
@@ -251,7 +205,7 @@ export interface BrowserFixedPanelTab {
 }
 
 export interface NewTabFixedPanelTab {
-  id: typeof NEW_TAB_TAB_ID;
+  id: string;
   kind: "new-tab";
 }
 
@@ -261,15 +215,34 @@ export interface TerminalFixedPanelTab {
   terminalId: string;
 }
 
+/**
+ * A message-anchored side chat hosted in the secondary panel. The child thread
+ * is created lazily on the user's first submit, so `threadId` is null until then
+ * (the composer is shown with no thread yet). `title` is the truncated pill
+ * label derived from the source agent message at open time (and could later
+ * mirror the child thread's title); `sourceMessageText` is the full, untruncated
+ * source message used to anchor the context snapshot on the exact spawning
+ * message (the truncated title would fail the exact-match anchor). Like a
+ * browser tab, the live conversation/streaming state lives in a kept-mounted
+ * deck so it survives switching to another panel tab.
+ */
+export interface SideChatFixedPanelTab {
+  id: string;
+  kind: "side-chat";
+  sourceMessageText: string;
+  threadId: string | null;
+  title: string;
+}
+
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
-  | AppFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
+  | SideChatFixedPanelTab
   | TerminalFixedPanelTab;
 
 /**
@@ -281,14 +254,12 @@ export type SecondaryFileFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
-  | AppFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
+  | SideChatFixedPanelTab
   | TerminalFixedPanelTab;
 
-export type BottomFixedPanelTab = TerminalFixedPanelTab;
-
-export type FixedPanelTab = SecondaryFixedPanelTab | BottomFixedPanelTab;
+export type FixedPanelTab = SecondaryFixedPanelTab;
 
 export interface FixedPanelTabGroupState {
   tabs: readonly FixedPanelTab[];
@@ -302,30 +273,7 @@ export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupStat
 export interface FixedPanelTabsState {
   version: typeof FIXED_PANEL_TABS_STATE_STORAGE_VERSION;
   secondary: FixedSecondaryPanelTabGroupState;
-  bottom: FixedPanelTabGroupState;
   lastUsedAt: number;
-}
-
-interface GetActiveSecondaryAppIdArgs {
-  isSecondaryPanelOpen: boolean;
-  state: FixedPanelTabsState;
-}
-
-/**
- * The application id of the secondary panel's active tab when that tab is an
- * app and the panel is open, else null. Lets sidebar rows tell whether a
- * thread's panel is currently showing a given app without reaching into the
- * tab list shape themselves.
- */
-export function getActiveSecondaryAppId(
-  { isSecondaryPanelOpen, state }: GetActiveSecondaryAppIdArgs,
-): string | null {
-  const { activeTabId, tabs } = state.secondary;
-  if (!isSecondaryPanelOpen || activeTabId === null) {
-    return null;
-  }
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  return activeTab?.kind === "app" ? activeTab.applicationId : null;
 }
 
 interface FixedPanelTabsStorageKeyArgs {
@@ -333,7 +281,6 @@ interface FixedPanelTabsStorageKeyArgs {
 }
 
 interface CreateFixedPanelTabsStateArgs {
-  bottom?: FixedPanelTabGroupState;
   lastUsedAt?: number;
   secondary?: FixedSecondaryPanelTabGroupState;
 }
@@ -372,7 +319,6 @@ interface StripTransientFixedPanelTabsStateForStorageArgs {
 
 interface NormalizeFixedPanelTabGroupStateArgs {
   group: FixedPanelTabGroupState;
-  region: FixedPanelRegion;
 }
 
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
@@ -380,12 +326,14 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   tab: ThreadStorageFileTabState;
 }
 
-interface CreateAppFixedPanelTabArgs {
-  applicationId: string;
+interface CreateBrowserFixedPanelTabArgs {
+  environmentId: string | null;
+  url: string;
 }
 
-interface CreateBrowserFixedPanelTabArgs {
-  url: string;
+interface CreateSideChatFixedPanelTabArgs {
+  sourceMessageText: string;
+  title: string;
 }
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
@@ -395,6 +343,17 @@ interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
 
 interface CreateTerminalFixedPanelTabArgs {
   terminalId: string;
+}
+
+interface BuildFixedPanelTabIdArgs {
+  environmentId: string | null;
+  kind: FixedPanelTab["kind"];
+  path: string;
+}
+
+interface NormalizeFixedPanelTabGroupStateResult {
+  activeTabId: string | null;
+  tabs: readonly FixedPanelTab[];
 }
 
 function getLocalStorage(): Storage | null {
@@ -408,8 +367,24 @@ function normalizeStorageSegment(value: string): string {
   return encodeURIComponent(value.trim());
 }
 
-function buildFileTabId(kind: FixedPanelTab["kind"], path: string): string {
-  return `${kind}:${encodeURIComponent(path)}`;
+function decodeStorageSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export function buildFixedPanelTabId({
+  environmentId,
+  kind,
+  path,
+}: BuildFixedPanelTabIdArgs): string {
+  return [
+    kind,
+    encodeURIComponent(path),
+    encodeURIComponent(environmentId ?? SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE),
+  ].join(":");
 }
 
 export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
@@ -432,7 +407,11 @@ export function createWorkspaceFilePreviewFixedPanelTab({
 }: CreateWorkspaceFilePreviewFixedPanelTabArgs): WorkspaceFilePreviewFixedPanelTab {
   return {
     environmentId,
-    id: buildFileTabId("workspace-file-preview", tab.path),
+    id: buildFixedPanelTabId({
+      environmentId,
+      kind: "workspace-file-preview",
+      path: tab.path,
+    }),
     kind: "workspace-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
@@ -445,7 +424,11 @@ export function createHostFilePreviewFixedPanelTab(
   tab: HostFileTabState,
 ): HostFilePreviewFixedPanelTab {
   return {
-    id: buildFileTabId("host-file-preview", tab.path),
+    id: buildFixedPanelTabId({
+      environmentId: null,
+      kind: "host-file-preview",
+      path: tab.path,
+    }),
     kind: "host-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
@@ -457,7 +440,11 @@ export function createThreadStorageFilePreviewFixedPanelTab({
   tab,
 }: CreateThreadStorageFilePreviewFixedPanelTabArgs): ThreadStorageFilePreviewFixedPanelTab {
   return {
-    id: buildFileTabId("thread-storage-file-preview", tab.path),
+    id: buildFixedPanelTabId({
+      environmentId: null,
+      kind: "thread-storage-file-preview",
+      path: tab.path,
+    }),
     isPinned,
     kind: "thread-storage-file-preview",
     lineRange: tab.lineRange,
@@ -465,26 +452,23 @@ export function createThreadStorageFilePreviewFixedPanelTab({
   };
 }
 
-export function createAppFixedPanelTab({
-  applicationId,
-}: CreateAppFixedPanelTabArgs): AppFixedPanelTab {
-  return {
-    applicationId,
-    id: `app:${encodeURIComponent(applicationId)}`,
-    kind: "app",
-  };
-}
-
 /**
  * Browser tabs get a fresh unique id per instance — the URL is mutable (it
  * changes on every navigation), so it cannot serve as a stable identity the way
- * an application id or file path does.
+ * a file path does.
  */
 export function createBrowserFixedPanelTab({
+  environmentId,
   url,
 }: CreateBrowserFixedPanelTabArgs): BrowserFixedPanelTab {
+  const browserInstanceId = crypto.randomUUID();
   return {
-    id: `browser:${crypto.randomUUID()}`,
+    environmentId,
+    id: buildFixedPanelTabId({
+      environmentId,
+      kind: "browser",
+      path: browserInstanceId,
+    }),
     kind: "browser",
     title: null,
     url,
@@ -498,24 +482,113 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   };
 }
 
+/**
+ * Side-chat tabs get a fresh unique id per instance — the source agent message
+ * is not a stable identity (the same message can spawn multiple side chats, and
+ * the thread does not exist yet), so it cannot key the tab the way a file path
+ * or application id does. `threadId` starts null; the child thread is created on
+ * the user's first submit.
+ */
+export function createSideChatFixedPanelTab({
+  sourceMessageText,
+  title,
+}: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
+  return {
+    id: `side-chat:${crypto.randomUUID()}`,
+    kind: "side-chat",
+    sourceMessageText,
+    threadId: null,
+    title,
+  };
+}
+
 export function createTerminalFixedPanelTab({
   terminalId,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
   return {
-    id: `terminal:${encodeURIComponent(terminalId)}`,
+    id: buildFixedPanelTabId({
+      environmentId: null,
+      kind: "terminal",
+      path: terminalId,
+    }),
     kind: "terminal",
     terminalId,
   };
 }
 
-function isTabSupportedInRegion(
-  region: FixedPanelRegion,
-  tab: FixedPanelTab,
-): boolean {
-  if (region === "bottom") {
-    return tab.kind === "terminal";
+function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
+  switch (tab.kind) {
+    case "thread-info":
+      return tab.id === THREAD_INFO_TAB_ID
+        ? tab
+        : {
+            ...tab,
+            id: THREAD_INFO_TAB_ID,
+          };
+    case "git-diff":
+      return tab.id === GIT_DIFF_TAB_ID
+        ? tab
+        : {
+            ...tab,
+            id: GIT_DIFF_TAB_ID,
+          };
+    case "workspace-file-preview": {
+      const id = buildFixedPanelTabId({
+        environmentId: tab.environmentId,
+        kind: tab.kind,
+        path: tab.path,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
+    case "host-file-preview": {
+      const id = buildFixedPanelTabId({
+        environmentId: null,
+        kind: tab.kind,
+        path: tab.path,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
+    case "thread-storage-file-preview": {
+      const id = buildFixedPanelTabId({
+        environmentId: null,
+        kind: tab.kind,
+        path: tab.path,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
+    case "browser": {
+      const idSegments = tab.id.split(":");
+      const browserPath =
+        idSegments.length === 3 && idSegments[0] === "browser"
+          ? decodeStorageSegment(idSegments[1] ?? "")
+          : tab.id;
+      const id = buildFixedPanelTabId({
+        environmentId: tab.environmentId,
+        kind: tab.kind,
+        path: browserPath,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
+    case "new-tab":
+      return tab.id === NEW_TAB_TAB_ID
+        ? tab
+        : {
+            ...tab,
+            id: NEW_TAB_TAB_ID,
+          };
+    case "terminal": {
+      const id = buildFixedPanelTabId({
+        environmentId: null,
+        kind: tab.kind,
+        path: tab.terminalId,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
+    case "side-chat":
+      // Side-chat tab ids are random UUIDs minted at creation, not derived
+      // from content, so there is nothing to normalize.
+      return tab;
   }
-  return true;
 }
 
 function isTransientFixedPanelTab(tab: FixedPanelTab): boolean {
@@ -524,28 +597,31 @@ function isTransientFixedPanelTab(tab: FixedPanelTab): boolean {
 
 function normalizeFixedPanelTabGroupState({
   group,
-  region,
-}: NormalizeFixedPanelTabGroupStateArgs): FixedPanelTabGroupState {
+}: NormalizeFixedPanelTabGroupStateArgs): NormalizeFixedPanelTabGroupStateResult {
   const seenTabIds = new Set<string>();
   const tabs: FixedPanelTab[] = [];
+  let activeTabId: string | null = null;
   for (const tab of group.tabs) {
+    const normalizedTab = normalizeFixedPanelTabId(tab);
     if (
-      isTransientFixedPanelTab(tab) ||
-      !isTabSupportedInRegion(region, tab) ||
-      seenTabIds.has(tab.id)
+      isTransientFixedPanelTab(normalizedTab) ||
+      seenTabIds.has(normalizedTab.id)
     ) {
       continue;
     }
-    seenTabIds.add(tab.id);
-    tabs.push(tab);
+    seenTabIds.add(normalizedTab.id);
+    tabs.push(normalizedTab);
+    if (
+      group.activeTabId !== null &&
+      (tab.id === group.activeTabId || normalizedTab.id === group.activeTabId)
+    ) {
+      activeTabId = normalizedTab.id;
+    }
   }
 
   return {
     tabs,
-    activeTabId:
-      group.activeTabId !== null && seenTabIds.has(group.activeTabId)
-        ? group.activeTabId
-        : null,
+    activeTabId,
   };
 }
 
@@ -555,7 +631,6 @@ function normalizeFixedSecondaryPanelTabGroupState(
   return {
     ...normalizeFixedPanelTabGroupState({
       group,
-      region: "secondary",
     }),
     isOpen: group.isOpen,
   };
@@ -574,10 +649,10 @@ function stripTransientFixedPanelTabForStorage(
       };
     case "thread-info":
     case "git-diff":
-    case "app":
     case "browser":
     case "new-tab":
     case "terminal":
+    case "side-chat":
       return tab;
   }
 }
@@ -591,10 +666,6 @@ function stripTransientFixedPanelTabsStateForStorage({
       ...state.secondary,
       tabs: state.secondary.tabs.map(stripTransientFixedPanelTabForStorage),
     },
-    bottom: {
-      ...state.bottom,
-      tabs: state.bottom.tabs.map(stripTransientFixedPanelTabForStorage),
-    },
   };
 }
 
@@ -604,38 +675,11 @@ export function normalizeFixedPanelTabsState({
   const normalizedSecondary = normalizeFixedSecondaryPanelTabGroupState(
     state.secondary,
   );
-  const normalizedBottom = normalizeFixedPanelTabGroupState({
-    group: state.bottom,
-    region: "bottom",
-  });
-  const seenSecondaryTabIds = new Set(
-    normalizedSecondary.tabs.map((tab) => tab.id),
-  );
-  const migratedTerminalTabs = normalizedBottom.tabs.filter(
-    (tab) => !seenSecondaryTabIds.has(tab.id),
-  );
-  const secondaryTabs =
-    migratedTerminalTabs.length > 0
-      ? [...normalizedSecondary.tabs, ...migratedTerminalTabs]
-      : normalizedSecondary.tabs;
-  const activeTabId =
-    normalizedSecondary.activeTabId ??
-    (normalizedBottom.activeTabId !== null &&
-    secondaryTabs.some((tab) => tab.id === normalizedBottom.activeTabId)
-      ? normalizedBottom.activeTabId
-      : null);
 
   return {
-    ...state,
-    secondary: {
-      ...normalizedSecondary,
-      tabs: secondaryTabs,
-      activeTabId,
-    },
-    bottom: {
-      tabs: [],
-      activeTabId: null,
-    },
+    version: state.version,
+    secondary: normalizedSecondary,
+    lastUsedAt: state.lastUsedAt,
   };
 }
 
@@ -649,10 +693,6 @@ export function createEmptyFixedPanelTabsState(
         tabs: [],
         activeTabId: null,
         isOpen: false,
-      },
-      bottom: args.bottom ?? {
-        tabs: [],
-        activeTabId: null,
       },
       lastUsedAt: args.lastUsedAt ?? 0,
     },
@@ -670,10 +710,7 @@ export function getFixedPanelTabsStateStorageKey({
 }
 
 export function isFixedPanelTabsStateStorageKey(key: string): boolean {
-  return (
-    key.startsWith(`${FIXED_PANEL_TABS_STATE_STORAGE_PREFIX}-`) &&
-    key.endsWith(`-${FIXED_PANEL_TABS_STATE_STORAGE_VERSION}`)
-  );
+  return key.startsWith(`${FIXED_PANEL_TABS_STATE_STORAGE_PREFIX}-`);
 }
 
 export function isFixedPanelTabsStateExpired({
@@ -718,42 +755,16 @@ function parseFixedPanelTabsStateForStorage({
   }
 
   const stateResult = fixedPanelTabsStateSchema.safeParse(parsedValue);
-  if (stateResult.success) {
-    const normalizedState = stripTransientFixedPanelTabsStateForStorage({
-      state: normalizeFixedPanelTabsState({
-        state: stateResult.data,
-      }),
-    });
-    if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
-      return {
-        shouldPrune: true,
-        state: initialValue,
-      };
-    }
-
-    return {
-      shouldPrune: false,
-      state: normalizedState,
-    };
-  }
-
-  const legacyStateResult =
-    legacyFixedPanelTabsStateSchema.safeParse(parsedValue);
-  if (!legacyStateResult.success) {
+  if (!stateResult.success) {
     return {
       shouldPrune: true,
       state: initialValue,
     };
   }
+
   const normalizedState = stripTransientFixedPanelTabsStateForStorage({
     state: normalizeFixedPanelTabsState({
-      state: {
-        ...legacyStateResult.data,
-        secondary: {
-          ...legacyStateResult.data.secondary,
-          isOpen: legacyStateResult.data.secondary.activeTabId !== null,
-        },
-      },
+      state: stateResult.data,
     }),
   });
   if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
@@ -840,10 +851,15 @@ export function areFixedPanelTabsEquivalent(
         }) &&
         a.path === b.path
       );
-    case "app":
-      return b.kind === "app" && a.applicationId === b.applicationId;
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
+    case "side-chat":
+      return (
+        b.kind === "side-chat" &&
+        a.sourceMessageText === b.sourceMessageText &&
+        a.threadId === b.threadId &&
+        a.title === b.title
+      );
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&

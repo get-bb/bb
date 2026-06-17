@@ -1,27 +1,19 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { shellSingleQuote } from "@bb/test-helpers";
 import { eq } from "drizzle-orm";
 import { environments } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import {
-  archiveThread,
   createHostThread,
   getEnvironment,
   getThreadEvents,
   getThreadOutput,
   sendTextMessage,
-  unarchiveThread,
 } from "../../helpers/api.js";
-import {
-  waitForEnvironmentStatus,
-  waitForPathRemoval,
-  waitForThreadStatus,
-} from "../../helpers/assertions.js";
+import { waitForThreadStatus } from "../../helpers/assertions.js";
 import { createReadyReuseThread } from "../../helpers/fixtures.js";
 import { withHarness } from "../../helpers/harness.js";
-import { runGit } from "../../helpers/seed.js";
 import {
   createProjectFixture,
   createReadyThread,
@@ -146,107 +138,11 @@ describe.sequential("fake provider smoke reuse integration", () => {
       expect(output).toContain("reuse environment");
     }));
 
-  it("returns 409 when a second send tries to reprovision while managed reprovision is already in progress", () =>
-    withHarness(async (harness) => {
-      const project = await createProjectFixture(
-        harness,
-        "Managed Reprovision Conflict",
-      );
-      const { environment, thread } = await createReadyThread(harness, {
-        projectId: project.id,
-        workspace: { type: "managed-worktree" },
-      });
-      const originalWorkspacePath = environment.path;
-      if (!originalWorkspacePath) {
-        throw new Error("Managed worktree path was not assigned");
-      }
-
-      const coordinationDir = path.join(
-        path.dirname(harness.repoDir),
-        `reprovision-${randomUUID()}`,
-      );
-      const releaseFile = path.join(coordinationDir, "release");
-      await fs.mkdir(coordinationDir, { recursive: true });
-      await fs.writeFile(
-        path.join(harness.repoDir, ".bb-env-setup.sh"),
-        [
-          "set -euo pipefail",
-          `release_file=${shellSingleQuote(releaseFile)}`,
-          'while [ ! -f "$release_file" ]; do sleep 0.05; done',
-          "echo reprovision released",
-        ].join("\n") + "\n",
-        "utf8",
-      );
-      await runGit({
-        cwd: harness.repoDir,
-        args: ["add", ".bb-env-setup.sh"],
-      });
-      await runGit({
-        cwd: harness.repoDir,
-        args: ["commit", "-m", "Add blocking reprovision setup"],
-      });
-
-      await archiveThread(harness.api, thread.id);
-      await waitForPathRemoval(originalWorkspacePath, DEFAULT_TIMEOUT_MS);
-      await waitForEnvironmentStatus(
-        harness.api,
-        environment.id,
-        "destroyed",
-        DEFAULT_TIMEOUT_MS,
-      );
-
-      await unarchiveThread(harness.api, thread.id);
-      const firstSendResponse = await harness.api.threads[":id"].send.$post({
-        param: { id: thread.id },
-        json: {
-          input: [{ type: "text", text: "start reprovision", mentions: [] }],
-          mode: "auto",
-        },
-      });
-      expect(firstSendResponse.status).toBe(200);
-      await waitForThreadStatus(
-        harness.api,
-        thread.id,
-        "provisioning",
-        DEFAULT_TIMEOUT_MS,
-      );
-      const reloadingEnvironment = await waitForEnvironmentStatus(
-        harness.api,
-        environment.id,
-        "provisioning",
-        DEFAULT_TIMEOUT_MS,
-      );
-
-      const secondSendResponse = await harness.api.threads[":id"].send.$post({
-        param: { id: thread.id },
-        json: {
-          input: [
-            { type: "text", text: "duplicate reprovision", mentions: [] },
-          ],
-          mode: "auto",
-        },
-      });
-      expect(secondSendResponse.status).toBe(409);
-      await expect(secondSendResponse.json()).resolves.toMatchObject({
-        code: "thread_not_writable",
-        details: {
-          reason: "still_starting",
-          threadStatus: "provisioning",
-        },
-      });
-
-      expect(reloadingEnvironment.status).toBe("provisioning");
-
-      await fs.writeFile(releaseFile, "release\n", "utf8");
-      await waitForThreadStatus(
-        harness.api,
-        thread.id,
-        "idle",
-        TURN_TIMEOUT_MS,
-      );
-      const output = await getThreadOutput(harness.api, thread.id);
-      expect(output).toContain("start reprovision");
-    }));
+  // Decision B*: un-archiving a thread whose managed environment was destroyed
+  // no longer reprovisions it (that race is gone by construction), so the old
+  // "second send conflicts with an in-progress reprovision after unarchive"
+  // scenario is unreachable. A send to a thread with a destroyed environment is
+  // covered by the decoupling tests in environment-isolation.test.ts.
 
   it("rejects reprovision attempts for unmanaged environments", () =>
     withHarness(async (harness) => {
@@ -285,7 +181,6 @@ describe.sequential("fake provider smoke reuse integration", () => {
       await expect(response.json()).resolves.toMatchObject({
         code: "environment_not_ready",
         details: {
-          cleanupRequestedAt: null,
           environmentStatus: "error",
           hasPath: false,
         },

@@ -21,8 +21,12 @@ export interface RootComposeBranchUiState {
   triggerTitle: string;
 }
 
+type RootComposeBranchCheckout = ProjectSourceCheckout & {
+  defaultWorktreeBaseBranch?: string | null;
+};
+
 export interface BuildRootComposeBranchUiStateArgs {
-  checkout: ProjectSourceCheckout | undefined;
+  checkout: RootComposeBranchCheckout | undefined;
   isFetching: boolean;
   isLoading: boolean;
   mode: RootComposeBranchEnvironmentMode;
@@ -30,7 +34,7 @@ export interface BuildRootComposeBranchUiStateArgs {
 }
 
 interface BuildWorktreeBranchUiStateArgs {
-  checkout: ProjectSourceCheckout | undefined;
+  checkout: RootComposeBranchCheckout | undefined;
   selectedBranch: RootComposeSelectedBranch | null;
 }
 
@@ -199,13 +203,14 @@ export function resolveBranchMutationBlocker(
 function buildWorktreeBranchUiState(
   args: BuildWorktreeBranchUiStateArgs,
 ): RootComposeBranchUiState {
-  const defaultBranch = args.checkout?.defaultBranch;
-  const defaultOptionLabel = formatBranchFromOptionLabel(defaultBranch);
-  const defaultTriggerLabel = formatBranchFromTriggerLabel(defaultBranch);
+  const defaultBaseBranch =
+    args.checkout?.defaultWorktreeBaseBranch ?? args.checkout?.defaultBranch;
+  const defaultOptionLabel = formatBranchFromOptionLabel(defaultBaseBranch);
+  const defaultTriggerLabel = formatBranchFromTriggerLabel(defaultBaseBranch);
 
   if (args.selectedBranch) {
     return {
-      currentBranch: defaultBranch ?? null,
+      currentBranch: defaultBaseBranch ?? null,
       currentOptionLabel: defaultOptionLabel,
       mutationBlocker: null,
       placeholder: "Branch from: default",
@@ -215,7 +220,7 @@ function buildWorktreeBranchUiState(
   }
 
   return {
-    currentBranch: defaultBranch ?? null,
+    currentBranch: defaultBaseBranch ?? null,
     currentOptionLabel: defaultOptionLabel,
     mutationBlocker: null,
     placeholder: "Branch from: default",

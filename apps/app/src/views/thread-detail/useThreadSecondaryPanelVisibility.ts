@@ -7,6 +7,7 @@ import type {
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 
 type ThreadSecondaryPanelThreadId = string | undefined;
+type ThreadDetailSurface = "page" | "popout";
 
 export type ThreadSecondaryPanelOpenHandler = (
   panel: ThreadSecondaryPanel,
@@ -34,6 +35,7 @@ export interface UseThreadSecondaryPanelVisibilityArgs {
   openPersistedPanel: ThreadSecondaryPanelOpenHandler;
   openPersistedStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
   openPersistedWorkspaceFile: ThreadSecondaryPanelWorkspaceFileOpenHandler;
+  surface: ThreadDetailSurface;
   threadId: ThreadSecondaryPanelThreadId;
   togglePersistedPanel: () => void;
 }
@@ -42,6 +44,7 @@ export interface ThreadSecondaryPanelVisibility {
   closePanel: () => void;
   isOpen: boolean;
   openCommitDiff: ThreadSecondaryPanelCommitDiffOpenHandler;
+  openCompactDrawer: () => void;
   openDiffFile: ThreadSecondaryPanelDiffFileOpenHandler;
   openDiffPanel: () => void;
   openHostFile: ThreadSecondaryPanelHostFileOpenHandler;
@@ -66,6 +69,7 @@ export function useThreadSecondaryPanelVisibility({
   openPersistedPanel,
   openPersistedStorageFile,
   openPersistedWorkspaceFile,
+  surface,
   threadId,
   togglePersistedPanel,
 }: UseThreadSecondaryPanelVisibilityArgs): ThreadSecondaryPanelVisibility {
@@ -96,88 +100,118 @@ export function useThreadSecondaryPanelVisibility({
     );
   }, [threadId]);
 
+  const openCompactDrawer = useCallback(() => {
+    if (surface === "popout" || !isCompactViewport) {
+      return;
+    }
+    openDrawerForCurrentThread();
+  }, [isCompactViewport, openDrawerForCurrentThread, surface]);
+
   const isDrawerVisible =
     hasThreadId(threadId) && openDrawerThreadId === threadId;
-  const isOpen = isCompactViewport ? isDrawerVisible : isPersistedOpen;
+  const isOpen =
+    surface === "popout"
+      ? false
+      : isCompactViewport
+        ? isDrawerVisible
+        : isPersistedOpen;
 
   const openPanel = useCallback<ThreadSecondaryPanelOpenHandler>(
     (panel) => {
-      openPersistedPanel(panel);
-      if (isCompactViewport) {
-        openDrawerForCurrentThread();
+      if (surface === "popout") {
+        return;
       }
+      openPersistedPanel(panel);
+      openCompactDrawer();
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedPanel],
+    [openCompactDrawer, openPersistedPanel, surface],
   );
 
   const openDiffPanel = useCallback(() => {
-    openPersistedDiffPanel();
-    if (isCompactViewport) {
-      openDrawerForCurrentThread();
+    if (surface === "popout") {
+      return;
     }
-  }, [isCompactViewport, openDrawerForCurrentThread, openPersistedDiffPanel]);
+    openPersistedDiffPanel();
+    openCompactDrawer();
+  }, [openCompactDrawer, openPersistedDiffPanel, surface]);
 
   const openDiffFile = useCallback<ThreadSecondaryPanelDiffFileOpenHandler>(
     (path) => {
-      openPersistedDiffFile(path);
-      if (isCompactViewport) {
-        openDrawerForCurrentThread();
+      if (surface === "popout") {
+        return;
       }
+      openPersistedDiffFile(path);
+      openCompactDrawer();
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedDiffFile],
+    [openCompactDrawer, openPersistedDiffFile, surface],
   );
 
   const openCommitDiff = useCallback<ThreadSecondaryPanelCommitDiffOpenHandler>(
     (sha) => {
-      openPersistedCommitDiff(sha);
-      if (isCompactViewport) {
-        openDrawerForCurrentThread();
+      if (surface === "popout") {
+        return;
       }
+      openPersistedCommitDiff(sha);
+      openCompactDrawer();
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedCommitDiff],
+    [openCompactDrawer, openPersistedCommitDiff, surface],
   );
 
   const openWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
       (file) => {
-        openPersistedWorkspaceFile(file);
-        if (isCompactViewport) {
-          openDrawerForCurrentThread();
+        if (surface === "popout") {
+          return;
         }
+        openPersistedWorkspaceFile(file);
+        openCompactDrawer();
       },
-      [isCompactViewport, openDrawerForCurrentThread, openPersistedWorkspaceFile],
+      [openCompactDrawer, openPersistedWorkspaceFile, surface],
     );
 
   const openStorageFile =
     useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
       (file) => {
-        openPersistedStorageFile(file);
-        if (isCompactViewport) {
-          openDrawerForCurrentThread();
+        if (surface === "popout") {
+          return;
         }
+        openPersistedStorageFile(file);
+        openCompactDrawer();
       },
-      [isCompactViewport, openDrawerForCurrentThread, openPersistedStorageFile],
+      [openCompactDrawer, openPersistedStorageFile, surface],
     );
 
   const openHostFile = useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
     (file) => {
-      openPersistedHostFile(file);
-      if (isCompactViewport) {
-        openDrawerForCurrentThread();
+      if (surface === "popout") {
+        return;
       }
+      openPersistedHostFile(file);
+      openCompactDrawer();
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedHostFile],
+    [openCompactDrawer, openPersistedHostFile, surface],
   );
 
   const closePanel = useCallback(() => {
+    if (surface === "popout") {
+      return;
+    }
     if (isCompactViewport) {
       closeDrawerForCurrentThread();
       return;
     }
     closePersistedPanel();
-  }, [closeDrawerForCurrentThread, closePersistedPanel, isCompactViewport]);
+  }, [
+    closeDrawerForCurrentThread,
+    closePersistedPanel,
+    isCompactViewport,
+    surface,
+  ]);
 
   const togglePanel = useCallback(() => {
+    if (surface === "popout") {
+      return;
+    }
     if (!isCompactViewport) {
       togglePersistedPanel();
       return;
@@ -192,6 +226,7 @@ export function useThreadSecondaryPanelVisibility({
     isCompactViewport,
     isDrawerVisible,
     openDrawerForCurrentThread,
+    surface,
     togglePersistedPanel,
   ]);
 
@@ -200,6 +235,7 @@ export function useThreadSecondaryPanelVisibility({
       closePanel,
       isOpen,
       openCommitDiff,
+      openCompactDrawer,
       openDiffFile,
       openDiffPanel,
       openHostFile,
@@ -212,6 +248,7 @@ export function useThreadSecondaryPanelVisibility({
       closePanel,
       isOpen,
       openCommitDiff,
+      openCompactDrawer,
       openDiffFile,
       openDiffPanel,
       openHostFile,

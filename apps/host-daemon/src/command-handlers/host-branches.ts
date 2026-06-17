@@ -2,12 +2,14 @@ import path from "node:path";
 import type { GitBranchRefClassification } from "@bb/domain";
 import {
   detectGitRepo,
+  fetchRemoteBranches,
   getCheckoutRef,
+  getGitCommonDir,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
   listBranches,
   listRemoteBranches,
-  readDefaultBranch,
+  readDefaultBranchRefs,
 } from "@bb/host-workspace";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { CommandDispatchError } from "../command-dispatch-support.js";
@@ -24,11 +26,24 @@ interface LimitedBranchList {
   truncated: boolean;
 }
 
+interface PinBranchArgs {
+  branches: readonly string[];
+  branch: string | null | undefined;
+}
+
 interface ClassifySelectedBranchArgs {
   branches: readonly string[];
   remoteBranches: readonly string[];
   selectedBranch?: string;
 }
+
+const REMOTE_BRANCH_FETCH_THROTTLE_MS = 30_000;
+const REMOTE_BRANCH_FETCH_TIMEOUT_MS = 5_000;
+
+const remoteBranchFetchStateByCommonDir = new Map<
+  string,
+  { fetchedAt: number; inFlight: Promise<void> | null }
+>();
 
 function limitBranchList({
   branches,
@@ -46,6 +61,14 @@ function limitBranchList({
     branches: filteredBranches.slice(0, limit),
     truncated: filteredBranches.length > limit,
   };
+}
+
+function pinBranch({ branches, branch }: PinBranchArgs): string[] {
+  if (!branch || !branches.includes(branch)) {
+    return [...branches];
+  }
+
+  return [branch, ...branches.filter((candidate) => candidate !== branch)];
 }
 
 function classifySelectedBranch({
@@ -68,6 +91,45 @@ function classifySelectedBranch({
   return { name: selectedBranch, kind: "missing" };
 }
 
+async function refreshRemoteBranches(cwd: string): Promise<void> {
+  const commonDir = await getGitCommonDir(cwd);
+  const now = Date.now();
+  const existingState = remoteBranchFetchStateByCommonDir.get(commonDir);
+  if (
+    existingState &&
+    now - existingState.fetchedAt < REMOTE_BRANCH_FETCH_THROTTLE_MS
+  ) {
+    if (existingState.inFlight) {
+      await existingState.inFlight;
+    }
+    return;
+  }
+
+  if (existingState?.inFlight) {
+    await existingState.inFlight;
+    return;
+  }
+
+  const inFlight = fetchRemoteBranches(cwd, {
+    timeoutMs: REMOTE_BRANCH_FETCH_TIMEOUT_MS,
+  })
+    .catch(() => undefined)
+    .then(() => undefined)
+    .finally(() => {
+      remoteBranchFetchStateByCommonDir.set(commonDir, {
+        fetchedAt: Date.now(),
+        inFlight: null,
+      });
+    });
+
+  remoteBranchFetchStateByCommonDir.set(commonDir, {
+    fetchedAt: now,
+    inFlight,
+  });
+
+  await inFlight;
+}
+
 export async function listHostBranches(
   command: CommandOf<"host.list_branches">,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_branches">> {
@@ -81,8 +143,10 @@ export async function listHostBranches(
       branchesTruncated: false,
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
+      defaultBranchRelation: null,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
+      originDefaultBranch: null,
       remoteBranches: [],
       remoteBranchesTruncated: false,
       selectedBranch: classifySelectedBranch({
@@ -93,28 +157,34 @@ export async function listHostBranches(
     };
   }
 
-  const [branches, remoteBranches, checkout, defaultBranch, dirty, operation] =
+  await refreshRemoteBranches(command.path);
+
+  const [branches, remoteBranches, checkout, defaultRefs, dirty, operation] =
     await Promise.all([
       listBranches(command.path),
       listRemoteBranches(command.path),
       getCheckoutRef(command.path),
-      readDefaultBranch(command.path),
+      readDefaultBranchRefs(command.path),
       hasUncommittedChanges(command.path),
       getWorkspaceGitOperation(command.path),
     ]);
-  // Pin the source's default branch to the top of the list so the picker
-  // surfaces it first; everything else preserves git's alphabetical order.
-  const sorted =
-    defaultBranch && branches.includes(defaultBranch)
-      ? [defaultBranch, ...branches.filter((b) => b !== defaultBranch)]
-      : branches;
+  const defaultBranch = defaultRefs.defaultBranch;
+  const originDefaultBranch = defaultRefs.originDefaultBranch;
+  // Pin default refs to the first page so common picks like main and
+  // origin/main are available before the user searches.
+  const sorted = pinBranch({ branches, branch: defaultBranch });
+  const sortedRemoteBranches = pinBranch({
+    branches: remoteBranches,
+    branch:
+      originDefaultBranch ?? (defaultBranch ? `origin/${defaultBranch}` : null),
+  });
   const limitedBranches = limitBranchList({
     branches: sorted,
     limit: command.limit,
     query: command.query,
   });
   const limitedRemoteBranches = limitBranchList({
-    branches: remoteBranches,
+    branches: sortedRemoteBranches,
     limit: command.limit,
     query: command.query,
   });
@@ -128,8 +198,10 @@ export async function listHostBranches(
     branchesTruncated: limitedBranches.truncated,
     checkout,
     defaultBranch: defaultBranch ?? null,
+    defaultBranchRelation: defaultRefs.defaultBranchRelation ?? null,
     hasUncommittedChanges: dirty,
     operation,
+    originDefaultBranch: originDefaultBranch ?? null,
     remoteBranches: limitedRemoteBranches.branches,
     remoteBranchesTruncated: limitedRemoteBranches.truncated,
     selectedBranch,

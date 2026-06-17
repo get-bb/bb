@@ -1,23 +1,17 @@
-import { environmentSchema, type Environment } from "@bb/domain";
+import { environmentSchema } from "@bb/domain";
 import {
   commitActionResponseSchema,
   squashMergeActionResponseSchema,
   updateEnvironmentRequestSchema,
 } from "@bb/server-contract";
 import type {
-  CommitActionResponse,
   EnvironmentDiffBranchesQuery,
-  EnvironmentDiffBranchesResponse,
   EnvironmentDiffFileQuery,
-  EnvironmentDiffFileResponse,
   EnvironmentDiffQuery,
-  EnvironmentDiffResponse,
   EnvironmentStatusQuery,
-  EnvironmentStatusResponse,
-  SquashMergeActionResponse,
   UpdateEnvironmentRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
 export interface EnvironmentGetArgs {
   environmentId: string;
@@ -63,8 +57,7 @@ export type EnvironmentDiffFileArgs = EnvironmentDiffFileQuery & {
   environmentId: string;
 };
 
-export interface EnvironmentDiffBranchesArgs
-  extends EnvironmentDiffBranchesQuery {
+export interface EnvironmentDiffBranchesArgs extends EnvironmentDiffBranchesQuery {
   environmentId: string;
 }
 
@@ -77,19 +70,53 @@ export interface EnvironmentSquashMergeArgs {
   mergeBaseBranch: string;
 }
 
+type EnvironmentActionResult = PublicApiOutput<
+  "/environments/:id/actions",
+  "$post"
+>;
+export type EnvironmentCommitResult = Extract<
+  EnvironmentActionResult,
+  { action: "commit" }
+>;
+export type EnvironmentDiffResult = PublicApiOutput<
+  "/environments/:id/diff",
+  "$get"
+>;
+export type EnvironmentDiffBranchesResult = PublicApiOutput<
+  "/environments/:id/diff/branches",
+  "$get"
+>;
+export type EnvironmentDiffFileResult = PublicApiOutput<
+  "/environments/:id/diff/file",
+  "$get"
+>;
+export type EnvironmentGetResult = PublicApiOutput<"/environments/:id", "$get">;
+export type EnvironmentSquashMergeResult = Extract<
+  EnvironmentActionResult,
+  { action: "squash_merge" }
+>;
+export type EnvironmentStatusResult = PublicApiOutput<
+  "/environments/:id/status",
+  "$get"
+>;
+export type EnvironmentUpdateResult = PublicApiOutput<
+  "/environments/:id",
+  "$patch"
+>;
+
 export interface EnvironmentsArea {
-  commit(args: EnvironmentCommitArgs): Promise<CommitActionResponse>;
-  diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResponse>;
+  commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
+  diff(args: EnvironmentDiffArgs): Promise<EnvironmentDiffResult>;
   diffBranches(
     args: EnvironmentDiffBranchesArgs,
-  ): Promise<EnvironmentDiffBranchesResponse>;
-  diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResponse>;
-  get(args: EnvironmentGetArgs): Promise<Environment>;
+  ): Promise<EnvironmentDiffBranchesResult>;
+  diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResult>;
+  get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   squashMerge(
     args: EnvironmentSquashMergeArgs,
-  ): Promise<SquashMergeActionResponse>;
-  status(args: EnvironmentStatusArgs): Promise<EnvironmentStatusResponse>;
-  update(args: EnvironmentUpdateArgs): Promise<Environment>;
+  ): Promise<EnvironmentSquashMergeResult>;
+  status(args: EnvironmentStatusArgs): Promise<EnvironmentStatusResult>;
+  update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
 }
 
 function environmentUpdateJson(

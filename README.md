@@ -51,6 +51,15 @@ For install requirements, provider setup, configuration, and package-focused
 docs, start with
 [`packages/bb-app`](./packages/bb-app/README.md).
 
+### Telemetry
+
+Production runs (the desktop app and `npx bb-app`) send anonymous usage
+telemetry (app starts and thread creation counts) to help us understand
+adoption. Identification is a random per-install id stored in your data dir —
+no user, host, project, or workspace data is ever attached. Development/source
+runs never send. Opt out any run with `BB_TELEMETRY=false`. See
+[`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
+
 ## Repository Overview
 
 This monorepo contains the packaged app plus the runtime services it bundles:
@@ -62,6 +71,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy. |
 | [`apps/host-daemon`](./apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.            |
 | [`apps/cli`](./apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                             |
+| [`apps/landing`](./apps/landing)                                   | Static marketing landing page (TanStack Start, prerendered).                          |
 | [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                           |
 | [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                           |
 
@@ -80,6 +90,25 @@ a data directory under
 checkout path. The checkout instance id is the sanitized path to the checkout,
 relative to your home directory, plus a short hash suffix. Separate worktrees
 can run alongside each other and the packaged `npx bb-app@latest` instance.
+
+To use the dev app from another machine, for example over Tailscale, run:
+
+```bash
+pnpm dev
+```
+
+Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Source dev binds
+the browser app to all interfaces and uses the browser host for WebSockets by
+default.
+
+To use the component storybook from another machine, run:
+
+```bash
+pnpm storybook
+```
+
+Ladle also binds to all interfaces and configures its HMR WebSocket to use the
+browser's current host instead of `localhost`.
 
 Development behavior is intentionally split:
 

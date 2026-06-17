@@ -23,14 +23,6 @@ const bridgeClaudeLocalPluginSchema = z.object({
   type: z.literal("local"),
   path: z.string(),
 });
-// SDK structured output is fixed at query creation, so the format rides
-// thread/start only. Omission means the session has no structured output.
-const bridgeOutputFormatSchema = z
-  .object({
-    type: z.literal("json_schema"),
-    schema: z.record(z.string(), z.unknown()),
-  })
-  .optional();
 const bridgeClaudePluginsSchema = z
   .array(bridgeClaudeLocalPluginSchema)
   .optional();
@@ -68,7 +60,6 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),
       instructionMode: bridgeInstructionModeSchema,
-      outputFormat: bridgeOutputFormatSchema,
       dynamicTools: z.array(dynamicToolSchema).optional(),
       disallowedTools: z.array(z.string()).optional(),
     }),
@@ -79,6 +70,27 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string(),
       cwd: z.string(),
       providerThreadId: z.string().nullable(),
+      baseInstructions: z.string().optional(),
+      additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
+      plugins: bridgeClaudePluginsSchema,
+      permissionMode: claudePermissionModeSchema,
+      permissionEscalation: bridgePermissionEscalationSchema,
+      config: z.record(z.string(), z.unknown()).optional(),
+      claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
+      model: z.string().optional(),
+      reasoningLevel: bridgeReasoningLevelSchema.optional(),
+      workflowsEnabled: z.boolean(),
+      instructionMode: bridgeInstructionModeSchema,
+      dynamicTools: z.array(dynamicToolSchema).optional(),
+      disallowedTools: z.array(z.string()).optional(),
+    }),
+  }),
+  z.object({
+    method: z.literal("thread/fork"),
+    params: z.object({
+      threadId: z.string(),
+      cwd: z.string(),
+      sourceProviderThreadId: z.string(),
       baseInstructions: z.string().optional(),
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
@@ -136,6 +148,11 @@ export type ThreadStartParams = Extract<
 export type ThreadResumeParams = Extract<
   ClaudeCodeCommand,
   { method: "thread/resume" }
+>["params"];
+
+export type ThreadForkParams = Extract<
+  ClaudeCodeCommand,
+  { method: "thread/fork" }
 >["params"];
 
 export type TurnStartParams = Extract<

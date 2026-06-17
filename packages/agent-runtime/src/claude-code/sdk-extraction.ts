@@ -79,6 +79,11 @@ const CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS = [
 ] as const;
 const DEFAULT_CLAUDE_CONTEXT_WINDOW = 200_000;
 const LARGE_CLAUDE_CONTEXT_WINDOW = 1_000_000;
+const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
+  "best",
+  "claude-fable-5",
+  "fable",
+]);
 
 export function getNestedParentToolUseId(
   message: unknown,
@@ -379,7 +384,10 @@ function extractModelContextWindow(
 export function resolveClaudeModelContextWindowHint(
   selectedModel: string,
 ): number | null {
-  if (selectedModel.endsWith("[1m]")) {
+  if (
+    selectedModel.endsWith("[1m]") ||
+    LARGE_CLAUDE_CONTEXT_MODELS.has(selectedModel)
+  ) {
     return LARGE_CLAUDE_CONTEXT_WINDOW;
   }
   if (selectedModel === "default") {

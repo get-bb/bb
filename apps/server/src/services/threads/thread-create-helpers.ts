@@ -159,18 +159,19 @@ export function createThreadRecord(
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
-    status?: "created" | "provisioning";
+    status?: "starting";
   },
 ) {
   return createThread(deps.db, deps.hub, {
     projectId: args.request.projectId,
     environmentId: args.environmentId,
-    automationId: args.request.automationId,
     providerId: args.request.providerId,
     title: args.request.title ?? null,
     titleFallback: deriveTitleFallback(args.request.input),
     parentThreadId: args.request.parentThreadId ?? null,
-    status: args.status ?? "created",
+    sourceThreadId: args.request.sourceThreadId ?? null,
+    originKind: args.request.originKind ?? args.request.childOrigin,
+    status: args.status ?? "starting",
   });
 }
 

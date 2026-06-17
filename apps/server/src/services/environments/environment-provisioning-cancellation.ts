@@ -34,10 +34,9 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
       and(
         eq(threads.environmentId, args.environmentId),
         ne(threads.id, args.threadId),
-        inArray(threads.status, ["created", "provisioning", "active"]),
+        inArray(threads.status, ["starting", "active"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNull(threads.stopRequestedAt),
       ),
     )
     .limit(1)
@@ -58,6 +57,9 @@ export function cancelEnvironmentProvisioningForThreadStopInTransaction(
     return "ready_to_finalize";
   }
 
+  // Not lifecycle: stop routing — an in-flight provision needs a host-side
+  // cancel RPC before the stopped thread can finalize; settled environments
+  // finalize immediately. No transition is written here.
   if (environment.status === "provisioning") {
     return "awaiting_host_cancel";
   }

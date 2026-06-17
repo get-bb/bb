@@ -54,9 +54,9 @@ import {
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
+import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
   ThreadRow,
@@ -229,6 +229,7 @@ interface UseArchiveEnvironmentThreadGroupActionArgs {
   environmentId: string;
   projectId: string;
   selectedThreadId?: string;
+  threads: readonly ThreadListEntry[];
 }
 
 interface UseArchiveEnvironmentThreadGroupActionResult {
@@ -251,6 +252,28 @@ interface UseEnvironmentThreadGroupRenameActionResult {
   renameDialogTarget: EnvironmentRenameDialogTarget | null;
   renameEnvironmentErrorMessage: string | null;
   renameEnvironmentPending: boolean;
+}
+
+interface FormatArchivedEnvironmentThreadsToastTitleArgs {
+  archivedThreadIds: readonly string[];
+  threads: readonly Pick<ThreadListEntry, "id" | "title" | "titleFallback">[];
+}
+
+export function formatArchivedEnvironmentThreadsToastTitle({
+  archivedThreadIds,
+  threads,
+}: FormatArchivedEnvironmentThreadsToastTitleArgs): string {
+  if (archivedThreadIds.length !== 1) {
+    return `Archived ${archivedThreadIds.length} threads`;
+  }
+
+  const archivedThread = threads.find(
+    (thread) => thread.id === archivedThreadIds[0],
+  );
+  if (!archivedThread) {
+    return "Archived 1 thread";
+  }
+  return `Archived ${getThreadDisplayTitle(archivedThread)}`;
 }
 
 function getProjectThreadTreeEmptyStateIcon(
@@ -385,7 +408,7 @@ function getThreadNodeStickyLevel({
 function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
   return (
     <span
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline"
+      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline opacity-40"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -397,7 +420,7 @@ function ThreadTreeLineContinuation({
 }: ThreadTreeLineContinuationProps) {
   return (
     <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline"
+      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-40"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -423,46 +446,46 @@ function ProjectThreadTreeGroup({
   );
 }
 
-function formatArchivedWorktreeThreadMessage(threadCount: number): string {
-  return threadCount === 1
-    ? "Archived 1 worktree thread"
-    : `Archived ${threadCount} worktree threads`;
-}
-
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
   projectId,
   selectedThreadId,
+  threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
   const navigate = useNavigate();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const {
     isPending: archiveThreadsIsPending,
-    mutate: archiveThreads,
+    mutateAsync: archiveThreads,
     variables,
   } = archiveEnvironmentThreads;
   const archiveThreadsPending =
     archiveThreadsIsPending && variables?.id === environmentId;
   const onArchiveThreads = useCallback(() => {
-    archiveThreads(
-      { id: environmentId },
-      {
-        onSuccess: (response) => {
-          appToast.success(
-            formatArchivedWorktreeThreadMessage(
-              response.archivedThreadIds.length,
-            ),
-          );
-          if (
-            selectedThreadId &&
-            response.archivedThreadIds.includes(selectedThreadId)
-          ) {
-            navigate(`/projects/${projectId}`);
-          }
-        },
-      },
-    );
-  }, [archiveThreads, environmentId, navigate, projectId, selectedThreadId]);
+    void archiveThreads({ id: environmentId })
+      .then((response) => {
+        appToast.success(
+          formatArchivedEnvironmentThreadsToastTitle({
+            archivedThreadIds: response.archivedThreadIds,
+            threads,
+          }),
+        );
+        if (
+          selectedThreadId &&
+          response.archivedThreadIds.includes(selectedThreadId)
+        ) {
+          navigate(`/projects/${projectId}`);
+        }
+      })
+      .catch(() => undefined);
+  }, [
+    archiveThreads,
+    environmentId,
+    navigate,
+    projectId,
+    selectedThreadId,
+    threads,
+  ]);
 
   return {
     archiveThreadsPending,
@@ -617,9 +640,7 @@ function EnvironmentThreadGroupHeader({
     : branchName
       ? `Worktree: ${branchName}`
       : "Worktree";
-  const iconName = getEnvironmentWorkspaceLabelIconName(
-    representativeThread.environmentWorkspaceDisplayKind,
-  );
+  const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
   // glyph (pending > working > unread). Expanded: the children show their own
   // glyphs, and the synthetic header has no status of its own.
@@ -635,7 +656,7 @@ function EnvironmentThreadGroupHeader({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+    "cursor-default",
   );
   const style = {
     paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
@@ -645,35 +666,26 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <button
-        type="button"
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => {
-          onToggleCollapsed(environmentId);
-        }}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-      />
-      <span
-        className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
-        aria-hidden="true"
-      >
-        <Icon
-          name={iconName}
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center",
+            COARSE_POINTER_GLYPH_BOX_CLASS,
+          )}
           aria-hidden="true"
-        />
-      </span>
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        >
+          <Icon
+            name={iconName}
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+            aria-hidden="true"
+          />
+        </span>
         <span className="min-w-0 truncate">
           <span>{environmentName ?? "Worktree"}</span>
           {branchName ? (
             <>
               <span>{environmentName ? " · " : ": "}</span>
-              <span className="text-muted-foreground">{branchName}</span>
+              <span>{branchName}</span>
             </>
           ) : null}
         </span>
@@ -684,6 +696,7 @@ function EnvironmentThreadGroupHeader({
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
+          revealOnHover={!isCollapsed}
         />
       </span>
       <span
@@ -782,11 +795,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     projectId,
     environmentId,
   });
+  const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =
     useArchiveEnvironmentThreadGroupAction({
       environmentId,
       projectId,
       selectedThreadId,
+      threads,
     });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
@@ -962,6 +977,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   );
   const showChildren = !isCollapsed && hasChildren;
   const hasComposerDraft = usePromptDraftHasInput({
+    kind: "thread",
     projectId,
     threadId: node.thread.id,
   });
@@ -1163,13 +1179,6 @@ function ProjectRowComponent({
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            <button
-              type="button"
-              aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
@@ -1191,6 +1200,7 @@ function ProjectRowComponent({
                 expandTitle="Expand project threads"
                 collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
+                revealOnHover={!isCollapsed}
               />
             </span>
             {isLocalPathInvalid ? (

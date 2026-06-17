@@ -1,0 +1,283 @@
+{
+  "spec_id": "thread-forking-and-side-chats-e159",
+  "spec_path": ".otto/specs/thread-forking-and-side-chats-e159.md",
+  "sessions": [
+    {
+      "id": "S1",
+      "title": "Server & domain foundation (contracts, turn-initiator plumbing, childOrigin, depth)",
+      "status": "done",
+      "priority": 0,
+      "depends_on": [],
+      "task_ids": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "Timeline message-action scaffolding (icons + MessageActionBar)",
+      "status": "done",
+      "priority": 0,
+      "depends_on": [],
+      "task_ids": [
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "Fork feature wiring (request, create flow, button, lineage)",
+      "status": "done",
+      "priority": 1,
+      "depends_on": [
+        "S1",
+        "S2"
+      ],
+      "task_ids": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "Side chat (composer spike, panel tab kind, lazy child thread, send-back)",
+      "status": "done",
+      "priority": 1,
+      "depends_on": [
+        "S1",
+        "S2"
+      ],
+      "task_ids": [
+        "12",
+        "13",
+        "14",
+        "15"
+      ]
+    },
+    {
+      "id": "S5",
+      "title": "Timeline scroll-position preservation",
+      "status": "done",
+      "priority": 0,
+      "depends_on": [],
+      "task_ids": [
+        "16",
+        "17"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "1",
+      "title": "Add startedOnBehalfOf to createThreadRequest; verify agent-only input parts accepted",
+      "description": "Success: createThreadRequestSchema accepts a discriminated `startedOnBehalfOf: { initiator: 'agent'|'system', senderThreadId: string } | null` (default null at server boundary), reconciled with the existing senderThreadId-nullable invariant; AND it is confirmed/ensured that `input` already accepts prompt parts with `visibility:'agent-only'` (needed by side chat) \u2014 add a failing-then-passing assertion if unconfirmed. AppCreateThreadRequest type updated. Files: packages/server-contract/src/api-types.ts, apps/app/src/lib/api.ts (type). Scope: contract-only, no behavior yet.",
+      "status": "done",
+      "priority": 0,
+      "type": "backend",
+      "depends_on": [],
+      "session_id": "S1"
+    },
+    {
+      "id": "2",
+      "title": "Plumb startedOnBehalfOf to thread-start dispatch; resolve & record seed-without-run (OQ1)",
+      "description": "Success: createThreadFromRequest forwards startedOnBehalfOf so the thread-start client/turn/requested event is written with initiator/senderThreadId (renders 'Message from {source}'); a DURABLE decision artifact is recorded in the spec's Open Question 1 resolution stating whether a thread-start turn can be persisted/displayed WITHOUT a provider run (fork approach A) or whether deferred-create (approach B) is required, with the evidence from thread-turn-dispatch.ts; the chosen approach's server seam is implemented (A: seed-without-run flag honored; B: typed seam + note). Done-when explicitly includes the recorded A/B verdict. Files: apps/server/src/services/threads/thread-create.ts, thread-turn-dispatch.ts (+ helpers), .otto/specs/thread-forking-and-side-chats-e159.md (OQ1). Scope: backend, riskiest task; gates tasks 8-9.",
+      "status": "done",
+      "priority": 0,
+      "type": "backend",
+      "depends_on": [
+        "1"
+      ],
+      "session_id": "S1"
+    },
+    {
+      "id": "3",
+      "title": "Add nullable childOrigin to thread (domain, migration, persist, response + list filter)",
+      "description": "Success: Thread domain type gains `childOrigin: 'fork'|'side-chat'|null`; nullable DB column migration defaulting null for existing rows; createThreadRequest accepts childOrigin (default null) and persists it; childOrigin is exposed on the thread response and supported as a filter on the list-threads route (which already accepts parentThreadId). No consumer treats absence as error. Files: packages/domain/src/thread.ts, packages/db migration, packages/server-contract (request+response), apps/server/src/services/threads/thread-create.ts, apps/server/src/routes/threads/base.ts. Scope: backend, schema + migration + read path.",
+      "status": "done",
+      "priority": 0,
+      "type": "backend",
+      "depends_on": [],
+      "session_id": "S1"
+    },
+    {
+      "id": "4",
+      "title": "Expose canSpawnChild (depth-cap) on thread response",
+      "description": "Success: the thread response exposes a server-derived boolean (e.g. `canSpawnChild`) computed from MAX_THREAD_HIERARCHY_DEPTH in thread-parent.ts, true when the thread's hierarchy depth is below the cap; the client can read it without recomputing the cap. Keeps the cap as server product policy (AGENTS.md). Files: packages/server-contract (response), apps/server/src/services/threads (mapper + depth source thread-parent.ts). Scope: backend, small read-path addition; unblocks the fork/side-chat button depth guards (tasks 10, 15).",
+      "status": "done",
+      "priority": 0,
+      "type": "backend",
+      "depends_on": [],
+      "session_id": "S1"
+    },
+    {
+      "id": "5",
+      "title": "Foundation tests",
+      "description": "Success: tests cover (a) startedOnBehalfOf validation accept/reject, (b) input accepts agent-only parts, (c) a thread created with startedOnBehalfOf yields a thread-start row with initiator=agent + senderThreadId and (per OQ1 verdict) does NOT auto-run the provider, (d) childOrigin persists/round-trips on response and is filterable on the list route, (e) canSpawnChild reflects depth. In-memory SQLite (createConnection(':memory:') + migrate); rebuild better-sqlite3 in this worktree first. Files: apps/server test files. Scope: backend tests.",
+      "status": "done",
+      "priority": 0,
+      "type": "backend",
+      "depends_on": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "session_id": "S1"
+    },
+    {
+      "id": "6",
+      "title": "Register Fork and SideChat icons",
+      "description": "Success: ICON_MAP has `Fork: TrendingUpDownIcon` and `SideChat: MessageAdd02Icon` with imports from @hugeicons/core-free-icons; <Icon name='Fork'/> and <Icon name='SideChat'/> render. Files: apps/app/src/components/ui/icon.tsx. Scope: 1 file, trivial.",
+      "status": "done",
+      "priority": 1,
+      "type": "frontend",
+      "depends_on": [],
+      "session_id": "S2"
+    },
+    {
+      "id": "7",
+      "title": "Extract MessageActionBar and forward row identity",
+      "description": "Success: a reusable MessageActionBar (props: messageText, onFork?, onSideChat?, alignment, disabled) replaces the inline copy-button footer in both user and agent messages; agent footer exposes copy+fork+side-chat slots (handlers wired later, inert for now), user footer keeps copy; row identity (id, turnId, threadId, sourceSeqStart/End, text) forwarded from ConversationRow into assistant message props. Same hover-reveal classes. Files: apps/app/src/components/thread/timeline/MessageActionBar.tsx (new), ConversationMessageContent.tsx, ThreadTimelineRows.tsx. Scope: 3 files, no behavior change yet.",
+      "status": "done",
+      "priority": 1,
+      "type": "frontend",
+      "depends_on": [
+        "6"
+      ],
+      "session_id": "S2"
+    },
+    {
+      "id": "8",
+      "title": "Build fork request body + source-environment resolver (approach-independent)",
+      "description": "Success: a util/hook assembles the fork CreateThreadRequest in an approach-independent way: origin app; input=anchor text; startedOnBehalfOf={initiator:'agent',senderThreadId:source}; parentThreadId=source; childOrigin='fork'; environment=managed-worktree with hostId + baseBranch={kind:'named',name:<source branch>} resolved from the source thread's environment; provider/model/permissionMode inherited; title '{source} (fork)'. Pure assembly + env resolution, no navigation yet. Files: apps/app fork-request util + env resolver. Scope: frontend; depends on S1 contract (1,3,4) and row identity (7).",
+      "status": "done",
+      "priority": 1,
+      "type": "frontend",
+      "depends_on": [
+        "1",
+        "3",
+        "4",
+        "7"
+      ],
+      "session_id": "S3"
+    },
+    {
+      "id": "9",
+      "title": "Fork create -> navigate -> focus per recorded approach",
+      "description": "Success: forkThreadFromMessage performs the create->navigate->deferred-focus sequence per task 2's recorded A/B verdict \u2014 approach A: create via useCreateThread then navigate(getThreadRoutePath) to the existing thread and focus the composer once interactive; approach B: navigate to the compose surface seam (location.state) and create on first submit. Focus deferred until the thread accepts input (provisioning-aware). Files: apps/app/src/hooks/mutations/thread-runtime-mutations.ts (or new hook). Scope: frontend; depends on task 2 verdict + request builder (8).",
+      "status": "done",
+      "priority": 1,
+      "type": "frontend",
+      "depends_on": [
+        "2",
+        "8"
+      ],
+      "session_id": "S3"
+    },
+    {
+      "id": "10",
+      "title": "Wire Fork button + depth guard + anchor fork icon",
+      "description": "Success: agent MessageActionBar Fork button calls forkThreadFromMessage; disabled with tooltip when the source thread's canSpawnChild is false; the forked anchor row renders via GeneratedConversationMessage with the Fork leading icon. Files: apps/app MessageActionBar wiring in ConversationMessageContent.tsx, GeneratedConversationMessage.tsx (fork icon), depth-guard read of canSpawnChild. Scope: frontend; depends on canSpawnChild (4) + fork flow (9).",
+      "status": "done",
+      "priority": 1,
+      "type": "frontend",
+      "depends_on": [
+        "4",
+        "9"
+      ],
+      "session_id": "S3"
+    },
+    {
+      "id": "11",
+      "title": "Fork lineage UI (Forks list in metadata)",
+      "description": "Success: source thread metadata shows a 'Forks' list of children with childOrigin='fork', each linking to the fork; the fork links back to its source via the existing parent link. Uses a parentThreadId-scoped fetch filtered by childOrigin (small, parent-bounded result set; no load-all). Files: apps/app ThreadMetadataContent.tsx + a child-threads query/hook. Scope: frontend; depends on childOrigin (3) + button live (10).",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "3",
+        "10"
+      ],
+      "session_id": "S3"
+    },
+    {
+      "id": "12",
+      "title": "Spike: confirm PromptBoxInternal can drive a non-route thread (OQ4)",
+      "description": "Success: a recorded determination of whether PromptBoxInternal (apps/app/src/components/promptbox/PromptBoxInternal.tsx) can compose+submit turns against a thread that is NOT the route's active thread (the side-chat child thread in the panel); if yes, document the integration seam; if no, record the additional scope needed and adjust task 14. Outcome noted in the task file or spec. Files: investigation + short note. Scope: frontend spike; de-risks task 14 before its dependents.",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "7"
+      ],
+      "session_id": "S4"
+    },
+    {
+      "id": "13",
+      "title": "Add side-chat panel tab kind",
+      "description": "Success: SideChatFixedPanelTab { kind:'side-chat'; id; threadId: string|null; title } added with Zod schema, factory, arms in SecondaryFixedPanelTab and SecondaryFileFixedPanelTab, and handled at EVERY site that discriminates on tab.kind (predicates and per-kind blocks across fixed-panel-tabs-state.ts, useThreadFileTabs.ts, ThreadDetailView.tsx \u2014 grep tab.kind, don't trust line numbers). Tab icon=SideChat, title from source message. Files: apps/app/src/lib/fixed-panel-tabs-state.ts, useThreadFileTabs.ts, views/thread-detail/ThreadDetailView.tsx. Scope: frontend, additive union member; no content yet.",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "6"
+      ],
+      "session_id": "S4"
+    },
+    {
+      "id": "14",
+      "title": "openSideChat + SideChatTabContent (lazy child thread)",
+      "description": "Success: openSideChat (in useThreadFileTabs.ts) opens a side-chat tab with a focused composer and no thread; on first submit it creates a child thread (parentThreadId=main, childOrigin='side-chat', personal workspace, permissionMode readonly) whose first turn carries the user's question + an agent-only snapshot of the main thread (spawning message + the current turn and 3 preceding messages; N=3 default); the tab is kept mounted like BrowserTabDeck so streaming survives tab switches; later turns render in the panel. Uses the seam from task 12. Files: apps/app/src/components/secondary-panel/SideChatTabContent.tsx (new), useThreadFileTabs.ts, a context-snapshot util. Scope: frontend, largest side-chat task; depends on input-agent-only (1), childOrigin (3), spike (12), tab kind (13).",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "1",
+        "3",
+        "12",
+        "13"
+      ],
+      "session_id": "S4"
+    },
+    {
+      "id": "15",
+      "title": "Side chat send-back + depth guard + button wiring",
+      "description": "Success: agent MessageActionBar SideChat button calls openSideChat, disabled when source canSpawnChild is false; the side-chat composer has a 'Send to main thread' action calling the existing cross-thread-send hook directly (no bespoke wrapper), posting into the main thread as 'Message from {side chat}'. Files: apps/app SideChatTabContent.tsx, MessageActionBar wiring, existing send hook. Scope: frontend; depends on canSpawnChild (4) + SideChatTabContent (14).",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "4",
+        "14"
+      ],
+      "session_id": "S4"
+    },
+    {
+      "id": "16",
+      "title": "Scroll anchor store + capture + restore in BottomAnchoredScrollBody",
+      "description": "Success: threadTimelineScrollAnchorAtomFamily (in-memory atomFamily of atom<ScrollAnchor|null>, ScrollAnchor={rowId,offsetWithinRow,atBottom}); BottomAnchoredScrollBody captures top-most visible row id + within-row offset + atBottom via throttled onScroll (NOT on unmount); on mount, if a saved anchor exists and atBottom was false, restore via scrollElementIntoView and suppress the mount-time queueBottomRestore/stick-to-bottom; if atBottom keep stick-to-bottom; fall back to bottom if the row isn't present, re-applying once after content settles. Files: apps/app new atom file, components/ui/bottom-anchored-scroll-body.tsx. Scope: frontend; coordinate with existing stick-to-bottom logic.",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [],
+      "session_id": "S5"
+    },
+    {
+      "id": "17",
+      "title": "Tests/verification for scroll preservation",
+      "description": "Success: tests cover (a) leaving a thread mid-scroll then returning restores near the saved row, (b) leaving at bottom returns at bottom, (c) fast A->B->A restores A's anchor not B's. Mock only timers/observers as true externals; no mocking of our own modules. Files: apps/app scroll test file. Scope: frontend tests.",
+      "status": "done",
+      "priority": 2,
+      "type": "frontend",
+      "depends_on": [
+        "16"
+      ],
+      "session_id": "S5"
+    }
+  ]
+}

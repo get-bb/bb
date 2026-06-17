@@ -1,306 +1,133 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import type { PromptTextMention } from "@bb/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  usePromptDraftHasInput,
-  usePromptDraftStorage,
-} from "./usePromptDraftStorage";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { usePromptDraftStorage } from "./usePromptDraftStorage";
 
-const PROJECT_DRAFT_SCOPE = {
-  projectId: "proj-1",
-  threadId: null,
-};
-const THREAD_DRAFT_SCOPE = {
-  projectId: "proj-1",
-  threadId: "thr-1",
-};
-const DRAFT_ATTACHMENT: PromptDraftAttachment = {
-  type: "localFile",
-  path: "/tmp/spec.md",
-  name: "spec.md",
-  sizeBytes: 42,
-  mimeType: "text/markdown",
-};
-const DRAFT_MENTION: PromptTextMention = {
-  start: 0,
-  end: 7,
-  resource: {
-    kind: "thread",
-    threadId: "thr_prompt",
-    projectId: "proj-1",
-    label: "Prompt review",
-  },
-};
+const NEW_THREAD_DRAFT_KEY = "bb.promptbox.contents-draft-3";
+const LEGACY_PROJECT_DRAFT_KEY = "bb.promptbox.contents-proj_prompt-draft-3";
 
-afterEach(() => {
-  window.dispatchEvent(new Event("pagehide"));
-  Object.defineProperty(document, "visibilityState", {
-    configurable: true,
-    value: "visible",
-  });
-  cleanup();
-  vi.useRealTimers();
+function storedDraft(text: string): string {
+  return JSON.stringify({ text, attachments: [] });
+}
+
+// Each test uses a unique projectId so the module-level draft cache/subscriber
+// maps (keyed by storage key) never collide across tests.
+let scopeCounter = 0;
+function uniqueScope() {
+  scopeCounter += 1;
+  return {
+    kind: "thread" as const,
+    projectId: `proj-quote-test-${scopeCounter}`,
+    threadId: "thr-1",
+  };
+}
+
+beforeEach(() => {
   window.localStorage.clear();
 });
 
-function requireStorageKey(storageKey: string | null): string {
-  if (!storageKey) {
-    throw new Error("Expected prompt draft storage key");
-  }
-  return storageKey;
-}
+afterEach(() => {
+  cleanup();
+});
 
 describe("usePromptDraftStorage", () => {
-  it("clears the draft when it still matches the submitted snapshot", () => {
+  it("uses project-agnostic storage for new-thread prompt contents", () => {
+    window.localStorage.setItem(
+      LEGACY_PROJECT_DRAFT_KEY,
+      storedDraft("project draft"),
+    );
+    window.localStorage.setItem(NEW_THREAD_DRAFT_KEY, storedDraft("global draft"));
+
     const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+      usePromptDraftStorage({ kind: "new-thread" }),
     );
 
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-    });
-
-    const submittedDraft = result.current.getCurrent();
-    let didClear = false;
+    expect(result.current.storageKey).toBe(NEW_THREAD_DRAFT_KEY);
+    expect(result.current.text).toBe("global draft");
 
     act(() => {
-      didClear = result.current.clearIfCurrentMatches(submittedDraft);
-    });
-
-    expect(didClear).toBe(true);
-    expect(result.current.getCurrent()).toEqual({
-      attachments: [],
-      mentions: [],
-      text: "",
-    });
-  });
-
-  it("preserves newer edits when clearing against a stale submitted snapshot", () => {
-    const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-    });
-
-    const submittedDraft = result.current.getCurrent();
-
-    act(() => {
-      result.current.setTextAndMentions(
-        "Investigate the outage and summarize root cause",
-        [],
-      );
-    });
-
-    let didClear = false;
-
-    act(() => {
-      didClear = result.current.clearIfCurrentMatches(submittedDraft);
-    });
-
-    expect(didClear).toBe(false);
-    expect(result.current.getCurrent()).toEqual({
-      attachments: [],
-      mentions: [],
-      text: "Investigate the outage and summarize root cause",
-    });
-  });
-
-  it("keeps text current immediately while deferring localStorage persistence", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-    const storageKey = requireStorageKey(result.current.storageKey);
-
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-    });
-
-    expect(result.current.getCurrent()).toEqual({
-      attachments: [],
-      mentions: [],
-      text: "Investigate the outage",
-    });
-    expect(window.localStorage.getItem(storageKey)).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(250);
-    });
-
-    expect(window.localStorage.getItem(storageKey)).toBe(
-      '{"text":"Investigate the outage","attachments":[]}',
-    );
-  });
-
-  it("serializes and hydrates non-empty mention ranges", () => {
-    vi.useFakeTimers();
-    const mention: PromptTextMention = {
-      start: 4,
-      end: 22,
-      resource: {
-        kind: "thread",
-        threadId: "thr_prompt",
-        projectId: "proj-1",
-        label: "Prompt review",
-      },
-    };
-    const text = "Ask @thread:thr_prompt to review";
-    const { result, unmount } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-    const storageKey = requireStorageKey(result.current.storageKey);
-
-    act(() => {
-      result.current.setTextAndMentions(text, [mention]);
-    });
-    act(() => {
-      vi.advanceTimersByTime(250);
-    });
-
-    expect(window.localStorage.getItem(storageKey)).toBe(
-      JSON.stringify({
-        text,
-        mentions: [mention],
+      result.current.setDraft({
+        text: "updated global draft",
+        mentions: [],
         attachments: [],
+      });
+    });
+
+    expect(window.localStorage.getItem(NEW_THREAD_DRAFT_KEY)).toBe(
+      storedDraft("updated global draft"),
+    );
+    expect(window.localStorage.getItem(LEGACY_PROJECT_DRAFT_KEY)).toBe(
+      storedDraft("project draft"),
+    );
+  });
+
+  it("keeps thread follow-up drafts scoped to the thread", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({
+        kind: "thread",
+        projectId: "proj_prompt",
+        threadId: "thr_followup",
       }),
     );
 
-    unmount();
-    act(() => {
-      window.dispatchEvent(new StorageEvent("storage", { key: storageKey }));
-    });
-    const hydrated = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+    expect(result.current.storageKey).toBe(
+      "bb.promptbox.contents-proj_prompt-thr_followup-3",
     );
-
-    expect(hydrated.result.current.getCurrent()).toEqual({
-      text,
-      mentions: [mention],
-      attachments: [],
-    });
   });
+});
 
-  it("flushes pending text persistence on pagehide", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-    const storageKey = requireStorageKey(result.current.storageKey);
+describe("usePromptDraftStorage addQuote", () => {
+  it("appends a trimmed quote as a '> ' block to the draft text and persists", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-    });
+    act(() => result.current.addQuote("  ship it  "));
 
-    expect(window.localStorage.getItem(storageKey)).toBeNull();
-
-    act(() => {
-      window.dispatchEvent(new Event("pagehide"));
-    });
-
-    expect(window.localStorage.getItem(storageKey)).toBe(
-      '{"text":"Investigate the outage","attachments":[]}',
+    // Blockquote-prefixed, with a trailing newline so the reply sits below it.
+    expect(result.current.text).toBe("> ship it\n");
+    expect(window.localStorage.length).toBe(1);
+    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
+      "> ship it",
     );
   });
 
-  it("flushes pending text persistence when the document is hidden", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-    const storageKey = requireStorageKey(result.current.storageKey);
+  it("stacks a second quote below the first, separated by a blank line", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-    });
+    act(() => result.current.addQuote("first"));
+    act(() => result.current.addQuote("second"));
 
-    expect(window.localStorage.getItem(storageKey)).toBeNull();
-
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "hidden",
-    });
-    act(() => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-
-    expect(window.localStorage.getItem(storageKey)).toBe(
-      '{"text":"Investigate the outage","attachments":[]}',
-    );
+    expect(result.current.text).toBe("> first\n\n> second\n");
   });
 
-  it("does not persist stale deferred text after an immediate clear", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() =>
-      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
-    );
-    const storageKey = requireStorageKey(result.current.storageKey);
+  it("prefixes every line of a multi-line selection", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => {
-      result.current.setTextAndMentions("Investigate the outage", []);
-      result.current.clear();
-    });
+    act(() => result.current.addQuote("line a\nline b"));
 
-    expect(result.current.getCurrent()).toEqual({
-      attachments: [],
-      mentions: [],
-      text: "",
-    });
-    expect(window.localStorage.getItem(storageKey)).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(250);
-    });
-
-    expect(window.localStorage.getItem(storageKey)).toBeNull();
+    expect(result.current.text).toBe("> line a\n> line b\n");
   });
 
-  it("reports whether a thread prompt draft has input", () => {
-    const draft = renderHook(() => usePromptDraftStorage(THREAD_DRAFT_SCOPE));
-    const hasInput = renderHook(() => usePromptDraftHasInput(THREAD_DRAFT_SCOPE));
+  it("ignores whitespace-only text without writing", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    expect(hasInput.result.current).toBe(false);
+    act(() => result.current.addQuote("   \n  "));
 
-    act(() => {
-      draft.result.current.setTextAndMentions("Continue the review", []);
-    });
+    expect(result.current.text).toBe("");
+    expect(window.localStorage.length).toBe(0);
+  });
 
-    expect(hasInput.result.current).toBe(true);
+  it("syncs an added quote live across two instances of the same scope", () => {
+    const scope = uniqueScope();
+    const first = renderHook(() => usePromptDraftStorage(scope));
+    const second = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => {
-      draft.result.current.clear();
-    });
+    act(() => first.result.current.addQuote("shared selection"));
 
-    expect(hasInput.result.current).toBe(false);
-
-    act(() => {
-      draft.result.current.setDraft({
-        text: "",
-        mentions: [],
-        attachments: [DRAFT_ATTACHMENT],
-      });
-    });
-
-    expect(hasInput.result.current).toBe(true);
-
-    act(() => {
-      draft.result.current.clear();
-    });
-
-    expect(hasInput.result.current).toBe(false);
-
-    act(() => {
-      draft.result.current.setDraft({
-        text: "",
-        mentions: [DRAFT_MENTION],
-        attachments: [],
-      });
-    });
-
-    expect(hasInput.result.current).toBe(true);
+    expect(second.result.current.text).toBe("> shared selection\n");
   });
 });

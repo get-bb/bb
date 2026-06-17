@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveWorkspaceChangedFileOpenTarget,
   resolveThreadLocalWorkspaceRootPath,
+  resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 
@@ -15,8 +16,6 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
   return {
     baseBranch: null,
     branchName: "feature/test",
-    cleanupMode: null,
-    cleanupRequestedAt: null,
     createdAt: 1,
     defaultBranch: "main",
     hostId: "host-1",
@@ -115,6 +114,20 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         threadEnvironmentIsLocal: true,
       }),
     ).toBeNull();
+  });
+
+  it("keeps the workspace preview root independent from local editor availability", () => {
+    const environment = makeEnvironment();
+
+    expect(
+      resolveThreadLocalWorkspaceRootPath({
+        environment,
+        threadEnvironmentIsLocal: false,
+      }),
+    ).toBeNull();
+    expect(resolveThreadWorkspacePreviewRootPath({ environment })).toBe(
+      "/tmp/workspace",
+    );
   });
 
   it("still resolves when the environment is not ready, as long as it has a path", () => {

@@ -5,7 +5,6 @@ import {
   archiveThread,
   getEnvironment,
   getHosts,
-  getThreadOutput,
   runEnvironmentAction,
   sendTextMessage,
   unarchiveThread,
@@ -33,14 +32,17 @@ import {
 import {
   CONCURRENT_DELAY_TEXT,
   DEFAULT_TIMEOUT_MS,
-  REPROVISION_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
 
 describe.sequential(
   "fake provider environment-isolation multi-thread integration",
   () => {
-    it("destroys a managed shared environment and reprovisions it after unarchive", () =>
+    // Un-archive is decoupled from the environment lifecycle. Un-archiving a
+    // thread whose shared managed environment was already destroyed is a pure
+    // record op: it never resurrects the environment. The thread surfaces the
+    // "environment is gone" condition and a send is rejected.
+    it("does not reprovision a destroyed shared environment on unarchive", () =>
       withHarness(async (harness) => {
         const project = await createProjectFixture(harness, {
           name: "Archive All Managed Siblings",
@@ -70,33 +72,31 @@ describe.sequential(
           DEFAULT_TIMEOUT_MS,
         );
 
+        // Un-archive succeeds as a pure record op (no 409, no env interaction).
         await unarchiveThread(harness.api, threadA.thread.id);
-        await sendTextMessage(harness.api, threadA.thread.id, {
-          text: "reprovision after archive",
-        });
-        await waitForThreadStatus(
-          harness.api,
-          threadA.thread.id,
-          "idle",
-          REPROVISION_TIMEOUT_MS,
-        );
 
-        const reloadedThread = await waitForThreadStatus(
-          harness.api,
-          threadA.thread.id,
-          "idle",
-          DEFAULT_TIMEOUT_MS,
-        );
+        // A send is rejected with the "environment is gone" surface; the
+        // environment is never reprovisioned.
+        const sendResponse = await harness.api.threads[":id"].send.$post({
+          param: { id: threadA.thread.id },
+          json: {
+            input: [
+              { type: "text", text: "reprovision after archive", mentions: [] },
+            ],
+            mode: "auto",
+          },
+        });
+        expect(sendResponse.status).toBe(409);
+        expect(await sendResponse.json()).toMatchObject({
+          code: "thread_environment_unavailable",
+          details: { reason: "destroyed", environmentStatus: "destroyed" },
+        });
+
         const environment = await getEnvironment(
           harness.api,
-          reloadedThread.environmentId ?? "",
+          threadA.environment.id,
         );
-        expect(environment.status).toBe("ready");
-        expect(environment.path).toBeTruthy();
-        await fs.access(environment.path ?? "");
-        expect(await getThreadOutput(harness.api, threadA.thread.id)).toContain(
-          "reprovision after archive",
-        );
+        expect(environment.status).toBe("destroyed");
       }));
 
     it("isolates concurrent work across separate environments", () =>

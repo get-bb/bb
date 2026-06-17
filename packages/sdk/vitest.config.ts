@@ -1,9 +1,7 @@
-import { defineConfig } from "vitest/config";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases.js";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
   test: {
-    alias: workspaceTestAliases,
     environment: "node",
     include: ["test/**/*.test.ts"],
     name: "@bb/sdk",

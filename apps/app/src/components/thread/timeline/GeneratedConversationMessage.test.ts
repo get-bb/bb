@@ -9,12 +9,6 @@ const threadSubject: SystemMessageSubject = {
   threadName: "Fix auth bug",
 };
 
-const workflowSubject: SystemMessageSubject = {
-  kind: "workflow",
-  name: "Nightly audit",
-  runId: "wf_77",
-};
-
 interface SystemTitleArgs {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -24,9 +18,11 @@ interface SystemTitleArgs {
 // ignores them, so anchor them to inert values for these system-title cases.
 function systemTitle({ systemMessageKind, systemMessageSubject }: SystemTitleArgs) {
   return generatedConversationTitle({
+    childOrigin: null,
     sourceKind: "system",
     sourceName: "BB",
     sourceThreadId: null,
+    sourceIsSideChat: false,
     systemMessageKind,
     systemMessageSubject,
   });
@@ -84,45 +80,6 @@ describe("generatedConversationTitle — system source", () => {
     expect(title.segments[0]?.link).toBeUndefined();
   });
 
-  it("renders schedule-due with no subject and no link", () => {
-    const title = systemTitle({
-      systemMessageKind: "schedule-due",
-      systemMessageSubject: null,
-    });
-
-    expect(title.plain).toBe("Scheduled turn due");
-    expect(title.segments).toHaveLength(1);
-    expect(title.segments[0]?.link).toBeUndefined();
-  });
-
-  const workflowCases: ReadonlyArray<{ kind: SystemMessageKind; plain: string }> = [
-    { kind: "workflow-completed", plain: "Workflow Nightly audit completed" },
-    { kind: "workflow-failed", plain: "Workflow Nightly audit failed" },
-    { kind: "workflow-paused", plain: "Workflow Nightly audit paused" },
-    { kind: "workflow-cancelled", plain: "Workflow Nightly audit cancelled" },
-  ];
-
-  it.each(workflowCases)(
-    "$kind emphasizes the workflow name but leaves it unlinked",
-    ({ kind, plain }) => {
-      const title = systemTitle({
-        systemMessageKind: kind,
-        systemMessageSubject: workflowSubject,
-      });
-
-      expect(title.plain).toBe(plain);
-      expect(title.segments).toHaveLength(3);
-
-      const [prefix, nameSegment, verbSegment] = title.segments;
-      expect(prefix.text).toBe("Workflow");
-      expect(nameSegment.text).toBe("Nightly audit");
-      expect(nameSegment.em).toBe(true);
-      // A workflow run has no thread to navigate to — name stays unlinked.
-      expect(nameSegment.link).toBeUndefined();
-      expect(verbSegment.em).toBe(false);
-    },
-  );
-
   it("falls back to the generic System Message title for unlabeled rows", () => {
     const title = systemTitle({
       systemMessageKind: "unlabeled",
@@ -150,9 +107,11 @@ describe("generatedConversationTitle — system source", () => {
 describe("generatedConversationTitle — agent source", () => {
   it("links the sender thread name (reference pattern, unchanged)", () => {
     const title = generatedConversationTitle({
+      childOrigin: null,
       sourceKind: "agent",
       sourceName: "Worker 2",
       sourceThreadId: "thr_sender",
+      sourceIsSideChat: false,
       systemMessageKind: "unlabeled",
       systemMessageSubject: null,
     });

@@ -9,9 +9,9 @@ import {
   type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
   type ThreadPromptContextBannerExpandedSection,
+  type ThreadPromptEnvironmentGoneSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   selectWorkspaceChangedFilesSection,
@@ -81,6 +81,11 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -118,6 +123,11 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -129,22 +139,27 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 18,
+        deletions: 0,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 42,
+        deletions: 0,
       },
     ],
-    insertions: 0,
+    insertions: 60,
     deletions: 0,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
+  },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
   },
   mergeBase: null,
 };
@@ -160,6 +175,11 @@ const committedUnmergedStatus: WorkspaceStatus = {
   branch: {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
+  },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
   },
   mergeBase: {
     mergeBaseBranch: "main",
@@ -226,6 +246,19 @@ const pendingTodosFixture: ThreadTimelinePendingTodos = {
 const parentThreadFixture: ThreadPromptParentThreadSection = {
   parentThreadTitle: "Parent thread",
   href: "/projects/proj-1/threads/thr_parent_demo",
+  relationship: "parent",
+};
+
+const forkedFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "fork",
+};
+
+const sideChatFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "side-chat",
 };
 
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
@@ -261,31 +294,14 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   })),
 };
 
-const workflowsFixture: ThreadPromptWorkflowsSection = {
-  items: [
-    {
-      id: "wfr_demo_1",
-      name: "Repo-wide audit fanout",
-      agentProgress: "3/5 agents",
-      href: "/workflows/runs/wfr_demo_1",
-    },
-    {
-      id: "wfr_demo_2",
-      name: "Adversarial review",
-      agentProgress: null,
-      href: "/workflows/runs/wfr_demo_2",
-    },
-  ],
-};
-
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
   mergeBase?: ContextBannerMergeBaseConfig | null;
   pendingTodos?: ThreadTimelinePendingTodos | null;
   archived?: ThreadPromptArchivedSection | null;
+  environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
-  workflows?: ThreadPromptWorkflowsSection | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -294,9 +310,9 @@ function Row({
   mergeBase = featureBranchMergeBase,
   pendingTodos = null,
   archived = null,
+  environmentGone = null,
   parentThread = null,
   childThreads = null,
-  workflows = null,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] = useState<
@@ -317,9 +333,9 @@ function Row({
         }
         gitSectionPending={false}
         archivedSection={archived}
+        environmentGoneSection={environmentGone}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
-        workflowsSection={workflows}
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) =>
@@ -335,9 +351,25 @@ const archivedFixture: ThreadPromptArchivedSection = {
   archivedAt: 1_731_456_000_000,
 };
 
+const destroyedEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
+  status: "destroyed",
+};
+
+const destroyingEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
+  status: "destroying",
+};
+
 export function Overview() {
   return (
     <StoryCard>
+      <StoryRow
+        label="git — merge-base picker"
+        hint="GitMerge icon + 'Merge base' label + branch picker ('main'). It carries data-promptbox-hide-compact, so it only shows when the prompt shell is ≥ 34rem — this row forces a wide shell to reveal it."
+      >
+        <div className="w-[40rem] max-w-full overflow-x-auto">
+          <Row section={committedSection} />
+        </div>
+      </StoryRow>
       <StoryRow
         label="archived thread"
         hint="archive icon + 'Thread is archived'; suppresses todos/git/childThreads"
@@ -367,10 +399,50 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="environment destroyed"
+        hint="environment-gone row suppresses todos/git/childThreads"
+      >
+        <Row environmentGone={destroyedEnvironmentFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="environment destroying + child thread"
+        hint="environment-gone row plus parent context"
+      >
+        <Row
+          environmentGone={destroyingEnvironmentFixture}
+          parentThread={parentThreadFixture}
+          mergeBase={null}
+        />
+      </StoryRow>
+      <StoryRow
+        label="environment gone (with other context, all suppressed)"
+        hint="gone environment takes precedence — todos/git/child work are hidden"
+      >
+        <Row
+          environmentGone={destroyedEnvironmentFixture}
+          section={uncommittedSection}
+          pendingTodos={pendingTodosFixture}
+          childThreads={childThreadsFixture}
+          mergeBase={null}
+        />
+      </StoryRow>
+      <StoryRow
         label="child thread (alone)"
         hint="inline parent link"
       >
         <Row parentThread={parentThreadFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="forked thread (alone)"
+        hint={'renders "Forked from …" instead of "Parent …"'}
+      >
+        <Row parentThread={forkedFromFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="side-chat thread (alone)"
+        hint={'renders "Side chat of …"'}
+      >
+        <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="parent thread with active children (collapsed)"
@@ -396,22 +468,6 @@ export function Overview() {
           childThreads={childThreadsLargeFixture}
           mergeBase={null}
           initiallyExpandedSection="childThreads"
-        />
-      </StoryRow>
-      <StoryRow
-        label="active workflows (collapsed)"
-        hint="workflow icon + count; click to expand the run list"
-      >
-        <Row workflows={workflowsFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="active workflows (expanded)"
-        hint="each row links to the run page; agent progress when known"
-      >
-        <Row
-          workflows={workflowsFixture}
-          mergeBase={null}
-          initiallyExpandedSection="workflows"
         />
       </StoryRow>
       <StoryRow
@@ -474,7 +530,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" — no insertions/deletions tally'
+        hint='workingTree.state = "untracked" with synthesized insertion stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

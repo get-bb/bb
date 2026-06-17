@@ -11,11 +11,6 @@ const STATIC_SYSTEM_MESSAGE_KIND_BY_TEMPLATE = {
   systemMessageThreadOwnershipAssigned: "ownership-assigned",
   systemMessageThreadOwnershipRemoved: "ownership-removed",
   systemMessageChildThreadNeedsAttention: "child-needs-attention",
-  systemMessageThreadScheduleDue: "schedule-due",
-  systemMessageWorkflowRunCompleted: "workflow-completed",
-  systemMessageWorkflowRunFailed: "workflow-failed",
-  systemMessageWorkflowRunPaused: "workflow-paused",
-  systemMessageWorkflowRunCancelled: "workflow-cancelled",
 } satisfies Partial<Record<TemplateId, SystemMessageKind>>;
 
 type StaticSystemMessageTemplateId =

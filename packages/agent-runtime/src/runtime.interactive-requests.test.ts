@@ -9,7 +9,6 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import type { DecodedInteractiveRequest } from "./provider-adapter.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
@@ -195,7 +194,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -260,7 +258,6 @@ rl.on("line", (line) => {
         return decoded ? { ...decoded, turnId: null } : null;
       },
     };
-    const captures: AgentRuntimeCaptureEntry[] = [];
     const interactionResolution = {
       decision: "deny",
     } satisfies PendingInteractionResolution;
@@ -286,11 +283,8 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        createCaptureId: () => "cap-1",
-        emitCapture: (entry) => captures.push(entry),
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
-        line: JSON.stringify(rawRequest),
         onInteractiveRequest,
         onToolCall: async () => toolCallResponse,
         parsedId: rawRequest.id,
@@ -317,13 +311,6 @@ rl.on("line", (line) => {
         },
       });
       expect(onInteractiveRequest).not.toHaveBeenCalled();
-      expect(
-        captures.filter(
-          (entry) =>
-            entry.kind === "interactive-request" ||
-            entry.kind === "interactive-result",
-        ),
-      ).toHaveLength(0);
     } finally {
       child.kill();
     }
@@ -450,7 +437,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -523,7 +509,6 @@ rl.on("line", (line) => {
         };
       },
     };
-    const captures: AgentRuntimeCaptureEntry[] = [];
     const userAnswerResolution: PendingInteractionResolution = {
       kind: "user_answer",
       answers: {
@@ -542,15 +527,12 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        createCaptureId: () => "cap-user-question",
-        emitCapture: (entry) => captures.push(entry),
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => ({
           ...fullRuntimeOptions,
           permissionMode: "readonly",
           permissionEscalation: "deny",
         }),
-        line: JSON.stringify(rawRequest),
         onInteractiveRequest,
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "tool result" }],
@@ -586,12 +568,6 @@ rl.on("line", (line) => {
         },
       });
       expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
-      expect(captures).toContainEqual(
-        expect.objectContaining({
-          kind: "interactive-result",
-          success: true,
-        }),
-      );
     } finally {
       child.kill();
     }
@@ -637,7 +613,6 @@ rl.on("line", (line) => {
         };
       },
     };
-    const captures: AgentRuntimeCaptureEntry[] = [];
     const rawRequest = {
       jsonrpc: "2.0",
       id: 79,
@@ -647,11 +622,8 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        createCaptureId: () => "cap-missing-user-question-handler",
-        emitCapture: (entry) => captures.push(entry),
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
-        line: JSON.stringify(rawRequest),
         onInteractiveRequest: undefined,
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "tool result" }],
@@ -682,15 +654,6 @@ rl.on("line", (line) => {
           ),
         },
       });
-      expect(captures).toContainEqual(
-        expect.objectContaining({
-          kind: "interactive-result",
-          success: false,
-          errorMessage: expect.stringContaining(
-            "No interactive request handler is configured",
-          ),
-        }),
-      );
     } finally {
       child.kill();
     }
@@ -818,7 +781,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -958,7 +920,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -1088,7 +1049,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

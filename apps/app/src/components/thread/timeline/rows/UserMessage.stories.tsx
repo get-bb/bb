@@ -1,6 +1,7 @@
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
+import { renderTemplate } from "@bb/templates";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
@@ -28,8 +29,6 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
   switch (link.kind) {
     case "thread":
       return `/projects/proj_demo/threads/${link.threadId}`;
-    default:
-      return null;
   }
 }
 
@@ -94,7 +93,10 @@ interface BuiltMessage {
 
 function buildMessage(
   text: string,
-  mentionSpecs: ReadonlyArray<{ token: string; resource: PromptMentionResource }>,
+  mentionSpecs: ReadonlyArray<{
+    token: string;
+    resource: PromptMentionResource;
+  }>,
 ): BuiltMessage {
   return {
     text,
@@ -104,9 +106,21 @@ function buildMessage(
   };
 }
 
+function threadMentionResource(
+  threadId: string,
+  label: string,
+): PromptMentionResource {
+  return {
+    kind: "thread",
+    threadId,
+    projectId: "proj_demo",
+    label,
+  };
+}
+
 const agentInitiatedMessage = buildMessage(
   [
-    "[bb message from thread:thr_ux3h8sxg65; reply with `bb thread tell thr_ux3h8sxg65 \"<your response>\"`]",
+    '[bb message from thread:thr_ux3h8sxg65; reply with `bb thread tell thr_ux3h8sxg65 "<your response>"`]',
     "",
     "Fixed both blockers on @apps/server/src/services/manager/manager-system-messages.ts. No merge or push.",
     "",
@@ -142,7 +156,7 @@ const agentInitiatedMessage = buildMessage(
 
 const agentSteerMessage = buildMessage(
   [
-    "[bb message from thread:thr_h4u3fgr6be; reply with `bb thread tell thr_h4u3fgr6be \"<your response>\"`]",
+    '[bb message from thread:thr_h4u3fgr6be; reply with `bb thread tell thr_h4u3fgr6be "<your response>"`]',
     "",
     "Committed the two scoped fixes touching @apps/app/src/components/thread/timeline/ConversationMessageContent.tsx. Worktree is clean.",
   ].join("\n"),
@@ -162,78 +176,223 @@ const agentSteerMessage = buildMessage(
 );
 
 const systemAssignedMessage = buildMessage(
-  ["[bb system]", "", "@thread:thr_4z3cyhcufk was assigned to you."].join("\n"),
+  renderTemplate("systemMessageThreadOwnershipAssigned", {
+    threadMention: "@thread:thr_4z3cyhcufk",
+  }),
   [
     {
       token: "@thread:thr_4z3cyhcufk",
-      resource: {
-        kind: "thread",
-        threadId: "thr_4z3cyhcufk",
-        projectId: "proj_demo",
-        label: "Investigate flaky storybook layout",
-      },
+      resource: threadMentionResource(
+        "thr_4z3cyhcufk",
+        "Investigate flaky storybook layout",
+      ),
     },
   ],
 );
 
 const systemChildOutcomeBatchMessage = buildMessage(
-  [
-    "[bb system]",
-    "",
-    "Child thread updates:",
-    "- @thread:thr_ux3h8sxg65 completed: shipped rich thread name rendering and pushed.",
-    "- @thread:thr_cpf5sq7pyr completed: hardened thread stop retry; awaiting your review.",
-    "- @thread:thr_h4u3fgr6be needs input: post-rebase QA found three failing storybook stories.",
-  ].join("\n"),
+  renderTemplate("systemMessageChildThreadOutcomeBatch", {
+    updates: [
+      "Child thread updates:",
+      "",
+      "- @thread:thr_ux3h8sxg65 completed.",
+      "- @thread:thr_cpf5sq7pyr completed.",
+      "- @thread:thr_h4u3fgr6be failed.",
+    ].join("\n"),
+  }),
   [
     {
       token: "@thread:thr_ux3h8sxg65",
-      resource: {
-        kind: "thread",
-        threadId: "thr_ux3h8sxg65",
-        projectId: "proj_demo",
-        label: "Render Rich Thread Names",
-      },
+      resource: threadMentionResource(
+        "thr_ux3h8sxg65",
+        "Render Rich Thread Names",
+      ),
     },
     {
       token: "@thread:thr_cpf5sq7pyr",
-      resource: {
-        kind: "thread",
-        threadId: "thr_cpf5sq7pyr",
-        projectId: "proj_demo",
-        label: "Investigate lost thread stop retry",
-      },
+      resource: threadMentionResource(
+        "thr_cpf5sq7pyr",
+        "Investigate lost thread stop retry",
+      ),
     },
     {
       token: "@thread:thr_h4u3fgr6be",
-      resource: {
-        kind: "thread",
-        threadId: "thr_h4u3fgr6be",
-        projectId: "proj_demo",
-        label: "Full QA post-rebase: prompt timeline app data voice",
-      },
+      resource: threadMentionResource(
+        "thr_h4u3fgr6be",
+        "Full QA post-rebase: prompt timeline app data voice",
+      ),
     },
   ],
 );
 
-const systemScheduledMessage = buildMessage(
-  [
-    "[bb schedule due:tsched_7njqipuist]",
-    "",
-    "Scheduled nudge: run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups via @thread:thr_fund_strategy and message only useful outcomes or blockers.",
-  ].join("\n"),
-  [
-    {
-      token: "@thread:thr_fund_strategy",
-      resource: {
-        kind: "thread",
-        threadId: "thr_fund_strategy",
-        projectId: "proj_demo",
-        label: "Fund strategy review",
-      },
-    },
-  ],
-);
+const parentChildSystemMessageFixtures = [
+  {
+    label: "assigned",
+    hint: "new parent receives the child thread assignment notice",
+    message: buildMessage(
+      renderTemplate("systemMessageThreadOwnershipAssigned", {
+        threadMention: "@thread:thr_indexer",
+      }),
+      [
+        {
+          token: "@thread:thr_indexer",
+          resource: threadMentionResource(
+            "thr_indexer",
+            "Build search index worker",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "removed",
+    hint: "previous parent receives the unassignment notice",
+    message: buildMessage(
+      renderTemplate("systemMessageThreadOwnershipRemoved", {
+        threadMention: "@thread:thr_indexer",
+      }),
+      [
+        {
+          token: "@thread:thr_indexer",
+          resource: threadMentionResource(
+            "thr_indexer",
+            "Build search index worker",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "needs attention",
+    hint: "child thread is blocked on a pending interaction",
+    message: buildMessage(
+      renderTemplate("systemMessageChildThreadNeedsAttention", {
+        blockerSummary: [
+          "Blocked on command approval:",
+          "Command: git push origin bb/child-thread-parent-message-plan",
+        ].join("\n"),
+        threadMention: "@thread:thr_deployer",
+      }),
+      [
+        {
+          token: "@thread:thr_deployer",
+          resource: threadMentionResource(
+            "thr_deployer",
+            "Deploy release candidate",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "completed",
+    hint: "single child thread completion includes its final output excerpt",
+    message: buildMessage(
+      renderTemplate("systemMessageChildThreadOutcomeBatch", {
+        updates: [
+          "@thread:thr_schema completed:",
+          "",
+          "Migrated the thread ownership queries to targeted joins and added regression coverage. Validation passed for @bb/server.",
+        ].join("\n"),
+      }),
+      [
+        {
+          token: "@thread:thr_schema",
+          resource: threadMentionResource(
+            "thr_schema",
+            "Tighten ownership queries",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "failed",
+    hint: "single child thread failure asks the parent to inspect before deciding next steps",
+    message: buildMessage(
+      renderTemplate("systemMessageChildThreadOutcomeBatch", {
+        updates: [
+          "@thread:thr_rebase failed.",
+          "",
+          "Review the thread before deciding next steps.",
+        ].join("\n"),
+      }),
+      [
+        {
+          token: "@thread:thr_rebase",
+          resource: threadMentionResource(
+            "thr_rebase",
+            "Rebase integration branch",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "interrupted",
+    hint: "single child thread interruption carries the manual-stop guidance",
+    message: buildMessage(
+      renderTemplate("systemMessageChildThreadOutcomeBatch", {
+        updates: [
+          "@thread:thr_docs was interrupted.",
+          "",
+          "Review the thread before deciding next steps.",
+          "",
+          "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+        ].join("\n"),
+      }),
+      [
+        {
+          token: "@thread:thr_docs",
+          resource: threadMentionResource(
+            "thr_docs",
+            "Refresh onboarding guide",
+          ),
+        },
+      ],
+    ),
+  },
+  {
+    label: "mixed batch",
+    hint: "multiple child thread outcomes collapse into one parent-facing system turn",
+    message: buildMessage(
+      renderTemplate("systemMessageChildThreadOutcomeBatch", {
+        updates: [
+          "Child thread updates:",
+          "",
+          "- @thread:thr_schema completed.",
+          "- @thread:thr_rebase failed.",
+          "- @thread:thr_docs was interrupted.",
+          "",
+          "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+        ].join("\n"),
+      }),
+      [
+        {
+          token: "@thread:thr_schema",
+          resource: threadMentionResource(
+            "thr_schema",
+            "Tighten ownership queries",
+          ),
+        },
+        {
+          token: "@thread:thr_rebase",
+          resource: threadMentionResource(
+            "thr_rebase",
+            "Rebase integration branch",
+          ),
+        },
+        {
+          token: "@thread:thr_docs",
+          resource: threadMentionResource(
+            "thr_docs",
+            "Refresh onboarding guide",
+          ),
+        },
+      ],
+    ),
+  },
+];
 
 const longSystemMessage = buildMessage(
   [
@@ -248,7 +407,7 @@ const longSystemMessage = buildMessage(
     "- @apps/server/test/threads/thread-stop-retry.test.ts",
     "",
     "Behavior summary:",
-    "- `stopRequestedAt` remains durable stop intent.",
+    "- The `stopping` status remains durable stop intent.",
     "- Live `thread.stop` RPC dedupe now uses a separate in-memory in-flight set.",
     "- Failed stop RPC clears the in-flight marker, so `stop-requested-thread-retry` can redeliver.",
     "- Sweep does not queue duplicate stop RPCs while one is already in flight.",
@@ -291,17 +450,6 @@ const longSystemMessage = buildMessage(
     },
   ],
 );
-
-// The exact fixture that surfaced the detached-ResizeObserver expansion bug:
-// long single-line scheduled prompt with no mentions. Before the isConnected
-// guard in `useOverflowMeasurement`, clicking expand bounced the row right
-// back to collapsed (and removed the toggle button). Kept as a plain-text
-// regression canary so the row visibly stays expanded after a click.
-const systemScheduledRegressionText = [
-  "[bb schedule due:tsched_7njqipuist]",
-  "",
-  "Scheduled nudge: system-review-feedback-loop. Run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups and message only useful outcomes/blockers.",
-].join("\n");
 
 const singleImageAttachments: TimelineConversationAttachments = {
   webImages: 0,
@@ -357,9 +505,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Walk me through how ThreadDetailView wires the prompt context banner."
@@ -376,9 +526,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={mentionedMessageText}
@@ -396,9 +548,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={longMarkdownText}
@@ -415,9 +569,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
@@ -434,9 +590,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
@@ -450,9 +608,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Repro of the layout regression in the prompt context banner."
@@ -470,9 +630,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Three screenshots from the design review and the spec doc."
@@ -491,10 +653,36 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
+            senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={agentInitiatedMessage.text}
+            attachments={null}
+            mentions={agentInitiatedMessage.mentions}
+            projectId="proj_demo"
+            turnRequest={acceptedMessage}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="from a side chat"
+        hint='a message handed back from a side chat reads "Message from side chat" (senderChildOrigin "side-chat")'
+      >
+        <TimelineStage>
+          <ConversationMessageContent
+            role="user"
+            childOrigin={null}
+            initiator="agent"
+            resolveSegmentLinkHref={resolveThreadLink}
+            onTitleAction={() => () => undefined}
+            senderThreadId="thr_side_chat"
+            senderThreadTitle="new thread"
+            senderChildOrigin="side-chat"
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={agentInitiatedMessage.text}
@@ -512,10 +700,12 @@ export function Overview() {
         <div className="flex w-full max-w-[760px] flex-col gap-3">
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={agentSteerMessage.text}
@@ -526,9 +716,11 @@ export function Overview() {
           />
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemAssignedMessage.text}
@@ -540,54 +732,17 @@ export function Overview() {
         </div>
       </StoryRow>
       <StoryRow
-        label="system-initiated (scheduled turn)"
-        hint="long single-line schedule prompt expands to the full message body"
-      >
-        <TimelineStage>
-          <ConversationMessageContent
-            role="user"
-            initiator="system"
-            senderThreadId={null}
-            senderThreadTitle={null}
-            systemMessageKind="unlabeled"
-            systemMessageSubject={null}
-            text={systemScheduledMessage.text}
-            attachments={null}
-            mentions={systemScheduledMessage.mentions}
-            projectId="proj_demo"
-            turnRequest={acceptedMessage}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="system-initiated (scheduled turn, regression fixture)"
-        hint="exact plain-text fixture that surfaced the detached-resize bug — click expand, the body should stay open and the chevron should still collapse it"
-      >
-        <TimelineStage>
-          <ConversationMessageContent
-            role="user"
-            initiator="system"
-            senderThreadId={null}
-            senderThreadTitle={null}
-            systemMessageKind="unlabeled"
-            systemMessageSubject={null}
-            text={systemScheduledRegressionText}
-            attachments={null}
-            mentions={[]}
-            turnRequest={acceptedMessage}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
         label="system-initiated (assigned)"
         hint="single-line system activity with a thread mention pill"
       >
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemAssignedMessage.text}
@@ -605,9 +760,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemChildOutcomeBatchMessage.text}
@@ -625,9 +782,11 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={longSystemMessage.text}
@@ -638,6 +797,38 @@ export function Overview() {
           />
         </TimelineStage>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ParentChildSystemMessages() {
+  return (
+    <StoryCard>
+      {parentChildSystemMessageFixtures.map((fixture) => (
+        <StoryRow
+          key={fixture.label}
+          label={fixture.label}
+          hint={fixture.hint}
+        >
+          <TimelineStage>
+            <ConversationMessageContent
+              role="user"
+              initiator="system"
+              senderThreadId={null}
+              senderThreadTitle={null}
+              childOrigin={null}
+              senderChildOrigin={null}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text={fixture.message.text}
+              attachments={null}
+              mentions={fixture.message.mentions}
+              projectId="proj_demo"
+              turnRequest={acceptedMessage}
+            />
+          </TimelineStage>
+        </StoryRow>
+      ))}
     </StoryCard>
   );
 }

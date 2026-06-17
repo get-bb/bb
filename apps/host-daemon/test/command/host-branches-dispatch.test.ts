@@ -79,6 +79,30 @@ describe("host.list_branches dispatch", () => {
     ]);
   });
 
+  it("pins origin default branch first in remote branch results", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branches-origin-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["branch", "bb/aardvark"], { cwd: repoPath });
+    await runGitCommand(["push", "origin", "bb/aardvark", "main"], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "host.list_branches", path: repoPath, limit: 1 },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.defaultBranch).toBe("main");
+    expect(result.remoteBranches).toEqual(["origin/main"]);
+    expect(result.remoteBranchesTruncated).toBe(true);
+  });
+
   it("classifies a selected branch before filtering and pagination", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branches-remote-");
@@ -125,6 +149,48 @@ describe("host.list_branches dispatch", () => {
       name: "origin/main",
       kind: "missing",
     });
+  });
+
+  it("refreshes remote branches before filtering branch lists", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branches-fetch-remote-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["push", "origin", "main"], { cwd: repoPath });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+    const cloneParent = await makeTempDir("bb-host-branches-fetch-clone-");
+    const clonePath = path.join(cloneParent, "repo");
+    await runGitCommand(["clone", remotePath, clonePath], { cwd: cloneParent });
+    await runGitCommand(["config", "user.name", "BB Tests"], {
+      cwd: clonePath,
+    });
+    await runGitCommand(["config", "user.email", "bb@example.com"], {
+      cwd: clonePath,
+    });
+    await runGitCommand(["switch", "-c", "feature/remote-only"], {
+      cwd: clonePath,
+    });
+    await fs.writeFile(path.join(clonePath, "remote.txt"), "remote\n", "utf8");
+    await runGitCommand(["add", "."], { cwd: clonePath });
+    await runGitCommand(["commit", "-m", "Remote branch"], { cwd: clonePath });
+    await runGitCommand(["push", "origin", "feature/remote-only"], {
+      cwd: clonePath,
+    });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_branches",
+        path: repoPath,
+        query: "remote-only",
+        limit: 50,
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.remoteBranches).toEqual(["origin/feature/remote-only"]);
   });
 
   it("filters and limits branch lists", async () => {
@@ -189,8 +255,10 @@ describe("host.list_branches dispatch", () => {
       branchesTruncated: false,
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
+      defaultBranchRelation: null,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
+      originDefaultBranch: null,
       remoteBranches: [],
       remoteBranchesTruncated: false,
       selectedBranch: null,
@@ -215,8 +283,10 @@ describe("host.list_branches dispatch", () => {
       branchesTruncated: false,
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
+      defaultBranchRelation: null,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
+      originDefaultBranch: null,
       remoteBranches: [],
       remoteBranchesTruncated: false,
       selectedBranch: null,

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { commandTriggerForProvider } from "./command-trigger";
+import {
+  commandPillDismissedRangeEnd,
+  commandTriggerForProvider,
+} from "./command-trigger";
 
 describe("commandTriggerForProvider", () => {
   it("maps claude-code to the slash trigger", () => {
@@ -16,5 +19,25 @@ describe("commandTriggerForProvider", () => {
 
   it("returns null for unknown provider ids", () => {
     expect(commandTriggerForProvider("totally-unknown")).toBeNull();
+  });
+});
+
+describe("commandPillDismissedRangeEnd", () => {
+  it("counts the command pill as a one-position editor atom", () => {
+    expect(
+      commandPillDismissedRangeEnd({
+        triggerPosition: 5,
+        trailingText: " ",
+      }),
+    ).toBe(7);
+  });
+
+  it("does not include serialized command name length", () => {
+    expect(
+      commandPillDismissedRangeEnd({
+        triggerPosition: 5,
+        trailingText: "",
+      }),
+    ).toBe(6);
   });
 });

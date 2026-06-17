@@ -143,18 +143,12 @@ Validated:
   - backend child used `providerId: codex`
   - frontend child used `providerId: claude-code`
 - Pi manager smoke passed with `anthropic/claude-opus-4-7` / `medium`; the Pi manager reached `idle` and produced a visible hatch message.
-- Legacy reminder scheduling passed after tightening the manager instructions:
-  - the legacy schedule source contained `cron: "17 0 * * *"`
-  - the legacy schedule table contained `thr_c9gaer9gz4|backend-port-cleanup-check|17 0 * * *|America/Los_Angeles|1775546220000`
-
-Critical issues fixed during the pass:
+  Critical issues fixed during the pass:
 
 - dynamic `message_user` forwarding used provider thread ids instead of BB thread ids
 - manager completion / ownership control messages were not wired on the server
 - `bb thread output` dropped manager-visible messages when a later assistant item was empty
-- manager reminder generation could produce unsupported date-specific cron in the legacy schedule source
-
-Residual notes:
+  Residual notes:
 
 - The manager no longer relied on polling loops to detect completion, but live logs still showed a small number of `bb thread show --json` inspections while reviewing completed child results. This did not behave like tight completion polling, but it remains worth watching.
 
@@ -164,11 +158,9 @@ Date: 2026-04-07
 Operator: Codex
 Status: passed after Pi-specific critical fixes
 Pi full-flow standalone state path: `/var/folders/lr/f3ynv4xj6p77kvx_rz7zgzg00000gn/T/bb-standalone-ydj2ZY/standalone-state.json`
-Pi scheduling-timezone standalone state path: `/var/folders/lr/f3ynv4xj6p77kvx_rz7zgzg00000gn/T/bb-standalone-lZ8167/standalone-state.json`
 Pi archive standalone state path: `/var/folders/lr/f3ynv4xj6p77kvx_rz7zgzg00000gn/T/bb-standalone-leqi3T/standalone-state.json`
 Pi full-flow manager: `thr_iini5qeeii`
-Pi ownership/scheduling manager: `thr_et5zkcpnx7`
-Pi scheduling-timezone manager: `thr_xdd955ybte`
+Pi ownership manager: `thr_et5zkcpnx7`
 Pi archive manager: `thr_xt5yisgw67`
 Backend implementation child: `thr_syvuknesb9`
 Initial same-environment review child: `thr_6csnzj8czc`
@@ -189,17 +181,12 @@ Validated:
   - frontend child used `providerId: claude-code`
 - When `claude-code` failed because the local OAuth token was expired, the Pi manager recovered by retrying the affected work with codex rather than stalling.
 - Ownership transfer via `bb thread update --parent-thread` and `--clear-parent-thread` triggered the expected Pi-manager follow-up turns and user-visible updates.
-- Legacy reminder scheduling passed after the local-timezone fix:
-  - the legacy schedule source contained `timezone: America/Los_Angeles`
-  - the legacy schedule table rows for `thr_xdd955ybte` used `America/Los_Angeles`
 - Archive judgment passed in a focused helper-thread flow: Pi manager `thr_xt5yisgw67` summarized a one-off codex research thread and archived `thr_ydwh24qkxp` afterward.
 
 Critical issues fixed during the Pi rerun:
 
 - Pi managers could guess unsupported worker model ids like `o4-mini` instead of using current CLI-valid defaults
-- Pi managers could default reminder-style legacy schedules to `UTC` instead of the local reminder timezone
-
-Residual notes:
+  Residual notes:
 
 - `claude-code` remains blocked by a local expired OAuth token in this environment. Pi managers still routed work to `claude-code` correctly, but the live pass had to rely on codex fallbacks to complete those tasks.
 - No tight completion-polling loop was observed in the Pi reruns. Managers still used occasional inspection commands while reviewing child output, but completion itself came from manager system messages rather than repeated polling.
@@ -646,3 +633,36 @@ Cleanup:
 
 - Teardown succeeded: `pnpm qa:standalone:stop --state ...` killed PIDs `39234` and `39286` and removed the standalone root.
 - `pnpm qa:standalone:cleanup` reported no remaining roots.
+
+## Full Lint/Test/Build/Runbook Pass With Real Providers
+
+Date: 2026-06-12
+Operator: Codex
+Status: passed after fixes
+Standalone workflow: `pnpm qa:standalone:start` / `pnpm qa:standalone:stop`
+Run logs: `qa/logs/2026-06-12-full-qa/`
+
+Resolved models:
+
+- `codex`: `gpt-5.5`
+- `claude-code`: `claude-haiku-4-5`
+- `pi`: `openai-codex/gpt-5.5`
+
+Validated:
+
+- Final `lint`, `typecheck`, `test`, `test:integration`, and root `build` gates all passed through Turbo.
+- Real-provider integration exercised Codex, Claude Code, and Pi registry, turn, control, concurrency, and workspace scenarios.
+- Standalone manual runbook coverage exercised health/model resolution, API prompt attachments, smoke/follow-up, parent/child protocol, worktree/diff routes, archive safety, multi-thread shared environments, mixed-provider worktrees, recovery probes, provider-specific chat/follow-up/stop/worktree flows, and pending-interaction approval/denial.
+- The final pending-interaction rerun confirmed `bb thread tell` now returns HTTP 409 while a command approval is pending, then approval and denial both resolve through the real Codex provider flow.
+
+Fixes made during the pass:
+
+- Added a focused timeout to the desktop preload browser API test that timed out under full-suite load.
+- Reduced pending-interaction batching test setup cost while preserving coverage across SQLite variable-limit chunks.
+- Installed/verified local QA prerequisites for real providers (`socat`, Pi auth, and the `pi` CLI wrapper).
+- Fixed `/api/v1/threads/:id/send` so `queue-if-active` cannot enqueue a prompt while the active thread awaits user interaction, with a public API regression test.
+
+Cleanup:
+
+- Standalone teardown and cleanup succeeded after the final manual rerun.
+- No `/tmp/bb-standalone-*` roots remained after cleanup.

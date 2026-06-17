@@ -5,7 +5,6 @@ import {
 } from "@bb/db";
 import {
   backgroundTaskItemStatus,
-  BB_WORKFLOW_TASK_TYPE,
   isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
   threadScope,
@@ -71,14 +70,6 @@ export function settleDanglingBackgroundTasks(
             { itemId: row.itemId, threadId: row.threadId },
             "Skipping dangling background task with unparsable item payload",
           );
-          continue;
-        }
-        if (item.taskType === BB_WORKFLOW_TASK_TYPE) {
-          // bb workflow anchor items are owned end-to-end by the server
-          // workflow lifecycle (a paused item is resumable and a completed
-          // row is terminal forever): interruption pauses them via
-          // workflow-run-reconciliation, and only the run's true terminal —
-          // or the retention sweep archiving an abandoned run — settles them.
           continue;
         }
         const providerThreadId = row.providerThreadId ?? "";

@@ -5,11 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import { ConversationMessageContent } from "./ConversationMessageContent";
-import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
-import {
-  restoreMatchMedia,
-  setupMatchMedia,
-} from "@/test/helpers/match-media.js";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
   return link.kind === "thread"
@@ -27,17 +23,18 @@ const MARKDOWN_BODY = [
 ].join("\n");
 
 function renderChildCompleted() {
-  setupMatchMedia();
   const token = "@thread:thr_child";
   const start = MARKDOWN_BODY.indexOf(token);
   return render(
     <MemoryRouter>
-      <AppRouteNavigationProvider>
+      <RouteNavigationProvider>
         <ConversationMessageContent
           role="user"
           initiator="system"
+          childOrigin={null}
           senderThreadId={null}
           senderThreadTitle={null}
+          senderChildOrigin={null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
@@ -62,28 +59,28 @@ function renderChildCompleted() {
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
         />
-      </AppRouteNavigationProvider>
+      </RouteNavigationProvider>
     </MemoryRouter>,
   );
 }
 
 afterEach(() => {
   cleanup();
-  restoreMatchMedia();
 });
 
 const TWO_LINE_BODY = "first report line\nsecond report line";
 
 function renderChildCompletedBody(text: string) {
-  setupMatchMedia();
   return render(
     <MemoryRouter>
-      <AppRouteNavigationProvider>
+      <RouteNavigationProvider>
         <ConversationMessageContent
           role="user"
           initiator="system"
+          childOrigin={null}
           senderThreadId={null}
           senderThreadTitle={null}
+          senderChildOrigin={null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
@@ -97,7 +94,7 @@ function renderChildCompletedBody(text: string) {
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
         />
-      </AppRouteNavigationProvider>
+      </RouteNavigationProvider>
     </MemoryRouter>,
   );
 }
@@ -111,15 +108,16 @@ const AGENT_PATH_TOKEN = "path:src/app.ts";
 const AGENT_PATH_START = AGENT_BODY.indexOf(AGENT_PATH_TOKEN);
 
 function renderAgentMessage() {
-  setupMatchMedia();
   return render(
     <MemoryRouter>
-      <AppRouteNavigationProvider>
+      <RouteNavigationProvider>
         <ConversationMessageContent
           role="user"
           initiator="agent"
+          childOrigin={null}
           senderThreadId="thr_agent"
           senderThreadTitle="Worker"
+          senderChildOrigin={null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"
           systemMessageSubject={null}
@@ -141,7 +139,7 @@ function renderAgentMessage() {
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
         />
-      </AppRouteNavigationProvider>
+      </RouteNavigationProvider>
     </MemoryRouter>,
   );
 }

@@ -481,6 +481,270 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates turn-summary details when the range overlaps another turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "child-tool",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "parent-message",
+            text: "Parent is still working.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 5,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            text: "Child done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 6,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 7,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const childTurnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow =>
+          row.kind === "turn" && row.turnId === "child-turn",
+      );
+      expect(childTurnRow).toBeDefined();
+      if (!childTurnRow) {
+        throw new Error("Expected child turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${childTurnRow.turnId}&sourceSeqStart=${childTurnRow.sourceSeqStart}&sourceSeqEnd=${childTurnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      expect(details.rows.map((row) => row.kind)).toEqual(["work"]);
+      expect(details.rows[0]?.kind).toBe("work");
+      const detailRow = details.rows[0];
+      if (detailRow?.kind === "work" && detailRow.workKind === "tool") {
+        expect(detailRow.callId).toBe("child-tool");
+      } else {
+        throw new Error("Expected child tool detail row");
+      }
+    });
+  });
+
+  it("hydrates turn-summary details with future accepted input context", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+          input: [{ type: "text", text: "Requested turn prompt" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-4o-mini",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "fast",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "requested-tool",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 202 }),
+          input: [{ type: "text", text: "Other turn prompt" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-4o-mini",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "fast",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 5,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "requested-message",
+            text: "Requested turn done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 6,
+        type: "turn/input/accepted",
+        data: {
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("other-turn"),
+        sequence: 7,
+        type: "turn/input/accepted",
+        data: {
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 202 }),
+        },
+      });
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=requested-turn&sourceSeqStart=1&sourceSeqEnd=5`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      const detailText = JSON.stringify(details.rows);
+      expect(detailText).toContain("Requested turn prompt");
+      expect(detailText).toContain("requested-tool");
+      expect(detailText).not.toContain("Other turn prompt");
+    });
+  });
+
   it("hydrates a single-event turn-summary detail range", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
@@ -1118,6 +1382,59 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("rejects send requests whose senderThreadId is in another project", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: {
+          status: "active",
+        },
+      });
+      const { host: otherHost } = seedHostSession(harness.deps, {
+        id: "host-cross-project-sender",
+      });
+      const { project: otherProject } = seedProjectWithSource(harness.deps, {
+        hostId: otherHost.id,
+      });
+      const crossProjectSender = seedThread(harness.deps, {
+        projectId: otherProject.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Cross-project attribution" }],
+            mode: "queue-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            senderThreadId: crossProjectSender.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(await readJson(response))).toContain(
+        "wrong_project",
+      );
+      // The forged cross-project send must take no effect: no queued message
+      // and no turn-request event recorded on the target thread.
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(
+        harness.db
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toHaveLength(0);
+    });
+  });
+
   it("sends queued sender messages as agent-originated turn requests", async () => {
     await withTestHarness(async (harness) => {
       const { project, thread } = seedThreadFixture(harness);
@@ -1557,20 +1874,6 @@ describe("public thread data routes", () => {
       const providerResponder = registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        providers: [
-          {
-            id: "codex",
-            displayName: "Codex",
-            capabilities: {
-              supportsArchive: true,
-              supportsRename: true,
-              supportsServiceTier: true,
-              supportsUserQuestion: true,
-              supportedPermissionModes: ["full", "workspace-write", "readonly"],
-            },
-            available: true,
-          },
-        ],
         modelsByProviderId: {
           codex: {
             models: [
@@ -1667,10 +1970,12 @@ describe("public thread data routes", () => {
           "expected resolved executionOptions for an environment-backed thread",
         );
       }
-      expect(executionOptions.providers).toHaveLength(1);
-      expect(
-        executionOptions.providers[0]?.capabilities.supportsUserQuestion,
-      ).toBe(true);
+      const codexProvider = executionOptions.providers.find(
+        (provider) => provider.id === "codex",
+      );
+      expect(codexProvider).toMatchObject({
+        id: "codex",
+      });
       expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
       expect(bootstrap.queuedMessages[0]?.content).toEqual(
         textInput("Queued message"),
@@ -1685,7 +1990,6 @@ describe("public thread data routes", () => {
       expect(
         providerResponder.requests.map((request) => request.command),
       ).toEqual([
-        { type: "provider.list" },
         { type: "provider.list_models", providerId: "codex" },
       ]);
     });
@@ -1917,7 +2221,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("keeps queued messages when send is attempted while a created thread is still starting", async () => {
+  it("keeps queued messages when send is attempted while a starting thread is still starting", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-queued-message-created-thread-send",
@@ -1957,7 +2261,7 @@ describe("public thread data routes", () => {
       const createdThread = threadSchema.parse(
         await readJson(createThreadResponse),
       );
-      expect(createdThread.status).toBe("provisioning");
+      expect(createdThread.status).toBe("starting");
 
       const createQueuedThreadMessageResponse = await harness.app.request(
         `/api/v1/threads/${createdThread.id}/queued-messages`,
@@ -1997,7 +2301,7 @@ describe("public thread data routes", () => {
         code: "thread_not_writable",
         details: {
           reason: "still_starting",
-          threadStatus: "provisioning",
+          threadStatus: "starting",
         },
       });
       expect(
@@ -2219,7 +2523,7 @@ describe("public thread data routes", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       const threadStoragePath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
 
@@ -2372,22 +2676,23 @@ describe("public thread data routes", () => {
       const threadStorageRoot = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
       const html = "<!doctype html><h1>Preview</h1>";
 
+      // Percent-encoded segments decode exactly once before hitting the host.
       const filePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/thread-storage/files/reports/preview.html`,
+        `/api/v1/threads/${thread.id}/thread-storage/files/reports/preview%20v2.html`,
       );
       const fileCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "host.read_file" &&
-          command.path === `${threadStorageRoot}/reports/preview.html`,
+          command.path === `${threadStorageRoot}/reports/preview v2.html`,
       );
       expect(fileCommand.command).toMatchObject({
         type: "host.read_file",
-        path: `${threadStorageRoot}/reports/preview.html`,
+        path: `${threadStorageRoot}/reports/preview v2.html`,
         rootPath: threadStorageRoot,
       });
       await reportQueuedCommandSuccess(harness, fileCommand, {
-        path: `${threadStorageRoot}/reports/preview.html`,
+        path: `${threadStorageRoot}/reports/preview v2.html`,
         content: html,
         contentEncoding: "utf8",
         mimeType: "text/html",
@@ -2403,6 +2708,104 @@ describe("public thread data routes", () => {
         "sandbox allow-scripts",
       );
       expect(await fileResponse.text()).toBe(html);
+    });
+  });
+
+  it("serves absolute-path HTML files via files/raw with preview headers", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const html = "<!doctype html><h1>Raw preview</h1>";
+
+      const filePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/files/raw?path=${encodeURIComponent("/tmp/anywhere/report.html")}`,
+      );
+      const fileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === "/tmp/anywhere/report.html",
+      );
+      expect(fileCommand.command).toMatchObject({
+        type: "host.read_file",
+        path: "/tmp/anywhere/report.html",
+      });
+      await reportQueuedCommandSuccess(harness, fileCommand, {
+        path: "/tmp/anywhere/report.html",
+        content: html,
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: Buffer.byteLength(html),
+      });
+
+      const fileResponse = await filePromise;
+      expect(fileResponse.status).toBe(200);
+      expect(fileResponse.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(fileResponse.headers.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(fileResponse.headers.get("cache-control")).toBe("no-store");
+      expect(fileResponse.headers.get("x-content-type-options")).toBe(
+        "nosniff",
+      );
+      expect(await fileResponse.text()).toBe(html);
+    });
+  });
+
+  it("rejects relative and non-HTML files/raw paths without contacting the host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const relativeResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/files/raw?path=${encodeURIComponent("relative/report.html")}`,
+      );
+      expect(relativeResponse.status).toBe(400);
+      await expect(readJson(relativeResponse)).resolves.toMatchObject({
+        code: "invalid_path",
+      });
+
+      const nonHtmlResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/files/raw?path=${encodeURIComponent("/tmp/anywhere/data.json")}`,
+      );
+      expect(nonHtmlResponse.status).toBe(415);
+      await expect(readJson(nonHtmlResponse)).resolves.toMatchObject({
+        code: "unsupported_media_type",
+      });
+
+      const missingPathResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/files/raw`,
+      );
+      expect(missingPathResponse.status).toBe(400);
+      await expect(readJson(missingPathResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+      });
     });
   });
 

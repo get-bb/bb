@@ -11,6 +11,19 @@
  * without polyfills they throw in every test that indirectly renders such a
  * component.
  */
+
+// `@pierre/diffs` (CodeView) reads `navigator.userAgent` at module load for
+// feature detection. Vitest's default `node` environment exposes no
+// `navigator`, so any node-env test that transitively imports the diff renderer
+// (e.g. via the `components/thread/timeline` barrel) crashes at import. Provide a
+// minimal stub where one is absent; jsdom tests already have a real `navigator`.
+if (typeof globalThis.navigator === "undefined") {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent: "node" },
+  });
+}
+
 if (typeof window !== "undefined" && typeof jsdom !== "undefined") {
   /**
    * Node 26 defines global storage accessors. Vitest keeps existing globals

@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const threadStatusValues = [
-  "created",
-  "provisioning",
   "idle",
+  "starting",
   "active",
+  "stopping",
   "error",
 ] as const;
 export const threadStatusSchema = z.enum(threadStatusValues);

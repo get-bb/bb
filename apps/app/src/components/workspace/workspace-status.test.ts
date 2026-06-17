@@ -39,6 +39,11 @@ function makeStatus(options: MakeStatusOptions): WorkspaceStatus {
       deletions: options.deletions ?? 0,
       files,
     }),
+    checkout: {
+      kind: "branch",
+      branchName: "feature",
+      headSha: null,
+    },
     branch: {
       currentBranch: "feature",
       defaultBranch: "main",
@@ -181,7 +186,6 @@ describe("workspace-status", () => {
         code: "environment_not_ready",
         message: "Environment unavailable",
         details: {
-          cleanupRequestedAt: 10,
           environmentStatus: "destroyed",
           hasPath: false,
         },

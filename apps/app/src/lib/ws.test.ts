@@ -1,88 +1,176 @@
-// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clientMessageSchema, type ClientMessage } from "@bb/domain";
+import type { RealtimeSubscriptionTarget } from "@bb/server-contract";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  FakeReconnectingWebSocket,
-  resetFakeReconnectingWebSockets,
-} from "@/test/fake-reconnecting-websocket";
-import { parseSubKey, WebSocketManager } from "./ws";
+const fakeSocketState = vi.hoisted(() => {
+  type CloseHandler = () => void;
+  type MessageHandler = (event: MessageEvent) => void;
+  type OpenHandler = () => void;
 
-vi.mock("partysocket/ws", async () => {
-  const { FakeReconnectingWebSocket: FakeSocket } =
-    await import("@/test/fake-reconnecting-websocket");
+  class FakeReconnectingWebSocket {
+    onclose: CloseHandler | null = null;
+    onmessage: MessageHandler | null = null;
+    onopen: OpenHandler | null = null;
+    readyState = 1;
+    readonly sentMessages: string[] = [];
+
+    constructor() {
+      instances.push(this);
+    }
+
+    close(): void {
+      this.readyState = 3;
+      this.onclose?.();
+    }
+
+    open(): void {
+      this.readyState = 1;
+      this.onopen?.();
+    }
+
+    send(data: string): void {
+      this.sentMessages.push(data);
+    }
+  }
+
+  const instances: FakeReconnectingWebSocket[] = [];
+
   return {
-    default: FakeSocket,
+    FakeReconnectingWebSocket,
+    instances,
   };
 });
 
-afterEach(() => {
-  resetFakeReconnectingWebSockets();
-});
+vi.mock("partysocket/ws", () => ({
+  default: fakeSocketState.FakeReconnectingWebSocket,
+}));
 
-describe("parseSubKey", () => {
-  it("parses supported subscription keys with and without ids", () => {
-    expect(parseSubKey("thread")).toEqual({ entity: "thread" });
-    expect(parseSubKey("system")).toEqual({ entity: "system" });
-    expect(parseSubKey("thread:t-1")).toEqual({ entity: "thread", id: "t-1" });
-    expect(parseSubKey("project:p-1")).toEqual({
-      entity: "project",
-      id: "p-1",
-    });
-    expect(parseSubKey("environment:e-1")).toEqual({
-      entity: "environment",
-      id: "e-1",
-    });
-  });
+vi.mock("./dev-websocket-url", () => ({
+  buildDevWebSocketUrl: () => "ws://bb.test/ws",
+}));
 
-  it("rejects unknown entities", () => {
-    expect(parseSubKey("unknown")).toBeNull();
-    expect(parseSubKey("bogus:id-1")).toBeNull();
+import { WebSocketManager } from "./ws";
+
+const THREAD_TARGET = {
+  kind: "thread-detail",
+  threadId: "thr_1",
+} satisfies RealtimeSubscriptionTarget;
+const PROJECT_TARGET = {
+  kind: "project-list",
+} satisfies RealtimeSubscriptionTarget;
+
+interface ConnectedManager {
+  manager: WebSocketManager;
+  socket: FakeSocket;
+}
+
+interface FakeSocket {
+  readonly sentMessages: string[];
+  close: () => void;
+  open: () => void;
+}
+
+function installOpenWebSocketConstructor(): void {
+  Object.defineProperty(globalThis, "WebSocket", {
+    configurable: true,
+    value: {
+      OPEN: 1,
+    },
   });
-});
+}
+
+function readClientMessages(socket: FakeSocket): readonly ClientMessage[] {
+  return socket.sentMessages.map((message) =>
+    clientMessageSchema.parse(JSON.parse(message)),
+  );
+}
+
+function getOnlySocket(): FakeSocket {
+  const socket = fakeSocketState.instances[0];
+  if (!socket) {
+    throw new Error("Expected websocket to be created");
+  }
+  return socket;
+}
+
+function createConnectedManager(): ConnectedManager {
+  const manager = new WebSocketManager();
+  manager.connect();
+  const socket = getOnlySocket();
+  socket.open();
+  return { manager, socket };
+}
 
 describe("WebSocketManager subscriptions", () => {
-  function connectManager() {
-    const manager = new WebSocketManager();
-    manager.connect();
-    const socket = FakeReconnectingWebSocket.latest();
-    socket.open();
-    return { manager, socket };
-  }
+  const originalWebSocket = globalThis.WebSocket;
 
-  it("refcounts a shared key so one unsubscriber does not drop the other", () => {
-    const { manager, socket } = connectManager();
+  beforeEach(() => {
+    fakeSocketState.instances.length = 0;
+    installOpenWebSocketConstructor();
+  });
 
-    // Two independent surfaces (e.g. the sidebar Workflows section and the
-    // project Workflows tab) subscribe to the same entity-wide key.
-    manager.subscribe("workflow-run");
-    manager.subscribe("workflow-run");
-    manager.unsubscribe("workflow-run");
+  afterEach(() => {
+    Object.defineProperty(globalThis, "WebSocket", {
+      configurable: true,
+      value: originalWebSocket,
+    });
+  });
 
-    expect(socket.sentMessages).toEqual([
-      JSON.stringify({ type: "subscribe", entity: "workflow-run" }),
+  it("ref-counts duplicate subscriptions and unsubscribes only after the final cleanup", () => {
+    const { manager, socket } = createConnectedManager();
+
+    manager.subscribe(THREAD_TARGET);
+    manager.subscribe(THREAD_TARGET);
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: THREAD_TARGET,
+      },
     ]);
 
-    manager.unsubscribe("workflow-run");
+    manager.unsubscribe(THREAD_TARGET);
 
-    expect(socket.sentMessages).toEqual([
-      JSON.stringify({ type: "subscribe", entity: "workflow-run" }),
-      JSON.stringify({ type: "unsubscribe", entity: "workflow-run" }),
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: THREAD_TARGET,
+      },
+    ]);
+
+    manager.unsubscribe(THREAD_TARGET);
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: THREAD_TARGET,
+      },
+      {
+        type: "unsubscribe",
+        target: THREAD_TARGET,
+      },
     ]);
   });
 
-  it("replays one subscribe per live key on reconnect", () => {
-    const { manager, socket } = connectManager();
+  it("resends active subscriptions when the websocket reconnects", () => {
+    const { manager, socket } = createConnectedManager();
 
-    manager.subscribe("workflow-run");
-    manager.subscribe("workflow-run");
-    manager.subscribe("thread", "t-1");
+    manager.subscribe(THREAD_TARGET);
+    manager.subscribe(PROJECT_TARGET);
     socket.sentMessages.length = 0;
 
+    socket.close();
     socket.open();
 
-    expect(socket.sentMessages).toEqual([
-      JSON.stringify({ type: "subscribe", entity: "workflow-run" }),
-      JSON.stringify({ type: "subscribe", entity: "thread", id: "t-1" }),
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: THREAD_TARGET,
+      },
+      {
+        type: "subscribe",
+        target: PROJECT_TARGET,
+      },
     ]);
   });
 });

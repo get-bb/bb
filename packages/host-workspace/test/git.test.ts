@@ -9,6 +9,7 @@ import {
   parseNameStatusEntries,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
+  readDefaultBranchRefs,
   readGitBlob,
   runGit,
   runShellPipeline,
@@ -57,6 +58,36 @@ async function initConflictRepo() {
   await fs.writeFile(path.join(repoPath, "README.md"), "main\n", "utf8");
   await runGit(["commit", "-am", "Main edit"], { cwd: repoPath });
   return repoPath;
+}
+
+async function initDefaultBranchRemoteRepo() {
+  const repoPath = await initReadGitBlobRepo();
+  const remotePath = await fs.mkdtemp(path.join(os.tmpdir(), "bb-git-remote-"));
+  tempDirs.push(remotePath);
+  await runGit(["init", "--bare"], { cwd: remotePath });
+  await runGit(["remote", "add", "origin", remotePath], { cwd: repoPath });
+  await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
+  await runGit(["fetch", "origin"], { cwd: repoPath });
+  return { remotePath, repoPath };
+}
+
+async function pushRemoteMainCommit(remotePath: string) {
+  const cloneParent = await fs.mkdtemp(
+    path.join(os.tmpdir(), "bb-git-remote-clone-"),
+  );
+  tempDirs.push(cloneParent);
+  const clonePath = path.join(cloneParent, "repo");
+  await runGit(["clone", "--branch", "main", remotePath, clonePath], {
+    cwd: cloneParent,
+  });
+  await runGit(["config", "user.name", "BB Tests"], { cwd: clonePath });
+  await runGit(["config", "user.email", "bb@example.com"], {
+    cwd: clonePath,
+  });
+  await fs.writeFile(path.join(clonePath, "remote.txt"), "remote\n", "utf8");
+  await runGit(["add", "."], { cwd: clonePath });
+  await runGit(["commit", "-m", "Remote edit"], { cwd: clonePath });
+  await runGit(["push", "origin", "main"], { cwd: clonePath });
 }
 
 afterEach(async () => {
@@ -114,6 +145,68 @@ describe("getCheckoutRef", () => {
     await expect(getCheckoutRef(repoPath)).resolves.toEqual({
       kind: "unborn",
       branchName: "main",
+    });
+  });
+});
+
+describe("readDefaultBranchRefs", () => {
+  it("reports equal local and origin defaults", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toEqual({
+      defaultBranch: "main",
+      defaultBranchRelation: "equal",
+      originDefaultBranch: "origin/main",
+    });
+  });
+
+  it("reports a local default behind origin", async () => {
+    const { remotePath, repoPath } = await initDefaultBranchRemoteRepo();
+    await pushRemoteMainCommit(remotePath);
+    await runGit(["fetch", "origin"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "main",
+      defaultBranchRelation: "local-behind",
+      originDefaultBranch: "origin/main",
+    });
+  });
+
+  it("reports a local default ahead of origin", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+    await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Local edit"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "main",
+      defaultBranchRelation: "local-ahead",
+      originDefaultBranch: "origin/main",
+    });
+  });
+
+  it("reports diverged local and origin defaults", async () => {
+    const { remotePath, repoPath } = await initDefaultBranchRemoteRepo();
+    await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Local edit"], { cwd: repoPath });
+    await pushRemoteMainCommit(remotePath);
+    await runGit(["fetch", "origin"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "main",
+      defaultBranchRelation: "diverged",
+      originDefaultBranch: "origin/main",
+    });
+  });
+
+  it("omits origin defaults when no origin ref exists", async () => {
+    const repoPath = await initReadGitBlobRepo();
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toEqual({
+      defaultBranch: "main",
+      defaultBranchRelation: undefined,
+      originDefaultBranch: undefined,
     });
   });
 });

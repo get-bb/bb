@@ -1,4 +1,4 @@
-import type { BbDesktopApi } from "@bb/server-contract";
+import type { BbDesktopApi } from "@bb/desktop-contract";
 
 declare global {
   interface Window {

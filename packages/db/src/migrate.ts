@@ -4,7 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { DbConnection } from "./connection.js";
-import { publishedMigrationWhensByTag } from "./migration-history.js";
+import {
+  compatibleMigrationHashes,
+  publishedMigrationWhensByTag,
+} from "./migration-history.js";
 
 export interface ResolveMigrationsFolderForModuleDirArgs {
   moduleDir: string;
@@ -74,6 +77,11 @@ type DeferredDestructiveCleanupMigrationTag =
   | "0017_terminal_session_runtime_state_honesty"
   | "0018_natural_crusher_hogan";
 
+type ReorderedCleanupMigrationTag =
+  | "0033_drop_cleanup_mode"
+  | "0034_drop_stop_requested_at"
+  | "0035_warm_kingpin";
+
 export interface FutureAppliedMigration {
   createdAt: number;
   hash: string;
@@ -85,10 +93,7 @@ export interface FutureAppliedMigrationWarningFields {
 }
 
 export interface MigrationWarningLogger {
-  warn(
-    fields: FutureAppliedMigrationWarningFields,
-    message: string,
-  ): void;
+  warn(fields: FutureAppliedMigrationWarningFields, message: string): void;
 }
 
 export interface MigrateOptions {
@@ -149,6 +154,11 @@ const deferredDestructiveCleanupMigrationTags = [
   "0017_terminal_session_runtime_state_honesty",
   "0018_natural_crusher_hogan",
 ] as const satisfies readonly DeferredDestructiveCleanupMigrationTag[];
+const reorderedCleanupMigrationTags = [
+  "0033_drop_cleanup_mode",
+  "0034_drop_stop_requested_at",
+  "0035_warm_kingpin",
+] as const satisfies readonly ReorderedCleanupMigrationTag[];
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
@@ -192,11 +202,7 @@ const pendingInteractionForeignKeys: ExpectedForeignKey[] = [
 const pendingInteractionIndexes: ExpectedIndex[] = [
   {
     name: "pending_interactions_provider_request_idx",
-    columns: [
-      "provider_id",
-      "provider_thread_id",
-      "provider_request_id",
-    ],
+    columns: ["provider_id", "provider_thread_id", "provider_request_id"],
     unique: true,
   },
   {
@@ -392,7 +398,9 @@ function columnExists(
   tableName: string,
   columnName: string,
 ): boolean {
-  return getTableInfo(db, tableName).some((column) => column.name === columnName);
+  return getTableInfo(db, tableName).some(
+    (column) => column.name === columnName,
+  );
 }
 
 function getForeignKeys(
@@ -519,25 +527,6 @@ function markMigrationApplied(
     .run(migration.hash, migration.createdAt);
 }
 
-function runExpectedMigrationSql(
-  db: DbConnection,
-  migration: ExpectedAppliedMigration,
-): void {
-  for (const statement of migration.sql) {
-    db.$client.exec(statement);
-  }
-}
-
-function applyExpectedMigrationTransaction(
-  db: DbConnection,
-  migration: ExpectedAppliedMigration,
-): void {
-  db.$client.transaction(() => {
-    runExpectedMigrationSql(db, migration);
-    markMigrationApplied(db, migration);
-  })();
-}
-
 function hasPublishedTimestampFallback(
   expectedMigration: ExpectedAppliedMigration,
   appliedCreatedAts: Set<number>,
@@ -564,12 +553,32 @@ function hasAppliedMigrationHash(
   );
 }
 
+function hasCompatibleMigrationHash(
+  expectedMigration: ExpectedAppliedMigration,
+  appliedMigrations: AppliedMigrationIdentityRow[],
+): boolean {
+  return compatibleMigrationHashes.some(
+    (compatibleMigration) =>
+      compatibleMigration.tag === expectedMigration.tag &&
+      compatibleMigration.when === expectedMigration.createdAt &&
+      appliedMigrations.some(
+        (appliedMigration) =>
+          appliedMigration.createdAt === expectedMigration.createdAt &&
+          appliedMigration.hash === compatibleMigration.hash,
+      ),
+  );
+}
+
 function findAppliedMigrationHistoryViolation(
   expectedMigration: ExpectedAppliedMigration,
   appliedMigrations: AppliedMigrationIdentityRow[],
   appliedCreatedAts: Set<number>,
 ): AppliedMigrationHistoryViolation | null {
   if (hasAppliedMigrationHash(expectedMigration, appliedMigrations)) {
+    return null;
+  }
+
+  if (hasCompatibleMigrationHash(expectedMigration, appliedMigrations)) {
     return null;
   }
 
@@ -909,20 +918,15 @@ function applyDeferredDestructiveLegacyCleanup(
   db: DbConnection,
   migrationsFolder: string,
 ): void {
-  if (!tableExists(db, "__drizzle_migrations") || !tableExists(db, "projects")) {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "projects")
+  ) {
     return;
   }
 
   const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
   const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
-  const threadSchedulesMigration = requireExpectedAppliedMigration(
-    expectedMigrations,
-    "0013_thread_schedules",
-  );
-  const threadScheduleKindDefaultMigration = requireExpectedAppliedMigration(
-    expectedMigrations,
-    "0014_thread_schedule_kind_default",
-  );
 
   const cleanupMigrations = deferredDestructiveCleanupMigrationTags.map((tag) =>
     requireExpectedAppliedMigration(expectedMigrations, tag),
@@ -932,16 +936,6 @@ function applyDeferredDestructiveLegacyCleanup(
   );
   if (!hasPendingCleanupMigration) {
     return;
-  }
-
-  if (!appliedCreatedAts.has(threadScheduleKindDefaultMigration.createdAt)) {
-    if (!appliedCreatedAts.has(threadSchedulesMigration.createdAt)) {
-      return;
-    }
-
-    applyExpectedMigrationTransaction(db, threadScheduleKindDefaultMigration);
-    db.$client.pragma("foreign_keys = OFF");
-    appliedCreatedAts.add(threadScheduleKindDefaultMigration.createdAt);
   }
 
   const operationBackfillMigration = requireExpectedAppliedMigration(
@@ -959,6 +953,99 @@ function applyDeferredDestructiveLegacyCleanup(
       continue;
     }
 
+    markMigrationApplied(db, migration);
+    appliedCreatedAts.add(migration.createdAt);
+  }
+}
+
+function applyReorderedCleanupMigration(
+  db: DbConnection,
+  tag: ReorderedCleanupMigrationTag,
+): void {
+  switch (tag) {
+    case "0033_drop_cleanup_mode": {
+      if (
+        tableExists(db, "environments") &&
+        columnExists(db, "environments", "cleanup_mode")
+      ) {
+        db.$client
+          .prepare("ALTER TABLE `environments` DROP COLUMN `cleanup_mode`")
+          .run();
+      }
+      return;
+    }
+    case "0034_drop_stop_requested_at": {
+      if (
+        tableExists(db, "threads") &&
+        columnExists(db, "threads", "stop_requested_at")
+      ) {
+        db.$client
+          .prepare("ALTER TABLE `threads` DROP COLUMN `stop_requested_at`")
+          .run();
+      }
+      return;
+    }
+    case "0035_warm_kingpin": {
+      if (tableExists(db, "environments")) {
+        if (columnExists(db, "environments", "cleanup_requested_at")) {
+          db.$client
+            .prepare(
+              `
+                UPDATE environments
+                SET status = 'retiring'
+                WHERE status = 'ready'
+                  AND cleanup_requested_at IS NOT NULL
+              `,
+            )
+            .run();
+        }
+        if (
+          indexExists(db, "environments", "environments_cleanup_requested_idx")
+        ) {
+          db.$client
+            .prepare("DROP INDEX `environments_cleanup_requested_idx`")
+            .run();
+        }
+        if (columnExists(db, "environments", "cleanup_requested_at")) {
+          db.$client
+            .prepare(
+              "ALTER TABLE `environments` DROP COLUMN `cleanup_requested_at`",
+            )
+            .run();
+        }
+      }
+      if (tableExists(db, "threads")) {
+        db.$client
+          .prepare(
+            `
+              UPDATE threads
+              SET status = 'starting'
+              WHERE status IN ('created', 'provisioning')
+            `,
+          )
+          .run();
+      }
+      return;
+    }
+  }
+}
+
+function applyReorderedCleanupMigrations(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  for (const tag of reorderedCleanupMigrationTags) {
+    const migration = requireExpectedAppliedMigration(expectedMigrations, tag);
+    if (appliedCreatedAts.has(migration.createdAt)) {
+      continue;
+    }
+    applyReorderedCleanupMigration(db, tag);
     markMigrationApplied(db, migration);
     appliedCreatedAts.add(migration.createdAt);
   }
@@ -1080,6 +1167,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     }
     drizzleMigrate(db, { migrationsFolder });
+    applyReorderedCleanupMigrations(db, migrationsFolder);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

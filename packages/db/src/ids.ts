@@ -40,14 +40,6 @@ export function createThreadProvisioningId(): string {
   return createId("tpv");
 }
 
-export function createAutomationId(): string {
-  return createId("auto");
-}
-
-export function createThreadScheduleId(): string {
-  return createId("tsched");
-}
-
 export function createEventId(): string {
   return createId("evt");
 }
@@ -74,16 +66,4 @@ export function createHostDaemonSessionId(): string {
 
 export function createTerminalSessionId(): string {
   return createId("term");
-}
-
-export function createWorkflowRunId(): string {
-  return createId("wfr");
-}
-
-export function createWorkflowRunOperationId(): string {
-  return createId("wfop");
-}
-
-export function createWorkflowRunEventId(): string {
-  return createId("wfev");
 }

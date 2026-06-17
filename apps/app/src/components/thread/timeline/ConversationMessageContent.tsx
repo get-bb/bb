@@ -1,19 +1,19 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   TimelineConversationAttachments,
+  TimelineRowBase,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
-import type { PromptTextMention } from "@bb/domain";
-import { CopyButton } from "../../ui/copy-button.js";
+import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
-import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
+import type {
+  TimelineTitleActionResolver,
+  TimelineTitleLinkResolver,
+} from "./TimelineTitleView.js";
 import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -30,16 +30,23 @@ import {
 } from "./GeneratedConversationMessage.js";
 import {
   clipMentionTextToVisibleRange,
+  messageBodyHasQuote,
   renderMentionTextSegments,
+  renderMessageBodyWithQuotes,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
+import { MessageActionBar } from "./MessageActionBar.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
+import {
+  SelectableMessageProse,
+  type MessageProseSelection,
+} from "./SelectableMessageProse.js";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -51,11 +58,22 @@ interface ConversationMessageContentBaseProps {
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
+  /**
+   * `childOrigin` of the thread this row belongs to. Selects the fork leading
+   * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
+   * row) renders as "Message from {source}". Null for non-fork threads.
+   */
+  childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
+  /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
+   * so a message handed back from a side chat reads "Message from side chat". */
+  senderChildOrigin: ThreadChildOrigin | null;
   // Family-B taxonomy fields off the row, required and always supplied (legacy
   // rows carry `unlabeled` + `null`). They drive the `system`-initiated message
   // title, icon, and title-only collapse in `GeneratedConversationMessage`.
@@ -64,13 +82,52 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
-export interface ConversationMessageContentAssistantProps extends ConversationMessageContentBaseProps {
+/**
+ * Identity of the source timeline row, forwarded onto the assistant message so
+ * the per-message fork / side-chat actions (wired in later sessions) can anchor
+ * on the exact agent message. Sourced from `TimelineRowBase` rather than inlined
+ * primitives so it stays in lockstep with the contract.
+ */
+type AssistantMessageRowIdentity = Pick<
+  TimelineRowBase,
+  "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
+>;
+
+export interface ConversationMessageContentAssistantProps
+  extends ConversationMessageContentBaseProps,
+    AssistantMessageRowIdentity {
   role: "assistant";
   // Assistant content renders through MarkdownPreview, which is the only
   // surface with clickable links. User messages render as plain text
   // (CollapsibleMessageText), so this handler lives on the assistant variant
   // only — never accepted-but-ignored.
   onOpenLink?: ThreadTimelineLinkHandler;
+  /**
+   * Fork the active thread from this agent message. Omitted when forking is
+   * unavailable (no host) — the action bar then renders without a Fork button.
+   */
+  onFork?: () => void;
+  /**
+   * Open a side chat anchored on this agent message. Omitted when side chats are
+   * unavailable (no host secondary panel) — the bar then renders without it.
+   */
+  onSideChat?: () => void;
+  /**
+   * Hand this agent message back to the main thread. Supplied only inside a side
+   * chat; omitted on the main timeline (a main message has no main thread).
+   */
+  onSendToMain?: () => void;
+  /**
+   * Greys the Fork + Side-chat buttons when the thread is at the spawn-depth cap
+   * — both spawn a child thread off the active thread, so they share one guard.
+   */
+  forkDisabled?: boolean;
+  /**
+   * Reports this message's in-bounds text selection (or `null` when cleared) up
+   * to the timeline-level selection controller that drives the single floating
+   * menu. Omitted when no controller is wired in (e.g. delegation output).
+   */
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   turnRequest: null;
 }
 
@@ -87,21 +144,30 @@ export type ConversationMessageContentProps =
 
 interface UserConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
+  senderChildOrigin: ThreadChildOrigin | null;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
-interface AssistantConversationMessageProps {
+interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   attachmentItems: ConversationAttachmentItems;
+  onFork?: () => void;
+  onSideChat?: () => void;
+  onSendToMain?: () => void;
+  forkDisabled?: boolean;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -110,6 +176,7 @@ interface AssistantConversationMessageProps {
 
 interface CollapsibleMessageTextProps {
   mentions: readonly PromptTextMention[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   text: string;
   /**
    * When set, the first `mutePrefixLength` characters of `text` are rendered
@@ -125,6 +192,7 @@ function splitPreWrappedLines(text: string): string[] {
 
 function CollapsibleMessageText({
   mentions,
+  resolveMentionLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -176,21 +244,39 @@ function CollapsibleMessageText({
           {prefixText}
         </span>
       ) : null}
-      <p
-        ref={textRef}
-        className={cn(
-          "whitespace-pre-wrap break-words",
-          !isExpanded && "line-clamp-[15]",
-        )}
-      >
-        {renderMentionTextSegments({
-          mentions: safeRenderedBody.mentions,
-          text: safeRenderedBody.text,
-        })}
-        {isExpanded && isTruncated ? (
-          <span className="text-muted-foreground"> [truncated]</span>
-        ) : null}
-      </p>
+      {messageBodyHasQuote(safeRenderedBody.text) ? (
+        // Quote-containing bodies render as blocks (paragraphs + styled
+        // blockquotes), so `> ` reads like a quote rather than literal text.
+        // `renderedBody` is already line-sliced when collapsed, so the toggle
+        // (driven by line count) still works without a CSS line clamp.
+        <div className="break-words">
+          {renderMessageBodyWithQuotes({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </div>
+      ) : (
+        <p
+          ref={textRef}
+          className={cn(
+            "whitespace-pre-wrap break-words",
+            !isExpanded && "line-clamp-[15]",
+          )}
+        >
+          {renderMentionTextSegments({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </p>
+      )}
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
@@ -204,13 +290,17 @@ function CollapsibleMessageText({
 
 function UserConversationMessage({
   attachmentItems,
+  childOrigin,
   initiator,
   mentions,
   onOpenLocalFileLink,
   projectId,
+  resolveMentionLink,
   resolveSegmentLinkHref,
+  onTitleAction,
   senderThreadId,
   senderThreadTitle,
+  senderChildOrigin,
   systemMessageKind,
   systemMessageSubject,
   text,
@@ -226,13 +316,21 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={childOrigin}
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         sourceKind="agent"
-        sourceName={senderThreadTitle ?? "Agent"}
+        sourceName={
+          senderChildOrigin === "side-chat"
+            ? "side chat"
+            : (senderThreadTitle ?? "Agent")
+        }
         sourceThreadId={senderThreadId}
+        sourceIsSideChat={senderChildOrigin === "side-chat"}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
@@ -251,13 +349,17 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={null}
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         sourceKind="system"
         sourceName="BB"
         sourceThreadId={null}
+        sourceIsSideChat={false}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
@@ -272,7 +374,7 @@ function UserConversationMessage({
 
   return (
     <div className="w-full">
-      <div className="group ml-auto w-fit max-w-[80%]">
+      <div className="group/message ml-auto w-fit max-w-[80%]">
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
             <TurnRequestLabel
@@ -285,6 +387,7 @@ function UserConversationMessage({
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
+              resolveMentionLink={resolveMentionLink}
               text={text}
               mutePrefixLength={mutePrefixLength || undefined}
             />
@@ -301,11 +404,7 @@ function UserConversationMessage({
         </div>
         {messageText ? (
           <div className="mt-1 flex justify-end">
-            <CopyButton
-              text={text}
-              label="Copy message"
-              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            />
+            <MessageActionBar messageText={messageText} alignment="end" />
           </div>
         ) : null}
       </div>
@@ -315,6 +414,11 @@ function UserConversationMessage({
 
 function AssistantConversationMessage({
   attachmentItems,
+  onFork,
+  onSideChat,
+  onSendToMain,
+  forkDisabled,
+  onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -340,29 +444,39 @@ function AssistantConversationMessage({
     return routing;
   }, [onOpenLink, onOpenLocalFileLink]);
 
-  const messageText = text.trim();
-
   return (
-    <div className="group w-full px-2 text-sm font-normal leading-relaxed">
-      <MarkdownPreview content={text} linkRouting={linkRouting} />
+    <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
+      {/*
+        Reports in-bounds text selections up to the timeline-level controller
+        that drives the single floating selection menu (Add to chat / Reply in
+        side chat).
+      */}
+      <SelectableMessageProse onSelect={onSelectProse}>
+        <MarkdownPreview content={text} linkRouting={linkRouting} />
+      </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
         imageItems={attachmentItems.imageItems}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
-      {messageText ? (
-        // Pull the hover action row up to reclaim the gap below the message
-        // rather than stacking on top of it, so the copy button (and future
-        // icon buttons in this row) sit in space the message already reserves.
-        <div className="-mt-1 flex justify-start">
-          <CopyButton
-            text={text}
-            label="Copy message"
-            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          />
-        </div>
-      ) : null}
+      {/*
+        Copy + fork (S3) + side chat (S4) actions. Each button is dropped
+        entirely (not rendered disabled) when its handler is absent — e.g. fork
+        is omitted for a personal-only source with no host to base a worktree
+        fork on. `disabled` greys both fork and side chat together when the
+        thread is at the spawn-depth cap (both spawn a child thread, one guard).
+      */}
+      <div className="mt-1.5">
+        <MessageActionBar
+          messageText={text}
+          alignment="start"
+          onFork={onFork}
+          onSideChat={onSideChat}
+          onSendToMain={onSendToMain}
+          disabled={forkDisabled}
+        />
+      </div>
     </div>
   );
 }
@@ -391,13 +505,17 @@ export function ConversationMessageContent(
     return (
       <UserConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={props.resolveMentionLink}
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
+        onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
+        senderChildOrigin={props.senderChildOrigin}
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
@@ -409,10 +527,20 @@ export function ConversationMessageContent(
   return (
     <AssistantConversationMessage
       attachmentItems={attachmentItems}
+      id={props.id}
+      onFork={props.onFork}
+      onSideChat={props.onSideChat}
+      onSendToMain={props.onSendToMain}
+      forkDisabled={props.forkDisabled}
+      onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
+      sourceSeqEnd={props.sourceSeqEnd}
+      sourceSeqStart={props.sourceSeqStart}
       text={text}
+      threadId={props.threadId}
+      turnId={props.turnId}
     />
   );
 }

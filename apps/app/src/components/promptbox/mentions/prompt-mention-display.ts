@@ -15,6 +15,9 @@ export function promptMentionIconLabel(
   if (resource.kind === "thread") {
     return "Thread";
   }
+  if (resource.kind === "command") {
+    return resource.source === "skill" ? "Skill" : "Command";
+  }
   if (resource.source === "thread-storage") {
     return "Storage";
   }
@@ -30,6 +33,9 @@ export function promptMentionIconName(
 ): IconName {
   if (resource.kind === "thread") {
     return "MessageSquare";
+  }
+  if (resource.kind === "command") {
+    return resource.source === "skill" ? "Zap" : "Terminal";
   }
   return resource.entryKind === "directory" ? "Folder" : "File";
 }
@@ -47,6 +53,9 @@ export function promptMentionTooltipLabel(
     return resource.source === "thread-storage"
       ? `thread-storage:${resource.path}`
       : resource.path;
+  }
+  if (resource.kind === "command") {
+    return `${resource.trigger}${resource.name}${resource.argumentHint ? ` ${resource.argumentHint}` : ""}`;
   }
 
   return promptMentionDisplayLabel(resource);

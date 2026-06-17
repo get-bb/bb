@@ -10,6 +10,9 @@ export default defineConfig({
   plugins: [tailwindcss()],
   // Keep app and Ladle dep optimization metadata from clobbering each other.
   cacheDir: "node_modules/.vite/ladle",
+  worker: {
+    format: "es",
+  },
   resolve: {
     conditions: ["source"],
     alias: {

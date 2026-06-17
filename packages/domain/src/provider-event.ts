@@ -23,6 +23,7 @@ import {
   backgroundTaskUsageSchema,
   workflowProgressSnapshotSchema,
 } from "./background-task.js";
+import { threadTimelineGoalStatusSchema } from "./thread-timeline-goal.js";
 
 export const threadEventItemStatusSchema = z.enum([
   "pending",
@@ -386,6 +387,21 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("thread/compacted"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+  }),
+  z.object({
+    type: z.literal("thread/goal/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    objective: z.string(),
+    status: threadTimelineGoalStatusSchema,
+    tokenBudget: z.number().nullable(),
+    tokensUsed: z.number(),
+    timeUsedSeconds: z.number(),
+  }),
+  z.object({
+    type: z.literal("thread/goal/cleared"),
     threadId: z.string(),
     providerThreadId: z.string(),
   }),

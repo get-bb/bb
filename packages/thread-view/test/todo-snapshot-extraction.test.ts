@@ -688,9 +688,9 @@ describe("extractThreadTimelinePendingTodos", () => {
 
   it.each<Thread["status"]>([
     "idle",
+    "starting",
+    "stopping",
     "error",
-    "created",
-    "provisioning",
   ])(
     "returns null when the thread status is %s, even with valid TodoWrite snapshots",
     (status) => {

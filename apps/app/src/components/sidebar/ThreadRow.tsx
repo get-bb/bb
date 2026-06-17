@@ -6,15 +6,12 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
-  getThreadSecondaryPanelOpenAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
-import { getActiveSecondaryAppId } from "@/lib/fixed-panel-tabs-state";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -35,17 +32,13 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
-  getEnvironmentWorkspaceDisplayIconLabel,
-  getEnvironmentWorkspaceDisplayIconName,
-} from "@/lib/environment-workspace-display";
-import {
   isBusyThread,
   isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_ROW_BASE_CLASS,
@@ -215,14 +208,9 @@ function getThreadUnreadBadgeLabel({
     : "Unread thread requires attention";
 }
 
-interface ThreadTrailingIndicatorProps extends ThreadStatusGlyphProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
-}
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
-  environmentIcon,
-  environmentIconLabel,
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
@@ -248,30 +236,7 @@ function ThreadTrailingIndicator({
     );
   }
 
-  return (
-    <ThreadTrailingIcon
-      environmentIcon={environmentIcon}
-      environmentIconLabel={environmentIconLabel}
-    />
-  );
-}
-
-function ThreadTrailingIcon({
-  environmentIcon,
-  environmentIconLabel,
-}: ThreadTrailingIconProps) {
-  return environmentIcon ? (
-    <Icon
-      name={environmentIcon}
-      className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
-      aria-label={environmentIconLabel ?? undefined}
-    />
-  ) : null;
-}
-
-interface ThreadTrailingIconProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
+  return null;
 }
 
 function ThreadRowComponent({
@@ -287,24 +252,7 @@ function ThreadRowComponent({
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
-  // When this thread tucks its conversation into the collapsed rail to show an
-  // app full-screen, the app's sidebar row owns the single selected highlight,
-  // so this row drops its own selected background even though it is the route's
-  // selected thread. Keeps exactly one row highlighted across the sidebar.
-  const isConversationCollapsed = useAtomValue(
-    getThreadConversationCollapsedAtom(thread.id),
-  );
-  const isSecondaryPanelOpen = useAtomValue(
-    getThreadSecondaryPanelOpenAtom(thread.id),
-  );
-  const fixedPanelTabsState = useFixedPanelTabsState(thread.id);
-  const appOwnsSurface =
-    isConversationCollapsed &&
-    getActiveSecondaryAppId({
-      isSecondaryPanelOpen,
-      state: fixedPanelTabsState,
-    }) !== null;
-  const showActive = isActive && !appOwnsSurface;
+  const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
@@ -337,18 +285,6 @@ function ThreadRowComponent({
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
   const linkTitle = linkLabel;
-  // Env-grouped children sit under a header that already shows the
-  // worktree branch + icon, so suppress the redundant trailing icon.
-  const environmentIcon = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconName(
-        thread.environmentWorkspaceDisplayKind,
-      );
-  const environmentIconLabel = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconLabel(
-        thread.environmentWorkspaceDisplayKind,
-      );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -383,11 +319,8 @@ function ThreadRowComponent({
       <NavLink
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         onClick={() => {
-          // Selecting a thread/agent row restores its conversation: the inverse
-          // of opening an app row, which tucks the conversation into the
-          // collapsed rail so the app fills the view (see SidebarAppsSection).
-          // Both write this thread's own collapse flag, so selecting one thread
-          // never disturbs another's full-screen-app state.
+          // Selecting a thread/agent row restores its conversation without
+          // disturbing any other thread's collapsed conversation state.
           setConversationCollapsed(false);
           onProjectSelect?.();
         }}
@@ -405,6 +338,7 @@ function ThreadRowComponent({
             expandTitle="Expand child threads"
             collapseTitle="Collapse child threads"
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            revealOnHover={!isParentCollapsed}
           />
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
@@ -429,8 +363,6 @@ function ThreadRowComponent({
             )}
           >
             <ThreadTrailingIndicator
-              environmentIcon={environmentIcon}
-              environmentIconLabel={environmentIconLabel}
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
               showUnreadBadge={trailingShowUnreadBadge}

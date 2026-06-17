@@ -43,15 +43,6 @@ export type {
 } from "./project-execution-defaults.js";
 
 export {
-  getProjectWorkflowPolicy,
-  upsertProjectWorkflowPolicy,
-} from "./project-workflow-policies.js";
-export type {
-  ProjectWorkflowPolicyRow,
-  UpsertProjectWorkflowPolicyArgs,
-} from "./project-workflow-policies.js";
-
-export {
   createProjectSource,
   countProjectSources,
   getProjectSourceForProject,
@@ -69,32 +60,6 @@ export type {
 } from "./project-sources.js";
 
 export {
-  advanceAutomationAfterRunInTransaction,
-  claimAutomationScheduledRun,
-  createAutomation,
-  deleteAutomation,
-  getAutomation,
-  hasOpenAutomationThread,
-  listAutomations,
-  listAutomationsWithProjects,
-  listDueAutomations,
-  restoreAutomationAfterFailedRun,
-  updateAutomation,
-} from "./automations.js";
-export type {
-  ClaimAutomationScheduledRunArgs,
-  ClaimAutomationScheduledRunResult,
-  AutomationOverviewProjectRow,
-  AutomationRow,
-  AutomationWithProjectRow,
-  CreateAutomationInput,
-  DueAutomationCursor,
-  ListDueAutomationsArgs,
-  RestoreAutomationAfterFailedRunArgs,
-  UpdateAutomationInput,
-} from "./automations.js";
-
-export {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
@@ -108,10 +73,9 @@ export {
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listLiveThreadsInEnvironment,
   listNonDeletedChildThreads,
-  listStopRequestedThreads,
   listThreadEnvironmentAssignmentsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   listUnarchivedAssignedChildThreads,
+  listUnarchivedSourceThreads,
   listThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
@@ -120,33 +84,32 @@ export {
   updateThread,
   deleteThread,
   archiveThread,
-  clearThreadStopRequested,
   markThreadDeleted,
   markThreadAttentionRequested,
-  markThreadStopRequested,
   unpinThread,
   unarchiveThread,
-  transitionThreadStatus,
-  transitionThreadStatusInTransaction,
-  InvalidThreadStatusTransitionError,
-  ALLOWED_TRANSITIONS,
+  applyThreadLifecycleEvent,
+  applyThreadLifecycleEventInTransaction,
+  requireThreadLifecycleEventApplied,
+  ThreadLifecycleEventNotAppliedError,
 } from "./threads.js";
 export type {
+  ApplyThreadLifecycleEventArgs,
+  ApplyThreadLifecycleEventNoopReason,
+  ApplyThreadLifecycleEventOutcome,
   CountLiveThreadsInEnvironmentArgs,
   CountNonDeletedAssignedChildThreadsArgs,
   CreateThreadInput,
   HasNonTerminalThreadInEnvironmentArgs,
   ListNonDeletedChildThreadsArgs,
   ListUnarchivedAssignedChildThreadsArgs,
+  ListUnarchivedSourceThreadsArgs,
   ListThreadsOptions,
-  StopRequestedThreadRow,
-  TransitionThreadStatusInTransactionArgs,
   ListThreadEnvironmentAssignmentsOnHostArgs,
   ListLiveThreadsInEnvironmentArgs,
   ListThreadsForProjectsOptions,
   MarkThreadDeletedArgs,
   MarkThreadAttentionRequestedArgs,
-  MarkThreadStopRequestedArgs,
   PinThreadArgs,
   ReorderPinnedThreadArgs,
   ReorderPinnedThreadResult,
@@ -158,87 +121,7 @@ export type {
   UpdateThreadInput,
 } from "./threads.js";
 
-export {
-  advanceThreadScheduleAfterFireInTransaction,
-  advanceThreadScheduleAfterSkip,
-  advanceThreadScheduleAfterSkipInTransaction,
-  createThreadSchedule,
-  deleteThreadSchedule,
-  disableThreadSchedulesByThread,
-  getThreadSchedule,
-  listDueThreadSchedules,
-  listThreadSchedulesByThread,
-  listThreadSchedulesWithThreadAndProject,
-  updateThreadSchedule,
-} from "./thread-schedules.js";
-export type {
-  AdvanceThreadScheduleAfterFireArgs,
-  AdvanceThreadScheduleAfterSkipArgs,
-  CreateThreadScheduleInput,
-  DisableThreadSchedulesByThreadArgs,
-  DueThreadScheduleCursor,
-  ListDueThreadSchedulesArgs,
-  ThreadScheduleRow,
-  ThreadScheduleOverviewProjectRow,
-  ThreadScheduleOverviewThreadRow,
-  ThreadScheduleWithThreadAndProjectRow,
-  UpdateThreadScheduleInput,
-} from "./thread-schedules.js";
-
-export { getExperiments, setExperiments } from "./app-settings.js";
-
-export {
-  ALLOWED_WORKFLOW_RUN_STATUS_TRANSITIONS,
-  createWorkflowRun,
-  getWorkflowRun,
-  getWorkflowRunByClientRequestId,
-  InvalidWorkflowRunStatusTransitionError,
-  listArchivableWorkflowRuns,
-  listWorkflowRunsAwaitingRunDirPrune,
-  listWorkflowRuns,
-  listWorkflowRunsByHostAndStatuses,
-  listWorkflowRunsByIds,
-  listWorkflowRunsWithPendingManagerNotification,
-  markWorkflowRunUserArchived,
-  markWorkflowRunUserDeleted,
-} from "./workflow-runs.js";
-export type {
-  CreateWorkflowRunInput,
-  ListArchivableWorkflowRunsArgs,
-  ListWorkflowRunsArgs,
-  ListWorkflowRunsAwaitingRunDirPruneArgs,
-  ListWorkflowRunsByHostAndStatusesArgs,
-  TransitionableWorkflowRunStatus,
-  WorkflowRunRow,
-  WorkflowRunUsageTotals,
-} from "./workflow-runs.js";
-
-export {
-  getWorkflowRunOperation,
-  getWorkflowRunOperationByCommandId,
-  listWorkflowRunOperations,
-} from "./workflow-run-operations.js";
-export type {
-  GetWorkflowRunOperationArgs,
-  ListWorkflowRunOperationsArgs,
-  WorkflowRunOperationRow,
-} from "./workflow-run-operations.js";
-
-export {
-  appendWorkflowRunEventsInTransaction,
-  hasWorkflowRunEventsSince,
-  listWorkflowRunEvents,
-  ProducerEventPayloadMismatchError,
-} from "./workflow-run-events.js";
-export type {
-  AcceptedWorkflowRunEvent,
-  AppendWorkflowRunEventInput,
-  AppendWorkflowRunEventsResult,
-  HasWorkflowRunEventsSinceArgs,
-  ListWorkflowRunEventsArgs,
-  ProducerEventPayloadMismatchDetails,
-  WorkflowRunEventRow,
-} from "./workflow-run-events.js";
+export { getExperiments, setExperiments } from "./experiments.js";
 
 export {
   getThreadDynamicContextFileState,
@@ -251,24 +134,17 @@ export type {
 } from "./thread-dynamic-context-file-states.js";
 
 export {
-  claimEnvironmentDestroy,
   createEnvironment,
   getEnvironment,
   findEnvironmentByHostPath,
   listEnvironments,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,
-  recoverStaleDestroyingEnvironmentCleanup,
-  restoreEnvironmentAfterDestroyAttemptFailure,
   updateEnvironmentMetadata,
 } from "./environments.js";
 export type {
-  ClaimEnvironmentDestroyArgs,
   CreateEnvironmentInput,
   ListRetiredLoadedEnvironmentIdsOnHostArgs,
-  RecoverStaleDestroyingEnvironmentCleanupArgs,
-  RecoverStaleDestroyingEnvironmentCleanupResult,
-  RestoreEnvironmentAfterDestroyAttemptFailureArgs,
   UpdateEnvironmentMetadataInput,
 } from "./environments.js";
 

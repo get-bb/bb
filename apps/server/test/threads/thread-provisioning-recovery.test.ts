@@ -63,7 +63,7 @@ describe("thread provisioning recovery", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       appendThreadProvisioningEvent(harness.deps, {
         threadId: thread.id,
@@ -109,7 +109,7 @@ describe("thread provisioning recovery", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       const requestedContext = createMetadataPendingContext({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
@@ -118,8 +118,10 @@ describe("thread provisioning recovery", () => {
           environmentId: environment.id,
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input: textInput("start after workspace ready"),
         titleProvided: true,
+        seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
         createEnvironmentPendingContext(requestedContext, { branchSlug: null }),
@@ -230,7 +232,7 @@ describe("thread provisioning recovery", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       const requestedContext = createMetadataPendingContext({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
@@ -239,8 +241,10 @@ describe("thread provisioning recovery", () => {
           environmentId: environment.id,
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input: textInput("start before first turn event"),
         titleProvided: true,
+        seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
         createEnvironmentPendingContext(requestedContext, { branchSlug: null }),
@@ -434,7 +438,7 @@ describe("thread provisioning recovery", () => {
         );
 
         expect(response.status).toBe(200);
-        expect(getThread(harness.db, thread.id)?.status).toBe("provisioning");
+        expect(getThread(harness.db, thread.id)?.status).toBe("starting");
         expect(getEnvironment(harness.db, environment.id)?.status).toBe(
           "provisioning",
         );

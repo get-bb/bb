@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
 interface UseCreateThreadInWorktreeArgs {

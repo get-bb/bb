@@ -1,8 +1,4 @@
-import {
-  useLayoutEffect,
-  useState,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 
 interface UseOverflowMeasurementArgs {
@@ -96,7 +92,7 @@ export function ConversationMessageOverflowToggle({
       <button
         type="button"
         onClick={onToggle}
-        className="text-xs font-medium text-muted-foreground hover:text-foreground"
+        className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground"
         aria-expanded={expanded}
       >
         {expanded ? labels.expanded : labels.collapsed}
@@ -114,7 +110,10 @@ export function ConversationMessageInlineOverflowToggle({
   return (
     <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[1lh] items-stretch justify-end">
       <span
-        className={cn("w-12 bg-gradient-to-l to-transparent", fadeFromClassName)}
+        className={cn(
+          "w-12 bg-gradient-to-l to-transparent",
+          fadeFromClassName,
+        )}
       />
       <button
         type="button"

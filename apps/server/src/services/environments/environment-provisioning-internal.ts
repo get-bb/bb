@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   events,
   type DbConnection,
@@ -10,10 +10,7 @@ import {
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
 } from "@bb/db";
-import {
-  applyProvisionedEnvironmentRecord,
-  setEnvironmentStatus,
-} from "@bb/db/internal-environment-lifecycle";
+import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import type {
   Environment,
   ProvisioningTranscriptEntry,
@@ -53,7 +50,11 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
-import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
+import {
+  applyLoggedEnvironmentLifecycleEvent,
+  applyLoggedEnvironmentLifecycleEventInTransaction,
+} from "./lifecycle-outcome.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -105,7 +106,8 @@ interface EnvironmentProvisionTransactionDeps extends EnvironmentProvisionWriteD
   pendingInteractions: AppDeps["pendingInteractions"];
 }
 
-interface RequestEnvironmentProvisioningArgs {
+interface CompletePathlessDestroyInTransactionArgs {
+  environment: Pick<Environment, "path" | "status">;
   environmentId: string;
 }
 
@@ -149,13 +151,11 @@ interface LiveEnvironmentThread {
   environmentId: string | null;
   id: string;
   status: ThreadStatus;
-  stopRequestedAt: number | null;
 }
 
 interface StopRequestedEnvironmentProvisionThread {
   id: string;
   status: ThreadStatus;
-  stopRequestedAt: number | null;
 }
 
 interface AppendThreadProvisioningEventToEnvironmentThreadsArgs {
@@ -175,7 +175,6 @@ function listLiveEnvironmentThreads(
       environmentId: threads.environmentId,
       id: threads.id,
       status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
     })
     .from(threads)
     .where(
@@ -192,18 +191,16 @@ function listStopRequestedEnvironmentProvisionThreads(
     .select({
       id: threads.id,
       status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
     })
     .from(threads)
     .where(
       and(
         eq(threads.environmentId, environmentId),
-        inArray(threads.status, ["created", "provisioning"]),
-        // This settlement is for explicit user stop intent only. Archived and
-        // deleted threads continue through their existing cleanup paths.
+        // Explicit user stop intent only: the thread is `stopping`. Archived
+        // and deleted threads continue through their existing cleanup paths.
+        eq(threads.status, "stopping"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNotNull(threads.stopRequestedAt),
       ),
     )
     .all();
@@ -311,7 +308,7 @@ function hasThreadProvisionCancellationIntent(
   deps: EnvironmentProvisionReadDeps,
   threadId: string,
 ): boolean {
-  return getThread(deps.db, threadId)?.stopRequestedAt !== null;
+  return getThread(deps.db, threadId)?.status === "stopping";
 }
 
 interface HasThreadProvisionCancellationOutcomeArgs {
@@ -385,7 +382,7 @@ function shouldPreserveThreadProvisionCancellationOutcome(
   args: ShouldPreserveThreadProvisionCancellationOutcomeArgs,
 ): boolean {
   return (
-    args.thread.stopRequestedAt !== null ||
+    args.thread.status === "stopping" ||
     hasThreadProvisionCancellationIntent(deps, args.thread.id) ||
     hasThreadProvisionCancellationOutcome(deps, {
       provisioningId: args.provisioningId,
@@ -426,17 +423,44 @@ function restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransa
   deps: EnvironmentProvisionTransactionDeps,
   args: RestoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeArgs,
 ): boolean {
+  // Not lifecycle: routing — a destroyed environment reports "not handled" so
+  // the caller skips re-requesting cleanup for it.
   if (args.environment.status === "destroyed") {
     return false;
   }
 
-  if (args.environment.status === "provisioning") {
-    setEnvironmentStatus(deps.db, deps.hub, args.environment.id, {
-      status: args.environment.path ? "ready" : "error",
+  const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(deps, {
+    environmentId: args.environment.id,
+    event: { type: "provision.cancelled" },
+  });
+  if (outcome.applied) {
+    deps.hub.notifyEnvironment(args.environment.id, outcome.changes);
+    completePathlessDestroyInTransaction(deps, {
+      environmentId: args.environment.id,
+      environment: outcome.environment,
     });
   }
 
   return true;
+}
+
+function completePathlessDestroyInTransaction(
+  deps: EnvironmentProvisionTransactionDeps,
+  args: CompletePathlessDestroyInTransactionArgs,
+): void {
+  if (args.environment.status !== "destroying" || args.environment.path) {
+    return;
+  }
+  const completedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+    deps,
+    {
+      environmentId: args.environmentId,
+      event: { type: "destroy.completed" },
+    },
+  );
+  if (completedOutcome.applied) {
+    deps.hub.notifyEnvironment(args.environmentId, completedOutcome.changes);
+  }
 }
 
 interface ProvisionedEnvironmentBranchMetadata {
@@ -497,10 +521,15 @@ function recordEnvironmentProvisioningFailureInTransaction(
     );
   }
 
-  if (environment.status !== "destroyed" && environment.status !== "error") {
-    setEnvironmentStatus(deps.db, deps.hub, environment.id, {
-      status: "error",
-    });
+  const failureOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+    deps,
+    {
+      environmentId: environment.id,
+      event: { type: "provision.failed" },
+    },
+  );
+  if (failureOutcome.applied) {
+    deps.hub.notifyEnvironment(environment.id, failureOutcome.changes);
   }
 
   appendThreadProvisioningEventToEnvironmentThreadsInTransaction(deps, {
@@ -521,7 +550,13 @@ function recordEnvironmentProvisioningFailureInTransaction(
       detail: args.failureReason,
       scope: threadScope(),
     });
-    tryTransitionInTransaction(deps.db, deps.hub, thread.id, "error");
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+      event: { type: "run.failed" },
+      threadId: thread.id,
+    });
+    if (outcome.applied) {
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
+    }
   }
 
   return true;
@@ -533,14 +568,19 @@ export function settleEnvironmentProvisionCommandResult(
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
   if (!initiator) {
-    setEnvironmentStatus(
-      args.deps.db,
-      args.deps.hub,
-      args.command.environmentId,
+    const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+      args.deps,
       {
-        status: "error",
+        environmentId: args.command.environmentId,
+        event: { type: "provision.failed" },
       },
     );
+    if (outcome.applied) {
+      args.deps.hub.notifyEnvironment(
+        args.command.environmentId,
+        outcome.changes,
+      );
+    }
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
@@ -552,13 +592,12 @@ export function settleEnvironmentProvisionCommandResult(
     .all();
 
   if (args.report.ok) {
-    applyProvisionedEnvironmentRecord(
+    recordProvisionedEnvironmentWorkspace(
       args.deps.db,
       args.deps.hub,
       args.command.environmentId,
       {
         path: args.report.result.path,
-        status: "ready",
         isGitRepo: args.report.result.isGitRepo,
         isWorktree: args.report.result.isWorktree,
         branchName: args.report.result.branchName,
@@ -566,6 +605,19 @@ export function settleEnvironmentProvisionCommandResult(
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),
       },
     );
+    const provisionedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+      args.deps,
+      {
+        environmentId: args.command.environmentId,
+        event: { type: "provision.succeeded" },
+      },
+    );
+    if (provisionedOutcome.applied) {
+      args.deps.hub.notifyEnvironment(
+        args.command.environmentId,
+        provisionedOutcome.changes,
+      );
+    }
     args.deps.hub.notifyEnvironment(args.command.environmentId, [
       "work-status-changed",
     ]);
@@ -638,7 +690,7 @@ export function settleEnvironmentProvisionCommandResult(
           threadId: thread.id,
           environmentId: args.command.environmentId,
           provisioningId: environmentProvisioningId,
-          status: thread.status === "provisioning" ? "active" : "completed",
+          status: thread.status === "starting" ? "active" : "completed",
           entries,
         });
         args.deps.hub.notifyThread(thread.id, ["events-appended"], {
@@ -755,7 +807,6 @@ export function settleEnvironmentProvisionCancelCommandResult(
                   environmentId: args.command.environmentId,
                   id: thread.id,
                   status: thread.status,
-                  stopRequestedAt: thread.stopRequestedAt,
                 },
                 {
                   hostId: environment.hostId,
@@ -770,12 +821,22 @@ export function settleEnvironmentProvisionCancelCommandResult(
   }
 
   const postCommitActions: CommandResultPostCommitAction[] = [];
-  const environment = getEnvironment(args.deps.db, args.command.environmentId);
-  const restoredProvisioningEnvironment =
-    environment?.status === "provisioning";
-  if (environment?.status === "provisioning") {
-    setEnvironmentStatus(args.deps.db, args.deps.hub, environment.id, {
-      status: environment.path ? "ready" : "error",
+  const cancelledOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+    args.deps,
+    {
+      environmentId: args.command.environmentId,
+      event: { type: "provision.cancelled" },
+    },
+  );
+  const restoredProvisioningEnvironment = cancelledOutcome.applied;
+  if (cancelledOutcome.applied) {
+    args.deps.hub.notifyEnvironment(
+      args.command.environmentId,
+      cancelledOutcome.changes,
+    );
+    completePathlessDestroyInTransaction(args.deps, {
+      environmentId: args.command.environmentId,
+      environment: cancelledOutcome.environment,
     });
   }
 
@@ -807,26 +868,14 @@ export function settleEnvironmentProvisionCancelCommandResult(
   return { postCommitActions };
 }
 
-export function requestEnvironmentProvisioning(
-  deps: EnvironmentProvisionWriteDeps,
-  args: RequestEnvironmentProvisioningArgs,
-): void {
-  const environment = getEnvironment(deps.db, args.environmentId);
-  if (!environment) {
-    return;
-  }
-  if (environment.status !== "provisioning") {
-    setEnvironmentStatus(deps.db, deps.hub, environment.id, {
-      status: "provisioning",
-    });
-  }
-}
-
 export function interruptUnrecoverableEnvironmentProvisioning(
   deps: CommandResultSideEffectsDeps,
   args: InterruptUnrecoverableEnvironmentProvisioningArgs,
 ): void {
   const environment = getEnvironment(deps.db, args.environmentId);
+  // Not lifecycle: flow gate — only an in-flight provisioning can be
+  // interrupted; the guard also prevents appending failure events to threads
+  // of settled environments.
   if (!environment || environment.status !== "provisioning") {
     return;
   }
@@ -919,6 +968,10 @@ export async function advanceEnvironmentProvisioning(
   }
 
   const environment = getEnvironment(deps.db, args.environmentId);
+  // Not lifecycle: dispatch routing — never issue a provision RPC for a
+  // destroyed record. The provision.requested transition (which observed
+  // reality still permits from "destroyed") is applied by the writer at the
+  // request call sites, not here.
   if (!environment || environment.status === "destroyed") {
     return null;
   }
@@ -1050,8 +1103,9 @@ export async function dispatchManagedEnvironmentReprovision(
           });
         })();
 
-  requestEnvironmentProvisioning(deps, {
+  applyLoggedEnvironmentLifecycleEvent(deps, {
     environmentId: args.environment.id,
+    event: { type: "provision.requested" },
   });
   await advanceEnvironmentProvisioning(deps, {
     environmentId: args.environment.id,

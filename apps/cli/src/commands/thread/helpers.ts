@@ -24,16 +24,16 @@ export const PERMISSION_MODE_HELP =
 
 export function statusText(status: ThreadStatus): string {
   switch (status) {
-    case "created":
-      return "created";
-    case "provisioning":
-      return "provisioning";
+    case "starting":
+      return "starting";
     case "error":
       return "error";
     case "idle":
       return "idle";
     case "active":
       return "active";
+    case "stopping":
+      return "stopping";
     default:
       return assertNever(status);
   }

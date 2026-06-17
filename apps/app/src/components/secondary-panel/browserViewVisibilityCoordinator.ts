@@ -1,4 +1,4 @@
-import type { BbDesktopBrowserApi } from "@bb/server-contract";
+import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 
 /**
  * Owns the "only one browser view is visible at a time" invariant for a panel's
@@ -17,7 +17,8 @@ export interface BrowserViewVisibilityCoordinator {
   /**
    * Make `tabId` the single visible view: hide whichever other tab is currently
    * visible, then sync bounds and show this one (bounds before show so it never
-   * appears at stale/zero bounds).
+   * appears at stale/zero bounds). `BrowserTabContent` calls this only after the
+   * hidden attach has been issued, making this the first-show path too.
    */
   show(tabId: string, syncBounds: () => void): void;
   /** Hide `tabId`'s view (no-op overlay-wise if it was already hidden). */
@@ -58,8 +59,6 @@ interface DestroyPersistedBrowserViewsForEnvironmentArgs {
 }
 
 const browserViewRecords = new Map<string, BrowserViewRecord>();
-let sharedDesktopBrowser: BbDesktopBrowserApi | null = null;
-let sharedCoordinator: BrowserViewVisibilityCoordinator | null = null;
 
 export function createBrowserViewVisibilityCoordinator(
   desktopBrowser: BbDesktopBrowserApi,
@@ -89,16 +88,6 @@ export function createBrowserViewVisibilityCoordinator(
   };
 }
 
-export function getBrowserViewVisibilityCoordinator(
-  desktopBrowser: BbDesktopBrowserApi,
-): BrowserViewVisibilityCoordinator {
-  if (sharedDesktopBrowser !== desktopBrowser || sharedCoordinator === null) {
-    sharedDesktopBrowser = desktopBrowser;
-    sharedCoordinator = createBrowserViewVisibilityCoordinator(desktopBrowser);
-  }
-  return sharedCoordinator;
-}
-
 export function registerBrowserView({
   environmentId,
   tabId,
@@ -111,9 +100,7 @@ export function destroyPersistedBrowserView({
   desktopBrowser,
   tabId,
 }: DestroyPersistedBrowserViewArgs): void {
-  const coordinator = getBrowserViewVisibilityCoordinator(desktopBrowser);
-  coordinator.hide(tabId);
-  coordinator.release(tabId);
+  desktopBrowser.setVisible({ tabId, visible: false });
   desktopBrowser.detach(tabId);
   browserViewRecords.delete(tabId);
 }
@@ -150,6 +137,4 @@ export function destroyPersistedBrowserViewsForEnvironment({
 
 export function resetBrowserViewPersistence(): void {
   browserViewRecords.clear();
-  sharedDesktopBrowser = null;
-  sharedCoordinator = null;
 }

@@ -16,7 +16,6 @@ import {
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
-  listStopRequestedThreads,
   environments,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
@@ -32,7 +31,6 @@ import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
-import { sweepDueAutomations } from "../scheduling/automation-sweep.js";
 import {
   recoverOrphanedEnvironmentDestroyRequests,
   runEnvironmentCleanupAdvance,
@@ -44,26 +42,14 @@ import {
 } from "../lib/error-log-fields.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
 import { handleExpiredHostSessionLeases } from "../../internal/session-owner-side-effects.js";
-import { sweepDueThreadSchedules } from "../scheduling/thread-schedule-sweep.js";
 import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
-import {
-  finalizeStoppedThreadAndAdvanceCleanup,
-  hasLiveThreadStartInFlight,
-  requestThreadStopForCurrentState,
-} from "../threads/thread-lifecycle.js";
+import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
-import { runWorkflowRunLifecycleSweep } from "../workflows/workflow-run-lifecycle.js";
-import { runWorkflowRunPendingNotificationSweep } from "../workflows/workflow-run-pending-notifications.js";
-import { runWorkflowRunInterruptionBackstopSweep } from "../workflows/workflow-run-reconciliation.js";
-import {
-  runWorkflowRunDirPruneSweep,
-  runWorkflowRunRetentionSweep,
-} from "../workflows/workflow-run-retention.js";
 
 export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -74,11 +60,9 @@ export const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS =
   15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
-const STOP_REQUESTED_THREAD_SWEEP_BATCH_SIZE = 50;
 
 export type PeriodicSweepJobCategory =
   | "retention"
-  | "scheduler"
   | "durable-intent-retry"
   | "orphan-cleanup"
   | "lifecycle-timeout"
@@ -105,6 +89,17 @@ interface ManagedEnvironmentArchiveCleanupEvaluationResult {
 }
 
 type PeriodicSweepJobList = readonly PeriodicSweepJob[];
+type HostUnavailableDeferralsByHostId = ReadonlyMap<string, number>;
+
+function countHostUnavailableDeferrals(
+  deferralsByHostId: HostUnavailableDeferralsByHostId,
+): number {
+  let total = 0;
+  for (const count of deferralsByHostId.values()) {
+    total += count;
+  }
+  return total;
+}
 
 let lastDatabaseMaintenanceCheckAt = 0;
 let databaseMaintenanceRunning = false;
@@ -175,11 +170,9 @@ export async function runPeriodicSweepJobs(
 
 async function evaluateManagedEnvironmentArchiveCleanupCandidates(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
   orphanedDestroyUpdatedBefore: number,
 ): Promise<ManagedEnvironmentArchiveCleanupEvaluationResult> {
   recoverOrphanedEnvironmentDestroyRequests(deps, {
-    now,
     updatedBefore: orphanedDestroyUpdatedBefore,
   });
 
@@ -191,13 +184,12 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
     };
   }
 
-  let hostUnavailableDeferrals = 0;
+  const hostUnavailableDeferralsByHostId = new Map<string, number>();
   for (const environment of environmentsToClean) {
     if (environment.path && !deps.hub.hasDaemonForHost(environment.hostId)) {
-      hostUnavailableDeferrals += 1;
-      deps.logger.debug(
-        { environmentId: environment.id, hostId: environment.hostId },
-        "Managed environment archive cleanup deferred until host reconnects",
+      hostUnavailableDeferralsByHostId.set(
+        environment.hostId,
+        (hostUnavailableDeferralsByHostId.get(environment.hostId) ?? 0) + 1,
       );
       continue;
     }
@@ -218,13 +210,9 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
         continue;
       }
       if (isHostUnavailableError(error)) {
-        hostUnavailableDeferrals += 1;
-        deps.logger.debug(
-          {
-            environmentId: environment.id,
-            ...runtimeErrorLogFields(deps.config, error),
-          },
-          "Managed environment archive cleanup deferred until host reconnects",
+        hostUnavailableDeferralsByHostId.set(
+          environment.hostId,
+          (hostUnavailableDeferralsByHostId.get(environment.hostId) ?? 0) + 1,
         );
         continue;
       }
@@ -236,6 +224,22 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
         "Managed environment archive cleanup sweep failed",
       );
     }
+  }
+
+  const hostUnavailableDeferrals = countHostUnavailableDeferrals(
+    hostUnavailableDeferralsByHostId,
+  );
+  if (
+    hostUnavailableDeferrals > 0 &&
+    hostUnavailableDeferrals < environmentsToClean.length
+  ) {
+    deps.logger.debug(
+      {
+        deferredEnvironmentCount: hostUnavailableDeferrals,
+        deferredHostIds: Array.from(hostUnavailableDeferralsByHostId.keys()),
+      },
+      "Managed environment archive cleanup deferred some candidates until host reconnects",
+    );
   }
 
   return {
@@ -377,7 +381,6 @@ export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
 
   const result = await evaluateManagedEnvironmentArchiveCleanupCandidates(
     deps,
-    now,
     now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
   );
   if (
@@ -446,7 +449,7 @@ export async function runThreadProvisioningOrphanCleanupSweep(
       status: threads.status,
     })
     .from(threads)
-    .where(and(eq(threads.status, "provisioning"), isNull(threads.deletedAt)))
+    .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
     .all();
 
   for (const thread of provisioningThreads) {
@@ -469,56 +472,10 @@ export async function runThreadProvisioningOrphanCleanupSweep(
   }
 }
 
-export async function runStopRequestedThreadSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-): Promise<void> {
-  const stopRequestedThreads = listStopRequestedThreads(deps.db, {
-    limit: STOP_REQUESTED_THREAD_SWEEP_BATCH_SIZE,
-  });
-
-  for (const thread of stopRequestedThreads) {
-    try {
-      if (
-        thread.status === "active" ||
-        thread.status === "created" ||
-        thread.status === "provisioning"
-      ) {
-        requestThreadStopForCurrentState(
-          deps,
-          {
-            environmentId: thread.environmentId,
-            id: thread.threadId,
-            status: thread.status,
-            stopRequestedAt: thread.stopRequestedAt,
-          },
-          {
-            hostId: thread.hostId,
-            id: thread.environmentId,
-          },
-        );
-        continue;
-      }
-
-      await finalizeStoppedThreadAndAdvanceCleanup(deps, {
-        threadId: thread.threadId,
-      });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          threadId: thread.threadId,
-        },
-        "Thread stop sweep failed",
-      );
-    }
-  }
-}
-
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
   await runThreadProvisioningOrphanCleanupSweep(deps);
-  await runStopRequestedThreadSweep(deps);
 }
 
 async function runMachineAuthPruneSweep(
@@ -561,20 +518,6 @@ function runDestroyedEnvironmentPruneSweep(
   pruneDestroyedEnvironments(deps.db, deps.hub);
 }
 
-async function runDueAutomationSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  await sweepDueAutomations(deps, { now });
-}
-
-async function runDueThreadScheduleSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  await sweepDueThreadSchedules(deps, { now });
-}
-
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -608,18 +551,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   },
   {
     cadenceMs: 0,
-    category: "scheduler",
-    name: "due-automation",
-    run: runDueAutomationSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "scheduler",
-    name: "due-thread-schedule",
-    run: runDueThreadScheduleSweep,
-  },
-  {
-    cadenceMs: 0,
     category: "orphan-cleanup",
     name: "environment-provisioning-orphan-cleanup",
     run: runEnvironmentProvisioningSweep,
@@ -629,12 +560,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "thread-provisioning-orphan-cleanup",
     run: runThreadProvisioningOrphanCleanupSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "durable-intent-retry",
-    name: "stop-requested-thread-retry",
-    run: runStopRequestedThreadSweep,
   },
   {
     cadenceMs: 0,
@@ -655,36 +580,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     run: runProjectDeletionSweep,
   },
   {
-    cadenceMs: 0,
-    category: "durable-intent-retry",
-    name: "workflow-run-lifecycle",
-    run: runWorkflowRunLifecycleSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "durable-intent-retry",
-    name: "workflow-run-interruption-backstop",
-    run: runWorkflowRunInterruptionBackstopSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "durable-intent-retry",
-    name: "workflow-run-pending-notification",
-    run: runWorkflowRunPendingNotificationSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "retention",
-    name: "workflow-run-retention",
-    run: runWorkflowRunRetentionSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "retention",
-    name: "workflow-run-dir-prune",
-    run: runWorkflowRunDirPruneSweep,
-  },
-  {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
@@ -697,8 +592,7 @@ export async function runStartupRecoverySweep(
 ): Promise<void> {
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  const now = Date.now();
-  await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, now, now);
+  await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());
 }
 
 export async function runPeriodicSweeps(

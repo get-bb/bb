@@ -1,4 +1,4 @@
-import { createQueuedThreadMessage } from "@bb/db";
+import { createQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
 import {
   turnScope,
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
@@ -899,6 +899,57 @@ describe("public thread interaction routes", () => {
         message:
           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
       });
+
+      const activeThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "active",
+      });
+      const activeThreadPending = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: activeThread.id,
+          turnId: "turn-active-blocked-send",
+          providerId: "codex",
+          providerThreadId: "provider-thread-active-blocked",
+          providerRequestId: "request-active-blocked",
+          payload: createCommandApprovalPayload({
+            itemId: "item-active-blocked",
+            reason: "Approve command",
+            command: "git push",
+            cwd: "/tmp/project",
+          }),
+        },
+      );
+      if (activeThreadPending.outcome === "rejected") {
+        throw new Error(
+          `Expected active interaction registration to succeed: ${activeThreadPending.reason}`,
+        );
+      }
+
+      const activeSendResponse = await harness.app.request(
+        `/api/v1/threads/${activeThread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "queue-if-active",
+            input: [{ type: "text", text: "Try to queue while blocked" }],
+          }),
+        },
+      );
+      expect(activeSendResponse.status).toBe(409);
+      await expect(readJson(activeSendResponse)).resolves.toEqual({
+        code: "awaiting_user_interaction",
+        message:
+          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+      });
+      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
+        0,
+      );
     });
   });
 

@@ -27,30 +27,26 @@ export type {
 } from "./workspace.js";
 
 export {
-  provisionWorkflowWorktree,
-  teardownWorkflowWorktree,
-} from "./workflow-worktree.js";
-export type {
-  ProvisionWorkflowWorktreeArgs,
-  TeardownWorkflowWorktreeArgs,
-  WorkflowWorktree,
-  WorkflowWorktreeTeardownResult,
-} from "./workflow-worktree.js";
-
-export {
   WorkspaceError,
   detectGitRepo,
+  fetchRemoteBranches,
   getCheckoutRef,
   getCurrentBranch,
   getWorkspaceGitOperation,
+  getGitCommonDir,
   gitBlobSize,
   hasUncommittedChanges,
   listBranches,
   listRemoteBranches,
   readDefaultBranch,
+  readDefaultBranchRefs,
   readGitBlob,
 } from "./git.js";
-export type { ReadGitBlobResult } from "./git.js";
+export type {
+  DefaultBranchRefs,
+  FetchRemoteBranchesResult,
+  ReadGitBlobResult,
+} from "./git.js";
 
 export {
   getPullRequestForBranch,

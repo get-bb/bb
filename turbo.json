@@ -1,100 +1,24 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "@bb/app#build": {
-      "dependsOn": [],
+    "@bb/landing#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
+        "$TURBO_ROOT$/apps/landing/package.json",
+        "$TURBO_ROOT$/apps/landing/src/**",
+        "$TURBO_ROOT$/apps/landing/tsconfig.json",
+        "$TURBO_ROOT$/apps/landing/vite.config.ts",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json"
       ],
-      "outputs": ["dist/**"]
+      "env": ["VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+      "outputs": [
+        "dist/**"
+      ]
     },
-    "@bb/cli#build": {
-      "dependsOn": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
-    },
-    "@bb/host-daemon#build": {
-      "dependsOn": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
-    },
-    "@bb/scripts#build": {
-      "dependsOn": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
-    },
-    "@bb/sdk#generate:app-runtime-browser-bundle": {
-      "dependsOn": [],
+    "build": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/*/package.json",
@@ -108,86 +32,37 @@
         "$TURBO_ROOT$/packages/*/src/**",
         "$TURBO_ROOT$/packages/*/tsconfig.json",
         "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@bb/sdk#test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/*/package.json",
+        "$TURBO_ROOT$/apps/*/scripts/**",
+        "$TURBO_ROOT$/apps/*/src/**",
+        "$TURBO_ROOT$/apps/*/tsconfig.json",
+        "$TURBO_ROOT$/apps/*/vite.config.ts",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/scripts/**",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/*/tsconfig.json",
+        "$TURBO_ROOT$/packages/db/drizzle/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
-        "!src/app-runtime-browser-bundle.generated.ts",
-        "!$TURBO_ROOT$/packages/sdk/src/app-runtime-browser-bundle.generated.ts"
-      ],
-      "outputs": ["src/app-runtime-browser-bundle.generated.ts"]
-    },
-    "@bb/sdk#build": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/scripts/**",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
-    },
-    "@bb/sdk#test": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/scripts/**",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
-    },
-    "@bb/server#build": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
     },
     "bb-app#build": {
       "dependsOn": [
@@ -208,10 +83,17 @@
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
-      "outputs": ["app/**", "dist/**", "host-daemon/**", "server/**"]
+      "outputs": [
+        "app/**",
+        "dist/**",
+        "host-daemon/**",
+        "server/**"
+      ]
     },
     "@bb/desktop#build": {
-      "dependsOn": ["bb-app#build"],
+      "dependsOn": [
+        "bb-app#build"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/desktop/**",
@@ -224,87 +106,105 @@
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
       ],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
     },
     "@bb/desktop#desktop:build": {
-      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "dependsOn": [
+        "bb-app#build",
+        "@bb/desktop#build"
+      ],
       "cache": false,
-      "outputs": ["release/**"],
-      "passThroughEnv": ["*"]
+      "outputs": [
+        "release/**"
+      ],
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/desktop#dev": {
-      "dependsOn": ["bb-app#build"],
+      "dependsOn": [
+        "bb-app#build"
+      ],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/desktop#start": {
-      "dependsOn": ["bb-app#build"],
+      "dependsOn": [
+        "bb-app#build"
+      ],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "bundle": {
-      "dependsOn": [],
       "cache": false,
       "outputs": []
     },
     "template:build": {
-      "dependsOn": [],
       "cache": false,
       "outputs": []
     },
     "@bb/app#dev": {
-      "dependsOn": [],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "storybook": {
-      "dependsOn": [],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
-    },
-    "@bb/dev-env#dev": {
-      "dependsOn": [],
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/host-daemon#dev": {
-      "dependsOn": [],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/server#dev": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/host-daemon#start:prod": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@bb/server#start:prod": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "clean": {
       "cache": false
     },
     "lint": {},
-    "typecheck": {
-      "dependsOn": []
-    },
+    "typecheck": {},
     "@bb/integration-tests#typecheck": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -312,19 +212,24 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "test": {
-      "dependsOn": []
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
     },
     "smoke:tarball": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false,
       "outputs": []
     },
     "@bb/integration-tests#test": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -332,14 +237,17 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "test:smoke": {
-      "dependsOn": []
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
     },
     "@bb/integration-tests#test:smoke": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -347,31 +255,19 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "test:integration": {
-      "dependsOn": []
-    },
-    "test:soak": {
-      "dependsOn": []
-    },
-    "@bb/integration-tests#test:soak": {
-      "dependsOn": [],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/server/package.json",
-        "$TURBO_ROOT$/apps/server/tsconfig.json",
-        "$TURBO_ROOT$/apps/server/src/**",
-        "$TURBO_ROOT$/packages/templates/package.json",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
-        "@bb/agent-runtime#test:integration",
-        "@bb/sdk#generate:app-runtime-browser-bundle"
+        "@bb/agent-runtime#test:integration"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -380,17 +276,12 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "@bb/sdk#typecheck": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
-    },
-    "@bb/server#typecheck": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
-    },
-    "@bb/server#test": {
-      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
-    }
+    "@bb/sdk#typecheck": {},
+    "@bb/server#typecheck": {},
+    "@bb/server#test": {}
   }
 }

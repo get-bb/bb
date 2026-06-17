@@ -3,35 +3,13 @@ import { threadScope } from "../src/thread-event-scope.js";
 import type { ThreadEvent } from "../src/provider-event.js";
 import {
   BB_THREAD_NAME_TAG,
-  REPLAY_THREAD_NAME_TAG,
   fromProviderExternalThreadName,
   normalizeProviderThreadNameEvent,
   tagThreadName,
   toProviderExternalThreadName,
-  untagThreadName,
 } from "../src/thread-name-tags.js";
 
 describe("thread name tags", () => {
-  it("adds one requested tag", () => {
-    expect(tagThreadName({ name: "Fix tests", tag: REPLAY_THREAD_NAME_TAG }))
-      .toBe("[Replay] Fix tests");
-  });
-
-  it("removes exactly one requested tag", () => {
-    expect(
-      untagThreadName({
-        name: "[Replay] [Replay] Fix tests",
-        tag: REPLAY_THREAD_NAME_TAG,
-      }),
-    ).toBe("[Replay] Fix tests");
-  });
-
-  it("leaves names without the requested tag unchanged", () => {
-    expect(untagThreadName({ name: "[bb] Fix tests", tag: "Replay" })).toBe(
-      "[bb] Fix tests",
-    );
-  });
-
   it("round-trips user-provided literal bb-prefixed titles", () => {
     const providerName = toProviderExternalThreadName("[bb] Literal");
 

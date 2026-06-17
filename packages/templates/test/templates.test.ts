@@ -64,108 +64,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("nothing to commit");
   });
 
-
-  it("renders workflow run system messages in block form with the [bb system] prefix", () => {
-    // The bodies are pinned exactly: the integration suites' wording markers
-    // ("was paused", "completed. Fetch the result", "was cancelled") and the
-    // manager-instructions claim that these arrive `[bb system]`-prefixed
-    // both ride this rendering.
-    expect(
-      renderTemplate("systemMessageWorkflowRunPaused", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-        reason: "host daemon unavailable",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) was paused: host daemon unavailable. The completed prefix is preserved — resume it from the run page or with `bb workflow resume wfr_test`.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunCompleted", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) completed. Fetch the result with `bb workflow show wfr_test`.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunFailed", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-        failureSuffix: ": script_invalid",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) failed: script_invalid.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunCancelled", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) was cancelled.",
-      ].join("\n"),
-    );
-  });
-
-
-  it("renders bbGuideApp", () => {
-    const templates = listTemplates();
-    expect(templates.some((template) => template.id === "bbGuideApp")).toBe(
-      true,
-    );
-
-    const rendered = renderTemplate("bbGuideApp", {});
-
-    expect(rendered).toContain("Apps");
-    expect(rendered).toContain("<dataDir>/apps/<applicationId>/");
-    expect(rendered).toContain("window.bb.data");
-    expect(rendered).toContain("bb app current --json");
-    expect(rendered).toContain("Vite + React + TypeScript Todo app");
-    expect(rendered).toContain("pnpm build");
-    expect(rendered).toContain("skills/add-todos/SKILL.md");
-    expect(rendered).toContain(
-      '<script src="https://cdn.tailwindcss.com"></script>',
-    );
-    expect(rendered).toContain(
-      "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap",
-    );
-    expect(rendered).toContain("--background: oklch(1 0 0);");
-    expect(rendered).toContain(
-      "@media (prefers-color-scheme: dark) {\n  :root {",
-    );
-    expect(rendered).toContain("--background: oklch(0.195 0 0);");
-  });
-
-  it("renders bbGuideSchedules", () => {
-    const templates = listTemplates();
-    expect(
-      templates.some((template) => template.id === "bbGuideSchedules"),
-    ).toBe(true);
-
-    const rendered = renderTemplate("bbGuideSchedules", {});
-
-    expect(rendered).toContain("Thread schedules");
-    expect(rendered).toContain("bb thread schedule create");
-    expect(rendered).toContain("--timezone America/Los_Angeles");
-    expect(rendered).toContain("Schedule names are unique per thread.");
-    expect(rendered).toContain("The cron month field must stay `*`.");
-  });
-
   it("renders standardAgentAppendInstructions without user-question guidance", () => {
     const rendered = renderTemplate("standardAgentAppendInstructions", {});
 
@@ -176,16 +74,49 @@ describe("@bb/templates", () => {
     );
   });
 
-  it("renders due thread schedule messages with schedule system chrome", () => {
-    const rendered = renderTemplate("systemMessageThreadScheduleDue", {
-      prompt: "Run the daily recap.",
-      scheduleId: "tsched_daily",
+  it("renders child thread needs-attention messages with blocker summaries", () => {
+    const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
+      blockerSummary: ["Blocked on command approval:", "Command: git push"].join(
+        "\n",
+      ),
+      threadMention: "@thread:thr_child",
     });
 
     expect(rendered).toBe(
-      ["[bb schedule due:tsched_daily]", "", "Run the daily recap."].join(
-        "\n",
-      ),
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child needs help.",
+        "Blocked on command approval:",
+        "Command: git push",
+        "",
+        "Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
+      ].join("\n"),
+    );
+  });
+
+  it("renders child thread ownership messages", () => {
+    expect(
+      renderTemplate("systemMessageThreadOwnershipAssigned", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child is now a child of this thread.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageThreadOwnershipRemoved", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child is no longer a child of this thread.",
+      ].join("\n"),
     );
   });
 

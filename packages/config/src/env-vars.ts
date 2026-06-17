@@ -168,6 +168,20 @@ export const OPENAI_API_KEY_ENV = defineEnvVar<string>({
   parse: parseStringEnvValue,
 });
 
+export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
+  description:
+    "PostHog project API key for anonymous usage telemetry. Telemetry is disabled when empty.",
+  name: "BB_POSTHOG_API_KEY",
+  parse: parseStringEnvValue,
+});
+
+export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
+  description:
+    "Anonymous usage telemetry (app starts and thread creation counts). Set to false to opt out.",
+  name: "BB_TELEMETRY",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   description:
     "Permanent placeholder feature flag. Non-functional keep-alive so the flag system has at least one entry; do not gate behavior on it.",
@@ -177,7 +191,7 @@ export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
 
 export const BB_DEV_APP_HOST_ENV = defineEnvVar<string>({
   description:
-    "Development-only Vite bind host for apps/app. Set to 0.0.0.0 to test from phones or other LAN devices.",
+    "Development-only Vite bind host override for apps/app. Defaults to 0.0.0.0 when unset.",
   name: "BB_DEV_APP_HOST",
   parse: parseStringEnvValue,
 });
@@ -186,19 +200,6 @@ export const BB_DEV_APP_PORT_ENV = defineEnvVar<number | undefined>({
   description: "Development-only Vite port for apps/app.",
   name: "BB_DEV_APP_PORT",
   parse: parseOptionalPortEnvValue,
-});
-
-export const BB_DEV_ENV_PORT_ENV = defineEnvVar<number | undefined>({
-  description: "Development-only localhost port for the bb dev-env helper API.",
-  name: "BB_DEV_ENV_PORT",
-  parse: parseOptionalPortEnvValue,
-});
-
-export const BB_DEV_REPLAY_CAPTURE_ENV = defineEnvVar<boolean>({
-  description:
-    "When true, the daemon records live provider traffic as replay captures",
-  name: "BB_DEV_REPLAY_CAPTURE",
-  parse: parseBooleanEnvValue,
 });
 
 export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
@@ -242,40 +243,17 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
   parse: parseHostTypeValue,
 });
 
-function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
-  const parsed = Number(args.value.trim());
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${args.name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-export const BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV =
-  defineEnvVar<number>({
-    description:
-      "Server cap: max workflow runs concurrently holding one host's capacity (over-cap starts/resumes hold in `requested` until the sweep re-admits them)",
-    name: "BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST",
-    parse: parsePositiveIntegerEnvValue,
-  });
-
-export const BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV =
-  defineEnvVar<number>({
-    description:
-      "Daemon cap: max live workflow provider processes (each worktree agent costs one dedicated process; shared-cwd agents reuse the run's processes)",
-    name: "BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES",
-    parse: parsePositiveIntegerEnvValue,
-  });
-
 export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
+// Public write-only PostHog ingestion key (these are safe to ship; they can
+// only create events). Telemetry still only activates in production server
+// runs and can always be disabled with BB_TELEMETRY=false.
+export const DEFAULT_BB_POSTHOG_API_KEY =
+  "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
+export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
-export const DEFAULT_BB_DEV_REPLAY_CAPTURE = false;
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
-export const DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST =
-  DEFAULTS.workflowMaxConcurrentRunsPerHost;
-export const DEFAULT_BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES =
-  DEFAULTS.workflowMaxLiveProviderProcesses;

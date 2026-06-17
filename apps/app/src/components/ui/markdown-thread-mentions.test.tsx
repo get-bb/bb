@@ -6,12 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import {
-  restoreMatchMedia,
-  setupMatchMedia,
-} from "@/test/helpers/match-media.js";
 import { setPreferredTheme } from "@/hooks/useTheme";
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
@@ -21,10 +17,9 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 }
 
 function renderMarkdown(node: ReactNode) {
-  setupMatchMedia();
   return render(
     <MemoryRouter>
-      <AppRouteNavigationProvider>{node}</AppRouteNavigationProvider>
+      <RouteNavigationProvider>{node}</RouteNavigationProvider>
     </MemoryRouter>,
   );
 }
@@ -43,7 +38,6 @@ const THREAD_MENTION: PromptTextMention = {
 afterEach(() => {
   cleanup();
   setPreferredTheme("system");
-  restoreMatchMedia();
 });
 
 describe("MarkdownPreview thread mentions", () => {

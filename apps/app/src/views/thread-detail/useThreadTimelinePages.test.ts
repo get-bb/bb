@@ -98,6 +98,7 @@ function makeTimelineResponse(
     rows,
     activeThinking: null,
     pendingTodos: null,
+    goal: null,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
@@ -162,6 +163,7 @@ describe("timeline page row merging", () => {
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
     const updatedTail = {
       ...oldTail,
+      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
       text: "updated tail",
     };
     const newStreamingRow = commandRow({
@@ -180,6 +182,42 @@ describe("timeline page row merging", () => {
       "new-streaming-row",
     ]);
     expect(merge.rows[1]).toMatchObject({ text: "updated tail" });
+  });
+
+  it("preserves unchanged overlapping row references after a latest refetch", () => {
+    const olderUser = userRow({ id: "older-user", sequence: 1 });
+    const oldTail = userRow({ id: "live-tail", sequence: 20 });
+    const loadedRows = [olderUser, oldTail];
+    const refetchedTail = { ...oldTail };
+
+    const merge = mergeLatestTimelineRows({
+      loadedRows,
+      latestRows: [refetchedTail],
+    });
+
+    expect(merge.rows).toHaveLength(2);
+    expect(merge.rows).toBe(loadedRows);
+    expect(merge.rows[0]).toBe(olderUser);
+    expect(merge.rows[1]).toBe(oldTail);
+  });
+
+  it("replaces changed overlapping row references after a latest refetch", () => {
+    const olderUser = userRow({ id: "older-user", sequence: 1 });
+    const oldTail = userRow({ id: "live-tail", sequence: 20 });
+    const updatedTail = {
+      ...oldTail,
+      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
+      text: "updated tail",
+    };
+
+    const merge = mergeLatestTimelineRows({
+      loadedRows: [olderUser, oldTail],
+      latestRows: [updatedTail],
+    });
+
+    expect(merge.rows).toHaveLength(2);
+    expect(merge.rows[0]).toBe(olderUser);
+    expect(merge.rows[1]).toBe(updatedTail);
   });
 
   it("keeps loaded rows and the oldest cursor when latest advances without overlap", () => {
@@ -211,6 +249,7 @@ describe("timeline page row merging", () => {
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
     const updatedTail = {
       ...oldTail,
+      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
       text: "updated tail",
     };
     const latestTimeline = makeTimelineResponse([updatedTail], freshCursor);

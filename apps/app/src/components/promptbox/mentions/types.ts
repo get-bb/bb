@@ -37,8 +37,8 @@ export type PromptMentionSuggestion =
  * One row in the command typeahead menu, derived from a {@link ProviderCommand}
  * returned by `GET /projects/:id/commands`. The `kind: "command"` discriminant
  * lets it join the same menu union as {@link PromptMentionSuggestion} while the
- * composer's apply path inserts the provider-native token (`/<name> ` for
- * Claude Code, `$<name> ` for Codex) as plain text rather than a pill.
+ * composer's apply path inserts a prompt pill that serializes back to the
+ * provider-native token (`/<name>` for Claude Code, `$<name>` for Codex).
  */
 export interface ProviderCommandSuggestion {
   kind: "command";

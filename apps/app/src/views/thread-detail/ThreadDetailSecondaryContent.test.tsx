@@ -1,524 +1,627 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import {
-  forwardRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
-import type { Thread } from "@bb/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
+import type { ComponentProps, ReactNode } from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport.js";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 
-interface MockPanelGroupProps {
-  children: ReactNode;
-}
+type ThreadDetailSecondaryContentProps = ComponentProps<
+  typeof ThreadDetailSecondaryContent
+>;
+type RenderBrowserDeck = NonNullable<
+  ThreadDetailSecondaryContentProps["secondaryPanel"]["renderBrowserDeck"]
+>;
+type DrawerShellCallback = (open: boolean) => void;
 
-type MockPanelResizeHandler = (size: number) => void;
-type MockPanelDraggingHandler = (isDragging: boolean) => void;
-
-interface MockPanelProps {
-  children: ReactNode;
-  id?: string;
-  defaultSize?: number;
-  onResize?: MockPanelResizeHandler;
-}
-
-interface MockPanelResizeHandleProps {
-  children?: ReactNode;
-  disabled?: boolean;
-  onDragging?: MockPanelDraggingHandler;
-}
-
-interface MockThreadMetadataCardProps {
-  children: ReactNode;
-}
-
-interface MockThreadTimelinePaneProps {
-  footer: ReactNode;
-  header: ReactNode;
-}
-
-interface MockThreadSecondaryPanelProps {
-  isOpen: boolean;
-  isConversationCollapsed: boolean;
-  reserveLeftForDesktopTrafficLights: boolean;
-}
-
-interface MockConversationCollapsedRailProps {
-  collapsed: boolean;
-  reserveTopForDesktopTrafficLights: boolean;
-  onExpand: () => void;
-}
-
-const { sidebarShowingRef, desktopChromeRef } = vi.hoisted(() => ({
-  sidebarShowingRef: { current: true },
-  desktopChromeRef: { current: false },
+const drawerShellState = vi.hoisted(() => ({
+  onContentAnimationEnd: undefined as DrawerShellCallback | undefined,
 }));
 
-vi.mock("react-resizable-panels", () => ({
-  // forwardRef so the real horizontal-group ref attaches without a warning;
-  // the ref intentionally stays null so the collapse layout effect no-ops in
-  // tests and the visible state comes purely from rendered props.
-  PanelGroup: forwardRef<HTMLDivElement, MockPanelGroupProps>(
-    function PanelGroup({ children }, _ref) {
-      return <div>{children}</div>;
-    },
-  ),
-  Panel({ children, id, defaultSize, onResize }: MockPanelProps) {
-    return (
-      <section aria-label={id} data-default-size={defaultSize}>
-        {onResize ? (
-          <button
-            type="button"
-            onClick={() => onResize(45)}
-            aria-label={`Resize ${id} to 45`}
-          />
-        ) : null}
-        {children}
-      </section>
-    );
-  },
-  PanelResizeHandle({
-    children,
-    disabled,
-    onDragging,
-  }: MockPanelResizeHandleProps) {
-    return (
-      <div aria-disabled={disabled}>
-        <button
-          type="button"
-          onClick={() => onDragging?.(true)}
-          aria-label="Start terminal panel drag"
-        />
-        <button
-          type="button"
-          onClick={() => onDragging?.(false)}
-          aria-label="End terminal panel drag"
-        />
-        {children}
-      </div>
-    );
-  },
+vi.mock("@/lib/browser-view-bounds-sync", () => ({
+  dispatchBrowserViewBoundsSync: vi.fn(),
 }));
 
-vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
-  useIsCompactViewport: () => false,
+vi.mock("@/lib/bb-desktop", () => ({
+  getBbDesktopInfo: () => null,
+  shouldUseMacosDesktopChrome: () => false,
 }));
 
 vi.mock("@/components/ui/sidebar.js", () => ({
-  // The host tests don't mount a SidebarProvider. Backed by a hoisted ref so
-  // individual cases can flip the sidebar-collapsed signal that gates the
-  // traffic-light reserve.
-  useIsSidebarShowing: () => sidebarShowingRef.current,
+  useOptionalIsSidebarShowing: () => true,
 }));
 
-vi.mock("@/lib/bb-desktop", async () => {
-  // Preserve the real bb-desktop exports and only override the desktop-chrome
-  // gate so cases can pick web vs macOS desktop.
-  const actual =
-    await vi.importActual<typeof import("@/lib/bb-desktop")>(
-      "@/lib/bb-desktop",
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  useThreads: () => ({ data: [] }),
+}));
+
+vi.mock("jotai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("jotai")>()),
+  useAtomValue: () => 50,
+}));
+
+vi.mock("react-resizable-panels", async () => {
+  const React = await import("react");
+
+  const PanelGroup = React.forwardRef<
+    { setLayout: (layout: number[]) => void },
+    { children?: ReactNode }
+  >(({ children }, ref) => {
+    React.useImperativeHandle(ref, () => ({ setLayout: () => {} }), []);
+    return React.createElement(
+      "div",
+      { "data-testid": "panel-group" },
+      children,
     );
+  });
+  PanelGroup.displayName = "MockPanelGroup";
+
+  const Panel = ({ children }: { children?: ReactNode }) =>
+    React.createElement("div", { "data-testid": "panel" }, children);
+
+  return { Panel, PanelGroup };
+});
+
+vi.mock("@/components/ui/responsive-overlay.js", async () => {
+  const React = await import("react");
+
+  const ResponsiveDrawerShell = ({
+    children,
+    onContentAnimationEnd,
+    open,
+  }: {
+    children?: ReactNode;
+    onContentAnimationEnd?: DrawerShellCallback;
+    open: boolean;
+  }) => {
+    drawerShellState.onContentAnimationEnd = onContentAnimationEnd;
+    return React.createElement(
+      "div",
+      {
+        "data-open": String(open),
+        "data-testid": "responsive-drawer-shell",
+      },
+      children,
+    );
+  };
+
+  return { ResponsiveDrawerShell };
+});
+
+vi.mock("@/components/secondary-panel/ThreadMetadataContent", async (importOriginal) => {
+  const React = await import("react");
+  const actual =
+    await importOriginal<
+      typeof import("@/components/secondary-panel/ThreadMetadataContent")
+    >();
+
   return {
     ...actual,
-    getBbDesktopInfo: () => null,
-    shouldUseMacosDesktopChrome: () => desktopChromeRef.current,
+    ThreadMetadataCard: ({
+      children,
+    }: ComponentProps<typeof actual.ThreadMetadataCard>) =>
+      React.createElement("div", { "data-testid": "metadata-card" }, children),
+    ThreadMetadataContent: (
+      _props: ComponentProps<typeof actual.ThreadMetadataContent>,
+    ) =>
+      React.createElement("div", { "data-testid": "metadata-content" }),
+    hasAnyThreadMetadata: () => false,
   };
 });
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  // Surfacing the traffic-light reserve prop as a data attribute is what
-  // makes the parent gate (desktop + sidebar collapsed + conversation
-  // collapsed) actually testable from this seam.
-  ThreadSecondaryPanel({
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async (importOriginal) => {
+  const React = await import("react");
+  const actual =
+    await importOriginal<
+      typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
+    >();
+
+  const ThreadSecondaryPanel = ({
+    browserDeck,
     isOpen,
-    isConversationCollapsed,
-    reserveLeftForDesktopTrafficLights,
-  }: MockThreadSecondaryPanelProps) {
-    return (
-      <aside
-        data-testid="mock-secondary-panel"
-        data-secondary-panel-open={isOpen}
-        data-secondary-panel-conversation-collapsed={isConversationCollapsed}
-        data-secondary-panel-reserve-left={String(
-          reserveLeftForDesktopTrafficLights,
-        )}
-      >
-        Secondary panel
-      </aside>
+    renderAsDrawer,
+  }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
+    React.createElement(
+      "section",
+      {
+        "data-open": String(isOpen),
+        "data-testid": renderAsDrawer
+          ? "drawer-secondary-panel"
+          : "inline-secondary-panel",
+      },
+      browserDeck,
     );
-  },
-}));
 
-vi.mock("@/components/secondary-panel/ConversationCollapsedRail", () => ({
-  // Same shape as the secondary-panel mock: the rail's reserveTop prop is
-  // the other half of the parent gate, so it has to be observable here.
-  ConversationCollapsedRail({
-    collapsed,
-    reserveTopForDesktopTrafficLights,
-    onExpand,
-  }: MockConversationCollapsedRailProps) {
-    return (
-      <button
-        type="button"
-        data-testid="mock-conversation-collapsed-rail"
-        data-rail-collapsed={String(collapsed)}
-        data-rail-reserve-top={String(reserveTopForDesktopTrafficLights)}
-        aria-label="Expand conversation"
-        aria-expanded={collapsed ? "false" : "true"}
-        // Mirror the real rail: when the conversation is shown, the rail
-        // disappears from the a11y tree + tab order. Existing tests rely on
-        // this to assert that the expand affordance is gone post-click.
-        aria-hidden={collapsed ? undefined : true}
-        inert={collapsed ? undefined : true}
-        onClick={onExpand}
-      >
-        <span data-icon="MessageSquare" aria-hidden="true" />
-      </button>
-    );
-  },
-}));
+  return { ...actual, ThreadSecondaryPanel };
+});
 
-vi.mock("@/components/secondary-panel/ThreadMetadataContent", () => ({
-  ThreadMetadataCard({ children }: MockThreadMetadataCardProps) {
-    return <div>{children}</div>;
-  },
-  ThreadMetadataContent() {
-    return <div>Thread metadata</div>;
-  },
-  hasAnyThreadMetadata: () => false,
-}));
+vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
+  const React = await import("react");
 
-vi.mock("./ThreadTimelinePane", () => ({
-  ThreadTimelinePane({ footer, header }: MockThreadTimelinePaneProps) {
-    return (
-      <main>
-        {header}
-        Timeline
-        {footer}
-      </main>
-    );
-  },
-}));
+  const ConversationCollapsedRail = () =>
+    React.createElement("div", {
+      "data-testid": "conversation-collapsed-rail",
+    });
+
+  return { ConversationCollapsedRail };
+});
+
+vi.mock("./ThreadTimelinePane", async (importOriginal) => {
+  const React = await import("react");
+  const actual =
+    await importOriginal<typeof import("./ThreadTimelinePane")>();
+
+  const ThreadTimelinePane = ({
+    threadId,
+  }: ComponentProps<typeof actual.ThreadTimelinePane>) =>
+    React.createElement("div", {
+      "data-testid": "thread-timeline-pane",
+      "data-thread-id": threadId,
+    });
+
+  return { ...actual, ThreadTimelinePane };
+});
+
+interface QueuedAnimationFrames {
+  cancelAnimationFrame: ReturnType<typeof vi.spyOn>;
+  flushAll: () => void;
+  requestAnimationFrame: ReturnType<typeof vi.spyOn>;
+  size: () => number;
+}
+
+interface RenderThreadDetailArgs {
+  isCompactViewport: boolean;
+  isSecondaryPanelOpen: boolean;
+  renderBrowserDeck: RenderBrowserDeck;
+  threadId: string;
+}
 
 const noop = () => {};
 
-function noopAssignParent(_parentThreadId: string | null): void {}
+function installAnimationFrameQueue(order?: string[]): QueuedAnimationFrames {
+  const callbacks = new Map<number, FrameRequestCallback>();
+  let nextFrameId = 1;
 
-function noopBranchChange(_branch: string): void {}
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: noop,
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    value: noop,
+  });
 
-function noopSecondaryPanelChange(_panel: ThreadSecondaryPanelTab): void {}
+  const requestAnimationFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((callback) => {
+      const frameId = nextFrameId;
+      nextFrameId += 1;
+      callbacks.set(frameId, callback);
+      order?.push("requestAnimationFrame");
+      return frameId;
+    });
+  const cancelAnimationFrame = vi
+    .spyOn(window, "cancelAnimationFrame")
+    .mockImplementation((frameId) => {
+      callbacks.delete(frameId);
+    });
 
-function noopOpenFile(_path: string): void {}
-
-function makeThread(): Thread {
   return {
-    id: "thr_test",
-    projectId: "proj_test",
-    environmentId: "env_test",
-    automationId: null,
-    providerId: "openai",
-    title: "Test thread",
-    titleFallback: null,
-    status: "idle",
-    parentThreadId: null,
-    archivedAt: null,
-    pinnedAt: null,
-    stopRequestedAt: null,
-    deletedAt: null,
-    lastReadAt: null,
-    latestAttentionAt: 1,
-    createdAt: 1,
-    updatedAt: 1,
+    cancelAnimationFrame,
+    flushAll() {
+      const pendingCallbacks = [...callbacks.entries()];
+      callbacks.clear();
+      for (const [, callback] of pendingCallbacks) {
+        callback(performance.now());
+      }
+    },
+    requestAnimationFrame,
+    size: () => callbacks.size,
   };
 }
 
-interface SecondaryContentOverrides {
-  isSecondaryPanelOpen?: boolean;
-  isConversationCollapsed?: boolean;
-  onToggleConversationCollapse?: () => void;
+function makeThread(
+  threadId: string,
+): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
+  return {
+    archivedAt: null,
+    automationId: null,
+    createdAt: 0,
+    deletedAt: null,
+    environmentId: null,
+    id: threadId,
+    lastReadAt: null,
+    latestAttentionAt: 0,
+    parentThreadId: null,
+    pinnedAt: null,
+    projectId: "proj-test",
+    providerId: "codex",
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
+    status: "idle",
+    stopRequestedAt: null,
+    title: null,
+    titleFallback: "Test thread",
+    updatedAt: 0,
+  } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }
 
-function buildSecondaryContentProps({
-  isSecondaryPanelOpen = false,
-  isConversationCollapsed = false,
-  onToggleConversationCollapse = noop,
-}: SecondaryContentOverrides = {}): ComponentProps<
-  typeof ThreadDetailSecondaryContent
-> {
+function createBrowserDeckRenderer(order?: string[]): RenderBrowserDeck {
+  return vi.fn(({ canShowNativeBrowserView }) => {
+    order?.push(`render:${String(canShowNativeBrowserView)}`);
+    return (
+      <div
+        data-can-show-native-browser-view={String(canShowNativeBrowserView)}
+        data-testid="browser-deck"
+      />
+    );
+  });
+}
+
+function createProps({
+  isSecondaryPanelOpen,
+  renderBrowserDeck,
+  threadId,
+}: Omit<
+  RenderThreadDetailArgs,
+  "isCompactViewport"
+>): ThreadDetailSecondaryContentProps {
   return {
-    footer: <div>Footer</div>,
-    header: <div>Header</div>,
+    footer: <div data-testid="footer" />,
+    header: <div data-testid="header" />,
+    isConversationCollapsed: false,
     isMetadataLoading: false,
     isSecondaryPanelOpen,
-    isConversationCollapsed,
-    onToggleConversationCollapse,
     metadata: {
-      thread: makeThread(),
-      projectId: "proj_test",
-      parentThreadDisplayName: null,
-      parentThreads: [],
       canAssignToParent: false,
       canTakeOverThread: false,
       environment: null,
-      environmentDisplayHost: {
-        locality: "local",
-      },
-      workspaceStatus: undefined,
-      workspaceStatusError: null,
+      environmentDisplayHost: { locality: "local" },
+      isLoadingMergeBaseBranchOptions: false,
+      mergeBaseBranchOptions: undefined,
+      onAssignParent: noop,
+      onMergeBaseBranchChange: noop,
+      parentThreadDisplayName: null,
+      parentThreads: [],
+      projectId: "proj-test",
       pullRequest: null,
       selectedMergeBaseBranch: undefined,
-      mergeBaseBranchOptions: undefined,
-      isLoadingMergeBaseBranchOptions: false,
+      thread: makeThread(threadId),
       threadSchedules: [],
       updateThreadPending: false,
-      onAssignParent: noopAssignParent,
-      onMergeBaseBranchChange: noopBranchChange,
-    },
+      workspaceStatus: undefined,
+      workspaceStatusError: null,
+    } as ThreadDetailSecondaryContentProps["metadata"],
+    onToggleConversationCollapse: noop,
     secondaryPanel: {
       activeTab: null,
       canUseGitUi: false,
-      defaultMergeBaseBranch: undefined,
-      environmentId: undefined,
-      fileTabs: undefined,
-      fileTabContent: undefined,
+      fileTabs: [],
+      isBrowserTabActive: true,
       isOpen: isSecondaryPanelOpen,
-      showGitDiffTab: false,
-      workspaceRootPath: undefined,
-      onClose: noop,
       onCollapse: noop,
+      onClose: noop,
       onFileTabReorder: noop,
-      onOpenFileInEditor: noopOpenFile,
-      onOpenFilePreview: noopOpenFile,
       onOpenNewTab: noop,
-      onPanelChange: noopSecondaryPanelChange,
+      onPanelChange: noop,
       onPanelFocus: noop,
+      renderBrowserDeck,
+      showGitDiffTab: false,
     },
+    surface: "page",
     timeline: {
       activeThinking: null,
       hasOlderTimelineRows: false,
-      hostConnectionNotice: null,
       isLoadingOlderTimelineRows: false,
       isThreadTimelinePending: false,
-      timelineError: false,
       onLoadOlderRows: noop,
-      projectId: "proj_test",
+      resolveMentionLink: () => null,
       showOngoingIndicator: false,
       stopRequestedAt: null,
-      timelineRows: [],
-      threadId: "thr_test",
+      threadId,
       threadRuntimeDisplayStatus: "idle",
+      timelineError: false,
+      timelineRows: [],
       unreadDividerAutoScroll: false,
       unreadDividerPlacement: null,
       workspaceRootPath: undefined,
+    } as unknown as ThreadDetailSecondaryContentProps["timeline"],
+  };
+}
+
+function renderThreadDetail(args: RenderThreadDetailArgs) {
+  let renderArgs = args;
+  const view = render(
+    <CompactViewportOverrideProvider
+      isCompactViewport={renderArgs.isCompactViewport}
+    >
+      <ThreadDetailSecondaryContent
+        {...createProps({
+          isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+          renderBrowserDeck: renderArgs.renderBrowserDeck,
+          threadId: renderArgs.threadId,
+        })}
+      />
+    </CompactViewportOverrideProvider>,
+  );
+
+  return {
+    ...view,
+    rerenderWith(nextArgs: Partial<RenderThreadDetailArgs>) {
+      renderArgs = { ...renderArgs, ...nextArgs };
+      view.rerender(
+        <CompactViewportOverrideProvider
+          isCompactViewport={renderArgs.isCompactViewport}
+        >
+          <ThreadDetailSecondaryContent
+            {...createProps({
+              isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+              renderBrowserDeck: renderArgs.renderBrowserDeck,
+              threadId: renderArgs.threadId,
+            })}
+          />
+        </CompactViewportOverrideProvider>,
+      );
     },
   };
 }
 
-const TIMELINE_PANEL_LABEL = "thread-detail-timeline-panel";
-
-function getTimelinePanel(): HTMLElement {
-  return screen.getByRole("region", { name: TIMELINE_PANEL_LABEL });
+function expectBrowserDeckVisibility(canShowNativeBrowserView: boolean) {
+  expect(
+    screen
+      .getByTestId("browser-deck")
+      .getAttribute("data-can-show-native-browser-view"),
+  ).toBe(String(canShowNativeBrowserView));
 }
 
-function getConversationPane(container: HTMLElement): HTMLElement {
-  const pane = container.querySelector<HTMLElement>(
-    "[data-conversation-collapsed]",
-  );
-  if (pane === null) {
-    throw new Error("Conversation pane wrapper not found");
+function scheduleCompactDrawerSettleFrame() {
+  const callback = drawerShellState.onContentAnimationEnd;
+  if (callback === undefined) {
+    throw new Error("ResponsiveDrawerShell did not receive animation callback");
   }
-  return pane;
-}
-
-function ConversationCollapseHarness({
-  initialCollapsed,
-  isSecondaryPanelOpen,
-}: {
-  initialCollapsed: boolean;
-  isSecondaryPanelOpen: boolean;
-}) {
-  const [collapsed, setCollapsed] = useState(initialCollapsed);
-  return (
-    <ThreadDetailSecondaryContent
-      {...buildSecondaryContentProps({
-        isSecondaryPanelOpen,
-        isConversationCollapsed: collapsed,
-        onToggleConversationCollapse: () => setCollapsed((current) => !current),
-      })}
-    />
-  );
+  act(() => {
+    callback(true);
+  });
 }
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
-  sidebarShowingRef.current = true;
-  desktopChromeRef.current = false;
+  drawerShellState.onContentAnimationEnd = undefined;
 });
 
-describe("ThreadDetailSecondaryContent conversation collapse", () => {
-  it("mounts the timeline at zero width and hides it when collapsed with the panel open", () => {
-    const { container } = render(
-      <ThreadDetailSecondaryContent
-        {...buildSecondaryContentProps({
-          isSecondaryPanelOpen: true,
-          isConversationCollapsed: true,
-        })}
-      />,
-    );
-
-    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("0");
-    const pane = getConversationPane(container);
-    expect(pane.getAttribute("data-conversation-collapsed")).toBe("true");
-    // `inert` keeps the hidden conversation out of the tab order + a11y tree.
-    expect(pane.hasAttribute("inert")).toBe(true);
-  });
-
-  it("renders the slim conversation rail with its chat glyph when collapsed", () => {
-    render(
-      <ThreadDetailSecondaryContent
-        {...buildSecondaryContentProps({
-          isSecondaryPanelOpen: true,
-          isConversationCollapsed: true,
-        })}
-      />,
-    );
-
-    const rail = screen.getByRole("button", { name: "Expand conversation" });
-    expect(rail.getAttribute("aria-expanded")).toBe("false");
-    // The MessageSquare glyph stands in for the tucked-away conversation.
-    expect(rail.querySelector("[data-icon='MessageSquare']")).not.toBeNull();
-  });
-
-  it("expands the conversation when the rail is clicked", () => {
-    const { container } = render(
-      <ConversationCollapseHarness initialCollapsed isSecondaryPanelOpen />,
-    );
-
-    expect(getConversationPane(container).hasAttribute("inert")).toBe(true);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand conversation" }),
-    );
-
-    const pane = getConversationPane(container);
-    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
-    expect(pane.hasAttribute("inert")).toBe(false);
-    // Once the conversation is shown again, the rail drops out of the a11y tree.
-    expect(
-      screen.queryByRole("button", { name: "Expand conversation" }),
-    ).toBeNull();
-  });
-
-  it("does not collapse and offers no toggle while the secondary panel is closed", () => {
-    const { container } = render(
-      <ThreadDetailSecondaryContent
-        {...buildSecondaryContentProps({
-          isSecondaryPanelOpen: false,
-          isConversationCollapsed: true,
-        })}
-      />,
-    );
-
-    // Preference is ignored: the conversation stays visible and full width.
-    const pane = getConversationPane(container);
-    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
-    expect(pane.hasAttribute("inert")).toBe(false);
-    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("100");
-    expect(screen.queryByRole("button", { name: /conversation/i })).toBeNull();
-  });
+beforeEach(() => {
+  vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
 });
 
-interface DesktopTrafficLightScenarioState {
-  desktopChrome: boolean;
-  sidebarShowing: boolean;
-  conversationCollapsed: boolean;
-}
+describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("orders open-animation completion, rAF, bounds sync, and drawer settled true", () => {
+    const order: string[] = [];
+    const frames = installAnimationFrameQueue(order);
+    vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {
+      order.push("dispatchBrowserViewBoundsSync");
+    });
+    const renderBrowserDeck = createBrowserDeckRenderer(order);
 
-interface DesktopTrafficLightExpectation {
-  railReserveTop: boolean;
-  panelReserveLeft: boolean;
-}
+    renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
 
-interface DesktopTrafficLightScenario {
-  name: string;
-  state: DesktopTrafficLightScenarioState;
-  expected: DesktopTrafficLightExpectation;
-}
+    expectBrowserDeckVisibility(false);
 
-function renderForTrafficLightCase(state: DesktopTrafficLightScenarioState): {
-  rail: HTMLElement;
-  panel: HTMLElement;
-} {
-  desktopChromeRef.current = state.desktopChrome;
-  sidebarShowingRef.current = state.sidebarShowing;
-  render(
-    <ThreadDetailSecondaryContent
-      {...buildSecondaryContentProps({
-        isSecondaryPanelOpen: true,
-        isConversationCollapsed: state.conversationCollapsed,
-      })}
-    />,
-  );
-  return {
-    rail: screen.getByTestId("mock-conversation-collapsed-rail"),
-    panel: screen.getByTestId("mock-secondary-panel"),
-  };
-}
+    order.push("animationEnd:true");
+    scheduleCompactDrawerSettleFrame();
 
-describe("ThreadDetailSecondaryContent desktop traffic-light reserve", () => {
-  // Drives the actual gate that decides whether each leaf gets its reserve.
-  // Each case exercises one corner of (desktop chrome × sidebar shown ×
-  // conversation collapsed) so the test would fail if the gate were widened
-  // (e.g. firing on web, or with the sidebar still covering the lights).
-  it.each<DesktopTrafficLightScenario>([
-    {
-      name: "macOS desktop + sidebar collapsed + conversation collapsed → both reserves on",
-      state: {
-        desktopChrome: true,
-        sidebarShowing: false,
-        conversationCollapsed: true,
-      },
-      expected: { railReserveTop: true, panelReserveLeft: true },
-    },
-    {
-      name: "macOS desktop + sidebar collapsed + conversation shown → only the rail reserve (panel is no longer leftmost)",
-      state: {
-        desktopChrome: true,
-        sidebarShowing: false,
-        conversationCollapsed: false,
-      },
-      expected: { railReserveTop: true, panelReserveLeft: false },
-    },
-    {
-      name: "macOS desktop + sidebar expanded → neither reserve (sidebar already covers the lights)",
-      state: {
-        desktopChrome: true,
-        sidebarShowing: true,
-        conversationCollapsed: true,
-      },
-      expected: { railReserveTop: false, panelReserveLeft: false },
-    },
-    {
-      name: "web (non-macOS) + sidebar collapsed + conversation collapsed → neither reserve (no traffic lights to clear)",
-      state: {
-        desktopChrome: false,
-        sidebarShowing: false,
-        conversationCollapsed: true,
-      },
-      expected: { railReserveTop: false, panelReserveLeft: false },
-    },
-  ])("$name", ({ state, expected }) => {
-    const { rail, panel } = renderForTrafficLightCase(state);
-    expect(rail.getAttribute("data-rail-reserve-top")).toBe(
-      String(expected.railReserveTop),
-    );
-    expect(panel.getAttribute("data-secondary-panel-reserve-left")).toBe(
-      String(expected.panelReserveLeft),
-    );
+    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(false);
+
+    act(() => {
+      frames.flushAll();
+    });
+
+    expectBrowserDeckVisibility(true);
+    expect(order).toEqual([
+      "render:false",
+      "animationEnd:true",
+      "requestAnimationFrame",
+      "dispatchBrowserViewBoundsSync",
+      "render:true",
+    ]);
+  });
+
+  it("ignores close-animation completion without dispatching bounds sync", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+
+    renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    const callback = drawerShellState.onContentAnimationEnd;
+    if (callback === undefined) {
+      throw new Error(
+        "ResponsiveDrawerShell did not receive animation callback",
+      );
+    }
+
+    act(() => {
+      callback(false);
+    });
+
+    expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(false);
+  });
+
+  it("does not schedule a stale open callback after the compact drawer closes", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+    const view = renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    view.rerenderWith({ isSecondaryPanelOpen: false });
+    scheduleCompactDrawerSettleFrame();
+
+    expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(false);
+  });
+
+  it("cancels a pending compact drawer settle rAF when the drawer closes", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+    const view = renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    scheduleCompactDrawerSettleFrame();
+    expect(frames.size()).toBe(1);
+
+    view.rerenderWith({ isSecondaryPanelOpen: false });
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+
+    act(() => {
+      frames.flushAll();
+    });
+
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(false);
+  });
+
+  it("cancels a pending compact drawer settle rAF when the thread changes", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+    const view = renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    scheduleCompactDrawerSettleFrame();
+    expect(frames.size()).toBe(1);
+
+    view.rerenderWith({ threadId: "thread-2" });
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+
+    act(() => {
+      frames.flushAll();
+    });
+
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(false);
+  });
+
+  it("cancels a pending compact drawer settle rAF on compact-to-wide transition", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+    const view = renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    scheduleCompactDrawerSettleFrame();
+    expect(frames.size()).toBe(1);
+
+    view.rerenderWith({ isCompactViewport: false });
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+
+    act(() => {
+      frames.flushAll();
+    });
+
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expectBrowserDeckVisibility(true);
+  });
+
+  it("cancels a pending compact drawer settle rAF on unmount", () => {
+    const frames = installAnimationFrameQueue();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+    const view = renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    scheduleCompactDrawerSettleFrame();
+    expect(frames.size()).toBe(1);
+
+    view.unmount();
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+
+    act(() => {
+      frames.flushAll();
+    });
+
+    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+  });
+
+  it("passes compact opening and wide layout visibility values to the browser deck render prop", () => {
+    const frames = installAnimationFrameQueue();
+    vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {});
+    const compactRenderBrowserDeck = createBrowserDeckRenderer();
+
+    renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck: compactRenderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: false,
+    });
+    scheduleCompactDrawerSettleFrame();
+    act(() => {
+      frames.flushAll();
+    });
+    expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: true,
+    });
+
+    cleanup();
+
+    const wideRenderBrowserDeck = createBrowserDeckRenderer();
+    const wideView = renderThreadDetail({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+      renderBrowserDeck: wideRenderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    expect(wideRenderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: false,
+    });
+
+    wideView.rerenderWith({ isSecondaryPanelOpen: true });
+
+    expect(wideRenderBrowserDeck).toHaveBeenLastCalledWith({
+      canShowNativeBrowserView: true,
+    });
+    expect(dispatchBrowserViewBoundsSync).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,7 +6,6 @@ import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
 import { registerManagerCommands } from "../commands/manager.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
-import { registerWorkflowCommands } from "../commands/workflow/index.js";
 // Commands intentionally excluded from --json requirement
 const EXCLUDED_COMMANDS = new Set<string>();
 
@@ -37,7 +36,6 @@ describe("CLI --json flag enforcement", () => {
     registerProviderCommands(program, getUrl);
     registerManagerCommands(program, getUrl);
     registerThreadCommands(program, getUrl);
-    registerWorkflowCommands(program, getUrl);
 
     const commands = collectLeafCommands(program);
     const missing: string[] = [];

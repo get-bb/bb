@@ -6,9 +6,11 @@ import type { PendingInteractionLifecycle } from "./services/interactions/pendin
 import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
+import type { TelemetryService } from "./services/system/telemetry.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
+import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -25,9 +27,6 @@ export interface ServerRuntimeConfig {
   serverPort: number;
   threadStorageRootPath: string;
   transcriptionModel: string;
-  /** Max workflow runs concurrently holding one host's capacity
-   *  (BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST; default 4). */
-  workflowMaxConcurrentRunsPerHost: number;
   appUrl?: string;
   devAppPort?: number;
 }
@@ -40,7 +39,9 @@ export interface AppDeps {
   logger: ServerLogger;
   machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
+  telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
+  watchInterests: WatchInterestCoordinator;
 }
 
 export interface ServerAppDeps extends AppDeps {
@@ -50,7 +51,7 @@ export interface ServerAppDeps extends AppDeps {
 
 export type LifecycleDeps = Pick<
   AppDeps,
-  "config" | "db" | "hub" | "lifecycleDedupers" | "machineAuth"
+  "config" | "db" | "hub" | "lifecycleDedupers" | "machineAuth" | "telemetry"
 >;
 
 export type WorkSessionDeps = LifecycleDeps;

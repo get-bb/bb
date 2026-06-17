@@ -6,7 +6,10 @@ import {
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
 import { withHarness } from "../../helpers/harness.js";
-import { transitionThreadStatus } from "@bb/db";
+import {
+  applyThreadLifecycleEvent,
+  requireThreadLifecycleEventApplied,
+} from "@bb/db";
 import {
   createRecoveryThread,
   RECOVERY_TIMEOUT_MS,
@@ -40,7 +43,18 @@ describe.sequential(
           RECOVERY_TIMEOUT_MS,
         );
 
-        transitionThreadStatus(harness.db, harness.hub, thread.id, "error");
+        requireThreadLifecycleEventApplied(
+          applyThreadLifecycleEvent(harness.db, harness.hub, {
+            event: { type: "run.started" },
+            threadId: thread.id,
+          }),
+        );
+        requireThreadLifecycleEventApplied(
+          applyThreadLifecycleEvent(harness.db, harness.hub, {
+            event: { type: "run.failed" },
+            threadId: thread.id,
+          }),
+        );
 
         await harness.startDaemon();
         await waitForHostConnected(harness.api, RECOVERY_TIMEOUT_MS);

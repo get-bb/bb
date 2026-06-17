@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
 import {
@@ -74,7 +73,6 @@ describe("createAgentRuntime tool calls", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -142,7 +140,6 @@ describe("createAgentRuntime tool calls", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -182,7 +179,6 @@ describe("createAgentRuntime tool calls", () => {
       "process.stdin.pipe(process.stdout)",
     ]);
     const adapter = createFakeAdapter(scriptPath);
-    const captures: AgentRuntimeCaptureEntry[] = [];
     const toolCallResponse = {
       contentItems: [{ type: "inputText", text: "tool result" }],
       success: true,
@@ -203,11 +199,8 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        createCaptureId: () => "cap-1",
-        emitCapture: (entry) => captures.push(entry),
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
-        line: JSON.stringify(rawRequest),
         onInteractiveRequest: async () => ({
           decision: "deny",
         }),
@@ -236,9 +229,6 @@ describe("createAgentRuntime tool calls", () => {
         },
       });
       expect(onToolCall).not.toHaveBeenCalled();
-      expect(
-        captures.filter((entry) => entry.kind === "tool-call-request"),
-      ).toHaveLength(0);
     } finally {
       child.kill();
     }
@@ -257,7 +247,6 @@ describe("createAgentRuntime tool calls", () => {
         return decoded ? { ...decoded, turnId: "" } : null;
       },
     };
-    const captures: AgentRuntimeCaptureEntry[] = [];
     const toolCallResponse = {
       contentItems: [{ type: "inputText", text: "tool result" }],
       success: true,
@@ -278,11 +267,8 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        createCaptureId: () => "cap-1",
-        emitCapture: (entry) => captures.push(entry),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
-        line: JSON.stringify(rawRequest),
         onInteractiveRequest: async () => ({
           decision: "deny",
         }),
@@ -311,9 +297,6 @@ describe("createAgentRuntime tool calls", () => {
         },
       });
       expect(onToolCall).not.toHaveBeenCalled();
-      expect(
-        captures.filter((entry) => entry.kind === "tool-call-request"),
-      ).toHaveLength(0);
     } finally {
       child.kill();
     }
@@ -336,7 +319,6 @@ describe("createAgentRuntime tool calls", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -372,7 +354,6 @@ describe("createAgentRuntime tool calls", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -394,122 +375,6 @@ describe("createAgentRuntime tool calls", () => {
     });
     await runtime.shutdown();
     // The test passes if no unhandled promise rejection occurs
-  });
-
-  it("captures correlated raw provider events, translated events, and tool call results", async () => {
-    const captures: AgentRuntimeCaptureEntry[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onCapture: (entry) => captures.push(entry),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "tool result" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
-    });
-
-    await runtime.startThread({
-      sessionKind: "thread",
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.runTurn({
-      clientRequestId: "creq_2222222244",
-      threadId: "t1",
-      input: [promptTextInput({ text: "call_tool:my_test_tool" })],
-      options: fullRuntimeOptions,
-    });
-    await waitForRuntimeState({
-      label: "captured tool result and raw turn completion",
-      predicate: () =>
-        captures.some((entry) => entry.kind === "tool-call-result") &&
-        captures.some(
-          (entry) =>
-            entry.kind === "raw-provider-event" &&
-            entry.rawEvent.method === "turn/completed",
-        ),
-      providerId: "fake",
-      runtime,
-    });
-    await runtime.shutdown();
-
-    const rawEvents = captures.filter(
-      (
-        entry,
-      ): entry is Extract<
-        AgentRuntimeCaptureEntry,
-        { kind: "raw-provider-event" }
-      > => entry.kind === "raw-provider-event",
-    );
-    const translatedEvents = captures.filter(
-      (
-        entry,
-      ): entry is Extract<
-        AgentRuntimeCaptureEntry,
-        { kind: "translated-thread-event" }
-      > => entry.kind === "translated-thread-event",
-    );
-    const toolRequests = captures.filter(
-      (
-        entry,
-      ): entry is Extract<
-        AgentRuntimeCaptureEntry,
-        { kind: "tool-call-request" }
-      > => entry.kind === "tool-call-request",
-    );
-    const toolResults = captures.filter(
-      (
-        entry,
-      ): entry is Extract<
-        AgentRuntimeCaptureEntry,
-        { kind: "tool-call-result" }
-      > => entry.kind === "tool-call-result",
-    );
-
-    expect(rawEvents.map((entry) => entry.rawEvent.method)).toEqual(
-      expect.arrayContaining([
-        "thread/identity",
-        "turn/started",
-        "item/completed",
-        "turn/completed",
-      ]),
-    );
-    expect(translatedEvents.map((entry) => entry.event.type)).toEqual(
-      expect.arrayContaining([
-        "thread/identity",
-        "turn/started",
-        "item/completed",
-        "turn/completed",
-      ]),
-    );
-    expect(toolRequests).toHaveLength(1);
-    expect(toolResults).toHaveLength(1);
-    expect(toolRequests[0]?.request).toMatchObject({
-      threadId: "t1",
-      providerThreadId: "prov-1",
-      tool: "my_test_tool",
-    });
-    expect(toolResults[0]).toMatchObject({
-      requestCaptureId: toolRequests[0]?.captureId,
-      requestId: toolRequests[0]?.request.requestId,
-      success: true,
-    });
-
-    const turnStartedCapture = rawEvents.find(
-      (entry) => entry.rawEvent.method === "turn/started",
-    );
-    expect(turnStartedCapture).toBeDefined();
-    expect(
-      translatedEvents.some(
-        (entry) =>
-          entry.rawCaptureId === turnStartedCapture?.captureId &&
-          entry.event.type === "turn/started",
-      ),
-    ).toBe(true);
   });
 
   // ---- Error handling ----

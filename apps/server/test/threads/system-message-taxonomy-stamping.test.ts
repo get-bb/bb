@@ -1,8 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import {
-  setWorkflowRunPendingManagerNotification,
-  settleWorkflowRunInTransaction,
-} from "@bb/db/internal-lifecycle";
 import { events } from "@bb/db";
 import {
   turnRequestEventDataSchema,
@@ -16,7 +12,6 @@ import {
   queueChildThreadTurnNotificationBestEffort,
 } from "../../src/services/threads/child-thread-notifications.js";
 import { handleThreadOwnershipChange } from "../../src/services/threads/thread-ownership.js";
-import { runWorkflowRunPendingNotificationSweep } from "../../src/services/workflows/workflow-run-pending-notifications.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -24,12 +19,6 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import {
-  createRun,
-  forceRunStatus,
-  startRunToRunning,
-  ZERO_USAGE,
-} from "../helpers/workflow-runs.js";
 import {
   createTestAppHarness,
   withTestHarness,
@@ -203,6 +192,7 @@ describe("Family B emit-site discriminator stamping", () => {
       await queueChildThreadNeedsAttentionNotificationBestEffort(harness.deps, {
         childThread: child,
         parentThreadId: fixture.parentThreadId,
+        blockerSummary: null,
       });
 
       const stamped = await waitForStampedSystemMessage(
@@ -270,97 +260,6 @@ describe("Family B emit-site discriminator stamping", () => {
         kind: "thread",
         threadId: child.id,
         threadName: "Released child",
-      });
-    });
-  });
-
-  // schedule-due stamping is asserted at its real emit site in
-  // `scheduling/thread-schedule-sweep.test.ts` (after a due schedule fires),
-  // so deleting the stamping lines from `thread-schedule-sweep.ts` turns a test
-  // red. A synthetic `appendClientTurnEvent` here would only exercise the
-  // plumbing, not the sweep.
-
-  const settledWorkflowStates: ReadonlyArray<{
-    status: "completed" | "failed" | "cancelled";
-    expectedKind: SystemMessageKind;
-  }> = [
-    { status: "completed", expectedKind: "workflow-completed" },
-    { status: "failed", expectedKind: "workflow-failed" },
-    { status: "cancelled", expectedKind: "workflow-cancelled" },
-  ];
-
-  for (const { status, expectedKind } of settledWorkflowStates) {
-    it(`stamps a ${status} workflow run notification as ${expectedKind}`, async () => {
-      await withTestHarness(async (harness) => {
-        const fixture = seedParentFixture(harness, `host-workflow-${status}`);
-        const run = createRun(
-          harness,
-          { projectId: fixture.projectId },
-          { anchorThreadId: fixture.parentThreadId },
-        );
-        await startRunToRunning(harness, run.id);
-
-        harness.db.transaction(
-          (tx) => {
-            settleWorkflowRunInTransaction(tx, {
-              id: run.id,
-              status,
-              failureReason: status === "failed" ? "script_invalid" : null,
-              resultJson: null,
-              usage: ZERO_USAGE,
-            });
-            // Settling clears intent; record the settled notification the
-            // delivery sweep consumes.
-            setWorkflowRunPendingManagerNotification(tx, {
-              id: run.id,
-              kind: "settled",
-            });
-          },
-          { behavior: "immediate" },
-        );
-
-        runWorkflowRunPendingNotificationSweep(harness.deps);
-
-        const stamped = await waitForStampedSystemMessage(
-          harness,
-          fixture.parentThreadId,
-        );
-        expect(stamped.systemMessageKind).toBe(expectedKind);
-        expect(stamped.systemMessageSubject).toEqual({
-          kind: "workflow",
-          name: run.workflowName,
-          runId: run.id,
-        });
-      });
-    });
-  }
-
-  it("stamps an interrupted workflow run notification as workflow-paused", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedParentFixture(harness, "host-workflow-paused");
-      const run = createRun(
-        harness,
-        { projectId: fixture.projectId },
-        { anchorThreadId: fixture.parentThreadId },
-      );
-      await startRunToRunning(harness, run.id);
-      forceRunStatus(harness, run.id, "interrupted", "host daemon unavailable");
-      setWorkflowRunPendingManagerNotification(harness.db, {
-        id: run.id,
-        kind: "paused",
-      });
-
-      runWorkflowRunPendingNotificationSweep(harness.deps);
-
-      const stamped = await waitForStampedSystemMessage(
-        harness,
-        fixture.parentThreadId,
-      );
-      expect(stamped.systemMessageKind).toBe("workflow-paused");
-      expect(stamped.systemMessageSubject).toEqual({
-        kind: "workflow",
-        name: run.workflowName,
-        runId: run.id,
       });
     });
   });

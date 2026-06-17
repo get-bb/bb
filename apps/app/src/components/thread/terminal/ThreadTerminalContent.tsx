@@ -1,11 +1,13 @@
 import type { TerminalSession } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalContentProps {
   controller: ThreadTerminalController;
+  onOpenLink?: MarkdownPreviewLinkHandler;
 }
 
 interface InactiveTerminalContent {
@@ -53,6 +55,7 @@ function getInactiveTerminalContent({
 
 export function ThreadTerminalContent({
   controller,
+  onOpenLink,
 }: ThreadTerminalContentProps) {
   if (controller.hasTerminalQueryError) {
     return (
@@ -112,6 +115,7 @@ export function ThreadTerminalContent({
   return (
     <ThreadTerminalView
       isPanelOpen={controller.isPanelOpen}
+      onOpenLink={onOpenLink}
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}

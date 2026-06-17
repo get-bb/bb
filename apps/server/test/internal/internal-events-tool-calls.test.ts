@@ -1,19 +1,9 @@
 import { eq } from "drizzle-orm";
-import {
-  createAutomation,
-  createEnvironment,
-  createThread,
-  events,
-  getEnvironment,
-  threads,
-} from "@bb/db";
+import { closeSession, events, threads } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createTestDaemonEventEnvelope,
-  internalAuthHeaders,
-} from "../helpers/commands.js";
+import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
@@ -107,6 +97,39 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(2);
+    });
+  });
+
+  it("logs inactive session details when daemon event posting uses a closed session", async () => {
+    await withTestHarness(async (harness) => {
+      const info = vi.fn();
+      harness.deps.logger.info = info;
+      const { session } = seedHostSession(harness.deps, { id: "host-1" });
+      closeSession(
+        harness.deps.db,
+        harness.deps.hub,
+        session.id,
+        "daemon-disconnect",
+      );
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [],
+      });
+
+      expect(response.status).toBe(401);
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authenticatedHostId: session.hostId,
+          closeReason: "daemon-disconnect",
+          inactiveSessionReason: "closed",
+          sessionHostId: session.hostId,
+          sessionId: session.id,
+          sessionStatus: "closed",
+        }),
+        "Daemon event batch for inactive session",
+      );
     });
   });
 
@@ -265,89 +288,6 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("immediately advances cleanup after auto-archiving an automation thread", async () => {
-    await withTestHarness(async (harness) => {
-      const { session } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: session.hostId,
-      });
-      const automation = createAutomation(harness.db, harness.hub, {
-        action: JSON.stringify({
-          actionType: "scheduled-thread",
-          threadRequest: {
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Run automation" }],
-            environment: {
-              type: "host",
-              hostId: session.hostId,
-              workspace: {
-                type: "managed-worktree",
-                baseBranch: { kind: "default" },
-              },
-            },
-          },
-        }),
-        autoArchive: true,
-        enabled: true,
-        name: "Auto archive cleanup",
-        nextRunAt: null,
-        projectId: project.id,
-        triggerConfig: JSON.stringify({
-          cron: "0 8 * * *",
-          timezone: "UTC",
-          triggerType: "schedule",
-        }),
-        triggerType: "schedule",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        hostId: session.hostId,
-        managed: true,
-        projectId: project.id,
-        status: "ready",
-        workspaceProvisionType: "managed-worktree",
-      });
-      const thread = createThread(harness.db, harness.hub, {
-        automationId: automation.id,
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "codex",
-        status: "active",
-      });
-
-      const response = await postEventBatch({
-        harness,
-        sessionId: session.id,
-        events: [
-          createTestDaemonEventEnvelope({
-            event: {
-              type: "turn/started",
-              threadId: thread.id,
-              providerThreadId: "provider-thread",
-              scope: turnScope("turn-automation-cleanup"),
-            },
-          }),
-          createTestDaemonEventEnvelope({
-            event: {
-              type: "turn/completed",
-              threadId: thread.id,
-              providerThreadId: "provider-thread",
-              scope: turnScope("turn-automation-cleanup"),
-              status: "completed",
-            },
-          }),
-        ],
-      });
-
-      expect(response.status).toBe(200);
-      await vi.waitFor(() => {
-        expect(getEnvironment(harness.db, environment.id)?.status).toBe(
-          "destroyed",
-        );
-      });
-    });
-  });
-
   it("keeps a thread idle when a started/completed batch is posted again", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);
@@ -409,6 +349,72 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(4);
+    });
+  });
+
+  it("leaves a settled thread untouched when a stale turn completion is redelivered alone", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-stale-completion",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-stale-completion"),
+        data: { providerThreadId: "provider-stale-completion" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-stale-completion",
+        sequence: 2,
+        type: "turn/completed",
+        scope: turnScope("turn-stale-completion"),
+        data: { status: "completed" },
+      });
+      const settledRow = harness.db
+        .select()
+        .from(threads)
+        .where(eq(threads.id, thread.id))
+        .get();
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-stale-completion",
+              scope: turnScope("turn-stale-completion"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      // run.succeeded has no THREAD_LIFECYCLE cell for "idle": the
+      // redelivered completion is an illegal-transition no-op and the thread
+      // row is untouched.
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get(),
+      ).toEqual(settledRow);
     });
   });
 

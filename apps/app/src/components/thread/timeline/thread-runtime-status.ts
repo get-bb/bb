@@ -6,9 +6,10 @@ export function isRunningThreadRuntimeDisplayStatus(
 ): boolean {
   switch (status) {
     case "active":
-    case "created":
     case "host-reconnecting":
     case "provisioning":
+    case "starting":
+    case "stopping":
       return true;
     case "error":
     case "idle":

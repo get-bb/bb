@@ -1,17 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { QueryObserver } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  environmentDiffFilesQueryKey,
+  environmentDiffPatchQueryKey,
   sidebarNavigationQueryKey,
   systemExecutionOptionsQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
-  workflowRunAgentEventsQueryKey,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
-  workflowRunsQueryKey,
-  workflowsQueryKey,
 } from "./queries/query-keys";
 import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
 
@@ -95,34 +93,52 @@ describe("system cache effects", () => {
     );
   });
 
-  it("invalidates workflow caches after reconnect", () => {
-    // Workflow runs are realtime-fed: a run reaching terminal while the
-    // socket was down emits nothing afterward, so reconnect invalidation is
-    // the only recovery path for an already-mounted run page or Workflows
-    // tab — without it the run renders frozen at `running` indefinitely.
+  it("refetches an active diff TOC query but evicts the observer-less patch cache after reconnect", async () => {
     const queryClient = createCacheEffectQueryClient();
-    const runDetailKey = workflowRunQueryKey("wfr_1");
-    const runsListKey = workflowRunsQueryKey("project-1");
-    const runEventsKey = workflowRunEventsQueryKey("wfr_1");
-    const agentEventsKey = workflowRunAgentEventsQueryKey({
-      agentIndex: 1,
-      runId: "wfr_1",
+    const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
+    const diffPatchKey = environmentDiffPatchQueryKey(
+      "env-1",
+      "all",
+      "main",
+      "file.ts",
+    );
+    queryClient.setQueryData(diffFilesKey, {
+      outcome: "available",
+      files: [],
+      shortstat: "1 file changed",
+      mergeBaseRef: "base-ref",
     });
-    const workflowsKey = workflowsQueryKey("project-1");
-    queryClient.setQueryData(runDetailKey, {});
-    queryClient.setQueryData(runsListKey, []);
-    queryClient.setQueryData(runEventsKey, []);
-    queryClient.setQueryData(agentEventsKey, []);
-    queryClient.setQueryData(workflowsKey, []);
+    // Seeded like production: no observer, no queryFn — the patch cache is
+    // imperative, so invalidation can never refresh it.
+    queryClient.setQueryData(diffPatchKey, {
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
+    });
+    const diffFilesQueryFn = vi.fn(async () => ({
+      outcome: "available" as const,
+      files: [],
+      shortstat: "",
+      mergeBaseRef: "base-ref",
+    }));
+    const diffFilesObserver = new QueryObserver(queryClient, {
+      queryKey: diffFilesKey,
+      queryFn: diffFilesQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
+    diffFilesQueryFn.mockClear();
 
     invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
 
-    expect(queryClient.getQueryState(runDetailKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(runsListKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(runEventsKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(agentEventsKey)?.isInvalidated).toBe(
-      true,
+    // The TOC has an observer, so reconnect invalidation refetches it.
+    await vi.waitFor(() =>
+      expect(diffFilesQueryFn).toHaveBeenCalledTimes(1),
     );
-    expect(queryClient.getQueryState(workflowsKey)?.isInvalidated).toBe(true);
+    // The observer-less patch entry is evicted so a stale patch can't survive
+    // the reconnect.
+    expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
+
+    unsubscribeDiffFiles();
   });
 });

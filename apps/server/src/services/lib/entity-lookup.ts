@@ -5,12 +5,11 @@ import {
   getNonDestroyedHost,
   getProject,
   getThread,
-  getWorkflowRun,
   listConnectedHostIds,
   listPublicHosts,
 } from "@bb/db";
 import type { Environment, Host } from "@bb/domain";
-import type { DbConnection, WorkflowRunRow } from "@bb/db";
+import type { DbConnection } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import {
   destroyedHostUnavailableDetails,
@@ -168,26 +167,7 @@ export function requirePublicStandardProject(
   return project;
 }
 
-/**
- * Workflow ids (`wfr_` runs, `wfa_` run-scoped agent sessions) are never
- * thread ids. Rejecting them explicitly — instead of incidentally 404ing on
- * the table miss — is the plan §2 defense-in-depth for `thr_*`-expecting
- * surfaces.
- */
-const WORKFLOW_ID_PREFIXES = ["wfr_", "wfa_"] as const;
-
-function rejectWorkflowIdAsThreadId(threadId: string): void {
-  if (WORKFLOW_ID_PREFIXES.some((prefix) => threadId.startsWith(prefix))) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "Expected a thread id (thr_…), got a workflow id",
-    );
-  }
-}
-
 function requireThread(db: DbConnection, threadId: string): ThreadRow {
-  rejectWorkflowIdAsThreadId(threadId);
   const thread = getThread(db, threadId);
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
@@ -205,31 +185,6 @@ export function requirePublicThread(
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
   return thread;
-}
-
-/**
- * Public workflow-run lookup: rejects non-`wfr_` ids outright (the inverse
- * of the thread guard's workflow-id rejection) and hides user-deleted runs
- * and runs whose project is pending deletion, mirroring
- * `requirePublicThread`. User-archived runs stay reachable by id.
- */
-export function requirePublicWorkflowRun(
-  db: DbConnection,
-  runId: string,
-): WorkflowRunRow {
-  if (!runId.startsWith("wfr_")) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "Expected a workflow run id (wfr_…)",
-    );
-  }
-  const run = getWorkflowRun(db, runId);
-  const project = run ? getProject(db, run.projectId) : null;
-  if (!run || run.deletedAt !== null || project?.deletedAt !== null) {
-    throw new ApiError(404, "workflow_run_not_found", "Workflow run not found");
-  }
-  return run;
 }
 
 export function requireEnvironment(

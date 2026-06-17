@@ -18,19 +18,15 @@ import {
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
+import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
-  useSidebarNavigation,
-  stripProjectThreads,
-} from "@/hooks/queries/project-queries";
-import { useExperiments } from "@/hooks/queries/system-queries";
-import { useWorkflowRun } from "@/hooks/queries/workflow-queries";
-import {
-  useApp,
   useThread,
   useThreadDetailBootstrap,
 } from "@/hooks/queries/thread-queries";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { isThreadRead } from "@/lib/thread-read-state";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -50,15 +46,14 @@ import {
 } from "@/lib/bb-desktop";
 import {
   getLegacyProjectComposeRoutePath,
-  AUTOMATIONS_ROUTE_PATH,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
-  getProjectWorkflowsRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { useFaviconBadge } from "@/lib/favicon-color-preference";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -220,9 +215,7 @@ function SidebarTriggerOverlay({
 
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
-  [AUTOMATIONS_ROUTE_PATH]: { title: "Automations" },
   "/settings": { title: "Settings" },
-  "/development-only/replay": { title: "Replay threads" },
 };
 
 interface AppHeaderProps {
@@ -234,7 +227,6 @@ interface AppHeaderProps {
   usesDesktopChrome: boolean;
   isArchivedView: boolean;
   isSettingsView: boolean;
-  isWorkflowsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   meta: {
@@ -249,12 +241,10 @@ function AppHeader({
   usesDesktopChrome,
   isArchivedView,
   isSettingsView,
-  isWorkflowsView,
   projectId,
   project,
   meta,
 }: AppHeaderProps) {
-  const workflowsExperimentEnabled = useExperiments().workflows;
   const headerBreadcrumbs = meta.breadcrumbs;
   const headerTitle =
     headerBreadcrumbs || usesProjectChromeStyle ? undefined : meta.title;
@@ -333,23 +323,6 @@ function AppHeader({
         >
           <Icon name="Settings" />
         </Link>
-        {workflowsExperimentEnabled ? (
-          <Link
-            to={getProjectWorkflowsRoutePath(projectId)}
-            className={cn(
-              HEADER_ICON_BUTTON_CLASS,
-              "inline-flex items-center justify-center transition-colors",
-              isWorkflowsView
-                ? "bg-state-active text-foreground"
-                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            )}
-            aria-label="Workflows"
-            aria-current={isWorkflowsView ? "page" : undefined}
-            title="Workflows"
-          >
-            <Icon name="Workflow" />
-          </Link>
-        ) : null}
         <Link
           to={getProjectArchivedRoutePath(projectId)}
           className={cn(
@@ -393,21 +366,26 @@ export function AppLayout({ children }: AppLayoutProps) {
   const {
     projectId,
     threadId,
-    applicationId,
-    workflowRunId,
-    isAppView,
     isThreadView,
     isArchivedView,
-    isWorkflowsView,
-    isWorkflowRunView,
     isSettingsView,
     isRootView,
-  } = useAppRoute();
+  } = useRouteState();
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
     [sidebarNavigationQuery.data],
   );
+  const sidebarThreads = useMemo(() => {
+    const sidebarNavigation = sidebarNavigationQuery.data;
+    if (!sidebarNavigation) {
+      return [];
+    }
+    return [
+      ...sidebarNavigation.projects.flatMap((project) => project.threads),
+      ...sidebarNavigation.personalProject.threads,
+    ];
+  }, [sidebarNavigationQuery.data]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     composerBootstrapPrefetch: isThreadView && Boolean(threadId),
     enabled: isThreadView && Boolean(threadId),
@@ -446,16 +424,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  // The standalone app route has no thread/project chrome, so the global header
-  // carries the app name (resolved from the manifest) the way it carries thread
-  // and project titles elsewhere.
-  const { data: app } = useApp(applicationId, { enabled: isAppView });
-  const appDisplayTitle = app?.name ?? "App";
-  // The run page route is projectless, so the run row (shared query with the
-  // page itself) is the only synchronous source for the document title.
-  const { data: workflowRun } = useWorkflowRun(
-    isWorkflowRunView ? (workflowRunId ?? "") : "",
-  );
   useEffect(() => {
     if (!thread?.projectId) return;
     setRootComposeProjectId(thread.projectId);
@@ -465,12 +433,19 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isAppView
+    : isArchivedView && projectId
       ? {
-          title: appDisplayTitle,
+          title: "",
           subtitle: undefined,
+          breadcrumbs: [
+            {
+              label: projectLabel ?? projectId,
+              to: getLegacyProjectComposeRoutePath(projectId),
+            },
+            { label: "Archived" },
+          ],
         }
-      : isArchivedView && projectId
+      : isSettingsView && projectId
         ? {
             title: "",
             subtitle: undefined,
@@ -479,57 +454,22 @@ export function AppLayout({ children }: AppLayoutProps) {
                 label: projectLabel ?? projectId,
                 to: getLegacyProjectComposeRoutePath(projectId),
               },
-              { label: "Archived" },
+              { label: "Settings" },
             ],
           }
-        : isWorkflowsView && projectId
+        : projectId
           ? {
-              title: "",
+              title: projectLabel ?? projectId,
               subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Workflows" },
-              ],
             }
-        : isSettingsView && projectId
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Settings" },
-              ],
-            }
-          : projectId
-            ? {
-                title: projectLabel ?? projectId,
-                subtitle: undefined,
-              }
-            : (routeTitles[location.pathname] ?? { title: "" });
+          : (routeTitles[location.pathname] ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
       return threadDisplayTitle;
     }
-    if (isAppView) {
-      return appDisplayTitle;
-    }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;
-    }
-    if (isWorkflowsView && projectId) {
-      return `${projectLabel ?? projectId} · Workflows`;
-    }
-    if (isWorkflowRunView) {
-      return workflowRun
-        ? `${workflowRun.workflowName} · Workflow run`
-        : "Workflow run";
     }
     if (isSettingsView && projectId) {
       return `${projectLabel ?? projectId} · Settings`;
@@ -540,6 +480,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = routeTitles[location.pathname]?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
+  const unreadCount = isThreadView
+    ? thread && !isThreadRead(thread)
+      ? 1
+      : 0
+    : sidebarThreads.filter((candidate) => !isThreadRead(candidate)).length;
+  const faviconBadge = unreadCount > 0 ? "unread" : "none";
+  useFaviconBadge(faviconBadge);
 
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
@@ -644,14 +591,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <AppHeader
                   usesDesktopChrome={usesDesktopChrome}
                   usesProjectChromeStyle={
-                    isRootView ||
-                    isArchivedView ||
-                    isWorkflowsView ||
-                    isSettingsView
+                    isRootView || isArchivedView || isSettingsView
                   }
                   isArchivedView={isArchivedView}
                   isSettingsView={isSettingsView}
-                  isWorkflowsView={isWorkflowsView}
                   projectId={projectId}
                   project={project}
                   meta={meta}

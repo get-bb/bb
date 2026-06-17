@@ -71,6 +71,7 @@ export default [
       "**/node_modules/**",
       "**/dist/**",
       "**/coverage/**",
+      "**/routeTree.gen.ts",
       "packages/core/src/generated/**",
     ],
   },

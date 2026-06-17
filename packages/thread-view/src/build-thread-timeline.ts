@@ -17,6 +17,7 @@ import {
   readTerminalOutputLines,
   type ActiveThinking,
   type Thread,
+  type ThreadTimelineGoal,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
@@ -51,6 +52,7 @@ import {
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
+import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
@@ -61,9 +63,9 @@ interface ThreadTimelineFromEventsBaseOptions {
   includeProviderUnhandledOperations: boolean;
   /**
    * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
-   * the snapshot describes current head state, not historical state. Caller
-   * passes false on older-page requests so the projection can skip the
-   * extraction work entirely instead of computing it and discarding.
+   * these snapshots describe current head state, not historical state. Caller
+   * passes false on older-page requests so projections can skip extraction work
+   * entirely instead of computing it and discarding.
    */
   isLatestPage: boolean;
   threadStatus: Thread["status"];
@@ -95,6 +97,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 export interface ThreadTimelineFromEventsResult {
   activeThinking: ActiveThinking | null;
   contextWindowUsage: ThreadContextWindowUsage | null;
+  goal: ThreadTimelineGoal | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   rows: TimelineRow[];
 }
@@ -641,7 +644,6 @@ function convertMessage(
           workKind: "workflow",
           status: message.status,
           itemId: message.itemId,
-          taskType: message.taskType,
           workflowName: message.workflowName,
           description: message.description,
           taskStatus: message.taskStatus,
@@ -1109,6 +1111,9 @@ export function buildThreadTimelineFromEvents(
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
     ),
+    goal: !args.options.isLatestPage
+      ? null
+      : extractThreadTimelineGoal(args.events),
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(

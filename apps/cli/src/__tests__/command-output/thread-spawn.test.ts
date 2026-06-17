@@ -24,7 +24,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-1",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -39,6 +39,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -56,7 +59,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-personal",
       projectId: domain.PERSONAL_PROJECT_ID,
       providerId: "codex",
-      status: "created",
+      status: "starting",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -69,6 +72,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: domain.PERSONAL_PROJECT_ID,
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -86,7 +92,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-env-project",
       projectId: "proj-env",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -99,6 +105,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-env",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -116,7 +125,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-overrides",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -148,6 +157,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -202,7 +214,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-json-spawn",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -258,7 +270,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-2",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       parentThreadId: "thread-parent",
       createdAt: 1,
       updatedAt: 1,
@@ -287,6 +299,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -301,14 +316,14 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn defaults parent thread id from BB_THREAD_ID", async () => {
+  it("bb thread spawn does not default parent thread id from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-2",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       parentThreadId: "thread-context-parent",
       createdAt: 1,
       updatedAt: 1,
@@ -333,10 +348,137 @@ describe("bb thread spawn command output", () => {
     );
 
     expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: null },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn with --parent-self forwards BB_THREAD_ID as parent thread id", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-2",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "starting",
+      parentThreadId: "thread-context-parent",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--parent-self",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
       json: expect.objectContaining({
         parentThreadId: "thread-context-parent",
       }),
     });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "You will be notified when this thread is done.",
+    );
+  });
+
+  it("bb thread spawn rejects --parent-self without BB_THREAD_ID", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-parent-self-missing-context",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--parent-self",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --parent-self requires BB_THREAD_ID to be set.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn rejects combining --parent-thread and --parent-self", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-conflicting-parent",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--parent-thread",
+          "thread-parent",
+          "--parent-self",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --parent-thread with --parent-self.",
+    );
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("bb thread spawn rejects invalid parent-thread values", async () => {
@@ -381,7 +523,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-env-1",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       environmentId: "env-worktree-001",
       createdAt: 1,
       updatedAt: 1,
@@ -410,6 +552,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -426,7 +571,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-env-path-1",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       environmentId: "env-unmanaged-001",
       createdAt: 1,
       updatedAt: 1,
@@ -456,6 +601,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -506,7 +654,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-env-1",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       environmentId: "env-worktree-001",
       createdAt: 1,
       updatedAt: 1,
@@ -535,6 +683,9 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",

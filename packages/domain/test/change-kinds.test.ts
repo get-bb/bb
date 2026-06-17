@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import {
-  APP_CHANGE_KINDS,
   changedMessageLenientSchema,
   changedMessageSchema,
   ENVIRONMENT_CHANGE_KINDS,
@@ -9,7 +8,6 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
-  WORKFLOW_RUN_CHANGE_KINDS,
   threadChangeMetadataSchema,
   type ChangedMessage,
   type ThreadChangeMetadata,
@@ -78,18 +76,6 @@ const maximalChangedMessages: ChangedMessage[] = [
     type: "changed",
     entity: "system",
     changes: [...SYSTEM_CHANGE_KINDS],
-  },
-  {
-    type: "changed",
-    entity: "app",
-    id: "app_1",
-    changes: [...APP_CHANGE_KINDS],
-  },
-  {
-    type: "changed",
-    entity: "workflow-run",
-    id: "wfr_1",
-    changes: [...WORKFLOW_RUN_CHANGE_KINDS],
   },
 ];
 

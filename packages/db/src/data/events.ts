@@ -79,6 +79,12 @@ export interface AcceptedDaemonEvent {
 export interface AppendDaemonEventsResult {
   acceptedEvents: AcceptedDaemonEvent[];
   insertedInputIndexes: number[];
+  /**
+   * Indexes of inputs dropped because they were orphan thread-state snapshots
+   * (token/context usage scoped to a turn with no stored turn/started). Surfaced
+   * so callers can log them; they are not inserted and trigger no effects.
+   */
+  skippedTurnUnstartedInputIndexes: number[];
 }
 
 export interface MissingStoredTurnStartedDetails {
@@ -245,22 +251,40 @@ function listStoredTurnStartedKeySet(
   );
 }
 
-function assertDaemonTurnStartedForInput(
+// Thread-state snapshots (token + context-window usage) are idempotent and are
+// re-emitted by providers when a session resumes. A native fork resumes the
+// parent's session, which reports the parent's last-turn usage scoped to a turn
+// the forked thread never started. Dropping such an orphan snapshot is correct
+// and avoids wedging the whole event batch (which would otherwise roll back the
+// fork's identity + turn events and retry forever). Turn-content events still
+// require a stored turn/started, so genuine ordering bugs are still caught.
+const ORPHAN_DROPPABLE_TURN_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
+  "thread/tokenUsage/updated",
+  "thread/contextWindowUsage/updated",
+]);
+
+type DaemonTurnStartDisposition = "append" | "skip-orphan-snapshot";
+
+function resolveDaemonTurnStartDisposition(
   input: AppendDaemonEventInput,
   startedTurnKeys: ReadonlySet<string>,
-): void {
+): DaemonTurnStartDisposition {
   if (input.type === "turn/started") {
-    return;
+    return "append";
   }
 
   const turnId = getThreadEventScopeTurnId(input.scope);
   if (turnId === undefined) {
-    return;
+    return "append";
   }
 
   const key = buildThreadTurnKey({ threadId: input.threadId, turnId });
   if (startedTurnKeys.has(key)) {
-    return;
+    return "append";
+  }
+
+  if (ORPHAN_DROPPABLE_TURN_EVENT_TYPES.has(input.type)) {
+    return "skip-orphan-snapshot";
   }
 
   throw new MissingStoredTurnStartedError({
@@ -304,6 +328,7 @@ export function appendDaemonEventsInTransaction(
     return {
       acceptedEvents: [],
       insertedInputIndexes: [],
+      skippedTurnUnstartedInputIndexes: [],
     };
   }
 
@@ -317,6 +342,7 @@ export function appendDaemonEventsInTransaction(
   );
   const acceptedEvents: AcceptedDaemonEvent[] = [];
   const insertedInputIndexes: number[] = [];
+  const skippedTurnUnstartedInputIndexes: number[] = [];
 
   const startedTurnKeys = listStoredTurnStartedKeySet(
     db,
@@ -324,7 +350,13 @@ export function appendDaemonEventsInTransaction(
   );
   const now = Date.now();
   for (const [index, input] of eventInputs.entries()) {
-    assertDaemonTurnStartedForInput(input, startedTurnKeys);
+    if (
+      resolveDaemonTurnStartDisposition(input, startedTurnKeys) ===
+      "skip-orphan-snapshot"
+    ) {
+      skippedTurnUnstartedInputIndexes.push(index);
+      continue;
+    }
 
     const sequence = nextSequencesByThreadId.get(input.threadId);
     if (sequence === undefined) {
@@ -375,6 +407,7 @@ export function appendDaemonEventsInTransaction(
   return {
     acceptedEvents,
     insertedInputIndexes,
+    skippedTurnUnstartedInputIndexes,
   };
 }
 

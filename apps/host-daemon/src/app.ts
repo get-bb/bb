@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -7,18 +6,12 @@ import {
   type EventSink,
 } from "./event-sink.js";
 import {
-  createWorkflowEventBuffer,
-  WorkflowEventBufferDisposedError,
-  type WorkflowEventBuffer,
-} from "./workflow-event-buffer.js";
-import {
   InteractiveRequestRegistry,
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 import {
   defaultListModels,
-  type ReplayTaskRegistry,
   shutdownDefaultListModelsRuntimes,
 } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
@@ -27,38 +20,28 @@ import type { HostDaemonLogger } from "./logger.js";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import {
   RuntimeManager,
+  type RuntimeManagerReapIdleProviderSessionsArgs,
+  type RuntimeManagerReapIdleProviderSessionsResult,
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
+import { WatchManager } from "./watch-manager.js";
 import {
   TerminalManager,
   type TerminalManagerOptions,
 } from "./terminals/terminal-manager.js";
-import { createReplayCaptureService } from "@bb/replay-capture/writer";
-import { createServerClient } from "./server-client.js";
-import { AppDataChangeReporter } from "./app-data-change-reporter.js";
-import {
-  ensureAppDataRootPath,
-  ensureAppsRootPath,
-  listApplicationDataTargetsFromRoot,
-} from "./app-data-files.js";
+import { createServerClient, ServerResponseError } from "./server-client.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
 } from "./injected-skills.js";
 import {
   ServerConnection,
+  type HandleServerSessionInvalidatedArgs,
+  type ServerSessionInvalidationSource,
   type CreateReconnectingWebSocket,
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
-import { prepareWorkflowAgentShellEnv } from "./runtime-shell-env.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
-import { DEFAULT_WORKFLOW_TURN_STALL_TIMEOUT_MS } from "./workflow-agent-executor.js";
-import {
-  DEFAULT_WORKFLOW_CANCEL_ESCALATION_GRACE_MS,
-  DEFAULT_WORKFLOW_WORKTREE_SETUP_TIMEOUT_MS,
-  WORKFLOW_STALE_RUNNER_SWEEP_INTERVAL_MS,
-  WorkflowRunManager,
-} from "./workflow-run-manager.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import {
   type HostType,
@@ -72,6 +55,35 @@ interface SessionState {
 }
 
 const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
+const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
+const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
+
+interface IdleProviderSessionReaperTimer {
+  clear(): void;
+  unref(): void;
+}
+
+type IdleProviderSessionReaperIntervalFn = (
+  callback: () => void,
+  intervalMs: number,
+) => IdleProviderSessionReaperTimer;
+
+interface IdleProviderSessionReaper {
+  stop(): void;
+}
+
+interface IdleProviderSessionReaperRuntimeManager {
+  reapIdleProviderSessions(
+    args: RuntimeManagerReapIdleProviderSessionsArgs,
+  ): Promise<RuntimeManagerReapIdleProviderSessionsResult>;
+}
+
+interface StartIdleProviderSessionReaperArgs {
+  logger: HostDaemonLogger;
+  nowMs: () => number;
+  runtimeManager: IdleProviderSessionReaperRuntimeManager;
+  setIntervalFn: IdleProviderSessionReaperIntervalFn;
+}
 
 export interface CreateHostDaemonAppOptions {
   dataDir: string;
@@ -82,13 +94,8 @@ export interface CreateHostDaemonAppOptions {
   hostId: string;
   hostName: string;
   instanceId: string;
-  /** Cap on live workflow provider processes (the worktree-runtime token
-   *  gate). The entrypoint fills it from
-   *  BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES (default 8). */
-  maxLiveWorkflowProviderProcesses: number;
   appUrl?: string;
   devAppPort?: number;
-  devReplayCapture?: boolean;
   logger: HostDaemonLogger;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
@@ -105,11 +112,10 @@ export interface CreateHostDaemonAppOptions {
 export interface HostDaemonApp {
   daemon: HostDaemon;
   eventSink: EventSink;
-  workflowEventBuffer: WorkflowEventBuffer;
   localApi: LocalApiServer | null;
   runtimeManager: RuntimeManager;
+  watchManager: WatchManager;
   terminalManager: TerminalManager;
-  workflowRunManager: WorkflowRunManager;
   router: CommandRouter;
   connection: ServerConnection;
 }
@@ -118,6 +124,68 @@ interface PendingInteractiveInterruptRequest {
   providerId: string;
   reason: string;
   threadIds: readonly string[];
+}
+
+export function startIdleProviderSessionReaper(
+  args: StartIdleProviderSessionReaperArgs,
+): IdleProviderSessionReaper {
+  let running = false;
+  const timer = args.setIntervalFn(() => {
+    if (running) {
+      return;
+    }
+    running = true;
+    void args.runtimeManager
+      .reapIdleProviderSessions({
+        idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
+        nowMs: args.nowMs(),
+      })
+      .then((result) => {
+        if (result.reapedSessions.length === 0) {
+          return;
+        }
+        args.logger.info(
+          {
+            count: result.reapedSessions.length,
+            sessions: result.reapedSessions.map((session) => ({
+              environmentId: session.environmentId,
+              idleForMs: session.idleForMs,
+              providerId: session.providerId,
+              threadId: session.threadId,
+            })),
+          },
+          "Reaped idle provider sessions",
+        );
+      })
+      .catch((error) => {
+        args.logger.warn(
+          {
+            ...runtimeErrorLogFields(error),
+          },
+          "Idle provider session reaper failed",
+        );
+      })
+      .finally(() => {
+        running = false;
+      });
+  }, IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS);
+  timer.unref();
+  return {
+    stop() {
+      timer.clear();
+    },
+  };
+}
+
+interface SessionRequestArgs<TResult> {
+  request: () => Promise<TResult>;
+  source: ServerSessionInvalidationSource;
+}
+
+interface MaybeInvalidateSessionArgs {
+  error: unknown;
+  observedSessionId: string | null;
+  source: ServerSessionInvalidationSource;
 }
 
 export async function createHostDaemonApp(
@@ -129,8 +197,6 @@ export async function createHostDaemonApp(
       ? { env: { BB_THREAD_STORAGE: options.threadStorageRootPath } }
       : {},
   );
-  const appsRootPath = await ensureAppsRootPath(options.dataDir);
-  const appDataRootPath = await ensureAppDataRootPath(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
@@ -147,10 +213,46 @@ export async function createHostDaemonApp(
     PendingInteractiveInterruptRequest
   >();
   let runtimeManager: RuntimeManager;
+  let watchManager: WatchManager;
   let flushPendingInteractiveInterruptsPromise: Promise<void> | null = null;
   let interactiveInterruptRetryTimeout: ReturnType<typeof setTimeout> | null =
     null;
   let eventSink: EventSink;
+  let handleServerSessionInvalidated = (
+    _args: HandleServerSessionInvalidatedArgs,
+  ): void => undefined;
+
+  function maybeInvalidateServerSession(args: MaybeInvalidateSessionArgs): void {
+    if (
+      args.observedSessionId === null ||
+      !(args.error instanceof ServerResponseError) ||
+      args.error.code !== "inactive_session"
+    ) {
+      return;
+    }
+
+    handleServerSessionInvalidated({
+      code: "inactive_session",
+      observedSessionId: args.observedSessionId,
+      source: args.source,
+    });
+  }
+
+  async function runSessionRequest<TResult>(
+    args: SessionRequestArgs<TResult>,
+  ): Promise<TResult> {
+    const observedSessionId = sessionState.value;
+    try {
+      return await args.request();
+    } catch (error) {
+      maybeInvalidateServerSession({
+        error,
+        observedSessionId,
+        source: args.source,
+      });
+      throw error;
+    }
+  }
 
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
     // Interactive registration creates server-owned turn-scoped timeline state,
@@ -178,18 +280,6 @@ export async function createHostDaemonApp(
       flushThreadEventsBeforeInteractiveRegistration,
     fetchFn: options.fetchFn,
   });
-
-  const appDataChangeReporter = new AppDataChangeReporter({
-    logger: options.logger,
-    postAppDataChange: (payload) => serverClient.postAppDataChange(payload),
-    postAppDataResync: (payload) => serverClient.postAppDataResync(payload),
-  });
-
-  async function refreshTrackedApplicationDataTargets(): Promise<void> {
-    const targets = await listApplicationDataTargetsFromRoot({ appsRootPath });
-    runtimeManager.replaceTrackedApplicationDataTargets(targets);
-    await appDataChangeReporter.replaceTrackedApplications({ targets });
-  }
 
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
@@ -240,7 +330,10 @@ export async function createHostDaemonApp(
 
         const [key, request] = nextEntry;
         try {
-          await serverClient.interruptInteractiveRequests(request);
+          await runSessionRequest({
+            source: "interruptInteractiveRequests",
+            request: () => serverClient.interruptInteractiveRequests(request),
+          });
           pendingInteractiveInterrupts.delete(key);
         } catch (error) {
           options.logger.warn(
@@ -277,30 +370,19 @@ export async function createHostDaemonApp(
   eventSink = createEventSink({
     isSessionOpen: () => sessionState.value !== null,
     logger: options.logger,
-    postEvents: (events) => serverClient.postEvents(events),
-  });
-  const workflowEventBuffer = createWorkflowEventBuffer({
-    dataDir: options.dataDir,
-    logger: options.logger,
-    postEvents: (events) => serverClient.postWorkflowRunEvents(events),
-  });
-  const replayTasks: ReplayTaskRegistry = new Map();
-  async function abortReplayTasks(): Promise<void> {
-    const tasks = [...replayTasks.values()];
-    for (const task of tasks) {
-      task.abort.abort();
-    }
-    await Promise.allSettled(tasks.map((task) => task.done));
-  }
-  const replayCapture = createReplayCaptureService({
-    dataDir: options.dataDir,
-    enabled: options.devReplayCapture ?? false,
-    logger: options.logger,
+    postEvents: (events) =>
+      runSessionRequest({
+        source: "postEvents",
+        request: () => serverClient.postEvents(events),
+      }),
   });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
     registerRequest: (request) =>
-      serverClient.registerInteractiveRequest(request),
+      runSessionRequest({
+        source: "registerInteractiveRequest",
+        request: () => serverClient.registerInteractiveRequest(request),
+      }),
     onRegistrationFailure: ({ error, request }) => {
       enqueueInteractiveInterrupt({
         providerId: request.providerId,
@@ -311,108 +393,16 @@ export async function createHostDaemonApp(
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
-  runtimeManager = new RuntimeManager({
-    bridgeBundleDir: options.bridgeBundleDir,
-    createRuntime: options.createRuntime,
+  watchManager = new WatchManager({
     dataDir: options.dataDir,
-    dataDirSkillsRootPath,
     hostWatcher: options.hostWatcher,
-    logger: options.logger,
-    shellEnv: options.runtimeShellEnv,
-    appsRootPath,
-    appDataRootPath,
-    onCapture: (entry) => {
-      replayCapture?.recordRuntimeCaptureEntry(entry);
-    },
-    onEvent: ({ environmentId, event }) => {
-      try {
-        eventSink.emit({
-          threadId: event.threadId,
-          event,
-        });
-      } catch (error) {
-        if (error instanceof EventSinkDisposedError) {
-          options.logger.warn(
-            {
-              environmentId,
-              eventType: event.type,
-              threadId: event.threadId,
-            },
-            "Ignoring runtime event received after event sink disposal",
-          );
-          return;
-        }
-        throw error;
-      }
-      replayCapture?.recordThreadEvent({
-        environmentId,
-        threadId: event.threadId,
-        event,
-      });
-    },
+    threadStorageRootPath,
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
         type: "environment-change",
         environmentId,
         change: "thread-storage-changed",
       });
-    },
-    onApplicationStorageTargetsChanged: () => {
-      void refreshTrackedApplicationDataTargets()
-        .then(() => {
-          sendServerMessage({
-            type: "application-storage-changed",
-          });
-        })
-        .catch((error) => {
-          options.logger.warn(
-            {
-              appsRootPath,
-              ...runtimeErrorLogFields(error),
-            },
-            "Failed to refresh tracked app data targets",
-          );
-        });
-    },
-    onApplicationDataChanged: (change) => {
-      void appDataChangeReporter.observe(change);
-    },
-    onApplicationDataResync: (change) => {
-      void appDataChangeReporter.requestResync(change);
-    },
-    onApplicationContentChanged: ({ applicationId }) => {
-      sendServerMessage({
-        type: "application-content-changed",
-        applicationId,
-      });
-    },
-    onInjectedSkillsChanged: (change) => {
-      options.logger.debug(
-        {
-          applicationId: change.applicationId,
-          changedPaths: change.changedPaths,
-          sourceType: change.sourceType,
-        },
-        "Injected skills changed; future runtime launches will rescan",
-      );
-    },
-    onApplicationStorageWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Application storage watch unavailable; retrying in background",
-      );
-    },
-    onDataDirSkillsWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Data-dir skills watch unavailable; retrying in background",
-      );
     },
     onThreadStorageWatchError: ({ error }) => {
       options.logger.warn(
@@ -442,12 +432,72 @@ export async function createHostDaemonApp(
         "Workspace status watch unavailable; retrying in background",
       );
     },
+  });
+  runtimeManager = new RuntimeManager({
+    bridgeBundleDir: options.bridgeBundleDir,
+    createRuntime: options.createRuntime,
+    dataDir: options.dataDir,
+    dataDirSkillsRootPath,
+    hostWatcher: options.hostWatcher,
+    logger: options.logger,
+    shellEnv: options.runtimeShellEnv,
+    onEvent: ({ environmentId, event }) => {
+      try {
+        eventSink.emit({
+          threadId: event.threadId,
+          event,
+        });
+      } catch (error) {
+        if (error instanceof EventSinkDisposedError) {
+          options.logger.warn(
+            {
+              environmentId,
+              eventType: event.type,
+              threadId: event.threadId,
+            },
+            "Ignoring runtime event received after event sink disposal",
+          );
+          return;
+        }
+        throw error;
+      }
+    },
+    onInjectedSkillsChanged: (change) => {
+      options.logger.debug(
+        {
+          changedPaths: change.changedPaths,
+          sourceType: change.sourceType,
+        },
+        "Injected skills changed; future runtime launches will rescan",
+      );
+    },
+    onDataDirSkillsWatchError: ({ error }) => {
+      options.logger.warn(
+        {
+          rootPath: error.rootPath,
+          watchError: error.message,
+        },
+        "Data-dir skills watch unavailable",
+      );
+    },
+    onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
+      for (const change of changeKinds) {
+        sendServerMessage({
+          type: "environment-change",
+          environmentId,
+          change,
+        });
+      }
+    },
     onToolCall:
       options.onToolCall ??
       (async (request) => {
         try {
           await flushThreadEventsBeforeToolCall();
-          return await serverClient.callTool(request);
+          return await runSessionRequest({
+            source: "callTool",
+            request: () => serverClient.callTool(request),
+          });
         } catch (error) {
           options.logger.error(
             {
@@ -508,11 +558,12 @@ export async function createHostDaemonApp(
       }
     },
     onProcessExit: (info) => {
+      const threadIds = info.threads.map((thread) => thread.threadId);
       if (!info.expected && info.stderr) {
         options.logger.warn(
           {
             providerId: info.providerId,
-            threadIds: info.threadIds,
+            threadIds,
             code: info.code,
             signal: info.signal,
             stderr: info.stderr,
@@ -520,23 +571,39 @@ export async function createHostDaemonApp(
           "Unexpected provider process exited with stderr",
         );
       }
-      if (info.threadIds.length === 0) {
+      if (threadIds.length === 0) {
         return;
       }
       const reason = `Provider "${info.providerId}" exited while awaiting user interaction`;
       interactiveRequestRegistry.interruptThreads({
         providerId: info.providerId,
-        threadIds: info.threadIds,
+        threadIds,
         reason,
       });
 
       enqueueInteractiveInterrupt({
         providerId: info.providerId,
-        threadIds: info.threadIds,
+        threadIds,
         reason,
       });
     },
     threadStorageRootPath,
+  });
+  const idleProviderSessionReaper = startIdleProviderSessionReaper({
+    logger: options.logger,
+    nowMs: Date.now,
+    runtimeManager,
+    setIntervalFn: (callback, intervalMs) => {
+      const timer = setInterval(callback, intervalMs);
+      return {
+        clear() {
+          clearInterval(timer);
+        },
+        unref() {
+          timer.unref();
+        },
+      };
+    },
   });
   let sendTerminalMessage: TerminalManagerOptions["sendMessage"] = (message) =>
     sendServerMessage(message);
@@ -547,63 +614,15 @@ export async function createHostDaemonApp(
     sendMessage: (message) => sendTerminalMessage(message),
   });
 
-  const workflowRunManager = new WorkflowRunManager({
-    dataDir: options.dataDir,
-    logger: options.logger,
-    workflowAgentShellEnv: await prepareWorkflowAgentShellEnv({
-      appsRootPath,
-      shimDirectoryPath: join(options.dataDir, "workflow-agent-shim"),
-    }),
-    bridgeBundleDir: options.bridgeBundleDir,
-    createRuntime: options.createRuntime,
-    onRunEvent: ({ runId, event }) => {
-      try {
-        workflowEventBuffer.push({ runId, event });
-      } catch (error) {
-        if (error instanceof WorkflowEventBufferDisposedError) {
-          options.logger.warn(
-            { runId, eventType: event.type },
-            "Ignoring workflow run event received after spool disposal",
-          );
-          return;
-        }
-        throw error;
-      }
-    },
-    maxLiveProviderProcesses: options.maxLiveWorkflowProviderProcesses,
-    worktreeSetupTimeoutMs: DEFAULT_WORKFLOW_WORKTREE_SETUP_TIMEOUT_MS,
-    turnStallTimeoutMs: DEFAULT_WORKFLOW_TURN_STALL_TIMEOUT_MS,
-    cancelEscalationGraceMs: DEFAULT_WORKFLOW_CANCEL_ESCALATION_GRACE_MS,
-  });
-  // Boot reap is silent: the server's session-open reconciliation interrupts
-  // (and keeps resumable) every unreported run from a previous instance.
-  await workflowRunManager.reapStaleRunners({
-    spoolSyntheticTerminalEvents: false,
-  });
-  // The in-life sweep DOES spool synthetic run/failed settles: a runner that
-  // outlived its daemon, got reported via its fresh heartbeat, and died later
-  // has no handle, so nothing else ever observes its exit while the session
-  // stays healthy — the run would dangle `running` until the next restart.
-  const staleRunnerSweep = setInterval(() => {
-    workflowRunManager
-      .reapStaleRunners({ spoolSyntheticTerminalEvents: true })
-      .catch((error) => {
-        options.logger.warn(
-          { err: error },
-          "Workflow stale-runner sweep failed",
-        );
-      });
-  }, WORKFLOW_STALE_RUNNER_SWEEP_INTERVAL_MS);
-  staleRunnerSweep.unref();
-
   const router = new CommandRouter({
     dataDir: options.dataDir,
-    fetchProjectAttachment: (args) => serverClient.fetchProjectAttachment(args),
+    fetchProjectAttachment: (args) =>
+      runSessionRequest({
+        source: "fetchProjectAttachment",
+        request: () => serverClient.fetchProjectAttachment(args),
+      }),
     runtimeManager,
     terminalManager,
-    workflowRunManager,
-    fetchWorkflowRunJournal: (args) =>
-      serverClient.fetchWorkflowRunJournal(args),
     listModels: (args) =>
       defaultListModels(args, {
         bridgeBundleDir: options.bridgeBundleDir,
@@ -611,13 +630,8 @@ export async function createHostDaemonApp(
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
-    replayTasks,
     threadStorageRootPath,
     logger: options.logger,
-    recordReplayCaptureThreadMetadata: (metadata) =>
-      replayCapture?.recordThreadMetadata(metadata),
-    recordReplayCaptureTurnRequest: (input) =>
-      replayCapture?.recordTurnRequest(input),
     eventSink: {
       emit: (event) => eventSink.emit(event),
       flush: () => eventSink.flush(),
@@ -636,24 +650,22 @@ export async function createHostDaemonApp(
     serverClient,
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
-    getActiveWorkflowRunIds: async () => {
-      try {
-        return await workflowRunManager.listActiveWorkflowRunIds();
-      } catch (error) {
-        // Reporting [] interrupts the host's running runs server-side, but
-        // they revive on the next successful report (bucket (c)); failing the
-        // session open would block reconnection entirely.
-        options.logger.error(
-          { err: error },
-          "Failed to list active workflow runs for session open; reporting none",
-        );
-        return [];
-      }
-    },
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
+      if (message.command.type === "environment.destroy") {
+        await watchManager.removeEnvironmentWorkspaceWatch(
+          message.command.environmentId,
+        );
+      }
       const response = await router.handleOnlineRpcRequest(message);
       sendServerMessage(response);
+    },
+    onWatchSetReplace: async (message) => {
+      await watchManager.replaceWatchSet({
+        generation: message.generation,
+        workspaceTargets: message.workspaceTargets,
+        threadStorageTargets: message.threadStorageTargets,
+      });
     },
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
@@ -672,15 +684,7 @@ export async function createHostDaemonApp(
           "Retired locally loaded environments after session reconciliation",
         );
       }
-      runtimeManager.replaceTrackedThreadStorageTargets(
-        session.trackedThreadTargets,
-      );
-      runtimeManager.replaceTrackedApplicationDataTargets(
-        session.trackedApplicationDataTargets,
-      );
-      void appDataChangeReporter.replaceTrackedApplications({
-        targets: session.trackedApplicationDataTargets,
-      });
+      await watchManager.replaceAuthoritativeWatchSet(session.watchSet);
       void eventSink.flush().catch((error) => {
         options.logger.warn(
           {
@@ -688,15 +692,6 @@ export async function createHostDaemonApp(
             ...runtimeErrorLogFields(error),
           },
           "Failed to flush pending daemon events after session opened",
-        );
-      });
-      void workflowEventBuffer.flush().catch((error) => {
-        options.logger.warn(
-          {
-            sessionId: session.sessionId,
-            ...runtimeErrorLogFields(error),
-          },
-          "Failed to flush buffered workflow run events after session opened",
         );
       });
       void flushPendingInteractiveInterrupts();
@@ -709,6 +704,8 @@ export async function createHostDaemonApp(
     },
   });
   sendServerMessage = (message) => connection.sendMessage(message);
+  handleServerSessionInvalidated = (args) =>
+    connection.handleSessionInvalidated(args);
 
   const localApi = options.localApiConfig
     ? await startLocalApiServer({
@@ -735,25 +732,18 @@ export async function createHostDaemonApp(
     logger: options.logger,
     releaseLock: options.releaseLock,
     flushEvents: async () => {
-      await abortReplayTasks();
       await eventSink.flush();
-      await workflowEventBuffer.flush();
     },
     shutdownRuntimes: async () => {
+      idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
-      clearInterval(staleRunnerSweep);
       await localApi?.close();
+      await watchManager.shutdown();
       await terminalManager.shutdownAll();
-      await workflowRunManager.shutdown();
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
-      // After manager shutdown so the runners' synthetic terminal events are
-      // spooled (and flushed when the server is reachable) before disposal.
-      await workflowEventBuffer.flush();
-      await workflowEventBuffer.dispose();
       await shutdownDefaultListModelsRuntimes();
-      await replayCapture?.drain();
       await connection.shutdown();
     },
     onStart: async () => {
@@ -771,11 +761,10 @@ export async function createHostDaemonApp(
   return {
     daemon,
     eventSink,
-    workflowEventBuffer,
     localApi,
     runtimeManager,
+    watchManager,
     terminalManager,
-    workflowRunManager,
     router,
     connection,
   };

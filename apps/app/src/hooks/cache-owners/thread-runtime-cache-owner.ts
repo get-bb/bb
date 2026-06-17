@@ -8,6 +8,7 @@ import type {
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
+  ThreadResponse,
   TimelineConversationAttachments,
   TimelineRow,
 } from "@bb/server-contract";
@@ -62,7 +63,7 @@ interface BeginCreateThreadTransactionArgs {
 interface CreateThreadSuccessArgs {
   queryClient: QueryClient;
   request: AppCreateThreadRequest;
-  thread: ThreadWithRuntime;
+  thread: ThreadResponse;
 }
 
 interface SendThreadMessageTransactionArgs {
@@ -151,7 +152,7 @@ export interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
   optimisticRowId: string;
-  previousThread: ThreadWithRuntime | undefined;
+  previousThread: ThreadResponse | undefined;
 }
 
 export interface SendThreadMessageQueuedTransaction {
@@ -167,7 +168,7 @@ export interface ReorderQueuedMessageTransaction {
 }
 
 export interface StopThreadTransaction {
-  previousThread: ThreadWithRuntime | undefined;
+  previousThread: ThreadResponse | undefined;
   previousThreadLists: ThreadListSnapshot;
 }
 
@@ -266,7 +267,7 @@ function buildOptimisticUserMessageRow({
   const text = input
     .filter(
       (entry): entry is Extract<typeof entry, { type: "text" }> =>
-        entry.type === "text",
+        entry.type === "text" && entry.visibility !== "agent-only",
     )
     .map((entry) => entry.text)
     .join("\n\n");
@@ -313,7 +314,8 @@ function applyOptimisticStopRequest({
 }: ApplyOptimisticStopRequestArgs): void {
   updateCachedThread(queryClient, threadId, (thread) => ({
     ...thread,
-    stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+    status: "stopping",
+    runtime: { ...thread.runtime, displayStatus: "stopping" },
     updatedAt: Math.max(thread.updatedAt, requestedAt),
   }));
 
@@ -324,7 +326,8 @@ function applyOptimisticStopRequest({
         thread.id === threadId
           ? {
               ...thread,
-              stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+              status: "stopping",
+              runtime: { ...thread.runtime, displayStatus: "stopping" },
               updatedAt: Math.max(thread.updatedAt, requestedAt),
             }
           : thread,
@@ -343,7 +346,7 @@ export function applyCreateThreadResult({
   request,
   thread,
 }: CreateThreadSuccessArgs): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(thread.id),
     thread,
   );
@@ -374,7 +377,7 @@ export async function beginSendThreadMessageTransaction({
 }: SendThreadMessageTransactionArgs): Promise<SendThreadMessageTransaction> {
   await queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) });
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(request.id),
   );
   if (requestWillQueueForActiveThread(request, previousThread)) {
@@ -447,7 +450,7 @@ export function rollbackSendThreadMessageTransaction({
     return;
   }
 
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(request.id),
     transaction.previousThread,
   );
@@ -579,7 +582,7 @@ export async function beginStopThreadTransaction({
     queryClient.cancelQueries({ queryKey: threadsQueryKey() }),
   ]);
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(threadId),
   );
   const previousThreadLists = snapshotThreadLists(queryClient);

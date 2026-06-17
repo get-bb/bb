@@ -32,7 +32,6 @@ import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/Dyn
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
-import type { TurnStartParams } from "./generated/codex-app-server/schema/v2/TurnStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import { parseModelsResponse } from "./models.js";
@@ -79,6 +78,29 @@ interface CodexThreadPermissionSettings {
   approvalPolicy: AskForApproval;
   sandbox: CodexSandboxMode;
 }
+
+type BbThreadStartParams = ThreadStartParams & {
+  experimentalRawEvents?: boolean;
+  persistExtendedHistory?: boolean;
+};
+
+type BbThreadResumeParams = ThreadResumeParams & {
+  persistExtendedHistory?: boolean;
+};
+
+type BbThreadForkParams = {
+  threadId: string;
+  model?: string | null;
+  serviceTier?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: CodexSandboxMode | null;
+  config?: { [key in string]?: JsonValue } | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
+  dynamicTools?: DynamicToolSpec[];
+  persistExtendedHistory?: boolean;
+};
 
 interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
@@ -184,7 +206,7 @@ type GitHeadState =
 
 type CodexInstructionCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 interface CodexInstructionOverrides {
@@ -629,7 +651,6 @@ function toCodexPermissionSettings(
 
 export type CodexEvent = CodexServerNotification;
 
-
 function toCodexServiceTier(tier: ServiceTier | undefined): "fast" | undefined {
   return tier === "fast" ? "fast" : undefined;
 }
@@ -705,7 +726,7 @@ function buildCodexConfig(
 
 type CodexDynamicToolCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 function toCodexDynamicTools(
@@ -1320,8 +1341,9 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
-    // One Codex app-server process is shared by all loaded threads in an
-    // environment, so thread stops must remain turn-scoped.
+    // Codex app-server connections are owned by the runtime process manager.
+    // BB runs live Codex threads on thread-scoped app-server processes, while
+    // provider-only probes can still use a provider-scoped maintenance process.
     process: {
       command: opts?.processCommand ?? "codex",
       args: opts?.processArgs ?? ["app-server"],
@@ -1357,14 +1379,9 @@ export function createCodexProviderAdapter(
           };
         }
         case "thread/start": {
-          if (command.outputSchema !== undefined) {
-            throw new Error(
-              `Provider "${providerInfo.id}" does not support session-level output schemas; pass outputSchema on turn/start instead.`,
-            );
-          }
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadStartParams = {
+          const params: BbThreadStartParams = {
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
@@ -1388,7 +1405,7 @@ export function createCodexProviderAdapter(
         case "thread/resume": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadResumeParams = {
+          const params: BbThreadResumeParams = {
             threadId: command.providerThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
@@ -1408,6 +1425,29 @@ export function createCodexProviderAdapter(
             params,
           };
         }
+        case "thread/fork": {
+          const dynamicTools = toCodexDynamicTools(command.dynamicTools);
+          const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
+          const params: BbThreadForkParams = {
+            threadId: command.sourceProviderThreadId,
+            approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            sandbox: preparedGitRoots.permissionSettings.sandbox,
+            cwd: command.cwd,
+            ...resolveCodexInstructionOverrides(command),
+            model: command.options?.model ?? undefined,
+            serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            config: preparedGitRoots.config ?? undefined,
+            persistExtendedHistory: false,
+            ...(dynamicTools && dynamicTools.length > 0
+              ? { dynamicTools }
+              : {}),
+          };
+          return {
+            kind: "request",
+            method: "thread/fork",
+            params,
+          };
+        }
         case "turn/start": {
           const writableRoots =
             workspaceWriteGitWritableRootsByThreadId.get(command.threadId) ??
@@ -1417,21 +1457,17 @@ export function createCodexProviderAdapter(
             gitWritableRoots: writableRoots,
             options: command.options,
           });
-          const params: TurnStartParams = {
-            threadId: command.providerThreadId,
-            input: toCodexUserInput(command.input),
-            approvalPolicy: permissionSettings.approvalPolicy,
-            sandboxPolicy: permissionSettings.sandboxPolicy,
-            model: command.options?.model ?? undefined,
-            serviceTier: toCodexServiceTier(command.options?.serviceTier),
-            ...(command.outputSchema !== undefined
-              ? { outputSchema: command.outputSchema }
-              : {}),
-          };
           return {
             kind: "request",
             method: "turn/start",
-            params,
+            params: {
+              threadId: command.providerThreadId,
+              input: toCodexUserInput(command.input),
+              approvalPolicy: permissionSettings.approvalPolicy,
+              sandboxPolicy: permissionSettings.sandboxPolicy,
+              model: command.options?.model ?? undefined,
+              serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            },
           };
         }
         case "turn/steer":
@@ -1515,7 +1551,9 @@ export function createCodexProviderAdapter(
 
     translateAcceptedCommand({ command, providerThreadId }) {
       if (
-        (command.type === "thread/start" || command.type === "thread/resume") &&
+        (command.type === "thread/start" ||
+          command.type === "thread/resume" ||
+          command.type === "thread/fork") &&
         providerThreadId
       ) {
         activateThreadGitWritableRoots({

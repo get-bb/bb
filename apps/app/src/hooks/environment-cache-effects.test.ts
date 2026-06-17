@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  environmentDiffFilesQueryKey,
+  environmentDiffPatchQueryKey,
   environmentWorkStatusQueryKey,
   systemExecutionOptionsQueryKey,
   threadComposerBootstrapQueryKey,
@@ -106,5 +108,65 @@ describe("environment cache effects", () => {
       pendingInteractions: [],
       promptHistory: [],
     });
+  });
+
+  it("removes both the diff TOC and the observer-less patch cache for the torn-down environment", () => {
+    const queryClient = createCacheEffectQueryClient();
+    const removedDiffFilesKey = environmentDiffFilesQueryKey(
+      "env-removed",
+      "all",
+      "main",
+    );
+    const removedDiffPatchKey = environmentDiffPatchQueryKey(
+      "env-removed",
+      "all",
+      "main",
+      "file.ts",
+    );
+    const retainedDiffFilesKey = environmentDiffFilesQueryKey(
+      "env-retained",
+      "all",
+      "main",
+    );
+    const retainedDiffPatchKey = environmentDiffPatchQueryKey(
+      "env-retained",
+      "all",
+      "main",
+      "file.ts",
+    );
+    queryClient.setQueryData(removedDiffFilesKey, {
+      outcome: "available",
+      files: [],
+      shortstat: "1 file changed",
+      mergeBaseRef: "base-ref",
+    });
+    // Seeded imperatively (no observer) just like production.
+    queryClient.setQueryData(removedDiffPatchKey, {
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
+    });
+    queryClient.setQueryData(retainedDiffFilesKey, {
+      outcome: "available",
+      files: [],
+      shortstat: "1 file changed",
+      mergeBaseRef: "base-ref",
+    });
+    queryClient.setQueryData(retainedDiffPatchKey, {
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
+    });
+
+    removeEnvironmentScopedQueries({
+      environmentId: "env-removed",
+      queryClient,
+    });
+
+    expect(queryClient.getQueryData(removedDiffFilesKey)).toBeUndefined();
+    expect(queryClient.getQueryData(removedDiffPatchKey)).toBeUndefined();
+    // A different environment's diff caches are untouched.
+    expect(queryClient.getQueryData(retainedDiffFilesKey)).toBeDefined();
+    expect(queryClient.getQueryData(retainedDiffPatchKey)).toBeDefined();
   });
 });

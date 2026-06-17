@@ -30,6 +30,20 @@ export const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<
 export const SIDEBAR_UNREAD_DOT_CLASS =
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
+// Caret box: the disclosure chevron, and the equal-width spacer leaf rows use
+// so their titles stay in the caret rows' column.
+export const SIDEBAR_CARET_BOX_CLASS = "size-5";
+
+// Flex wrapper for a disclosure header's leading column (caret → glyph →
+// label), shared by the project header and the worktree group header. Call
+// sites add row-specific extras (positioning, text tone) via cn().
+export const SIDEBAR_LEADING_CLUSTER_CLASS =
+  "flex min-w-0 flex-1 items-center gap-1.5";
+
+// Identity-glyph slot: the folder / worktree icon box on a disclosure header.
+export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
+  "inline-flex w-4 shrink-0 items-center justify-center";
+
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;
 const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
@@ -64,4 +78,4 @@ export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
  * covers it cleanly.
  */
 export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
-  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:content-[''] max-md:pointer-coarse:before:left-5";
+  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-40 before:content-[''] max-md:pointer-coarse:before:left-5";

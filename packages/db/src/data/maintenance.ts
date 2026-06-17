@@ -24,7 +24,7 @@ export const DATABASE_INCREMENTAL_VACUUM_MAX_PAGES = 20_000;
  */
 export const DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS = 100;
 
-const ACTIVE_THREAD_STATUSES = ["active", "provisioning"] as const;
+const ACTIVE_THREAD_STATUSES = ["active", "starting"] as const;
 const ACTIVE_PENDING_INTERACTION_STATUSES = ["pending", "resolving"] as const;
 
 interface CountRow {
@@ -240,7 +240,7 @@ export function getDatabaseMaintenanceActivity(
     db
       .select({ value: count() })
       .from(threads)
-      .where(eq(threads.status, "provisioning"))
+      .where(eq(threads.status, "starting"))
       .get(),
   );
   const activePendingInteractionCount = countValue(

@@ -142,7 +142,7 @@ function runInProcessQueue<T>(
   let started = false;
   let aborted = false;
   let timedOut = false;
-  let timeout: NodeJS.Timeout | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   let removeAbortListener: (() => void) | undefined;
   const next = previous
     .catch(() => undefined)

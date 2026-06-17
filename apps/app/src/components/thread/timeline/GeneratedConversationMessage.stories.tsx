@@ -149,57 +149,6 @@ const SYSTEM_ROWS: readonly SystemRowFixture[] = [
     systemMessageSubject: { kind: "thread-batch", count: 3 },
     text: "Worker 1 completed: migration landed.\nWorker 2 was interrupted: stopped before review.\nWorker 3 completed: docs updated.",
   },
-  {
-    label: "schedule-due",
-    hint: "scheduled wakeup — no subject, no link",
-    systemMessageKind: "schedule-due",
-    systemMessageSubject: null,
-    text: "Review open PRs and summarize the merge-ready ones for the team.",
-  },
-  {
-    label: "workflow-completed",
-    hint: "workflow run settled — run name emphasized, unlinked",
-    systemMessageKind: "workflow-completed",
-    systemMessageSubject: {
-      kind: "workflow",
-      name: "Nightly audit",
-      runId: "wf_77",
-    },
-    text: "Workflow run wf_77 (Nightly audit) completed. Fetch the result with bb workflow show wf_77.",
-  },
-  {
-    label: "workflow-failed",
-    hint: "workflow run failed",
-    systemMessageKind: "workflow-failed",
-    systemMessageSubject: {
-      kind: "workflow",
-      name: "Nightly audit",
-      runId: "wf_77",
-    },
-    text: "Workflow run wf_77 (Nightly audit) failed: script_invalid.",
-  },
-  {
-    label: "workflow-paused",
-    hint: "workflow run paused, resumable",
-    systemMessageKind: "workflow-paused",
-    systemMessageSubject: {
-      kind: "workflow",
-      name: "Nightly audit",
-      runId: "wf_77",
-    },
-    text: "Workflow run wf_77 (Nightly audit) was paused: host daemon unavailable. Resume it from the run page or with bb workflow resume wf_77.",
-  },
-  {
-    label: "workflow-cancelled",
-    hint: "workflow run cancelled",
-    systemMessageKind: "workflow-cancelled",
-    systemMessageSubject: {
-      kind: "workflow",
-      name: "Nightly audit",
-      runId: "wf_77",
-    },
-    text: "Workflow run wf_77 (Nightly audit) was cancelled.",
-  },
 ];
 
 export function Overview() {
@@ -211,8 +160,10 @@ export function Overview() {
             <ConversationMessageContent
               role="user"
               initiator="system"
+              childOrigin={null}
               senderThreadId={null}
               senderThreadTitle={null}
+              senderChildOrigin={null}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind={row.systemMessageKind}
               systemMessageSubject={row.systemMessageSubject}
@@ -233,8 +184,10 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="agent"
+            childOrigin={null}
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
+            senderChildOrigin={null}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -254,8 +207,10 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="system"
+            childOrigin={null}
             senderThreadId={null}
             senderThreadTitle={null}
+            senderChildOrigin={null}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}

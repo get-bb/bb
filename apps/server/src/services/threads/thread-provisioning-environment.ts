@@ -18,10 +18,8 @@ import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
-import {
-  advanceEnvironmentProvisioning,
-  requestEnvironmentProvisioning,
-} from "../environments/environment-provisioning-internal.js";
+import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
+import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import {
   buildDirectEnvironmentProvisionRequest,
   type EnvironmentProvisionRequest,
@@ -76,7 +74,7 @@ import {
   getActiveThreadProvisionContext,
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
-import { tryTransition } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import {
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
@@ -84,7 +82,7 @@ import {
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 
-type ThreadProvisionWriteDeps = Pick<AppDeps, "db" | "hub">;
+type ThreadProvisionWriteDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 type DirectUnmanagedIntent = Extract<
   ThreadProvisionEnvironmentIntent,
   { type: "direct-unmanaged" }
@@ -280,7 +278,7 @@ export function loadActiveThreadProvisionContext(
     !thread ||
     thread.deletedAt !== null ||
     !context ||
-    thread.status !== "provisioning" ||
+    thread.status !== "starting" ||
     (context.state.environmentId !== null &&
       thread.environmentId !== context.state.environmentId)
   ) {
@@ -320,7 +318,7 @@ function ensureWorkspaceReadyEventRecord(
     !thread ||
     thread.deletedAt !== null ||
     !context ||
-    thread.status !== "provisioning" ||
+    thread.status !== "starting" ||
     (context.state.environmentId !== null &&
       context.state.environmentId !== args.environmentId)
   ) {
@@ -366,7 +364,7 @@ export function ensureWorkspaceReadyEventInTransaction(
 }
 
 export function failThreadProvisioning(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger">,
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
@@ -378,7 +376,10 @@ export function failThreadProvisioning(
     detail: args.detail,
     scope: threadScope(),
   });
-  tryTransition(deps.db, deps.hub, args.thread.id, "error");
+  applyLoggedThreadLifecycleEvent(deps, {
+    event: { type: "run.failed" },
+    threadId: args.thread.id,
+  });
 }
 
 function hasActiveEnvironmentProvision(environment: Environment): boolean {
@@ -454,10 +455,16 @@ async function resolveMetadataIfNeeded(
           const environment = titledThread?.environmentId
             ? getEnvironment(deps.db, titledThread.environmentId)
             : null;
+          // A non-managed thread generates its title async (no branch name to
+          // block on), so the turn often finishes before it lands: rename the
+          // provider session for an `idle` thread too, not just an `active`
+          // one. The rename only needs a loaded runtime (warm process), which
+          // an idle thread still has; it is best-effort and logs on failure.
           if (
             !titledThread ||
             !environment ||
-            titledThread.status !== "active"
+            (titledThread.status !== "active" &&
+              titledThread.status !== "idle")
           ) {
             return;
           }
@@ -587,7 +594,7 @@ function createProvisioningEnvironment(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         activeContext.state.provisioningId !== args.context.state.provisioningId
       ) {
@@ -641,15 +648,8 @@ function createProvisioningEnvironment(
         context,
         environment,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
-        {
-          environmentId: environment.id,
-        },
-      );
+      // No provision.requested event here: the environment was created in
+      // this same transaction with status "provisioning".
       return { context, environment, provisionRequest };
     },
     { behavior: "immediate" },
@@ -670,7 +670,7 @@ function createPreparedProvisioningEnvironment(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         activeContext.state.provisioningId !== args.context.state.provisioningId
       ) {
@@ -937,7 +937,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         !isProvisionableContext(activeContext) ||
         activeContext.state.environmentId !== args.environment.id ||
@@ -972,15 +972,19 @@ function requestCheckoutUnmanagedEnvironmentProvision(
         threadId: args.thread.id,
         context,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
+      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
         {
           environmentId: args.environment.id,
+          event: { type: "provision.requested" },
         },
       );
+      if (requestedOutcome.applied) {
+        deps.hub.notifyEnvironment(
+          args.environment.id,
+          requestedOutcome.changes,
+        );
+      }
 
       return {
         kind: "queued",
@@ -1046,7 +1050,7 @@ async function requestPreparedEnvironmentProvision(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         !isEnvironmentPreparedContext(activeContext) ||
         activeContext.state.environmentId !==
@@ -1076,15 +1080,16 @@ async function requestPreparedEnvironmentProvision(
         context,
         environment,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
+      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
         {
           environmentId: environment.id,
+          event: { type: "provision.requested" },
         },
       );
+      if (requestedOutcome.applied) {
+        deps.hub.notifyEnvironment(environment.id, requestedOutcome.changes);
+      }
       return {
         context,
         environment: getEnvironment(tx, environment.id) ?? environment,

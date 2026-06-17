@@ -16,7 +16,7 @@ import {
 import {
   APP_ROOT_ROUTE_PATH,
   getRootComposeRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
   ProjectPathDialogSubmitHandler,

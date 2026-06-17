@@ -1,23 +1,15 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import {
-  allEnvironmentGitDiffQueryKeyPrefix,
+  allEnvironmentDiffFilesQueryKeyPrefix,
+  allEnvironmentDiffPatchQueryKeyPrefix,
   allEnvironmentFilePreviewQueryKeyPrefix,
   allEnvironmentMergeBaseBranchesQueryKeyPrefix,
   allEnvironmentQueryKeyPrefix,
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
-  allWorkflowRunAgentEventsQueryKeyPrefix,
-  allWorkflowRunEventsQueryKeyPrefix,
-  allWorkflowRunQueryKeyPrefix,
-  allWorkflowRunsQueryKeyPrefix,
-  allWorkflowsQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
-  allThreadDefaultExecutionOptionsQueryKeyPrefix,
-  allAppMarkdownPreviewQueryKeyPrefix,
-  allAppQueryKeyPrefix,
-  allAppsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
@@ -29,7 +21,6 @@ import {
   hostsQueryKey,
   localPathExistenceQueryKeyPrefix,
   projectsQueryKey,
-  replayCapturesQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -37,7 +28,9 @@ import {
   threadPromptHistoryQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
+import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
+import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import {
   invalidateQueryKeys,
   refetchFailedActiveQueryKeys,
@@ -68,6 +61,18 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
     queryClient,
     queryKeys: getServerReconnectInvalidationQueryKeys(),
   });
+  // The per-file diff patch cache is observer-less: invalidation only marks it
+  // stale and never refetches or evicts, so a reconnect must remove it. The
+  // diff TOC refetch (invalidated above) then drives the panel to re-request
+  // and repopulate the visible patches.
+  //
+  // Bump every environment's eviction generation synchronously so a patch fetch
+  // that was in flight across the reconnect drops its now-stale write instead
+  // of re-seeding the just-cleared cache.
+  bumpAllDiffPatchEvictionGenerations();
+  queryClient.removeQueries({
+    queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),
+  });
 }
 
 export function refetchErroredRealtimeQueriesOnInitialConnect({
@@ -87,12 +92,6 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
-export function invalidateReplayCaptures({
-  queryClient,
-}: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: replayCapturesQueryKey() });
-}
-
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),
@@ -108,28 +107,20 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     threadPromptHistoryQueryKeyPrefix(),
     allThreadPendingInteractionsQueryKeyPrefix(),
     allThreadDefaultExecutionOptionsQueryKeyPrefix(),
-    allAppsQueryKeyPrefix(),
-    allAppQueryKeyPrefix(),
-    allAppMarkdownPreviewQueryKeyPrefix(),
     allThreadStorageFilesQueryKeyPrefix(),
     allThreadStoragePathsQueryKeyPrefix(),
     allThreadStorageFilePreviewQueryKeyPrefix(),
     allEnvironmentQueryKeyPrefix(),
     allEnvironmentWorkStatusQueryKeyPrefix(),
     allEnvironmentMergeBaseBranchesQueryKeyPrefix(),
-    allEnvironmentGitDiffQueryKeyPrefix(),
+    // The diff TOC has a real observer, so it refetches on invalidate. The
+    // per-file patch cache is observer-less and is evicted separately in
+    // invalidateRealtimeQueriesAfterServerReconnect (invalidation is a no-op for
+    // it), so it is intentionally absent from this list.
+    allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     localPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
-    // Workflow runs are realtime-fed: messages emitted while the socket was
-    // down are lost, and a run that reached terminal during the gap emits
-    // nothing afterward — without this, a focused run page or Workflows tab
-    // renders the run frozen at its pre-disconnect state indefinitely.
-    allWorkflowRunQueryKeyPrefix(),
-    allWorkflowRunsQueryKeyPrefix(),
-    allWorkflowRunEventsQueryKeyPrefix(),
-    allWorkflowRunAgentEventsQueryKeyPrefix(),
-    allWorkflowsQueryKeyPrefix(),
   ];
 }

@@ -366,7 +366,6 @@ export const claudeResultMessageSchema = z
     api_error_status: z.number().nullable().optional(),
     errors: z.array(z.string()).optional(),
     result: z.unknown().optional(),
-    structured_output: z.unknown().optional(),
     usage: z.unknown().optional(),
     modelUsage: z.unknown().optional(),
   })

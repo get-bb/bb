@@ -4,10 +4,12 @@ import type {
   PromptTextMention,
   SystemMessageKind,
   SystemMessageSubject,
+  ThreadChildOrigin,
 } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   ConversationAttachments,
   type ConversationAttachmentItems,
@@ -20,7 +22,10 @@ import {
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
+import type {
+  TimelineTitleActionResolver,
+  TimelineTitleLinkResolver,
+} from "./TimelineTitleView.js";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -28,10 +33,18 @@ import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  /**
+   * `childOrigin` of the thread this generated row belongs to. A fork's
+   * seed-without-run anchor (`"fork"`) renders the Fork leading icon for
+   * consistency with the Fork action; otherwise the per-`sourceKind` icon.
+   */
+  childOrigin: ThreadChildOrigin | null;
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   // `system` rows specialize their title/icon on `systemMessageKind` +
   // `systemMessageSubject`; `agent` rows specialize on `sourceName` +
   // `sourceThreadId`. Both groups are always supplied — the inactive group is
@@ -39,6 +52,9 @@ interface GeneratedConversationMessageProps {
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  /** The source is a side chat: the linked name opens it as a tab in this
+   * thread (a title action) rather than navigating to it as a standalone thread. */
+  sourceIsSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
   text: string;
@@ -66,9 +82,11 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
+  childOrigin: ThreadChildOrigin | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  sourceIsSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
 }
@@ -123,7 +141,7 @@ function verbSegment(text: string): TimelineTitleSegment {
 }
 
 // The emphasized subject segment: a thread name links to its thread; an
-// unlinkable subject (workflow run, missing id) renders emphasized but plain.
+// unlinkable subject (missing id) renders emphasized but plain.
 function subjectSegment(
   text: string,
   threadId: string | null,
@@ -163,22 +181,6 @@ function threadSubjectTitleSegments(
   ];
 }
 
-// A workflow title: "Workflow" `[name]` (emphasized but unlinked — a workflow
-// run has no thread to navigate to) followed by the settled-state verb.
-function workflowTitleSegments(
-  subject: SystemMessageSubject | null,
-  verb: string,
-): TimelineTitleSegment[] {
-  if (subject === null || subject.kind !== "workflow") {
-    return SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
-  }
-  return [
-    verbSegment("Workflow"),
-    subjectSegment(subject.name, null),
-    verbSegment(verb),
-  ];
-}
-
 function systemMessageTitleSegments(
   systemMessageKind: SystemMessageKind,
   subject: SystemMessageSubject | null,
@@ -200,28 +202,39 @@ function systemMessageTitleSegments(
       return subject !== null && subject.kind === "thread-batch"
         ? [verbSegment(`${subject.count} threads updated`)]
         : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
-    case "schedule-due":
-      return [verbSegment("Scheduled turn due")];
-    case "workflow-completed":
-      return workflowTitleSegments(subject, "completed");
-    case "workflow-failed":
-      return workflowTitleSegments(subject, "failed");
-    case "workflow-paused":
-      return workflowTitleSegments(subject, "paused");
-    case "workflow-cancelled":
-      return workflowTitleSegments(subject, "cancelled");
     case "unlabeled":
       return SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
   }
 }
 
 export function generatedConversationTitle({
+  childOrigin,
   sourceKind,
   sourceName,
   sourceThreadId,
+  sourceIsSideChat,
   systemMessageKind,
   systemMessageSubject,
 }: GeneratedConversationTitleArgs): TimelineTitle {
+  // The lead-in names the relationship to the source: a fork branched from it
+  // ("Forked from"), a side chat is replying to it ("Replying to"); any other
+  // agent-initiated message keeps the neutral "Message from".
+  const agentLeadIn =
+    childOrigin === "fork"
+      ? "Forked from"
+      : childOrigin === "side-chat"
+        ? "Replying to"
+        : "Message from";
+  // A side-chat source opens as a tab in this thread (a title action), so its
+  // name carries no route link; other sources navigate to the source thread.
+  const sideChatAction =
+    sourceIsSideChat && sourceThreadId !== null
+      ? ({ kind: "open-side-chat", threadId: sourceThreadId } as const)
+      : null;
+  const sourceLink =
+    sourceThreadId === null || sideChatAction !== null
+      ? null
+      : ({ kind: "thread", threadId: sourceThreadId } as const);
   const segments: TimelineTitleSegment[] =
     sourceKind === "agent"
       ? [
@@ -229,15 +242,21 @@ export function generatedConversationTitle({
             em: false,
             link: null,
             shimmer: false,
-            text: "Message from",
+            text: agentLeadIn,
             truncate: false,
           }),
-          subjectSegment(sourceName, sourceThreadId),
+          timelineTitleSegment({
+            em: true,
+            link: sourceLink,
+            shimmer: false,
+            text: sourceName,
+            truncate: true,
+          }),
         ]
       : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
 
   return {
-    action: null,
+    action: sideChatAction,
     decorations: [],
     plain: segments
       .map((segment) => segment.plainText ?? segment.text)
@@ -274,13 +293,6 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
       return "Square";
     case "child-outcome-batch":
       return "ListTodo";
-    case "schedule-due":
-      return "Clock";
-    case "workflow-completed":
-    case "workflow-failed":
-    case "workflow-paused":
-    case "workflow-cancelled":
-      return "Workflow";
     case "unlabeled":
       return "Info";
   }
@@ -288,8 +300,14 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
+  childOrigin: ThreadChildOrigin | null,
   systemMessageKind: SystemMessageKind,
 ): IconName {
+  // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
+  // source kind; in practice fork anchors are always agent-initiated.
+  if (childOrigin === "fork") {
+    return "Fork";
+  }
   switch (sourceKind) {
     case "agent":
       return "MessageSquare";
@@ -317,13 +335,17 @@ function systemMessageIsTitleOnly(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    childOrigin,
     mentions,
     onOpenLocalFileLink,
     projectId,
+    resolveMentionLink,
     resolveSegmentLinkHref,
+    onTitleAction,
     sourceKind,
     sourceName,
     sourceThreadId,
+    sourceIsSideChat,
     systemMessageKind,
     systemMessageSubject,
     text,
@@ -344,22 +366,27 @@ export const GeneratedConversationMessage = memo(
     const title = useMemo(
       () =>
         generatedConversationTitle({
+          childOrigin,
           sourceKind,
           sourceName,
           sourceThreadId,
+          sourceIsSideChat,
           systemMessageKind,
           systemMessageSubject,
         }),
       [
+        childOrigin,
         sourceKind,
         sourceName,
         sourceThreadId,
+        sourceIsSideChat,
         systemMessageKind,
         systemMessageSubject,
       ],
     );
     const leadingIcon = generatedConversationIconName(
       sourceKind,
+      childOrigin,
       systemMessageKind,
     );
     // Title-only rows (ownership assigned/removed) restate their body in the
@@ -398,6 +425,7 @@ export const GeneratedConversationMessage = memo(
         >
           {renderMentionTextSegments({
             mentions: collapsedPreviewBody.mentions,
+            resolveMentionLink,
             text: collapsedPreviewBody.text,
           })}
           {expandable ? (
@@ -436,6 +464,7 @@ export const GeneratedConversationMessage = memo(
                 <p className="whitespace-pre-wrap break-words">
                   {renderMentionTextSegments({
                     mentions: messageMentions,
+                    resolveMentionLink,
                     text: messageText,
                   })}
                 </p>
@@ -468,6 +497,7 @@ export const GeneratedConversationMessage = memo(
         onOpenLocalFileLink,
         projectId,
         resolveSegmentLinkHref,
+        resolveMentionLink,
         sourceKind,
         requestLabel,
         turnRequest,
@@ -481,6 +511,7 @@ export const GeneratedConversationMessage = memo(
         expandable={expandable}
         leadingIcon={leadingIcon}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         renderBody={renderBody}
       />
     );

@@ -1,7 +1,6 @@
 import {
   findStoredEventRow as findStoredEventRowRecord,
   getLatestThreadOutputEventRow,
-  getLatestThreadSystemErrorEventRow,
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
@@ -156,32 +155,4 @@ export function getLastThreadOutput(
   }
 
   return null;
-}
-
-export function getLastThreadCommandFailureOutput(
-  db: DbConnection,
-  threadId: string,
-): string | null {
-  const row = getLatestThreadSystemErrorEventRow(db, { threadId });
-
-  if (!row) return null;
-
-  const eventRow = parseStoredEventRow(row);
-
-  if (
-    eventRow.type !== "system/error" ||
-    eventRow.data.code !== "thread_command_failed"
-  ) {
-    return null;
-  }
-
-  const detail = eventRow.data.detail?.trim();
-  const message = eventRow.data.message.trim();
-  if (detail && message) {
-    return `${message}\n\n${detail}`;
-  }
-  if (detail) {
-    return detail;
-  }
-  return message.length > 0 ? message : null;
 }

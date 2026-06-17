@@ -112,7 +112,7 @@ export const timelineUserConversationRowSchema =
     senderThreadId: z.string().nullable(),
     // Family-B taxonomy fields, required on the read model. `systemMessageKind`
     // is non-nullable (legacy rows project to `unlabeled`); `systemMessageSubject`
-    // is nullable (null = no thread/workflow subject, e.g. schedule-due).
+    // is nullable (null = no thread subject, e.g. an `unlabeled` legacy row).
     systemMessageKind: systemMessageKindSchema,
     systemMessageSubject: systemMessageSubjectSchema.nullable(),
     turnRequest: timelineConversationTurnRequestSchema,
@@ -438,13 +438,6 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
 export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("workflow"),
   itemId: z.string(),
-  /**
-   * Raw task-type discriminant from the anchor item. `bb_workflow` marks a
-   * server-owned workflow run whose `itemId` is the `wfr_` run id — renderers
-   * deep-link those rows to `/workflows/runs/<itemId>`; `local_workflow` is
-   * the provider-native dynamic-workflow path (no run page).
-   */
-  taskType: z.string(),
   workflowName: z.string().nullable(),
   description: z.string(),
   taskStatus: backgroundTaskStatusSchema,

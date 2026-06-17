@@ -23,12 +23,18 @@ import remarkGfm from "remark-gfm";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
-import { AppRouteAnchor } from "./app-route-anchor.js";
+import { RouteAnchor } from "./app-route-anchor.js";
+import {
+  getMarkdownCodeLanguage,
+  isMarkdownCodeBlock,
+} from "./markdown-code-block.js";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
+  type MarkdownAbsoluteLocalFileLinkRouting,
+  type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 import type {
   MarkdownLinkRouting,
@@ -38,10 +44,11 @@ import {
   buildThreadMentionComponent,
   remarkThreadMentions,
 } from "./markdown-thread-mentions.js";
+import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
-import { resolveAppRouteHref } from "@/lib/app-route-paths";
+import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 
 export interface MarkdownPreviewProps {
@@ -102,16 +109,44 @@ interface ResolveMarkdownSourceMediaArgs {
   preferredTheme: Theme;
 }
 
+interface AreMarkdownAbsoluteLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownAbsoluteLocalFileLinkRouting | undefined;
+  previous: MarkdownAbsoluteLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownRelativeLocalFileLinkRouting | undefined;
+  previous: MarkdownRelativeLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownLocalFileLinkRouting | undefined;
+  previous: MarkdownLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownLinkRoutingsEqualArgs {
+  next: MarkdownLinkRouting | undefined;
+  previous: MarkdownLinkRouting | undefined;
+}
+
+type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
+
 interface SetMarkdownContentWidthVariableArgs {
   element: HTMLElement;
   width: number;
 }
 
-type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
+type MarkdownPreviewPropsEqual = (
+  previous: MarkdownPreviewProps,
+  next: MarkdownPreviewProps,
+) => boolean;
 type MarkdownAnchorEvent = ReactMouseEvent<HTMLAnchorElement>;
 type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
   ExtraProps;
 type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & ExtraProps;
+interface MarkdownCodeRendererProps extends MarkdownCodeProps {
+  preferredTheme: Theme;
+}
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps;
@@ -143,15 +178,88 @@ const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeSanitize,
 ];
 
-function isMarkdownAppRouteHref({
-  href,
-}: IsMarkdownAppRouteHrefArgs): boolean {
+function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownAbsoluteLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  if (previous.kind !== next.kind) return false;
+  if (previous.kind === "trusted-host" || next.kind === "trusted-host") {
+    return true;
+  }
+  return previous.rootPath === next.rootPath;
+}
+
+function areMarkdownRelativeLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.baseDir === next.baseDir && previous.rootPath === next.rootPath
+  );
+}
+
+function areMarkdownLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.onOpenLink === next.onOpenLink &&
+    areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
+      next: next.absoluteLinks,
+      previous: previous.absoluteLinks,
+    }) &&
+    areMarkdownRelativeLocalFileLinkRoutingsEqual({
+      next: next.relativeLinks,
+      previous: previous.relativeLinks,
+    })
+  );
+}
+
+function areMarkdownLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.onOpenLink === next.onOpenLink &&
+    areMarkdownLocalFileLinkRoutingsEqual({
+      next: next.localFile,
+      previous: previous.localFile,
+    })
+  );
+}
+
+const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
+  previous,
+  next,
+) =>
+  (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
+  previous.className === next.className &&
+  previous.content === next.content &&
+  (previous.expandedImageAlt ?? "Expanded image") ===
+    (next.expandedImageAlt ?? "Expanded image") &&
+  (previous.imageLightboxTitle ?? "Expanded image preview") ===
+    (next.imageLightboxTitle ?? "Expanded image preview") &&
+  previous.urlTransform === next.urlTransform &&
+  areMarkdownLinkRoutingsEqual({
+    next: next.linkRouting,
+    previous: previous.linkRouting,
+  });
+
+function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
   if (!href || typeof window === "undefined") {
     return false;
   }
 
   return (
-    resolveAppRouteHref({
+    resolveRouteHref({
       currentOrigin: window.location.origin,
       href,
     }) !== null
@@ -231,7 +339,7 @@ function MarkdownAnchor({
   };
 
   return (
-    <AppRouteAnchor
+    <RouteAnchor
       {...anchorProps}
       href={anchorHref}
       className={cn(
@@ -250,20 +358,30 @@ function MarkdownAnchor({
           className="size-3 shrink-0 self-center text-subtle-foreground"
         />
       ) : null}
-    </AppRouteAnchor>
+    </RouteAnchor>
   );
 }
 
 function MarkdownCode({
   className: codeClassName,
   children,
+  node: _node,
+  preferredTheme,
   ...props
-}: MarkdownCodeProps) {
+}: MarkdownCodeRendererProps) {
   const codeText = String(children ?? "").replace(/\n$/, "");
-  const languageMatch = /language-(\w+)/u.exec(codeClassName || "");
-  const language = languageMatch?.[1];
-  const isBlock = language !== undefined || codeText.includes("\n");
+  const language = getMarkdownCodeLanguage({ className: codeClassName });
+  const isBlock = isMarkdownCodeBlock({ codeText, language });
   if (isBlock) {
+    if (language === "mermaid") {
+      return (
+        <MarkdownMermaidDiagram
+          preferredTheme={preferredTheme}
+          source={codeText}
+        />
+      );
+    }
+
     return (
       <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
         <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
@@ -375,7 +493,7 @@ function MarkdownListItem({ children }: MarkdownListItemProps) {
 
 function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
   return (
-    <blockquote className="my-2 border-l-2 border-border pl-3 italic text-muted-foreground">
+    <blockquote className="my-2 border-l-2 border-surface-selected-border pl-3 text-muted-foreground">
       {children}
     </blockquote>
   );
@@ -401,7 +519,7 @@ function MarkdownTable({ children }: MarkdownTableProps) {
       <div
         className="w-max max-w-full overflow-x-auto"
         style={{
-          minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}), 100%)`,
+          minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}, 100%), 100%)`,
         }}
       >
         <table className="border border-border">{children}</table>
@@ -481,6 +599,10 @@ function buildMarkdownComponents({
     return <MarkdownAnchor {...props} linkRouting={linkRouting} />;
   }
 
+  function MarkdownCodeRenderer(props: MarkdownCodeProps) {
+    return <MarkdownCode {...props} preferredTheme={preferredTheme} />;
+  }
+
   function MarkdownImage({
     src,
     alt,
@@ -512,7 +634,7 @@ function buildMarkdownComponents({
   const components: Components = {
     a: MarkdownLink,
     blockquote: MarkdownBlockquote,
-    code: MarkdownCode,
+    code: MarkdownCodeRenderer,
     h1: MarkdownH1,
     h2: MarkdownH2,
     h3: MarkdownH3,
@@ -588,6 +710,65 @@ function useMarkdownContentWidthVariable() {
   return contentRef;
 }
 
+const FRONTMATTER_PATTERN = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/**
+ * Splits a leading YAML frontmatter block (`---` … `---` at the very start of
+ * the document) from the markdown body. Without this, react-markdown renders
+ * the fences as two thematic breaks with the raw YAML as a paragraph between
+ * them. Returns the inner frontmatter text (or null) and the remaining body.
+ */
+function splitMarkdownFrontmatter(markdown: string): {
+  frontmatter: string | null;
+  body: string;
+} {
+  const match = FRONTMATTER_PATTERN.exec(markdown);
+  if (match === null) {
+    return { frontmatter: null, body: markdown };
+  }
+  return { frontmatter: match[1], body: markdown.slice(match[0].length) };
+}
+
+/**
+ * Renders frontmatter subtly: a muted, small key/value list set off by a thin
+ * left rule, so it reads as document metadata instead of competing with the
+ * body. Flat `key: value` lines get an aligned key; anything else (nested keys,
+ * list items) is shown verbatim but still muted.
+ */
+function MarkdownFrontmatter({ source }: { source: string }) {
+  const lines = source.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
+      {lines.map((line, index) => {
+        const separator = line.indexOf(":");
+        if (separator > 0 && !/^[\s-]/.test(line)) {
+          const key = line.slice(0, separator).trim();
+          const value = line.slice(separator + 1).trim();
+          // `contents` lets the key/value spans participate in the parent grid,
+          // so every value lines up in a single column regardless of key width.
+          return (
+            <div key={index} className="contents">
+              <span className="font-medium text-muted-foreground/70">{key}</span>
+              <span className="min-w-0 break-words">{value}</span>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={index}
+            className="col-span-2 whitespace-pre-wrap break-words text-muted-foreground/80"
+          >
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MarkdownPreviewComponent({
   allowHtml = false,
   className,
@@ -609,6 +790,10 @@ function MarkdownPreviewComponent({
         ? normalizeLocalFileMarkdownLinks(content)
         : content,
     [content, normalizeLocalFileLinks],
+  );
+  const { frontmatter, body } = useMemo(
+    () => splitMarkdownFrontmatter(markdownContent),
+    [markdownContent],
   );
   const markdownComponents = useMemo(
     () =>
@@ -652,13 +837,16 @@ function MarkdownPreviewComponent({
           className,
         )}
       >
+        {frontmatter !== null ? (
+          <MarkdownFrontmatter source={frontmatter} />
+        ) : null}
         <ReactMarkdown
           rehypePlugins={allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : undefined}
           remarkPlugins={remarkPlugins}
           components={markdownComponents}
           urlTransform={resolvedUrlTransform}
         >
-          {markdownContent}
+          {body}
         </ReactMarkdown>
       </div>
 
@@ -672,5 +860,8 @@ function MarkdownPreviewComponent({
   );
 }
 
-export const MarkdownPreview = memo(MarkdownPreviewComponent);
+export const MarkdownPreview = memo(
+  MarkdownPreviewComponent,
+  areMarkdownPreviewPropsEqual,
+);
 MarkdownPreview.displayName = "MarkdownPreview";

@@ -1,3 +1,4 @@
+import { isSettledWorkflowAgentState } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -38,10 +39,6 @@ import {
 } from "./timeline-activity-intents.js";
 import { fileNameFromPath } from "./timeline-path-display.js";
 import {
-  getWorkflowAgentProgressCounts,
-  getWorkflowRunIdFromRow,
-} from "./workflow-run-rows.js";
-import {
   buildTimelineWorkSummaryLabelParts,
   type ThreadTimelineViewRow,
   type TimelineWorkSummaryRow,
@@ -53,19 +50,14 @@ import {
 } from "./timeline-view.js";
 
 export type TimelineTitleTone = "default" | "summary";
-export type TimelineStatusDecorationStatus =
-  | "denied"
-  | "error"
-  | "interrupted";
+export type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
 
 /**
  * Optional link target attached to a title segment. Renderers that support
  * navigation (the App) can wrap the segment in a link; CLI renderers ignore
  * the link and render the segment text directly.
  */
-export type TimelineTitleLink =
-  | { kind: "thread"; threadId: string }
-  | { kind: "workflow-run"; runId: string };
+export type TimelineTitleLink = { kind: "thread"; threadId: string };
 
 /**
  * One slice of the title's text. Renderers walk the segment list and apply
@@ -134,11 +126,17 @@ export type TimelineTitleDecoration =
  * decide whether to surface the action; the title-builder only declares what's
  * available. New action kinds extend this union.
  */
-export type TimelineTitleAction = {
-  kind: "open-file-diff";
-  /** Workspace-relative path of the file. For renames, the destination path. */
-  path: string;
-};
+export type TimelineTitleAction =
+  | {
+      kind: "open-file-diff";
+      /** Workspace-relative path of the file. For renames, the destination path. */
+      path: string;
+    }
+  | {
+      kind: "open-side-chat";
+      /** The side-chat child thread to open as a tab in the current thread. */
+      threadId: string;
+    };
 
 export interface TimelineTitle {
   segments: TimelineTitleSegment[];
@@ -163,6 +161,7 @@ export interface BuildTimelineRowTitleOptions {
 
 export interface TimelineActivityIntentTitle {
   id: string;
+  intent: TimelineActivityIntent;
   title: TimelineTitle;
   /** The exploration kind, so renderers can pick a per-intent leading glyph. */
   intentType: "read" | "list_files" | "search";
@@ -223,7 +222,10 @@ function collapseTitleNewlines(text: string): string {
   return text.replace(/[\r\n]+/gu, " ");
 }
 
-function segment(text: string, opts: SegmentOptions = {}): TimelineTitleSegment {
+function segment(
+  text: string,
+  opts: SegmentOptions = {},
+): TimelineTitleSegment {
   return {
     text: collapseTitleNewlines(text),
     em: opts.em ?? false,
@@ -342,9 +344,7 @@ export function formatTimelineDecorationText(
     case "summary-status": {
       const parts: string[] = [];
       if (d.errorCount > 0) {
-        parts.push(
-          `${d.errorCount} error${d.errorCount > 1 ? "s" : ""}`,
-        );
+        parts.push(`${d.errorCount} error${d.errorCount > 1 ? "s" : ""}`);
       }
       if (d.interruptedCount > 0) {
         parts.push(`${d.interruptedCount} interrupted`);
@@ -446,7 +446,9 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
           segment("Permission denied:"),
           segment(content, { em: true, truncate: true }),
         ],
-        decorations: filterNull([durationDecoration(row.startedAt, row.completedAt)]),
+        decorations: filterNull([
+          durationDecoration(row.startedAt, row.completedAt),
+        ]),
       });
     case "pending":
       return makeTitle({
@@ -464,7 +466,9 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
           segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
-        decorations: filterNull([durationDecoration(row.startedAt, row.completedAt)]),
+        decorations: filterNull([
+          durationDecoration(row.startedAt, row.completedAt),
+        ]),
       });
     case "error":
       return makeTitle({
@@ -472,7 +476,12 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
           segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
-        decorations: [statusDecoration("error", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
+        decorations: [
+          statusDecoration(
+            "error",
+            row.completedAt !== null ? row.completedAt - row.startedAt : null,
+          ),
+        ],
       });
     case "interrupted":
       return makeTitle({
@@ -480,7 +489,12 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
           segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
-        decorations: [statusDecoration("interrupted", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
+        decorations: [
+          statusDecoration(
+            "interrupted",
+            row.completedAt !== null ? row.completedAt - row.startedAt : null,
+          ),
+        ],
       });
     default:
       return assertNever(status);
@@ -585,7 +599,10 @@ function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
     status: row.status,
   });
   const action = getFileChangeAction(row.change);
-  const compactPath = formatFileChangePath({ change: row.change, mode: "compact" });
+  const compactPath = formatFileChangePath({
+    change: row.change,
+    mode: "compact",
+  });
   const fullPath = formatFileChangePath({ change: row.change, mode: "full" });
   const titleAction: TimelineTitleAction = {
     kind: "open-file-diff",
@@ -628,10 +645,7 @@ function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
       });
     case "completed":
       return makeTitle({
-        segments: [
-          segment(getFileChangeActionPastTense(action)),
-          pathSegment,
-        ],
+        segments: [segment(getFileChangeActionPastTense(action)), pathSegment],
         decorations: filterNull([diffStatsDecoration(row.change)]),
         action: titleAction,
       });
@@ -677,12 +691,19 @@ function mapWebSearchTitle(row: TimelineWebSearchWorkRow): TimelineTitle {
     case "completed":
       return makeTitle({
         segments: [segment("Ran web search:"), querySegment],
-        decorations: filterNull([durationDecoration(row.startedAt, row.completedAt)]),
+        decorations: filterNull([
+          durationDecoration(row.startedAt, row.completedAt),
+        ]),
       });
     case "error":
       return makeTitle({
         segments: [segment("Ran web search:"), querySegment],
-        decorations: [statusDecoration("error", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
+        decorations: [
+          statusDecoration(
+            "error",
+            row.completedAt !== null ? row.completedAt - row.startedAt : null,
+          ),
+        ],
       });
     case "interrupted":
       return makeTitle({
@@ -710,12 +731,19 @@ function mapWebFetchTitle(row: TimelineWebFetchWorkRow): TimelineTitle {
     case "completed":
       return makeTitle({
         segments: [segment("Fetched:"), urlSegment],
-        decorations: filterNull([durationDecoration(row.startedAt, row.completedAt)]),
+        decorations: filterNull([
+          durationDecoration(row.startedAt, row.completedAt),
+        ]),
       });
     case "error":
       return makeTitle({
         segments: [segment("Fetched:"), urlSegment],
-        decorations: [statusDecoration("error", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
+        decorations: [
+          statusDecoration(
+            "error",
+            row.completedAt !== null ? row.completedAt - row.startedAt : null,
+          ),
+        ],
       });
     case "interrupted":
       return makeTitle({
@@ -793,9 +821,7 @@ function delegationVerbForStatus(status: TimelineRowStatus): {
   }
 }
 
-function mapDelegationTitle(
-  row: TimelineViewDelegationWorkRow,
-): TimelineTitle {
+function mapDelegationTitle(row: TimelineViewDelegationWorkRow): TimelineTitle {
   const description = row.description ?? (row.output.trim() || row.toolName);
   const verb = delegationVerbForStatus(row.status);
   const segments: TimelineTitleSegment[] = [
@@ -838,35 +864,22 @@ function workflowVerbForStatus(status: TimelineRowStatus): {
 function formatWorkflowAgentProgress(
   row: TimelineViewWorkflowWorkRow,
 ): string | null {
-  const counts = getWorkflowAgentProgressCounts(row.workflow);
-  if (counts === null) {
+  const agents = row.workflow?.agents ?? [];
+  if (agents.length === 0) {
     return null;
   }
-  return `(${counts.settled}/${counts.total} agents)`;
+  const done = agents.filter((agent) =>
+    isSettledWorkflowAgentState(agent.state),
+  ).length;
+  return `(${done}/${agents.length} agents)`;
 }
 
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
-  // A paused run is resumable, not running: its item status stays "pending"
-  // by design (backgroundTaskItemStatus), so the verb must branch on
-  // taskStatus to render paused distinctly from both running and stopped.
-  const verb =
-    row.taskStatus === "paused"
-      ? { text: "Paused workflow:", shimmer: false }
-      : workflowVerbForStatus(row.status);
+  const verb = workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
-  // bb workflow runs anchor their `wfr_` run id in itemId; the run page
-  // deep link rides it. Provider-native local_workflow rows have no run
-  // page and stay plain.
-  const runId = getWorkflowRunIdFromRow(row);
   const segments: TimelineTitleSegment[] = [
     segment(verb.text, { shimmer: verb.shimmer }),
-    segment(name, {
-      em: true,
-      truncate: true,
-      ...(runId !== null
-        ? { link: { kind: "workflow-run", runId } }
-        : {}),
-    }),
+    segment(name, { em: true, truncate: true }),
   ];
   const agentProgress = formatWorkflowAgentProgress(row);
   if (agentProgress) {
@@ -1071,7 +1084,9 @@ function mapQuestionTitle(row: TimelineQuestionViewWorkRow): TimelineTitle {
         segments: filterNull([
           segment("Answered"),
           subject,
-          answerSummary ? segment(`— ${answerSummary}`, { truncate: true }) : null,
+          answerSummary
+            ? segment(`— ${answerSummary}`, { truncate: true })
+            : null,
         ]),
       });
     }
@@ -1381,10 +1396,7 @@ function threadNamedSystemTitleSegments(
 
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   const hasError = row.systemKind === "error" || row.status === "error";
-  if (
-    row.systemKind === "operation" &&
-    row.operationKind === "parent-change"
-  ) {
+  if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
   }
   const isCompaction =
@@ -1417,9 +1429,7 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   });
 }
 
-function mapConversationTitle(
-  row: TimelineConversationViewRow,
-): TimelineTitle {
+function mapConversationTitle(row: TimelineConversationViewRow): TimelineTitle {
   return makeTitle({
     segments: [
       segment(row.role === "user" ? "User" : "Assistant", { em: false }),
@@ -1489,6 +1499,7 @@ export function buildTimelineActivityIntentTitles(
     }
     titles.push({
       id: `${row.id}:activity-intent:${index}`,
+      intent,
       intentType: intent.type,
       title: mapTimelineActivityIntentTitle({
         intent,

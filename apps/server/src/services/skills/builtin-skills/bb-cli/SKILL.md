@@ -1,13 +1,12 @@
 ---
 name: bb-cli
-description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, and more.
+description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, projects, providers, and environments.
 ---
 
 # bb CLI
 
 Use `bb` when controlling bb itself: inspect current context, coordinate threads,
-message agents, schedule automations, or inspect projects, providers, and
-environments.
+message agents, or inspect projects, providers, and environments.
 
 ## Start With Context
 
@@ -19,11 +18,12 @@ environments.
 ## Spawning Threads
 
 - Use `bb thread spawn --prompt "..."` to create another thread.
-- Inside a thread, spawn defaults the parent to `BB_THREAD_ID`.
+- Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
-- Use `--no-context-parent-thread` when you need an unrelated root thread.
-- Use `--parent-thread <thread-id>` to choose a specific parent.
+- Use `--parent-self` inside a thread to parent the new thread to the current
+  thread.
+- Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 
@@ -63,9 +63,3 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
-
-## Automations
-
-- Use `bb thread schedule create <thread-id> --name <name> --cron <cron> --timezone <tz> --prompt "..."` for reminders, recurring check-ins, and scheduled follow-up work.
-- Use `bb thread schedule list`, `update`, `enable`, `disable`, and `delete` to
-  manage schedules.

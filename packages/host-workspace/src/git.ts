@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { GitCheckoutRef, WorkspaceGitOperation } from "@bb/domain";
+import type {
+  DefaultBranchRelation,
+  GitCheckoutRef,
+  WorkspaceGitOperation,
+} from "@bb/domain";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +38,16 @@ interface ResolveGitProcessEnvArgs {
 
 export interface GitTimeoutOptions {
   timeoutMs?: number;
+}
+
+export interface FetchRemoteBranchesResult {
+  status: "fetched" | "failed" | "skipped";
+}
+
+export interface DefaultBranchRefs {
+  defaultBranch: string | undefined;
+  defaultBranchRelation: DefaultBranchRelation | undefined;
+  originDefaultBranch: string | undefined;
 }
 
 export interface RunShellPipelineOptions extends GitTimeoutOptions {
@@ -308,12 +322,7 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
       `git rev-parse --git-common-dir returned no path for ${cwd}`,
     );
   }
-  // realpath, not just resolve: the worktree metadata lock keys on this path,
-  // and symlinked locations (macOS /tmp → /private/tmp, /var → /private/var)
-  // otherwise split source-repo-cwd commands (relative `.git` resolved via the
-  // symlinked cwd) and worktree-cwd commands (git reports the real-path form)
-  // into two disjoint lock domains — the M7-soak-diagnosed config.lock race.
-  return fs.realpath(path.resolve(cwd, commonDir));
+  return path.resolve(cwd, commonDir);
 }
 
 /**
@@ -435,10 +444,14 @@ export async function ensureGitRepo(
   );
 }
 
-async function readHeadSha(cwd: string): Promise<string | null> {
+async function readHeadSha(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string | null> {
   const result = await runGit(["rev-parse", "--verify", "HEAD"], {
     cwd,
     allowFailure: true,
+    timeoutMs: options.timeoutMs,
   });
   if (result.exitCode !== 0) {
     return null;
@@ -469,8 +482,11 @@ export async function getCurrentBranch(
   return branchName || undefined;
 }
 
-export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
-  if (!(await detectGitRepo(cwd))) {
+export async function getCheckoutRef(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<GitCheckoutRef> {
+  if (!(await detectGitRepo(cwd, options))) {
     return { kind: "unknown", reason: "Path is not a git repository" };
   }
 
@@ -478,8 +494,9 @@ export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
     runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
       cwd,
       allowFailure: true,
+      timeoutMs: options.timeoutMs,
     }),
-    readHeadSha(cwd),
+    readHeadSha(cwd, options),
   ]);
 
   const branchName = trimOutput(symbolicRef.stdout);
@@ -607,6 +624,17 @@ function parsePorcelainPathToken(
   return parseUnquotedPorcelainPathToken(rawPath, startIndex);
 }
 
+/**
+ * Decodes a git C-style quoted path token (the `"..."` form git uses for paths
+ * with special characters, e.g. in `diff --git` headers or `--name-status`
+ * without `-z`). The token must include its surrounding double quotes. Octal and
+ * single-character escape sequences are decoded back to their raw bytes and the
+ * result is interpreted as UTF-8 — matching the porcelain path decoder.
+ */
+export function decodeGitQuotedPath(quotedToken: string): string {
+  return parseQuotedPorcelainPathToken(quotedToken, 0).value;
+}
+
 function parsePorcelainPath(rawPath: string): string {
   const sourcePath = parsePorcelainPathToken(rawPath, 0);
   if (
@@ -691,14 +719,26 @@ export interface NameStatusEntry {
   status: string;
 }
 
+export interface NameStatusSourceEntry extends NameStatusEntry {
+  /**
+   * Rename/copy source path (the "old" path) for `R`/`C` entries; `null` for
+   * every other status letter, which has no source path.
+   */
+  previousPath: string | null;
+}
+
 /**
- * Parses the null-delimited output of `git diff --name-status -z`. Rename (R)
- * and copy (C) entries are followed by two paths (old then new); we keep only
- * the new path, which is what consumers want to highlight.
+ * Parses the null-delimited output of `git diff --name-status -z`, retaining
+ * the rename/copy source path. Rename (R) and copy (C) entries are followed by
+ * two paths (old then new); the new path is the entry path and the old path is
+ * `previousPath`. All other statuses have a single path and `previousPath:
+ * null`.
  */
-export function parseNameStatusEntries(output: string): NameStatusEntry[] {
+export function parseNameStatusSourceEntries(
+  output: string,
+): NameStatusSourceEntry[] {
   const tokens = output.split("\0");
-  const entries: NameStatusEntry[] = [];
+  const entries: NameStatusSourceEntry[] = [];
   let index = 0;
   while (index < tokens.length) {
     const statusToken = tokens[index];
@@ -709,20 +749,41 @@ export function parseNameStatusEntries(output: string): NameStatusEntry[] {
     const statusLetter = statusToken[0] ?? "";
     const isRenameOrCopy = statusLetter === "R" || statusLetter === "C";
     if (isRenameOrCopy) {
+      const oldPath = tokens[index + 1];
       const newPath = tokens[index + 2];
       if (newPath) {
-        entries.push({ path: newPath, status: statusLetter });
+        entries.push({
+          path: newPath,
+          status: statusLetter,
+          previousPath: oldPath ?? null,
+        });
       }
       index += 3;
     } else {
       const pathToken = tokens[index + 1];
       if (pathToken) {
-        entries.push({ path: pathToken, status: statusLetter });
+        entries.push({
+          path: pathToken,
+          status: statusLetter,
+          previousPath: null,
+        });
       }
       index += 2;
     }
   }
   return entries;
+}
+
+/**
+ * Parses the null-delimited output of `git diff --name-status -z`. Rename (R)
+ * and copy (C) entries are followed by two paths (old then new); we keep only
+ * the new path, which is what consumers want to highlight.
+ */
+export function parseNameStatusEntries(output: string): NameStatusEntry[] {
+  return parseNameStatusSourceEntries(output).map(({ path, status }) => ({
+    path,
+    status,
+  }));
 }
 
 export function summarizeNumstat(output: string): {
@@ -798,7 +859,7 @@ export function parseNumstatEntriesZ(output: string): NumstatEntry[] {
   return entries;
 }
 
-function parseNumstatCount(text: string): number | null {
+export function parseNumstatCount(text: string): number | null {
   const value = Number.parseInt(text, 10);
   return Number.isFinite(value) ? value : null;
 }
@@ -837,13 +898,233 @@ export async function readDefaultBranch(
   return localBranches[0];
 }
 
-export async function hasRef(cwd: string, ref: string): Promise<boolean> {
-  await ensureGitRepo(cwd);
+async function readLocalBranches(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string[]> {
+  const branches = await runGit(
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    { cwd, timeoutMs: options.timeoutMs },
+  );
+  return branches.stdout
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function resolvePreferredLocalDefaultBranch(
+  localBranches: readonly string[],
+  originDefaultBranchName: string | undefined,
+): string | undefined {
+  if (originDefaultBranchName && localBranches.includes(originDefaultBranchName)) {
+    return originDefaultBranchName;
+  }
+  if (localBranches.includes("main")) {
+    return "main";
+  }
+  if (localBranches.includes("master")) {
+    return "master";
+  }
+  return localBranches[0];
+}
+
+function parseOriginHeadBranchName(output: string): string | undefined {
+  const remoteHead = trimOutput(output);
+  if (remoteHead.startsWith("refs/remotes/origin/")) {
+    return remoteHead.replace("refs/remotes/origin/", "");
+  }
+  return undefined;
+}
+
+async function readOriginHeadBranchName(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string | undefined> {
+  const originHead = await runGit(
+    ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+    { cwd, allowFailure: true, timeoutMs: options.timeoutMs },
+  );
+  return parseOriginHeadBranchName(originHead.stdout);
+}
+
+export async function hasRef(
+  cwd: string,
+  ref: string,
+  options: GitTimeoutOptions = {},
+): Promise<boolean> {
+  await ensureGitRepo(cwd, options);
   const result = await runGit(["show-ref", "--verify", "--quiet", ref], {
     cwd,
     allowFailure: true,
+    timeoutMs: options.timeoutMs,
   });
   return result.exitCode === 0;
+}
+
+async function readOriginDefaultBranch(
+  cwd: string,
+  localDefaultBranch: string | undefined,
+  options: GitTimeoutOptions = {},
+): Promise<string | undefined> {
+  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
+  if (
+    originHeadBranch &&
+    (await hasRef(cwd, `refs/remotes/origin/${originHeadBranch}`, options))
+  ) {
+    return `origin/${originHeadBranch}`;
+  }
+
+  if (
+    localDefaultBranch &&
+    (await hasRef(cwd, `refs/remotes/origin/${localDefaultBranch}`, options))
+  ) {
+    return `origin/${localDefaultBranch}`;
+  }
+
+  return undefined;
+}
+
+async function revParseRef(
+  cwd: string,
+  ref: string,
+  options: GitTimeoutOptions = {},
+): Promise<string | undefined> {
+  const result = await runGit(["rev-parse", "--verify", `${ref}^{commit}`], {
+    cwd,
+    allowFailure: true,
+    timeoutMs: options.timeoutMs,
+  });
+  if (result.exitCode !== 0) {
+    return undefined;
+  }
+  return trimOutput(result.stdout) || undefined;
+}
+
+async function isAncestorRef(
+  cwd: string,
+  ancestorRef: string,
+  descendantRef: string,
+  options: GitTimeoutOptions = {},
+): Promise<boolean | undefined> {
+  const result = await runGit(
+    ["merge-base", "--is-ancestor", ancestorRef, descendantRef],
+    { cwd, allowFailure: true, timeoutMs: options.timeoutMs },
+  );
+  if (result.exitCode === 0) {
+    return true;
+  }
+  if (result.exitCode === 1) {
+    return false;
+  }
+  return undefined;
+}
+
+async function readDefaultBranchRelation(
+  cwd: string,
+  localDefaultBranch: string | undefined,
+  originDefaultBranch: string | undefined,
+  options: GitTimeoutOptions = {},
+): Promise<DefaultBranchRelation | undefined> {
+  if (!localDefaultBranch || !originDefaultBranch) {
+    return undefined;
+  }
+
+  const localRef = `refs/heads/${localDefaultBranch}`;
+  const originRef = `refs/remotes/${originDefaultBranch}`;
+  const [localSha, originSha] = await Promise.all([
+    revParseRef(cwd, localRef, options),
+    revParseRef(cwd, originRef, options),
+  ]);
+  if (!localSha || !originSha) {
+    return "unknown";
+  }
+  if (localSha === originSha) {
+    return "equal";
+  }
+
+  const localIsAncestor = await isAncestorRef(cwd, localRef, originRef, options);
+  if (localIsAncestor === true) {
+    return "local-behind";
+  }
+  if (localIsAncestor === undefined) {
+    return "unknown";
+  }
+
+  const originIsAncestor = await isAncestorRef(cwd, originRef, localRef, options);
+  if (originIsAncestor === true) {
+    return "local-ahead";
+  }
+  if (originIsAncestor === undefined) {
+    return "unknown";
+  }
+
+  return "diverged";
+}
+
+export async function readDefaultBranchRefs(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<DefaultBranchRefs> {
+  await ensureGitRepo(cwd, options);
+  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
+  const localBranches = await readLocalBranches(cwd, options);
+  const defaultBranch = resolvePreferredLocalDefaultBranch(
+    localBranches,
+    originHeadBranch,
+  );
+  const originDefaultBranch = await readOriginDefaultBranch(
+    cwd,
+    defaultBranch,
+    options,
+  );
+  const defaultBranchRelation = await readDefaultBranchRelation(
+    cwd,
+    defaultBranch,
+    originDefaultBranch,
+    options,
+  );
+
+  return {
+    defaultBranch,
+    defaultBranchRelation,
+    originDefaultBranch,
+  };
+}
+
+export async function fetchRemoteBranches(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<FetchRemoteBranchesResult> {
+  await ensureGitRepo(cwd, options);
+
+  const remotes = await runGit(["remote"], {
+    cwd,
+    allowFailure: true,
+    timeoutMs: options.timeoutMs,
+  });
+  if (
+    remotes.exitCode !== 0 ||
+    remotes.stdout
+      .split("\n")
+      .map((remote) => remote.trim())
+      .filter(Boolean).length === 0
+  ) {
+    return { status: "skipped" };
+  }
+
+  try {
+    const result = await runGit(["fetch", "--all", "--prune", "--quiet"], {
+      cwd,
+      allowFailure: true,
+      timeoutMs: options.timeoutMs,
+    });
+    return { status: result.exitCode === 0 ? "fetched" : "failed" };
+  } catch (error) {
+    if (error instanceof WorkspaceError && error.code === "git_command_timeout") {
+      return { status: "failed" };
+    }
+    throw error;
+  }
 }
 
 export async function readMergeBaseRef(

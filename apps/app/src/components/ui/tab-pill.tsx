@@ -21,7 +21,7 @@ export interface TabPillCloseAction {
 
 export interface TabPillProps {
   label: string;
-  leadingVisual: ReactNode;
+  leadingVisual?: ReactNode;
   secondaryLabel?: string | null;
   /** Extra classes for the label text (e.g. `line-through` for a done tab). */
   labelClassName?: string;
@@ -46,7 +46,7 @@ export function TabPill({
   return (
     <div
       className={cn(
-        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors",
+        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors max-md:pointer-coarse:h-9",
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
           ? "bg-muted text-foreground"
@@ -60,16 +60,18 @@ export function TabPill({
         title={title}
         className="flex h-full min-w-0 items-center rounded-md pl-2 pr-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <span
-          className={cn(
-            TAB_PILL_LEADING_VISUAL_CLASS,
-            closeAction
-              ? "group-hover/tab-pill:opacity-0 group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0 max-md:pointer-coarse:opacity-0"
-              : null,
-          )}
-        >
-          {leadingVisual}
-        </span>
+        {leadingVisual ? (
+          <span
+            className={cn(
+              TAB_PILL_LEADING_VISUAL_CLASS,
+              closeAction
+                ? "group-hover/tab-pill:opacity-0 group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0 max-md:pointer-coarse:opacity-0"
+                : null,
+            )}
+          >
+            {leadingVisual}
+          </span>
+        ) : null}
         <span className={cn("truncate", labelMaxWidthClass, labelClassName)}>
           {label}
         </span>

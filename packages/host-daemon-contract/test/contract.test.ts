@@ -5,6 +5,7 @@ import * as contract from "../src/index.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
+  HOST_DAEMON_SETTLED_COMMAND_TYPES,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
@@ -24,18 +25,24 @@ import {
   hostDaemonInteractiveRequestSchema,
   hostDaemonOnlineRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
+  type HostDaemonRpcCommandType,
   hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonOnlineRpcResultSchemaByType,
   hostDaemonServerWsMessageSchema,
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  type HostDaemonSettledCommandType,
 } from "../src/index.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
+  JsonObject
+>;
+type SettledResponseResultFixtures = Record<
+  HostDaemonSettledCommandType,
   JsonObject
 >;
 
@@ -50,53 +57,6 @@ interface OnlineRpcResponseRoundTripCase {
   name: string;
   result: JsonObject;
 }
-
-const RESOLVED_REPLAY_EXECUTION_OPTIONS: JsonObject = {
-  model: "test/model",
-  serviceTier: "default",
-  reasoningLevel: "medium",
-  permissionMode: "workspace-write",
-  source: "client/turn/requested",
-};
-
-const REPLAY_CAPTURE_SUMMARY_RESULT: JsonObject = {
-  captureId: "cap_lx0_abcdefgh",
-  capturedAt: 1_700_000_000_000,
-  completedAt: 1_700_000_000_100,
-  providerId: "codex",
-  projectId: "proj_123",
-  environmentId: "env_123",
-  threadId: "thr_123",
-  title: "Replay capture",
-  kind: "turn-start",
-  userInputPreview: "Run the test",
-  execution: RESOLVED_REPLAY_EXECUTION_OPTIONS,
-  eventCounts: {
-    rawProviderEvents: 2,
-    droppedRecords: 0,
-  },
-  errorMessage: null,
-};
-
-const REPLAY_CAPTURE_MANIFEST_RESULT: JsonObject = {
-  ...REPLAY_CAPTURE_SUMMARY_RESULT,
-  schemaVersion: 3,
-  source: "live-dev-capture",
-  providerThreadId: "provider-thread-123",
-  turns: [
-    {
-      turnId: "turn_123",
-      userInput: [
-        {
-          type: "text",
-          text: "Run the test",
-          mentions: [],
-        },
-      ],
-      createdAt: 1_700_000_000_010,
-    },
-  ],
-};
 
 const WORKSPACE_UNAVAILABLE_RESULT: JsonObject = {
   outcome: "unavailable",
@@ -127,6 +87,11 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
     branch: {
       currentBranch: "feature/host-rpc",
       defaultBranch: "main",
+    },
+    checkout: {
+      kind: "branch",
+      branchName: "feature/host-rpc",
+      headSha: null,
     },
     mergeBase: {
       insertions: 5,
@@ -169,7 +134,6 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
-  "development.replay": {},
   "host.list_files": {
     files: [
       {
@@ -211,10 +175,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       headSha: "abc123",
     },
     defaultBranch: "main",
+    defaultBranchRelation: "equal",
     hasUncommittedChanges: false,
     operation: {
       kind: "none",
     },
+    originDefaultBranch: "origin/main",
     remoteBranches: ["origin/main"],
     remoteBranchesTruncated: false,
     selectedBranch: {
@@ -241,22 +207,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     mimeType: "image/png",
     sizeBytes: 8,
   },
-  "provider.list": {
-    providers: [
-      {
-        id: "codex",
-        displayName: "Codex",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
-          supportsServiceTier: true,
-          supportsUserQuestion: true,
-          supportedPermissionModes: ["workspace-write"],
-        },
-        available: true,
-      },
-    ],
-  },
   "provider.list_models": {
     models: [
       {
@@ -276,37 +226,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
-  "environment.cleanup_preflight": {
-    outcome: "safe_to_destroy",
-  },
-  "workflow.list": {
-    workflows: [
-      {
-        name: "deep-research",
-        description: "Fan out research agents and synthesize a report.",
-        whenToUse: "Multi-source research questions.",
-        defaultProvider: "codex",
-        defaultModel: "fake-model",
-        defaultSandbox: "read-only",
-        tier: "builtin",
-      },
-      {
-        name: "code-review",
-        description: "Adversarial multi-agent code review.",
-        tier: "project",
-      },
-    ],
-  },
-  "workflow.prune": {
-    pruned: true,
-  },
-  "workflow.resolve": {
-    name: "deep-research",
-    content: "export const meta = { name: 'deep-research' };\n",
-    sha256: "ab12cd34",
-  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
     pullRequest: {
       number: 42,
@@ -318,20 +241,86 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   },
 };
 
+const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
+  "thread.start": {
+    providerThreadId: "provider-thread-123",
+  },
+  "turn.submit": {
+    appliedAs: "new-turn",
+  },
+  "thread.stop": {},
+  "thread.rename": {},
+  "thread.archive": {},
+  "thread.unarchive": {},
+  "interactive.resolve": {},
+  "codex.inference.complete": {
+    model: "gpt-5",
+    value: { title: "Short title" },
+  },
+  "codex.voice.transcribe": {
+    model: "gpt-5-transcribe",
+    text: "hello world",
+  },
+  "environment.provision": {
+    path: "/tmp/env",
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: "bb/env-123",
+    defaultBranch: "main",
+    transcript: [
+      {
+        type: "step",
+        key: "setup",
+        text: "/bin/bash .bb-env-setup.sh",
+        status: "completed",
+      },
+    ],
+  },
+  "environment.provision.cancel": {
+    aborted: true,
+  },
+  "environment.destroy": {},
+  "workspace.commit": {
+    commitSha: "abcdef123456",
+    commitSubject: "Checkpoint work",
+  },
+  "workspace.squash_merge": {
+    commitSha: "abcdef123456",
+    commitSubject: "Merge feature",
+    merged: true,
+  },
+};
+
+const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  files: [
+    {
+      path: "src/renamed.ts",
+      previousPath: "src/original.ts",
+      statusLetter: "R",
+      additions: 3,
+      deletions: 1,
+      binary: false,
+      origin: "tracked",
+    },
+  ],
+  shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
+  mergeBaseRef: "abc123",
+};
+
+const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  patches: [
+    {
+      path: "src/renamed.ts",
+      patch: "diff --git a/src/original.ts b/src/renamed.ts\n",
+      truncated: true,
+    },
+  ],
+};
+
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
-    {
-      name: "development.replay capture-list result",
-      commandType: "development.replay",
-      result: {
-        captures: [REPLAY_CAPTURE_SUMMARY_RESULT],
-      },
-    },
-    {
-      name: "development.replay capture-get manifest result",
-      commandType: "development.replay",
-      result: REPLAY_CAPTURE_MANIFEST_RESULT,
-    },
     {
       name: "workspace.status available result",
       commandType: "workspace.status",
@@ -341,6 +330,16 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
       name: "workspace.diff available result",
       commandType: "workspace.diff",
       result: WORKSPACE_DIFF_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffFiles available result",
+      commandType: "workspace.diffFiles",
+      result: WORKSPACE_DIFF_FILES_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffPatch available result",
+      commandType: "workspace.diffPatch",
+      result: WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT,
     },
     {
       name: "workspace.pull_request no-PR result",
@@ -371,23 +370,15 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "provider.list command with a provider-model result",
-    commandType: "provider.list",
-    result: {
-      models: [],
-      selectedOnlyModels: [],
-    },
-  },
-  {
-    name: "development.replay command with a provider-list result",
-    commandType: "development.replay",
+    name: "provider.list_models command with a provider-list result",
+    commandType: "provider.list_models",
     result: {
       providers: [],
     },
   },
   {
-    name: "provider.list command with a replay-list result",
-    commandType: "provider.list",
+    name: "provider.list_models command with unrelated collection result",
+    commandType: "provider.list_models",
     result: {
       captures: [],
     },
@@ -395,7 +386,7 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
 ];
 
 function buildHostRpcResponseMessage(
-  commandType: HostDaemonOnlineRpcCommandType,
+  commandType: HostDaemonRpcCommandType,
   result: JsonObject,
 ): JsonObject {
   return {
@@ -408,7 +399,7 @@ function buildHostRpcResponseMessage(
 }
 
 function expectHostRpcResponseRoundTrip(
-  commandType: HostDaemonOnlineRpcCommandType,
+  commandType: HostDaemonRpcCommandType,
   result: JsonObject,
   name: string,
 ): void {
@@ -443,12 +434,14 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
+  "hostDaemonCommandSchema.fork":
+    "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
-    "Runtime execution options may omit the Claude Code mock-CLI-traffic config on legacy commands; the server fills the current app setting before dispatching new runtime work.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -832,44 +825,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.write_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-        content: "[1,2,3]\n",
-        contentEncoding: "utf8",
-      }),
-    ).toMatchObject({
-      type: "host.write_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_path_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps",
-        path: "demo",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_path_relative",
-      path: "demo",
-    });
-
-    expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
@@ -995,17 +950,7 @@ describe("host-daemon command schemas", () => {
         path: "README.md",
         dotfiles: "deny",
       },
-      { type: "provider.list" },
       { type: "provider.list_models", providerId: "codex" },
-      {
-        type: "environment.cleanup_preflight",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "managed-worktree",
-        },
-        mergeBaseBranch: "main",
-      },
       {
         type: "workspace.status",
         environmentId: "env_123",
@@ -1151,7 +1096,6 @@ describe("host-daemon command schemas", () => {
         instructionMode: "append",
         requestId: CLIENT_REQUEST_ID,
         input: [{ type: "text", text: "hello", mentions: [] }],
-        sessionKind: "thread",
       }),
     ).toThrow();
 
@@ -1187,7 +1131,7 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("parses thread.start with workspacePath and sessionKind", () => {
+  it("parses thread.start with workspacePath", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -1219,235 +1163,41 @@ describe("host-daemon command schemas", () => {
         ],
         injectedSkillSources: [],
         instructionMode: "replace",
-        sessionKind: "thread",
       }),
     ).toMatchObject({
       type: "thread.start",
-      sessionKind: "thread",
       workspaceContext: {
         workspacePath: "/tmp/workspace",
         workspaceProvisionType: "unmanaged",
       },
     });
-
-    // workflowAgent sessionKind is also valid
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "thread.start",
-        environmentId: "env_123",
-        threadId: "thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        projectId: "proj_123",
-        providerId: "codex",
-        requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        options: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionEscalation: null,
-        },
-        instructions: "Be a workflow agent.",
-        dynamicTools: [],
-        injectedSkillSources: [],
-        instructionMode: "replace",
-        sessionKind: "workflowAgent",
-      }),
-    ).toMatchObject({
-      type: "thread.start",
-      sessionKind: "workflowAgent",
-    });
-
-    // missing sessionKind should fail (strict)
-    expect(() =>
-      hostDaemonCommandSchema.parse({
-        type: "thread.start",
-        environmentId: "env_123",
-        threadId: "thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        projectId: "proj_123",
-        providerId: "codex",
-        requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        options: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionEscalation: null,
-        },
-        instructions: "Be a helpful thread.",
-        dynamicTools: [],
-        injectedSkillSources: [],
-        instructionMode: "replace",
-      }),
-    ).toThrow();
   });
 
-  it("parses workflow.start and workflow.cancel commands", () => {
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.start",
-        runId: "wfr_abc123",
-        projectId: "proj_123",
-        script: {
-          name: "deep-research",
-          content: "export const meta = { name: 'deep-research' };\n",
-          hash: "sha256hash",
-        },
-        argsJson: null,
-        seed: 42,
-        keyVersion: "v1",
-        baseTimeMs: 1_700_000_000_000,
-        defaults: {
-          providerId: "codex",
-          model: null,
-          effort: "medium",
-          sandbox: "read-only",
-          concurrency: 4,
-          maxAgents: 100,
-          maxFanout: 10,
-          budgetOutputTokens: null,
-        },
-        sandboxCeiling: "workspace-write",
-        workspacePath: "/tmp/workspace",
-        execTimeoutMs: 3_600_000,
-        resume: null,
-      }),
-    ).toMatchObject({
-      type: "workflow.start",
-      runId: "wfr_abc123",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.start",
-        runId: "wfr_abc123",
-        projectId: "proj_123",
-        script: {
-          name: "deep-research",
-          content: "export const meta = { name: 'deep-research' };\n",
-          hash: "sha256hash",
-        },
-        argsJson: '{"topic":"AI"}',
-        seed: 0,
-        keyVersion: "v1",
-        baseTimeMs: 1_700_000_000_000,
-        defaults: {
-          providerId: "codex",
-          model: "gpt-5",
-          effort: "high",
-          sandbox: "workspace-write",
-          concurrency: 2,
-          maxAgents: 50,
-          maxFanout: 5,
-          budgetOutputTokens: 10000,
-        },
-        sandboxCeiling: "danger-full-access",
-        workspacePath: "/tmp/workspace",
-        execTimeoutMs: null,
-        resume: { nonce: "nonce-abc" },
-      }),
-    ).toMatchObject({
-      type: "workflow.start",
-      resume: { nonce: "nonce-abc" },
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.cancel",
-        runId: "wfr_abc123",
-      }),
-    ).toMatchObject({
-      type: "workflow.cancel",
-      runId: "wfr_abc123",
-    });
-  });
-
-  it("parses workflow.start and workflow.cancel result schemas", () => {
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.start"].parse({
-        accepted: true,
-      }),
-    ).toEqual({ accepted: true });
-
-    expect(() =>
-      hostDaemonCommandResultSchemaByType["workflow.start"].parse({
-        accepted: false,
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.cancel"].parse({
-        accepted: true,
-      }),
-    ).toEqual({ accepted: true });
-
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.cancel"].parse({
-        accepted: false,
-      }),
-    ).toEqual({ accepted: false });
-  });
-
-  it("parses every injected skill source variant and pins applicationId rules", () => {
+  it("parses every injected skill source variant", () => {
     const base = {
-      name: "building-bb-apps",
-      description: "Use when building bb apps.",
-      sourceRootPath: "/srv/builtin-skills/building-bb-apps",
-      skillFilePath: "/srv/builtin-skills/building-bb-apps/SKILL.md",
+      name: "workflow-help",
+      description: "Use when building workflows.",
+      sourceRootPath: "/srv/builtin-skills/workflow-help",
+      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "builtin",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "builtin", applicationId: null });
+    ).toMatchObject({ sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "data-dir",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "data-dir", applicationId: null });
-    expect(
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: "tasks",
-      }),
-    ).toMatchObject({ sourceType: "global-app", applicationId: "tasks" });
+    ).toMatchObject({ sourceType: "data-dir" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
-        sourceType: "builtin",
-        applicationId: "tasks",
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: null,
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
         sourceType: "bundled",
-        applicationId: null,
       }),
     ).toThrow();
   });
@@ -1608,7 +1358,6 @@ describe("host-daemon command schemas", () => {
         },
         instructions: "Be concise.",
         dynamicTools: [],
-        sessionKind: "thread",
       }),
     ).toThrow();
   });
@@ -1640,7 +1389,6 @@ describe("host-daemon command schemas", () => {
         dynamicTools: [],
         injectedSkillSources: [],
         instructionMode: "append",
-        sessionKind: "thread",
       }),
     ).toThrow();
 
@@ -1905,8 +1653,10 @@ describe("host-daemon command schemas", () => {
           headSha: "abc123",
         },
         defaultBranch: "main",
+        defaultBranchRelation: "equal",
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
+        originDefaultBranch: "origin/main",
         remoteBranches: ["origin/main"],
         remoteBranchesTruncated: false,
         selectedBranch: { name: "origin/main", kind: "remote" },
@@ -1961,46 +1711,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandResultSchemaByType["host.delete_path_relative"].parse({
-        path: "demo",
-        deleted: true,
-      }),
-    ).toEqual({
-      path: "demo",
-      deleted: true,
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "safe_to_destroy",
-      }),
-    ).toEqual({
-      outcome: "safe_to_destroy",
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "already_missing",
-        failure: {
-          code: "path_not_found",
-          workspacePath: "/tmp/missing",
-          message: "Managed workspace path does not exist: /tmp/missing",
-        },
-      }),
-    ).toEqual({
-      outcome: "already_missing",
-      failure: {
-        code: "path_not_found",
-        workspacePath: "/tmp/missing",
-        message: "Managed workspace path does not exist: /tmp/missing",
-      },
-    });
-
-    expect(
       hostDaemonOnlineRpcResultSchemaByType["workspace.status"].parse({
         outcome: "available",
         workspaceStatus: {
@@ -2014,6 +1724,11 @@ describe("host-daemon command schemas", () => {
           branch: {
             currentBranch: "bb/env-123",
             defaultBranch: "main",
+          },
+          checkout: {
+            kind: "branch",
+            branchName: "bb/env-123",
+            headSha: null,
           },
           mergeBase: null,
         },
@@ -2048,35 +1763,6 @@ describe("host-daemon command schemas", () => {
         commitSha: "",
       }),
     ).toThrow();
-
-    // workflow online RPC results
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.list"].parse({
-        workflows: [
-          {
-            name: "deep-research",
-            description: "Fan out research agents.",
-            tier: "builtin",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      workflows: [{ name: "deep-research", tier: "builtin" }],
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.resolve"].parse({
-        name: "deep-research",
-        content: "export const meta = { name: 'deep-research' };\n",
-        sha256: "abcdef1234",
-      }),
-    ).toMatchObject({ name: "deep-research" });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.prune"].parse({
-        pruned: false,
-      }),
-    ).toEqual({ pruned: false });
   });
 
   it("includes discovered workspace properties in environment.provision result", () => {
@@ -2106,7 +1792,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(35);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(36);
   });
 
   it("parses valid session open and event batch payloads", () => {
@@ -2123,13 +1809,11 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
-        activeWorkflowRunIds: [],
       }),
     ).toMatchObject({
       hostId: "host_123",
       hostType: "persistent",
       loadedEnvironments: [],
-      activeWorkflowRunIds: [],
     });
 
     expect(
@@ -2141,7 +1825,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
-        activeWorkflowRunIds: ["wfr_abc123", "wfr_def456"],
         loadedEnvironments: [
           {
             environmentId: "env_123",
@@ -2149,7 +1832,6 @@ describe("host-daemon session schemas", () => {
         ],
       }),
     ).toMatchObject({
-      activeWorkflowRunIds: ["wfr_abc123", "wfr_def456"],
       loadedEnvironments: [
         {
           environmentId: "env_123",
@@ -2157,7 +1839,6 @@ describe("host-daemon session schemas", () => {
       ],
     });
 
-    // Missing activeWorkflowRunIds should fail
     expect(() =>
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
@@ -2183,7 +1864,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
-        activeWorkflowRunIds: [],
       }),
     ).toMatchObject({
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2198,7 +1878,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: 0,
         activeThreads: [],
-        activeWorkflowRunIds: [],
       }),
     ).toThrow();
 
@@ -2207,23 +1886,15 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [
-          {
-            environmentId: "env_123",
-            threadId: "thr_123",
-          },
-        ],
-        trackedApplicationDataTargets: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
       retiredEnvironmentIds: [],
-      trackedThreadTargets: [
-        {
-          environmentId: "env_123",
-          threadId: "thr_123",
-        },
-      ],
+      watchSet: {
+        generation: 0,
+        workspaceTargets: [],
+        threadStorageTargets: [],
+      },
     });
 
     expect(() =>
@@ -2231,7 +1902,6 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [],
         threadHighWaterMarks: { thr_123: 10 },
       }),
     ).toThrow();
@@ -2384,77 +2054,6 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-storage-changed",
-      }),
-    ).toEqual({
-      type: "application-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: "next-hash",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "next-hash",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: null,
-        deleted: true,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-
-    expect(() =>
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: null,
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonAppDataResyncRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
-    });
-
-    expect(
       hostDaemonInteractiveRequestSchema.parse({
         sessionId: "session_123",
         interaction: {
@@ -2533,93 +2132,6 @@ describe("host-daemon session schemas", () => {
     });
   });
 
-  it("parses workflow run event batch and journal schemas", () => {
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchRequestSchema.parse({
-        sessionId: "session_123",
-        events: [
-          {
-            producerEventId: "pevt_abc123",
-            runId: "wfr_abc123",
-            event: {
-              type: "run/started",
-              runId: "wfr_abc123",
-            },
-          },
-        ],
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-      events: [{ runId: "wfr_abc123" }],
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [
-          {
-            producerEventId: "pevt_abc123",
-            runId: "wfr_abc123",
-            sequence: 0,
-          },
-        ],
-        rejectedEvents: [],
-      }),
-    ).toMatchObject({
-      acceptedEvents: [{ runId: "wfr_abc123", sequence: 0 }],
-      rejectedEvents: [],
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-        rejectedEvents: [
-          {
-            producerEventId: "pevt_def456",
-            runId: "wfr_gone",
-            reason: "run_not_owned_by_host",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      rejectedEvents: [
-        {
-          runId: "wfr_gone",
-          reason: "run_not_owned_by_host",
-        },
-      ],
-    });
-
-    // unknown rejection reason fails
-    expect(() =>
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-        rejectedEvents: [
-          {
-            producerEventId: "pevt_def456",
-            runId: "wfr_gone",
-            reason: "unknown_reason",
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonWorkflowRunJournalQuerySchema.parse({
-        sessionId: "session_123",
-        runId: "wfr_abc123",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      runId: "wfr_abc123",
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunJournalResponseSchema.parse({
-        entries: [],
-      }),
-    ).toEqual({ entries: [] });
-  });
-
   it("restricts daemon websocket control and RPC messages", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
@@ -2669,53 +2181,67 @@ describe("host-daemon session schemas", () => {
       }),
     ).toThrow();
 
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-        path: "public/index.html",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "Not A Slug",
-      }),
-    ).toThrow();
-
     expect(
       hostDaemonServerWsMessageSchema.parse({
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       }),
     ).toEqual({
       type: "host-rpc.request",
       requestId: "rpc-1",
-      command: { type: "provider.list" },
+      command: { type: "provider.list_models", providerId: "codex" },
+    });
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "watch-set.replace",
+        generation: 1,
+        workspaceTargets: [
+          {
+            environmentId: "env_123",
+            workspaceContext: {
+              workspacePath: "/tmp/env-123",
+              workspaceProvisionType: "unmanaged",
+            },
+          },
+        ],
+        threadStorageTargets: [
+          {
+            environmentId: "env_123",
+            threadId: "thr_123",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      type: "watch-set.replace",
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env_123",
+        },
+      ],
+      threadStorageTargets: [
+        {
+          threadId: "thr_123",
+        },
+      ],
     });
 
     expect(
       hostDaemonDaemonWsMessageSchema.parse({
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: ONLINE_RPC_RESPONSE_RESULT_FIXTURES["provider.list_models"],
       }),
     ).toEqual({
       type: "host-rpc.response",
       requestId: "rpc-1",
-      commandType: "provider.list",
+      commandType: "provider.list_models",
       ok: true,
-      result: { providers: [] },
+      result: ONLINE_RPC_RESPONSE_RESULT_FIXTURES["provider.list_models"],
     });
 
     expect(
@@ -2782,9 +2308,9 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { providers: [] },
       }).success,
     ).toBe(false);
   });
@@ -2809,6 +2335,22 @@ describe("host-daemon session schemas", () => {
         testCase.commandType,
         testCase.result,
         testCase.name,
+      );
+    }
+  });
+
+  it("round-trips every settled command response success variant through daemon websocket schemas", () => {
+    // Keep this table-driven instead of inspecting Zod internals: the exported
+    // schema behavior is stable API, while union internals are not.
+    expect(Object.keys(SETTLED_RESPONSE_RESULT_FIXTURES).sort()).toEqual(
+      [...HOST_DAEMON_SETTLED_COMMAND_TYPES].sort(),
+    );
+
+    for (const commandType of HOST_DAEMON_SETTLED_COMMAND_TYPES) {
+      expectHostRpcResponseRoundTrip(
+        commandType,
+        SETTLED_RESPONSE_RESULT_FIXTURES[commandType],
+        commandType,
       );
     }
   });
@@ -2926,17 +2468,5 @@ describe("host-daemon session schemas", () => {
     const client = createHostDaemonClient("http://localhost:3334", "secret");
 
     expect(client.session.open.$url().pathname).toBe("/internal/session/open");
-    expect(client.session["app-data-change"].$url().pathname).toBe(
-      "/internal/session/app-data-change",
-    );
-    expect(client.session["app-data-resync"].$url().pathname).toBe(
-      "/internal/session/app-data-resync",
-    );
-    expect(client.session["workflow-run-events"].$url().pathname).toBe(
-      "/internal/session/workflow-run-events",
-    );
-    expect(client.session["workflow-run-journal"].$url().pathname).toBe(
-      "/internal/session/workflow-run-journal",
-    );
   });
 });

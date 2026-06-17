@@ -16,10 +16,7 @@ import {
   ProjectListNavigationLoadingState,
   ProjectListShell,
 } from "./ProjectList";
-import {
-  appsQueryKey,
-  sidebarNavigationQueryKey,
-} from "@/hooks/queries/query-keys";
+import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -31,9 +28,7 @@ interface SidebarFrameProps {
 }
 
 const noop = () => {};
-const EMPTY_APPS: readonly [] = [];
 const SIDEBAR_NAVIGATION_STORY_QUERY_KEY = sidebarNavigationQueryKey();
-const APPS_STORY_QUERY_KEY = appsQueryKey();
 
 const bbProject = makeProject({
   id: "proj_story_bb",
@@ -62,6 +57,28 @@ const loadedSidebarNavigation = {
         latestAttentionAt: 85,
         createdAt: 85,
         updatedAt: 85,
+      }),
+      // A projectless parent + delegated child: exercises depth-0 alignment
+      // with the project headers and the indent guide under an expanded
+      // projectless thread.
+      makeThreadListEntry({
+        id: "thr_story_personal_parent",
+        projectId: PERSONAL_PROJECT_ID,
+        title: "Investigate flaky timeline test",
+        titleFallback: "Investigate flaky timeline test",
+        latestAttentionAt: 80,
+        createdAt: 80,
+        updatedAt: 80,
+      }),
+      makeThreadListEntry({
+        id: "thr_story_personal_child",
+        projectId: PERSONAL_PROJECT_ID,
+        parentThreadId: "thr_story_personal_parent",
+        title: "Add Mutex to Watcher",
+        titleFallback: "Add Mutex to Watcher",
+        latestAttentionAt: 75,
+        createdAt: 75,
+        updatedAt: 75,
       }),
     ],
   },
@@ -104,6 +121,28 @@ const loadedSidebarNavigation = {
           latestAttentionAt: 180,
           createdAt: 180,
           updatedAt: 180,
+        }),
+        // A delegated parent → child pair: renders at project depth 1/2 with
+        // the disclosure chevron after the parent title and the indent guide
+        // running under the expanded child.
+        makeThreadListEntry({
+          id: "thr_story_ancestor",
+          projectId: bbProject.id,
+          title: "Rework the command palette",
+          titleFallback: "Rework the command palette",
+          latestAttentionAt: 176,
+          createdAt: 176,
+          updatedAt: 176,
+        }),
+        makeThreadListEntry({
+          id: "thr_story_ancestor_child",
+          projectId: bbProject.id,
+          parentThreadId: "thr_story_ancestor",
+          title: "Wire async command loading",
+          titleFallback: "Wire async command loading",
+          latestAttentionAt: 175,
+          createdAt: 175,
+          updatedAt: 175,
         }),
         makeThreadListEntry({
           id: "thr_story_worktree_a",
@@ -158,17 +197,14 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 px-2 py-2">
-            <ProjectListActionButtons
-              onNewChat={noop}
-              onOpenAutomations={noop}
-            />
+            <ProjectListActionButtons onNewChat={noop} />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
               type="button"
-              aria-label="App settings"
-              title="App settings"
+              aria-label="Settings"
+              title="Settings"
               className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2"
             >
               <Icon name="Settings" className="size-4" />
@@ -197,16 +233,11 @@ function LoadedSidebar() {
       SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
       loadedSidebarNavigation,
     );
-    queryClient.setQueryData(APPS_STORY_QUERY_KEY, EMPTY_APPS);
     setIsSeeded(true);
 
     return () => {
       queryClient.removeQueries({
         queryKey: SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
-        exact: true,
-      });
-      queryClient.removeQueries({
-        queryKey: APPS_STORY_QUERY_KEY,
         exact: true,
       });
     };

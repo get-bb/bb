@@ -7,7 +7,7 @@ import type {
   ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
-import type { ProjectResponse, ThreadSchedule } from "@bb/server-contract";
+import type { ProjectResponse } from "@bb/server-contract";
 import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
 import { PiIcon } from "../src/components/icons/PiIcon";
@@ -18,6 +18,7 @@ import type { ExecutionControlsProps } from "../src/components/promptbox/Executi
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
+  type TypeaheadCommandConfig,
   type TypeaheadConfig,
   type TypeaheadMentionConfig,
 } from "../src/components/promptbox/PromptBoxInternal";
@@ -65,6 +66,7 @@ export const BRANCH_NAMES = {
 
 export function makeTypeaheadConfig(
   mentionOverrides: Partial<TypeaheadMentionConfig> = {},
+  commandOverrides: Partial<TypeaheadCommandConfig> = {},
 ): TypeaheadConfig {
   const mention: TypeaheadMentionConfig = {
     suggestions: [],
@@ -73,7 +75,13 @@ export function makeTypeaheadConfig(
     onQueryChange: noop,
     ...mentionOverrides,
   };
-  return { mention, command: INERT_TYPEAHEAD_COMMAND_CONFIG };
+  return {
+    mention,
+    command: {
+      ...INERT_TYPEAHEAD_COMMAND_CONFIG,
+      ...commandOverrides,
+    },
+  };
 }
 
 export function makeAttachmentsConfig(
@@ -121,6 +129,16 @@ export const STORY_CLAUDE_CODE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
   { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+];
+
+export const STORY_PI_MODELS: readonly PickerOption<string>[] = [
+  { value: "openai-codex/gpt-5.5", label: "GPT-5.5" },
+  { value: "openai-codex/gpt-5.4", label: "GPT-5.4" },
+  { value: "openai-codex/gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { value: "openai-codex/gpt-5.3-codex", label: "GPT-5.3 Codex" },
+  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { value: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7" },
 ];
 
 export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
@@ -226,6 +244,8 @@ export function makeExecutionControlsProps(
       active: { model: "gpt-5.5" },
       selected: "gpt-5.5",
       options: STORY_CODEX_MODELS,
+      isLoading: false,
+      loadFailed: false,
       onChange: noop,
     },
     serviceTier: {
@@ -255,15 +275,16 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
     environmentId: "env_demo",
-    automationId: null,
     providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: 100,
     latestAttentionAt: 100,
@@ -280,16 +301,17 @@ export function makeThreadListEntry(
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
     environmentId: null,
-    automationId: null,
     providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: 100,
     latestAttentionAt: 100,
@@ -301,27 +323,6 @@ export function makeThreadListEntry(
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
-  };
-  return { ...base, ...overrides };
-}
-
-export function makeThreadSchedule(
-  overrides: Partial<ThreadSchedule> = {},
-): ThreadSchedule {
-  const base: ThreadSchedule = {
-    id: "sched_standup",
-    projectId: PROJECT_IDS.bb,
-    threadId: "thr_demo",
-    name: "Daily standup nudge",
-    enabled: true,
-    kind: "cron",
-    cron: "0 9 * * 1-5",
-    timezone: "America/Los_Angeles",
-    prompt: "Summarize what changed since yesterday and flag anything blocked.",
-    nextFireAt: 1_700_003_600_000,
-    lastFiredAt: null,
-    createdAt: 0,
-    updatedAt: 100,
   };
   return { ...base, ...overrides };
 }
@@ -370,8 +371,6 @@ export function makeEnvironment(
     baseBranch: BRANCH_NAMES.default,
     defaultBranch: BRANCH_NAMES.default,
     mergeBaseBranch: null,
-    cleanupRequestedAt: null,
-    cleanupMode: null,
     status: "ready",
     createdAt: 0,
     updatedAt: 100,
@@ -393,6 +392,11 @@ export function makeWorkspaceStatus(
     branch: {
       currentBranch: BRANCH_NAMES.feature,
       defaultBranch: BRANCH_NAMES.default,
+    },
+    checkout: {
+      kind: "branch",
+      branchName: BRANCH_NAMES.feature,
+      headSha: null,
     },
     mergeBase: {
       mergeBaseBranch: BRANCH_NAMES.default,

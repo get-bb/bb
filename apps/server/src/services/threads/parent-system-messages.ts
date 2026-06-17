@@ -1,6 +1,7 @@
 import {
+  getEnvironment,
   getThread,
-  transitionThreadStatusInTransaction,
+  requireThreadLifecycleEventApplied,
   type DbTransaction,
 } from "@bb/db";
 import type {
@@ -26,6 +27,7 @@ import {
   prepareReadyThreadTurnCommand,
   prepareReadyThreadTurnDispatchInTransaction,
 } from "./thread-lifecycle.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   appendClientTurnEventInTransaction,
   appendPreparedClientTurnRequestedEventInTransaction,
@@ -216,8 +218,7 @@ function queueActiveParentSystemMessageInTransaction(
     currentThread.environmentId !== args.environment.id ||
     currentThread.status !== "active" ||
     currentThread.archivedAt !== null ||
-    currentThread.deletedAt !== null ||
-    currentThread.stopRequestedAt !== null
+    currentThread.deletedAt !== null
   ) {
     return { command: null, queued: false };
   }
@@ -279,7 +280,6 @@ async function queueActiveParentSystemMessage(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -332,6 +332,9 @@ async function queueReadyParentSystemMessage(
 
   const command = await prepareReadyThreadTurnCommand(deps, {
     thread: args.thread,
+    // A parent system message targets an already-started thread; forking only
+    // happens at create time.
+    fork: null,
     input: args.input,
     requestId,
     execution: args.execution,
@@ -339,7 +342,6 @@ async function queueReadyParentSystemMessage(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -372,10 +374,12 @@ async function queueReadyParentSystemMessage(
         thread: args.thread,
       });
       if (dispatchKind === "turn.submit") {
-        transitionThreadStatusInTransaction(tx, {
-          id: args.thread.id,
-          newStatus: "active",
-        });
+        requireThreadLifecycleEventApplied(
+          applyLoggedThreadLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            { event: { type: "run.started" }, threadId: args.thread.id },
+          ),
+        );
         transitioned = true;
       }
     },
@@ -447,7 +451,9 @@ export async function queueParentSystemMessage(
     return true;
   }
 
-  const readyEnvironment = requireReadyThreadEnvironment(environment);
+  const readyEnvironment = requireReadyThreadEnvironment(
+    getEnvironment(deps.db, environment.id) ?? environment,
+  );
   return await queueReadyParentSystemMessage(deps, {
     thread: parentThread,
     input: args.input,

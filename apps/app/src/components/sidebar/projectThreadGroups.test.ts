@@ -19,16 +19,17 @@ function createThread(
     id: "thr_1",
     projectId: "proj_1",
     environmentId: null,
-    automationId: null,
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
     status: "idle",
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 2,
@@ -130,6 +131,35 @@ describe("buildProjectThreadGroups", () => {
       },
     ]);
     expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
+  });
+
+  it("renders forks as roots and excludes side chats", () => {
+    const rootItems = buildProjectThreadGroups([
+      createThread({
+        id: "thr_parent",
+        createdAt: 10,
+        latestAttentionAt: 30,
+      }),
+      createThread({
+        id: "thr_fork",
+        sourceThreadId: "thr_parent",
+        originKind: "fork",
+        createdAt: 20,
+        latestAttentionAt: 20,
+      }),
+      createThread({
+        id: "thr_sidechat",
+        sourceThreadId: "thr_parent",
+        originKind: "side-chat",
+        createdAt: 30,
+        latestAttentionAt: 40,
+      }),
+    ]);
+
+    expect(summarizeItems(rootItems)).toEqual(["thr_parent", "thr_fork"]);
+    expect(findNode(rootItems, "thr_parent")?.children).toEqual([]);
+    expect(findNode(rootItems, "thr_fork")?.depth).toBe(0);
+    expect(findNode(rootItems, "thr_sidechat")).toBeNull();
   });
 
   it("keeps orphaned children as project roots", () => {
