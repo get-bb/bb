@@ -55,7 +55,7 @@ Creating:
   bb automation create --name "..." --cron "..." --timezone "..." [mode flags]
 
     --name <name>                  Automation name (required)
-    --cron <expr>                  5-field cron expression (required)
+    --cron <expr>                  5-field cron expression, steps OK e.g. */5 * * * * (required)
     --timezone <tz>                IANA timezone, e.g. America/New_York (required)
     --project <id>                 Project (defaults to BB_PROJECT_ID, then personal)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
@@ -81,6 +81,29 @@ Creating:
 
   A script that exits 0 with empty stdout, or whose last non-empty line is
   {"wakeAgent": false}, stays silent. Any other stdout is surfaced.
+
+  Script run environment: scripts run with the bb environment injected and
+  inherit the daemon's PATH, so `bb ...` and `node ...` work without any manual
+  exports. Injected variables:
+
+    BB_SERVER_URL          The bb server API base URL (e.g. http://127.0.0.1:38886)
+    BB_HOST_DAEMON_PORT    The host daemon port
+    BB_PROJECT_ID          The automation's project
+    BB_ENVIRONMENT_ID      The environment the script ran in
+    BB_AUTOMATION_ID       The automation's id
+    BB_AUTOMATION_RUN_ID   This run's id
+
+  A script run's status IS its exit code: exit 0 = succeeded; a non-zero exit is
+  recorded as failed even if the script already produced a visible side effect
+  (e.g. posted a message via `bb thread tell`). Make scripts exit 0 on success
+  and check the exit status of each `bb` call. Captured stdout+stderr is stored
+  on failed runs and shown via `bb automation runs <id> --output <runId>`.
+
+Cron format:
+
+  Standard 5-field cron expressions are accepted, including step values like
+  */5 * * * * and */15 * * * *. The minimum granularity is 5 minutes; a schedule
+  that would run more often (e.g. * * * * * or */2 * * * *) is rejected.
 
 Listing and inspecting:
 

@@ -280,6 +280,19 @@ describe("mapScriptResultToRun", () => {
     expect(mapped.exitCode).toBe(2);
   });
 
+  it("keeps captured stdout+stderr on a failed run so it is explainable", () => {
+    // A script may post a visible side effect (e.g. `bb thread tell`) then exit
+    // non-zero; the run is failed but its output must be retained for the user.
+    const mapped = mapScriptResultToRun({
+      exitCode: 1,
+      output: "posted update\nerror: callback failed",
+      timedOut: false,
+    });
+    expect(mapped.status).toBe("failed");
+    expect(mapped.output).toBe("posted update\nerror: callback failed");
+    expect(mapped.error).toContain("code 1");
+  });
+
   it("records a timeout as a failure", () => {
     const mapped = mapScriptResultToRun({
       exitCode: null,

@@ -2,6 +2,7 @@ import {
   closeAutomationRun,
   createAutomation,
   createConnection,
+  createEnvironment,
   createManualRun,
   createProject,
   createThread,
@@ -37,7 +38,21 @@ vi.mock(import("../threads/thread-command-environment.js"), async (orig) => ({
     requireThreadCommandEnvironment(...args),
 }));
 
-const { executeAgentRun } = await import("./automation-run.js");
+// Capture the daemon command without spawning a real process.
+const runLiveHostCommand = vi.fn();
+vi.mock(import("../hosts/live-command.js"), async (orig) => ({
+  ...(await orig()),
+  runLiveHostCommand: (...args: unknown[]) => runLiveHostCommand(...args),
+}));
+// Skip on-disk script resolution; the env injection is what we assert.
+vi.mock(import("./automation-scripts.js"), async (orig) => ({
+  ...(await orig()),
+  resolveAutomationScriptPath: async () => "/tmp/scripts/auto/run.sh",
+}));
+
+const { executeAgentRun, executeScriptRun } = await import(
+  "./automation-run.js"
+);
 
 const testLogger = {
   debug(): void {},
@@ -48,10 +63,16 @@ const testLogger = {
 
 let db: DbConnection;
 let projectId: string;
+let hostId: string;
 
 function buildDeps(): LoggedPendingInteractionWorkSessionDeps {
   return {
-    config: { dataDir: "/tmp/bb-run-test", automationsAllowScriptRuns: true },
+    config: {
+      dataDir: "/tmp/bb-run-test",
+      automationsAllowScriptRuns: true,
+      serverPort: 38886,
+      hostDaemonPort: 38887,
+    },
     db,
     hub: noopNotifier,
     lifecycleDedupers: {},
@@ -114,12 +135,14 @@ beforeEach(() => {
     name: "host",
     type: "persistent",
   });
+  hostId = host.id;
   projectId = createProject(db, noopNotifier, {
     name: "Project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/x" },
   }).project.id;
   createThreadFromRequest.mockReset();
   sendThreadMessage.mockReset();
+  runLiveHostCommand.mockReset();
   requireThreadCommandEnvironment.mockReset();
   requireThreadCommandEnvironment.mockResolvedValue({
     id: "env_stub",
@@ -233,5 +256,85 @@ describe("executeAgentRun target-thread reuse", () => {
     expect(createThreadFromRequest).toHaveBeenCalledTimes(1);
     expect(sendThreadMessage).not.toHaveBeenCalled();
     expect(getAutomationRun(db, run.id)?.threadId).toBe(spawned.id);
+  });
+});
+
+const SCRIPT_EXECUTION = {
+  mode: "script" as const,
+  scriptFile: "run.sh",
+  interpreter: "bash" as const,
+  timeoutMs: 30_000,
+};
+
+function seedScriptAutomation(): AutomationRow {
+  return createAutomation(db, noopNotifier, {
+    projectId,
+    name: "Script test",
+    enabled: true,
+    triggerType: "schedule",
+    triggerConfig: JSON.stringify({ cron: "0 9 * * *", timezone: "UTC" }),
+    runMode: "script",
+    execution: JSON.stringify(SCRIPT_EXECUTION),
+    environment: JSON.stringify({
+      type: "host",
+      hostId,
+      workspace: { type: "unmanaged", path: "/tmp/workspace" },
+    }),
+    autoArchive: false,
+    origin: "agent",
+    createdByThreadId: null,
+    targetThreadId: null,
+    nextRunAt: Date.now(),
+  });
+}
+
+describe("executeScriptRun environment injection", () => {
+  it("passes the bb environment vars in the host.run_script command env", async () => {
+    const environmentRow = createEnvironment(db, noopNotifier, {
+      projectId,
+      hostId,
+      path: "/tmp/workspace",
+      workspaceProvisionType: "unmanaged",
+      status: "ready",
+    });
+    const automation = seedScriptAutomation();
+    const { run } = createManualRun(db, {
+      automationId: automation.id,
+      runMode: "script",
+      now: Date.now(),
+    });
+    runLiveHostCommand.mockResolvedValue({
+      exitCode: 0,
+      output: "",
+      durationMs: 1,
+      timedOut: false,
+    });
+    const environment = {
+      type: "host" as const,
+      hostId,
+      workspace: { type: "unmanaged" as const, path: "/tmp/workspace" },
+    };
+
+    await executeScriptRun(buildDeps(), {
+      automation,
+      run,
+      execution: SCRIPT_EXECUTION,
+      environment,
+      onFailure: vi.fn(),
+      now: Date.now(),
+    });
+
+    expect(runLiveHostCommand).toHaveBeenCalledTimes(1);
+    const call = runLiveHostCommand.mock.calls[0]?.[1] as {
+      command: { env: Record<string, string> };
+    };
+    expect(call.command.env).toMatchObject({
+      BB_SERVER_URL: "http://127.0.0.1:38886",
+      BB_HOST_DAEMON_PORT: "38887",
+      BB_PROJECT_ID: projectId,
+      BB_ENVIRONMENT_ID: environmentRow.id,
+      BB_AUTOMATION_ID: automation.id,
+      BB_AUTOMATION_RUN_ID: run.id,
+    });
   });
 });

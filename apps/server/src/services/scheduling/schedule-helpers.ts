@@ -1,19 +1,12 @@
 import { CronExpressionParser } from "cron-parser";
 
 const MINIMUM_SCHEDULE_INTERVAL_MINUTES = 5;
-const MINUTES_PER_DAY = 24 * 60;
-const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
-const WEEKDAY_ORDER = [
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-  "sun",
-] as const;
-
-type WeekdayName = (typeof WEEKDAY_ORDER)[number];
+const MINIMUM_SCHEDULE_INTERVAL_MS = MINIMUM_SCHEDULE_INTERVAL_MINUTES * 60_000;
+// Bound the gap sampling so a degenerate expression cannot loop forever; two
+// days of occurrences is plenty to catch any sub-5-minute cadence.
+const GAP_SAMPLE_MAX_OCCURRENCES = 256;
+const GAP_SAMPLE_WINDOW_MS = 2 * 24 * 60 * 60_000;
+const CRON_FIELD_COUNT = 5;
 
 interface ScheduleAtTimeArgs {
   cron: string;
@@ -24,63 +17,6 @@ interface ScheduleAtTimeArgs {
 interface CronScheduleArgs {
   cron: string;
   timezone: string;
-}
-
-interface TimeOfDayParts {
-  hour: number;
-  minute: number;
-}
-
-interface HourlyScheduleDefinition {
-  intervalHours: number;
-  kind: "hourly";
-  minute: number;
-  timezone: string;
-}
-
-interface DailyScheduleDefinition {
-  kind: "daily";
-  times: string[];
-  timezone: string;
-}
-
-interface WeeklyScheduleDefinition {
-  kind: "weekly";
-  times: string[];
-  timezone: string;
-  weekdays: WeekdayName[];
-}
-
-interface MonthlyScheduleDefinition {
-  dayOfMonth: number;
-  kind: "monthly";
-  times: string[];
-  timezone: string;
-}
-
-type ScheduleDefinition =
-  | DailyScheduleDefinition
-  | HourlyScheduleDefinition
-  | MonthlyScheduleDefinition
-  | WeeklyScheduleDefinition;
-
-type ParsedHourField =
-  | {
-      hours: number[];
-      kind: "fixed";
-    }
-  | {
-      intervalHours: number;
-      kind: "interval";
-    };
-
-interface NumberFieldBounds {
-  max: number;
-  min: number;
-}
-
-interface ParseSingleNumberFieldArgs extends NumberFieldBounds {
-  allowWildcard?: boolean;
 }
 
 export class ScheduleValidationError extends Error {}
@@ -112,415 +48,61 @@ function assertValidTimezone(timezone: string): void {
   }
 }
 
-function parseTimeOfDay(time: string): TimeOfDayParts {
-  const match = /^(?<hour>[01]\d|2[0-3]):(?<minute>[0-5]\d)$/u.exec(time);
-  if (!match?.groups) {
-    throw new ScheduleValidationError("Invalid time-of-day");
-  }
-
-  return {
-    hour: Number(match.groups.hour),
-    minute: Number(match.groups.minute),
-  };
-}
-
-function toTimeOfDayString(parts: TimeOfDayParts): string {
-  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
-}
-
-function compareNumbers(left: number, right: number): number {
-  return left - right;
-}
-
-function toMinuteOfDay(time: string): number {
-  const { hour, minute } = parseTimeOfDay(time);
-  return hour * 60 + minute;
-}
-
-function assertMinimumGapWithinSortedPoints(args: {
-  cycleLengthMinutes: number;
-  points: number[];
-  wrapAround: boolean;
-}): void {
-  if (args.points.length <= 1) {
-    return;
-  }
-
-  const sorted = [...args.points].sort(compareNumbers);
-  for (let index = 1; index < sorted.length; index += 1) {
-    const previous = sorted[index - 1]!;
-    const current = sorted[index]!;
-    if (current - previous < MINIMUM_SCHEDULE_INTERVAL_MINUTES) {
+/**
+ * Walk consecutive occurrences from a fixed reference time and reject any
+ * expression whose runs are less than 5 minutes apart (every-minute or
+ * every-2-minute steps). A 5-minute step (exactly 5-minute gaps) passes.
+ * Sampling stops at the first of: a sub-minimum gap, ~256 occurrences, or
+ * ~2 days elapsed.
+ */
+function assertMinimumGapBetweenOccurrences(args: CronScheduleArgs): void {
+  // A fixed reference avoids edge effects from "now" landing mid-interval.
+  const referenceNow = Date.UTC(2024, 0, 1, 0, 0, 0);
+  const expression = parseExpression({
+    cron: args.cron,
+    now: referenceNow,
+    timezone: args.timezone,
+  });
+  let previous = expression.next().getTime();
+  for (let index = 1; index < GAP_SAMPLE_MAX_OCCURRENCES; index += 1) {
+    let current: number;
+    try {
+      current = expression.next().getTime();
+    } catch {
+      // Finite schedule with fewer occurrences than the cap; nothing more to
+      // check.
+      return;
+    }
+    if (current - previous < MINIMUM_SCHEDULE_INTERVAL_MS) {
       throw new ScheduleValidationError(
         "Schedule must not run more frequently than every 5 minutes",
       );
     }
-  }
-
-  if (!args.wrapAround) {
-    return;
-  }
-
-  const first = sorted[0]!;
-  const last = sorted[sorted.length - 1]!;
-  const wrapGap = args.cycleLengthMinutes - last + first;
-  if (wrapGap < MINIMUM_SCHEDULE_INTERVAL_MINUTES) {
-    throw new ScheduleValidationError(
-      "Schedule must not run more frequently than every 5 minutes",
-    );
-  }
-}
-
-function toWeekdayIndex(weekday: WeekdayName): number {
-  return WEEKDAY_ORDER.indexOf(weekday);
-}
-
-function toWeeklyOccurrencePoints(
-  schedule: WeeklyScheduleDefinition,
-): number[] {
-  const timeOffsets = schedule.times.map(toMinuteOfDay);
-  return schedule.weekdays.flatMap((weekday) => {
-    const weekdayOffset = toWeekdayIndex(weekday) * MINUTES_PER_DAY;
-    return timeOffsets.map((timeOffset) => weekdayOffset + timeOffset);
-  });
-}
-
-function parseCronFieldParts(field: string): string[] {
-  return field
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-}
-
-function parseSingleNumberField(
-  field: string,
-  args: ParseSingleNumberFieldArgs,
-): number | null {
-  if (args.allowWildcard && field === "*") {
-    return null;
-  }
-
-  if (!/^\d+$/u.test(field)) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-
-  const value = Number(field);
-  if (!Number.isInteger(value) || value < args.min || value > args.max) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-
-  return value;
-}
-
-function parseRequiredNumberField(
-  field: string,
-  args: NumberFieldBounds,
-): number {
-  const value = parseSingleNumberField(field, args);
-  if (value === null) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-  return value;
-}
-
-function parseNumberFieldPartValues(
-  part: string,
-  args: NumberFieldBounds,
-): number[] {
-  const rangeMatch = /^(?<start>\d+)-(?<end>\d+)$/u.exec(part);
-  if (!rangeMatch?.groups?.start || !rangeMatch.groups.end) {
-    return [parseRequiredNumberField(part, args)];
-  }
-
-  const start = parseRequiredNumberField(rangeMatch.groups.start, args);
-  const end = parseRequiredNumberField(rangeMatch.groups.end, args);
-  if (start > end) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-
-  const values: number[] = [];
-  for (let value = start; value <= end; value += 1) {
-    values.push(value);
-  }
-  return values;
-}
-
-function parseNumberFieldValues(
-  field: string,
-  args: NumberFieldBounds,
-): number[] {
-  const values = parseCronFieldParts(field).flatMap((part) =>
-    parseNumberFieldPartValues(part, args),
-  );
-  if (values.length === 0 || new Set(values).size !== values.length) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-  return values.sort(compareNumbers);
-}
-
-function parseHourField(field: string): ParsedHourField {
-  if (field === "*") {
-    return {
-      intervalHours: 1,
-      kind: "interval",
-    };
-  }
-
-  const stepMatch = /^\*\/(?<step>\d+)$/u.exec(field);
-  if (stepMatch?.groups?.step) {
-    const intervalHours = Number(stepMatch.groups.step);
-    if (
-      !Number.isInteger(intervalHours) ||
-      intervalHours < 1 ||
-      intervalHours > 24
-    ) {
-      throw new ScheduleValidationError("Unsupported cron expression");
-    }
-    return {
-      intervalHours,
-      kind: "interval",
-    };
-  }
-
-  return {
-    hours: parseNumberFieldValues(field, {
-      max: 23,
-      min: 0,
-    }),
-    kind: "fixed",
-  };
-}
-
-function parseWeekdayField(field: string): WeekdayName[] {
-  const weekdays = new Set<WeekdayName>();
-
-  for (const value of parseNumberFieldValues(field, { max: 7, min: 0 })) {
-    weekdays.add(toWeekdayName(value));
-  }
-
-  return WEEKDAY_ORDER.filter((weekday) => weekdays.has(weekday));
-}
-
-function toWeekdayName(value: number): WeekdayName {
-  if (value === 0 || value === 7) {
-    return "sun";
-  }
-  const weekday = WEEKDAY_ORDER[value - 1];
-  if (!weekday) {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-  return weekday;
-}
-
-function buildTimes(args: { hours: number[]; minutes: number[] }): string[] {
-  return args.hours
-    .flatMap((hour) =>
-      args.minutes.map((minute) =>
-        toTimeOfDayString({
-          hour,
-          minute,
-        }),
-      ),
-    )
-    .sort((left, right) =>
-      compareNumbers(toMinuteOfDay(left), toMinuteOfDay(right)),
-    );
-}
-
-function extractRepresentableTimeSets(times: string[]): {
-  hours: number[];
-  minutes: number[];
-} {
-  const hours = new Set<number>();
-  const minutes = new Set<number>();
-  const actualTimes = new Set<string>();
-
-  for (const time of times) {
-    const { hour, minute } = parseTimeOfDay(time);
-    hours.add(hour);
-    minutes.add(minute);
-    actualTimes.add(toTimeOfDayString({ hour, minute }));
-  }
-
-  const sortedHours = [...hours].sort(compareNumbers);
-  const sortedMinutes = [...minutes].sort(compareNumbers);
-  const expectedTimes = buildTimes({
-    hours: sortedHours,
-    minutes: sortedMinutes,
-  });
-
-  if (actualTimes.size !== expectedTimes.length) {
-    throw new ScheduleValidationError(
-      "Stored schedule definition cannot be expressed as a supported cron expression",
-    );
-  }
-
-  for (const time of expectedTimes) {
-    if (!actualTimes.has(time)) {
-      throw new ScheduleValidationError(
-        "Stored schedule definition cannot be expressed as a supported cron expression",
-      );
-    }
-  }
-
-  return {
-    hours: sortedHours,
-    minutes: sortedMinutes,
-  };
-}
-
-function toCronWeekdayField(weekdays: readonly WeekdayName[]): string {
-  const cronValues = weekdays
-    .map((weekday) => {
-      if (weekday === "sun") {
-        return 0;
-      }
-      return toWeekdayIndex(weekday) + 1;
-    })
-    .sort(compareNumbers);
-  return cronValues.join(",");
-}
-
-function validateParsedScheduleDefinition(schedule: ScheduleDefinition): void {
-  switch (schedule.kind) {
-    case "hourly":
+    if (current - referenceNow >= GAP_SAMPLE_WINDOW_MS) {
       return;
-    case "daily":
-      assertMinimumGapWithinSortedPoints({
-        cycleLengthMinutes: MINUTES_PER_DAY,
-        points: schedule.times.map(toMinuteOfDay),
-        wrapAround: true,
-      });
-      return;
-    case "weekly":
-      assertMinimumGapWithinSortedPoints({
-        cycleLengthMinutes: MINUTES_PER_WEEK,
-        points: toWeeklyOccurrencePoints(schedule),
-        wrapAround: true,
-      });
-      return;
-    case "monthly":
-      assertMinimumGapWithinSortedPoints({
-        cycleLengthMinutes: MINUTES_PER_DAY,
-        points: schedule.times.map(toMinuteOfDay),
-        wrapAround: false,
-      });
-      return;
-    default: {
-      const exhaustiveCheck: never = schedule;
-      throw new Error(`Unsupported schedule definition: ${exhaustiveCheck}`);
     }
+    previous = current;
   }
 }
 
-export function parseCronScheduleDefinition(
-  args: CronScheduleArgs,
-): ScheduleDefinition {
-  const fields = args.cron.trim().split(/\s+/u);
-  if (fields.length !== 5) {
-    throw new ScheduleValidationError("Invalid cron expression");
-  }
-
-  const [minuteField, hourField, dayOfMonthField, monthField, dayOfWeekField] =
-    fields;
-  if (monthField !== "*") {
-    throw new ScheduleValidationError("Unsupported cron expression");
-  }
-
-  const minutes = parseNumberFieldValues(minuteField, { max: 59, min: 0 });
-  const parsedHourField = parseHourField(hourField);
-
-  if (dayOfMonthField === "*" && dayOfWeekField === "*") {
-    if (parsedHourField.kind === "interval") {
-      if (minutes.length !== 1) {
-        throw new ScheduleValidationError("Unsupported cron expression");
-      }
-      return {
-        intervalHours: parsedHourField.intervalHours,
-        kind: "hourly",
-        minute: minutes[0]!,
-        timezone: args.timezone,
-      };
-    }
-
-    return {
-      kind: "daily",
-      times: buildTimes({
-        hours: parsedHourField.hours,
-        minutes,
-      }),
-      timezone: args.timezone,
-    };
-  }
-
-  if (dayOfMonthField === "*" && dayOfWeekField !== "*") {
-    if (parsedHourField.kind === "interval") {
-      throw new ScheduleValidationError("Unsupported cron expression");
-    }
-    return {
-      kind: "weekly",
-      times: buildTimes({
-        hours: parsedHourField.hours,
-        minutes,
-      }),
-      timezone: args.timezone,
-      weekdays: parseWeekdayField(dayOfWeekField),
-    };
-  }
-
-  if (dayOfWeekField === "*") {
-    if (parsedHourField.kind === "interval") {
-      throw new ScheduleValidationError("Unsupported cron expression");
-    }
-    const dayOfMonth = parseRequiredNumberField(dayOfMonthField, {
-      max: 31,
-      min: 1,
-    });
-    return {
-      dayOfMonth,
-      kind: "monthly",
-      times: buildTimes({
-        hours: parsedHourField.hours,
-        minutes,
-      }),
-      timezone: args.timezone,
-    };
-  }
-
-  throw new ScheduleValidationError("Unsupported cron expression");
-}
-
-export function serializeScheduleDefinitionAsCron(
-  schedule: ScheduleDefinition,
-): string {
-  switch (schedule.kind) {
-    case "hourly": {
-      const hourField =
-        schedule.intervalHours === 1 ? "*" : `*/${schedule.intervalHours}`;
-      return `${schedule.minute} ${hourField} * * *`;
-    }
-    case "daily": {
-      const { hours, minutes } = extractRepresentableTimeSets(schedule.times);
-      return `${minutes.join(",")} ${hours.join(",")} * * *`;
-    }
-    case "weekly": {
-      const { hours, minutes } = extractRepresentableTimeSets(schedule.times);
-      return `${minutes.join(",")} ${hours.join(",")} * * ${toCronWeekdayField(schedule.weekdays)}`;
-    }
-    case "monthly": {
-      const { hours, minutes } = extractRepresentableTimeSets(schedule.times);
-      return `${minutes.join(",")} ${hours.join(",")} ${schedule.dayOfMonth} * *`;
-    }
-    default: {
-      const exhaustiveCheck: never = schedule;
-      throw new Error(`Unsupported schedule definition: ${exhaustiveCheck}`);
-    }
-  }
-}
-
+/**
+ * Validate a standard 5-field cron expression + timezone:
+ * - exactly 5 whitespace-separated fields,
+ * - a resolvable IANA timezone,
+ * - parseable by cron-parser (accepts steps like `*\/5`, ranges, lists),
+ * - runs no more often than every 5 minutes.
+ */
 export function validateScheduleDefinition(args: CronScheduleArgs): void {
+  const fields = args.cron.trim().split(/\s+/u);
+  if (fields.length !== CRON_FIELD_COUNT) {
+    throw new ScheduleValidationError(
+      "Cron expression must have exactly 5 fields (minute hour day-of-month month day-of-week)",
+    );
+  }
   assertValidTimezone(args.timezone);
-  validateParsedScheduleDefinition(parseCronScheduleDefinition(args));
+  // Parse first so syntax errors surface as a clear message before gap checks.
+  parseExpression({ cron: args.cron, now: Date.now(), timezone: args.timezone });
+  assertMinimumGapBetweenOccurrences(args);
 }
 
 export function computeNextScheduledTime(args: ScheduleAtTimeArgs): number {

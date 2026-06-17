@@ -323,9 +323,14 @@ export async function executeScriptRun(
         cwd: readyEnvironment.path,
         env: {
           ...(args.execution.env ?? {}),
+          // Inject the bb environment so a script can call back into `bb`
+          // without manual exports (the daemon also inherits PATH for `bb`).
+          BB_SERVER_URL: `http://127.0.0.1:${deps.config.serverPort}`,
+          BB_HOST_DAEMON_PORT: String(deps.config.hostDaemonPort),
+          BB_PROJECT_ID: args.automation.projectId,
+          BB_ENVIRONMENT_ID: readyEnvironment.id,
           BB_AUTOMATION_ID: args.automation.id,
           BB_AUTOMATION_RUN_ID: args.run.id,
-          BB_PROJECT_ID: args.automation.projectId,
         },
         timeoutMs: args.execution.timeoutMs,
       },

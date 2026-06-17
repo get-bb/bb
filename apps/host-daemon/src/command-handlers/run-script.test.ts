@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { runScriptProcess } from "./run-script.js";
+import { buildInheritedScriptEnv, runScriptProcess } from "./run-script.js";
 
 describe("runScriptProcess", () => {
   it("captures stdout and stderr and returns exit code 0", async () => {
@@ -104,6 +104,29 @@ describe("runScriptProcess", () => {
     // Capped output is the 64 KiB head + the short truncation marker, never the
     // full ~5 MiB stream.
     expect(Buffer.byteLength(result.output, "utf8")).toBeLessThan(70_000);
+  });
+
+  it("inherits the daemon PATH under the server-provided command env", () => {
+    const env = buildInheritedScriptEnv({
+      BB_SERVER_URL: "http://127.0.0.1:38886",
+      BB_AUTOMATION_ID: "auto_test",
+    });
+    // The daemon's own PATH (for resolving `bb`/`node`) is the base.
+    expect(env.PATH).toBe(process.env.PATH);
+    // Server-injected vars are present and win on conflict.
+    expect(env.BB_SERVER_URL).toBe("http://127.0.0.1:38886");
+    expect(env.BB_AUTOMATION_ID).toBe("auto_test");
+  });
+
+  it("lets command env override an inherited value", () => {
+    const key = "BB_RUN_SCRIPT_TEST_OVERRIDE";
+    process.env[key] = "from-daemon";
+    try {
+      const env = buildInheritedScriptEnv({ [key]: "from-server" });
+      expect(env[key]).toBe("from-server");
+    } finally {
+      delete process.env[key];
+    }
   });
 
   it("kills descendant processes on timeout (process group)", async () => {

@@ -88,6 +88,17 @@ For review or fix pipelines, get the environment ID from
   `bb automation create --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
+- Script automations run with the bb environment injected — `BB_SERVER_URL`,
+  `BB_HOST_DAEMON_PORT`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_AUTOMATION_ID`,
+  `BB_AUTOMATION_RUN_ID` — and inherit the daemon's PATH, so `bb ...` and
+  `node ...` work with no manual exports.
+- A script run's status IS its exit code: exit 0 = succeeded; a non-zero exit is
+  recorded as failed even if the script already produced a visible side effect
+  (e.g. posted a message via `bb thread tell`). Make scripts exit 0 on success
+  and check the exit status of each `bb` call. Captured stdout+stderr is stored
+  on failed runs (see `--output <run-id>`).
+- Cron accepts standard 5-field expressions, including step values like
+  `*/5 * * * *` (minimum granularity is 5 minutes).
 - The project defaults to `BB_PROJECT_ID`, then the personal project, so
   `--project` is never required.
 - Use `bb automation list`, `bb automation show <id>`, and

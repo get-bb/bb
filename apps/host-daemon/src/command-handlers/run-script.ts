@@ -22,6 +22,24 @@ export interface RunScriptProcessArgs {
   timeoutMs: number;
 }
 
+/**
+ * Base the script env on the daemon's own inherited process env (so scripts get
+ * PATH for `bb`/`node` and pass-through BB_* like BB_DEV_REMOTE), then overlay
+ * the server-provided env so injected vars (BB_SERVER_URL, BB_AUTOMATION_ID, …)
+ * win. Mirrors Hermes no_agent inheriting the gateway process env.
+ */
+export function buildInheritedScriptEnv(
+  commandEnv: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+  return { ...merged, ...commandEnv };
+}
+
 export interface RunScriptProcessResult {
   exitCode: number | null;
   output: string;
@@ -155,7 +173,7 @@ export async function runScript(
     command: command.command,
     args: command.args,
     cwd: command.cwd,
-    env: command.env,
+    env: buildInheritedScriptEnv(command.env),
     timeoutMs: command.timeoutMs,
   });
 }
