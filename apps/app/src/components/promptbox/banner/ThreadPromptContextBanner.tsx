@@ -24,11 +24,8 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/ui/icon.js";
-import {
-  getPullRequestAttentionDisplay,
-  getPullRequestSignalDisplays,
-  PULL_REQUEST_STATE_DISPLAY,
-} from "@/lib/pull-request-display";
+import { getPullRequestAttentionDisplay } from "@/lib/pull-request-display";
+import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -124,8 +121,7 @@ export type ThreadPromptContextBannerExpandedSection =
   | "todos"
   | "git"
   | "parentThread"
-  | "childThreads"
-  | "pullRequest";
+  | "childThreads";
 
 /**
  * Pixel height of the banner's collapsed (single-row) state. Pinned via the
@@ -196,10 +192,6 @@ const SECTION_IDS = {
   git: {
     toggle: "thread-prompt-banner-git-toggle",
     body: "thread-prompt-banner-git-body",
-  },
-  pullRequest: {
-    toggle: "thread-prompt-banner-pull-request-toggle",
-    body: "thread-prompt-banner-pull-request-body",
   },
 } as const;
 
@@ -442,56 +434,31 @@ function ChildThreadsBody({
   );
 }
 
-function PullRequestBody({ pullRequest }: { pullRequest: ThreadPullRequest }) {
-  const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
-  const signalDisplays = getPullRequestSignalDisplays(pullRequest);
+function PullRequestBannerLink({
+  pullRequest,
+  hideLabelInCompact,
+}: {
+  pullRequest: ThreadPullRequest;
+  hideLabelInCompact: boolean;
+}) {
+  const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
   return (
-    <div className="space-y-1.5 px-3 pb-2 pt-1.5 text-xs">
-      <a
-        href={pullRequest.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={pullRequest.title}
-        className="flex min-w-0 items-center gap-1.5 text-foreground/90 underline-offset-2 hover:underline"
+    <a
+      href={pullRequest.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={pullRequest.title}
+      aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
+      className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <PullRequestStatusPill pullRequest={pullRequest} />
+      <span
+        className="min-w-0 truncate"
+        data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
       >
-        <span className="shrink-0">PR #{pullRequest.number}</span>
-        <span className="min-w-0 flex-1 truncate">{pullRequest.title}</span>
-        <Icon
-          name="ExternalLink"
-          aria-hidden="true"
-          className="size-3 shrink-0 text-subtle-foreground"
-        />
-      </a>
-      <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            stateDisplay.dotClass,
-          )}
-        />
-        <span className="shrink-0">{stateDisplay.label}</span>
-        <span className="shrink-0 text-subtle-foreground">·</span>
-        <span className="min-w-0 truncate">
-          {pullRequest.headRefName} {"->"} {pullRequest.baseRefName}
-        </span>
-      </div>
-      <div className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
-        {signalDisplays.map((display) => (
-          <span
-            key={display.label}
-            className="inline-flex min-w-0 items-center gap-1"
-          >
-            <Icon
-              name={display.icon}
-              aria-hidden="true"
-              className={cn("size-3 shrink-0", display.className)}
-            />
-            <span className="min-w-0 truncate">{display.label}</span>
-          </span>
-        ))}
-      </div>
-    </div>
+        #{pullRequest.number}
+      </span>
+    </a>
   );
 }
 
@@ -681,9 +648,6 @@ export function ThreadPromptContextBanner({
     expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
-  const isPullRequestExpanded =
-    expandedSection === "pullRequest" && showPullRequest;
-
   const gitTally = showGit
     ? toChangeTally(gitSection.changedFiles.stats)
     : null;
@@ -718,9 +682,6 @@ export function ThreadPromptContextBanner({
     !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
-  const pullRequestAttentionDisplay = pullRequest
-    ? getPullRequestAttentionDisplay(pullRequest)
-    : null;
 
   return (
     <PromptStackCard
@@ -789,25 +750,10 @@ export function ThreadPromptContextBanner({
             onToggle={() => onToggleSection("childThreads")}
           />
         ) : null}
-        {showPullRequest && pullRequest && pullRequestAttentionDisplay ? (
-          <SectionToggleButton
-            id={SECTION_IDS.pullRequest.toggle}
-            controlsId={SECTION_IDS.pullRequest.body}
-            icon={
-              <Icon
-                name={pullRequestAttentionDisplay.icon}
-                className={cn(
-                  "size-3.5 shrink-0",
-                  pullRequestAttentionDisplay.className,
-                )}
-                aria-hidden="true"
-              />
-            }
-            label={`PR #${pullRequest.number} · ${pullRequestAttentionDisplay.label}`}
+        {showPullRequest && pullRequest ? (
+          <PullRequestBannerLink
+            pullRequest={pullRequest}
             hideLabelInCompact={!hasSingleVisibleSegment}
-            ariaLabel={`Pull request ${pullRequest.number}: ${pullRequestAttentionDisplay.label}`}
-            isExpanded={isPullRequestExpanded}
-            onToggle={() => onToggleSection("pullRequest")}
           />
         ) : null}
         {showTodo ? (
@@ -894,15 +840,6 @@ export function ThreadPromptContextBanner({
           isExpanded={isChildThreadsExpanded}
         >
           <ChildThreadsBody items={childThreadsSection.items} />
-        </AnimatedBody>
-      ) : null}
-      {showPullRequest && pullRequest ? (
-        <AnimatedBody
-          id={SECTION_IDS.pullRequest.body}
-          labelledBy={SECTION_IDS.pullRequest.toggle}
-          isExpanded={isPullRequestExpanded}
-        >
-          <PullRequestBody pullRequest={pullRequest} />
         </AnimatedBody>
       ) : null}
       {showTodo ? (

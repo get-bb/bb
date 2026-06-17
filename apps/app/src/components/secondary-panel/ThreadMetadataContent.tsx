@@ -62,10 +62,16 @@ import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSe
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
-  getPullRequestAttentionDisplay,
-  getPullRequestSignalDisplays,
   PULL_REQUEST_STATE_DISPLAY,
+  getPullRequestAttentionDisplay,
+  getPullRequestChecksDisplay,
+  getPullRequestMergeabilityDisplay,
+  getPullRequestReviewDisplay,
 } from "@/lib/pull-request-display";
+import {
+  PullRequestGithubCheckIcon,
+  PullRequestStateIcon,
+} from "@/components/pull-request/PullRequestStatusPill";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -73,6 +79,9 @@ import {
 // that composes them. This shape lets per-row stories render exactly one row
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
+
+const GITHUB_FAVICON_URL =
+  "https://github.githubassets.com/favicons/favicon.png";
 
 export interface ParentSelectorRowProps {
   thread: Thread;
@@ -401,11 +410,44 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   if (!pullRequest) return null;
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
-  const signalDisplays = getPullRequestSignalDisplays(pullRequest);
+  const checksDisplay = getPullRequestChecksDisplay(pullRequest);
+  const showGithubCheckIcon =
+    (pullRequest.state === "open" || pullRequest.state === "draft") &&
+    (pullRequest.checks.state === "passing" ||
+      pullRequest.checks.state === "failing" ||
+      pullRequest.checks.state === "pending");
+  const canShowChecksStatus =
+    (pullRequest.state === "open" || pullRequest.state === "draft") &&
+    pullRequest.checks.state !== "no_checks" &&
+    pullRequest.checks.state !== "unknown";
+  const statusDisplay =
+    pullRequest.attention === "changes_requested" ||
+    pullRequest.attention === "review_requested"
+      ? getPullRequestReviewDisplay(pullRequest)
+      : pullRequest.attention === "conflicts" ||
+          pullRequest.attention === "blocked"
+        ? getPullRequestMergeabilityDisplay(pullRequest)
+        : attentionDisplay.label !== stateDisplay.label
+          ? attentionDisplay
+          : canShowChecksStatus
+            ? checksDisplay
+            : null;
+  const useNeutralStatusText =
+    pullRequest.attention === "ready_to_merge" ||
+    pullRequest.attention === "checks_pending" ||
+    ((pullRequest.state === "open" || pullRequest.state === "draft") &&
+      (pullRequest.checks.state === "passing" ||
+        pullRequest.checks.state === "pending") &&
+      (pullRequest.attention === "none" || pullRequest.attention === "draft"));
+  const statusTextClassName = useNeutralStatusText
+    ? "text-foreground"
+    : statusDisplay?.className;
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>
+        <DetailRowIconLabel icon="GitPullRequestArrow">
+          Pull request
+        </DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
@@ -414,46 +456,35 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         target="_blank"
         rel="noopener noreferrer"
         title={pullRequest.title}
-        className="inline-flex max-w-full min-w-0 items-center gap-1.5 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+        aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
+        className="flex h-5 max-w-full min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <span className="shrink-0">PR #{pullRequest.number}</span>
-        <span className="shrink-0 text-muted-foreground">·</span>
-        <span
-          aria-hidden
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            stateDisplay.dotClass,
-          )}
-        />
-        <span className="min-w-0 truncate">{stateDisplay.label}</span>
-        <span className="shrink-0 text-muted-foreground">·</span>
-        <Icon
-          name={attentionDisplay.icon}
-          aria-hidden
-          className={cn("size-3 shrink-0", attentionDisplay.className)}
-        />
-        <span className="min-w-0 truncate">{attentionDisplay.label}</span>
-        <Icon
-          name="ExternalLink"
-          aria-hidden
-          className="size-3 shrink-0 text-muted-foreground"
-        />
-      </a>
-      <div className="mt-1 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        {signalDisplays.map((display) => (
-          <span
-            key={display.label}
-            className="inline-flex min-w-0 items-center gap-1"
-          >
-            <Icon
-              name={display.icon}
-              aria-hidden
-              className={cn("size-3 shrink-0", display.className)}
-            />
-            <span className="min-w-0 truncate">{display.label}</span>
+        {showGithubCheckIcon ? (
+          <PullRequestGithubCheckIcon pullRequest={pullRequest} />
+        ) : (
+          <img
+            src={GITHUB_FAVICON_URL}
+            alt=""
+            className="size-4 shrink-0"
+            aria-hidden="true"
+          />
+        )}
+        <span className="shrink-0 text-muted-foreground">
+          #{pullRequest.number}
+        </span>
+        <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
+          <PullRequestStateIcon
+            state={pullRequest.state}
+            className="size-3.5"
+          />
+          <span>{stateDisplay.label}</span>
+        </span>
+        {statusDisplay ? (
+          <span className={cn("min-w-0 truncate", statusTextClassName)}>
+            {statusDisplay.label}
           </span>
-        ))}
-      </div>
+        ) : null}
+      </a>
     </DetailRow>
   );
 }

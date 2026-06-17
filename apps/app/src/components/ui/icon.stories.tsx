@@ -51,6 +51,10 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitBranch:
     "Worktree environment icon (resolved via environment-workspace helpers)",
   GitMerge: "Branch name display, branch picker selected/option glyph",
+  GitPullRequest: "Available pull request glyph",
+  GitPullRequestArrow: "Open pull request glyph",
+  GitPullRequestClosed: "Closed pull request glyph",
+  GitPullRequestDraft: "Draft pull request glyph",
   Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Todo section header in prompt context banner",

@@ -603,20 +603,10 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="pull request (collapsed)"
-        hint="active-thread PR status uses the derived attention state"
+        label="pull request"
+        hint="active-thread PR status links directly to GitHub"
       >
         <Row pullRequest={pullRequestFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="pull request (expanded)"
-        hint="expanded body shows title, branch direction, checks, review, and mergeability"
-      >
-        <Row
-          pullRequest={pullRequestFixture}
-          mergeBase={null}
-          initiallyExpandedSection="pullRequest"
-        />
       </StoryRow>
       <StoryRow
         label="pull request + todos + uncommitted"

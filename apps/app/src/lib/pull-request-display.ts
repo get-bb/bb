@@ -24,13 +24,13 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
 > = {
   open: {
     label: "Open",
-    icon: "GitMerge",
+    icon: "GitPullRequestArrow",
     className: "text-success",
     dotClass: "bg-success",
   },
   draft: {
     label: "Draft",
-    icon: "GitMerge",
+    icon: "GitPullRequestDraft",
     className: "text-muted-foreground",
     dotClass: "bg-muted-foreground",
   },
@@ -42,7 +42,7 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
   },
   closed: {
     label: "Closed",
-    icon: "CircleX",
+    icon: "GitPullRequestClosed",
     className: "text-destructive",
     dotClass: "bg-destructive",
   },
@@ -92,12 +92,12 @@ const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
     review_required: {
       label: "Review required",
       icon: "Clock",
-      className: "text-warning-text",
+      className: "text-destructive",
     },
     review_requested: {
       label: "Review requested",
       icon: "Clock",
-      className: "text-warning-text",
+      className: "text-destructive",
     },
     none: {
       label: "No review",
@@ -123,7 +123,7 @@ const MERGEABILITY_DISPLAY: Record<
   blocked: {
     label: "Blocked",
     icon: "AlertTriangle",
-    className: "text-warning-text",
+    className: "text-destructive",
   },
   draft: {
     label: "Draft",
@@ -141,16 +141,34 @@ const ATTENTION_DISPLAY: Record<
   ThreadPullRequestAttentionState,
   PullRequestDisplay
 > = {
-  checks_failed: CHECKS_DISPLAY.failing,
-  checks_pending: CHECKS_DISPLAY.pending,
-  changes_requested: REVIEW_DISPLAY.changes_requested,
-  review_requested: REVIEW_DISPLAY.review_requested,
-  conflicts: MERGEABILITY_DISPLAY.conflicts,
-  blocked: MERGEABILITY_DISPLAY.blocked,
+  checks_failed: {
+    ...CHECKS_DISPLAY.failing,
+    icon: "GitPullRequestArrow",
+  },
+  checks_pending: {
+    ...CHECKS_DISPLAY.pending,
+    icon: "GitPullRequestArrow",
+  },
+  changes_requested: {
+    ...REVIEW_DISPLAY.changes_requested,
+    icon: "GitPullRequestArrow",
+  },
+  review_requested: {
+    ...REVIEW_DISPLAY.review_requested,
+    icon: "GitPullRequestArrow",
+  },
+  conflicts: {
+    ...MERGEABILITY_DISPLAY.conflicts,
+    icon: "GitPullRequestArrow",
+  },
+  blocked: {
+    ...MERGEABILITY_DISPLAY.blocked,
+    icon: "GitPullRequestArrow",
+  },
   draft: PULL_REQUEST_STATE_DISPLAY.draft,
   ready_to_merge: {
     label: "Ready to merge",
-    icon: "CircleCheck",
+    icon: "GitPullRequestArrow",
     className: "text-success",
   },
   merged: PULL_REQUEST_STATE_DISPLAY.merged,
