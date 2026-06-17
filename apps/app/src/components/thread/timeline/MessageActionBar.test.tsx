@@ -67,7 +67,7 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps actions visible and tappable on coarse pointers", () => {
+  it("uses a single overflow trigger on coarse pointers", () => {
     render(
       <MessageActionBar
         messageText="An answer."
@@ -77,7 +77,14 @@ describe("MessageActionBar", () => {
     );
 
     const button = screen.getByRole("button", { name: "Reply in side chat" });
-    expect(button.className).toContain("max-md:pointer-coarse:opacity-100");
-    expect(button.className).toContain("max-md:pointer-coarse:size-9");
+    expect(button.className).toContain("max-md:pointer-coarse:hidden");
+
+    const overflowTrigger = screen.getByRole("button", {
+      name: "Message actions",
+    });
+    expect(overflowTrigger.className).toContain("hidden");
+    expect(overflowTrigger.className).toContain(
+      "max-md:pointer-coarse:inline-flex",
+    );
   });
 });
