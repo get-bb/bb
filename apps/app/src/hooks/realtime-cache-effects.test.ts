@@ -27,6 +27,7 @@ import {
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
+  threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -793,8 +794,17 @@ describe("createRealtimeCacheEffects", () => {
     const threadKey = threadQueryKey("thr_1");
     const timelineKey = threadTimelineQueryKey("thr_1");
     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
+    // A completed turn's expanded detail panel is immutable; events-appended
+    // must not refetch it (W2).
+    const turnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      threadId: "thr_1",
+      turnId: "turn_1",
+      sourceSeqStart: 1,
+      sourceSeqEnd: 5,
+    });
     queryClient.setQueryData(threadKey, { id: "thr_1" });
     queryClient.setQueryData(promptHistoryKey, []);
+    queryClient.setQueryData(turnDetailsKey, { rows: [] });
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
@@ -818,6 +828,9 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(threadKey)?.isInvalidated).not.toBe(true);
     expect(queryClient.getQueryState(promptHistoryKey)?.isInvalidated).not.toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(turnDetailsKey)?.isInvalidated).not.toBe(
       true,
     );
 
