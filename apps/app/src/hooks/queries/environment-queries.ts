@@ -1,5 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Environment, WorkspaceDiffTarget } from "@bb/domain";
+import type {
+  Environment,
+  ThreadPullRequest,
+  WorkspaceDiffTarget,
+} from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
@@ -47,6 +51,7 @@ interface UseEnvironmentDiffFilesOptions extends QueryOptions {
 }
 
 const ENVIRONMENT_PULL_REQUEST_STALE_MS = 30_000;
+const ENVIRONMENT_SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_LIMIT = 50;
 /** Staleness window for the environment diff TOC query. */
@@ -119,6 +124,14 @@ export function useEnvironmentWorkStatus(
   });
 }
 
+export function getEnvironmentPullRequestStaleTime(
+  pullRequest: ThreadPullRequest | null | undefined,
+): number {
+  return pullRequest?.state === "closed" || pullRequest?.state === "merged"
+    ? ENVIRONMENT_SETTLED_PULL_REQUEST_STALE_MS
+    : ENVIRONMENT_PULL_REQUEST_STALE_MS;
+}
+
 export function useEnvironmentPullRequest(
   environmentId: string | null | undefined,
   options?: QueryOptions,
@@ -134,8 +147,10 @@ export function useEnvironmentPullRequest(
         signal,
       ),
     enabled,
-    refetchOnWindowFocus: false,
-    staleTime: ENVIRONMENT_PULL_REQUEST_STALE_MS,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    staleTime: (query) =>
+      getEnvironmentPullRequestStaleTime(query.state.data?.pullRequest),
   });
 }
 
