@@ -5,7 +5,7 @@ import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
-  "flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
+  "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} transition-colors hover:bg-state-hover hover:text-foreground`;
 
 export interface ThreadEnvironmentSummaryProps {
@@ -64,7 +64,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             <Icon name={environmentIcon} className="size-4 shrink-0" />
           ) : null
         }
-        className="h-6 min-w-0"
+        className="h-6 shrink-0"
         muted
       />
       {environmentCheckout && checkoutCopyValue !== null ? (
