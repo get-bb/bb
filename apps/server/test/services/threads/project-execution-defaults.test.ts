@@ -9,6 +9,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedTurnStarted,
 } from "../../helpers/seed.js";
 import { textInput } from "../../helpers/prompt-input.js";
 import { withTestHarness } from "../../helpers/test-app.js";
@@ -128,8 +129,19 @@ describe("project execution defaults persistence", () => {
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/child-origin-defaults-source",
+      });
       const parentThread = seedThread(harness.deps, {
         projectId: project.id,
+        environmentId: parentEnvironment.id,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: parentThread.id,
+        turnId: "turn-child-origin-defaults-source",
+        providerThreadId: "provider-child-origin-defaults-source",
       });
 
       upsertProjectExecutionDefaults(harness.db, {
