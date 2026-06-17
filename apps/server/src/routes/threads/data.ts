@@ -1,5 +1,5 @@
 import path from "node:path";
-import { listQueuedThreadMessages } from "@bb/db";
+import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
@@ -41,6 +41,10 @@ import {
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
 } from "../../services/threads/timeline.js";
+import {
+  buildThreadTimelineCacheKey,
+  createThreadTimelineCache,
+} from "../../services/threads/timeline-cache.js";
 import {
   findThreadEvent,
   getLastThreadOutput,
@@ -310,16 +314,34 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
+  // Lives for the server lifetime: registerThreadDataRoutes is called once at
+  // startup. Idle/warm-repeat hits skip the dominant build cost.
+  const timelineCache = createThreadTimelineCache();
 
   get(routes.timeline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const page = parseThreadTimelinePage(query);
+    const includeNestedRows = query.includeNestedRows === "true";
+    const summaryOnly = query.summaryOnly === "true";
+    const cacheKey = buildThreadTimelineCacheKey({
+      threadId: thread.id,
+      maxSeq: getLatestThreadSequence(deps.db, { threadId: thread.id }),
+      status: thread.status,
+      environmentId: thread.environmentId,
+      page,
+      includeNestedRows,
+      summaryOnly,
+      isDevelopment: deps.config.isDevelopment,
+    });
     return context.json(
-      buildThreadTimeline(deps.db, thread, {
-        isDevelopment: deps.config.isDevelopment,
-        includeNestedRows: query.includeNestedRows === "true",
-        page: parseThreadTimelinePage(query),
-        summaryOnly: query.summaryOnly === "true",
-      }),
+      timelineCache.getOrBuild(cacheKey, () =>
+        buildThreadTimeline(deps.db, thread, {
+          isDevelopment: deps.config.isDevelopment,
+          includeNestedRows,
+          page,
+          summaryOnly,
+        }),
+      ),
     );
   });
 
