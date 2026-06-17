@@ -45,6 +45,7 @@ import {
   buildThreadTimelineCacheKey,
   createThreadTimelineCache,
 } from "../../services/threads/timeline-cache.js";
+import { truncateTimelineResponseOutputs } from "../../services/threads/timeline-output-truncation.js";
 import {
   findThreadEvent,
   getLastThreadOutput,
@@ -335,12 +336,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     });
     return context.json(
       timelineCache.getOrBuild(cacheKey, () =>
-        buildThreadTimeline(deps.db, thread, {
-          isDevelopment: deps.config.isDevelopment,
-          includeNestedRows,
-          page,
-          summaryOnly,
-        }),
+        truncateTimelineResponseOutputs(
+          buildThreadTimeline(deps.db, thread, {
+            isDevelopment: deps.config.isDevelopment,
+            includeNestedRows,
+            page,
+            summaryOnly,
+          }),
+        ),
       ),
     );
   });
