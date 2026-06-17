@@ -25,6 +25,7 @@ import {
   type ThreadPromptPullRequestSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
   WorkspaceChangedFileSelection,
@@ -50,6 +51,7 @@ import {
   useSendThreadQueuedMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
   useThreadQueuedMessages,
@@ -263,6 +265,7 @@ export function ThreadDetailPromptArea({
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const stopThread = useStopThread();
+  const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({
     kind: "thread",
@@ -292,6 +295,7 @@ export function ThreadDetailPromptArea({
     [pullRequest],
   );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
@@ -743,6 +747,11 @@ export function ThreadDetailPromptArea({
     },
     [],
   );
+  const isUnarchiveCurrentThreadPending =
+    unarchiveThread.isPending && unarchiveThread.variables?.id === thread.id;
+  const handleUnarchiveCurrentThread = useCallback(() => {
+    unarchiveThread.mutate({ id: thread.id });
+  }, [thread.id, unarchiveThread]);
 
   const attachmentsConfig = useMemo(
     () => ({
@@ -936,11 +945,23 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
+        <ThreadTodoCard
+          pendingTodos={
+            thread.archivedAt === null && environmentGoneStatus === null
+              ? pendingTodos
+              : null
+          }
+          isExpanded={isTodoExpanded}
+          onToggle={() => setIsTodoExpanded((value) => !value)}
+        />
         <ThreadPromptContextBanner
-          todoSection={!pendingTodos ? null : { pendingTodos }}
           archivedSection={
             thread.archivedAt !== null
-              ? { archivedAt: thread.archivedAt }
+              ? {
+                  archivedAt: thread.archivedAt,
+                  onUnarchive: handleUnarchiveCurrentThread,
+                  unarchivePending: isUnarchiveCurrentThreadPending,
+                }
               : null
           }
           environmentGoneSection={
@@ -998,11 +1019,14 @@ export function ThreadDetailPromptArea({
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
       handleToggleBannerSection,
+      handleUnarchiveCurrentThread,
       environmentGoneStatus,
       isFollowUpSubmitting,
+      isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
       parentThreadSection,

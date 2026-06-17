@@ -21,10 +21,7 @@ const checksPendingDarkIcon =
 
 export type GithubCheckStatus = "success" | "failure" | "pending";
 
-const PR_STATUS_COLOR: Record<
-  PullRequestState,
-  { textClassName: string }
-> = {
+const PR_STATUS_COLOR: Record<PullRequestState, { textClassName: string }> = {
   open: {
     textClassName: "text-[#238636]",
   },
@@ -179,7 +176,7 @@ export function PullRequestStatusPill({
       title={PR_STATUS_ICON[pullRequest.state].title}
       className={cn("flex h-5 items-center gap-1 cursor-pointer", className)}
     >
-      <PullRequestStateIcon state={pullRequest.state} className="mr-1" />
+      <PullRequestStateIcon state={pullRequest.state} />
       <PullRequestGithubCheckIcon pullRequest={pullRequest} />
     </span>
   );
