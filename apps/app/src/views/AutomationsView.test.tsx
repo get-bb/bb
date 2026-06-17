@@ -88,6 +88,11 @@ function renderOverview(
 
 
 describe("AutomationsOverview", () => {
+  it("leaves the page title to the app chrome", () => {
+    const markup = renderOverview({ entries: [] });
+    expect(markup).not.toContain(">Automations<");
+  });
+
   it("groups automations by status into Active and Paused sections", () => {
     const markup = renderOverview({
       entries: [

@@ -1,4 +1,3 @@
-import { MemoryRouter } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Automation, AutomationRun } from "@bb/server-contract";
 import { PROJECT_IDS } from "../../.ladle/story-fixtures";
@@ -115,21 +114,19 @@ const agentRuns: AutomationRun[] = [
 
 function Story(props: Partial<Parameters<typeof AutomationDetailContent>[0]>) {
   return (
-    <MemoryRouter>
-      <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
-        <AutomationDetailContent
-          automation={props.automation ?? makeAutomation()}
-          runs={props.runs ?? scriptRuns}
-          runsLoading={props.runsLoading ?? false}
-          runsError={props.runsError ?? false}
-          onPause={NOOP}
-          onResume={NOOP}
-          onRun={NOOP}
-          onDelete={NOOP}
-          actionsPending={props.actionsPending ?? false}
-        />
-      </main>
-    </MemoryRouter>
+    <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
+      <AutomationDetailContent
+        automation={props.automation ?? makeAutomation()}
+        runs={props.runs ?? scriptRuns}
+        runsLoading={props.runsLoading ?? false}
+        runsError={props.runsError ?? false}
+        onPause={NOOP}
+        onResume={NOOP}
+        onRun={NOOP}
+        onDelete={NOOP}
+        actionsPending={props.actionsPending ?? false}
+      />
+    </main>
   );
 }
 

@@ -263,8 +263,7 @@ export function AutomationsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-sm font-semibold">Automations</h1>
+        <div className="flex items-center justify-end">
           <Button
             type="button"
             variant="default"

@@ -1,4 +1,3 @@
-import { MemoryRouter } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Automation } from "@bb/server-contract";
 import { PROJECT_IDS, PROJECT_NAMES } from "../../.ladle/story-fixtures";
@@ -110,17 +109,15 @@ const NOOP_ACTIONS: AutomationRowActions = {
 
 function Story(props: Partial<AutomationsOverviewProps>) {
   return (
-    <MemoryRouter>
-      <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
-        <AutomationsOverview
-          entries={props.entries ?? sampleEntries}
-          isLoading={props.isLoading ?? false}
-          hasInitialLoadError={props.hasInitialLoadError ?? false}
-          actions={props.actions ?? NOOP_ACTIONS}
-          onCreateAutomation={NOOP}
-        />
-      </main>
-    </MemoryRouter>
+    <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
+      <AutomationsOverview
+        entries={props.entries ?? sampleEntries}
+        isLoading={props.isLoading ?? false}
+        hasInitialLoadError={props.hasInitialLoadError ?? false}
+        actions={props.actions ?? NOOP_ACTIONS}
+        onCreateAutomation={NOOP}
+      />
+    </main>
   );
 }
 
