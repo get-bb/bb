@@ -510,6 +510,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text="Walk me through how ThreadDetailView wires the prompt context banner."
             attachments={null}
             mentions={[]}
@@ -529,6 +531,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={mentionedMessageText}
             attachments={null}
             mentions={mentionedMessageMentions}
@@ -549,6 +553,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={longMarkdownText}
             attachments={null}
             mentions={[]}
@@ -568,6 +574,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
             attachments={null}
             mentions={[]}
@@ -587,6 +595,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
             attachments={null}
             mentions={[]}
@@ -603,6 +613,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text="Repro of the layout regression in the prompt context banner."
             attachments={singleImageAttachments}
             mentions={[]}
@@ -623,6 +635,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text="Three screenshots from the design review and the spec doc."
             attachments={mixedAttachments}
             mentions={[]}
@@ -645,6 +659,8 @@ export function Overview() {
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={agentInitiatedMessage.text}
             attachments={null}
             mentions={agentInitiatedMessage.mentions}
@@ -667,6 +683,8 @@ export function Overview() {
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
             senderChildOrigin="side-chat"
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={agentInitiatedMessage.text}
             attachments={null}
             mentions={agentInitiatedMessage.mentions}
@@ -688,6 +706,8 @@ export function Overview() {
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={agentSteerMessage.text}
             attachments={null}
             mentions={agentSteerMessage.mentions}
@@ -701,6 +721,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={systemAssignedMessage.text}
             attachments={null}
             mentions={systemAssignedMessage.mentions}
@@ -721,6 +743,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={systemAssignedMessage.text}
             attachments={null}
             mentions={systemAssignedMessage.mentions}
@@ -741,6 +765,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={systemChildOutcomeBatchMessage.text}
             attachments={null}
             mentions={systemChildOutcomeBatchMessage.mentions}
@@ -761,6 +787,8 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
             text={longSystemMessage.text}
             attachments={null}
             mentions={longSystemMessage.mentions}
@@ -790,6 +818,8 @@ export function ParentChildSystemMessages() {
               senderThreadTitle={null}
               childOrigin={null}
               senderChildOrigin={null}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
               text={fixture.message.text}
               attachments={null}
               mentions={fixture.message.mentions}

@@ -1,6 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { Environment, ThreadListEntry } from "@bb/domain";
-import { environmentQueryKey } from "../queries/query-keys";
+import {
+  environmentQueryKey,
+  threadSearchQueryKeyPrefix,
+} from "../queries/query-keys";
 import { invalidateEnvironmentWorkspaceStateQueries } from "./environment-cache-effects";
 import {
   applyToCachedThreadListsAndSidebarNavigation,
@@ -49,6 +52,7 @@ export function applyEnvironmentUpdateResult({
     queryClient,
     applyEnvironmentName,
   );
+  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   invalidateEnvironmentWorkspaceStateQueries({
     environmentId: environment.id,
     queryClient,

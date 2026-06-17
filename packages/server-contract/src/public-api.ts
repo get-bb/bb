@@ -109,6 +109,8 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  ThreadSearchQuery,
+  ThreadSearchResponse,
   ThreadStorageContentQuery,
   ThreadStorageFileListResponse,
   ThreadStorageFilesQuery,
@@ -169,6 +171,7 @@ import {
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
   threadListQuerySchema,
+  threadSearchQuerySchema,
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
   threadStoragePathsQuerySchema,
@@ -454,6 +457,14 @@ export const publicApiRoutes = {
         threadListQuerySchema,
       ),
       response: jsonResponse<ThreadListResponse>(),
+    }),
+    search: defineRoute({
+      path: "/threads/search",
+      method: "get",
+      request: queryRequest<EmptyInput, ThreadSearchQuery>(
+        threadSearchQuerySchema,
+      ),
+      response: jsonResponse<ThreadSearchResponse>(),
     }),
     create: defineRoute({
       path: "/threads",

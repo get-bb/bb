@@ -1,9 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type {
-  EnvironmentArchiveThreadsResponse,
-} from "@bb/server-contract";
+import type { EnvironmentArchiveThreadsResponse } from "@bb/server-contract";
 import {
   sidebarNavigationQueryKey,
+  threadSearchQueryKeyPrefix,
   threadQueryKey,
   threadsQueryKey,
 } from "../queries/query-keys";
@@ -115,6 +114,7 @@ export function settleArchiveEnvironmentThreadsTransaction({
 }: SettleArchiveEnvironmentThreadsTransactionArgs): void {
   queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
   queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
+  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   for (const threadId of response?.archivedThreadIds ??
     transaction?.archivedThreadIds ??
     []) {

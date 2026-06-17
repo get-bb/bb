@@ -59,6 +59,8 @@ function userRow(text: string): TimelineConversationRow {
     attachments: null,
     initiator: "user",
     senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
     turnRequest: { kind: "message", status: "accepted" },
   };
 }
@@ -330,6 +332,8 @@ describe("findTimelineFrontierRow", () => {
         attachments: null,
         initiator: "user",
         senderThreadId: null,
+        systemMessageKind: "unlabeled",
+        systemMessageSubject: null,
         turnRequest: { kind: "steer", status: "pending" },
       },
     ]);

@@ -21,6 +21,11 @@ export const compatibleMigrationHashes = [
     when: 1781403656069,
     hash: "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f",
   },
+  {
+    tag: "0039_thread_search",
+    when: 1781660000001,
+    hash: "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4",
+  },
 ] as const satisfies readonly CompatibleMigrationHash[];
 
 export const publishedMigrationWhensByTag: ReadonlyMap<string, number> =

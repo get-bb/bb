@@ -3,10 +3,8 @@ import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
   GitBranchRefClassification,
+  ThreadPullRequest,
   ThreadRuntimeDisplayStatus,
-  ThreadTimelinePendingTodoItem,
-  ThreadTimelinePendingTodoItemStatus,
-  ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import {
   BranchPicker,
@@ -23,6 +21,8 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import { getPullRequestAttentionDisplay } from "@/lib/pull-request-display";
+import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -33,10 +33,6 @@ export interface ContextBannerMergeBaseConfig {
   onChange: (branch: string) => void;
   onPickerOpenChange?: (open: boolean) => void;
   onSearchQueryChange?: (query: string) => void;
-}
-
-export interface ThreadPromptTodoSection {
-  pendingTodos: ThreadTimelinePendingTodos;
 }
 
 export interface ThreadPromptGitSection {
@@ -71,6 +67,10 @@ export interface ThreadPromptChildThreadsSection {
   items: readonly ThreadPromptChildThreadItem[];
 }
 
+export interface ThreadPromptPullRequestSection {
+  pullRequest: ThreadPullRequest;
+}
+
 /**
  * Archived-state segment for the banner. When present, the banner renders
  * only this row — archived threads are read-only, so suppressing the other
@@ -78,6 +78,8 @@ export interface ThreadPromptChildThreadsSection {
  */
 export interface ThreadPromptArchivedSection {
   archivedAt: number;
+  onUnarchive?: () => void;
+  unarchivePending?: boolean;
 }
 
 /**
@@ -111,7 +113,6 @@ export function isThreadDisplayStatusBannerActive(
 }
 
 export type ThreadPromptContextBannerExpandedSection =
-  | "todos"
   | "git"
   | "parentThread"
   | "childThreads";
@@ -127,7 +128,6 @@ export type ThreadPromptContextBannerExpandedSection =
 export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT = 32;
 
 export interface ThreadPromptContextBannerProps {
-  todoSection: ThreadPromptTodoSection | null;
   gitSection: ThreadPromptGitSection | null;
   /**
    * True while the workspace status query for this thread is in flight. Holds
@@ -138,19 +138,20 @@ export interface ThreadPromptContextBannerProps {
   gitSectionPending: boolean;
   /**
    * When set, the banner renders the "Thread is archived" row and suppresses
-   * todos, git, and child-threads — those represent live work that no
-   * longer applies. parentThread still renders alongside if provided, since the
-   * parent relationship remains relevant context for a frozen thread.
+   * git and child-threads — those represent live work that no longer applies.
+   * parentThread still renders alongside if provided, since the parent
+   * relationship remains relevant context for a frozen thread.
    */
   archivedSection: ThreadPromptArchivedSection | null;
   /**
    * When set, the banner renders the "environment is no longer available" row
-   * and suppresses todos, git, and child-threads. parentThread still renders
-   * alongside if provided, since the relationship remains useful context.
+   * and suppresses git and child-threads. parentThread still renders alongside
+   * if provided, since the relationship remains useful context.
    */
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
+  pullRequestSection: ThreadPromptPullRequestSection | null;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
@@ -177,41 +178,11 @@ const SECTION_IDS = {
     toggle: "thread-prompt-banner-child-threads-toggle",
     body: "thread-prompt-banner-child-threads-body",
   },
-  todos: {
-    toggle: "thread-prompt-banner-todos-toggle",
-    body: "thread-prompt-banner-todos-body",
-  },
   git: {
     toggle: "thread-prompt-banner-git-toggle",
     body: "thread-prompt-banner-git-body",
   },
 } as const;
-
-const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
-  in_progress: 0,
-  pending: 1,
-  completed: 2,
-};
-
-function hasObservedTodoItems(
-  pendingTodos: ThreadTimelinePendingTodos,
-): boolean {
-  return pendingTodos.items.length > 0;
-}
-
-function renderTodoCounts(
-  items: readonly ThreadTimelinePendingTodoItem[],
-): ReactNode {
-  if (items.length === 0) return null;
-  let completedCount = 0;
-  for (const item of items) {
-    if (item.status === "completed") completedCount += 1;
-  }
-  if (completedCount === 0) {
-    return `${items.length}`;
-  }
-  return `${completedCount}/${items.length}`;
-}
 
 function ChildThreadIcon({ className }: { className?: string }) {
   return (
@@ -266,9 +237,7 @@ function SectionToggleButton({
       {label !== null && label !== undefined ? (
         <span
           className="min-w-0 truncate"
-          data-promptbox-hide-compact={
-            hideLabelInCompact ? "" : undefined
-          }
+          data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
         >
           {label}
         </span>
@@ -282,74 +251,6 @@ function SectionToggleButton({
         aria-hidden="true"
       />
     </button>
-  );
-}
-
-function TodoStatusIcon({
-  status,
-}: {
-  status: ThreadTimelinePendingTodoItemStatus;
-}) {
-  const className = "size-3.5 shrink-0";
-  switch (status) {
-    case "in_progress":
-      return (
-        <Icon
-          name="Square"
-          className={cn(className, "fill-current text-muted-foreground/30")}
-          aria-hidden="true"
-        />
-      );
-    case "completed":
-      return (
-        <Icon
-          name="Check"
-          className={cn(className, "text-muted-foreground/60")}
-          aria-hidden="true"
-        />
-      );
-    case "pending":
-      return (
-        <Icon
-          name="Square"
-          className={cn(className, "text-muted-foreground/45")}
-          aria-hidden="true"
-        />
-      );
-  }
-}
-
-function TodoBody({
-  items,
-}: {
-  items: readonly ThreadTimelinePendingTodoItem[];
-}) {
-  const ordered = [...items].sort(
-    (a, b) => STATUS_SORT_RANK[a.status] - STATUS_SORT_RANK[b.status],
-  );
-  return (
-    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
-      {ordered.map((item) => (
-        <li
-          key={item.id}
-          className="flex min-w-0 items-center gap-2 py-0.5 text-xs"
-        >
-          <TodoStatusIcon status={item.status} />
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate",
-              item.status === "in_progress" && "font-medium text-foreground",
-              item.status === "pending" && "text-muted-foreground",
-              item.status === "completed" &&
-                "text-subtle-foreground line-through decoration-subtle-foreground",
-            )}
-            title={item.text}
-          >
-            {item.text}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -376,6 +277,15 @@ const PARENT_SECTION_COPY: Record<
   },
 };
 
+const PARENT_SECTION_ICON: Record<
+  ThreadPromptParentThreadSection["relationship"],
+  IconName
+> = {
+  parent: "UserRound",
+  fork: "Fork",
+  "side-chat": "SideChat",
+};
+
 function parentSectionAriaLabel(
   section: ThreadPromptParentThreadSection,
 ): string {
@@ -396,7 +306,7 @@ function ParentThreadBody({
       {PARENT_SECTION_COPY[relationship].bodyLead}
       <NavLink
         to={href}
-        className="text-foreground/90 underline-offset-2 hover:underline"
+        className="text-foreground/90 underline underline-offset-2"
       >
         {parentThreadTitle}
       </NavLink>
@@ -425,6 +335,65 @@ function ChildThreadsBody({
         </li>
       ))}
     </ul>
+  );
+}
+
+function BannerActionSlot({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+      data-promptbox-hide-compact=""
+    >
+      {children}
+    </div>
+  );
+}
+
+function ThreadUnarchiveTextAction({
+  isPending,
+  onUnarchive,
+}: {
+  isPending?: boolean;
+  onUnarchive: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onUnarchive}
+      disabled={Boolean(isPending)}
+      className="rounded px-1 py-0.5 text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {isPending ? "Unarchiving..." : "Unarchive"}
+    </button>
+  );
+}
+
+function PullRequestBannerLink({
+  pullRequest,
+}: {
+  pullRequest: ThreadPullRequest;
+}) {
+  const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
+  const showAttentionLabel =
+    attentionDisplay.className === "text-destructive" &&
+    pullRequest.attention !== "checks_failed" &&
+    pullRequest.attention !== "closed";
+  return (
+    <a
+      href={pullRequest.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={pullRequest.title}
+      aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
+      className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <PullRequestStatusPill pullRequest={pullRequest} />
+      {showAttentionLabel ? (
+        <span className={cn("min-w-0 truncate", attentionDisplay.className)}>
+          {attentionDisplay.label}
+        </span>
+      ) : null}
+    </a>
   );
 }
 
@@ -462,6 +431,7 @@ interface ReadOnlyContextBannerProps {
   statusAriaLabel: string;
   statusLabel: string;
   parentThreadSection: ThreadPromptParentThreadSection | null;
+  statusAction: ReactNode;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
@@ -471,12 +441,14 @@ function ReadOnlyContextBanner({
   statusAriaLabel,
   statusLabel,
   parentThreadSection,
+  statusAction,
   expandedSection,
   onToggleSection,
 }: ReadOnlyContextBannerProps) {
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
   const hasMultipleSegments = parentThreadSection !== null;
+  const showStatusAction = statusAction !== null && !hasMultipleSegments;
   return (
     <PromptStackCard
       ariaLabel="Thread context before sending"
@@ -491,7 +463,7 @@ function ReadOnlyContextBanner({
             ariaLabel={parentSectionAriaLabel(parentThreadSection)}
             icon={
               <Icon
-                name="UserRound"
+                name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
                 className="size-3.5 shrink-0"
                 aria-hidden="true"
               />
@@ -514,14 +486,15 @@ function ReadOnlyContextBanner({
           />
           <span
             className="min-w-0 truncate"
-            data-promptbox-hide-compact={
-              hasMultipleSegments ? "" : undefined
-            }
+            data-promptbox-hide-compact={hasMultipleSegments ? "" : undefined}
             aria-hidden="true"
           >
             {statusLabel}
           </span>
         </div>
+        {showStatusAction ? (
+          <BannerActionSlot>{statusAction}</BannerActionSlot>
+        ) : null}
       </div>
       {parentThreadSection ? (
         <AnimatedBody
@@ -542,19 +515,20 @@ function ReadOnlyContextBanner({
 
 /**
  * Single rounded strip rendered above the FollowUp prompt input. Hosts the
- * thread's high-signal context as inline section toggles (TODO, git) plus
- * the merge-base picker pinned to the right. Only one section can be
- * expanded at a time; the caller owns expandedSection state. See
+ * thread's high-signal context as inline section toggles.
+ * Segment actions render in a far-right slot only when their segment is the
+ * only visible segment. Only one section can be expanded at a time; the caller
+ * owns expandedSection state. See
  * plans/thread-prompt-context-banner.md.
  */
 export function ThreadPromptContextBanner({
-  todoSection,
   gitSection,
   gitSectionPending,
   archivedSection,
   environmentGoneSection,
   parentThreadSection,
   childThreadsSection,
+  pullRequestSection,
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
@@ -572,6 +546,14 @@ export function ThreadPromptContextBanner({
             ? ARCHIVED_THREAD_STATUS_LABEL
             : ENVIRONMENT_GONE_STATUS_LABEL
         }
+        statusAction={
+          archivedSection?.onUnarchive ? (
+            <ThreadUnarchiveTextAction
+              isPending={archivedSection.unarchivePending}
+              onUnarchive={archivedSection.onUnarchive}
+            />
+          ) : null
+        }
         parentThreadSection={parentThreadSection}
         expandedSection={expandedSection}
         onToggleSection={onToggleSection}
@@ -581,38 +563,35 @@ export function ThreadPromptContextBanner({
   if (gitSectionPending) {
     return null;
   }
-  const showTodo =
-    todoSection !== null && hasObservedTodoItems(todoSection.pendingTodos);
   const showGit = gitSection !== null;
   const showParentThread = parentThreadSection !== null;
   const showChildThreads =
     childThreadsSection !== null && childThreadsSection.items.length > 0;
-  if (!showTodo && !showGit && !showParentThread && !showChildThreads) {
+  const showPullRequest = pullRequestSection !== null;
+  if (!showGit && !showParentThread && !showChildThreads && !showPullRequest) {
     return null;
   }
   const visibleSegmentCount =
     Number(showParentThread) +
     Number(showChildThreads) +
-    Number(showTodo) +
+    Number(showPullRequest) +
     Number(showGit);
   const hasSingleVisibleSegment = visibleSegmentCount === 1;
-  const todoItems =
-    showTodo && todoSection ? todoSection.pendingTodos.items : [];
-  const todoCountLabel = renderTodoCounts(todoItems);
-  const isTodoExpanded = expandedSection === "todos" && showTodo;
   // selectWorkspaceChangedFilesSection only emits a section when files exist,
   // so showGit implies a non-empty file list.
   const isGitExpanded = expandedSection === "git" && showGit;
-  const isParentThreadExpanded = expandedSection === "parentThread" && showParentThread;
+  const isParentThreadExpanded =
+    expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
-
-  const gitTally = showGit ? toChangeTally(gitSection.changedFiles.stats) : null;
+  const gitTally = showGit
+    ? toChangeTally(gitSection.changedFiles.stats)
+    : null;
   const gitSummaryText = gitTally ? formatChangeSummary(gitTally) : "";
   const gitSummary: ReactNode =
     showGit && gitTally ? (
       <>
-        {showTodo ? null : <>{KIND_PREFIX[gitSection.changedFiles.kind]} · </>}
+        {KIND_PREFIX[gitSection.changedFiles.kind]} ·{" "}
         {renderChangeSummary(gitTally)}
       </>
     ) : null;
@@ -626,13 +605,40 @@ export function ThreadPromptContextBanner({
           remoteMergeBaseBranchOptions: gitSection.mergeBase.remoteOptions,
         })
       : { options: [], remoteOptions: [] };
+  const segmentAction =
+    hasSingleVisibleSegment && showGit && gitSection.mergeBase ? (
+      <BannerActionSlot>
+        <Icon
+          name="GitMerge"
+          className="size-3.5 shrink-0"
+          aria-hidden="true"
+        />
+        <span className="shrink-0">Merge base</span>
+        <BranchPicker
+          value={gitSection.mergeBase.branch}
+          options={mergeBaseCandidates.options}
+          remoteOptions={mergeBaseCandidates.remoteOptions}
+          variant="minimal"
+          emphasizeTriggerValue={false}
+          loading={gitSection.mergeBase.optionsLoading}
+          onChange={gitSection.mergeBase.onChange}
+          onOpenChange={gitSection.mergeBase.onPickerOpenChange}
+          onSearchQueryChange={gitSection.mergeBase.onSearchQueryChange}
+          className="max-w-[10rem]"
+          muted
+          popoverAlign="end"
+        />
+      </BannerActionSlot>
+    ) : null;
 
   // When the parent segment is the only item in the banner, render it
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
   const isParentThreadOnly =
-    showParentThread && !showTodo && !showGit && !showChildThreads;
+    showParentThread && !showGit && !showChildThreads && !showPullRequest;
+
+  const pullRequest = pullRequestSection?.pullRequest ?? null;
 
   return (
     <PromptStackCard
@@ -641,13 +647,14 @@ export function ThreadPromptContextBanner({
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
       <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
+        {/* Segment order: relationship metadata, active child state, GitHub PR, git status. */}
         {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
             className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
             title={parentSectionAriaLabel(parentThreadSection)}
           >
             <Icon
-              name="UserRound"
+              name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
               className="size-3.5 shrink-0"
               aria-hidden="true"
             />
@@ -669,7 +676,7 @@ export function ThreadPromptContextBanner({
             ariaLabel={parentSectionAriaLabel(parentThreadSection)}
             icon={
               <Icon
-                name="UserRound"
+                name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
                 className="size-3.5 shrink-0"
                 aria-hidden="true"
               />
@@ -701,23 +708,8 @@ export function ThreadPromptContextBanner({
             onToggle={() => onToggleSection("childThreads")}
           />
         ) : null}
-        {showTodo ? (
-          <SectionToggleButton
-            id={SECTION_IDS.todos.toggle}
-            controlsId={SECTION_IDS.todos.body}
-            icon={
-              <Icon
-                name="ListTodo"
-                className="size-3.5 shrink-0"
-                aria-hidden="true"
-              />
-            }
-            label={todoCountLabel}
-            hideLabelInCompact={!hasSingleVisibleSegment}
-            ariaLabel={`Todos: ${todoCountLabel ?? todoItems.length}`}
-            isExpanded={isTodoExpanded}
-            onToggle={() => onToggleSection("todos")}
-          />
+        {showPullRequest && pullRequest ? (
+          <PullRequestBannerLink pullRequest={pullRequest} />
         ) : null}
         {showGit && gitSummary ? (
           <SectionToggleButton
@@ -737,33 +729,7 @@ export function ThreadPromptContextBanner({
             onToggle={() => onToggleSection("git")}
           />
         ) : null}
-        {showGit && gitSection.mergeBase ? (
-          <div
-            className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-            data-promptbox-hide-compact=""
-          >
-            <Icon
-              name="GitMerge"
-              className="size-3.5 shrink-0"
-              aria-hidden="true"
-            />
-            <span className="shrink-0">Merge base</span>
-            <BranchPicker
-              value={gitSection.mergeBase.branch}
-              options={mergeBaseCandidates.options}
-              remoteOptions={mergeBaseCandidates.remoteOptions}
-              variant="minimal"
-              emphasizeTriggerValue={false}
-              loading={gitSection.mergeBase.optionsLoading}
-              onChange={gitSection.mergeBase.onChange}
-              onOpenChange={gitSection.mergeBase.onPickerOpenChange}
-              onSearchQueryChange={gitSection.mergeBase.onSearchQueryChange}
-              className="max-w-[10rem]"
-              muted
-              popoverAlign="end"
-            />
-          </div>
-        ) : null}
+        {segmentAction}
       </div>
       {showParentThread && parentThreadSection && !isParentThreadOnly ? (
         <AnimatedBody
@@ -785,15 +751,6 @@ export function ThreadPromptContextBanner({
           isExpanded={isChildThreadsExpanded}
         >
           <ChildThreadsBody items={childThreadsSection.items} />
-        </AnimatedBody>
-      ) : null}
-      {showTodo ? (
-        <AnimatedBody
-          id={SECTION_IDS.todos.body}
-          labelledBy={SECTION_IDS.todos.toggle}
-          isExpanded={isTodoExpanded}
-        >
-          <TodoBody items={todoItems} />
         </AnimatedBody>
       ) : null}
       {showGit ? (

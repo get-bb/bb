@@ -101,7 +101,7 @@ export function useProjectSourceBranches(
       limit,
       selectedBranch,
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getProjectSourceBranches(
         requireProjectId(projectId, "useProjectSourceBranches"),
         hostId ?? "",
@@ -110,6 +110,7 @@ export function useProjectSourceBranches(
           ...(selectedBranch ? { selectedBranch } : {}),
           limit,
         },
+        signal,
       ),
     enabled,
     refetchOnReconnect: true,
@@ -168,13 +169,14 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
       includeFiles,
       includeDirectories,
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.searchProjectPaths({
         projectId: projectId ?? "",
         query: trimmedQuery,
         limit,
         includeFiles,
         includeDirectories,
+        signal,
       }),
     enabled,
     staleTime: 15_000,
@@ -211,7 +213,7 @@ export function useProjectCommands(
       args.offset,
       args.limit,
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.listProjectCommands({
         projectId: requireProjectId(args.projectId, "useProjectCommands"),
         providerId: requireProviderId(args.providerId, "useProjectCommands"),
@@ -219,6 +221,7 @@ export function useProjectCommands(
         query: args.query,
         limit: args.limit,
         offset: args.offset,
+        signal,
       }),
     enabled,
     staleTime: 15_000,
@@ -240,7 +243,7 @@ export function useProjectCommandsPages(
       args.query,
       args.limit,
     ),
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       api.listProjectCommands({
         projectId: requireProjectId(args.projectId, "useProjectCommandsPages"),
         providerId: requireProviderId(
@@ -251,6 +254,7 @@ export function useProjectCommandsPages(
         query: args.query,
         limit: args.limit,
         offset: pageParam,
+        signal,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>

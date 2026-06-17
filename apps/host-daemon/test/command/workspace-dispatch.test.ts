@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { GitHostPullRequest } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   dispatchCommand,
@@ -102,13 +103,21 @@ describe("workspace command dispatch", () => {
       workspacePath: "/tmp/env-1",
     });
 
-    const pullRequest = {
+    const pullRequest: GitHostPullRequest = {
       number: 42,
       title: "Add timeline polish",
       state: "OPEN",
       url: "https://github.com/bb/bb/pull/42",
       isDraft: false,
-    } as const;
+      baseRefName: "main",
+      headRefName: "bb/timeline-polish",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [],
+      reviewDecision: null,
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
+    };
     harness.workspaceState.pullRequest = pullRequest;
 
     const presentResult = await dispatchOnlineRpcCommand(
@@ -148,6 +157,14 @@ describe("workspace command dispatch", () => {
       state: "OPEN",
       url: "https://github.com/bb/bb/pull/7",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "bb/hidden-pr",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [],
+      reviewDecision: null,
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     };
     await harness.manager.ensureEnvironment({
       environmentId: "env-non-git-pr",
@@ -514,7 +531,9 @@ describe("workspace command dispatch", () => {
   });
 
   it("hides host.read_file_relative dotfiles when dotfiles are denied", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-dotfile-");
+    const tempDir = await makeTempDir(
+      "bb-dispatch-host-read-relative-dotfile-",
+    );
     await fs.writeFile(path.join(tempDir, ".env"), "secret");
     const harness = createHarness();
 

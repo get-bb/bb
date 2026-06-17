@@ -6,6 +6,7 @@ import type {
   EnvironmentStatus,
   PendingInteraction,
   ThreadQueuedMessage,
+  ThreadPullRequest,
   ThreadTimelineGoal,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
@@ -21,8 +22,10 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
+  type ThreadPromptPullRequestSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
   WorkspaceChangedFileSelection,
@@ -48,6 +51,7 @@ import {
   useSendThreadQueuedMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
   useThreadQueuedMessages,
@@ -136,6 +140,8 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
+  /** Pull request summary for the active thread branch. Null when there is no PR. */
+  pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
@@ -179,6 +185,7 @@ export function ThreadDetailPromptArea({
   activeWorkflow,
   parentThreadSection,
   childThreadsSection,
+  pullRequest,
   sendMessage,
   composerFocusRequestNonce,
   thread,
@@ -258,6 +265,7 @@ export function ThreadDetailPromptArea({
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const stopThread = useStopThread();
+  const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({
     kind: "thread",
@@ -282,7 +290,12 @@ export function ThreadDetailPromptArea({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
+  const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
+    () => (pullRequest ? { pullRequest } : null),
+    [pullRequest],
+  );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
@@ -734,6 +747,11 @@ export function ThreadDetailPromptArea({
     },
     [],
   );
+  const isUnarchiveCurrentThreadPending =
+    unarchiveThread.isPending && unarchiveThread.variables?.id === thread.id;
+  const handleUnarchiveCurrentThread = useCallback(() => {
+    unarchiveThread.mutate({ id: thread.id });
+  }, [thread.id, unarchiveThread]);
 
   const attachmentsConfig = useMemo(
     () => ({
@@ -927,11 +945,23 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
+        <ThreadTodoCard
+          pendingTodos={
+            thread.archivedAt === null && environmentGoneStatus === null
+              ? pendingTodos
+              : null
+          }
+          isExpanded={isTodoExpanded}
+          onToggle={() => setIsTodoExpanded((value) => !value)}
+        />
         <ThreadPromptContextBanner
-          todoSection={!pendingTodos ? null : { pendingTodos }}
           archivedSection={
             thread.archivedAt !== null
-              ? { archivedAt: thread.archivedAt }
+              ? {
+                  archivedAt: thread.archivedAt,
+                  onUnarchive: handleUnarchiveCurrentThread,
+                  unarchivePending: isUnarchiveCurrentThreadPending,
+                }
               : null
           }
           environmentGoneSection={
@@ -941,6 +971,7 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
+          pullRequestSection={pullRequestSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -988,15 +1019,19 @@ export function ThreadDetailPromptArea({
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
       handleToggleBannerSection,
+      handleUnarchiveCurrentThread,
       environmentGoneStatus,
       isFollowUpSubmitting,
+      isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
       parentThreadSection,
       childThreadsSection,
+      pullRequestSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,

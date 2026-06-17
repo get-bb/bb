@@ -91,9 +91,10 @@ export function ingestThreadDetailBootstrap({
   if (timelinePrefetch) {
     void queryClient.prefetchQuery({
       queryKey: threadTimelineQueryKey(thread.id),
-      queryFn: () =>
+      queryFn: ({ signal }) =>
         api.getThreadTimeline({
           id: thread.id,
+          signal,
         }),
     });
   }
@@ -102,11 +103,12 @@ export function ingestThreadDetailBootstrap({
     const environmentId = thread.environmentId ?? null;
     void queryClient.prefetchQuery({
       queryKey: threadComposerBootstrapQueryKey(thread.id, environmentId),
-      queryFn: () =>
+      queryFn: ({ signal }) =>
         fetchAndHydrateThreadComposerBootstrap({
           environmentId,
           providerId: thread.providerId,
           queryClient,
+          signal,
           threadId: thread.id,
         }),
     });

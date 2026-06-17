@@ -39,7 +39,11 @@ import type { ThreadEventWithMeta } from "../src/build-event-projection.js";
 export interface RenderTimelineFixtureArgs {
   events: ThreadEventRow[];
   includeNestedRows?: boolean;
-  projectionOptions: BuildEventProjectionOptions;
+  // `threadName` defaults to "" so existing fixtures need not supply it; pass a
+  // name to exercise Family-A thread-named operation-row titles.
+  projectionOptions: Omit<BuildEventProjectionOptions, "threadName"> & {
+    threadName?: string;
+  };
   verbose?: boolean;
 }
 
@@ -1057,6 +1061,7 @@ export function renderTimelineFixture(
   const includeNestedRows = args.includeNestedRows ?? true;
   const projection = buildEventProjection(decodedEvents, {
     ...args.projectionOptions,
+    threadName: args.projectionOptions.threadName ?? "",
     turnMessageDetail: includeNestedRows
       ? "full"
       : args.projectionOptions.turnMessageDetail,
@@ -1068,6 +1073,7 @@ export function renderTimelineFixture(
       args.projectionOptions.includeProviderUnhandledOperations ?? false,
     isLatestPage: true,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
+    threadName: args.projectionOptions.threadName ?? "",
     workspaceRoot: null,
   };
   const timeline = buildThreadTimelineFromEvents({

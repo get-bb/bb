@@ -32,7 +32,7 @@ export function useLocalPathExistence(
   const query = useQuery({
     queryKey: localPathExistenceQueryKey(localDaemonHostId ?? "", sortedPaths),
     queryFn: enabled
-      ? () => checkPathsExist(daemonPort, sortedPaths)
+      ? ({ signal }) => checkPathsExist(daemonPort, sortedPaths, signal)
       : skipToken,
     staleTime: 10_000,
   });

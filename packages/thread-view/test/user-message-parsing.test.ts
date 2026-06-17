@@ -27,6 +27,7 @@ const SENDER_THREAD_ID = "thr_sender";
 
 const standardProjectionOptions: BuildEventProjectionMessagesOptions = {
   threadStatus: "active",
+  threadName: "",
 };
 
 function agentSteerRequest(): ClientTurnRequestedEventRow {

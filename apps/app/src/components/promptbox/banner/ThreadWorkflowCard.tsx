@@ -84,7 +84,7 @@ export function ThreadWorkflowCard({
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
           <Icon
-            name="ListTodo"
+            name="Workflow"
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />

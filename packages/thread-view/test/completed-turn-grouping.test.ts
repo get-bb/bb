@@ -49,6 +49,8 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
     kind: "user",
     initiator: args.initiator ?? "user",
     senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
     turnRequest: args.turnRequest ?? {
       kind: "message",
       status: "accepted",

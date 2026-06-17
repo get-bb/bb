@@ -26,6 +26,7 @@ import {
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
@@ -100,6 +101,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     sidebarNavigationQueryKey(),
     allProjectPathsQueryKeyPrefix(),
     threadsQueryKey(),
+    threadSearchQueryKeyPrefix(),
     allThreadQueryKeyPrefix(),
     allThreadTimelineQueryKeyPrefix(),
     allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),

@@ -14,6 +14,12 @@ import type {
 } from "@bb/server-contract";
 import { assertNever } from "./assert-never.js";
 import {
+  OWNERSHIP_CHANGE_VERBS,
+  PROVISIONING_LEADING_VERB,
+  PROVISIONING_SUFFIX_VERBS,
+  THREAD_INTERRUPTED_SUFFIX_VERBS,
+} from "./family-a-verbs.js";
+import {
   formatFileChangePath,
   getFileChangeAction,
   getFileChangeActionInfinitive,
@@ -1214,12 +1220,39 @@ function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
   });
 }
 
-function parentLinkSegment(
+/**
+ * The thread (not parent) segment for a parent-change row: emphasized, linked to
+ * `row.threadId`, matching `threadNamedSystemTitleSegments` and the agent
+ * "Message from [thread]" title. Rendered unlinked (plain emphasized) when the
+ * row carries no thread id.
+ */
+function parentChangeThreadSegment(
+  row: TimelineParentChangeSystemRow,
+  name: string,
+  shimmer: boolean,
+): TimelineTitleSegment {
+  return segment(name, {
+    em: true,
+    truncate: true,
+    shimmer,
+    ...(row.threadId.length > 0
+      ? { link: { kind: "thread", threadId: row.threadId } }
+      : {}),
+  });
+}
+
+/**
+ * The parent segment for a parent-change row. Links to the (new/previous) parent
+ * thread when its id is present; falls back to an UNLINKED literal `parent`
+ * segment when the parent id/title is null (deleted/renamed/untitled parent), so
+ * the title reads `[thread] assigned to parent` rather than a dangling verb.
+ */
+function parentChangeParentSegment(
   threadId: string | null,
   title: string | null,
-): TimelineTitleSegment | null {
+): TimelineTitleSegment {
   if (threadId === null) {
-    return null;
+    return segment("parent");
   }
   return segment(title ?? threadId, {
     em: true,
@@ -1228,70 +1261,62 @@ function parentLinkSegment(
   });
 }
 
-interface ParentChangeVerbs {
-  assign: string;
-  release: string;
-  transferFrom: string;
-  transferTo: string;
-}
-
-function parentChangeVerbs(status: TimelineRowStatus): ParentChangeVerbs {
-  switch (status) {
-    case "completed":
-    case "error":
-    case "interrupted":
-      // Past-tense verb shared across terminal statuses; status decoration
-      // ("(failed)" / "(interrupted)") differentiates the outcome.
-      return {
-        assign: "Thread assigned to",
-        release: "Thread unassigned from",
-        transferFrom: "Thread reassigned from",
-        transferTo: "to",
-      };
-    case "pending":
-      return {
-        assign: "Assigning thread to",
-        release: "Releasing thread from",
-        transferFrom: "Reassigning thread from",
-        transferTo: "to",
-      };
-    default:
-      return assertNever(status);
+/**
+ * Recover the thread name from a parent-change row's flat title. The projection
+ * builds the title as `"{threadName} {verb} {parent}"` (see
+ * `ownershipChangeOperationTitle`); removing the exact trailing verb+parent
+ * suffix yields the leading thread name without truncating names that themselves
+ * contain ownership verbs. Returns the row's thread id as a fallback when the
+ * flat title doesn't carry that suffix (e.g. non-completed statuses whose title
+ * is a generic "Ownership change …" string), so the row still names something
+ * linkable rather than rendering a bare verb.
+ */
+function parentChangeThreadName(row: TimelineParentChangeSystemRow): string {
+  const verb = OWNERSHIP_CHANGE_VERBS[row.parentChange.action];
+  const parentTitle =
+    row.parentChange.action === "release"
+      ? row.parentChange.previousParentThreadTitle
+      : row.parentChange.nextParentThreadTitle;
+  const parent =
+    parentTitle !== null && parentTitle.trim().length > 0
+      ? parentTitle.trim()
+      : "parent";
+  const suffix = ` ${verb} ${parent}`;
+  if (row.title.endsWith(suffix) && row.title.length > suffix.length) {
+    return row.title.slice(0, row.title.length - suffix.length);
   }
+  return row.threadId;
 }
 
 function mapParentChangeSystemTitle(
   row: TimelineParentChangeSystemRow,
 ): TimelineTitle {
   const assignment = row.parentChange;
-  const linkPrev = parentLinkSegment(
-    assignment.previousParentThreadId,
-    assignment.previousParentThreadTitle,
-  );
-  const linkNext = parentLinkSegment(
-    assignment.nextParentThreadId,
-    assignment.nextParentThreadTitle,
-  );
   const shimmer = row.status === "pending";
-  const verbs = parentChangeVerbs(row.status);
+  const verb = OWNERSHIP_CHANGE_VERBS[assignment.action];
+  const threadSegment = parentChangeThreadSegment(
+    row,
+    parentChangeThreadName(row),
+    shimmer,
+  );
+  // Assign/transfer name the destination parent; release names the parent the
+  // thread is leaving.
+  const parentSegment =
+    assignment.action === "release"
+      ? parentChangeParentSegment(
+          assignment.previousParentThreadId,
+          assignment.previousParentThreadTitle,
+        )
+      : parentChangeParentSegment(
+          assignment.nextParentThreadId,
+          assignment.nextParentThreadTitle,
+        );
 
-  const segments: TimelineTitleSegment[] = (() => {
-    switch (assignment.action) {
-      case "assign":
-        return filterNull([segment(verbs.assign, { shimmer }), linkNext]);
-      case "release":
-        return filterNull([segment(verbs.release, { shimmer }), linkPrev]);
-      case "transfer":
-        return filterNull([
-          segment(verbs.transferFrom, { shimmer }),
-          linkPrev,
-          linkNext !== null ? segment(verbs.transferTo, { shimmer }) : null,
-          linkNext,
-        ]);
-      default:
-        return assertNever(assignment.action);
-    }
-  })();
+  const segments: TimelineTitleSegment[] = [
+    threadSegment,
+    segment(verb, { shimmer, accent: "muted" }),
+    parentSegment,
+  ];
 
   const decorations: TimelineTitleDecoration[] = (() => {
     switch (row.status) {
@@ -1311,6 +1336,70 @@ function mapParentChangeSystemTitle(
     segments,
     decorations,
   });
+}
+
+/**
+ * Compose the thread-name portion of a Family-A operation title as an
+ * emphasized, linked segment (the same treatment the agent "Message from
+ * [thread]" title uses), with the surrounding action verb left muted. The row
+ * carries a flat interpolated `title` plus its `threadId`; this splits the
+ * title around the thread name using the fixed template affixes the projection
+ * builds (see `parse-operation-message.ts`). Returns `null` when the title has
+ * no extractable thread name (unnamed thread → bare verb), so the caller falls
+ * back to a single neutral segment.
+ */
+function threadNamedSystemTitleSegments(
+  row: TimelineSystemViewRow,
+  shimmer: boolean,
+): TimelineTitleSegment[] | null {
+  if (row.systemKind !== "operation") return null;
+
+  const nameSegment = (name: string): TimelineTitleSegment =>
+    segment(name, {
+      em: true,
+      truncate: true,
+      shimmer,
+      ...(row.threadId.length > 0
+        ? { link: { kind: "thread", threadId: row.threadId } }
+        : {}),
+    });
+
+  // Leading-verb form: "Provisioning {name}". A thread with no id has no name to
+  // link, so the active-provisioning fallback title is "Provisioning thread";
+  // gating on an empty `row.threadId` (rather than the literal "Provisioning
+  // thread") lets a thread literally named "thread" still link correctly.
+  const provisioningPrefix = `${PROVISIONING_LEADING_VERB} `;
+  if (
+    row.operationKind === "thread-provisioning" &&
+    row.threadId.length > 0 &&
+    row.title.startsWith(provisioningPrefix)
+  ) {
+    const name = row.title.slice(provisioningPrefix.length);
+    return [segment(PROVISIONING_LEADING_VERB, { shimmer }), nameSegment(name)];
+  }
+
+  // Suffix form: "{name} {verb...}". The verbs are the fixed strings the
+  // projection emits (shared via family-a-verbs). Matching the LONGEST candidate
+  // affix first keeps the split unambiguous when one verb is a prefix of another
+  // or a thread name itself contains one of these words.
+  const suffixVerbs =
+    row.operationKind === "thread-provisioning"
+      ? PROVISIONING_SUFFIX_VERBS
+      : row.operationKind === "thread-interrupted"
+        ? THREAD_INTERRUPTED_SUFFIX_VERBS
+        : [];
+  const verbsByLengthDesc = [...suffixVerbs].sort(
+    (a, b) => b.length - a.length,
+  );
+  for (const verb of verbsByLengthDesc) {
+    const suffix = ` ${verb}`;
+    if (row.title.endsWith(suffix) && row.title.length > suffix.length) {
+      const name = row.title.slice(0, row.title.length - suffix.length);
+      return [nameSegment(name), segment(verb, { shimmer })];
+    }
+  }
+
+  return null;
 }
 
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
@@ -1335,10 +1424,15 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   // operations (provisioning, compaction) ever reach this branch with a pending
   // status; error rows are terminal and reconnect rows carry no status, so this
   // uniform rule leaves both static.
+  const shimmer = row.status === "pending";
+  // Provisioning and thread-interrupted rows link the thread name they concern;
+  // every other system row renders its flat title as a single neutral segment.
+  const threadNamedSegments = threadNamedSystemTitleSegments(row, shimmer);
+  if (threadNamedSegments !== null) {
+    return makeTitle({ segments: threadNamedSegments, decorations });
+  }
   return makeTitle({
-    segments: [
-      segment(titleText, { shimmer: row.status === "pending", truncate: true }),
-    ],
+    segments: [segment(titleText, { shimmer, truncate: true })],
     decorations,
   });
 }

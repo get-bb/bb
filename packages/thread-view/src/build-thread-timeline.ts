@@ -70,6 +70,11 @@ interface ThreadTimelineFromEventsBaseOptions {
   isLatestPage: boolean;
   threadStatus: Thread["status"];
   /**
+   * Display name of the thread, interpolated into Family-A operation-row titles
+   * (e.g. "Fix auth bug provisioned"). Empty string when the thread is unnamed.
+   */
+  threadName: string;
+  /**
    * Absolute path of the thread's workspace root, used to relativize the
    * absolute file paths persisted by provider file-edit tool calls. Null when
    * the thread has no environment (the path is then left as-is).
@@ -105,6 +110,8 @@ export interface ThreadTimelineSourceSeqRange {
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   threadStatus: Thread["status"];
+  /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
+  threadName: string;
   /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
   workspaceRoot: string | null;
 }
@@ -481,6 +488,8 @@ function convertMessage(
           attachments: toConversationAttachments(message.attachments),
           initiator: message.initiator,
           senderThreadId: message.senderThreadId,
+          systemMessageKind: message.systemMessageKind,
+          systemMessageSubject: message.systemMessageSubject,
           turnRequest: message.turnRequest,
         },
       ];
@@ -753,6 +762,8 @@ function convertPendingSteerMessage(
     attachments: toConversationAttachments(message.attachments),
     initiator: message.initiator,
     senderThreadId: message.senderThreadId,
+    systemMessageKind: message.systemMessageKind,
+    systemMessageSubject: message.systemMessageSubject,
     turnRequest: message.turnRequest,
   };
 }
@@ -1077,6 +1088,7 @@ export function buildThreadTimelineFromEvents(
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     threadStatus: args.options.threadStatus,
+    threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
   } satisfies Parameters<typeof buildEventProjection>[1];
   const projection = buildEventProjection(args.events, projectionOptions);
@@ -1120,6 +1132,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     threadStatus: args.options.threadStatus,
+    threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
   const nestedRows = buildTimelineRows(projection, {

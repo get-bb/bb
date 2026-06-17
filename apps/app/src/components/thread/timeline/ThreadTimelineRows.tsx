@@ -20,7 +20,12 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { TimelineActivityIntent, TimelineRow } from "@bb/server-contract";
+import type {
+  TimelineActivityIntent,
+  TimelineParentChange,
+  TimelineRow,
+  TimelineSystemOperationKind,
+} from "@bb/server-contract";
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
@@ -802,6 +807,8 @@ function ConversationRow({ row }: ConversationRowProps) {
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
         senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}
+        systemMessageKind={row.systemMessageKind}
+        systemMessageSubject={row.systemMessageSubject}
         text={row.text}
         turnRequest={row.turnRequest}
       />
@@ -1269,6 +1276,54 @@ function leadingIconForWorkRow(
   }
 }
 
+/**
+ * Per-action leading glyph for Family-A system operation rows, keyed by
+ * `operationKind` (and the parent-change action) so each lifecycle event reads
+ * at a glance. Warning / deprecation / provider-unhandled / generic and
+ * non-operation system rows keep no leading glyph.
+ */
+// Pure operation-kind → leading-icon mapping (exported for exhaustive testing).
+// Warning / deprecation / provider-unhandled / generic keep no leading glyph.
+export function systemOperationLeadingIcon(
+  operationKind: TimelineSystemOperationKind,
+  parentChangeAction: TimelineParentChange["action"] | null,
+): IconName | undefined {
+  switch (operationKind) {
+    case "parent-change":
+      return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
+    case "thread-provisioning":
+      return "Terminal";
+    case "thread-interrupted":
+      return "AlertCircle";
+    case "compaction":
+      return "CircleArrowShrink";
+    case "generic":
+    case "warning":
+    case "deprecation":
+    case "provider-unhandled":
+      return undefined;
+    default:
+      return assertNever(operationKind);
+  }
+}
+
+function leadingIconForSystemRow(
+  row: ThreadTimelineViewRow,
+): IconName | undefined {
+  if (row.kind !== "system" || row.systemKind !== "operation") {
+    return undefined;
+  }
+  return systemOperationLeadingIcon(
+    row.operationKind,
+    row.operationKind === "parent-change" ? row.parentChange.action : null,
+  );
+}
+
+/** Leading glyph for any timeline row: work rows by kind, system rows by action. */
+function leadingIconForRow(row: ThreadTimelineViewRow): IconName | undefined {
+  return leadingIconForWorkRow(row) ?? leadingIconForSystemRow(row);
+}
+
 function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
   if (intent.type !== "read") {
     return false;
@@ -1340,7 +1395,7 @@ function TimelineRowView({
   }
 
   if (!isRowExpandable(row)) {
-    const staticLeadingIcon = leadingIconForWorkRow(row);
+    const staticLeadingIcon = leadingIconForRow(row);
     return (
       <TimelineStaticRow
         horizontalPadding={horizontalPadding}
@@ -1411,7 +1466,7 @@ function TimelineExpandableRowView({
     [activeLatestBundleId, compactActivityIntents, row],
   );
 
-  const leadingIcon = leadingIconForWorkRow(row);
+  const leadingIcon = leadingIconForRow(row);
 
   return (
     <ExpandableTimelineRow

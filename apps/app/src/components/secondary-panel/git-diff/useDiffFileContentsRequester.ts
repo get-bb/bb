@@ -55,8 +55,8 @@ export function useDiffFileContentsRequester({
           path,
           side,
         ),
-        queryFn: () =>
-          getEnvironmentDiffFile(envId, resolvedTarget, path, side),
+        queryFn: ({ signal }) =>
+          getEnvironmentDiffFile(envId, resolvedTarget, path, side, signal),
         staleTime: 5_000,
       });
       return toDiffFileContentsResult(path, result);

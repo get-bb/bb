@@ -15,6 +15,7 @@ import {
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
+  threadSearchSourceKindSchema,
   threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
@@ -179,6 +180,54 @@ export type SendQueuedMessageResponse = z.infer<
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
 
+export const threadSearchHighlightRangeSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().positive(),
+  })
+  .strict()
+  .refine((range) => range.end > range.start, {
+    message: "highlight range end must be greater than start",
+  });
+export type ThreadSearchHighlightRange = z.infer<
+  typeof threadSearchHighlightRangeSchema
+>;
+
+export const threadSearchMatchSchema = z
+  .object({
+    sourceKind: threadSearchSourceKindSchema,
+    text: z.string(),
+    highlightRanges: z.array(threadSearchHighlightRangeSchema),
+  })
+  .strict();
+export type ThreadSearchMatch = z.infer<typeof threadSearchMatchSchema>;
+
+export const threadSearchResultSchema = z
+  .object({
+    thread: threadListEntrySchema,
+    matches: z.array(threadSearchMatchSchema),
+  })
+  .strict();
+export type ThreadSearchResult = z.infer<typeof threadSearchResultSchema>;
+
+export const threadSearchResultGroupSchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    results: z.array(threadSearchResultSchema),
+  })
+  .strict();
+export type ThreadSearchResultGroup = z.infer<
+  typeof threadSearchResultGroupSchema
+>;
+
+export const threadSearchResponseSchema = z
+  .object({
+    active: threadSearchResultGroupSchema,
+    archived: threadSearchResultGroupSchema,
+  })
+  .strict();
+export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
+
 // canSpawnChild is a server-derived policy flag: true when the thread's
 // hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH, so a fork/side-chat may
 // be created under it. Computed on the server so clients never recompute the
@@ -318,6 +367,12 @@ export const threadListQuerySchema = z.object({
   offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadListQuery = z.infer<typeof threadListQuerySchema>;
+
+export const threadSearchQuerySchema = z.object({
+  query: z.string().trim().min(2),
+  limitPerGroup: z.string().regex(/^\d+$/).optional(),
+});
+export type ThreadSearchQuery = z.infer<typeof threadSearchQuerySchema>;
 
 export const timelinePaginationCursorSchema = z
   .object({

@@ -1822,6 +1822,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       activeWorkflow={activeWorkflow}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
+      pullRequest={pullRequest}
       thread={thread}
     />
   );

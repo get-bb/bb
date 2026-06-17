@@ -52,6 +52,38 @@ interface PermissionGrantApprovalRowArgs {
 interface ParentChangeSystemRowArgs {
   parentChange: TimelineParentChange;
   status?: TimelineRowStatus;
+  /**
+   * The thread name carried in the flat title; the App splits this back out of
+   * `title` to render the linked thread-name segment. Defaults to "Worker 3".
+   */
+  threadName?: string;
+  /** Override the row's thread id (defaults to the base row's thread id). */
+  threadId?: string;
+}
+
+// The ownership verbs the projection interpolates into the flat title. Mirrors
+// `OWNERSHIP_CHANGE_VERBS` so the test builds the same `"{name} {verb} {parent}"`
+// title the server emits, which the App re-splits.
+const PARENT_CHANGE_VERB: Record<TimelineParentChange["action"], string> = {
+  assign: "assigned to",
+  release: "released from",
+  transfer: "transferred to",
+};
+
+function parentChangeFlatTitle(
+  parentChange: TimelineParentChange,
+  threadName: string,
+): string {
+  const verb = PARENT_CHANGE_VERB[parentChange.action];
+  const parentTitle =
+    parentChange.action === "release"
+      ? parentChange.previousParentThreadTitle
+      : parentChange.nextParentThreadTitle;
+  const parent =
+    parentTitle !== null && parentTitle.trim().length > 0
+      ? parentTitle.trim()
+      : "parent";
+  return `${threadName} ${verb} ${parent}`;
 }
 
 function baseRow(id: string): TimelineRowBase {
@@ -312,14 +344,18 @@ function systemOperationRow(): TimelineSystemRow {
 function parentChangeSystemRow({
   parentChange,
   status = "completed",
+  threadName = "Worker 3",
+  threadId,
 }: ParentChangeSystemRowArgs): TimelineSystemRow {
+  const base = baseRow(`system-parent-${parentChange.action}`);
   return {
-    ...baseRow(`system-parent-${parentChange.action}`),
+    ...base,
+    ...(threadId !== undefined ? { threadId } : {}),
     kind: "system",
     systemKind: "operation",
     operationKind: "parent-change",
     parentChange,
-    title: "Thread assigned to parent",
+    title: parentChangeFlatTitle(parentChange, threadName),
     detail: null,
     status,
     completedAt: 1,
@@ -685,10 +721,9 @@ describe("buildTimelineRowTitle", () => {
         nextParentThreadId: "thr_next",
         nextParentThreadTitle: "Frontend Parent",
       },
-      expectedPlain: "Thread assigned to Frontend Parent",
-      expectedSegments: ["Thread assigned to", "Frontend Parent"],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_next",
+      expectedPlain: "Worker 3 assigned to Frontend Parent",
+      expectedSegments: ["Worker 3", "assigned to", "Frontend Parent"],
+      expectedParentLinkThreadId: "thr_next",
     },
     {
       action: "release",
@@ -699,10 +734,9 @@ describe("buildTimelineRowTitle", () => {
         nextParentThreadId: null,
         nextParentThreadTitle: null,
       },
-      expectedPlain: "Thread unassigned from Frontend Parent",
-      expectedSegments: ["Thread unassigned from", "Frontend Parent"],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_prev",
+      expectedPlain: "Worker 3 released from Frontend Parent",
+      expectedSegments: ["Worker 3", "released from", "Frontend Parent"],
+      expectedParentLinkThreadId: "thr_prev",
     },
     {
       action: "transfer",
@@ -713,31 +747,23 @@ describe("buildTimelineRowTitle", () => {
         nextParentThreadId: "thr_next",
         nextParentThreadTitle: "Backend Parent",
       },
-      expectedPlain: "Thread reassigned from Frontend Parent to Backend Parent",
-      expectedSegments: [
-        "Thread reassigned from",
-        "Frontend Parent",
-        "to",
-        "Backend Parent",
-      ],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_prev",
+      expectedPlain: "Worker 3 transferred to Backend Parent",
+      expectedSegments: ["Worker 3", "transferred to", "Backend Parent"],
+      expectedParentLinkThreadId: "thr_next",
     },
   ] satisfies Array<{
     action: TimelineParentChange["action"];
     parentChange: TimelineParentChange;
     expectedPlain: string;
     expectedSegments: string[];
-    expectedLinkIndex: number;
-    expectedLinkThreadId: string;
+    expectedParentLinkThreadId: string;
   }>)(
-    "renders typed parent change system action $action",
+    "renders parent change action $action as [thread] verb [parent]",
     ({
       parentChange,
       expectedPlain,
       expectedSegments,
-      expectedLinkIndex,
-      expectedLinkThreadId,
+      expectedParentLinkThreadId,
     }) => {
       const title = buildTimelineRowTitle(
         parentChangeSystemRow({ parentChange }),
@@ -746,18 +772,153 @@ describe("buildTimelineRowTitle", () => {
 
       expect(title.plain).toBe(expectedPlain);
       expect(title.segments.map((s) => s.text)).toEqual(expectedSegments);
-      const linkSegment = title.segments[expectedLinkIndex];
-      expect(linkSegment?.em).toBe(true);
-      expect(linkSegment?.link).toEqual({
+
+      // The leading thread-name segment is emphasized and linked to the row's
+      // own thread, matching the agent "Message from [thread]" treatment.
+      const threadSegment = title.segments[0];
+      expect(threadSegment?.em).toBe(true);
+      expect(threadSegment?.link).toEqual({
         kind: "thread",
-        threadId: expectedLinkThreadId,
+        threadId: "thread-1",
+      });
+
+      // The verb is a muted, unlinked connector.
+      expect(title.segments[1]?.link).toBeUndefined();
+      expect(title.segments[1]?.accent).toBe("muted");
+
+      // The trailing parent segment links to the (new/previous) parent.
+      const parentSegment = title.segments[2];
+      expect(parentSegment?.em).toBe(true);
+      expect(parentSegment?.link).toEqual({
+        kind: "thread",
+        threadId: expectedParentLinkThreadId,
       });
     },
   );
 
-  it("falls back to the parent thread id when title is null", () => {
+  it("renders the thread name unlinked when the row carries no thread id", () => {
     const title = buildTimelineRowTitle(
       parentChangeSystemRow({
+        threadId: "",
+        threadName: "Worker 3",
+        parentChange: {
+          action: "assign",
+          previousParentThreadId: null,
+          previousParentThreadTitle: null,
+          nextParentThreadId: "thr_next",
+          nextParentThreadTitle: "Frontend Parent",
+        },
+      }),
+      DEFAULT_OPTIONS,
+    );
+
+    expect(title.plain).toBe("Worker 3 assigned to Frontend Parent");
+    expect(title.segments[0]?.text).toBe("Worker 3");
+    expect(title.segments[0]?.em).toBe(true);
+    expect(title.segments[0]?.link).toBeUndefined();
+  });
+
+  it.each([
+    {
+      action: "assign",
+      threadName: "Cleanup assigned to Sam",
+      parentChange: {
+        action: "assign" as const,
+        previousParentThreadId: null,
+        previousParentThreadTitle: null,
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Frontend Parent",
+      },
+      expectedSegments: [
+        "Cleanup assigned to Sam",
+        "assigned to",
+        "Frontend Parent",
+      ],
+    },
+    {
+      action: "release",
+      threadName: "Cleanup released from Sam",
+      parentChange: {
+        action: "release" as const,
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: null,
+        nextParentThreadTitle: null,
+      },
+      expectedSegments: [
+        "Cleanup released from Sam",
+        "released from",
+        "Frontend Parent",
+      ],
+    },
+    {
+      action: "transfer",
+      threadName: "Cleanup transferred to Sam",
+      parentChange: {
+        action: "transfer" as const,
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Backend Parent",
+      },
+      expectedSegments: [
+        "Cleanup transferred to Sam",
+        "transferred to",
+        "Backend Parent",
+      ],
+    },
+  ] satisfies Array<{
+    action: TimelineParentChange["action"];
+    expectedSegments: string[];
+    parentChange: TimelineParentChange;
+    threadName: string;
+  }>)(
+    "preserves parent-change thread names containing the $action verb phrase",
+    ({ expectedSegments, parentChange, threadName }) => {
+      const title = buildTimelineRowTitle(
+        parentChangeSystemRow({ parentChange, threadName }),
+        DEFAULT_OPTIONS,
+      );
+
+      expect(title.segments.map((s) => s.text)).toEqual(expectedSegments);
+      expect(title.segments[0]?.link).toEqual({
+        kind: "thread",
+        threadId: "thread-1",
+      });
+    },
+  );
+
+  it("falls back to an unlinked 'parent' segment when the parent title is null", () => {
+    const title = buildTimelineRowTitle(
+      parentChangeSystemRow({
+        threadName: "Worker 3",
+        parentChange: {
+          action: "assign",
+          previousParentThreadId: null,
+          previousParentThreadTitle: null,
+          nextParentThreadId: null,
+          nextParentThreadTitle: null,
+        },
+      }),
+      DEFAULT_OPTIONS,
+    );
+
+    // Null parent → literal "parent" with no link, never a dangling verb.
+    expect(title.plain).toBe("Worker 3 assigned to parent");
+    expect(title.segments.map((s) => s.text)).toEqual([
+      "Worker 3",
+      "assigned to",
+      "parent",
+    ]);
+    expect(title.segments[2]?.link).toBeUndefined();
+  });
+
+  it("links the parent by id when the parent title is null but the id is present", () => {
+    const title = buildTimelineRowTitle(
+      parentChangeSystemRow({
+        threadName: "Worker 3",
+        // A null title with a present id keeps the parent linkable, falling
+        // back to the id as the visible label.
         parentChange: {
           action: "assign",
           previousParentThreadId: null,
@@ -769,9 +930,8 @@ describe("buildTimelineRowTitle", () => {
       DEFAULT_OPTIONS,
     );
 
-    expect(title.plain).toBe("Thread assigned to thr_xyz");
-    expect(title.segments[1]?.text).toBe("thr_xyz");
-    expect(title.segments[1]?.link).toEqual({
+    expect(title.segments[2]?.text).toBe("thr_xyz");
+    expect(title.segments[2]?.link).toEqual({
       kind: "thread",
       threadId: "thr_xyz",
     });
@@ -779,31 +939,27 @@ describe("buildTimelineRowTitle", () => {
 
   it.each([
     {
-      expectedPlain: "Assigning thread to Frontend Parent",
       expectedShimmer: true,
       expectedDecorationText: "",
       status: "pending",
     },
     {
-      expectedPlain: "Thread assigned to Frontend Parent (error)",
       expectedShimmer: false,
       expectedDecorationText: "(error)",
       status: "error",
     },
     {
-      expectedPlain: "Thread assigned to Frontend Parent (interrupted)",
       expectedShimmer: false,
       expectedDecorationText: "(interrupted)",
       status: "interrupted",
     },
   ] satisfies Array<{
-    expectedPlain: string;
     expectedShimmer: boolean;
     expectedDecorationText: string;
     status: Exclude<TimelineSystemRow["status"], "completed" | null>;
   }>)(
-    "renders parent change $status status with typed wording",
-    ({ expectedPlain, expectedShimmer, expectedDecorationText, status }) => {
+    "renders parent change $status status decoration",
+    ({ expectedShimmer, expectedDecorationText, status }) => {
       const title = buildTimelineRowTitle(
         parentChangeSystemRow({
           parentChange: {
@@ -818,7 +974,13 @@ describe("buildTimelineRowTitle", () => {
         DEFAULT_OPTIONS,
       );
 
-      expect(title.plain).toBe(expectedPlain);
+      // The thread name leads the title and carries the shimmer when pending.
+      // (`plain` also folds in any status decoration, so compare the segments.)
+      expect(title.segments.map((s) => s.text)).toEqual([
+        "Worker 3",
+        "assigned to",
+        "Frontend Parent",
+      ]);
       expect(title.segments[0]?.shimmer).toBe(expectedShimmer);
       expect(title.tone).toBe("default");
       if (expectedDecorationText.length > 0) {

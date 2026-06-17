@@ -145,7 +145,8 @@ const ownershipOperationCases: OwnershipOperationCase[] = [
   {
     action: "assign",
     parentChangeAction: "assign",
-    message: "Thread assigned to parent",
+    // Unnamed thread (no threadName option) → bare capitalized verb + parent name.
+    message: "Assigned to Parent",
     nextParentThreadId: "thr-parent",
     nextParentThreadTitle: "Parent",
     previousParentThreadId: null,
@@ -154,7 +155,7 @@ const ownershipOperationCases: OwnershipOperationCase[] = [
   {
     action: "release",
     parentChangeAction: "release",
-    message: "Thread released from parent",
+    message: "Released from Parent",
     nextParentThreadId: null,
     nextParentThreadTitle: null,
     previousParentThreadId: "thr-parent",
@@ -163,7 +164,7 @@ const ownershipOperationCases: OwnershipOperationCase[] = [
   {
     action: "transfer",
     parentChangeAction: "transfer",
-    message: "Thread transferred to new parent",
+    message: "Transferred to Next Parent",
     nextParentThreadId: "thr-parent-next",
     nextParentThreadTitle: "Next Parent",
     previousParentThreadId: "thr-parent-previous",
@@ -530,6 +531,7 @@ function buildContextWindowUsage(
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
+      threadName: "",
       turnMessageDetail: "summary",
       workspaceRoot: null,
     },
@@ -551,6 +553,7 @@ function buildTimelineRows(
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
       threadStatus,
+      threadName: "",
       turnMessageDetail: "full",
       workspaceRoot,
     },
@@ -573,6 +576,7 @@ function buildTimelineRowsWithAcceptedContext(
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
+      threadName: "",
       turnMessageDetail: "full",
       workspaceRoot: null,
     },
@@ -736,7 +740,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       collectSystemRows(rows).filter(
         (row) =>
-          row.systemKind === "operation" && row.title === "Provisioned thread",
+          row.systemKind === "operation" && row.title === "Provisioned",
       ),
     ).toHaveLength(1);
   });

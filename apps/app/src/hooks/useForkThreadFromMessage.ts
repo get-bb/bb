@@ -55,7 +55,8 @@ export function useForkThreadFromMessage({
       // effective execution options (cached if already fetched by the composer).
       const executionOptions = await queryClient.fetchQuery({
         queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
-        queryFn: () => api.getThreadDefaultExecutionOptions(sourceThread.id),
+        queryFn: ({ signal }) =>
+          api.getThreadDefaultExecutionOptions(sourceThread.id, signal),
       });
       if (executionOptions === null) {
         return;

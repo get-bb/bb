@@ -281,14 +281,6 @@ function ReorderableQueuedMessagesList() {
   );
 }
 
-export function Reorderable() {
-  return (
-    <PromptStage>
-      <ReorderableQueuedMessagesList />
-    </PromptStage>
-  );
-}
-
 export function Overview() {
   return (
     <StoryCard>

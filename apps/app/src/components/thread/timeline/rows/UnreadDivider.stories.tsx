@@ -45,6 +45,8 @@ function userRow(args: {
     role: "user",
     initiator: "user",
     senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
     text: args.text,
     mentions: [],
     attachments: null,

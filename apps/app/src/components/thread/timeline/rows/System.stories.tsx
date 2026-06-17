@@ -39,7 +39,7 @@ const provisioningPending: TimelineRow = systemRow({
   createdAt: Date.now(),
   systemKind: "operation",
   operationKind: "thread-provisioning",
-  title: "Provisioning thread",
+  title: "Provisioning Fix auth bug",
   detail:
     "Creating worktree (305ms)\n" +
     "HEAD is now at 37eeec85 Refactor timeline row titles\n" +
@@ -67,7 +67,7 @@ const provisioningCompleted: TimelineRow = systemRow({
   createdAt: 1778027670469,
   systemKind: "operation",
   operationKind: "thread-provisioning",
-  title: "Provisioned thread",
+  title: "Fix auth bug provisioned",
   detail:
     "Created worktree (305ms)\n" +
     "Using workspace: /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb\n" +
@@ -132,7 +132,7 @@ const threadInterruptedManualStop: TimelineRow = systemRow({
   createdAt: 1776810312000,
   systemKind: "operation",
   operationKind: "thread-interrupted",
-  title: "Stopped manually",
+  title: "Investigate timeline stopped manually",
   detail: null,
   status: "interrupted",
   completedAt: 1776810312000,
@@ -233,7 +233,7 @@ const parentChangeAssign: TimelineRow = systemRow({
   createdAt: 1777680600000,
   systemKind: "operation",
   operationKind: "parent-change",
-  title: "Thread assigned to parent",
+  title: "Worker 3 assigned to Parent",
   detail: null,
   status: "completed",
   completedAt: 1777680600000,
@@ -259,7 +259,7 @@ const parentChangeRelease: TimelineRow = systemRow({
   createdAt: 1777724900000,
   systemKind: "operation",
   operationKind: "parent-change",
-  title: "Thread released from parent",
+  title: "Worker 3 released from Parent",
   detail: null,
   status: "completed",
   completedAt: 1777724900000,
@@ -283,7 +283,7 @@ const parentChangeTransfer: TimelineRow = systemRow({
   createdAt: 1777800100000,
   systemKind: "operation",
   operationKind: "parent-change",
-  title: "Thread transferred to new parent",
+  title: "Worker 3 transferred to Frontend Parent",
   detail: null,
   status: "completed",
   completedAt: 1777800100000,

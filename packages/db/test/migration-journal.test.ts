@@ -33,6 +33,27 @@ function readJournal(): Journal {
   return JSON.parse(fs.readFileSync(journalPath, "utf-8")) as Journal;
 }
 
+interface MigrationSnapshot {
+  id: string;
+  prevId: string;
+}
+
+function snapshotPathFor(idx: number): string {
+  return resolve(
+    __dirname,
+    "..",
+    "drizzle",
+    "meta",
+    `${String(idx).padStart(4, "0")}_snapshot.json`,
+  );
+}
+
+function readSnapshot(idx: number): MigrationSnapshot {
+  return JSON.parse(
+    fs.readFileSync(snapshotPathFor(idx), "utf-8"),
+  ) as MigrationSnapshot;
+}
+
 describe("migration journal integrity", () => {
   it("has strictly increasing `when` timestamps", () => {
     const { entries } = readJournal();
@@ -112,6 +133,39 @@ describe("migration journal integrity", () => {
         (entry) =>
           `${entry.tag} has when=${entry.when}, expected > ${latestPublishedMigrationWhen}`,
       );
+
+    expect(violations).toEqual([]);
+  });
+
+  // Regression guard: a migration that is hand-authored and added to the
+  // journal without running `drizzle-kit generate` has no meta snapshot. The
+  // snapshot chain then silently goes stale, and the next `drizzle-kit
+  // generate` diffs against the wrong base and emits a corrupt migration.
+  // Every journal entry must carry its generated snapshot.
+  it("has a matching snapshot file for every journal entry", () => {
+    const { entries } = readJournal();
+
+    const missing = entries
+      .filter((entry) => !fs.existsSync(snapshotPathFor(entry.idx)))
+      .map((entry) => entry.tag);
+
+    expect(missing).toEqual([]);
+  });
+
+  it("has an unbroken snapshot prevId chain in journal order", () => {
+    const entries = [...readJournal().entries].sort((a, b) => a.idx - b.idx);
+
+    const violations: string[] = [];
+    let previousSnapshotId: string | null = null;
+    for (const entry of entries) {
+      const snapshot = readSnapshot(entry.idx);
+      if (previousSnapshotId !== null && snapshot.prevId !== previousSnapshotId) {
+        violations.push(
+          `${entry.tag} snapshot prevId=${snapshot.prevId}, expected ${previousSnapshotId}`,
+        );
+      }
+      previousSnapshotId = snapshot.id;
+    }
 
     expect(violations).toEqual([]);
   });
