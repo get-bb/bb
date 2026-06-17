@@ -20,7 +20,12 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { TimelineActivityIntent, TimelineRow } from "@bb/server-contract";
+import type {
+  TimelineActivityIntent,
+  TimelineParentChange,
+  TimelineRow,
+  TimelineSystemOperationKind,
+} from "@bb/server-contract";
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
@@ -1277,25 +1282,21 @@ function leadingIconForWorkRow(
  * at a glance. Warning / deprecation / provider-unhandled / generic and
  * non-operation system rows keep no leading glyph.
  */
-function leadingIconForSystemRow(
-  row: ThreadTimelineViewRow,
+// Pure operation-kind → leading-icon mapping (exported for exhaustive testing).
+// Warning / deprecation / provider-unhandled / generic keep no leading glyph.
+export function systemOperationLeadingIcon(
+  operationKind: TimelineSystemOperationKind,
+  parentChangeAction: TimelineParentChange["action"] | null,
 ): IconName | undefined {
-  if (row.kind !== "system" || row.systemKind !== "operation") {
-    return undefined;
-  }
-  if (row.operationKind === "parent-change") {
-    return row.parentChange.action === "release"
-      ? "UserRound"
-      : "UserRoundPlus";
-  }
-  const operationKind = row.operationKind;
   switch (operationKind) {
+    case "parent-change":
+      return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
       return "Terminal";
     case "thread-interrupted":
-      return "Square";
+      return "AlertCircle";
     case "compaction":
-      return "RotateCcw";
+      return "CircleArrowShrink";
     case "generic":
     case "warning":
     case "deprecation":
@@ -1304,6 +1305,18 @@ function leadingIconForSystemRow(
     default:
       return assertNever(operationKind);
   }
+}
+
+function leadingIconForSystemRow(
+  row: ThreadTimelineViewRow,
+): IconName | undefined {
+  if (row.kind !== "system" || row.systemKind !== "operation") {
+    return undefined;
+  }
+  return systemOperationLeadingIcon(
+    row.operationKind,
+    row.operationKind === "parent-change" ? row.parentChange.action : null,
+  );
 }
 
 /** Leading glyph for any timeline row: work rows by kind, system rows by action. */

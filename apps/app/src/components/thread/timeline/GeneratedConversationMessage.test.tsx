@@ -177,13 +177,16 @@ describe("GeneratedConversationMessage markdown body", () => {
 });
 
 describe("GeneratedConversationMessage markdown body (system)", () => {
-  it("keeps the collapsed preview plain text (no markdown elements)", () => {
+  it("renders the collapsed preview as markdown, first line only", () => {
     const { container } = renderChildCompleted();
 
-    // Collapsed: only the first body line shows, as plain text — no heading.
-    expect(container.querySelector("h1")).toBeNull();
+    // Collapsed: the first body line renders as markdown (the heading element
+    // is present, flattened inline by COLLAPSED_MARKDOWN_PREVIEW_CLASS) rather
+    // than showing the raw `# Final report` source...
+    expect(container.querySelector("h1")?.textContent).toBe("Final report");
+    // ...but only the first line shows — later-line block nodes (the list) are
+    // not rendered until the row is expanded.
     expect(container.querySelector("li")).toBeNull();
-    expect(screen.getByText(/Final report/u)).toBeTruthy();
   });
 
   it("renders the expanded body as markdown with a linked mention pill", () => {

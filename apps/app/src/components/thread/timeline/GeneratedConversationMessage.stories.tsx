@@ -4,8 +4,11 @@ import type {
   SystemMessageSubject,
 } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
+import type { TimelineRow } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import { ThreadTimelineRows } from "@/components/thread/timeline";
+import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -222,6 +225,91 @@ export function Overview() {
           />
         </TimelineStage>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+
+// Markdown bodies, rendered EXPANDED so the formatting is visible without a
+// click. System-message bodies (sourceKind "system") render through
+// MarkdownPreview — headings, bold, lists, inline code, fenced code, and
+// @thread mention pills inside the markdown. Driven through the real timeline
+// path (ThreadTimelineRows) with `initialExpanded` seeding the open body.
+const MARKDOWN_ROWS: readonly {
+  label: string;
+  hint: string;
+  row: TimelineRow;
+}[] = [
+  {
+    label: "child-completed — markdown report",
+    hint: "heading, bold, list, inline + fenced code, and an @thread mention pill",
+    row: conversationRow({
+      id: "md_child_completed",
+      role: "user",
+      initiator: "system",
+      systemMessageKind: "child-completed",
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: "thr_child2",
+        threadName: "Rebuild threaded comments from main",
+      },
+      text: [
+        "All work complete and committed. Here is the final report.",
+        "",
+        "## PR #467 — threaded comments",
+        "",
+        "**Branch:** `bb/rebuild-threaded-comments`",
+        "",
+        "- Ladle stories built and verified",
+        "- `migrate(db)` passes on a fresh schema",
+        "- Linked the source thread @thread:thr_child2",
+        "",
+        "```ts",
+        "export const commentsRebuilt = true;",
+        "```",
+      ].join("\n"),
+    }),
+  },
+  {
+    label: "child-needs-attention — markdown body",
+    hint: "bold + ordered list render; the title carries the icon and link",
+    row: conversationRow({
+      id: "md_needs_attention",
+      role: "user",
+      initiator: "system",
+      systemMessageKind: "child-needs-attention",
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: "thr_child3",
+        threadName: "Migrate sessions table",
+      },
+      text: [
+        "It is **blocked on a pending interaction**. Decide one of:",
+        "",
+        "1. Answer the question from existing context.",
+        "2. Ask the user for the missing decision.",
+        "3. Send a clarifying instruction if it is on the wrong track.",
+      ].join("\n"),
+    }),
+  },
+];
+
+export function MarkdownBody() {
+  return (
+    <StoryCard>
+      {MARKDOWN_ROWS.map(({ label, hint, row }) => (
+        <StoryRow key={row.id} label={label} hint={hint}>
+          <TimelineStage>
+            <ThreadTimelineRows
+              projectId="proj_demo"
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+              initialExpanded={new Set([row.id])}
+              timelineRows={[row]}
+            />
+          </TimelineStage>
+        </StoryRow>
+      ))}
     </StoryCard>
   );
 }

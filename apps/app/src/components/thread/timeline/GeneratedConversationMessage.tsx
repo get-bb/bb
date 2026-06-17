@@ -9,6 +9,7 @@ import type {
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import { cn } from "@/lib/utils";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   ConversationAttachments,
@@ -277,20 +278,22 @@ function generatedConversationEmptyText(
   }
 }
 
-function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
+export function systemMessageIconName(
+  systemMessageKind: SystemMessageKind,
+): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "UserRoundPlus";
     case "ownership-removed":
       return "UserRound";
     case "child-needs-attention":
-      return "MessageQuestion";
+      return "AlertTriangle";
     case "child-completed":
       return "CircleCheck";
     case "child-failed":
       return "CircleX";
     case "child-interrupted":
-      return "Square";
+      return "AlertCircle";
     case "child-outcome-batch":
       return "ListTodo";
     case "unlabeled":
@@ -331,6 +334,21 @@ function systemMessageIsTitleOnly(
     systemMessageKind === "ownership-removed"
   );
 }
+
+// Flattens the markdown collapsed-preview to a single inline line: block nodes
+// (paragraphs, headings, lists, code) lose their margins/sizing and render
+// inline so the row stays one truncated line while still showing inline
+// formatting (bold, code, links) and @thread pills.
+const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
+  "min-w-0 truncate",
+  "[&_p]:!m-0 [&_p]:inline",
+  "[&_ul]:!m-0 [&_ol]:!m-0 [&_ul]:!pl-0 [&_ol]:!pl-0 [&_li]:!m-0 [&_li]:inline",
+  "[&_h1]:!m-0 [&_h2]:!m-0 [&_h3]:!m-0 [&_h4]:!m-0",
+  "[&_h1]:inline [&_h2]:inline [&_h3]:inline [&_h4]:inline",
+  "[&_h1]:!text-sm [&_h2]:!text-sm [&_h3]:!text-sm [&_h4]:!text-sm",
+  "[&_pre]:!m-0 [&_pre]:!inline [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!border-0",
+  "[&_blockquote]:!m-0 [&_blockquote]:inline [&_blockquote]:!border-0 [&_blockquote]:!pl-0",
+);
 
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
@@ -399,7 +417,7 @@ export const GeneratedConversationMessage = memo(
     const collapsedPreviewLine = messageText.split(/\r\n|\r|\n/u, 1)[0] ?? "";
     const hasAdditionalBodyLines =
       collapsedPreviewLine.length < messageText.length;
-    const collapsedPreviewTextRef = useRef<HTMLParagraphElement>(null);
+    const collapsedPreviewTextRef = useRef<HTMLDivElement>(null);
     const collapsedPreviewOverflowMeasurement = useOverflowMeasurement({
       elementRef: collapsedPreviewTextRef,
       enabled: !titleOnly && messageText.length > 0,
@@ -419,19 +437,41 @@ export const GeneratedConversationMessage = memo(
       <div
         className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
       >
-        <p
+        <div
           ref={collapsedPreviewTextRef}
-          className="min-w-0 truncate pl-2 text-sm leading-relaxed text-foreground"
+          className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground"
         >
-          {renderMentionTextSegments({
-            mentions: collapsedPreviewBody.mentions,
-            resolveMentionLink,
-            text: collapsedPreviewBody.text,
-          })}
+          {sourceKind === "system" ? (
+            // Render the collapsed first line as markdown too (inline
+            // formatting + @thread pills), clamped to a single line, so a
+            // not-yet-expanded system message shows formatted text rather than
+            // raw markdown. Block nodes are flattened to inline via
+            // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
+            <MarkdownPreview
+              content={collapsedPreviewLine}
+              threadMentions={
+                resolveSegmentLinkHref
+                  ? {
+                      mentions: collapsedPreviewBody.mentions,
+                      resolveLinkHref: resolveSegmentLinkHref,
+                    }
+                  : undefined
+              }
+              className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
+            />
+          ) : (
+            <span className="min-w-0 truncate">
+              {renderMentionTextSegments({
+                mentions: collapsedPreviewBody.mentions,
+                resolveMentionLink,
+                text: collapsedPreviewBody.text,
+              })}
+            </span>
+          )}
           {expandable ? (
-            <span className="text-muted-foreground">...</span>
+            <span className="shrink-0 text-muted-foreground">...</span>
           ) : null}
-        </p>
+        </div>
       </div>
     ) : null;
     const renderBody = useCallback(

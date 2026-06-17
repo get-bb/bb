@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SystemMessageKind, SystemMessageSubject } from "@bb/domain";
+import { systemMessageKindValues } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import { generatedConversationTitle } from "./GeneratedConversationMessage.js";
+import {
+  generatedConversationTitle,
+  systemMessageIconName,
+} from "./GeneratedConversationMessage.js";
 
 const threadSubject: SystemMessageSubject = {
   kind: "thread",
@@ -120,5 +124,28 @@ describe("generatedConversationTitle — agent source", () => {
     expect(title.segments).toHaveLength(2);
     expect(title.segments[1]?.text).toBe("Worker 2");
     expect(title.segments[1]?.link).toEqual(threadLink("thr_sender"));
+  });
+});
+
+
+describe("systemMessageIconName", () => {
+  // Exhaustive by construction: a `Record<SystemMessageKind, …>` makes TS error
+  // if a kind is added without an icon decision, and the loop asserts each
+  // kind maps to exactly this glyph (so an accidental icon swap fails review).
+  const EXPECTED: Record<SystemMessageKind, string> = {
+    "ownership-assigned": "UserRoundPlus",
+    "ownership-removed": "UserRound",
+    "child-needs-attention": "AlertTriangle",
+    "child-completed": "CircleCheck",
+    "child-failed": "CircleX",
+    "child-interrupted": "AlertCircle",
+    "child-outcome-batch": "ListTodo",
+    unlabeled: "Info",
+  };
+
+  it("maps every system-message kind to its icon", () => {
+    for (const kind of systemMessageKindValues) {
+      expect(systemMessageIconName(kind)).toBe(EXPECTED[kind]);
+    }
   });
 });
