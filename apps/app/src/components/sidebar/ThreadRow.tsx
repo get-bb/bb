@@ -42,6 +42,7 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_ROW_BASE_CLASS,
+  SIDEBAR_CARET_BOX_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE,
@@ -329,7 +330,6 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate">{threadTitle}</span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
@@ -338,9 +338,12 @@ function ThreadRowComponent({
             expandTitle="Expand child threads"
             collapseTitle="Collapse child threads"
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover={!isParentCollapsed}
+            revealOnHover={false}
           />
-        ) : null}
+        ) : (
+          <span className={cn("shrink-0", SIDEBAR_CARET_BOX_CLASS)} />
+        )}
+        <span className="min-w-0 truncate">{threadTitle}</span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span

@@ -123,6 +123,7 @@ const sideChatFixedPanelTabSchema = z
     id: z.string().min(1),
     kind: z.literal("side-chat"),
     sourceMessageText: z.string(),
+    sourceSeqEnd: z.number().int().nonnegative().nullable().default(null),
     threadId: z.string().min(1).nullable(),
     title: z.string().min(1),
   })
@@ -217,8 +218,8 @@ export interface TerminalFixedPanelTab {
 
 /**
  * A message-anchored side chat hosted in the secondary panel. The child thread
- * is preloaded after the tab opens, so `threadId` starts null and is filled once
- * the child thread exists. `title` is the truncated pill
+ * is created by the first user message, so `threadId` starts null and is filled
+ * once the child thread exists. `title` is the truncated pill
  * label derived from the source agent message at open time (and could later
  * mirror the child thread's title); `sourceMessageText` is the full, untruncated
  * source message used to anchor the context snapshot on the exact spawning
@@ -230,6 +231,7 @@ export interface SideChatFixedPanelTab {
   id: string;
   kind: "side-chat";
   sourceMessageText: string;
+  sourceSeqEnd: number | null;
   threadId: string | null;
   title: string;
 }
@@ -333,6 +335,7 @@ interface CreateBrowserFixedPanelTabArgs {
 
 interface CreateSideChatFixedPanelTabArgs {
   sourceMessageText: string;
+  sourceSeqEnd?: number | null;
   title: string;
 }
 
@@ -486,16 +489,18 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
  * Side-chat tabs get a fresh unique id per instance — the source agent message
  * is not a stable identity (the same message can spawn multiple side chats, and
  * the thread does not exist yet), so it cannot key the tab the way a file path
- * or application id does. `threadId` starts null and is set after preload.
+ * or application id does. `threadId` starts null and is set after first send.
  */
 export function createSideChatFixedPanelTab({
   sourceMessageText,
+  sourceSeqEnd = null,
   title,
 }: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
   return {
     id: `side-chat:${crypto.randomUUID()}`,
     kind: "side-chat",
     sourceMessageText,
+    sourceSeqEnd,
     threadId: null,
     title,
   };
@@ -856,6 +861,7 @@ export function areFixedPanelTabsEquivalent(
       return (
         b.kind === "side-chat" &&
         a.sourceMessageText === b.sourceMessageText &&
+        a.sourceSeqEnd === b.sourceSeqEnd &&
         a.threadId === b.threadId &&
         a.title === b.title
       );

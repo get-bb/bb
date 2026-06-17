@@ -13,18 +13,25 @@ export type ThreadTimelineLocalFileLinkHandler =
 
 export type ThreadTimelineLinkHandler = MarkdownPreviewLinkHandler;
 
+export interface ThreadTimelineForkMessageTarget {
+  /** Last source event sequence included in the provider-history fork. */
+  sourceSeqEnd: number;
+}
+
 /**
- * Fork the active thread. A native fork clones the parent's provider session at
- * its branch point (the whole conversation), so it takes no per-message anchor —
- * the action lives on agent rows for discoverability, but every row forks the
- * same session. Supplied by the timeline host (which owns the source thread +
- * environment).
+ * Fork the active thread at the clicked agent row. Supplied by the timeline host
+ * (which owns the source thread + environment); the row supplies its source
+ * sequence so the server can clone provider history at that branch point.
  */
-export type ThreadTimelineForkMessageHandler = () => void;
+export type ThreadTimelineForkMessageHandler = (
+  target: ThreadTimelineForkMessageTarget,
+) => void;
 
 export interface ThreadTimelineSideChatMessageTarget {
   /** Visible text of the agent message the side chat is anchored to. */
   messageText: string;
+  /** Last source event sequence included in the provider-history fork. */
+  sourceSeqEnd?: number;
 }
 
 /**

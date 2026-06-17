@@ -20,7 +20,10 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  getLastProviderThreadId,
+  getProviderThreadIdAtOrBeforeSequence,
+} from "./thread-events.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -82,6 +85,7 @@ interface ResolveForkDescriptorArgs {
   childHostId: string | null;
   originKind: ThreadOriginKind | null;
   providerId: string;
+  sourceSeqEnd: number | undefined;
   sourceThread: Thread | null;
 }
 
@@ -111,10 +115,13 @@ function resolveForkDescriptor(
   ) {
     return null;
   }
-  const sourceProviderThreadId = getLastProviderThreadId(
-    deps,
-    args.sourceThread.id,
-  );
+  const sourceProviderThreadId =
+    args.sourceSeqEnd === undefined
+      ? getLastProviderThreadId(deps, args.sourceThread.id)
+      : getProviderThreadIdAtOrBeforeSequence(deps, {
+          sequence: args.sourceSeqEnd,
+          threadId: args.sourceThread.id,
+        });
   if (sourceProviderThreadId === null) {
     return null;
   }
@@ -636,6 +643,7 @@ export async function createThreadFromRequest(
     childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
     originKind: request.originKind ?? null,
     providerId: request.providerId,
+    sourceSeqEnd: request.sourceSeqEnd,
     sourceThread,
   });
 

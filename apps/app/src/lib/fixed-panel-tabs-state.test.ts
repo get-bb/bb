@@ -137,11 +137,13 @@ describe("side-chat fixed panel tabs", () => {
   it("round-trips side-chat tabs (threadId null and set)", () => {
     const pendingTab = createSideChatFixedPanelTab({
       sourceMessageText: "Why this index? Full source agent message text.",
+      sourceSeqEnd: 12,
       title: "Why this index?",
     });
     const createdTab: SideChatFixedPanelTab = {
       ...createSideChatFixedPanelTab({
         sourceMessageText: "Created side chat source message.",
+        sourceSeqEnd: 18,
         title: "Created side chat",
       }),
       threadId: "thr_side_child",
@@ -167,6 +169,7 @@ describe("side-chat fixed panel tabs", () => {
   it("round-trips a side-chat tab opened from the thread tip", () => {
     const tab = createSideChatFixedPanelTab({
       sourceMessageText: "",
+      sourceSeqEnd: null,
       title: "Side chat",
     });
     const state = createEmptyFixedPanelTabsState({

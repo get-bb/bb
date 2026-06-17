@@ -454,15 +454,17 @@ function AssistantConversationMessage({
         fork on. `disabled` greys both fork and side chat together when the
         thread is at the spawn-depth cap (both spawn a child thread, one guard).
       */}
-      <div className="mt-1.5">
-        <MessageActionBar
-          messageText={text}
-          alignment="start"
-          onFork={onFork}
-          onSideChat={onSideChat}
-          onSendToMain={onSendToMain}
-          disabled={forkDisabled}
-        />
+      <div className="relative h-0">
+        <div className="absolute left-0 top-1">
+          <MessageActionBar
+            messageText={text}
+            alignment="start"
+            onFork={onFork}
+            onSideChat={onSideChat}
+            onSendToMain={onSendToMain}
+            disabled={forkDisabled}
+          />
+        </div>
       </div>
     </div>
   );

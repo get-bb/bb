@@ -149,7 +149,9 @@ export function buildSideChatSubmitMode({
   runtimeDisplayStatus,
 }: BuildSideChatSubmitModeArgs): FollowUpSubmitMode {
   if (childThreadId === null) {
-    return { kind: "ready" };
+    return isDefaultExecutionOptionsLoading
+      ? { kind: "blocked", reason: "loading-execution-options" }
+      : { kind: "ready" };
   }
   return buildFollowUpSubmitMode({
     hasPendingInteraction: false,

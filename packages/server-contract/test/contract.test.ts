@@ -72,6 +72,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.permissionMode",
       "createThreadRequestSchema.reasoningLevel",
       "createThreadRequestSchema.serviceTier",
+      "createThreadRequestSchema.sourceSeqEnd",
       "createThreadRequestSchema.sourceThreadId",
       "createThreadRequestSchema.title",
     ],
@@ -1023,12 +1024,14 @@ describe("server-contract canonical schemas", () => {
         workspace: { type: "unmanaged", path: null },
       },
       originKind: "side-chat",
+      sourceSeqEnd: 12,
       sourceThreadId: "thr_source",
       startedOnBehalfOf: null,
     });
 
     expect(parsed.input).toEqual([]);
     expect(parsed.originKind).toBe("side-chat");
+    expect(parsed.sourceSeqEnd).toBe(12);
     expect(parsed.sourceThreadId).toBe("thr_source");
     expect(parsed.startedOnBehalfOf).toBeNull();
   });

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Environment } from "@bb/domain";
 import type { TimelineConversationRow } from "@bb/server-contract";
 import {
+  buildSideChatCreateRequest,
   buildSideChatMessageInput,
-  buildSideChatPreloadRequest,
   resolveSideChatReplyReference,
 } from "./side-chat-create-request";
 
@@ -130,9 +130,10 @@ describe("resolveSideChatReplyReference", () => {
   });
 });
 
-describe("buildSideChatPreloadRequest", () => {
-  it("builds an empty-input preload request for a read-only side chat", () => {
-    const request = buildSideChatPreloadRequest({
+describe("buildSideChatCreateRequest", () => {
+  it("builds a first-message create request for a read-only side chat", () => {
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment(),
@@ -140,6 +141,7 @@ describe("buildSideChatPreloadRequest", () => {
       model: "gpt-5",
       reasoningLevel: "high",
       serviceTier: "fast",
+      sourceSeqEnd: 7,
       title: "Why this approach?",
     });
 
@@ -150,10 +152,11 @@ describe("buildSideChatPreloadRequest", () => {
       reasoningLevel: "high",
       serviceTier: "fast",
       permissionMode: "readonly",
+      sourceSeqEnd: 7,
       sourceThreadId: "thr_main",
       originKind: "side-chat",
       startedOnBehalfOf: null,
-      input: [],
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       environment: {
         type: "host",
         hostId: "hst_local",
@@ -166,7 +169,8 @@ describe("buildSideChatPreloadRequest", () => {
   });
 
   it("links the side chat to the main thread as a read-only same-project child", () => {
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment(),
@@ -191,7 +195,8 @@ describe("buildSideChatPreloadRequest", () => {
   });
 
   it("runs a standard-project side chat in a fresh managed worktree off the source branch", () => {
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({
@@ -218,7 +223,8 @@ describe("buildSideChatPreloadRequest", () => {
   });
 
   it("defers to the source's default branch when no branch is known", () => {
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({ branchName: null }),
@@ -239,7 +245,8 @@ describe("buildSideChatPreloadRequest", () => {
   });
 
   it("falls back to the personal workspace only when the source has no host", () => {
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_personal",
       sourceThreadId: "thr_main",
       sourceEnvironment: null,
@@ -261,7 +268,8 @@ describe("buildSideChatPreloadRequest", () => {
     // The resolver previously saw the host and built a managed worktree, which
     // the server rejects ("Personal project threads must use a personal
     // workspace"). It must keep the personal workspace, carrying the host.
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_personal",
       sourceThreadId: "thr_main",
       sourceEnvironment: makeEnvironment({

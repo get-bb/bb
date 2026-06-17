@@ -102,9 +102,10 @@ export function SelectableMessageProse({
     if (typeof window === "undefined") return;
 
     let frame: number | null = null;
-    // `selectionchange` fires globally, so every mounted message would report
-    // `null` on each tick. Only emit `null` once, after this node had reported
-    // a real selection, so N messages don't thrash a shared controller.
+    // Read pointer selections only after release so the floating menu does not
+    // block the cursor or chase the range while the user is still dragging.
+    // Only emit `null` once, after this node had reported a real selection, so
+    // N messages don't thrash a shared controller.
     let hadSelection = false;
     const report = () => {
       frame = null;
@@ -118,14 +119,12 @@ export function SelectableMessageProse({
       frame = window.requestAnimationFrame(report);
     };
 
-    document.addEventListener("mouseup", schedule);
+    document.addEventListener("pointerup", schedule);
     document.addEventListener("keyup", schedule);
-    document.addEventListener("selectionchange", schedule);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      document.removeEventListener("mouseup", schedule);
+      document.removeEventListener("pointerup", schedule);
       document.removeEventListener("keyup", schedule);
-      document.removeEventListener("selectionchange", schedule);
     };
   }, []);
 

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
   NewThreadPromptBox,
@@ -38,6 +44,11 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import {
+  buildForkThreadRequest,
+  FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
+  type ForkThreadCreateSeed,
+} from "@/lib/fork-thread-request";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
@@ -92,6 +103,60 @@ function readReuseEnvironmentIdFromLocationState(
     .reuseEnvironmentId;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return null;
+}
+
+function readForkThreadCreateSeedFromLocationState(
+  state: unknown,
+): ForkThreadCreateSeed | null {
+  if (!state || typeof state !== "object") return null;
+  const candidate = (state as Record<string, unknown>)[
+    FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY
+  ];
+  if (!candidate || typeof candidate !== "object") return null;
+  const value = candidate as Record<string, unknown>;
+  if (
+    typeof value.environmentId !== "string" ||
+    value.environmentId.length === 0 ||
+    typeof value.model !== "string" ||
+    value.model.length === 0 ||
+    typeof value.permissionMode !== "string" ||
+    value.permissionMode.length === 0 ||
+    typeof value.projectId !== "string" ||
+    value.projectId.length === 0 ||
+    typeof value.providerId !== "string" ||
+    value.providerId.length === 0 ||
+    typeof value.reasoningLevel !== "string" ||
+    value.reasoningLevel.length === 0 ||
+    typeof value.sourceThreadId !== "string" ||
+    value.sourceThreadId.length === 0
+  ) {
+    return null;
+  }
+  if (
+    value.serviceTier !== undefined &&
+    typeof value.serviceTier !== "string"
+  ) {
+    return null;
+  }
+  if (
+    value.sourceSeqEnd !== undefined &&
+    (typeof value.sourceSeqEnd !== "number" ||
+      !Number.isInteger(value.sourceSeqEnd) ||
+      value.sourceSeqEnd < 0)
+  ) {
+    return null;
+  }
+  return {
+    environmentId: value.environmentId,
+    model: value.model,
+    permissionMode: value.permissionMode as PermissionMode,
+    projectId: value.projectId,
+    providerId: value.providerId,
+    reasoningLevel: value.reasoningLevel as ReasoningLevel,
+    serviceTier: value.serviceTier as ServiceTier | undefined,
+    sourceSeqEnd: value.sourceSeqEnd as number | undefined,
+    sourceThreadId: value.sourceThreadId,
+  };
 }
 
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
@@ -239,6 +304,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
+  const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
+    readForkThreadCreateSeedFromLocationState(location.state),
+  );
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
@@ -336,22 +404,44 @@ export function RootComposeView(props: RootComposeViewProps) {
   const executionInputSources = creationOptions.executionInputSources;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
-  // (the "+" affordance on a worktree) seeds the env picker into reuse mode
-  // for that env. This is single-use — clear location.state after applying so
-  // a refresh starts from persisted root-compose selection.
+  // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
+  // that env. A fork seed also pins the first create request to the source
+  // thread/environment. This is single-use — clear location.state after applying
+  // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
       location.state,
     );
-    if (reuseEnvironmentId === null) return;
+    const nextForkSeed = readForkThreadCreateSeedFromLocationState(
+      location.state,
+    );
+    if (reuseEnvironmentId === null && nextForkSeed === null) return;
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
+    }
+    if (nextForkSeed !== null) {
+      setForkSeed(nextForkSeed);
+      setSelectedProviderId(nextForkSeed.providerId);
+      setSelectedModel(nextForkSeed.model);
+      setReasoningLevel(nextForkSeed.reasoningLevel);
+      setPermissionMode(nextForkSeed.permissionMode);
+      setServiceTier(nextForkSeed.serviceTier);
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: null,
     });
-  }, [location.search, location.state, navigate, setEnvironmentSelectionValue]);
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    setEnvironmentSelectionValue,
+    setPermissionMode,
+    setReasoningLevel,
+    setSelectedModel,
+    setSelectedProviderId,
+    setServiceTier,
+  ]);
 
   // Worktree picker options come from the project's unarchived threads.
   // Threads on managed or unmanaged worktrees with a non-null environmentId
@@ -541,6 +631,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     (nextProjectId) => {
       const nextRootComposeProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
       if (nextRootComposeProjectId === projectId) return;
+      setForkSeed(null);
       setRootComposeProjectId(nextRootComposeProjectId);
     },
     [projectId, setRootComposeProjectId],
@@ -601,25 +692,43 @@ export function RootComposeView(props: RootComposeViewProps) {
     if (
       submittedInput.length === 0 ||
       createThread.isPending ||
-      !selectedEnvironment
+      (forkSeed === null && !selectedEnvironment)
     ) {
       return;
     }
 
     try {
-      const thread = await createThread.mutateAsync({
-        input: submittedInput,
-        projectId,
-        providerId: selectedProviderId,
-        model: selectedThreadModel,
-        ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-        reasoningLevel,
-        permissionMode,
-        executionInputSources,
-        environment: selectedEnvironment,
-      });
+      const request =
+        forkSeed !== null
+          ? buildForkThreadRequest({
+              ...forkSeed,
+              input: submittedInput,
+              model: selectedThreadModel,
+              permissionMode,
+              providerId: selectedProviderId,
+              reasoningLevel,
+              serviceTier: supportsServiceTier ? serviceTier : undefined,
+            })
+          : selectedEnvironment !== null
+            ? {
+                input: submittedInput,
+                projectId,
+                providerId: selectedProviderId,
+                model: selectedThreadModel,
+                ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
+                reasoningLevel,
+                permissionMode,
+                executionInputSources,
+                environment: selectedEnvironment,
+              }
+            : null;
+      if (request === null) {
+        return;
+      }
+      const thread = await createThread.mutateAsync(request);
       setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
+      setForkSeed(null);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (props.surface === "popout") {
         props.onThreadCreated({
@@ -641,6 +750,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     clearReuseEnvironment,
     createThread,
     executionInputSources,
+    forkSeed,
     navigate,
     navigateToThreadAfterCreate,
     permissionMode,
@@ -661,7 +771,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||
-    !selectedEnvironment ||
+    (forkSeed === null && !selectedEnvironment) ||
     (branchEnvironmentMode === "local" &&
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);

@@ -288,7 +288,7 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
   });
 
-  it("keeps side-chat preload submit-ready until a child thread exists", () => {
+  it("blocks a draft side chat until inherited execution options load", () => {
     const onStop = () => undefined;
 
     expect(
@@ -298,6 +298,16 @@ describe("threadDetailPromptSubmission", () => {
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "provisioning",
+      }),
+    ).toEqual({ kind: "blocked", reason: "loading-execution-options" });
+
+    expect(
+      buildSideChatSubmitMode({
+        childThreadId: null,
+        isDefaultExecutionOptionsLoading: false,
+        isStopRequested: false,
+        onStop,
+        runtimeDisplayStatus: "idle",
       }),
     ).toEqual({ kind: "ready" });
   });

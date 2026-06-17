@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 
 import type { Thread } from "@bb/domain";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { SideChatTabContent } from "./SideChatTabContent";
 
@@ -23,7 +30,25 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
-  FollowUpPromptBox: () => <div data-testid="side-chat-composer" />,
+  FollowUpPromptBox: ({
+    composer,
+  }: {
+    composer: Pick<
+      FollowUpComposerProps,
+      "message" | "onChangeMessage" | "onSubmit"
+    >;
+  }) => (
+    <div>
+      <input
+        data-testid="side-chat-composer"
+        value={composer.message}
+        onChange={(event) => composer.onChangeMessage(event.target.value, [])}
+      />
+      <button type="button" onClick={composer.onSubmit}>
+        Send
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
@@ -151,28 +176,20 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
 }));
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
-    resolve = promiseResolve;
-  });
-  return { promise, resolve };
-}
-
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   vi.clearAllMocks();
 });
 
 describe("SideChatTabContent", () => {
-  it("records a preloaded child thread even if the tab content unmounts first", async () => {
-    const preload = deferred<Pick<Thread, "id">>();
-    mocks.createThreadMutateAsync.mockReturnValueOnce(preload.promise);
+  function renderDraftSideChat() {
     const onSetThreadId = vi.fn();
     const tab: SideChatFixedPanelTab = {
       id: "side-chat:one",
       kind: "side-chat",
       sourceMessageText: "Earlier answer",
+      sourceSeqEnd: 9,
       threadId: null,
       title: "Side chat",
     };
@@ -183,7 +200,7 @@ describe("SideChatTabContent", () => {
       providerId: "codex",
     } as Thread;
 
-    const view = render(
+    render(
       <SideChatTabContent
         tab={tab}
         sourceThread={sourceThread}
@@ -193,16 +210,43 @@ describe("SideChatTabContent", () => {
       />,
     );
 
+    return { onSetThreadId };
+  }
+
+  it("does not create a side-chat child thread just by opening the tab", () => {
+    renderDraftSideChat();
+
+    expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByText("Provisioning side chat...")).toBeNull();
+  });
+
+  it("creates the side-chat child thread with the first submitted message", async () => {
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    const { onSetThreadId } = renderDraftSideChat();
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Compare the tradeoffs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
     await waitFor(() =>
       expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
     );
-    view.unmount();
-
-    await act(async () => {
-      preload.resolve({ id: "thr_side" });
-      await preload.promise;
-    });
-
+    expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: [
+          expect.objectContaining({
+            text: expect.stringContaining("Earlier answer"),
+            type: "text",
+            visibility: "agent-only",
+          }),
+          { type: "text", text: "Compare the tradeoffs", mentions: [] },
+        ],
+        originKind: "side-chat",
+        sourceSeqEnd: 9,
+        sourceThreadId: "thr_parent",
+      }),
+    );
     expect(onSetThreadId).toHaveBeenCalledWith({
       tabId: "side-chat:one",
       threadId: "thr_side",

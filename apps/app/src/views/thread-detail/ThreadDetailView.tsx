@@ -705,20 +705,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const environment = environmentQuery.data;
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
-    sourceEnvironment: environment ?? null,
   });
   const handleForkMessage =
-    useCallback<ThreadTimelineForkMessageHandler>(() => {
-      void forkThreadFromMessage();
+    useCallback<ThreadTimelineForkMessageHandler>((target) => {
+      void forkThreadFromMessage(target);
     }, [forkThreadFromMessage]);
-  // A fork always runs in a fresh managed worktree branched off the source's
-  // host. Drop the Fork handler (not just disable it) for a host-less source
-  // (a personal-project thread with no environment) — matching the
-  // handler-undefined contract that already removes the button from the action
-  // bar — so that case never shows a Fork button that does nothing on click.
-  // Same predicate `buildForkThreadRequest` gates on, so the button and the
-  // request stay in lockstep.
-  const isForkAvailable = isThreadForkable(environment ?? null);
+  const isForkAvailable = isThreadForkable(thread ?? null);
   const canUseSideChatPanel = props.surface !== "popout";
   const canStartSideChat =
     canUseSideChatPanel && (thread?.canSpawnChild ?? false);
@@ -729,6 +721,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         openSideChat({
           sourceThreadId: threadId,
           sourceMessageText: target.messageText,
+          sourceSeqEnd: target.sourceSeqEnd,
         });
       },
       [canStartSideChat, openSideChat, threadId],

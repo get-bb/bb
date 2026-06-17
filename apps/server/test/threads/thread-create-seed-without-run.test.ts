@@ -124,6 +124,73 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
     });
   });
 
+  it("uses the source provider session at the requested source sequence", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-source-sequence-fork",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/source-sequence-fork-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/source-sequence-fork-project",
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: sourceThread.id,
+        turnId: "turn-earlier-source",
+        providerThreadId: "provider-earlier-source",
+        sequence: 5,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: sourceThread.id,
+        turnId: "turn-later-source",
+        providerThreadId: "provider-later-source",
+        sequence: 9,
+      });
+
+      const fork = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: {
+            type: "unmanaged",
+            path: "/tmp/source-sequence-fork-project",
+          },
+        },
+        input: [],
+        origin: "app",
+        originKind: "fork",
+        projectId: project.id,
+        providerId: "codex",
+        sourceSeqEnd: 5,
+        sourceThreadId: sourceThread.id,
+        startedOnBehalfOf: {
+          initiator: "agent",
+          senderThreadId: sourceThread.id,
+        },
+      });
+
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (queuedStart.command.type !== "thread.start") {
+        throw new Error("Expected a thread.start command");
+      }
+      expect(queuedStart.command.fork).toEqual({
+        sourceProviderThreadId: "provider-earlier-source",
+      });
+    });
+  });
+
   it("dispatches a provider run for a normal user start (no startedOnBehalfOf)", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

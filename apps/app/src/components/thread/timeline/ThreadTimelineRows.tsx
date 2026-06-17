@@ -807,17 +807,23 @@ function ConversationRow({ row }: ConversationRowProps) {
       />
     );
   }
-  // Fork clones the whole thread (native session fork), so the button forks the
-  // active thread regardless of which agent row it sits on. Omit the handler
-  // entirely when no host can fork, which keeps the Fork button out of the
-  // action bar rather than rendering it dead.
-  const onFork = onForkMessage === undefined ? undefined : onForkMessage;
+  // Fork clones provider history through this row's source sequence. Omit the
+  // handler entirely when no host can fork, which keeps the Fork button out of
+  // the action bar rather than rendering it dead.
+  const onFork =
+    onForkMessage === undefined
+      ? undefined
+      : () => onForkMessage({ sourceSeqEnd: row.sourceSeqEnd });
   // Side chat anchors on the same agent row text; both actions share the
   // canSpawnChild depth guard (both spawn a child thread off the active thread).
   const onSideChat =
     onSideChatMessage === undefined
       ? undefined
-      : () => onSideChatMessage({ messageText: row.text });
+      : () =>
+          onSideChatMessage({
+            messageText: row.text,
+            sourceSeqEnd: row.sourceSeqEnd,
+          });
   // Side chats supply this so each agent message can be handed back to the main
   // thread; omitted on the main timeline, which keeps the action out of the bar.
   const onSendToMain =

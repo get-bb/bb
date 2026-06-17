@@ -108,6 +108,7 @@ export const createThreadRequestSchema = z
     environment: environmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     sourceThreadId: z.string().min(1).optional(),
+    sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
     /** @deprecated Use originKind. */

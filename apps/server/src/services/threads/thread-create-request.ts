@@ -25,6 +25,7 @@ export interface ThreadCreateServiceRequestInput {
   providerId?: CreateThreadRequest["providerId"];
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];
   serviceTier?: CreateThreadRequest["serviceTier"];
+  sourceSeqEnd?: CreateThreadRequest["sourceSeqEnd"];
   sourceThreadId?: string;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   title?: string;

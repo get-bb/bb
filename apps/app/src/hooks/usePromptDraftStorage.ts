@@ -19,6 +19,7 @@ const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type PromptDraftScope =
   | { kind: "new-thread" }
+  | { kind: "side-chat"; parentThreadId: string; tabId: string }
   | { kind: "thread"; projectId: string; threadId: string };
 
 interface PromptDraftCacheEntry {
@@ -223,6 +224,13 @@ function restorePromptDraftIfEmpty(
 function getPromptDraftStorageKey(scope: PromptDraftScope): string | null {
   if (scope.kind === "new-thread") {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+  }
+  if (scope.kind === "side-chat") {
+    const normalizedParentThreadId = normalizeStorageSegment(
+      scope.parentThreadId,
+    );
+    const normalizedTabId = normalizeStorageSegment(scope.tabId);
+    return `${PROMPT_DRAFT_STORAGE_PREFIX}-side-chat-${normalizedParentThreadId}-${normalizedTabId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
 
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
