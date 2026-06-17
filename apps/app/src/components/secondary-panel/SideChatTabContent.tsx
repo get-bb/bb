@@ -52,6 +52,7 @@ import {
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSelectionAddToChatHandler,
 } from "@/components/thread/timeline";
+import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
@@ -81,7 +82,10 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
-import { buildSideChatSubmitMode } from "@/views/thread-detail/threadDetailPromptSubmission";
+import {
+  buildSideChatSubmitMode,
+  canSubmitFollowUpShortcut,
+} from "@/views/thread-detail/threadDetailPromptSubmission";
 
 const noop = () => {};
 
@@ -673,6 +677,76 @@ export function SideChatTabContent({
     },
     [childThreadId, isSideChatProvisioning, sendQueuedMessage],
   );
+  const hasPromptDraftInput = promptDraft.text.trim().length > 0;
+  const isQueueMutationPending =
+    queuedMessageActionPending || createQueuedMessage.isPending;
+  const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
+    hasPromptDraftInput,
+    isFollowUpSubmitting: isSideChatTurnSubmitting,
+    isQueueMutationPending,
+    queuedMessageCount: queuedMessages.length,
+    runtimeDisplayStatus: sideChatRuntimeDisplayStatus,
+    submitModeKind: sideChatSubmitMode.kind,
+  });
+  const handleModifierSubmit = useCallback(() => {
+    if (!canSubmitModifierShortcut || childThreadId === null) {
+      return;
+    }
+
+    const trimmed = promptDraft.text.trim();
+    if (trimmed.length === 0) {
+      const nextQueuedMessage = queuedMessages[0];
+      if (nextQueuedMessage) {
+        handleSendQueuedImmediately(nextQueuedMessage.id);
+      }
+      return;
+    }
+
+    const submittedDraft = {
+      text: promptDraft.text,
+      mentions: promptDraft.mentions,
+      attachments: promptDraft.attachments,
+    };
+    const input = buildSideChatMessageInput({
+      includeReplyReference: false,
+      question: trimmed,
+      replyReference: null,
+    });
+
+    promptDraft.clearIfCurrentMatches(submittedDraft);
+    setIsSideChatTurnSubmitting(true);
+    void sendThreadMessage
+      .mutateAsync({
+        id: childThreadId,
+        input,
+        mode: "steer-if-active",
+      })
+      .catch((error) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+        promptDraft.restoreIfEmpty(submittedDraft);
+        appToast.error(
+          getMutationErrorMessage({
+            error,
+            fallbackMessage: "Failed to send side chat message",
+            lifecycleOperation: "send_message",
+          }),
+        );
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setIsSideChatTurnSubmitting(false);
+        }
+      });
+  }, [
+    canSubmitModifierShortcut,
+    childThreadId,
+    handleSendQueuedImmediately,
+    promptDraft,
+    queuedMessages,
+    sendThreadMessage,
+  ]);
 
   const handleEditQueuedMessage = useCallback(
     (queuedMessageId: string) => {
@@ -814,16 +888,18 @@ export function SideChatTabContent({
       message: promptDraft.text,
       mentionRanges: promptDraft.mentions,
       onChangeMessage: handleChangeMessage,
-      onModifierSubmit: noop,
+      onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
       promptPlaceholder: composerPlaceholder,
-      canModifierSubmit: false,
+      canModifierSubmit: canSubmitModifierShortcut,
       submitMode: sideChatSubmitMode,
       threadRuntimeDisplayStatus: sideChatRuntimeDisplayStatus,
     }),
     [
+      canSubmitModifierShortcut,
       composerPlaceholder,
       handleChangeMessage,
+      handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
       promptDraft.attachments,
@@ -978,55 +1054,56 @@ export function SideChatTabContent({
   return (
     <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
       <BottomAnchoredScrollBody
+        key={childThreadId ?? tab.id}
         scrollAreaClassName="bg-background"
         contentClassName="!px-2 !pb-3 !pt-3"
         maxWidthClassName="max-w-none"
         footer={sideChatFooter}
         scrollAnchorThreadId={childThreadId ?? undefined}
       >
-        {hasTriggerMessage ? (
-          // The agent message this side chat replies to, rendered like a steer
-          // message — a "Replying to" header above a left-aligned bubble — so
-          // it's clear which message is in focus and the styling matches the
-          // main timeline.
-          <div className="mx-1 mb-2 flex flex-col items-start gap-1">
-            <span className="text-xs leading-none text-muted-foreground">
-              <Icon
-                name="CornerDownRight"
-                className="mr-1 inline-block size-3 align-middle"
-              />
-              Replying to
-            </span>
-            <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
-              {messageBodyHasQuote(triggerMessageText) ? (
-                <div className="max-h-20 overflow-hidden break-words">
-                  {renderMessageBodyWithQuotes({
-                    mentions: [],
-                    text: triggerMessageText,
-                  })}
-                </div>
-              ) : (
-                <p className="line-clamp-2 whitespace-pre-wrap break-words">
-                  {triggerMessageText}
-                </p>
-              )}
+        <ConversationTimeline className="flex-1">
+          {hasTriggerMessage ? (
+            // The agent message this side chat replies to, rendered like a steer
+            // message — a "Replying to" header above a left-aligned bubble — so
+            // it's clear which message is in focus and the styling matches the
+            // main timeline.
+            <div className="mx-1 mb-2 flex flex-col items-start gap-1">
+              <span className="text-xs leading-none text-muted-foreground">
+                <Icon
+                  name="CornerDownRight"
+                  className="mr-1 inline-block size-3 align-middle"
+                />
+                Replying to
+              </span>
+              <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
+                {messageBodyHasQuote(triggerMessageText) ? (
+                  <div className="max-h-20 overflow-hidden break-words">
+                    {renderMessageBodyWithQuotes({
+                      mentions: [],
+                      text: triggerMessageText,
+                    })}
+                  </div>
+                ) : (
+                  <p className="line-clamp-2 whitespace-pre-wrap break-words">
+                    {triggerMessageText}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {childThreadId !== null ? (
-          <SideChatConversation
-            isSideChatTurnSubmitting={isSideChatTurnSubmitting}
-            threadId={childThreadId}
-            onSendToMainMessage={sendMessageToMain}
-            onSelectionAddToChat={handleSelectionAddToChat}
-          />
-        ) : isSideChatTurnSubmitting ? (
-          <div className="px-1">
-            <TimelineWorkingIndicator label="Starting side chat..." />
-          </div>
-        ) : (
-          null
-        )}
+          ) : null}
+          {childThreadId !== null ? (
+            <SideChatConversation
+              isSideChatTurnSubmitting={isSideChatTurnSubmitting}
+              threadId={childThreadId}
+              onSendToMainMessage={sendMessageToMain}
+              onSelectionAddToChat={handleSelectionAddToChat}
+            />
+          ) : isSideChatTurnSubmitting ? (
+            <div className="px-1">
+              <TimelineWorkingIndicator label="Starting side chat..." />
+            </div>
+          ) : null}
+        </ConversationTimeline>
       </BottomAnchoredScrollBody>
     </div>
   );

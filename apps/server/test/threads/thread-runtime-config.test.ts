@@ -530,6 +530,12 @@ describe("thread runtime config", () => {
         environmentId: environment.id,
         parentThreadId: rootThread.id,
       });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: rootThread.id,
+      });
       const parentThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -550,6 +556,12 @@ describe("thread runtime config", () => {
       expect(
         resolvePermissionEscalation({
           thread: childThread,
+          initiator: "user",
+        }),
+      ).toBe("deny");
+      expect(
+        resolvePermissionEscalation({
+          thread: sideChatThread,
           initiator: "user",
         }),
       ).toBe("deny");
@@ -649,6 +661,12 @@ describe("thread runtime config", () => {
           name: SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
         }),
       ]);
+      expect(runtimeConfig.instructions).toContain(
+        SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "Do not use the bb CLI, GitHub, or shell commands for that handoff.",
+      );
     });
   });
 });

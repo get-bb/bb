@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   createThreadMutateAsync: vi.fn(),
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
+  sendThreadMessageMutateAsync: vi.fn(),
+  threadRuntimeDisplayStatus: "idle",
 }));
 
 vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
@@ -35,7 +37,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   }: {
     composer: Pick<
       FollowUpComposerProps,
-      "message" | "onChangeMessage" | "onSubmit"
+      | "canModifierSubmit"
+      | "message"
+      | "onChangeMessage"
+      | "onModifierSubmit"
+      | "onSubmit"
     >;
   }) => (
     <div>
@@ -46,6 +52,13 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       />
       <button type="button" onClick={composer.onSubmit}>
         Send
+      </button>
+      <button
+        type="button"
+        disabled={!composer.canModifierSubmit}
+        onClick={composer.onModifierSubmit}
+      >
+        Steer
       </button>
     </div>
   ),
@@ -138,7 +151,16 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThread: () => ({ data: undefined, error: null, status: "success" }),
+  useThread: () => ({
+    data: {
+      runtime: {
+        displayStatus: mocks.threadRuntimeDisplayStatus,
+      },
+      status: mocks.threadRuntimeDisplayStatus === "active" ? "active" : "idle",
+    },
+    error: null,
+    status: "success",
+  }),
   useThreadDefaultExecutionOptions: () => ({
     data: {
       model: "gpt-5",
@@ -163,7 +185,7 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useSendThreadMessage: () => ({
     isPending: false,
     mutate: mocks.noopMutate,
-    mutateAsync: mocks.noopMutateAsync,
+    mutateAsync: mocks.sendThreadMessageMutateAsync,
   }),
   useSendThreadQueuedMessage: () => ({
     isPending: false,
@@ -179,18 +201,23 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  mocks.threadRuntimeDisplayStatus = "idle";
   vi.clearAllMocks();
 });
 
 describe("SideChatTabContent", () => {
   function renderDraftSideChat() {
+    return renderSideChat({ threadId: null });
+  }
+
+  function renderSideChat({ threadId }: { threadId: string | null }) {
     const onSetThreadId = vi.fn();
     const tab: SideChatFixedPanelTab = {
       id: "side-chat:one",
       kind: "side-chat",
       sourceMessageText: "Earlier answer",
       sourceSeqEnd: 9,
-      threadId: null,
+      threadId,
       title: "Side chat",
     };
     const sourceThread = {
@@ -251,5 +278,32 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
+  });
+
+  it("allows active side chats to send modifier-submit steering messages", async () => {
+    mocks.threadRuntimeDisplayStatus = "active";
+    mocks.sendThreadMessageMutateAsync.mockResolvedValueOnce(undefined);
+    renderSideChat({ threadId: "thr_side" });
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Use the dynamic send-to-main tool." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Steer" }));
+
+    await waitFor(() =>
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith({
+      id: "thr_side",
+      input: [
+        {
+          type: "text",
+          text: "Use the dynamic send-to-main tool.",
+          mentions: [],
+        },
+      ],
+      mode: "steer-if-active",
+    });
+    expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
   });
 });
