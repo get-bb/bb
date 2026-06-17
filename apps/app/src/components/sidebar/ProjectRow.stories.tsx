@@ -371,7 +371,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active project route"
-        hint="header has the selected sidebar-border background"
+        hint="header has the selected sidebar-accent background"
       >
         {singleProject({
           isActive: true,
