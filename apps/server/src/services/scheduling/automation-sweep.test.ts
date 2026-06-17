@@ -40,9 +40,14 @@ const testLogger = {
 let db: DbConnection;
 let projectId: string;
 
-function buildDeps(): LoggedPendingInteractionWorkSessionDeps {
+function buildDeps(
+  overrides: { automationsAllowScriptRuns?: boolean } = {},
+): LoggedPendingInteractionWorkSessionDeps {
   return {
-    config: { dataDir: "/tmp/bb-sweep-test" },
+    config: {
+      dataDir: "/tmp/bb-sweep-test",
+      automationsAllowScriptRuns: overrides.automationsAllowScriptRuns ?? true,
+    },
     db,
     hub: noopNotifier,
     lifecycleDedupers: {},
@@ -148,6 +153,27 @@ describe("sweepDueAutomations", () => {
 
     expect(executeScriptRun).toHaveBeenCalledTimes(1);
     expect(executeAgentRun).not.toHaveBeenCalled();
+  });
+
+  it("skips due script automations (without claiming) when script runs are disabled", async () => {
+    const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const automation = seedAutomation({
+      execution: SCRIPT_EXECUTION,
+      nextRunAt: now - 1000,
+    });
+
+    await sweepDueAutomations(buildDeps({ automationsAllowScriptRuns: false }), {
+      now,
+    });
+
+    expect(executeScriptRun).not.toHaveBeenCalled();
+    // Not claimed: schedule and run count are untouched so it resumes cleanly.
+    const after = getAutomation(db, automation.id);
+    expect(after?.nextRunAt).toBe(now - 1000);
+    expect(after?.runCount).toBe(0);
+    expect(
+      listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
+    ).toHaveLength(0);
   });
 
   it("rolls back the schedule advance when the run dispatch fails", async () => {

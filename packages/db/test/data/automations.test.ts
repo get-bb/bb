@@ -16,6 +16,7 @@ import {
   getAutomation,
   getAutomationForProject,
   getRunningAutomationRunByThread,
+  isAutomationSpawnedThread,
   listAutomationRuns,
   listDueAutomations,
   restoreAutomationAfterFailedRun,
@@ -329,5 +330,45 @@ describe("automations data", () => {
       now: 3_000,
     });
     expect(getRunningAutomationRunByThread(db, threadId)).toBeNull();
+  });
+
+  it("createAutomation honors a pre-generated id", () => {
+    const { db, projectId } = setup();
+    const created = createAutomation(
+      db,
+      noopNotifier,
+      makeInput(projectId, { id: "auto_preset" }),
+    );
+    expect(created.id).toBe("auto_preset");
+    expect(getAutomationForProject(db, { projectId, automationId: "auto_preset" })?.id).toBe(
+      "auto_preset",
+    );
+  });
+
+  it("isAutomationSpawnedThread is true only for threads linked to a run", () => {
+    const { db, projectId } = setup();
+    const spawnedThreadId = insertThread(db, projectId, "thr_spawned");
+    const unrelatedThreadId = insertThread(db, projectId, "thr_unrelated");
+    const automation = createAutomation(db, noopNotifier, makeInput(projectId));
+    const { run } = createManualRun(db, {
+      automationId: automation.id,
+      runMode: "agent",
+      now: 1_000,
+    });
+
+    // No run links to it yet.
+    expect(isAutomationSpawnedThread(db, spawnedThreadId)).toBe(false);
+
+    setAutomationRunThread(db, { runId: run.id, threadId: spawnedThreadId });
+    expect(isAutomationSpawnedThread(db, spawnedThreadId)).toBe(true);
+    // Linkage persists even after the run is closed (history is not erased).
+    closeAutomationRun(db, {
+      runId: run.id,
+      status: "succeeded",
+      threadId: spawnedThreadId,
+      now: 2_000,
+    });
+    expect(isAutomationSpawnedThread(db, spawnedThreadId)).toBe(true);
+    expect(isAutomationSpawnedThread(db, unrelatedThreadId)).toBe(false);
   });
 });

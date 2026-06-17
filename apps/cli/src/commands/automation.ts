@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -128,6 +129,23 @@ function parseScriptInterpreter(
   );
 }
 
+// The CLI uploads --script-file content inline, so the original filename (and
+// its extension) is lost server-side. Infer the interpreter from the local file
+// extension here so a .py/.js script is not silently run with the default bash.
+const INTERPRETER_BY_EXTENSION: Record<string, ScriptInterpreter> = {
+  ".sh": "bash",
+  ".bash": "bash",
+  ".js": "node",
+  ".mjs": "node",
+  ".py": "python3",
+};
+
+function inferInterpreterFromPath(
+  filePath: string,
+): ScriptInterpreter | undefined {
+  return INTERPRETER_BY_EXTENSION[extname(filePath).toLowerCase()];
+}
+
 function parseTimeoutMs(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Number.parseInt(value, 10);
@@ -206,16 +224,21 @@ async function buildCreateExecution(
     };
   }
 
-  const interpreter = parseScriptInterpreter(opts.interpreter);
+  const explicitInterpreter = parseScriptInterpreter(opts.interpreter);
   const timeoutMs = parseTimeoutMs(opts.timeout);
   if (opts.script && opts.scriptFile) {
     throw new Error("Provide exactly one of --script or --script-file.");
   }
   // --script-file reads the file's content and uploads it inline; the server
-  // writes it under the automation's script dir.
+  // writes it under the automation's script dir. Because the original filename
+  // is dropped, infer the interpreter from the file extension when not given so
+  // the server does not default a .py/.js script to bash.
   const script = opts.scriptFile
     ? await readFile(opts.scriptFile, "utf8")
     : (opts.script as string);
+  const interpreter =
+    explicitInterpreter ??
+    (opts.scriptFile ? inferInterpreterFromPath(opts.scriptFile) : undefined);
   return {
     mode: "script",
     script,

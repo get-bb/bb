@@ -36,6 +36,7 @@ export {
   getAutomationRun,
   setAutomationRunThread,
   getRunningAutomationRunByThread,
+  isAutomationSpawnedThread,
   listAutomationRuns,
   disableAutomationsForDeletedThread,
 } from "./automations.js";

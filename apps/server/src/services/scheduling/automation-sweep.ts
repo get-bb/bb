@@ -69,6 +69,20 @@ async function processDueAutomation(
     return;
   }
 
+  // Operator gate: when script runs are disabled, do not claim/advance a script
+  // automation so it resumes cleanly if re-enabled (DEFAULT ENABLED, so this is
+  // a no-op out of the box).
+  if (
+    definition.execution.mode === "script" &&
+    !deps.config.automationsAllowScriptRuns
+  ) {
+    deps.logger.warn(
+      { automationId: automation.id },
+      "Skipping due script automation: script runs are disabled",
+    );
+    return;
+  }
+
   const claim = claimAutomationScheduledRun(deps.db, {
     automationId: automation.id,
     expectedNextRunAt,

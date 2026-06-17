@@ -167,6 +167,51 @@ describe("bb automation command output", () => {
     });
   });
 
+  it("create infers the interpreter from the --script-file extension", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    readFileMock.mockResolvedValueOnce("print('hi')\n");
+    const created = makeAutomation({
+      id: "auto-py",
+      projectId: "proj-1",
+      execution: { mode: "script", scriptFile: "check.py" },
+    });
+    const post = vi.fn(async () => created);
+    stubServerApi({ "v1.projects.:id.automations.$post": post });
+
+    await runCommand(
+      [
+        "automation",
+        "create",
+        "--project",
+        "proj-1",
+        "--name",
+        "Py check",
+        "--cron",
+        "*/15 * * * *",
+        "--timezone",
+        "America/New_York",
+        // No --interpreter: it must be inferred from the .py extension.
+        "--script-file",
+        "./tools/check.py",
+        "--environment",
+        "env-1",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        json: expect.objectContaining({
+          execution: {
+            mode: "script",
+            script: "print('hi')\n",
+            interpreter: "python3",
+          },
+        }),
+      }),
+    );
+  });
+
   it("create stamps origin agent and createdByThreadId when BB_THREAD_ID is set", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thr-creator");

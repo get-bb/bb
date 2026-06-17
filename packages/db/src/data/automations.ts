@@ -15,6 +15,9 @@ export type AutomationRunRow = typeof automationRuns.$inferSelect;
 // triggerConfig / execution / environment are JSON-as-text; the server owns
 // (de)serialization at the boundary and passes already-serialized strings here.
 export interface CreateAutomationInput {
+  /** Optional pre-generated id so the caller can write disk artifacts (the
+   * inline script file) under it BEFORE the row exists; defaults to a fresh id. */
+  id?: string;
   projectId: string;
   name: string;
   enabled: boolean;
@@ -57,7 +60,7 @@ export function createAutomation(
   const row = db
     .insert(automations)
     .values({
-      id: createAutomationId(),
+      id: input.id ?? createAutomationId(),
       projectId: input.projectId,
       targetThreadId: input.targetThreadId,
       name: input.name,
@@ -498,6 +501,25 @@ export function setAutomationRunThread(
       .where(eq(automationRuns.id, args.runId))
       .returning()
       .get() ?? null
+  );
+}
+
+/**
+ * Server-trusted recursion guard: a thread is automation-spawned if any
+ * `automation_runs` row links to it. Keyed on persisted run state, not the
+ * thread title or a client-declared flag, so it cannot be spoofed by the caller.
+ */
+export function isAutomationSpawnedThread(
+  db: DbConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: automationRuns.id })
+      .from(automationRuns)
+      .where(eq(automationRuns.threadId, threadId))
+      .limit(1)
+      .get() !== undefined
   );
 }
 

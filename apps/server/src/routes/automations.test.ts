@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { closeAutomationRun, createManualRun } from "@bb/db";
 import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../test/helpers/test-app.js";
-import { seedHost, seedProjectWithSource } from "../../test/helpers/seed.js";
+import {
+  seedHost,
+  seedProjectWithSource,
+  seedThread,
+} from "../../test/helpers/seed.js";
 
 let harness: TestAppHarness;
 let projectId: string;
@@ -233,5 +238,108 @@ describe("automations routes", () => {
     const res = await harness.app.request(`/api/v1/automations`);
     const body = await res.json();
     expect(body.automations).toHaveLength(2);
+  });
+
+  it("settles a manual run as failed when dispatch fails (never stuck running)", async () => {
+    // A script automation whose host cannot be resolved (no connected host)
+    // fails during dispatch. The manual path must close the run as failed; the
+    // pre-fix behavior left the run stuck in `running` forever.
+    const createRes = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ name: "Watchdog", execution: agentExecution() }),
+    );
+    const created = await createRes.json();
+
+    const runRes = await post(
+      `/projects/${projectId}/automations/${created.id}/run`,
+      {},
+    );
+    expect(runRes.status).toBe(202);
+    const { run } = await runRes.json();
+    expect(run.status).toBe("running");
+
+    // The dispatch is fired out of band; poll the run history until it settles.
+    let status = "running";
+    for (let attempt = 0; attempt < 50 && status === "running"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const runsRes = await harness.app.request(
+        `/api/v1/projects/${projectId}/automations/${created.id}/runs`,
+      );
+      const body = await runsRes.json();
+      status = body.runs[0]?.status ?? "running";
+    }
+    expect(status).toBe("failed");
+  });
+
+  it("rejects creation from an automation-spawned thread (server-trusted guard)", async () => {
+    // Seed a thread and an automation_runs row linking to it, simulating a
+    // thread that was spawned by an automation (no title prefix involved).
+    const createRes = await post(
+      `/projects/${projectId}/automations`,
+      createBody(),
+    );
+    const created = await createRes.json();
+    const spawnedThread = seedThread(harness.deps, {
+      projectId,
+      title: "No automation prefix here",
+    });
+    const { run } = createManualRun(harness.db, {
+      automationId: created.id,
+      runMode: "agent",
+      now: Date.now(),
+    });
+    closeAutomationRun(harness.db, {
+      runId: run.id,
+      status: "succeeded",
+      threadId: spawnedThread.id,
+      now: Date.now(),
+    });
+
+    const res = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ createdByThreadId: spawnedThread.id }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("invalid_request");
+  });
+
+  it("blocks creating a script automation when script runs are disabled", async () => {
+    const gatedHarness = await createTestAppHarness({
+      automationsAllowScriptRuns: false,
+    });
+    try {
+      const host = seedHost(gatedHarness);
+      const gatedProjectId = seedProjectWithSource(gatedHarness, {
+        hostId: host.id,
+        name: "Gated",
+        path: "/tmp/bb-automations-gated",
+      }).project.id;
+
+      const scriptRes = await gatedHarness.app.request(
+        `/api/v1/projects/${gatedProjectId}/automations`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(
+            createBody({ name: "Watchdog", execution: agentExecution() }),
+          ),
+        },
+      );
+      expect(scriptRes.status).toBe(403);
+      expect((await scriptRes.json()).code).toBe("invalid_request");
+
+      // Agent automations are unaffected by the gate.
+      const agentRes = await gatedHarness.app.request(
+        `/api/v1/projects/${gatedProjectId}/automations`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(createBody()),
+        },
+      );
+      expect(agentRes.status).toBe(201);
+    } finally {
+      await gatedHarness.cleanup();
+    }
   });
 });

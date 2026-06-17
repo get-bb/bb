@@ -29,14 +29,63 @@ export interface RunScriptProcessResult {
   timedOut: boolean;
 }
 
-function capOutput(output: string): string {
-  if (Buffer.byteLength(output, "utf8") <= RUN_SCRIPT_OUTPUT_CAP_BYTES) {
-    return output;
+// Process groups exist on POSIX; on Windows we fall back to killing the direct
+// child (mirrors `runSetupScript` in @bb/host-workspace).
+function shouldRunInProcessGroup(): boolean {
+  return process.platform !== "win32";
+}
+
+/**
+ * Kill the whole process group on POSIX so a script that spawned descendants
+ * does not leave orphans on timeout; fall back to the direct child if the group
+ * is already gone (or on Windows).
+ */
+function killScriptProcess(child: PortableOutputChildProcess): void {
+  if (shouldRunInProcessGroup() && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+      return;
+    } catch {
+      // Fall back to killing the direct child if the group is gone.
+    }
   }
-  const head = Buffer.from(output, "utf8")
-    .subarray(0, RUN_SCRIPT_OUTPUT_CAP_BYTES)
-    .toString("utf8");
-  return `${head}${RUN_SCRIPT_OUTPUT_TRUNCATION_MARKER}`;
+  child.kill("SIGKILL");
+}
+
+/**
+ * Accumulates streamed chunks while enforcing a hard byte cap so a noisy script
+ * cannot grow daemon memory. Once the cap is reached, excess bytes are dropped
+ * and a single truncation marker is appended on read.
+ */
+class CappedOutputBuffer {
+  private chunks: string[] = [];
+  private bytes = 0;
+  private truncated = false;
+
+  append(chunk: Buffer): void {
+    if (this.truncated) {
+      return;
+    }
+    const remaining = RUN_SCRIPT_OUTPUT_CAP_BYTES - this.bytes;
+    if (chunk.byteLength <= remaining) {
+      this.chunks.push(chunk.toString("utf8"));
+      this.bytes += chunk.byteLength;
+      return;
+    }
+    // Keep only the bytes that fit under the cap, then stop appending.
+    if (remaining > 0) {
+      this.chunks.push(chunk.subarray(0, remaining).toString("utf8"));
+      this.bytes += remaining;
+    }
+    this.truncated = true;
+  }
+
+  toString(): string {
+    const head = this.chunks.join("");
+    return this.truncated
+      ? `${head}${RUN_SCRIPT_OUTPUT_TRUNCATION_MARKER}`
+      : head;
+  }
 }
 
 /**
@@ -54,20 +103,22 @@ export async function runScriptProcess(
     args: args.args,
     cwd: args.cwd,
     env: args.env,
+    // Run in its own process group on POSIX so a timeout can kill descendants.
+    detached: shouldRunInProcessGroup(),
   });
 
-  const outputChunks: string[] = [];
+  const output = new CappedOutputBuffer();
   let timedOut = false;
 
   const handleChunk = (chunk: Buffer): void => {
-    outputChunks.push(chunk.toString("utf8"));
+    output.append(chunk);
   };
   child.stdout.on("data", handleChunk);
   child.stderr.on("data", handleChunk);
 
   const timeout = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGKILL");
+    killScriptProcess(child);
   }, args.timeoutMs);
 
   try {
@@ -80,7 +131,7 @@ export async function runScriptProcess(
     });
     return {
       exitCode: result.exitCode,
-      output: capOutput(outputChunks.join("")),
+      output: output.toString(),
       durationMs: Date.now() - startedAt,
       timedOut,
     };

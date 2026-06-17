@@ -1,9 +1,11 @@
 import {
+  closeAutomationRun,
   createAutomation,
+  createAutomationId,
   createManualRun,
   deleteAutomation,
   getAutomationForProject,
-  getThread,
+  isAutomationSpawnedThread,
   listAutomationRuns,
   listAutomationsForProject,
   listAutomationsWithProject,
@@ -83,7 +85,9 @@ function computeNextRunAt(trigger: AutomationTrigger, now: number): number {
 /**
  * Reject create-automation calls whose declared creating thread is itself
  * automation-spawned. Best-effort origin gate (the public API has no caller
- * identity), keyed on the self-declared `createdByThreadId`.
+ * identity, so the gate only fires when `createdByThreadId` is supplied), but
+ * server-trusted: it keys on persisted `automation_runs` state rather than a
+ * spoofable thread title or client-declared flag.
  */
 function assertNotRecursiveCreation(
   deps: Pick<AppDeps, "db">,
@@ -92,12 +96,29 @@ function assertNotRecursiveCreation(
   if (createdByThreadId === undefined) {
     return;
   }
-  const thread = getThread(deps.db, createdByThreadId);
-  if (thread?.title?.startsWith("[automation]")) {
+  if (isAutomationSpawnedThread(deps.db, createdByThreadId)) {
     throw new ApiError(
       400,
       "invalid_request",
       "Automation-spawned threads cannot create automations",
+    );
+  }
+}
+
+/**
+ * Operator gate: script-mode automations execute arbitrary host commands, so
+ * creating/running them is gated by `config.automationsAllowScriptRuns`
+ * (DEFAULT ENABLED). Throws 403 when disabled.
+ */
+function assertScriptRunsAllowed(
+  deps: Pick<AppDeps, "config">,
+  execution: AutomationExecution,
+): void {
+  if (execution.mode === "script" && !deps.config.automationsAllowScriptRuns) {
+    throw new ApiError(
+      403,
+      "invalid_request",
+      "Script automations are disabled on this server",
     );
   }
 }
@@ -179,49 +200,45 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
     requirePublicProject(deps.db, projectId);
     validateCron(payload.trigger);
     assertNotRecursiveCreation(deps, payload.createdByThreadId);
+    assertScriptRunsAllowed(deps, payload.execution);
 
     const now = Date.now();
     const nextRunAt = payload.enabled
       ? computeNextRunAt(payload.trigger, now)
       : null;
 
-    // Create the row first to mint the id, then persist inline script content
-    // under <dataDir>/automation-scripts/<id>/ and store the resolved scriptFile.
+    // Pre-generate the id so any inline script is written under it BEFORE the
+    // row exists. This makes create atomic: the row is inserted exactly once,
+    // already pointing at the stored scriptFile — no insert→write→update window
+    // where the sweep could read an inline-script row or a write failure could
+    // leave an enabled, scheduled, script-less automation behind.
+    const automationId = createAutomationId();
+    const storedExecution = await resolveStoredExecution(deps, {
+      automationId,
+      execution: payload.execution,
+    });
+
     const created = createAutomation(deps.db, deps.hub, {
+      id: automationId,
       projectId,
       name: payload.name,
       enabled: payload.enabled,
       triggerType: payload.trigger.triggerType,
       triggerConfig: serializeAutomationTrigger(payload.trigger),
-      runMode: payload.execution.mode,
-      execution: serializeAutomationExecution(payload.execution),
+      runMode: storedExecution.mode,
+      execution: serializeAutomationExecution(storedExecution),
       environment: serializeAutomationEnvironment(payload.environment),
       autoArchive: payload.autoArchive,
       origin: payload.origin,
       createdByThreadId: payload.createdByThreadId ?? null,
       targetThreadId:
-        payload.execution.mode === "agent"
-          ? (payload.execution.targetThreadId ?? null)
+        storedExecution.mode === "agent"
+          ? (storedExecution.targetThreadId ?? null)
           : null,
       nextRunAt,
     });
 
-    const storedExecution = await resolveStoredExecution(deps, {
-      automationId: created.id,
-      execution: payload.execution,
-    });
-    const finalRow =
-      storedExecution === payload.execution
-        ? created
-        : (updateAutomation(deps.db, deps.hub, {
-            projectId,
-            automationId: created.id,
-            patch: {
-              execution: serializeAutomationExecution(storedExecution),
-            },
-          }) ?? created);
-
-    return context.json(toAutomationResponse(finalRow), 201);
+    return context.json(toAutomationResponse(created), 201);
   });
 
   get(routes.get, (context) => {
@@ -265,6 +282,7 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       patch.environment = serializeAutomationEnvironment(payload.environment);
     }
     if (payload.execution !== undefined) {
+      assertScriptRunsAllowed(deps, payload.execution);
       const storedExecution = await resolveStoredExecution(deps, {
         automationId: current.id,
         execution: payload.execution,
@@ -363,32 +381,54 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
     });
     if (!deduped) {
       deps.hub.notifyProject(projectId, ["automation-runs-changed"]);
-      const definition = parseAutomationDefinition(automation);
-      const onFailure = (error: unknown): void => {
+      // The manual run has no schedule to roll back, so any failure must SETTLE
+      // the run row as failed — otherwise a synchronous throw in setup (parse,
+      // gate, host resolution) or an async spawn/RPC failure would leave the run
+      // stuck in `running` forever. (The scheduled path instead rolls the
+      // schedule back via restoreAutomationAfterFailedRun.)
+      const settleFailed = (error: unknown): void => {
         deps.logger.error(
           { automationId: automation.id, err: error },
           "Manual automation run failed to dispatch",
         );
+        closeAutomationRun(deps.db, {
+          runId: run.id,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+          now: Date.now(),
+        });
+        deps.hub.notifyProject(projectId, [
+          "automations-changed",
+          "automation-runs-changed",
+        ]);
       };
       // Dispatch out of band; the response returns the created (running) run.
-      if (definition.execution.mode === "agent") {
-        void executeAgentRun(deps, {
-          automation,
-          run,
-          execution: definition.execution,
-          environment: definition.environment,
-          onFailure,
-        });
-      } else {
-        void executeScriptRun(deps, {
-          automation,
-          run,
-          execution: definition.execution,
-          environment: definition.environment,
-          onFailure,
-          now,
-        });
-      }
+      void (async () => {
+        try {
+          const definition = parseAutomationDefinition(automation);
+          assertScriptRunsAllowed(deps, definition.execution);
+          if (definition.execution.mode === "agent") {
+            await executeAgentRun(deps, {
+              automation,
+              run,
+              execution: definition.execution,
+              environment: definition.environment,
+              onFailure: settleFailed,
+            });
+          } else {
+            await executeScriptRun(deps, {
+              automation,
+              run,
+              execution: definition.execution,
+              environment: definition.environment,
+              onFailure: settleFailed,
+              now,
+            });
+          }
+        } catch (error) {
+          settleFailed(error);
+        }
+      })();
     }
     return context.json({ run: toAutomationRunResponse(run) }, 202);
   });

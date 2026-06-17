@@ -1,13 +1,17 @@
 import {
   closeAutomationRun,
+  getThread,
   listEnvironments,
   setAutomationRunThread,
   type AutomationRow,
   type AutomationRunRow,
 } from "@bb/db";
 import type { AutomationExecution, EnvironmentArgs } from "@bb/server-contract";
+import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { createThreadFromRequest } from "../threads/thread-create.js";
+import { requireThreadCommandEnvironment } from "../threads/thread-command-environment.js";
+import { sendThreadMessage } from "../threads/thread-send.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import {
   runLiveHostCommand,
@@ -108,10 +112,27 @@ export function mapScriptResultToRun(result: {
   return { status: "succeeded", output: result.output, exitCode: 0, error: null };
 }
 
+/** Thread states that can accept a re-prompt turn from an automation. */
+function isThreadReusable(thread: {
+  deletedAt: number | null;
+  archivedAt: number | null;
+  status: string;
+}): boolean {
+  return (
+    thread.deletedAt === null &&
+    thread.archivedAt === null &&
+    (thread.status === "idle" || thread.status === "active")
+  );
+}
+
 /**
- * Spawn the agent thread for a run and link it to the run row. On spawn failure,
- * invoke `onFailure` (the sweep rolls back the schedule; run-now marks failed).
- * The run row is closed later by the turn-complete hook when the turn settles.
+ * Run an agent automation by either reusing a configured target thread (submit a
+ * system-initiated turn into it) or spawning a new thread. In both cases the run
+ * row is linked to the thread and closed later by the turn-complete hook.
+ *
+ * On failure invoke `onFailure` (the sweep rolls back the schedule; run-now
+ * marks the run failed). A missing/deleted/not-writable target thread is a clear
+ * failure — we never silently spawn a new thread in its place.
  */
 export async function executeAgentRun(
   deps: AutomationRunDeps,
@@ -123,6 +144,10 @@ export async function executeAgentRun(
     onFailure: RunFailureHandler;
   },
 ): Promise<void> {
+  if (args.automation.targetThreadId !== null) {
+    await reuseTargetThreadForRun(deps, args);
+    return;
+  }
   try {
     const thread = await createThreadFromRequest(deps, {
       projectId: args.automation.projectId,
@@ -141,6 +166,67 @@ export async function executeAgentRun(
     deps.logger.error(
       { automationId: args.automation.id, err: error },
       "Failed to spawn thread for automation run",
+    );
+  }
+}
+
+/**
+ * Re-prompt an existing target thread with the automation's prompt wrapped in the
+ * `systemMessageAutomationDue` template, as a `system`-initiated turn. Links the
+ * run to that thread first so the turn-complete hook closes it.
+ */
+async function reuseTargetThreadForRun(
+  deps: AutomationRunDeps,
+  args: {
+    automation: AutomationRow;
+    run: AutomationRunRow;
+    execution: Extract<AutomationExecution, { mode: "agent" }>;
+    onFailure: RunFailureHandler;
+  },
+): Promise<void> {
+  const targetThreadId = args.automation.targetThreadId;
+  if (targetThreadId === null) {
+    return;
+  }
+  const thread = getThread(deps.db, targetThreadId);
+  if (!thread || !isThreadReusable(thread)) {
+    args.onFailure(
+      new Error(
+        `Target thread ${targetThreadId} is unavailable (missing, deleted, archived, or not runnable)`,
+      ),
+    );
+    notifyRuns(deps, args.automation.projectId);
+    return;
+  }
+
+  try {
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    // Link the run BEFORE dispatch so the turn-complete hook can close it.
+    setAutomationRunThread(deps.db, {
+      runId: args.run.id,
+      threadId: thread.id,
+    });
+    const text = renderTemplate("systemMessageAutomationDue", {
+      automationId: args.automation.id,
+      prompt: args.execution.prompt,
+    });
+    await sendThreadMessage(deps, {
+      environment,
+      thread,
+      trigger: "auto-dispatch",
+      payload: {
+        input: [{ type: "text", text, mentions: [] }],
+        mode: "steer-if-active",
+        permissionMode: args.execution.permissionMode,
+      },
+    });
+    notifyRuns(deps, args.automation.projectId);
+  } catch (error) {
+    args.onFailure(error);
+    notifyRuns(deps, args.automation.projectId);
+    deps.logger.error(
+      { automationId: args.automation.id, threadId: targetThreadId, err: error },
+      "Failed to re-prompt target thread for automation run",
     );
   }
 }

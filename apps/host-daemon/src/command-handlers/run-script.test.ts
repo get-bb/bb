@@ -83,4 +83,53 @@ describe("runScriptProcess", () => {
     expect(result.output).toContain("[output truncated]");
     expect(Buffer.byteLength(result.output, "utf8")).toBeLessThan(70_000);
   });
+
+  it("enforces the byte cap while streaming many chunks (drops excess)", async () => {
+    // Emit ~5 MiB across many separate writes (one per line). The cap must hold
+    // regardless of how much was streamed, proving excess is dropped as chunks
+    // arrive rather than buffered then trimmed on close.
+    const result = await runScriptProcess({
+      command: "bash",
+      args: [
+        "-c",
+        "for i in $(seq 1 5000); do printf '%01024d\\n' 0; done",
+      ],
+      cwd: os.tmpdir(),
+      env: { PATH: process.env.PATH ?? "" },
+      timeoutMs: 10_000,
+    });
+
+    expect(result.timedOut).toBe(false);
+    expect(result.output).toContain("[output truncated]");
+    // Capped output is the 64 KiB head + the short truncation marker, never the
+    // full ~5 MiB stream.
+    expect(Buffer.byteLength(result.output, "utf8")).toBeLessThan(70_000);
+  });
+
+  it("kills descendant processes on timeout (process group)", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-run-script-pg-"));
+    const marker = path.join(dir, "child-alive");
+    try {
+      // Parent spawns a background child that, after the parent's timeout, would
+      // create a marker file unless the whole process group is killed.
+      const result = await runScriptProcess({
+        command: "bash",
+        args: [
+          "-c",
+          `( sleep 2; touch "${marker}" ) & echo started; sleep 5`,
+        ],
+        cwd: dir,
+        env: { PATH: process.env.PATH ?? "" },
+        timeoutMs: 200,
+      });
+
+      expect(result.timedOut).toBe(true);
+      // Wait past the child's would-be write window; the group kill should have
+      // reaped it, so the marker must never appear.
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await expect(fs.access(marker)).rejects.toThrow();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
 });
