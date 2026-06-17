@@ -1,9 +1,9 @@
 import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { useCallback } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import {
-  createPersistedEnumAtom,
-  createProjectScopedStorageAtomFamily,
+  createLocalStorageEnumStorage,
   rawStringLocalStorage,
 } from "@/lib/browser-storage";
 
@@ -18,7 +18,6 @@ export type StoredServiceTier = "" | ServiceTier;
 export type StoredReasoningLevel = "" | ReasoningLevel;
 export type StoredPermissionMode = "" | PermissionMode;
 
-type ProjectScopedStorageParam = string | null | undefined;
 type StringSelectionSetter = (value: string) => void;
 type StoredServiceTierSetter = (value: StoredServiceTier) => void;
 type StoredReasoningLevelSetter = (value: StoredReasoningLevel) => void;
@@ -77,41 +76,45 @@ function isStoredPermissionMode(value: string): value is StoredPermissionMode {
   return value === "" || isPermissionMode(value);
 }
 
-const providerIdAtomFamily = createProjectScopedStorageAtomFamily(
+const providerIdAtom = atomWithStorage<string>(
   PROVIDER_STORAGE_KEY,
   "",
   rawStringLocalStorage,
+  { getOnInit: true },
 );
-const modelAtomFamily = createProjectScopedStorageAtomFamily(
+const modelAtom = atomWithStorage<string>(
   MODEL_STORAGE_KEY,
   "",
   rawStringLocalStorage,
+  { getOnInit: true },
 );
-const serviceTierAtomFamily = createPersistedEnumAtom<StoredServiceTier>({
-  baseKey: SERVICE_TIER_STORAGE_KEY,
-  initialValue: "",
-  isValue: isStoredServiceTier,
-});
-const reasoningLevelAtomFamily = createPersistedEnumAtom<StoredReasoningLevel>({
-  baseKey: REASONING_STORAGE_KEY,
-  initialValue: "",
-  isValue: isStoredReasoningLevel,
-});
-const permissionModeAtomFamily = createPersistedEnumAtom<StoredPermissionMode>({
-  baseKey: PERMISSION_MODE_STORAGE_KEY,
-  initialValue: "",
-  isValue: isStoredPermissionMode,
-});
-const environmentSelectionAtomFamily = createProjectScopedStorageAtomFamily(
+const serviceTierAtom = atomWithStorage<StoredServiceTier>(
+  SERVICE_TIER_STORAGE_KEY,
+  "",
+  createLocalStorageEnumStorage(isStoredServiceTier),
+  { getOnInit: true },
+);
+const reasoningLevelAtom = atomWithStorage<StoredReasoningLevel>(
+  REASONING_STORAGE_KEY,
+  "",
+  createLocalStorageEnumStorage(isStoredReasoningLevel),
+  { getOnInit: true },
+);
+const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
+  PERMISSION_MODE_STORAGE_KEY,
+  "",
+  createLocalStorageEnumStorage(isStoredPermissionMode),
+  { getOnInit: true },
+);
+const environmentSelectionAtom = atomWithStorage<string>(
   ENVIRONMENT_STORAGE_KEY,
   "",
   rawStringLocalStorage,
+  { getOnInit: true },
 );
 
-export function usePersistedProviderSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedStringSelectionField {
-  const [value, setAtomValue] = useAtom(providerIdAtomFamily(projectId));
+export function usePromptBoxProviderPreference(): PersistedStringSelectionField {
+  const [value, setAtomValue] = useAtom(providerIdAtom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);
@@ -121,10 +124,8 @@ export function usePersistedProviderSelection(
   return { setValue, value };
 }
 
-export function usePersistedModelSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedStringSelectionField {
-  const [value, setAtomValue] = useAtom(modelAtomFamily(projectId));
+export function usePromptBoxModelPreference(): PersistedStringSelectionField {
+  const [value, setAtomValue] = useAtom(modelAtom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);
@@ -134,10 +135,9 @@ export function usePersistedModelSelection(
   return { setValue, value };
 }
 
-export function usePersistedServiceTierSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedServiceTierSelectionField {
-  const [value, setAtomValue] = useAtom(serviceTierAtomFamily(projectId));
+export function usePromptBoxServiceTierPreference():
+  PersistedServiceTierSelectionField {
+  const [value, setAtomValue] = useAtom(serviceTierAtom);
   const setValue = useCallback(
     (nextValue: StoredServiceTier) => {
       setAtomValue(nextValue);
@@ -147,10 +147,9 @@ export function usePersistedServiceTierSelection(
   return { setValue, value };
 }
 
-export function usePersistedReasoningLevelSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedReasoningLevelSelectionField {
-  const [value, setAtomValue] = useAtom(reasoningLevelAtomFamily(projectId));
+export function usePromptBoxReasoningLevelPreference():
+  PersistedReasoningLevelSelectionField {
+  const [value, setAtomValue] = useAtom(reasoningLevelAtom);
   const setValue = useCallback(
     (nextValue: StoredReasoningLevel) => {
       setAtomValue(nextValue);
@@ -160,10 +159,9 @@ export function usePersistedReasoningLevelSelection(
   return { setValue, value };
 }
 
-export function usePersistedPermissionModeSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedPermissionModeSelectionField {
-  const [value, setAtomValue] = useAtom(permissionModeAtomFamily(projectId));
+export function usePromptBoxPermissionModePreference():
+  PersistedPermissionModeSelectionField {
+  const [value, setAtomValue] = useAtom(permissionModeAtom);
   const setValue = useCallback(
     (nextValue: StoredPermissionMode) => {
       setAtomValue(nextValue);
@@ -173,12 +171,9 @@ export function usePersistedPermissionModeSelection(
   return { setValue, value };
 }
 
-export function usePersistedEnvironmentSelection(
-  projectId: ProjectScopedStorageParam,
-): PersistedStringSelectionField {
-  const [value, setAtomValue] = useAtom(
-    environmentSelectionAtomFamily(projectId),
-  );
+export function usePromptBoxEnvironmentPreference():
+  PersistedStringSelectionField {
+  const [value, setAtomValue] = useAtom(environmentSelectionAtom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);

@@ -6,12 +6,14 @@ import {
   threadChildSummaryResponseSchema,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -29,6 +31,12 @@ describe("public thread parenting routes", () => {
       const parentThread = seedThread(harness.deps, {
         environmentId: environment.id,
         projectId: project.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Coordinate child work",
+        providerThreadId: "provider-parent-create-child",
+        threadId: parentThread.id,
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -51,6 +59,14 @@ describe("public thread parenting routes", () => {
       expect(response.status).toBe(201);
       const createdThread = threadSchema.parse(await readJson(response));
       expect(createdThread.parentThreadId).toBe(parentThread.id);
+      await expect(
+        waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" && command.threadId === parentThread.id,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for queued command");
     });
   });
 

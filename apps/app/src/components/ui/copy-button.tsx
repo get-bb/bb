@@ -80,7 +80,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
         title={label}
         {...rest}
         className={cn(
-          "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:opacity-100",
+          "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground focus-visible:opacity-100",
           className,
         )}
         onClick={() => {
@@ -125,7 +125,7 @@ export function CopyableInlineLabel({
     <button
       type="button"
       className={cn(
-        "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md text-left text-foreground transition-colors hover:text-foreground/80",
+        "inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground transition-colors hover:text-foreground/80",
         className,
       )}
       onClick={() => {

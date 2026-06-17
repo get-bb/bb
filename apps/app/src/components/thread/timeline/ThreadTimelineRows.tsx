@@ -251,6 +251,7 @@ interface TimelineRowViewProps {
 interface TimelineExpandableRowViewProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
+  scopeActive: boolean;
   title: TimelineTitle;
   horizontalPadding: TimelineRowHorizontalPadding;
   row: Exclude<ThreadTimelineViewRow, { kind: "conversation" }>;
@@ -470,6 +471,7 @@ function areTimelineExpandableRowViewPropsEqual(
   return (
     previous.activeLatestBundleId === next.activeLatestBundleId &&
     previous.compactActivityIntents === next.compactActivityIntents &&
+    previous.scopeActive === next.scopeActive &&
     previous.title === next.title &&
     previous.horizontalPadding === next.horizontalPadding &&
     // The view-row cache keys by the raw rows array, so unchanged query data
@@ -581,9 +583,7 @@ function buildSenderThreadMetadataById({
   return metadataById;
 }
 
-function shouldSyncSenderThreadMetadata(
-  event: QueryCacheNotifyEvent,
-): boolean {
+function shouldSyncSenderThreadMetadata(event: QueryCacheNotifyEvent): boolean {
   if (event.type !== "updated") {
     return false;
   }
@@ -1108,7 +1108,7 @@ function LazyTurnRowBody({
           variant="outline"
           size="sm"
           onClick={handleRetry}
-          className="h-7 border-destructive px-2 text-destructive hover:text-destructive"
+          className="h-7 cursor-pointer border-destructive px-2 text-destructive hover:text-destructive"
         >
           <Icon name="RotateCcw" />
           Retry
@@ -1135,30 +1135,69 @@ function LazyTurnRowBody({
 }
 
 /**
- * Completed work rows (tool / command / file-change calls) recede: once a call
- * is done its row dims so attention lands on active work and the model's prose.
+ * Opacity for the receded "past" layer — the bottom step of the timeline's
+ * three-tier prominence ramp:
+ *
+ *   tier 1 — agent prose ........ `text-foreground`, opacity 100   (most prominent)
+ *   tier 2 — live / active rows .. their title tones, opacity 100   (next)
+ *   tier 3 — finished / past rows  those same tones × this opacity  (least)
+ *
+ * The gap this controls — active vs. done — is the one that has to read
+ * clearly, since most of a timeline is finished work sitting next to a live
+ * row. It's a whole-row opacity step, so the contrast is identical in light and
+ * dark (unlike a tone step: the muted-vs-foreground token gap is wide in light
+ * but nearly nothing in dark). Pushed deep — `opacity-70` (~30% nudge) read
+ * "too tight", so finished work now drops well below the live frontier; a
+ * running verb additionally shimmers (`animate-shine`) so active reads as more
+ * alive still. Tune here if active vs. done needs more or less separation.
  */
-function completedWorkRowDimClassName(
-  row: ThreadTimelineViewRow,
-): string | undefined {
-  return row.kind === "work" && row.status === "completed"
-    ? "opacity-70"
-    : undefined;
-}
+export const PAST_ROW_DIM_CLASS_NAME = "opacity-40";
 
 /**
- * Rolled-up section headers — the turn header ("Worked for …") and the
- * bundle/step summaries that aggregate finished tool calls ("Explored 3 files")
- * — dim so they recede beneath the live content they summarize.
+ * Whether a row sits in the receded past layer, and so takes
+ * `PAST_ROW_DIM_CLASS_NAME`. Applied uniformly across every timeline row kind so
+ * the active/inactive ramp is consistent — leaf tool/command/file rows, their
+ * rolled-up bundle/step/turn summaries, and operational system rows all recede
+ * together once finished. A row recedes only once it is done AND no longer the
+ * live frontier:
+ *  - completed `work` and `system` rows — errors, interruptions, and still-
+ *    pending rows stay at full strength so failures and live work keep
+ *    attention;
+ *  - turn headers and step-summaries, which only ever render as finished
+ *    recaps;
+ *  - bundle-summaries, EXCEPT the active-latest one (the live frontier), which
+ *    stays prominent.
+ * Conversation prose (the top tier) never recedes.
  */
-function rolledUpHeaderDimClassName(
-  row: ThreadTimelineViewRow,
-): string | undefined {
-  return row.kind === "turn" ||
-    row.kind === "bundle-summary" ||
-    row.kind === "step-summary"
-    ? "opacity-70"
-    : undefined;
+export function pastRowDimClassName({
+  activeLatestBundleId,
+  row,
+  scopeActive,
+}: ActiveSummaryTreatmentArgs): string | undefined {
+  // The live frontier never recedes: the active-latest bundle stays prominent
+  // even once its children have finished, because more work may still land in
+  // it.
+  if (
+    row.kind === "bundle-summary" &&
+    isActiveLatestBundleSummary({ activeLatestBundleId, row, scopeActive })
+  ) {
+    return undefined;
+  }
+  switch (row.kind) {
+    case "work":
+    case "system":
+    case "turn":
+    case "bundle-summary":
+    case "step-summary":
+      // Finished rows recede; still-running, errored, and interrupted rows —
+      // whether a single leaf or a rolled-up summary that merged a failure —
+      // stay at full strength so live work and failures keep attention.
+      return row.status === "completed" ? PAST_ROW_DIM_CLASS_NAME : undefined;
+    case "conversation":
+      return undefined;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -1276,7 +1315,11 @@ function TimelineRowView({
           <TimelineStaticRow
             key={entry.id}
             horizontalPadding={horizontalPadding}
-            className={completedWorkRowDimClassName(row)}
+            className={pastRowDimClassName({
+              activeLatestBundleId,
+              row,
+              scopeActive,
+            })}
           >
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
               <Icon
@@ -1301,7 +1344,11 @@ function TimelineRowView({
     return (
       <TimelineStaticRow
         horizontalPadding={horizontalPadding}
-        className={completedWorkRowDimClassName(row)}
+        className={pastRowDimClassName({
+          activeLatestBundleId,
+          row,
+          scopeActive,
+        })}
       >
         <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
           {staticLeadingIcon ? (
@@ -1325,6 +1372,7 @@ function TimelineRowView({
     <MemoizedTimelineExpandableRowView
       activeLatestBundleId={activeLatestBundleId}
       row={row}
+      scopeActive={scopeActive}
       title={titleState.title}
       horizontalPadding={horizontalPadding}
       compactActivityIntents={compactActivityIntents}
@@ -1340,6 +1388,7 @@ const MemoizedTimelineRowView = memo(
 function TimelineExpandableRowView({
   activeLatestBundleId,
   compactActivityIntents,
+  scopeActive,
   title,
   horizontalPadding,
   row,
@@ -1370,9 +1419,11 @@ function TimelineExpandableRowView({
       // Dim the row's title content (not the whole row) so the disclosure caret
       // keeps a uniform opacity across completed/header/normal rows instead of
       // compounding the row-level dim onto the caret.
-      summaryClassName={
-        rolledUpHeaderDimClassName(row) ?? completedWorkRowDimClassName(row)
-      }
+      summaryClassName={pastRowDimClassName({
+        activeLatestBundleId,
+        row,
+        scopeActive,
+      })}
       horizontalPadding={horizontalPadding}
       leadingIcon={leadingIcon}
       autoExpanded={

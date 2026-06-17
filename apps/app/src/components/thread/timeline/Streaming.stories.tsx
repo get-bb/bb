@@ -85,13 +85,11 @@ function useStreamingTick(
 
 const PROVISIONING_LINES: readonly string[] = [
   "Creating worktree (305ms)",
-  "git worktree add -B bb/investigate-thread-timeline-load /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb",
   "HEAD is now at 37eeec85 Refactor timeline row titles",
   "Preparing worktree (new branch 'bb/investigate-thread-timeline-load')",
   "Created worktree (305ms)",
   "Using workspace: /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb",
   "Running .bb-env-setup.sh",
-  "env bash .bb-env-setup.sh",
   "[bb-env-setup] Running: pnpm install",
   "Scope: all 35 workspace projects",
   "Lockfile is up to date, resolution step is skipped",
@@ -463,8 +461,8 @@ export function RowDetails() {
       <StoryRow
         label={
           <StreamingLabel
-            title="provisioning"
-            hint="system row detail streams in line-by-line, status flips on completion"
+            title="provisioning, cleaned transcript"
+            hint="command echo lines are omitted; real git and setup output still streams"
             onRestart={() => setProvisioningKey((k) => k + 1)}
           />
         }

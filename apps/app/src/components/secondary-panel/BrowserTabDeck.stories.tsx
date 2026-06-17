@@ -86,7 +86,7 @@ function BrowserTabStage({ tab, threadId }: BrowserTabStageProps) {
       <BrowserTabDeck
         browserTabs={[tab]}
         activeBrowserTabId={tab.id}
-        isPanelOpen
+        canShowNativeBrowserView
         threadId={threadId}
         environmentId={null}
         onUpdate={noop}

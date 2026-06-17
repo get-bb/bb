@@ -241,7 +241,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     useNavigateToThreadAfterCreatePreference();
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
-  const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
+  const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
   const promptMentions = usePromptMentions(
@@ -300,7 +300,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
-    projectId,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -326,6 +325,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeModel,
     modelOptions,
     isLoadingModels,
+    modelLoadFailed,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -795,6 +795,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         selected: selectedModel,
         options: modelOptions,
         isLoading: isLoadingModels,
+        loadFailed: modelLoadFailed,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -814,6 +815,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeModel,
       hasMultipleProviders,
       isLoadingModels,
+      modelLoadFailed,
       modelLoadError,
       modelOptions,
       providerOptions,

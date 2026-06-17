@@ -32,6 +32,7 @@ import {
   hasUncommittedChanges,
   listBranches,
   pathExists,
+  readDefaultBranch,
   runGit,
   WorkspaceError,
 } from "./git.js";
@@ -127,6 +128,8 @@ export interface ValidatePersonalWorkspaceTargetPathArgs {
 // HostWorkspace interface
 // ---------------------------------------------------------------------------
 
+const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
+
 export interface HostWorkspace {
   /** Absolute path to the workspace directory */
   readonly path: string;
@@ -138,6 +141,7 @@ export interface HostWorkspace {
   readonly isWorktree: boolean;
 
   // Git queries
+  getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
   getLocalStateFingerprint(): Promise<string>;
@@ -208,6 +212,17 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   async getCurrentBranch(): Promise<string | null> {
     return (await this.ws.currentBranch) ?? null;
+  }
+
+  async getDefaultBranch(): Promise<string | null> {
+    if (!this.isGitRepo) {
+      return null;
+    }
+    return (
+      (await readDefaultBranch(this.path, {
+        timeoutMs: WORKSPACE_BRANCH_GIT_TIMEOUT_MS,
+      })) ?? null
+    );
   }
 
   getHeadSha(): Promise<string | null> {

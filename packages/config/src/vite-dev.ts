@@ -1,58 +1,27 @@
 import { loadDevAppConfig } from "./dev-app.js";
 import { type EnvLoaderArgs } from "./env.js";
-import { assignIfDefined } from "./objects.js";
 import { loadServerPortConfig } from "./server-port.js";
 
-export type ViteDevServerWsOrigin =
-  | { kind: "browser-host"; port: number }
-  | { kind: "fixed"; origin: string };
+export type ViteDevServerWsOrigin = { kind: "browser-host"; port: number };
 
 export interface ViteDevConfig {
   appPort: number;
   serverHttpOrigin: string;
   serverPort: number;
   serverWsOrigin: ViteDevServerWsOrigin;
-  appHost?: string;
+  appHost: string;
 }
 
 export interface LoadViteDevConfigArgs extends EnvLoaderArgs {
   repoRoot?: string;
 }
 
-interface ResolveViteDevAppHostArgs {
-  configuredHost: string;
-  remote: boolean;
-}
-
-interface ResolveViteDevServerWsOriginArgs {
-  remote: boolean;
-  serverPort: number;
-}
-
-function resolveViteDevAppHost(
-  args: ResolveViteDevAppHostArgs,
-): string | undefined {
-  if (args.configuredHost !== "") {
-    return args.configuredHost;
+function resolveViteDevAppHost(configuredHost: string): string {
+  if (configuredHost !== "") {
+    return configuredHost;
   }
 
-  return args.remote ? "0.0.0.0" : undefined;
-}
-
-function resolveViteDevServerWsOrigin(
-  args: ResolveViteDevServerWsOriginArgs,
-): ViteDevServerWsOrigin {
-  if (args.remote) {
-    return {
-      kind: "browser-host",
-      port: args.serverPort,
-    };
-  }
-
-  return {
-    kind: "fixed",
-    origin: `ws://localhost:${args.serverPort}`,
-  };
+  return "0.0.0.0";
 }
 
 export function loadViteDevConfig(
@@ -65,25 +34,15 @@ export function loadViteDevConfig(
   }
 
   const serverPortConfig = loadServerPortConfig(args);
-  const serverHttpOrigin = `http://localhost:${serverPortConfig.BB_SERVER_PORT}`;
-  const config: ViteDevConfig = {
+  const serverPort = serverPortConfig.BB_SERVER_PORT;
+  return {
+    appHost: resolveViteDevAppHost(devAppConfig.BB_DEV_APP_HOST),
     appPort,
-    serverHttpOrigin,
-    serverPort: serverPortConfig.BB_SERVER_PORT,
-    serverWsOrigin: resolveViteDevServerWsOrigin({
-      remote: devAppConfig.BB_DEV_REMOTE,
-      serverPort: serverPortConfig.BB_SERVER_PORT,
-    }),
+    serverHttpOrigin: `http://localhost:${serverPort}`,
+    serverPort,
+    serverWsOrigin: {
+      kind: "browser-host",
+      port: serverPort,
+    },
   };
-
-  assignIfDefined({
-    key: "appHost",
-    target: config,
-    value: resolveViteDevAppHost({
-      configuredHost: devAppConfig.BB_DEV_APP_HOST,
-      remote: devAppConfig.BB_DEV_REMOTE,
-    }),
-  });
-
-  return config;
 }

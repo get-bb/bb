@@ -82,6 +82,7 @@ import {
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
@@ -178,6 +179,7 @@ interface TopLevelSidebarSectionProps {
   children: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  actionsMobileAlways?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
@@ -408,6 +410,7 @@ function TopLevelSidebarSection({
   children,
   actions,
   actionsAlwaysVisible = false,
+  actionsMobileAlways = false,
   collapseControl,
   dragBindings,
   sectionRef,
@@ -510,6 +513,11 @@ function TopLevelSidebarSection({
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
             <span
+              data-sidebar-hover-actions-mobile={
+                actionsMobileAlways
+                  ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                  : undefined
+              }
               className={cn(
                 "inline-flex shrink-0 items-center",
                 !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -1135,6 +1143,7 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),
                     onToggleCollapsed: () =>

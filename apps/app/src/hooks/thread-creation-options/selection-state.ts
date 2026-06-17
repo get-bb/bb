@@ -31,7 +31,6 @@ export interface UsePromptModelReasoningOptions {
   enabled?: boolean;
   environmentId?: string;
   scope?: ThreadCreationOptionsScope;
-  projectId?: string | null;
   resetKey?: string | number | null;
   initialProviderId?: string;
   initialModel?: string;

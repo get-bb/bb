@@ -890,6 +890,7 @@ export function SideChatTabContent({
         options: modelOptions,
         loadError: modelLoadError,
         isLoading: isLoadingModels,
+        loadFailed: modelLoadError !== null,
         onChange: noop,
       },
       serviceTier: {

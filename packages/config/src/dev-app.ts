@@ -7,15 +7,12 @@ import {
 import {
   BB_DEV_APP_HOST_ENV,
   BB_DEV_APP_PORT_ENV,
-  BB_DEV_REMOTE_ENV,
   DEFAULT_BB_DEV_APP_HOST,
-  DEFAULT_BB_DEV_REMOTE,
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 
 export interface DevAppConfig {
   BB_DEV_APP_HOST: string;
-  BB_DEV_REMOTE: boolean;
   BB_DEV_APP_PORT?: number;
 }
 
@@ -30,12 +27,6 @@ export function loadDevAppConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_DEV_APP_HOST,
       definition: BB_DEV_APP_HOST_ENV,
-      env: loader.env,
-    }),
-    BB_DEV_REMOTE: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_DEV_REMOTE,
-      definition: BB_DEV_REMOTE_ENV,
       env: loader.env,
     }),
   };

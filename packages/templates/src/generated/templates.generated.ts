@@ -113,14 +113,15 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageChildThreadNeedsAttention",
-    "body": "[bb system]\n\n{{threadMention}} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the worker is stuck on the wrong assumption, send it a clarifying instruction.",
+    "body": "[bb system]\n\n{{threadMention}} needs help.\n{{blockerSummary}}\n\nReview the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
     "fileName": "system-message-child-thread-needs-attention.md",
     "kind": "prompt",
-    "title": "Child Thread Needs Attention",
+    "title": "Child thread needs attention",
     "summary": "Notifies a parent thread that one of its child threads is blocked on a pending interaction.",
-    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the worker's assumption.",
+    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the child thread's assumption.",
     "editingNotes": "Keep this focused on parent-thread triage; do not imply the parent can approve or reject on the user's behalf.",
     "variables": {
+      "blockerSummary": "Compact summary of the pending interaction, or a fallback sentence when no safe summary is available.",
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
     }
   },
@@ -129,9 +130,9 @@ export const templateDefinitions = [
     "body": "[bb system]\n\n{{updates}}",
     "fileName": "system-message-child-thread-outcome-batch.md",
     "kind": "prompt",
-    "title": "Child Thread Outcome Batch",
+    "title": "Child thread outcome batch",
     "summary": "Notifies a parent thread about one or more child thread outcomes.",
-    "intent": "Give the parent thread batched outcome context without forcing immediate action for every child thread.",
+    "intent": "Give the parent thread compact outcome context without forcing immediate action for every child thread.",
     "editingNotes": "Keep this concise. The updates variable is a server-formatted singular or plural outcome body with rich thread mention ranges attached by the server.",
     "variables": {
       "updates": "Rendered child thread outcome message body."
@@ -139,10 +140,10 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipAssigned",
-    "body": "[bb system]\n\n{{threadMention}} was assigned to you.",
+    "body": "[bb system]\n\n{{threadMention}} is now a child of this thread.",
     "fileName": "system-message-thread-ownership-assigned.md",
     "kind": "prompt",
-    "title": "Thread Ownership Assigned",
+    "title": "Thread ownership assigned",
     "summary": "Notifies a parent thread that a child thread is now assigned to it.",
     "intent": "Let the new parent know a thread is now assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
@@ -152,10 +153,10 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipRemoved",
-    "body": "[bb system]\n\n{{threadMention}} was unassigned from you.",
+    "body": "[bb system]\n\n{{threadMention}} is no longer a child of this thread.",
     "fileName": "system-message-thread-ownership-removed.md",
     "kind": "prompt",
-    "title": "Thread Ownership Removed",
+    "title": "Thread ownership removed",
     "summary": "Notifies a parent thread that a child thread is no longer assigned to it.",
     "intent": "Let the previous parent know a thread is no longer assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
@@ -228,6 +229,7 @@ export interface TemplateVariables {
   };
   standardAgentAppendInstructions: Record<string, never>;
   systemMessageChildThreadNeedsAttention: {
+    blockerSummary: string;
     threadMention: string;
   };
   systemMessageChildThreadOutcomeBatch: {

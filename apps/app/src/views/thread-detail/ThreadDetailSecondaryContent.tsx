@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -36,6 +37,7 @@ import { isRunningThreadRuntimeDisplayStatus } from "@/components/thread/timelin
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -52,7 +54,12 @@ type ThreadSecondaryPanelProps = Omit<
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "reserveLeftForDesktopTrafficLights"
->;
+  | "browserDeck"
+> & {
+  renderBrowserDeck?: (args: {
+    canShowNativeBrowserView: boolean;
+  }) => ReactNode;
+};
 
 interface ThreadDetailSecondaryContentProps {
   footer: ReactNode;
@@ -135,7 +142,7 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.workspaceRootPath === next.workspaceRootPath &&
   previous.fileTabs === next.fileTabs &&
   previous.fileTabContent === next.fileTabContent &&
-  previous.browserDeck === next.browserDeck &&
+  previous.renderBrowserDeck === next.renderBrowserDeck &&
   previous.isBrowserTabActive === next.isBrowserTabActive &&
   previous.sideChatDeck === next.sideChatDeck &&
   previous.isSideChatTabActive === next.isSideChatTabActive &&
@@ -254,6 +261,103 @@ export function ThreadDetailSecondaryContent({
   const isConversationWorking = isRunningThreadRuntimeDisplayStatus(
     stableTimeline.threadRuntimeDisplayStatus,
   );
+  const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
+    useState(false);
+  const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
+  const compactDrawerContentSettleGenerationRef = useRef(0);
+  const compactDrawerContentSettleStateRef = useRef({
+    isSecondaryPanelOpen,
+    renderAsDrawer,
+    threadId: stableTimeline.threadId,
+  });
+
+  useLayoutEffect(() => {
+    compactDrawerContentSettleStateRef.current = {
+      isSecondaryPanelOpen,
+      renderAsDrawer,
+      threadId: stableTimeline.threadId,
+    };
+  }, [isSecondaryPanelOpen, renderAsDrawer, stableTimeline.threadId]);
+
+  const cancelCompactDrawerContentSettleFrame = useCallback(() => {
+    compactDrawerContentSettleGenerationRef.current += 1;
+    if (compactDrawerContentSettleFrameRef.current === null) {
+      return;
+    }
+    window.cancelAnimationFrame(compactDrawerContentSettleFrameRef.current);
+    compactDrawerContentSettleFrameRef.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    cancelCompactDrawerContentSettleFrame();
+    setIsCompactDrawerContentSettled(false);
+  }, [
+    cancelCompactDrawerContentSettleFrame,
+    isSecondaryPanelOpen,
+    renderAsDrawer,
+    stableTimeline.threadId,
+  ]);
+
+  useLayoutEffect(
+    () => () => {
+      cancelCompactDrawerContentSettleFrame();
+    },
+    [cancelCompactDrawerContentSettleFrame],
+  );
+
+  const handleDrawerContentAnimationEnd = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        return;
+      }
+      const currentState = compactDrawerContentSettleStateRef.current;
+      if (!currentState.isSecondaryPanelOpen || !currentState.renderAsDrawer) {
+        return;
+      }
+
+      cancelCompactDrawerContentSettleFrame();
+      const requestGeneration = compactDrawerContentSettleGenerationRef.current;
+      const requestThreadId = currentState.threadId;
+      compactDrawerContentSettleFrameRef.current = window.requestAnimationFrame(
+        () => {
+          compactDrawerContentSettleFrameRef.current = null;
+          const latestState = compactDrawerContentSettleStateRef.current;
+          if (
+            compactDrawerContentSettleGenerationRef.current !==
+              requestGeneration ||
+            latestState.threadId !== requestThreadId ||
+            !latestState.isSecondaryPanelOpen ||
+            !latestState.renderAsDrawer
+          ) {
+            return;
+          }
+
+          dispatchBrowserViewBoundsSync();
+
+          const stateAfterSync = compactDrawerContentSettleStateRef.current;
+          if (
+            compactDrawerContentSettleGenerationRef.current ===
+              requestGeneration &&
+            stateAfterSync.threadId === requestThreadId &&
+            stateAfterSync.isSecondaryPanelOpen &&
+            stateAfterSync.renderAsDrawer
+          ) {
+            setIsCompactDrawerContentSettled(true);
+          }
+        },
+      );
+    },
+    [cancelCompactDrawerContentSettleFrame],
+  );
+  const canShowNativeBrowserView = renderAsDrawer
+    ? isSecondaryPanelOpen && isCompactDrawerContentSettled
+    : isSecondaryPanelOpen;
+  const { renderBrowserDeck, ...stableThreadSecondaryPanelProps } =
+    stableSecondaryPanel;
+  const browserDeck = useMemo(
+    () => renderBrowserDeck?.({ canShowNativeBrowserView }),
+    [canShowNativeBrowserView, renderBrowserDeck],
+  );
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
@@ -313,7 +417,8 @@ export function ThreadDetailSecondaryContent({
   );
   const inlineSecondaryPanelContent = !renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...stableSecondaryPanel}
+      {...stableThreadSecondaryPanelProps}
+      browserDeck={browserDeck}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
       onToggleConversationCollapse={onToggleConversationCollapse}
@@ -327,7 +432,8 @@ export function ThreadDetailSecondaryContent({
   ) : null;
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...stableSecondaryPanel}
+      {...stableThreadSecondaryPanelProps}
+      browserDeck={browserDeck}
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={onToggleConversationCollapse}
@@ -419,10 +525,11 @@ export function ThreadDetailSecondaryContent({
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
-            if (!open) stableSecondaryPanel.onClose();
+            if (!open) stableThreadSecondaryPanelProps.onClose();
           }}
           srLabel="Thread details"
           contentClassName="h-[92dvh] max-h-[92dvh]"
+          onContentAnimationEnd={handleDrawerContentAnimationEnd}
           // `handleOnly` keeps vaul from binding its pointerdown handler on
           // the drawer body. Without it, vaul calls setPointerCapture on the
           // click target, which captures the pointer on Pierre tree's host

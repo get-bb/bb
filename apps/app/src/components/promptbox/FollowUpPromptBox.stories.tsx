@@ -10,7 +10,10 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import type { ThreadContextWindowUsage } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsModelLoadError,
+  ThreadContextWindowUsage,
+} from "@bb/server-contract";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
@@ -60,6 +63,10 @@ const baseExecution = makeExecutionControlsProps({
     displayName: "Codex",
   },
 });
+const codexModelLoadError = {
+  providerId: "codex",
+  code: "failed",
+} satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "full", label: "Full Access", tone: "warning" },
@@ -91,6 +98,7 @@ const readOnlyExecution = makeExecutionControlsProps({
     selected: "gpt-5.5",
     options: STORY_CODEX_MODELS,
     isLoading: false,
+    loadFailed: false,
     onChange: noop,
   },
 });
@@ -441,10 +449,9 @@ interface RowConfig {
   readOnly?: boolean;
 }
 
-type FollowUpComposerRuntimeStatus =
-  NonNullable<
-    Parameters<typeof FollowUpPromptBox>[0]["composer"]
-  >["threadRuntimeDisplayStatus"];
+type FollowUpComposerRuntimeStatus = NonNullable<
+  Parameters<typeof FollowUpPromptBox>[0]["composer"]
+>["threadRuntimeDisplayStatus"];
 
 // Match production: ThreadTimelinePane's PageShell footer caps content at
 // 760px. The story's StoryRow value cell uses flex-wrap, which would
@@ -576,6 +583,62 @@ export function Overview() {
           isFollowUpSubmitting
           threadRuntimeDisplayStatus="active"
           initialMessage="And confirm the new env summary renders correctly."
+        />
+      </StoryRow>
+      <StoryRow
+        label="loading models"
+        hint="locked provider while execution options load"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: true,
+              loadFailed: false,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow
+        label="model load failed"
+        hint="locked provider with structured modelLoadError"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: true,
+              loadError: codexModelLoadError,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow label="no models" hint="locked provider with empty catalog">
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: false,
+              loadError: null,
+            },
+          }}
         />
       </StoryRow>
       <StoryRow

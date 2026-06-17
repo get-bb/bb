@@ -20,7 +20,53 @@ function testThread(args: TestThreadArgs): ChildThreadNotificationSource {
 }
 
 describe("child thread notifications", () => {
-  it("preserves manual-stop safety guidance for interrupted batched outcomes", () => {
+  it("keeps final output for a single completed outcome", () => {
+    const message = renderChildThreadTurnStatusBatchMessage({
+      items: [
+        {
+          childThread: testThread({
+            id: "thr_child",
+            title: "Fix checkout flow",
+          }),
+          terminalOutput: "Implemented the requested change.",
+          turnStatus: "completed",
+        },
+      ],
+    });
+
+    expect(message).toContain(
+      [
+        "@thread:thr_child completed:",
+        "",
+        "Implemented the requested change.",
+      ].join("\n"),
+    );
+    expect(message).not.toContain("Child thread updates:");
+  });
+
+  it("omits output for a single failed outcome", () => {
+    const message = renderChildThreadTurnStatusBatchMessage({
+      items: [
+        {
+          childThread: testThread({
+            id: "thr_child",
+            title: "Patch deploy script",
+          }),
+          terminalOutput: "Deploy script failed on preflight.",
+          turnStatus: "failed",
+        },
+      ],
+    });
+
+    expect(message).toContain(
+      ["@thread:thr_child failed.", "", "Review the thread before deciding next steps."].join(
+        "\n",
+      ),
+    );
+    expect(message).not.toContain("Deploy script failed on preflight.");
+  });
+
+  it("omits output and preserves manual-stop safety guidance for a single interrupted outcome", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
@@ -36,18 +82,18 @@ describe("child thread notifications", () => {
 
     expect(message).toContain(
       [
-        "@thread:thr_child was interrupted:",
+        "@thread:thr_child was interrupted.",
         "",
-        "Stopped after writing the checkout summary.",
+        "Review the thread before deciding next steps.",
+        "",
+        "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
       ].join("\n"),
     );
-    expect(message).not.toContain("Managed thread updates:");
-    expect(message).toContain(
-      "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
-    );
+    expect(message).not.toContain("Child thread updates:");
+    expect(message).not.toContain("Stopped after writing the checkout summary.");
   });
 
-  it("renders multiple child outcomes with excerpt sections", () => {
+  it("renders multiple child outcomes as status-only bullet lines", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
@@ -73,17 +119,14 @@ describe("child thread notifications", () => {
       [
         "[bb system]",
         "",
-        "Managed thread updates:",
+        "Child thread updates:",
         "",
-        "@thread:thr_child_one completed:",
-        "",
-        "Checkout flow is fixed.",
-        "",
-        "@thread:thr_child_two failed:",
-        "",
-        "Deploy script failed on preflight.",
+        "- @thread:thr_child_one completed.",
+        "- @thread:thr_child_two failed.",
       ].join("\n"),
     );
+    expect(message).not.toContain("Checkout flow is fixed.");
+    expect(message).not.toContain("Deploy script failed on preflight.");
   });
 
   it("builds mention ranges for batched outcome thread references", () => {
@@ -140,7 +183,7 @@ describe("child thread notifications", () => {
       ],
     });
     expect(textInput.text).toContain("@thread:thr_child_two");
-    expect(textInput.text).toContain("Managed thread updates:");
+    expect(textInput.text).toContain("Child thread updates:");
     expect(
       textInput.mentions.map((mention) =>
         textInput.text.slice(mention.start, mention.end),
@@ -190,7 +233,7 @@ describe("child thread notifications", () => {
     ).toEqual(["@thread:thr_child_one", nestedToken]);
   });
 
-  it("renders terminal output fallbacks for missing child output", () => {
+  it("renders a final output fallback for a completed child without output", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
@@ -199,13 +242,13 @@ describe("child thread notifications", () => {
             title: "Patch deploy script",
           }),
           terminalOutput: null,
-          turnStatus: "failed",
+          turnStatus: "completed",
         },
       ],
     });
 
     expect(message).toContain(
-      ["@thread:thr_child failed:", "", "No failure output was recorded."].join(
+      ["@thread:thr_child completed:", "", "No final output was recorded."].join(
         "\n",
       ),
     );
@@ -213,6 +256,7 @@ describe("child thread notifications", () => {
 
   it("builds mention ranges for needs-attention thread references", () => {
     const input = buildChildThreadNeedsAttentionInput({
+      blockerSummary: null,
       childThread: testThread({
         id: "thr_child",
         title: "Backend cleanup",
@@ -239,7 +283,29 @@ describe("child thread notifications", () => {
       },
     ]);
     expect(textInput.text).toContain(
-      "Inspect the thread and decide if you can answer or resolve the question from existing context.",
+      "Review the blocker. If you can resolve it from existing context, reply to the thread with guidance.",
+    );
+  });
+
+  it("renders needs-attention blocker summaries when provided", () => {
+    const input = buildChildThreadNeedsAttentionInput({
+      blockerSummary: ["Blocked on command approval:", "git push"].join("\n"),
+      childThread: testThread({
+        id: "thr_child",
+        title: "Backend cleanup",
+      }),
+    });
+
+    const [textInput] = input;
+    if (!textInput || textInput.type !== "text") {
+      throw new Error("Expected one text input");
+    }
+
+    expect(textInput.text).toContain(
+      ["Blocked on command approval:", "git push"].join("\n"),
+    );
+    expect(textInput.text).not.toContain(
+      "It is blocked on a pending interaction.",
     );
   });
 });
