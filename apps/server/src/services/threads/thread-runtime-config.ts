@@ -23,6 +23,7 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
+import { buildSideChatDynamicTools } from "./side-chat-main-thread-tool.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
@@ -124,7 +125,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
 
   return {
-    dynamicTools: [],
+    dynamicTools: buildSideChatDynamicTools(args.thread),
     injectedSkillSources,
     instructionMode: "append",
     instructions: STANDARD_AGENT_INSTRUCTIONS,

@@ -3,8 +3,12 @@ import { closeSession, events, threads } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import {
+  internalAuthHeaders,
+  listQueuedThreadCommands,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME } from "../../src/services/threads/side-chat-main-thread-tool.js";
 import {
   seedEvent,
   seedEnvironment,
@@ -465,6 +469,79 @@ describe("internal event and tool-call routes", () => {
         .where(eq(threads.parentThreadId, thread.id))
         .all();
       expect(childThreads).toHaveLength(0);
+    });
+  });
+
+  it("sends side chat tool messages to the main thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const mainThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: mainThread.id,
+        status: "active",
+      });
+
+      const response = await harness.app.request(
+        "/internal/session/tool-call",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            threadId: sideChatThread.id,
+            providerThreadId: "provider-side-chat",
+            turnId: "turn-side-chat",
+            callId: "call-send-main",
+            tool: SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
+            arguments: {
+              message: "Please carry this back to the main thread.",
+            },
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        success: true,
+        contentItems: [{ type: "inputText", text: "Sent to main thread." }],
+      });
+      const startCommands = listQueuedThreadCommands(
+        harness,
+        "thread.start",
+        mainThread.id,
+      );
+      expect(startCommands).toHaveLength(1);
+      const [command] = startCommands;
+      if (command?.type !== "thread.start") {
+        throw new Error("Expected thread.start command");
+      }
+      expect(command?.input[0]).toMatchObject({
+        type: "text",
+        mentions: [],
+      });
+      if (command.input[0]?.type !== "text") {
+        throw new Error("Expected text input");
+      }
+      expect(command.input[0].text).toContain(
+        "Please carry this back to the main thread.",
+      );
+      expect(command.input[0].text).toContain(`thread:${sideChatThread.id}`);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", mainThread.id),
+      ).toHaveLength(0);
     });
   });
 

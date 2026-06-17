@@ -15,6 +15,7 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
+import { SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME } from "../../src/services/threads/side-chat-main-thread-tool.js";
 import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
@@ -601,7 +602,53 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "You are working inside bb, an agentic IDE",
       );
+      expect(runtimeConfig.dynamicTools).toEqual([]);
     });
   });
 
+  it("exposes the send-to-main tool for side chat threads", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-side-chat-runtime";
+      seedHostSession(harness.deps, { id: hostId });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: "/tmp/runtime-project-root",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: "/tmp/runtime-project-root",
+      });
+      const mainThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: mainThread.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread: sideChatThread,
+          environment: {
+            hostId: environment.hostId,
+            id: environment.id,
+            path: environment.path,
+            status: environment.status,
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+        },
+      );
+
+      expect(runtimeConfig.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
+        }),
+      ]);
+    });
+  });
 });
