@@ -414,15 +414,15 @@ describe("SideChatTabContent", () => {
   it("wires side-chat mention and command typeahead to the normal hooks", async () => {
     renderSideChat({ threadId: "thr_side" });
 
-    expect(
-      mocks.promptMentionArgs[mocks.promptMentionArgs.length - 1],
-    ).toEqual({
-      projectId: "proj_parent",
-      options: {
-        currentThreadId: "thr_side",
-        environmentId: null,
+    expect(mocks.promptMentionArgs[mocks.promptMentionArgs.length - 1]).toEqual(
+      {
+        projectId: "proj_parent",
+        options: {
+          currentThreadId: "thr_side",
+          environmentId: null,
+        },
       },
-    });
+    );
     expect(
       mocks.commandSuggestionArgs[mocks.commandSuggestionArgs.length - 1],
     ).toEqual({
@@ -453,7 +453,7 @@ describe("SideChatTabContent", () => {
     renderSideChat({ threadId: "thr_side" });
 
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
-      target: { value: "Use the dynamic send-to-main tool." },
+      target: { value: "Keep going with this side chat." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Steer" }));
 
@@ -465,7 +465,7 @@ describe("SideChatTabContent", () => {
       input: [
         {
           type: "text",
-          text: "Use the dynamic send-to-main tool.",
+          text: "Keep going with this side chat.",
           mentions: [],
         },
       ],

@@ -8,7 +8,6 @@ import {
   listQueuedThreadCommands,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
-import { SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME } from "../../src/services/threads/side-chat-main-thread-tool.js";
 import {
   seedEvent,
   seedEnvironment,
@@ -417,7 +416,11 @@ describe("internal event and tool-call routes", () => {
       // redelivered completion is an illegal-transition no-op and the thread
       // row is untouched.
       expect(
-        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get(),
+        harness.db
+          .select()
+          .from(threads)
+          .where(eq(threads.id, thread.id))
+          .get(),
       ).toEqual(settledRow);
     });
   });
@@ -472,7 +475,7 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("sends side chat tool messages to the main thread", async () => {
+  it("does not support agent side chat send-to-main tool calls", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -485,11 +488,6 @@ describe("internal event and tool-call routes", () => {
       const mainThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-main-thread",
-        threadId: mainThread.id,
       });
       const sideChatThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -510,7 +508,7 @@ describe("internal event and tool-call routes", () => {
             providerThreadId: "provider-side-chat",
             turnId: "turn-side-chat",
             callId: "call-send-main",
-            tool: SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
+            tool: "bb_send_to_main_thread",
             arguments: {
               message: "Please carry this back to the main thread.",
             },
@@ -520,32 +518,16 @@ describe("internal event and tool-call routes", () => {
 
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
-        success: true,
-        contentItems: [{ type: "inputText", text: "Sent to main thread." }],
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Unsupported tool: bb_send_to_main_thread",
+          },
+        ],
       });
-      const submitCommands = listQueuedThreadCommands(
-        harness,
-        "turn.submit",
-        mainThread.id,
-      );
-      expect(submitCommands).toHaveLength(1);
-      const [command] = submitCommands;
-      if (command?.type !== "turn.submit") {
-        throw new Error("Expected turn.submit command");
-      }
-      expect(command?.input[0]).toMatchObject({
-        type: "text",
-        mentions: [],
-      });
-      if (command.input[0]?.type !== "text") {
-        throw new Error("Expected text input");
-      }
-      expect(command.input[0].text).toContain(
-        "Please carry this back to the main thread.",
-      );
-      expect(command.input[0].text).toContain(`thread:${sideChatThread.id}`);
       expect(
-        listQueuedThreadCommands(harness, "thread.start", mainThread.id),
+        listQueuedThreadCommands(harness, "turn.submit", mainThread.id),
       ).toHaveLength(0);
     });
   });

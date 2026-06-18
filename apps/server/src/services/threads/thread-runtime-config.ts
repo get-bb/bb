@@ -23,21 +23,13 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
-import {
-  buildSideChatDynamicTools,
-  isSideChatThread,
-} from "./side-chat-main-thread-tool.js";
+import { isSideChatThread } from "./side-chat-thread.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
   "standardAgentAppendInstructions",
   {},
 );
-const SIDE_CHAT_AGENT_TOOL_INSTRUCTIONS = [
-  "Side chat handoff:",
-  "- When the user asks you to send, share, post, or relay a message to the main thread, call the `bb_send_to_main_thread` tool with the exact message.",
-  "- Do not use the bb CLI, GitHub, or shell commands for that handoff.",
-].join("\n");
 export interface ThreadRuntimeCommandEnvironment {
   hostId: string;
   id: string;
@@ -135,16 +127,11 @@ export async function resolveThreadRuntimeCommandConfig(
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
-  const dynamicTools = buildSideChatDynamicTools(args.thread);
-
   return {
-    dynamicTools,
+    dynamicTools: [],
     injectedSkillSources,
     instructionMode: "append",
-    instructions:
-      dynamicTools.length > 0
-        ? `${STANDARD_AGENT_INSTRUCTIONS}\n\n${SIDE_CHAT_AGENT_TOOL_INSTRUCTIONS}`
-        : STANDARD_AGENT_INSTRUCTIONS,
+    instructions: STANDARD_AGENT_INSTRUCTIONS,
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
     threadStoragePath,

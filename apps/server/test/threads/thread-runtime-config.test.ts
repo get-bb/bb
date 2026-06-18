@@ -15,7 +15,6 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
-import { SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME } from "../../src/services/threads/side-chat-main-thread-tool.js";
 import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
@@ -74,44 +73,52 @@ describe("thread runtime config", () => {
       name: "defaults Pi child execution permission mode to full",
       requestedModel: "openai-codex/gpt-5.4",
     },
-  ])("$name", async ({ childProviderId, expectedPermissionMode, parentProviderId, requestedModel }) => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: `host-runtime-${childProviderId}-${parentProviderId ?? "root"}`,
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const parentThread =
-        parentProviderId === null
-          ? null
-          : seedThread(harness.deps, {
-              projectId: project.id,
-              environmentId: environment.id,
-              providerId: parentProviderId,
-            });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: parentThread?.id ?? null,
-        providerId: childProviderId,
-      });
+  ])(
+    "$name",
+    async ({
+      childProviderId,
+      expectedPermissionMode,
+      parentProviderId,
+      requestedModel,
+    }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-runtime-${childProviderId}-${parentProviderId ?? "root"}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const parentThread =
+          parentProviderId === null
+            ? null
+            : seedThread(harness.deps, {
+                projectId: project.id,
+                environmentId: environment.id,
+                providerId: parentProviderId,
+              });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          parentThreadId: parentThread?.id ?? null,
+          providerId: childProviderId,
+        });
 
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: requestedModel,
-          source: "client/turn/requested",
-        },
-      });
+        const execution = await resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: requestedModel,
+            source: "client/turn/requested",
+          },
+        });
 
-      expect(execution.permissionMode).toBe(expectedPermissionMode);
-    });
-  });
+        expect(execution.permissionMode).toBe(expectedPermissionMode);
+      });
+    },
+  );
 
   it("uses project permission defaults for child threads without parent execution history", async () => {
     await withTestHarness(async (harness) => {
@@ -618,7 +625,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("exposes the send-to-main tool for side chat threads", async () => {
+  it("does not expose agent send-to-main tools for side chat threads", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-side-chat-runtime";
       seedHostSession(harness.deps, { id: hostId });
@@ -656,17 +663,11 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
-        }),
-      ]);
-      expect(runtimeConfig.instructions).toContain(
-        SIDE_CHAT_SEND_TO_MAIN_THREAD_TOOL_NAME,
+      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.instructions).not.toContain(
+        "bb_send_to_main_thread",
       );
-      expect(runtimeConfig.instructions).toContain(
-        "Do not use the bb CLI, GitHub, or shell commands for that handoff.",
-      );
+      expect(runtimeConfig.instructions).not.toContain("Side chat handoff");
     });
   });
 });
