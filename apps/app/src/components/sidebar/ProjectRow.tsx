@@ -1175,7 +1175,7 @@ function ProjectRowComponent({
                 : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
-                "select-none cursor-grab active:cursor-grabbing",
+                "select-none",
             )}
             title={project.name}
             {...projectDragBindings?.attributes}
