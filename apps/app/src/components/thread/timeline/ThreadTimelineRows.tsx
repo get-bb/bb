@@ -235,6 +235,7 @@ interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   spacing: TimelineRowsListSpacing;
   className?: string;
   unreadDividerAutoScroll: boolean;
@@ -250,6 +251,7 @@ interface TimelineRowViewProps {
   compactActivityIntents: boolean;
   row: ThreadTimelineViewRow;
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   spacing: TimelineRowsListSpacing;
 }
 
@@ -257,6 +259,7 @@ interface TimelineExpandableRowViewProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   title: TimelineTitle;
   horizontalPadding: TimelineRowHorizontalPadding;
   row: Exclude<ThreadTimelineViewRow, { kind: "conversation" }>;
@@ -272,11 +275,13 @@ interface TimelineExpandableBodyProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
   row: ThreadTimelineViewRow;
+  showAssistantMessageActions: boolean;
 }
 
 interface TurnRowBodyProps {
   compactActivityIntents: boolean;
   row: TimelineViewTurnRow;
+  showAssistantMessageActions: boolean;
 }
 
 type LazyTurnRowBodyProps = TurnRowBodyProps;
@@ -365,6 +370,7 @@ type TimelineRowsListItem =
 
 interface ConversationRowProps {
   row: TimelineConversationViewRow;
+  showAssistantMessageActions: boolean;
 }
 
 const TimelineRendererStaticContext =
@@ -459,6 +465,7 @@ function areTimelineRowViewPropsEqual(
   return (
     previous.compactActivityIntents === next.compactActivityIntents &&
     previous.scopeActive === next.scopeActive &&
+    previous.showAssistantMessageActions === next.showAssistantMessageActions &&
     previous.spacing === next.spacing &&
     previous.activeLatestBundleId === next.activeLatestBundleId &&
     // The view-row cache keys by the raw rows array, so unchanged query data
@@ -477,6 +484,7 @@ function areTimelineExpandableRowViewPropsEqual(
     previous.activeLatestBundleId === next.activeLatestBundleId &&
     previous.compactActivityIntents === next.compactActivityIntents &&
     previous.scopeActive === next.scopeActive &&
+    previous.showAssistantMessageActions === next.showAssistantMessageActions &&
     previous.title === next.title &&
     previous.horizontalPadding === next.horizontalPadding &&
     // The view-row cache keys by the raw rows array, so unchanged query data
@@ -765,7 +773,10 @@ function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
   );
 }
 
-function ConversationRow({ row }: ConversationRowProps) {
+function ConversationRow({
+  row,
+  showAssistantMessageActions,
+}: ConversationRowProps) {
   const {
     canSpawnChild,
     onForkMessage,
@@ -861,6 +872,7 @@ function ConversationRow({ row }: ConversationRowProps) {
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
+      showActions={showAssistantMessageActions}
       sourceSeqEnd={row.sourceSeqEnd}
       sourceSeqStart={row.sourceSeqStart}
       text={row.text}
@@ -940,6 +952,7 @@ function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
   row,
+  showAssistantMessageActions,
 }: TimelineExpandableBodyProps) {
   const {
     onOpenLink,
@@ -958,6 +971,7 @@ function TimelineExpandableBody({
         <TimelineRowsList
           rows={row.children}
           scopeActive={false}
+          showAssistantMessageActions={showAssistantMessageActions}
           compactActivityIntents={true}
           spacing="bundle"
           unreadDividerAutoScroll={false}
@@ -997,6 +1011,11 @@ function TimelineExpandableBody({
         <TurnRowBody
           row={row}
           compactActivityIntents={compactActivityIntents}
+          // Completed turn details live under "Worked for..." as archival
+          // context; pending "Working" rows keep the streaming affordance.
+          showAssistantMessageActions={
+            showAssistantMessageActions && row.status === "pending"
+          }
         />
       );
     case "work":
@@ -1014,6 +1033,7 @@ function TimelineExpandableBody({
                 <TimelineRowsList
                   rows={row.childRows}
                   scopeActive={delegationActive}
+                  showAssistantMessageActions={showAssistantMessageActions}
                   compactActivityIntents={false}
                   spacing="nested"
                   unreadDividerAutoScroll={false}
@@ -1029,6 +1049,7 @@ function TimelineExpandableBody({
                   projectId={projectId}
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
                   role="assistant"
+                  showActions={showAssistantMessageActions}
                   sourceSeqEnd={row.sourceSeqEnd}
                   sourceSeqStart={row.sourceSeqStart}
                   text={row.output}
@@ -1064,12 +1085,17 @@ function TimelineExpandableBody({
   }
 }
 
-function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
+function TurnRowBody({
+  compactActivityIntents,
+  row,
+  showAssistantMessageActions,
+}: TurnRowBodyProps) {
   if (row.children === null) {
     return (
       <LazyTurnRowBody
         compactActivityIntents={compactActivityIntents}
         row={row}
+        showAssistantMessageActions={showAssistantMessageActions}
       />
     );
   }
@@ -1078,6 +1104,7 @@ function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
     <TimelineRowsList
       rows={row.children}
       scopeActive={false}
+      showAssistantMessageActions={showAssistantMessageActions}
       compactActivityIntents={compactActivityIntents}
       spacing="nested"
       className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
@@ -1090,6 +1117,7 @@ function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
 function LazyTurnRowBody({
   compactActivityIntents,
   row,
+  showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
   const {
@@ -1146,6 +1174,7 @@ function LazyTurnRowBody({
       <TimelineRowsList
         rows={rows}
         scopeActive={false}
+        showAssistantMessageActions={showAssistantMessageActions}
         compactActivityIntents={compactActivityIntents}
         spacing="nested"
         className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
@@ -1364,6 +1393,7 @@ function TimelineRowView({
   compactActivityIntents,
   row,
   scopeActive,
+  showAssistantMessageActions,
   spacing,
 }: TimelineRowViewProps) {
   const horizontalPadding = timelineRowHorizontalPadding(spacing);
@@ -1378,7 +1408,12 @@ function TimelineRowView({
   });
 
   if (row.kind === "conversation") {
-    return <ConversationRow row={row} />;
+    return (
+      <ConversationRow
+        row={row}
+        showAssistantMessageActions={showAssistantMessageActions}
+      />
+    );
   }
 
   if (titleState.kind === "compact-activity-intents") {
@@ -1446,6 +1481,7 @@ function TimelineRowView({
       activeLatestBundleId={activeLatestBundleId}
       row={row}
       scopeActive={scopeActive}
+      showAssistantMessageActions={showAssistantMessageActions}
       title={titleState.title}
       horizontalPadding={horizontalPadding}
       compactActivityIntents={compactActivityIntents}
@@ -1462,6 +1498,7 @@ function TimelineExpandableRowView({
   activeLatestBundleId,
   compactActivityIntents,
   scopeActive,
+  showAssistantMessageActions,
   title,
   horizontalPadding,
   row,
@@ -1479,9 +1516,15 @@ function TimelineExpandableRowView({
         activeLatestBundleId={activeLatestBundleId}
         row={row}
         compactActivityIntents={compactActivityIntents}
+        showAssistantMessageActions={showAssistantMessageActions}
       />
     ),
-    [activeLatestBundleId, compactActivityIntents, row],
+    [
+      activeLatestBundleId,
+      compactActivityIntents,
+      row,
+      showAssistantMessageActions,
+    ],
   );
 
   const leadingIcon = leadingIconForRow(row);
@@ -1582,6 +1625,7 @@ function TimelineRowsList({
   compactActivityIntents,
   rows,
   scopeActive,
+  showAssistantMessageActions,
   spacing,
   className,
   unreadDividerAutoScroll,
@@ -1620,6 +1664,7 @@ function TimelineRowsList({
               activeLatestBundleId={activeLatestBundleId}
               row={item.row}
               scopeActive={scopeActive}
+              showAssistantMessageActions={showAssistantMessageActions}
               spacing={spacing}
               compactActivityIntents={compactActivityIntents}
             />
@@ -1780,6 +1825,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
           <TimelineRowsList
             rows={rows}
             scopeActive={scopeActive}
+            showAssistantMessageActions={true}
             compactActivityIntents={false}
             spacing="top-level"
             unreadDividerAutoScroll={props.unreadDividerAutoScroll ?? true}
