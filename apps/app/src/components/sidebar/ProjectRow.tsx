@@ -752,7 +752,7 @@ function EnvironmentThreadGroupHeader({
         level={stickyLevel}
         className={className}
         style={style}
-        title={headerTitle}
+        title={displayName}
       >
         {content}
       </SidebarStickyTier>
@@ -760,7 +760,7 @@ function EnvironmentThreadGroupHeader({
   }
 
   return (
-    <div className={className} style={style} title={headerTitle}>
+    <div className={className} style={style} title={displayName}>
       {content}
     </div>
   );
