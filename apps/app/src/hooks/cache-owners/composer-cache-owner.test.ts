@@ -1,3 +1,4 @@
+import { QueryObserver } from "@tanstack/react-query";
 import type {
   SystemExecutionOptionsResponse,
   ThreadComposerBootstrapResponse,
@@ -58,6 +59,53 @@ const NULL_EXECUTION_BOOTSTRAP: ThreadComposerBootstrapResponse = {
 };
 
 describe("composer cache owner", () => {
+  it("does not clobber an active queued-message cache from bootstrap hydration", () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          gcTime: Infinity,
+          retry: false,
+        },
+      },
+      showMutationErrorToasts: false,
+    });
+    const queuedMessagesKey = threadQueuedMessagesQueryKey("thread-1");
+    queryClient.setQueryData(queuedMessagesKey, []);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: queuedMessagesKey,
+      queryFn: () => Promise.resolve([]),
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    try {
+      hydrateThreadComposerBootstrap({
+        bootstrap: {
+          ...NULL_EXECUTION_BOOTSTRAP,
+          queuedMessages: [
+            {
+              id: "qmsg-stale",
+              content: [{ type: "text", text: "Stale", mentions: [] }],
+              model: "gpt-5.5",
+              reasoningLevel: "medium",
+              permissionMode: "readonly",
+              serviceTier: "default",
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ],
+        },
+        environmentId: null,
+        providerId: "codex",
+        queryClient,
+        threadId: "thread-1",
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(queryClient.getQueryData(queuedMessagesKey)).toEqual([]);
+  });
+
   it("does not clobber new-thread system execution options for an environmentless archived bootstrap", () => {
     const queryClient = createAppQueryClient({
       defaultOptions: {
