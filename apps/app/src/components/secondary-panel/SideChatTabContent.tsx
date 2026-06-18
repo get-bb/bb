@@ -520,6 +520,7 @@ export function SideChatTabContent({
     sourceThread.projectId,
     sourceThread.providerId,
     tab.id,
+    tab.sourceSeqEnd,
     tab.title,
   ]);
 
