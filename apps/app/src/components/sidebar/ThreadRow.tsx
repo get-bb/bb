@@ -424,7 +424,7 @@ function ThreadRowComponent({
             <ThreadActionsMenu
               thread={thread}
               triggerClassName={cn(
-                "text-muted-foreground hover:bg-transparent",
+                "text-subtle-foreground hover:bg-transparent hover:text-foreground",
                 COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
               )}
               onOpenChange={setIsDropdownActionsOpen}
