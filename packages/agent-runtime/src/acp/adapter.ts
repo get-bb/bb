@@ -16,6 +16,7 @@ import type {
   PendingInteractionApprovalDecision,
   ThreadEvent,
   ThreadEventItem,
+  ThreadEventItemStatus,
   ThreadEventPlanStep,
 } from "@bb/domain";
 import {
@@ -47,6 +48,7 @@ import {
   type AcceptedUserMessageState,
 } from "../shared/accepted-user-messages.js";
 import {
+  buildEditDiff,
   extractResultText,
   toOptionalString,
   withParentToolCallId,
@@ -164,6 +166,13 @@ function mapAcpToolCallStatus(
 const acpRawInputCommandSchema = z
   .object({ command: z.string() })
   .passthrough();
+const acpRawInputPathSchema = z
+  .object({
+    path: z.string().optional(),
+    filePath: z.string().optional(),
+    file_path: z.string().optional(),
+  })
+  .passthrough();
 
 function extractAcpCommand(event: {
   rawInput?: unknown;
@@ -174,6 +183,24 @@ function extractAcpCommand(event: {
     return parsed.data.command;
   }
   return toOptionalString(event.title);
+}
+
+function extractAcpToolCallPath(
+  event: Pick<AcpToolCallUpdateEvent, "locations" | "rawInput">,
+): string | undefined {
+  for (const location of event.locations ?? []) {
+    if (location.path.trim().length > 0) {
+      return location.path;
+    }
+  }
+  const parsed = acpRawInputPathSchema.safeParse(event.rawInput);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return [parsed.data.path, parsed.data.filePath, parsed.data.file_path].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
 }
 
 function extractAcpToolCallOutputText(
@@ -209,35 +236,28 @@ function buildAcpFileChangesFromToolCall(
       continue;
     }
     const oldText = entry.oldText ?? undefined;
+    const diff = buildEditDiff(entry.path, oldText, entry.newText);
     changes.push({
       path: entry.path,
       kind: oldText === undefined ? "add" : "update",
-      diff: buildAcpUnifiedDiff(entry.path, oldText, entry.newText),
+      ...(diff ? { diff } : {}),
     });
   }
-  return changes;
-}
+  if (changes.length > 0) {
+    return changes;
+  }
 
-function buildAcpUnifiedDiff(
-  filePath: string,
-  oldText: string | undefined,
-  newText: string,
-): string {
-  const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  const removedLines = (oldText ?? "")
-    .split("\n")
-    .filter(
-      (line, index, lines) => oldText !== undefined || index < lines.length,
-    )
-    .map((line) => `-${line}`);
-  const addedLines = newText.split("\n").map((line) => `+${line}`);
-  const header =
-    oldText === undefined
-      ? ["--- /dev/null", `+++ b/${normalizedPath}`]
-      : [`--- a/${normalizedPath}`, `+++ b/${normalizedPath}`];
-  const body =
-    oldText === undefined ? addedLines : [...removedLines, ...addedLines];
-  return [...header, ...body].join("\n") + "\n";
+  const path = extractAcpToolCallPath(event);
+  if (!path) {
+    return [];
+  }
+  if (event.kind === "edit") {
+    return [{ path, kind: "update" }];
+  }
+  if (event.kind === "delete") {
+    return [{ path, kind: "delete" }];
+  }
+  return [];
 }
 
 function translateAcpToolCallItem(
@@ -293,6 +313,94 @@ function translateAcpToolCallItem(
     },
     parentToolCallId,
   );
+}
+
+function completeAcpStartedToolItem(
+  item: ThreadEventItem,
+  event: AcpToolCallUpdateEvent | undefined,
+  status: ThreadEventItemStatus,
+  parentToolCallId: string | undefined,
+): ThreadEventItem {
+  const resolvedParentToolCallId = parentToolCallId ?? item.parentToolCallId;
+  switch (item.type) {
+    case "commandExecution": {
+      const outputText = event
+        ? extractAcpToolCallOutputText(event)
+        : undefined;
+      return withParentToolCallId(
+        {
+          type: "commandExecution",
+          id: item.id,
+          command: item.command,
+          cwd: item.cwd,
+          status,
+          approvalStatus: item.approvalStatus,
+          ...(outputText === undefined
+            ? {}
+            : { aggregatedOutput: outputText }),
+          ...(status === "completed" || status === "failed"
+            ? { exitCode: status === "failed" ? 1 : 0 }
+            : {}),
+        },
+        resolvedParentToolCallId,
+      );
+    }
+    case "fileChange":
+      return withParentToolCallId(
+        {
+          type: "fileChange",
+          id: item.id,
+          changes: item.changes,
+          status,
+          approvalStatus: item.approvalStatus,
+        },
+        resolvedParentToolCallId,
+      );
+    case "toolCall": {
+      const outputText = event
+        ? extractAcpToolCallOutputText(event)
+        : undefined;
+      return withParentToolCallId(
+        {
+          type: "toolCall",
+          id: item.id,
+          tool: item.tool,
+          ...(item.arguments === undefined
+            ? {}
+            : { arguments: item.arguments }),
+          status,
+          ...(outputText === undefined ? {} : { result: outputText }),
+        },
+        resolvedParentToolCallId,
+      );
+    }
+    default:
+      return item;
+  }
+}
+
+function buildAcpTerminalToolCallItems(args: {
+  completedItem: ThreadEventItem;
+  event: AcpToolCallUpdateEvent;
+  parentToolCallId: string | undefined;
+  startedItem: ThreadEventItem | undefined;
+  status: ThreadEventItemStatus;
+}): ThreadEventItem[] {
+  if (!args.startedItem) {
+    return [args.completedItem];
+  }
+  if (args.startedItem.type === args.completedItem.type) {
+    return [args.completedItem];
+  }
+  return [
+    completeAcpStartedToolItem(
+      args.startedItem,
+      args.event,
+      args.status,
+      args.parentToolCallId,
+    ),
+    args.completedItem,
+  ];
 }
 
 /**
@@ -484,6 +592,56 @@ export function createAcpProviderAdapter(
     });
   }
 
+  function completeOpenToolCallItems(args: {
+    events: ThreadEvent[];
+    parentToolCallId: string | undefined;
+    state: AcpTurnState;
+    status: ThreadEventItemStatus;
+    turnId: string;
+  }): void {
+    for (const [callId, startedItem] of args.state.toolItemsByCallId) {
+      const latestEvent = args.state.toolCallEventsByCallId.get(callId);
+      const latestItem = latestEvent
+        ? translateAcpToolCallItem(latestEvent, args.parentToolCallId)
+        : startedItem;
+      const completedItems =
+        latestItem.type === startedItem.type
+          ? [
+              completeAcpStartedToolItem(
+                latestItem,
+                latestEvent,
+                args.status,
+                args.parentToolCallId,
+              ),
+            ]
+          : [
+              completeAcpStartedToolItem(
+                startedItem,
+                latestEvent,
+                args.status,
+                args.parentToolCallId,
+              ),
+              completeAcpStartedToolItem(
+                latestItem,
+                latestEvent,
+                args.status,
+                args.parentToolCallId,
+              ),
+            ];
+      for (const item of completedItems) {
+        args.events.push({
+          type: "item/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(args.turnId),
+          item,
+        });
+      }
+    }
+    args.state.toolItemsByCallId.clear();
+    args.state.toolCallEventsByCallId.clear();
+  }
+
   function translateAcpUpdate(
     update: AcpSessionUpdate,
     state: AcpTurnState,
@@ -591,6 +749,7 @@ export function createAcpProviderAdapter(
           return events;
         }
         state.toolCallEventsByCallId.set(parsed.data.toolCallId, parsed.data);
+        state.toolItemsByCallId.set(parsed.data.toolCallId, item);
         events.push({
           type: "item/started",
           threadId: UNSTAMPED_THREAD_ID,
@@ -609,6 +768,9 @@ export function createAcpProviderAdapter(
         const startedEvent = state.toolCallEventsByCallId.get(
           parsed.data.toolCallId,
         );
+        const startedItem = state.toolItemsByCallId.get(
+          parsed.data.toolCallId,
+        );
         const mergedEvent = mergeAcpToolCallEvents(startedEvent, parsed.data);
         const mergedItem = translateAcpToolCallItem(
           mergedEvent,
@@ -619,16 +781,29 @@ export function createAcpProviderAdapter(
           mergedEvent.status === "failed"
         ) {
           state.toolCallEventsByCallId.delete(parsed.data.toolCallId);
-          events.push({
-            type: "item/completed",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(state.currentTurnId),
-            item: mergedItem,
-          });
+          state.toolItemsByCallId.delete(parsed.data.toolCallId);
+          const terminalStatus = mapAcpToolCallStatus(mergedEvent.status);
+          for (const item of buildAcpTerminalToolCallItems({
+            completedItem: mergedItem,
+            event: mergedEvent,
+            parentToolCallId,
+            startedItem,
+            status: terminalStatus,
+          })) {
+            events.push({
+              type: "item/completed",
+              threadId: UNSTAMPED_THREAD_ID,
+              providerThreadId: "",
+              scope: turnScope(state.currentTurnId),
+              item,
+            });
+          }
           return events;
         }
         state.toolCallEventsByCallId.set(parsed.data.toolCallId, mergedEvent);
+        if (!startedItem || startedItem.type === mergedItem.type) {
+          state.toolItemsByCallId.set(parsed.data.toolCallId, mergedItem);
+        }
         const progressText = extractAcpToolCallOutputText(parsed.data);
         if (progressText && mergedItem.type === "toolCall") {
           events.push({
@@ -699,6 +874,19 @@ export function createAcpProviderAdapter(
     const events: ThreadEvent[] = [];
     flushOpenThoughtItem(events, state, context?.parentToolCallId);
     flushOpenAgentMessageItem(events, state, context?.parentToolCallId);
+    const openToolCallStatus: ThreadEventItemStatus =
+      stopReason === "end_turn"
+        ? "completed"
+        : stopReason === "cancelled"
+          ? "interrupted"
+          : "failed";
+    completeOpenToolCallItems({
+      events,
+      parentToolCallId: context?.parentToolCallId,
+      state,
+      status: openToolCallStatus,
+      turnId: currentTurnId,
+    });
 
     if (stopReason === "cancelled") {
       events.push({

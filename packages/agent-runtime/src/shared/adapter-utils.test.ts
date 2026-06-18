@@ -7,6 +7,20 @@ import {
 } from "./adapter-utils.js";
 
 describe("adapter-utils", () => {
+  function countChangedLines(diff: string | undefined): {
+    added: number;
+    removed: number;
+  } {
+    let added = 0;
+    let removed = 0;
+    for (const line of diff?.split("\n") ?? []) {
+      if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+      if (line.startsWith("+")) added += 1;
+      if (line.startsWith("-")) removed += 1;
+    }
+    return { added, removed };
+  }
+
   it("extractResultText returns an empty string for nullish content", () => {
     expect(extractResultText(null)).toBe("");
     expect(extractResultText(undefined)).toBe("");
@@ -118,6 +132,38 @@ describe("adapter-utils", () => {
     expect(diff).not.toContain("@@");
   });
 
+  it("buildEditDiff avoids reporting unchanged whole-file lines as edits", () => {
+    const diff = buildEditDiff(
+      "src/app.ts",
+      ["alpha", "beta", "gamma", "delta"].join("\n") + "\n",
+      ["alpha", "beta", "GAMMA", "delta"].join("\n") + "\n",
+    );
+
+    expect(diff).toContain("-gamma");
+    expect(diff).toContain("+GAMMA");
+    expect(diff).not.toContain("-alpha");
+    expect(diff).not.toContain("+alpha");
+    expect(countChangedLines(diff)).toEqual({ added: 1, removed: 1 });
+  });
+
+  it("buildEditDiff normalizes CRLF-only differences", () => {
+    expect(
+      buildEditDiff("src/app.ts", "alpha\r\nbeta\r\n", "alpha\nbeta\n"),
+    ).toBeUndefined();
+  });
+
+  it("buildEditDiff counts content changes in CRLF files without inflating every line", () => {
+    const diff = buildEditDiff(
+      "src/app.ts",
+      "alpha\r\nbeta\r\ngamma\r\n",
+      "alpha\nBETA\ngamma\n",
+    );
+
+    expect(diff).toContain("-beta");
+    expect(diff).toContain("+BETA");
+    expect(countChangedLines(diff)).toEqual({ added: 1, removed: 1 });
+  });
+
   it("buildEditDiff renders pure additions against /dev/null", () => {
     const diff = buildEditDiff(
       "src/new-file.ts",
@@ -128,6 +174,7 @@ describe("adapter-utils", () => {
     expect(diff).toContain("--- /dev/null");
     expect(diff).toContain("+++ b/src/new-file.ts");
     expect(diff).toContain("+export const enabled = true;");
+    expect(countChangedLines(diff)).toEqual({ added: 1, removed: 0 });
   });
 
   it("buildEditDiff renders pure deletions to /dev/null", () => {
@@ -140,5 +187,6 @@ describe("adapter-utils", () => {
     expect(diff).toContain("--- a/src/old-file.ts");
     expect(diff).toContain("+++ /dev/null");
     expect(diff).toContain("-export const enabled = false;");
+    expect(countChangedLines(diff)).toEqual({ added: 0, removed: 1 });
   });
 });

@@ -48,6 +48,20 @@ function startTurn(adapter: AcpProviderAdapter) {
   );
 }
 
+function countChangedLines(diff: string | undefined): {
+  added: number;
+  removed: number;
+} {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff?.split("\n") ?? []) {
+    if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+    if (line.startsWith("+")) added += 1;
+    if (line.startsWith("-")) removed += 1;
+  }
+  return { added, removed };
+}
+
 describe("acp adapter command plans", () => {
   it("builds thread/start with agent command, policy, and write roots", () => {
     const adapter = createAdapter();
@@ -456,8 +470,8 @@ describe("acp adapter event translation", () => {
           {
             type: "diff",
             path: "/workspace/a.ts",
-            oldText: "old line",
-            newText: "new line",
+            oldText: "same\nold line\nsame\n",
+            newText: "same\nnew line\nsame\n",
           },
         ],
       }),
@@ -473,6 +487,151 @@ describe("acp adapter event translation", () => {
         changes: [{ path: "/workspace/a.ts", kind: "update" }],
       },
     });
+    const change = events[0]?.type === "item/completed" &&
+      events[0].item.type === "fileChange"
+      ? events[0].item.changes[0]
+      : undefined;
+    expect(change?.diff).toContain("-old line");
+    expect(change?.diff).toContain("+new line");
+    expect(change?.diff).not.toContain("-same");
+    expect(change?.diff).not.toContain("+same");
+    expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+  });
+
+  it("tracks Cursor edit calls as file changes before the final diff arrives", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-edit",
+          title: "Edit file",
+          kind: "edit",
+          status: "in_progress",
+          locations: [{ path: "/workspace/a.ts" }],
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "fileChange",
+          id: "call-edit",
+          changes: [{ path: "/workspace/a.ts", kind: "update" }],
+          status: "pending",
+          approvalStatus: null,
+        },
+      },
+    ]);
+
+    const completedEvents = adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-edit",
+        status: "completed",
+        content: [
+          {
+            type: "diff",
+            path: "/workspace/a.ts",
+            oldText: "before\n",
+            newText: "after\n",
+          },
+        ],
+      }),
+      THREAD_CONTEXT,
+    );
+
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "fileChange",
+        id: "call-edit",
+        status: "completed",
+        changes: [{ path: "/workspace/a.ts", kind: "update" }],
+      },
+    });
+    const change =
+      completedEvents[0]?.type === "item/completed" &&
+      completedEvents[0].item.type === "fileChange"
+        ? completedEvents[0].item.changes[0]
+        : undefined;
+    expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+  });
+
+  it("settles a started generic ACP edit when completion is a file change", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-late-diff",
+          title: "Edit file",
+          kind: "edit",
+          status: "in_progress",
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "toolCall",
+          id: "call-late-diff",
+          tool: "Edit file",
+          status: "pending",
+        },
+      },
+    ]);
+
+    const completedEvents = adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-late-diff",
+        status: "completed",
+        content: [
+          {
+            type: "diff",
+            path: "/workspace/a.ts",
+            oldText: "before\n",
+            newText: "after\n",
+          },
+        ],
+      }),
+      THREAD_CONTEXT,
+    );
+
+    expect(completedEvents).toMatchObject([
+      {
+        type: "item/completed",
+        item: {
+          type: "toolCall",
+          id: "call-late-diff",
+          tool: "Edit file",
+          status: "completed",
+        },
+      },
+      {
+        type: "item/completed",
+        item: {
+          type: "fileChange",
+          id: "call-late-diff",
+          status: "completed",
+          changes: [{ path: "/workspace/a.ts", kind: "update" }],
+        },
+      },
+    ]);
   });
 
   it("translates plan updates", () => {
