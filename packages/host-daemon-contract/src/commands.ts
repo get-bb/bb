@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 39 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 40 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -91,6 +91,11 @@ export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
         sourceType: z.literal("data-dir"),
+      })
+      .strict(),
+    hostDaemonInjectedSkillSourceBaseSchema
+      .extend({
+        sourceType: z.literal("project"),
       })
       .strict(),
   ],
@@ -386,6 +391,7 @@ const hostListCommandsCommandSchema = z.object({
   type: z.literal("host.list_commands"),
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
+  builtinSkillsRootPath: z.string().min(1),
 });
 
 /**

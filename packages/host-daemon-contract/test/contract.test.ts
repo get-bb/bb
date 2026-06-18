@@ -829,6 +829,20 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_commands",
+        providerId: "claude-code",
+        cwd: "/tmp/workspace",
+        builtinSkillsRootPath: "/tmp/builtin-skills",
+      }),
+    ).toMatchObject({
+      type: "host.list_commands",
+      providerId: "claude-code",
+      cwd: "/tmp/workspace",
+      builtinSkillsRootPath: "/tmp/builtin-skills",
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_branches",
         path: "/tmp/workspace",
         query: "release",
@@ -1274,6 +1288,12 @@ describe("host-daemon command schemas", () => {
         sourceType: "data-dir",
       }),
     ).toMatchObject({ sourceType: "data-dir" });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "project",
+      }),
+    ).toMatchObject({ sourceType: "project" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
@@ -1873,7 +1893,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(39);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(40);
   });
 
   it("parses valid session open and event batch payloads", () => {

@@ -359,6 +359,14 @@ describe("thread runtime config", () => {
         name: "bb-cli",
         rootPath: harness.config.builtinSkillsRootPath,
       });
+      const workspacePath = path.join(
+        harness.config.dataDir,
+        "runtime-skill-workspace",
+      );
+      const projectSourceRootPath = await writeRuntimeSkill({
+        name: "project-helper",
+        rootPath: path.join(workspacePath, ".bb", "skills"),
+      });
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-injected-skills",
       });
@@ -368,6 +376,7 @@ describe("thread runtime config", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
+        path: workspacePath,
       });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
@@ -402,6 +411,13 @@ describe("thread runtime config", () => {
           description: "Use bb-cli when server runtime tests run.",
           sourceRootPath: builtinSourceRootPath,
           skillFilePath: path.join(builtinSourceRootPath, "SKILL.md"),
+        },
+        {
+          sourceType: "project",
+          name: "project-helper",
+          description: "Use project-helper when server runtime tests run.",
+          sourceRootPath: projectSourceRootPath,
+          skillFilePath: path.join(projectSourceRootPath, "SKILL.md"),
         },
         {
           sourceType: "data-dir",

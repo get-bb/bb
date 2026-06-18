@@ -19,6 +19,8 @@ import {
 
 interface WorkspaceFixture {
   cwd: string;
+  builtinSkillsRootPath: string;
+  dataDir: string;
   homeDir: string;
   codexHome: string;
 }
@@ -35,11 +37,15 @@ async function writeFileEnsuringDir(
 
 async function makeWorkspaceFixture(): Promise<WorkspaceFixture> {
   const cwd = path.join(tempRoot, "workspace");
+  const builtinSkillsRootPath = path.join(tempRoot, "builtin-skills");
+  const dataDir = path.join(tempRoot, "bb-data");
   const homeDir = path.join(tempRoot, "home");
   const codexHome = path.join(homeDir, ".codex");
   await mkdir(cwd, { recursive: true });
+  await mkdir(builtinSkillsRootPath, { recursive: true });
+  await mkdir(dataDir, { recursive: true });
   await mkdir(homeDir, { recursive: true });
-  return { cwd, homeDir, codexHome };
+  return { cwd, builtinSkillsRootPath, dataDir, homeDir, codexHome };
 }
 
 async function discoverClaude(
@@ -50,6 +56,8 @@ async function discoverClaude(
     roots: await resolveProviderCommandScanRoots({
       providerId: "claude-code",
       cwd,
+      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     }),
@@ -64,6 +72,8 @@ async function discoverCodex(
     roots: await resolveProviderCommandScanRoots({
       providerId: "codex",
       cwd,
+      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     }),
@@ -86,6 +96,46 @@ afterEach(async () => {
 });
 
 describe("discoverProviderCommands (claude-code)", () => {
+  it("discovers project-local and globally installed bb skills", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".bb", "skills", "project-bb", "SKILL.md"),
+      "---\nname: project-bb\ndescription: Project bb skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.dataDir, "skills", "user-bb", "SKILL.md"),
+      "---\nname: user-bb\ndescription: User bb skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.builtinSkillsRootPath, "bb-cli", "SKILL.md"),
+      "---\nname: bb-cli\ndescription: Built-in bb CLI skill\n---\n",
+    );
+
+    const commands = await discoverClaude(fixture, fixture.cwd);
+
+    expect(byName(commands, "project-bb")).toEqual({
+      name: "project-bb",
+      source: "skill",
+      origin: "project",
+      description: "Project bb skill",
+      argumentHint: null,
+    });
+    expect(byName(commands, "user-bb")).toEqual({
+      name: "user-bb",
+      source: "skill",
+      origin: "user",
+      description: "User bb skill",
+      argumentHint: null,
+    });
+    expect(byName(commands, "bb-cli")).toEqual({
+      name: "bb-cli",
+      source: "skill",
+      origin: "user",
+      description: "Built-in bb CLI skill",
+      argumentHint: null,
+    });
+  });
+
   it("parses project skills, namespaced commands, and frontmatter", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
@@ -770,6 +820,46 @@ describe("discoverProviderCommands (claude-code)", () => {
 });
 
 describe("discoverProviderCommands (codex)", () => {
+  it("discovers project-local and globally installed bb skills", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".bb", "skills", "project-bb", "SKILL.md"),
+      "---\nname: project-bb\ndescription: Project bb skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.dataDir, "skills", "user-bb", "SKILL.md"),
+      "---\nname: user-bb\ndescription: User bb skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.builtinSkillsRootPath, "bb-cli", "SKILL.md"),
+      "---\nname: bb-cli\ndescription: Built-in bb CLI skill\n---\n",
+    );
+
+    const commands = await discoverCodex(fixture, fixture.cwd);
+
+    expect(byName(commands, "project-bb")).toEqual({
+      name: "project-bb",
+      source: "skill",
+      origin: "project",
+      description: "Project bb skill",
+      argumentHint: null,
+    });
+    expect(byName(commands, "user-bb")).toEqual({
+      name: "user-bb",
+      source: "skill",
+      origin: "user",
+      description: "User bb skill",
+      argumentHint: null,
+    });
+    expect(byName(commands, "bb-cli")).toEqual({
+      name: "bb-cli",
+      source: "skill",
+      origin: "user",
+      description: "Built-in bb CLI skill",
+      argumentHint: null,
+    });
+  });
+
   it("parses project and user codex skills with correct origins", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
@@ -1001,6 +1091,8 @@ describe("resolveCommandScanRoots", () => {
     const roots = resolveCommandScanRoots({
       providerId: "pi",
       cwd: fixture.cwd,
+      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     });

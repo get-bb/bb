@@ -593,6 +593,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         type: "host.list_commands",
         providerId: query.provider,
         cwd: workspace.cwd,
+        builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
       },
     });
     return context.json(
