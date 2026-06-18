@@ -29,21 +29,28 @@ function CommandDuration({ startedAt }: { startedAt: number }) {
   return <>{durationToCompactString(elapsed)}</>;
 }
 
-function CommandSummary({ row }: { row: TimelineWorkflowWorkRow }) {
+function CommandSummary({
+  row,
+  showDuration,
+}: {
+  row: TimelineWorkflowWorkRow;
+  showDuration: boolean;
+}) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-      <span className="shrink-0 text-muted-foreground">
-        Running background command:
+      {/* Verb + description truncate as one unit so the trailing controls
+          ("+N more", chevron, duration) never get pushed off a narrow banner. */}
+      <span className="min-w-0 truncate" title={row.description}>
+        <span className="text-muted-foreground">Running background command: </span>
+        <span className="font-medium text-foreground opacity-70">
+          {row.description}
+        </span>
       </span>
-      <span
-        className="min-w-0 truncate font-medium text-foreground opacity-70"
-        title={row.description}
-      >
-        {row.description}
-      </span>
-      <span className="shrink-0 text-muted-foreground">
-        <CommandDuration startedAt={row.startedAt} />
-      </span>
+      {showDuration ? (
+        <span className="shrink-0 text-muted-foreground">
+          <CommandDuration startedAt={row.startedAt} />
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -96,7 +103,7 @@ export function ThreadBackgroundCommandsCard({
               className="size-3.5 shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
-            <CommandSummary row={primary} />
+            <CommandSummary row={primary} showDuration={false} />
             <span className="shrink-0 text-muted-foreground">
               +{others.length} more
             </span>
@@ -119,7 +126,7 @@ export function ThreadBackgroundCommandsCard({
               className="size-3.5 shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
-            <CommandSummary row={primary} />
+            <CommandSummary row={primary} showDuration />
           </div>
         )}
       </div>
