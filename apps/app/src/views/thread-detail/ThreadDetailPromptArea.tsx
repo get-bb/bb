@@ -397,7 +397,6 @@ export function ThreadDetailPromptArea({
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
     sendMessage.isPending ||
-    isEnvironmentActionPending ||
     createQueuedMessage.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
