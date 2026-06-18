@@ -94,7 +94,7 @@ describe("ThreadRow", () => {
     expect(row?.className).not.toContain("bg-sidebar-border");
   });
 
-  it("does not show a worktree icon before a single managed-worktree thread title", () => {
+  it("shows a worktree icon before a managed-worktree thread title", () => {
     renderThreadRow({
       thread: createThread({
         title: "Managed worktree thread",
@@ -102,8 +102,12 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.queryByLabelText("Managed worktree environment")).toBeNull();
-    expect(screen.getByText("Managed worktree thread")).not.toBeNull();
+    const worktreeIcon = screen.getByLabelText("Managed worktree environment");
+    const title = screen.getByText("Managed worktree thread");
+    expect(
+      worktreeIcon.compareDocumentPosition(title) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("does not repeat the worktree icon under a worktree group", () => {

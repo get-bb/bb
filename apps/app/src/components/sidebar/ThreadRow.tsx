@@ -35,6 +35,10 @@ import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
+import {
+  getEnvironmentWorkspaceDisplayIconLabel,
+  getEnvironmentWorkspaceDisplayIconName,
+} from "@/lib/environment-workspace-display";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
@@ -281,6 +285,18 @@ function ThreadRowComponent({
     : showUnreadBadge;
   const trailingUnreadBadgeTone: SidebarUnreadDotTone =
     hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
+  const leadingWorktreeIconName =
+    options.isEnvGrouped || thread.childOrigin === "fork"
+      ? null
+      : getEnvironmentWorkspaceDisplayIconName(
+          thread.environmentWorkspaceDisplayKind,
+        );
+  const leadingWorktreeIconLabel =
+    leadingWorktreeIconName === null
+      ? null
+      : getEnvironmentWorkspaceDisplayIconLabel(
+          thread.environmentWorkspaceDisplayKind,
+        );
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
@@ -338,6 +354,21 @@ function ThreadRowComponent({
           >
             <Icon
               name="Fork"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+              aria-hidden="true"
+            />
+          </span>
+        ) : leadingWorktreeIconName ? (
+          <span
+            className={cn(
+              SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+              "pointer-events-none text-muted-foreground",
+            )}
+            aria-label={leadingWorktreeIconLabel ?? undefined}
+            title={leadingWorktreeIconLabel ?? undefined}
+          >
+            <Icon
+              name={leadingWorktreeIconName}
               className={COARSE_POINTER_ICON_SIZE_CLASS}
               aria-hidden="true"
             />

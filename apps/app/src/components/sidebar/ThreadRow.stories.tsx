@@ -306,7 +306,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="env: managed worktree"
-        hint="single worktree threads do not show a leading worktree icon"
+        hint="leading worktree icon appears before the thread title"
       >
         <SidebarStage>
           <StoryThreadRow
