@@ -878,6 +878,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const isSubmitDisabled =
     !selectedProviderId ||
     isLoadingModels ||
+    modelLoadError?.code === "missing_executable" ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||

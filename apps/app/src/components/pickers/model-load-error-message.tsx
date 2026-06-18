@@ -11,10 +11,27 @@ interface FormatModelLoadErrorTextArgs {
   providerLabel: string;
 }
 
-const CODEX_CLI_HELP_LINK = {
-  label: "Codex CLI",
-  url: "https://developers.openai.com/codex/cli",
+const PROVIDER_CLI_HELP_LINKS: Partial<
+  Record<string, { label: string; url: string }>
+> = {
+  codex: {
+    label: "Codex CLI",
+    url: "https://developers.openai.com/codex/cli",
+  },
+  "acp-cursor": {
+    label: "Cursor CLI",
+    url: "https://cursor.com/docs/cli/installation",
+  },
 };
+
+function providerCliLabel({
+  error,
+  providerLabel,
+}: FormatModelLoadErrorTextArgs): string {
+  return (
+    PROVIDER_CLI_HELP_LINKS[error.providerId]?.label ?? `${providerLabel} CLI`
+  );
+}
 
 export function formatModelLoadErrorText({
   error,
@@ -24,8 +41,8 @@ export function formatModelLoadErrorText({
     return `Timed out loading models for ${providerLabel}.`;
   }
 
-  if (error.code === "missing_executable" && error.providerId === "codex") {
-    return `Could not load models for ${providerLabel}. Please make sure the ${CODEX_CLI_HELP_LINK.label} is installed.`;
+  if (error.code === "missing_executable") {
+    return `Could not load models for ${providerLabel}. Please make sure the ${providerCliLabel({ error, providerLabel })} is installed.`;
   }
 
   return `Could not load models for ${providerLabel}.`;
@@ -35,17 +52,21 @@ export function ModelLoadErrorMessage({
   error,
   providerLabel,
 }: ModelLoadErrorMessageProps): ReactNode {
-  if (error.code === "missing_executable" && error.providerId === "codex") {
+  if (error.code === "missing_executable") {
+    const helpLink = PROVIDER_CLI_HELP_LINKS[error.providerId];
+    if (!helpLink) {
+      return formatModelLoadErrorText({ error, providerLabel });
+    }
     return (
       <>
         Could not load models for {providerLabel}. Please make sure the{" "}
         <a
-          href={CODEX_CLI_HELP_LINK.url}
+          href={helpLink.url}
           target="_blank"
           rel="noreferrer"
           className="underline underline-offset-2 hover:text-foreground"
         >
-          {CODEX_CLI_HELP_LINK.label}
+          {helpLink.label}
         </a>{" "}
         is installed.
       </>

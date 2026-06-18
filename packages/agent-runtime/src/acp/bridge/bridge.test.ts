@@ -232,7 +232,7 @@ describe("acp bridge", () => {
     });
   });
 
-  it("falls back to the synthetic model when the list command fails", async () => {
+  it("fails model/list with a clear error when the list command is missing", async () => {
     const failingId = sendRequest("model/list", {
       listCommand: {
         command: "/nonexistent/acp-model-lister",
@@ -240,10 +240,13 @@ describe("acp bridge", () => {
       },
       primaryModels: [],
     });
-    expect((await waitForResponse(failingId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
-    });
+    const failingResponse = await waitForResponse(failingId);
+    expect(failingResponse.error?.message).toMatch(
+      /spawn \/nonexistent\/acp-model-lister ENOENT/,
+    );
+  });
 
+  it("falls back to the synthetic model when the list command prints no models", async () => {
     const emptyId = sendRequest("model/list", {
       listCommand: {
         command: process.execPath,

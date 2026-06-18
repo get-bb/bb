@@ -195,12 +195,22 @@ let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
 async function loadAgentModelCatalog(
   listCommand: AcpBridgeAgentCommand,
 ): Promise<AgentModelCatalog | null> {
-  const stdout = await new Promise<string | null>((resolveExec) => {
+  const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
     execFile(
       listCommand.command,
       listCommand.args,
       { timeout: MODEL_LIST_TIMEOUT_MS },
-      (error, out) => resolveExec(error ? null : out),
+      (error, out) => {
+        if (!error) {
+          resolveExec(out);
+          return;
+        }
+        if (isMissingExecutableError(error)) {
+          rejectExec(error);
+          return;
+        }
+        resolveExec(null);
+      },
     );
   });
   const key = JSON.stringify(listCommand);
@@ -219,6 +229,17 @@ async function loadAgentModelCatalog(
   }
   cachedModelCatalog = { key, catalog };
   return catalog;
+}
+
+function isMissingExecutableError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "ENOENT" &&
+    "syscall" in error &&
+    typeof error.syscall === "string" &&
+    error.syscall.startsWith("spawn")
+  );
 }
 
 /**
