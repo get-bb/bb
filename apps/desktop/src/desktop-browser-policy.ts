@@ -419,11 +419,13 @@ export function shouldBlockBrowserRequest(
       return true;
     }
     const parsed = parseBrowserRequestUrl(args.url);
+    if (parsed !== null && isPrivateBrowserRequestHost(parsed.host)) {
+      return true;
+    }
     if (
       !isReadOnlyMainFrameRequestMethod(args.method) &&
       parsed !== null &&
-      (isLoopbackBrowserRequestHost(parsed.host) ||
-        isPrivateBrowserRequestHost(parsed.host))
+      isLoopbackBrowserRequestHost(parsed.host)
     ) {
       return true;
     }

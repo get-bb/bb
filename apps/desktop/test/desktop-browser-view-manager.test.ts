@@ -749,6 +749,17 @@ describe("DesktopBrowserViewManager", () => {
         webContentsId: view.webContents.id,
       }),
     ).toBe(true);
+    expect(
+      browserRequestBlocked({
+        url: "http://192.168.1.1/",
+        method: "GET",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(true);
+    expect(view.webContents.emitWillNavigate("http://192.168.1.1/")).toBe(
+      true,
+    );
   });
 
   it("allows unattributed loopback main-frame requests with matching tabs", () => {

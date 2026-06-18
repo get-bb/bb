@@ -421,14 +421,24 @@ describe("shouldBlockBrowserRequest", () => {
     ).toBe(false);
   });
 
-  it("allows top-level http(s) navigations, including local targets", () => {
+  it("allows top-level public and loopback http(s) navigations", () => {
     for (const url of [
       "http://localhost:3000/",
-      "http://0.0.0.0:38886/",
-      "http://192.168.1.1/",
+      "http://127.0.0.1:38886/",
+      "http://[::1]:5173/",
       "https://example.com/",
     ]) {
       expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(false);
+    }
+  });
+
+  it("blocks top-level private and LAN navigations", () => {
+    for (const url of [
+      "http://0.0.0.0:38886/",
+      "http://192.168.1.1/",
+      "http://printer.local/",
+    ]) {
+      expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(true);
     }
   });
 

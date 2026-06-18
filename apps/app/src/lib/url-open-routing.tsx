@@ -15,7 +15,7 @@ export type OpenInAppBrowserUrl = (url: string) => void;
 
 interface UrlOpenRoutingProviderProps {
   children: ReactNode;
-  openInAppBrowser: OpenInAppBrowserUrl;
+  openInAppBrowser: OpenInAppBrowserUrl | null;
 }
 
 type UrlAnchorClickHandler = (

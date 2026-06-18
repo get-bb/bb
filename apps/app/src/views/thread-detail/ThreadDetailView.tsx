@@ -608,6 +608,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // The in-app browser surface only exists on desktop; on web this stays false
   // and handled web links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
+  const canOpenUrlsInAppBrowser =
+    props.surface === "page" && desktopBrowserAvailable;
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -866,13 +868,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const handleOpenUrlByPreference = useCallback(
     (url: string) =>
       openUrlByPreference({
-        desktopBrowserAvailable,
+        desktopBrowserAvailable: canOpenUrlsInAppBrowser,
         openExternalBrowser: openUrlInExternalBrowser,
         openInAppBrowser: openBrowserTabAndReveal,
         openLinksInAppBrowser,
         url,
       }),
-    [desktopBrowserAvailable, openBrowserTabAndReveal, openLinksInAppBrowser],
+    [canOpenUrlsInAppBrowser, openBrowserTabAndReveal, openLinksInAppBrowser],
   );
   const handleSelectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
@@ -1948,7 +1950,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
-    <UrlOpenRoutingProvider openInAppBrowser={openBrowserTabAndReveal}>
+    <UrlOpenRoutingProvider
+      openInAppBrowser={
+        canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+      }
+    >
       <ThreadDetailSecondaryContent
         footer={composerFooter}
         header={timelineHeader}
