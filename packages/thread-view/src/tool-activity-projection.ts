@@ -171,6 +171,7 @@ function emptyEventProjection(): EventProjection {
     state: {
       activeThinking: null,
       activeWorkflow: null,
+      activeBackgroundCommands: [],
     },
   };
 }

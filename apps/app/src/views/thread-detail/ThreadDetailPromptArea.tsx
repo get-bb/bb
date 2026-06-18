@@ -29,6 +29,7 @@ import {
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
+import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -143,6 +144,8 @@ interface ThreadDetailPromptAreaProps {
   goal: ThreadTimelineGoal | null;
   /** Running workflow row from the timeline. Null when no workflow is active. */
   activeWorkflow: TimelineWorkflowWorkRow | null;
+  /** Running backgrounded shell command rows, most recent first. Empty when none. */
+  activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
@@ -194,6 +197,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   goal,
   activeWorkflow,
+  activeBackgroundCommands,
   parentThreadSection,
   childThreadsSection,
   pullRequest,
@@ -343,6 +347,8 @@ export function ThreadDetailPromptArea({
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
+    useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -990,6 +996,11 @@ export function ThreadDetailPromptArea({
           isExpanded={isWorkflowExpanded}
           onToggle={() => setIsWorkflowExpanded((value) => !value)}
         />
+        <ThreadBackgroundCommandsCard
+          commands={activeBackgroundCommands}
+          isExpanded={isBackgroundCommandsExpanded}
+          onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
+        />
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -1079,6 +1090,8 @@ export function ThreadDetailPromptArea({
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
+      activeBackgroundCommands,
+      isBackgroundCommandsExpanded,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,

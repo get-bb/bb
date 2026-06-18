@@ -680,6 +680,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const {
     activeThinking,
     activeWorkflow,
+    activeBackgroundCommands,
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
@@ -2002,6 +2003,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       pendingTodos={pendingTodos}
       goal={goal}
       activeWorkflow={activeWorkflow}
+      activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       pullRequest={pullRequest}

@@ -529,6 +529,7 @@ export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
+  activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),

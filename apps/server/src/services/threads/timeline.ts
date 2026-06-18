@@ -872,6 +872,8 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activeThinking : null,
     activeWorkflow:
       options.page.kind === "latest" ? timeline.activeWorkflow : null,
+    activeBackgroundCommands:
+      options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     // pendingTodos is gated inside the projection via `isLatestPage` so the
     // extraction work is skipped on older-page requests entirely; no
     // post-hoc null-out needed here.

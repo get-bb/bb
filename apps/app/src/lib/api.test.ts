@@ -24,6 +24,7 @@ function makeTimelineResponse(): ThreadTimelineResponse {
     rows: [],
     activeThinking: null,
     activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
     maxSeq: 0,

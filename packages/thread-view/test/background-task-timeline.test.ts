@@ -91,12 +91,14 @@ function bashTaskItem(args: {
   taskStatus: ThreadEventBackgroundTaskItem["taskStatus"];
   status: ThreadEventBackgroundTaskItem["status"];
   summary?: string;
+  id?: string;
+  description?: string;
 }): ThreadEventBackgroundTaskItem {
   return {
     type: "backgroundTask",
-    id: "task:bmn5wv33k",
+    id: args.id ?? "task:bmn5wv33k",
     taskType: "local_bash",
-    description: "Count ticks from 1 to 6 with 1 second delays",
+    description: args.description ?? "Count ticks from 1 to 6 with 1 second delays",
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
@@ -442,7 +444,7 @@ describe("background task timeline projection", () => {
     expect(row.completedAt).not.toBeNull();
   });
 
-  it("surfaces a running background command in the prompt-box banner", () => {
+  it("keeps backgrounded shell commands out of the active-workflow banner", () => {
     const timeline = buildTimeline(
       [
         turnStarted("turn-1", 1),
@@ -471,18 +473,18 @@ describe("background task timeline projection", () => {
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
-    // A running shell command surfaces in the prompt-box banner like a workflow.
-    expect(timeline.activeWorkflow).toMatchObject({
+    // A running shell command never hijacks the workflow banner, but it does
+    // drive its own independent background-commands card.
+    expect(timeline.activeWorkflow).toBeNull();
+    expect(timeline.activeBackgroundCommands).toHaveLength(1);
+    expect(timeline.activeBackgroundCommands[0]).toMatchObject({
       itemId: "task:bmn5wv33k",
       taskType: "local_bash",
       status: "pending",
-      taskStatus: "running",
     });
   });
 
-  it("prefers a running workflow over a background command in the banner", () => {
-    // The workflow starts first and the shell command later; the banner still
-    // shows the workflow — a workflow takes precedence regardless of recency.
+  it("lists running background commands most-recent-first and excludes workflows", () => {
     const timeline = buildTimeline(
       [
         turnStarted("turn-1", 1),
@@ -502,19 +504,41 @@ describe("background task timeline projection", () => {
             threadId: "thread-1",
             providerThreadId: "provider-1",
             scope: turnScope("turn-1"),
-            item: bashTaskItem({ status: "pending", taskStatus: "running" }),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:cmd-early",
+              description: "Run the dev server",
+            }),
           },
           3,
         ),
-        turnCompleted("turn-1", 4),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:cmd-late",
+              description: "Watch and re-run tests",
+            }),
+          },
+          4,
+        ),
+        turnCompleted("turn-1", 5),
       ],
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
-    expect(timeline.activeWorkflow).toMatchObject({
-      itemId: "task:wf-1",
-      taskType: "local_workflow",
-    });
+    // The workflow drives the workflow banner; the two shell commands drive the
+    // background-commands card, ordered most recently started first.
+    expect(timeline.activeWorkflow).toMatchObject({ taskType: "local_workflow" });
+    expect(
+      timeline.activeBackgroundCommands.map((row) => row.itemId),
+    ).toEqual(["task:cmd-late", "task:cmd-early"]);
   });
 
   it("hides skip_transcript tasks from the timeline", () => {
