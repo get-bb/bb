@@ -812,6 +812,15 @@ describe("acp adapter event translation", () => {
     ).toEqual([]);
     expect(
       adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "session_info_update",
+          title: "Tool Tester",
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([]);
+    expect(
+      adapter.translateEvent(
         updateNotification({ sessionUpdate: "totally_new_update" }),
         THREAD_CONTEXT,
       ),
