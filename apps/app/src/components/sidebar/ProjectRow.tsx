@@ -1242,7 +1242,7 @@ function ProjectRowComponent({
                 project={project}
                 onOpenChange={setIsDropdownActionsOpen}
                 triggerClassName={cn(
-                  "relative z-10 text-muted-foreground",
+                  "relative z-10 text-muted-foreground hover:bg-transparent",
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               />
@@ -1258,7 +1258,7 @@ function ProjectRowComponent({
                   handleCreateThread();
                 }}
                 className={cn(
-                  "rounded-md p-0 text-muted-foreground",
+                  "rounded-md p-0 text-muted-foreground hover:bg-transparent",
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               >
