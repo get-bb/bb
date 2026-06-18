@@ -1,6 +1,7 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  buildChronologicalThreadList,
   buildProjectThreadGroups,
   compareByCreatedAtDescending,
   type ProjectThreadItem,
@@ -375,6 +376,42 @@ describe("buildProjectThreadGroups", () => {
         buildProjectThreadGroups(threads, compareByCreatedAtDescending),
       ),
     ).toEqual(["idle-new", "active-old"]);
+  });
+
+  describe("buildChronologicalThreadList", () => {
+    it("flattens parent/child threads into globally sorted top-level rows", () => {
+      const items = buildChronologicalThreadList(
+        [
+          createThread({ id: "parent", createdAt: 10, latestAttentionAt: 10 }),
+          createThread({
+            id: "child",
+            parentThreadId: "parent",
+            createdAt: 30,
+            latestAttentionAt: 30,
+          }),
+          createThread({ id: "other", createdAt: 20, latestAttentionAt: 20 }),
+        ],
+        compareByCreatedAtDescending,
+      );
+
+      // No nesting: the child is its own top-level row, ordered globally by
+      // createdAt desc rather than nested under its parent.
+      expect(summarizeItems(items)).toEqual(["child", "other", "parent"]);
+    });
+
+    it("excludes side chats", () => {
+      const items = buildChronologicalThreadList([
+        createThread({ id: "root", createdAt: 10 }),
+        createThread({
+          id: "side",
+          parentThreadId: "root",
+          originKind: "side-chat",
+          createdAt: 20,
+        }),
+      ]);
+
+      expect(summarizeItems(items)).toEqual(["root"]);
+    });
   });
 
   it("sorts top-level manager roots with the regular root ordering", () => {

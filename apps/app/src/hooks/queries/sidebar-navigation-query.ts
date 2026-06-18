@@ -61,6 +61,9 @@ export function useProjectDisplayName(
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
     staleTime: Infinity,
+    // Nothing to resolve without a project id (e.g. personal threads), so don't
+    // trigger the bootstrap fetch from this read-only selector.
+    enabled: Boolean(projectId),
   });
   if (!data || !projectId) {
     return undefined;

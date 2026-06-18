@@ -64,6 +64,7 @@ import {
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
+  buildChronologicalThreadList,
   buildProjectThreadGroups,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
@@ -1131,10 +1132,11 @@ function getChronologicalItemProjectId(item: ProjectThreadItem): string {
     : item.group.nodes[0].thread.projectId;
 }
 
-// Flat "All Threads" bucket for chronological mode: every non-pinned thread
-// across all projects, ordered by the chosen comparator. Reuses the section
-// thread-tree rows but derives projectId per top-level item from its own
-// thread so cross-project rows still route correctly.
+// Flat "All Threads" bucket for chronological mode: one top-level row per
+// non-pinned thread across all projects, globally ordered by the chosen
+// comparator (no parent/child nesting or worktree grouping, so nothing hides
+// behind a collapsed parent). Derives projectId per row from its own thread so
+// cross-project rows still route correctly.
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,
@@ -1150,7 +1152,7 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () => buildProjectThreadGroups(threads, compareThreads),
+    () => buildChronologicalThreadList(threads, compareThreads),
     [threads, compareThreads],
   );
 

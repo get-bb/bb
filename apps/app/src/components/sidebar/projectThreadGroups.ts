@@ -305,6 +305,32 @@ export function buildProjectThreadGroups(
   return buildSortedItems(rootNodes, compareThreads);
 }
 
+// Flat ordering for the chronological "All Threads" bucket: one top-level row
+// per thread, globally ordered by the chosen comparator. Unlike
+// buildProjectThreadGroups this intentionally drops parent/child nesting and
+// worktree grouping so every thread is visible (none hidden behind a collapsed
+// parent) and the sort is global rather than per-sibling. Side chats are
+// excluded to match buildProjectThreadGroups.
+export function buildChronologicalThreadList(
+  allThreads: readonly ThreadListEntry[],
+  compareThreads: ThreadComparator = compareStandardThreads,
+): ProjectThreadItem[] {
+  return allThreads
+    .filter(isSidebarProjectThread)
+    .sort(compareThreads)
+    .map(
+      (thread): ProjectThreadItem => ({
+        kind: "thread",
+        node: {
+          thread,
+          children: [],
+          depth: 0,
+          stats: buildStatsForHiddenThreads([]),
+        },
+      }),
+    );
+}
+
 export function isSidebarProjectThread(
   thread: SidebarProjectThreadShape,
 ): boolean {
