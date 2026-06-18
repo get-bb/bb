@@ -906,10 +906,7 @@ export async function getThread(
   signal?: AbortSignal,
 ): Promise<ThreadResponse> {
   return request<ThreadResponse>(
-    apiClient.threads[":id"].$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
+    apiClient.threads[":id"].$get({ param: { id } }, requestOptions(signal)),
   );
 }
 
