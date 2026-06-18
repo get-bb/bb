@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useState,
   type CSSProperties,
   type KeyboardEventHandler,
   type MouseEventHandler,
@@ -36,7 +37,10 @@ import {
   useLocalPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getProjectlessArchivedRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -88,6 +92,7 @@ import {
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
+  type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
@@ -100,6 +105,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
@@ -159,6 +165,18 @@ interface ProjectListProjectsSectionActionsProps {
 
 interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
+}
+
+interface SidebarViewOptionsMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
+}
+
+interface SidebarThreadActionsMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onOpenArchivedThreads?: () => void;
 }
 
 interface ProjectListNavigationLoadingRowProps {
@@ -225,6 +243,7 @@ interface TopLevelSidebarSectionProps {
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
+  actionsOpen?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
@@ -421,9 +440,8 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-
 interface SidebarOrganizeMenuSectionLabelProps {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }
 
@@ -446,7 +464,7 @@ function SidebarOrganizeMenuSectionLabel({
 interface SidebarOrganizeMenuOptionProps {
   label: string;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (event: Event) => void;
 }
 
 function SidebarOrganizeMenuOption({
@@ -471,10 +489,14 @@ function SidebarOrganizeMenuOption({
   );
 }
 
-// Shared "Organize sidebar" menu rendered on both the Projects and Threads
-// section headers. The organization mode is global, so either header's menu
-// drives the whole sidebar.
-function SidebarOrganizeMenu() {
+// Shared display menu rendered on both the Projects and Threads section
+// headers. The organization mode is global, so either header's menu drives the
+// whole sidebar.
+function SidebarViewOptionsMenu({
+  open,
+  onOpenChange,
+  onOrganizationModeSelect,
+}: SidebarViewOptionsMenuProps) {
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
   );
@@ -483,54 +505,112 @@ function SidebarOrganizeMenu() {
   );
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Organize sidebar"
-          title="Organize sidebar"
+          aria-label="Sidebar display options"
+          title="Sidebar display options"
           className={cn(
             "rounded-md p-0 text-muted-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
             COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
           )}
         >
           <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent
+        align="end"
+        className="w-52"
+        mobileTitle="Sidebar display options"
+      >
         <SidebarOrganizeMenuSectionLabel className="pt-1.5">
-          Organize sidebar
+          Group by
         </SidebarOrganizeMenuSectionLabel>
         <SidebarOrganizeMenuOption
-          label="By project"
+          label="Project"
           selected={organizationMode === "project"}
-          onSelect={() => setOrganizationMode("project")}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOrganizationMode("project");
+            onOrganizationModeSelect?.("project");
+          }}
         />
         <SidebarOrganizeMenuOption
-          label="Chronological list"
+          label="None"
           selected={organizationMode === "chronological"}
-          onSelect={() => setOrganizationMode("chronological")}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOrganizationMode("chronological");
+            onOrganizationModeSelect?.("chronological");
+          }}
         />
-        {organizationMode === "chronological" ? (
-          <>
-            <DropdownMenuSeparator />
-            <SidebarOrganizeMenuSectionLabel className="pt-2">
-              Sort by
-            </SidebarOrganizeMenuSectionLabel>
-            <SidebarOrganizeMenuOption
-              label="Updated at"
-              selected={chronologicalSort === "updated"}
-              onSelect={() => setChronologicalSort("updated")}
-            />
-            <SidebarOrganizeMenuOption
-              label="Created at"
-              selected={chronologicalSort === "created"}
-              onSelect={() => setChronologicalSort("created")}
-            />
-          </>
-        ) : null}
+        <DropdownMenuSeparator />
+        <SidebarOrganizeMenuSectionLabel className="pt-2">
+          Sort by
+        </SidebarOrganizeMenuSectionLabel>
+        <SidebarOrganizeMenuOption
+          label="Updated at"
+          selected={chronologicalSort === "updated"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setChronologicalSort("updated");
+          }}
+        />
+        <SidebarOrganizeMenuOption
+          label="Created at"
+          selected={chronologicalSort === "created"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setChronologicalSort("created");
+          }}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SidebarThreadActionsMenu({
+  open,
+  onOpenChange,
+  onOpenArchivedThreads,
+}: SidebarThreadActionsMenuProps) {
+  if (!onOpenArchivedThreads) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Threads actions"
+          title="Threads actions"
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name="MoreHorizontal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-44"
+        mobileTitle="Threads actions"
+      >
+        <DropdownMenuItem onSelect={onOpenArchivedThreads}>
+          Archived threads
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -573,6 +653,7 @@ function TopLevelSidebarSection({
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
+  actionsOpen = false,
   collapseControl,
   dragBindings,
   sectionRef,
@@ -646,12 +727,12 @@ function TopLevelSidebarSection({
         <span
           className={cn(
             "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
-            actions && "pr-14 max-md:pointer-coarse:pr-[4.5rem]",
+            actions && "pr-[5.75rem] max-md:pointer-coarse:pr-[7.25rem]",
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
-          {/* pr-14 reserves room for two action buttons (organize + new) on
-              fine pointers; coarse pointers need a little more. */}
+          {/* Reserve room for up to three section action buttons on the right;
+              coarse pointers need a little more. */}
           {collapseControl ? (
             <button
               type="button"
@@ -691,6 +772,9 @@ function TopLevelSidebarSection({
             onClick={stopActionsClick}
           >
             <span
+              data-sidebar-hover-actions-open={
+                actionsOpen ? "true" : undefined
+              }
               data-sidebar-hover-actions-mobile={
                 actionsMobileAlways
                   ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -698,6 +782,7 @@ function TopLevelSidebarSection({
               }
               className={cn(
                 "inline-flex shrink-0 items-center",
+                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                 !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
               )}
             >
@@ -1010,6 +1095,10 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
+  const handleOpenProjectlessArchivedThreads = useCallback(() => {
+    onProjectSelect?.();
+    navigate(getProjectlessArchivedRoutePath());
+  }, [navigate, onProjectSelect]);
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
   );
@@ -1024,9 +1113,52 @@ function ProjectListComponent({
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
+  const [isProjectsViewOptionsMenuOpen, setIsProjectsViewOptionsMenuOpen] =
+    useState(false);
+  const [isThreadsActionsMenuOpen, setIsThreadsActionsMenuOpen] =
+    useState(false);
+  const [isThreadsViewOptionsMenuOpen, setIsThreadsViewOptionsMenuOpen] =
+    useState(false);
+  const handleProjectsViewOptionsMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setIsProjectsViewOptionsMenuOpen(open);
+      if (open) {
+        setIsThreadsActionsMenuOpen(false);
+        setIsThreadsViewOptionsMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleThreadsActionsMenuOpenChange = useCallback((open: boolean) => {
+    setIsThreadsActionsMenuOpen(open);
+    if (open) {
+      setIsProjectsViewOptionsMenuOpen(false);
+      setIsThreadsViewOptionsMenuOpen(false);
+    }
+  }, []);
+  const handleThreadsViewOptionsMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setIsThreadsViewOptionsMenuOpen(open);
+      if (open) {
+        setIsProjectsViewOptionsMenuOpen(false);
+        setIsThreadsActionsMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleProjectsViewOptionsOrganizationModeSelect = useCallback(
+    (mode: SidebarOrganizationMode) => {
+      if (mode === "chronological") {
+        setIsProjectsViewOptionsMenuOpen(false);
+        setIsThreadsActionsMenuOpen(false);
+        setIsThreadsViewOptionsMenuOpen(true);
+      }
+    },
+    [],
+  );
   const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
   const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
-  const chronologicalComparator = useMemo<ThreadComparator>(
+  const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       chronologicalSort === "created"
         ? compareByCreatedAtDescending
@@ -1351,6 +1483,7 @@ function ProjectListComponent({
       collapsedProjectIds={collapsedProjectIds}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={sidebarThreadComparator}
       onProjectSelect={onProjectSelect}
       onCreateProjectThread={handleCreateProjectThread}
       onToggleProjectCollapsed={toggleProjectCollapsed}
@@ -1366,6 +1499,7 @@ function ProjectListComponent({
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={sidebarThreadComparator}
       variant="section"
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
@@ -1375,7 +1509,7 @@ function ProjectListComponent({
   const allThreadsSectionContent = (
     <ChronologicalThreadTree
       threadListState={allThreadsListState}
-      compareThreads={chronologicalComparator}
+      compareThreads={sidebarThreadComparator}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1386,7 +1520,13 @@ function ProjectListComponent({
   );
   const projectsSectionActions = (
     <>
-      <SidebarOrganizeMenu />
+      <SidebarViewOptionsMenu
+        open={isProjectsViewOptionsMenuOpen}
+        onOpenChange={handleProjectsViewOptionsMenuOpenChange}
+        onOrganizationModeSelect={
+          handleProjectsViewOptionsOrganizationModeSelect
+        }
+      />
       {onNewProject ? (
         <ProjectListProjectsSectionActions
           onNewProject={onNewProject}
@@ -1399,7 +1539,15 @@ function ProjectListComponent({
     projectsState.status === "ready" && renderedProjects.length === 0;
   const threadsSectionActions = (
     <>
-      <SidebarOrganizeMenu />
+      <SidebarThreadActionsMenu
+        open={isThreadsActionsMenuOpen}
+        onOpenChange={handleThreadsActionsMenuOpenChange}
+        onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
+      />
+      <SidebarViewOptionsMenu
+        open={isThreadsViewOptionsMenuOpen}
+        onOpenChange={handleThreadsViewOptionsMenuOpenChange}
+      />
       <ProjectListThreadsSectionActions
         onNewThread={handleCreateProjectlessThread}
       />
@@ -1443,6 +1591,9 @@ function ProjectListComponent({
           <TopLevelSidebarSection
             label="All Threads"
             actions={threadsSectionActions}
+            actionsOpen={
+              isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen
+            }
             actionsMobileAlways
             collapseControl={{
               isCollapsed: collapsedSidebarSectionIds.has("threads"),
@@ -1484,6 +1635,7 @@ function ProjectListComponent({
                   label="Projects"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
+                  actionsOpen={isProjectsViewOptionsMenuOpen}
                   actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
@@ -1503,6 +1655,9 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  actionsOpen={
+                    isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen
+                  }
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),

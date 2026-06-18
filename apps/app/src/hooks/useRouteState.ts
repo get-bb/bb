@@ -8,7 +8,7 @@ export interface RouteState {
   threadId: string | undefined;
   /** On a thread detail URL. */
   isThreadView: boolean;
-  /** On the project's archived threads list. */
+  /** On a project or projectless archived threads list. */
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
@@ -25,7 +25,7 @@ export interface RouteState {
   automationProjectId: string | undefined;
   /** On the root route ("/"). */
   isRootView: boolean;
-  /** On the projectless new-thread surface or canonical projectless thread URL. */
+  /** On a projectless surface: compose, thread detail, or archived threads. */
   isProjectlessView: boolean;
 }
 
@@ -48,6 +48,7 @@ export function useRouteState(): RouteState {
     "/popout/projects/:projectId/threads/:threadId/*",
   );
   const popoutProjectlessThreadMatch = useMatch("/popout/threads/:threadId/*");
+  const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
   const automationDetailMatch = useMatch(
@@ -69,7 +70,7 @@ export function useRouteState(): RouteState {
   const projectRouteProjectId =
     projectMatch?.params.projectId ?? popoutProjectThreadMatch?.params.projectId;
   const projectId =
-    projectlessThreadId !== undefined
+    projectlessThreadId !== undefined || Boolean(projectlessArchivedMatch)
       ? PERSONAL_PROJECT_ID
       : isUnsupportedPersonalProjectThread
         ? undefined
@@ -83,7 +84,8 @@ export function useRouteState(): RouteState {
       Boolean(popoutProjectlessThreadMatch) ||
       ((Boolean(projectThreadMatch) || Boolean(popoutProjectThreadMatch)) &&
         !isUnsupportedPersonalProjectThread),
-    isArchivedView: Boolean(projectArchivedMatch),
+    isArchivedView:
+      Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
     isAutomationsView:
       location.pathname === "/automations" || Boolean(automationDetailMatch),
@@ -91,6 +93,9 @@ export function useRouteState(): RouteState {
     automationId: automationDetailMatch?.params.automationId,
     automationProjectId: automationDetailMatch?.params.projectId,
     isRootView,
-    isProjectlessView: isRootView || projectlessThreadId !== undefined,
+    isProjectlessView:
+      isRootView ||
+      projectlessThreadId !== undefined ||
+      Boolean(projectlessArchivedMatch),
   };
 }

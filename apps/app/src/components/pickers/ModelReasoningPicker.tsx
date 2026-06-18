@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
@@ -16,7 +16,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover.js";
 import { Switch } from "@/components/ui/switch.js";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import { cn } from "@/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
@@ -574,19 +573,16 @@ export function ModelReasoningPicker({
   );
 }
 
-// `sticky top-0` keeps "Model" pinned to the top of its scrolling parent
-// (no-op for "Reasoning" — its parent doesn't scroll). `-mx-1 px-3` covers the
-// scroll container gutter while keeping label text aligned with option rows.
-// The top inset lives inside the opaque sticky label, not on the scroll
-// container, so rows can't peek above it while it is pinned. Uses
-// `CHROME_SECTION_LABEL_CLASS` so these read like the sidebar's
-// Projects/Pinned/Threads section labels.
-function MenuSectionLabel({ children }: { children: React.ReactNode }) {
+// Mirrors DropdownMenuLabel spacing/typography while staying sticky in the
+// scrollable model list.
+function MenuSectionLabel({ children }: { children: ReactNode }) {
+  const isCompactViewport = useIsCompactViewport();
+
   return (
     <div
       className={cn(
-        "sticky top-0 z-10 -mx-1 flex h-8 items-center bg-background px-3 pt-1",
-        CHROME_SECTION_LABEL_CLASS,
+        "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
+        isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
       )}
     >
       {children}

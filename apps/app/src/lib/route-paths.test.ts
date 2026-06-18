@@ -5,6 +5,7 @@ import {
   getPopoutRoutePath,
   getPopoutThreadRoutePath,
   getProjectArchivedRoutePath,
+  getProjectlessArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
@@ -35,6 +36,12 @@ describe("route path helpers", () => {
     expect(getProjectArchivedRoutePath("proj_standard")).toBe(
       "/projects/proj_standard/archived",
     );
+  });
+
+  it("builds and recognizes the canonical projectless archived URL", () => {
+    expect(getProjectlessArchivedRoutePath()).toBe("/archived");
+    expect(getProjectArchivedRoutePath(PERSONAL_PROJECT_ID)).toBe("/archived");
+    expect(isRoutePath({ path: "/archived" })).toBe(true);
   });
 
   it("builds canonical projectless thread detail URLs", () => {

@@ -20,6 +20,7 @@ export const AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
+export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
 export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
@@ -96,7 +97,14 @@ export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
 
+export function getProjectlessArchivedRoutePath(): string {
+  return PROJECTLESS_ARCHIVED_ROUTE_PATH;
+}
+
 export function getProjectArchivedRoutePath(projectId: string): string {
+  if (isProjectlessProjectId(projectId)) {
+    return getProjectlessArchivedRoutePath();
+  }
   return `/projects/${projectId}/archived`;
 }
 
@@ -124,6 +132,7 @@ const baseRoutePatterns: readonly string[] = [
   AUTOMATIONS_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,

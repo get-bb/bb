@@ -20,6 +20,7 @@ import {
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
@@ -116,6 +117,10 @@ function AppRoutes() {
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
+            element={<ProjectArchivedThreadsView />}
+          />
+          <Route
+            path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
             element={<ProjectArchivedThreadsView />}
           />
           <Route

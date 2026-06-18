@@ -182,7 +182,11 @@ export function ThreadActionsMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className={cn("rounded-md p-0", triggerClassName)}
+          className={cn(
+            "rounded-md p-0",
+            triggerClassName,
+            "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+          )}
           aria-label="Thread actions"
           title="Thread actions"
           onClick={(event) => {

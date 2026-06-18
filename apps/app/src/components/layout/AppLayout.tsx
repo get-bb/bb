@@ -49,6 +49,8 @@ import {
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
+  getRootComposeRoutePath,
+  isProjectlessProjectId,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -309,7 +311,9 @@ function AppHeader({
   ) : null;
 
   const actions =
-    usesProjectChromeStyle && projectId ? (
+    usesProjectChromeStyle &&
+    projectId &&
+    !isProjectlessProjectId(projectId) ? (
       <>
         <Link
           to={getProjectSettingsRoutePath(projectId)}
@@ -455,17 +459,26 @@ export function AppLayout({ children }: AppLayoutProps) {
           ],
         }
       : isArchivedView && projectId
-      ? {
-          title: "",
-          subtitle: undefined,
-          breadcrumbs: [
-            {
-              label: projectLabel ?? projectId,
-              to: getLegacyProjectComposeRoutePath(projectId),
-            },
-            { label: "Archived" },
-          ],
-        }
+        ? isProjectlessProjectId(projectId)
+          ? {
+              title: "",
+              subtitle: undefined,
+              breadcrumbs: [
+                { label: "Threads", to: getRootComposeRoutePath() },
+                { label: "Archived" },
+              ],
+            }
+          : {
+              title: "",
+              subtitle: undefined,
+              breadcrumbs: [
+                {
+                  label: projectLabel ?? projectId,
+                  to: getLegacyProjectComposeRoutePath(projectId),
+                },
+                { label: "Archived" },
+              ],
+            }
       : isSettingsView && projectId
         ? {
             title: "",
@@ -493,6 +506,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       return `${automationName} · Automations`;
     }
     if (isArchivedView && projectId) {
+      if (isProjectlessProjectId(projectId)) {
+        return "Threads · Archived";
+      }
       return `${projectLabel ?? projectId} · Archived`;
     }
     if (isSettingsView && projectId) {

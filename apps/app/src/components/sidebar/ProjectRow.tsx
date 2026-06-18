@@ -49,6 +49,7 @@ import {
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
@@ -106,6 +107,7 @@ export interface ProjectRowProps {
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
+  compareThreads: ThreadComparator;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   isLocalPathInvalid: boolean;
@@ -123,6 +125,7 @@ export interface ProjectRowProps {
 export interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
+  compareThreads: ThreadComparator;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -585,6 +588,7 @@ function EnvironmentThreadGroupHeaderActions({
             title="Worktree actions"
             className={cn(
               "rounded-md p-0 text-muted-foreground",
+              "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
             )}
           >
@@ -1048,6 +1052,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
+  compareThreads,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1061,8 +1066,8 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () => buildProjectThreadGroups(projectThreads),
-    [projectThreads],
+    () => buildProjectThreadGroups(projectThreads, compareThreads),
+    [compareThreads, projectThreads],
   );
 
   if (threadListState.status === "loading") {
@@ -1213,6 +1218,7 @@ function ProjectRowComponent({
   selectedThreadId,
   isActive,
   isCollapsed,
+  compareThreads,
   collapsedThreadIds,
   collapsedEnvironmentIds,
   isLocalPathInvalid,
@@ -1330,6 +1336,7 @@ function ProjectRowComponent({
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-10 inline-flex shrink-0 items-center",
+                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
               )}
             >
               <ProjectActionsMenu
@@ -1372,6 +1379,7 @@ function ProjectRowComponent({
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
+            compareThreads={compareThreads}
             variant="project"
             onProjectSelect={onProjectSelect}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
@@ -1463,6 +1471,7 @@ function areProjectRowPropsEqual(
     prev.threadListState !== next.threadListState ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
+    prev.compareThreads !== next.compareThreads ||
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||

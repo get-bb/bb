@@ -47,7 +47,7 @@ const ACTION_BUTTON_CLASS =
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
-  "hidden size-9 items-center justify-center text-muted-foreground hover:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-5";
+  "hidden size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-5";
 
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,

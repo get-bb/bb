@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectRow } from "./ProjectRow";
 import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow";
+import type { ThreadComparator } from "./projectThreadGroups";
 import { useSidebarSortable } from "./sortableMotion";
 import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
@@ -49,6 +50,7 @@ export interface ProjectListProjectsProps {
   collapsedProjectIds: Set<string>;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
+  compareThreads: ThreadComparator;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
@@ -96,6 +98,7 @@ export function ProjectListProjects({
   collapsedProjectIds,
   collapsedThreadIds,
   collapsedEnvironmentIds,
+  compareThreads,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
@@ -111,6 +114,7 @@ export function ProjectListProjects({
     isCollapsed: collapsedProjectIds.has(row.project.id),
     collapsedThreadIds,
     collapsedEnvironmentIds,
+    compareThreads,
     isLocalPathInvalid: row.isLocalPathInvalid,
     onProjectSelect,
     onCreateProjectThread,

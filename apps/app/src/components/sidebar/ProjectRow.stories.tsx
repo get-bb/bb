@@ -17,6 +17,7 @@ import {
   ProjectListProjects,
   type ProjectListRowModel,
 } from "./ProjectListProjects";
+import { compareStandardThreads } from "./projectThreadGroups";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -126,6 +127,7 @@ function InteractiveProjectList({
       collapsedProjectIds={collapsedProjectIds}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={compareStandardThreads}
       onCreateProjectThread={noop}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
       onToggleThreadCollapsed={onToggleThreadCollapsed}

@@ -47,7 +47,7 @@ export function ProjectSourceRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0"
+            className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
             aria-label="Source actions"
           >
             <Icon name="MoreHorizontal" className="size-4" />

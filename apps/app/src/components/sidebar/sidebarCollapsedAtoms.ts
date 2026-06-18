@@ -20,8 +20,9 @@ export type CollapsibleSidebarSectionId =
 // "project" keeps the per-project grouping; "chronological" flattens every
 // non-pinned thread into a single All Threads bucket.
 export type SidebarOrganizationMode = "project" | "chronological";
-// Only meaningful in chronological mode. "updated" reuses the status-aware
-// activity heuristic; "created" sorts by the literal createdAt field.
+// Controls thread ordering in both grouped and ungrouped sidebar views.
+// "updated" reuses the status-aware activity heuristic; "created" sorts by
+// the literal createdAt field.
 export type SidebarChronologicalSort = "updated" | "created";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
