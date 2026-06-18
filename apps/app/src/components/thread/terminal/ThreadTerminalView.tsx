@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
@@ -7,6 +7,10 @@ import { terminalServerMessageSchema } from "@bb/server-contract";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import {
+  openUrlInExternalBrowser,
+  useOpenUrlByPreference,
+} from "@/lib/url-open-routing";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -105,7 +109,7 @@ interface TerminalOutputWriteArgs {
 
 interface OpenTerminalWebLinkArgs {
   event: MouseEvent;
-  onOpenLink: MarkdownPreviewLinkHandler | undefined;
+  onOpenLink: MarkdownPreviewLinkHandler;
   uri: string;
 }
 
@@ -212,11 +216,11 @@ function openTerminalWebLink({
   onOpenLink,
   uri,
 }: OpenTerminalWebLinkArgs): void {
-  if (onOpenLink?.({ href: uri })) {
+  if (onOpenLink({ href: uri })) {
     event.preventDefault();
     return;
   }
-  window.open(uri, "_blank", "noopener,noreferrer");
+  openUrlInExternalBrowser(uri);
 }
 
 function writeTerminalOutput({
@@ -289,9 +293,6 @@ export function ThreadTerminalView({
   const onTitleChangeRef = useRef<TerminalTitleChangeHandler | undefined>(
     onTitleChange,
   );
-  const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler | undefined>(
-    onOpenLink,
-  );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
   const isPanelOpenRef = useRef(isPanelOpen);
   const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
@@ -299,11 +300,20 @@ export function ThreadTerminalView({
   const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const preferredTheme = usePreferredTheme();
+  const openUrlByPreference = useOpenUrlByPreference();
+  const handleOpenLinkByPreference =
+    useCallback<MarkdownPreviewLinkHandler>(
+      ({ href }) => openUrlByPreference(href),
+      [openUrlByPreference],
+    );
+  const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
+  const onOpenLinkRef =
+    useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
   isPanelOpenRef.current = isPanelOpen;
   sessionStatusRef.current = session.status;
   sessionRef.current = session;
-  onOpenLinkRef.current = onOpenLink;
+  onOpenLinkRef.current = effectiveOnOpenLink;
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
 

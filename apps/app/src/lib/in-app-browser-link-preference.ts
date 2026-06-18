@@ -8,24 +8,31 @@ export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
  * Default ON: the feature routes bb links into the desktop in-app browser
  * instead of the external OS browser. Users can turn it OFF to fall back to the
  * external-open behavior. The preference only has an effect on desktop builds
- * (see {@link resolveInAppBrowserLinkOpenTarget}); on web there is no in-app
- * browser.
+ * (see {@link resolveUrlOpenTarget}); on web there is no in-app browser.
  */
 export const OPEN_LINKS_IN_APP_BROWSER_DEFAULT = true;
 
-export type InAppBrowserLinkOpenTarget = "in-app-browser" | "default";
+export type UrlOpenTarget =
+  | "in-app-browser"
+  | "external-browser"
+  | "unhandled";
 
-interface ResolveInAppBrowserLinkOpenTargetArgs {
+interface ResolveUrlOpenTargetArgs {
   /** Whether the desktop in-app browser surface is available in this build. */
   desktopBrowserAvailable: boolean;
   /** The persisted user preference. */
-  openInAppBrowser: boolean;
+  openLinksInAppBrowser: boolean;
   /** The link's resolved href. */
   url: string;
 }
 
-// Only ordinary web links are routed into the in-app browser. mailto:, file://,
-// relative app routes, and other non-http schemes keep their default behavior.
+interface OpenUrlByPreferenceArgs extends ResolveUrlOpenTargetArgs {
+  openExternalBrowser: (url: string) => void;
+  openInAppBrowser: (url: string) => void;
+}
+
+// Only ordinary web links are owned by this preference. mailto:, file://,
+// relative app routes, and other non-http schemes stay on their existing path.
 const HTTP_URL_SCHEME_PATTERN = /^https?:\/\//iu;
 
 export function isHttpOrHttpsUrl(url: string): boolean {
@@ -33,21 +40,47 @@ export function isHttpOrHttpsUrl(url: string): boolean {
 }
 
 /**
- * Decides where a bb link click should open. Returns `"in-app-browser"` only
- * when the desktop browser surface exists, the user preference is on, and the
- * href is a normal http(s) URL. Every other case returns `"default"`, leaving
- * the anchor's existing behavior (external open for web links, internal routing
- * for relative links, mail client for mailto, etc.) untouched.
+ * Decides where an ordinary web URL should open. Non-http(s) links are
+ * deliberately unhandled so file links, app routes, mailto links, and other
+ * schemes keep their dedicated behavior.
  */
-export function resolveInAppBrowserLinkOpenTarget({
+export function resolveUrlOpenTarget({
   desktopBrowserAvailable,
-  openInAppBrowser,
+  openLinksInAppBrowser,
   url,
-}: ResolveInAppBrowserLinkOpenTargetArgs): InAppBrowserLinkOpenTarget {
-  if (desktopBrowserAvailable && openInAppBrowser && isHttpOrHttpsUrl(url)) {
+}: ResolveUrlOpenTargetArgs): UrlOpenTarget {
+  if (!isHttpOrHttpsUrl(url)) {
+    return "unhandled";
+  }
+  if (desktopBrowserAvailable && openLinksInAppBrowser) {
     return "in-app-browser";
   }
-  return "default";
+  return "external-browser";
+}
+
+export function openUrlByPreference({
+  desktopBrowserAvailable,
+  openExternalBrowser,
+  openInAppBrowser,
+  openLinksInAppBrowser,
+  url,
+}: OpenUrlByPreferenceArgs): boolean {
+  const target = resolveUrlOpenTarget({
+    desktopBrowserAvailable,
+    openLinksInAppBrowser,
+    url,
+  });
+
+  switch (target) {
+    case "in-app-browser":
+      openInAppBrowser(url);
+      return true;
+    case "external-browser":
+      openExternalBrowser(url);
+      return true;
+    case "unhandled":
+      return false;
+  }
 }
 
 const openLinksInAppBrowserStorage = createJsonLocalStorage<boolean>();

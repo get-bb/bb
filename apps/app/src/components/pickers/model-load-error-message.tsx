@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
+import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 interface ModelLoadErrorMessageProps {
   error: SystemExecutionOptionsModelLoadError;
@@ -35,6 +36,8 @@ export function ModelLoadErrorMessage({
   error,
   providerLabel,
 }: ModelLoadErrorMessageProps): ReactNode {
+  const handleHelpLinkClick = useUrlAnchorClickHandler(CODEX_CLI_HELP_LINK.url);
+
   if (error.code === "missing_executable" && error.providerId === "codex") {
     return (
       <>
@@ -43,6 +46,7 @@ export function ModelLoadErrorMessage({
           href={CODEX_CLI_HELP_LINK.url}
           target="_blank"
           rel="noreferrer"
+          onClick={handleHelpLinkClick}
           className="underline underline-offset-2 hover:text-foreground"
         >
           {CODEX_CLI_HELP_LINK.label}
