@@ -469,6 +469,18 @@ function TopLevelSidebarSection({
     },
     [collapseControl],
   );
+  const handleSectionLabelClick = useCallback<MouseEventHandler<HTMLDivElement>>(
+    () => {
+      collapseControl?.onToggleCollapsed();
+    },
+    [collapseControl],
+  );
+  const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
+    (event) => {
+      event.stopPropagation();
+    },
+    [],
+  );
   const stopCollapseControlPointerDown = useCallback<
     PointerEventHandler<HTMLButtonElement>
   >((event) => {
@@ -497,6 +509,7 @@ function TopLevelSidebarSection({
           dragBindings && !dragBindings.disabled && "select-none",
         )}
         title={label}
+        onClick={collapseControl ? handleSectionLabelClick : undefined}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
@@ -523,7 +536,7 @@ function TopLevelSidebarSection({
               }
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -541,7 +554,10 @@ function TopLevelSidebarSection({
           ) : null}
         </span>
         {actions ? (
-          <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
+          <span
+            className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center"
+            onClick={stopActionsClick}
+          >
             <span
               data-sidebar-hover-actions-mobile={
                 actionsMobileAlways
