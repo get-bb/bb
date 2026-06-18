@@ -25,7 +25,7 @@ export interface UseCommandSuggestionsArgs {
 
 export interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
-  trigger: "/" | "$" | null;
+  trigger: "/" | null;
   suggestions: ProviderCommandSuggestion[];
   /**
    * `true` only before the first result lands (and not yet placeholder-backed).
@@ -47,7 +47,7 @@ export interface UseCommandSuggestionsResult {
  * new-thread composer. The hook is inert — never fetches, returns an empty list
  * — when there is no project, no command trigger for the provider, or no active
  * command query. Unlike mentions, it is enabled even when `query` is empty —
- * `/`/`$` show the full available list.
+ * `/` shows the full available list.
  */
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,

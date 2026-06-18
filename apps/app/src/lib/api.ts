@@ -740,9 +740,9 @@ interface ListProjectCommandsArgs {
 
 /**
  * List the provider skills/slash-commands discoverable for a project, scoped by
- * provider + environment, for the in-composer command typeahead (`/` Claude
- * Code, `$` Codex). Serves both the existing-thread follow-up composer and the
- * new-thread composer. Mirrors {@link searchProjectPaths}: the typed Hono
+ * provider + environment, for the in-composer command typeahead (`/`). Serves
+ * both the existing-thread follow-up composer and the new-thread composer.
+ * Mirrors {@link searchProjectPaths}: the typed Hono
  * client resolves the route from `@bb/server-contract`'s public-api schema, so
  * this types against the committed `CommandListResponse` contract with no cast,
  * and encodes a null `environmentId` as the empty string on the wire.
