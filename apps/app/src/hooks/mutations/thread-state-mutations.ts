@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
+  ThreadResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
@@ -16,6 +17,7 @@ import {
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
+  beginThreadTitleTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinThreadTransaction,
@@ -61,7 +63,12 @@ interface DeleteThreadMutationRequest {
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    ThreadResponse,
+    Error,
+    UpdateThreadMutationRequest,
+    ThreadListMutationTransaction | undefined
+  >({
     meta: {
       errorMessage: options?.errorMessage ?? "Failed to update thread.",
       ...(options?.lifecycleOperation
@@ -70,6 +77,27 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     },
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       api.updateThread(id, request),
+    onMutate: ({
+      id,
+      title,
+    }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
+      if (title === undefined) {
+        return undefined;
+      }
+
+      return beginThreadTitleTransaction({
+        queryClient,
+        threadId: id,
+        title,
+      });
+    },
+    onError: (_error, variables, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId: variables.id,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
     },

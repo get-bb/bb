@@ -61,6 +61,10 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
   lastReadAt: number | null;
 }
 
+interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
+  title: string | null;
+}
+
 interface ReorderPinnedThreadTransactionRequest extends ReorderPinnedThreadRequest {
   id: string;
 }
@@ -351,6 +355,24 @@ export function beginThreadReadStateTransaction({
       ...thread,
       lastReadAt: getOptimisticLastReadAt(thread, lastReadAt),
     }),
+    queryClient,
+    threadId,
+  });
+}
+
+export function beginThreadTitleTransaction({
+  queryClient,
+  threadId,
+  title,
+}: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
+  return runOptimisticThreadFieldTransaction({
+    applyToLists: (queryClient, threadId) =>
+      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
+        list.map((thread) =>
+          thread.id === threadId ? { ...thread, title } : thread,
+        ),
+      ),
+    patch: { title },
     queryClient,
     threadId,
   });

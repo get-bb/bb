@@ -9,6 +9,7 @@ import {
 } from "../queries/query-keys";
 import {
   beginThreadReadStateTransaction,
+  beginThreadTitleTransaction,
   rollbackThreadListMutationTransaction,
 } from "./thread-state-cache-owner";
 
@@ -87,6 +88,68 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it("optimistically renames thread in thread, list, and sidebar caches", async () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadId = "thread-1";
+    const thread = makeThreadWithRuntime({
+      id: threadId,
+      title: "Old title",
+    });
+    const listEntry = makeThreadListEntry({
+      id: threadId,
+      title: "Old title",
+    });
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+
+    queryClient.setQueryData(threadQueryKey(threadId), thread);
+    queryClient.setQueryData(threadListKey, [listEntry]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([listEntry]),
+    );
+
+    const transaction = await beginThreadTitleTransaction({
+      queryClient,
+      threadId,
+      title: "New title",
+    });
+
+    expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.title,
+    ).toBe("New title");
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.title,
+    ).toBe("New title");
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.title,
+    ).toBe("New title");
+
+    rollbackThreadListMutationTransaction({
+      queryClient,
+      threadId,
+      transaction,
+    });
+
+    expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.title,
+    ).toBe("Old title");
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.title,
+    ).toBe("Old title");
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.title,
+    ).toBe("Old title");
+  });
+
   it("optimistically marks read state in thread, list, and sidebar caches", async () => {
     const { queryClient } = createQueryClientTestHarness();
     const threadId = "thread-1";
