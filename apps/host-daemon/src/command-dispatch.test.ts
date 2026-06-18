@@ -143,6 +143,7 @@ function createWorkspace(): HostWorkspace {
     diffFiles: unexpectedWorkspaceCall,
     diffPatch: unexpectedWorkspaceCall,
     getPullRequest: unexpectedWorkspaceCall,
+    runPullRequestAction: unexpectedWorkspaceCall,
     listBranches: unexpectedWorkspaceCall,
     listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,

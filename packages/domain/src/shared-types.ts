@@ -123,7 +123,7 @@ export type PromptMentionPathEntryKind = z.infer<
   typeof promptMentionPathEntryKindSchema
 >;
 
-export const promptMentionCommandTriggerValues = ["/", "$"] as const;
+export const promptMentionCommandTriggerValues = ["/"] as const;
 export const promptMentionCommandTriggerSchema = z.enum(
   promptMentionCommandTriggerValues,
 );

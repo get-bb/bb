@@ -13,6 +13,7 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  PullRequestMergeMethod,
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
@@ -107,6 +108,10 @@ interface ThreadDetailPromptAreaProps {
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
   onEscapeEmptyPrompt?: () => void;
+  onPullRequestDraft?: () => void;
+  onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
+  onPullRequestReady?: () => void;
+  pullRequestMergeMethod: PullRequestMergeMethod;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -173,6 +178,10 @@ export function ThreadDetailPromptArea({
   environmentLabel,
   onCreateNewThreadInWorktree,
   onEscapeEmptyPrompt,
+  onPullRequestDraft,
+  onPullRequestMerge,
+  onPullRequestReady,
+  pullRequestMergeMethod,
   isEnvironmentActionPending,
   pendingInteractions,
   onChangedFileClick,
@@ -297,8 +306,39 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
-    () => (pullRequest ? { pullRequest } : null),
-    [pullRequest],
+    () => {
+      if (!pullRequest) {
+        return null;
+      }
+      const actions =
+        onPullRequestReady ||
+        onPullRequestMerge ||
+        onPullRequestDraft ||
+        isEnvironmentActionPending
+          ? {
+              isPending: isEnvironmentActionPending,
+              ...(onPullRequestReady
+                ? { onMarkReady: onPullRequestReady }
+                : {}),
+              ...(onPullRequestMerge ? { onMerge: onPullRequestMerge } : {}),
+              ...(onPullRequestDraft
+                ? { onConvertToDraft: onPullRequestDraft }
+                : {}),
+              ...(onPullRequestMerge
+                ? { selectedMergeMethod: pullRequestMergeMethod }
+                : {}),
+            }
+          : undefined;
+      return actions ? { pullRequest, actions } : { pullRequest };
+    },
+    [
+      isEnvironmentActionPending,
+      onPullRequestDraft,
+      onPullRequestMerge,
+      onPullRequestReady,
+      pullRequest,
+      pullRequestMergeMethod,
+    ],
   );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
@@ -363,7 +403,6 @@ export function ThreadDetailPromptArea({
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
     sendMessage.isPending ||
-    isEnvironmentActionPending ||
     createQueuedMessage.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {

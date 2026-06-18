@@ -16,7 +16,11 @@ import type {
   PromptInput,
 } from "@bb/domain";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
-import type { HostWorkspace, ProvisionWorkspaceArgs } from "@bb/host-workspace";
+import type {
+  HostWorkspace,
+  ProvisionWorkspaceArgs,
+  PullRequestActionOptions,
+} from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import { listFilesRecursively } from "../../src/command-handlers/file-list.js";
 import { noopEventSink } from "../../src/command-dispatch-support.js";
@@ -46,6 +50,7 @@ interface FakeWorkspaceState {
   destroyed: boolean;
   lastCommitMessage: string | undefined;
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
+  lastPullRequestAction: PullRequestActionOptions | undefined;
   listedModelsProviderId: string | undefined;
   pullRequest: GitHostPullRequest | null;
   resetCount: number;
@@ -116,6 +121,7 @@ export function createFakeWorkspace(pathname: string) {
     resetCount: 0,
     destroyed: false,
     listedModelsProviderId: undefined,
+    lastPullRequestAction: undefined,
     pullRequest: null,
   };
   const workspace: FakeHostWorkspace = {
@@ -193,6 +199,9 @@ export function createFakeWorkspace(pathname: string) {
     },
     async getPullRequest() {
       return state.pullRequest;
+    },
+    async runPullRequestAction(action) {
+      state.lastPullRequestAction = action;
     },
     async listBranches() {
       return ["main"];

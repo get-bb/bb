@@ -22,6 +22,7 @@ import {
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
 import {
+  timelineDeltaSchema,
   timelineRowSchema,
   timelineWorkflowWorkRowSchema,
 } from "../thread-timeline.js";
@@ -420,6 +421,13 @@ export const threadTimelineQuerySchema = z
      * semantics.
      */
     summaryOnly: z.enum(["true", "false"]),
+    /**
+     * The `maxSeq` the client last received for this window. When provided and
+     * the server can still reconstruct what the client holds, the response is a
+     * `delta` (changed rows only) instead of the full `rows`; otherwise the
+     * server returns the full window and the client replaces.
+     */
+    afterSequence: z.string().regex(/^\d+$/),
   })
   .partial()
   .superRefine((query, context) => {
@@ -525,6 +533,14 @@ export const threadTimelineResponseSchema = z.object({
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
+  /** Thread high-water event sequence this window reflects; bumps on append. */
+  maxSeq: z.number().int().nonnegative(),
+  /**
+   * Present only when the request supplied a usable `afterSequence`: the
+   * changed rows + ordering to apply to the client's previous window. When
+   * present, `rows` is empty and the client merges via `applyTimelineDelta`.
+   */
+  delta: timelineDeltaSchema.optional(),
 });
 export type ThreadTimelineResponse = z.infer<
   typeof threadTimelineResponseSchema

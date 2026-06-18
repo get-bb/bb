@@ -232,7 +232,7 @@ describe("acp bridge", () => {
     });
   });
 
-  it("falls back to the synthetic model when the list command fails", async () => {
+  it("fails model/list with a clear error when the list command is missing", async () => {
     const failingId = sendRequest("model/list", {
       listCommand: {
         command: "/nonexistent/acp-model-lister",
@@ -240,10 +240,34 @@ describe("acp bridge", () => {
       },
       primaryModels: [],
     });
-    expect((await waitForResponse(failingId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+    const failingResponse = await waitForResponse(failingId);
+    expect(failingResponse.error?.message).toMatch(
+      /spawn \/nonexistent\/acp-model-lister ENOENT/,
+    );
+  });
+
+  it("fails model/list when the list command reports Cursor auth is required", async () => {
+    const authId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "console.error(\"Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.\");",
+            "process.exit(1);",
+          ].join(""),
+        ],
+      },
+      primaryModels: [],
     });
 
+    const response = await waitForResponse(authId);
+    expect(response.error?.message).toBe(
+      "Cursor agent is not authenticated.",
+    );
+  });
+
+  it("falls back to the synthetic model when the list command prints no models", async () => {
     const emptyId = sendRequest("model/list", {
       listCommand: {
         command: process.execPath,

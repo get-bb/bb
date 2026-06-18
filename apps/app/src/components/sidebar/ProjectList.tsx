@@ -716,6 +716,10 @@ function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
+          // Align the label with the sidebar's standard content inset so the
+          // header text sits in the same column as the rows below it, rather
+          // than hanging left on the narrower inherited group-label padding.
+          SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-1 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}

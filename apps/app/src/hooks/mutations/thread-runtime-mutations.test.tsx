@@ -6,8 +6,10 @@ import type { ExistingThreadExecutionInputSources } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 import {
   useCreateThreadQueuedMessage,
+  useDeleteThreadQueuedMessage,
   useSendThreadMessage,
 } from "./thread-runtime-mutations";
 
@@ -16,6 +18,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     createThreadQueuedMessage: vi.fn(),
+    deleteThreadQueuedMessage: vi.fn(),
     sendThreadMessage: vi.fn(),
   };
 });
@@ -54,6 +57,7 @@ beforeEach(() => {
   vi.mocked(api.createThreadQueuedMessage).mockResolvedValue(
     makeQueuedMessage(),
   );
+  vi.mocked(api.deleteThreadQueuedMessage).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -105,5 +109,44 @@ describe("thread runtime mutations", () => {
         senderThreadId: "thread-source",
       }),
     );
+  });
+
+  it("keeps an optimistically deleted queued message removed when the server says it is already gone", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      makeQueuedMessage({ id: "qmsg-1" }),
+      makeQueuedMessage({ id: "qmsg-2" }),
+    ]);
+    vi.mocked(api.deleteThreadQueuedMessage).mockRejectedValue(
+      new api.HttpError({
+        status: 404,
+        code: "invalid_request",
+        message: "Queued message not found",
+        body: {
+          code: "invalid_request",
+          message: "Queued message not found",
+        },
+      }),
+    );
+    const { result } = renderHook(() => useDeleteThreadQueuedMessage(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          id: "thread-1",
+          queuedMessageId: "qmsg-1",
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(
+      queryClient
+        .getQueryData<
+          ThreadQueuedMessage[]
+        >(threadQueuedMessagesQueryKey("thread-1"))
+        ?.map((queuedMessage) => queuedMessage.id),
+    ).toEqual(["qmsg-2"]);
   });
 });

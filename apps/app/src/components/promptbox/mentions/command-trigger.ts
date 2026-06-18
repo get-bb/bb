@@ -3,7 +3,7 @@
  * composer, or `null` when the provider has no command surface.
  *
  * - `claude-code` → `/` (skills + legacy `.claude/commands`)
- * - `codex` → `$` (Codex skills; `/<skill>` is unrecognized by Codex)
+ * - `codex` → `/` (Codex skills)
  * - anything else (e.g. `pi`) → `null` (the command typeahead is inert)
  *
  * Takes a plain `string` because callers receive the provider id from thread
@@ -11,12 +11,11 @@
  */
 export function commandTriggerForProvider(
   providerId: string,
-): "/" | "$" | null {
+): "/" | null {
   switch (providerId) {
     case "claude-code":
-      return "/";
     case "codex":
-      return "$";
+      return "/";
     default:
       return null;
   }
@@ -25,8 +24,7 @@ export function commandTriggerForProvider(
 /**
  * A selected command is a one-position mention atom in the editor doc. The
  * dismissed range is based on that rendered node width plus any space inserted
- * after it, not on the serialized provider token length (`/review`, `$test`,
- * etc.).
+ * after it, not on the serialized provider token length (`/review`, etc.).
  */
 export function commandPillDismissedRangeEnd({
   triggerPosition,

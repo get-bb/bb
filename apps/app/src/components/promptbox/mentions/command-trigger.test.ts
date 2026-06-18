@@ -9,8 +9,12 @@ describe("commandTriggerForProvider", () => {
     expect(commandTriggerForProvider("claude-code")).toBe("/");
   });
 
-  it("maps codex to the dollar trigger", () => {
-    expect(commandTriggerForProvider("codex")).toBe("$");
+  it("maps codex to the slash trigger", () => {
+    expect(commandTriggerForProvider("codex")).toBe("/");
+  });
+
+  it("does not expose the legacy dollar trigger for codex", () => {
+    expect(commandTriggerForProvider("codex")).not.toBe("$");
   });
 
   it("returns null for providers with no command surface", () => {

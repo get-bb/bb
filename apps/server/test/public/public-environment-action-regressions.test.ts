@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest";
+import type { GitHostPullRequest } from "@bb/domain";
 import { readJson } from "../helpers/json.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+
+function rawPullRequest(
+  overrides: Partial<GitHostPullRequest> = {},
+): GitHostPullRequest {
+  return {
+    number: 42,
+    title: "Add pull request actions",
+    state: "OPEN",
+    url: "https://github.com/acme/bb/pull/42",
+    isDraft: false,
+    baseRefName: "main",
+    headRefName: "bb/pr-actions",
+    updatedAt: "2026-06-16T12:30:00Z",
+    checks: [],
+    reviewDecision: null,
+    reviewRequestCount: 0,
+    mergeStateStatus: "CLEAN",
+    mergeable: "MERGEABLE",
+    ...overrides,
+  };
+}
 
 describe("public environment action regressions", () => {
   it("rejects malformed squash-merge payload with a 400", async () => {
@@ -57,6 +83,229 @@ describe("public environment action regressions", () => {
       expect(mismatchedResponse.status).toBe(400);
       await expect(readJson(mismatchedResponse)).resolves.toMatchObject({
         code: "invalid_request",
+      });
+    });
+  });
+
+  it("marks draft pull requests ready through the environment action route", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-ready",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-ready-env",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_ready",
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        pullRequest: rawPullRequest({ isDraft: true }),
+      });
+
+      const readyCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request_action" &&
+          command.environmentId === environment.id,
+      );
+      expect(readyCommand.command).toMatchObject({
+        operation: "ready",
+      });
+      await reportQueuedCommandSuccess(harness, readyCommand, {});
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        action: "pull_request_ready",
+        ok: true,
+      });
+    });
+  });
+
+  it("converts open pull requests back to draft through the environment action route", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-draft",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-draft-env",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_draft",
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        pullRequest: rawPullRequest(),
+      });
+
+      const draftCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request_action" &&
+          command.environmentId === environment.id,
+      );
+      expect(draftCommand.command).toMatchObject({
+        operation: "draft",
+      });
+      await reportQueuedCommandSuccess(harness, draftCommand, {});
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        action: "pull_request_draft",
+        ok: true,
+      });
+    });
+  });
+
+  it("rejects blocked pull request merges before dispatching a merge command", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-blocked",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-blocked-env",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_merge",
+            options: { method: "merge" },
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        pullRequest: rawPullRequest({
+          mergeStateStatus: "BLOCKED",
+          mergeable: "UNKNOWN",
+        }),
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "pull_request_not_mergeable",
+      });
+    });
+  });
+
+  it("merges open pull requests through the selected merge method", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-merge",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-merge-env",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_merge",
+            options: { method: "rebase" },
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        pullRequest: rawPullRequest(),
+      });
+
+      const mergeCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request_action" &&
+          command.environmentId === environment.id,
+      );
+      expect(mergeCommand.command).toMatchObject({
+        operation: "merge",
+        method: "rebase",
+      });
+      await reportQueuedCommandSuccess(harness, mergeCommand, {});
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        action: "pull_request_merge",
+        method: "rebase",
+        ok: true,
       });
     });
   });

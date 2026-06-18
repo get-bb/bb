@@ -113,7 +113,7 @@ describe("prompt editor serialization", () => {
   it("builds command mention resources from provider command suggestions", () => {
     expect(
       promptCommandResourceFromSuggestion({
-        trigger: "$",
+        trigger: "/",
         suggestion: {
           kind: "command",
           name: "review",
@@ -125,7 +125,7 @@ describe("prompt editor serialization", () => {
       }),
     ).toEqual({
       kind: "command",
-      trigger: "$",
+      trigger: "/",
       name: "review",
       source: "skill",
       origin: "user",
@@ -135,14 +135,14 @@ describe("prompt editor serialization", () => {
   });
 
   it("serializes a selected skill as a pill without materializing argument hint text", () => {
-    const text = "$review ";
+    const text = "/review ";
     const mentions: PromptTextMention[] = [
       {
         start: 0,
-        end: "$review".length,
+        end: "/review".length,
         resource: {
           kind: "command",
-          trigger: "$",
+          trigger: "/",
           name: "review",
           source: "skill",
           origin: "user",
@@ -157,7 +157,7 @@ describe("prompt editor serialization", () => {
         type: "mention",
         attrs: {
           resource: mentions[0].resource,
-          serializedText: "$review",
+          serializedText: "/review",
         },
       },
       { type: "text", text: " " },
@@ -168,7 +168,7 @@ describe("prompt editor serialization", () => {
     expect(
       promptMentionArgumentHintPlaceholder({
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "review",
         source: "skill",
         origin: "user",

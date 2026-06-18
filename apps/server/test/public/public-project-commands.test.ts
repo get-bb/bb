@@ -159,6 +159,7 @@ describe("public project command typeahead route", () => {
           type: "host.list_commands",
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
+          builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
         },
       ]);
     });
@@ -202,6 +203,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/tmp/codex-commands-env",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -306,6 +308,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/no-env-project",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -349,6 +352,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -385,6 +389,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: null,
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -414,6 +419,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: null,
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });

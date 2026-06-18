@@ -95,8 +95,7 @@ type AssistantMessageRowIdentity = Pick<
 >;
 
 export interface ConversationMessageContentAssistantProps
-  extends ConversationMessageContentBaseProps,
-    AssistantMessageRowIdentity {
+  extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
   // Assistant content and generated system rows render through MarkdownPreview,
   // which is the only message body surface with clickable web links.
@@ -127,6 +126,8 @@ export interface ConversationMessageContentAssistantProps
    * menu. Omitted when no controller is wired in (e.g. delegation output).
    */
   onSelectProse?: (selection: MessageProseSelection | null) => void;
+  /** Shows the hover-revealed copy/fork/side-chat action footer. */
+  showActions: boolean;
   turnRequest: null;
   workspaceRootPath?: string;
 }
@@ -172,6 +173,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  showActions: boolean;
   text: string;
   workspaceRootPath?: string;
 }
@@ -427,6 +429,7 @@ function AssistantConversationMessage({
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
+  showActions,
   text,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
@@ -472,25 +475,27 @@ function AssistantConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
-      {/*
-        Copy + fork (S3) + side chat (S4) actions. Each button is dropped
-        entirely (not rendered disabled) when its handler is absent — e.g. fork
-        is omitted for a personal-only source with no host to base a worktree
-        fork on. `disabled` greys both fork and side chat together when the
-        thread is at the spawn-depth cap (both spawn a child thread, one guard).
-      */}
-      <div className="relative h-5">
-        <div className="absolute left-0 top-1">
-          <MessageActionBar
-            messageText={text}
-            alignment="start"
-            onFork={onFork}
-            onSideChat={onSideChat}
-            onSendToMain={onSendToMain}
-            disabled={forkDisabled}
-          />
+      {showActions ? (
+        /*
+          Copy + fork (S3) + side chat (S4) actions. Each button is dropped
+          entirely (not rendered disabled) when its handler is absent — e.g. fork
+          is omitted for a personal-only source with no host to base a worktree
+          fork on. `disabled` greys both fork and side chat together when the
+          thread is at the spawn-depth cap (both spawn a child thread, one guard).
+        */
+        <div className="relative h-5">
+          <div className="absolute left-0 top-1">
+            <MessageActionBar
+              messageText={text}
+              alignment="start"
+              onFork={onFork}
+              onSideChat={onSideChat}
+              onSendToMain={onSendToMain}
+              disabled={forkDisabled}
+            />
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -551,6 +556,7 @@ export function ConversationMessageContent(
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
+      showActions={props.showActions}
       sourceSeqEnd={props.sourceSeqEnd}
       sourceSeqStart={props.sourceSeqStart}
       text={text}

@@ -174,16 +174,16 @@ export interface TypeaheadMentionConfig {
 
 /**
  * The command-typeahead half of {@link TypeaheadConfig}. `trigger` is the
- * provider's command char (`/` for Claude Code, `$` for Codex) or `null` when
- * the provider has no command surface — in which case the composer never
- * activates a command trigger and the rest of this config is inert.
+ * provider's command char (`/`) or `null` when the provider has no command
+ * surface — in which case the composer never activates a command trigger and
+ * the rest of this config is inert.
  *
  * Hosts wire `suggestions` / `isLoading` / `isError` from
  * `useCommandSuggestions`; `onQueryChange` feeds that hook the text typed
  * after the trigger (`null` when no command trigger is active).
  */
 export interface TypeaheadCommandConfig {
-  trigger: "/" | "$" | null;
+  trigger: "/" | null;
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -1294,7 +1294,7 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
-      if (activeTrigger.char !== "/" && activeTrigger.char !== "$") return;
+      if (activeTrigger.char !== "/") return;
 
       const serializedText = `${activeTrigger.char}${item.name}`;
       const resource = promptCommandResourceFromSuggestion({

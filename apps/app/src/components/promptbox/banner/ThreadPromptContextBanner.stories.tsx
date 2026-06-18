@@ -556,6 +556,7 @@ interface RowConfig {
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
   pullRequest?: ThreadPullRequest | null;
+  pullRequestActions?: boolean;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -567,6 +568,7 @@ function Row({
   parentThread = null,
   childThreads = null,
   pullRequest = null,
+  pullRequestActions = false,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] =
@@ -590,7 +592,21 @@ function Row({
         environmentGoneSection={environmentGone}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
-        pullRequestSection={pullRequest ? { pullRequest } : null}
+        pullRequestSection={
+          pullRequest
+            ? {
+                pullRequest,
+                ...(pullRequestActions
+                  ? {
+                      actions: {
+                        onMarkReady: noop,
+                        onMerge: noop,
+                      },
+                    }
+                  : {}),
+              }
+            : null
+        }
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) => (previous === next ? null : next))
@@ -735,7 +751,7 @@ export function Overview() {
       </StoryRow>
       {pullRequestStateRows.map(({ label, hint, pullRequest }) => (
         <StoryRow key={label} label={`pull request — ${label}`} hint={hint}>
-          <Row pullRequest={pullRequest} mergeBase={null} />
+          <Row pullRequest={pullRequest} mergeBase={null} pullRequestActions />
         </StoryRow>
       ))}
       <StoryRow

@@ -192,7 +192,7 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
  * resolution, debounce, and mapping to menu rows, and serves both the
  * existing-thread follow-up composer and the new-thread composer. Unlike
  * mentions, the command list is enabled even with an empty query (commands show
- * the full list on `/`/`$`); the caller gates fetching via `options.enabled`.
+ * the full list on `/`); the caller gates fetching via `options.enabled`.
  */
 export function useProjectCommands(
   args: UseProjectCommandsArgs,

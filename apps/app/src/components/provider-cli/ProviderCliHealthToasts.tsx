@@ -9,6 +9,7 @@ import type {
   ProviderCliStatus,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
+import { providerCliKeyValues } from "@bb/host-daemon-contract";
 import { installProviderCli } from "@/lib/api-host-daemon";
 import {
   useLocalProviderCliStatus,
@@ -146,10 +147,10 @@ function clearDismissedForFingerprint(fingerprint: string): void {
 function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  return [
-    { provider: "codex", status: status.codex },
-    { provider: "claudeCode", status: status.claudeCode },
-  ];
+  return providerCliKeyValues.map((provider) => ({
+    provider,
+    status: status[provider],
+  }));
 }
 
 function buildProviderCliIssue(

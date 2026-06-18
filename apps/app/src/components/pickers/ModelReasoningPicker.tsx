@@ -277,7 +277,10 @@ export function ModelReasoningPicker({
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
-    hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed;
+    hasSelectedModel &&
+    !modelIsLoading &&
+    !selectedModelLoadFailed &&
+    !isShowingModelError;
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -507,8 +510,8 @@ export function ModelReasoningPicker({
           ) : (
             <div
               className={cn(
-                "px-2 text-xs text-muted-foreground",
-                isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                "px-2 text-xs leading-relaxed text-muted-foreground",
+                isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
               )}
               title={activeModelLoadErrorMessage ?? undefined}
             >

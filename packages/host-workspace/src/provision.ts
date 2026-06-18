@@ -15,6 +15,7 @@ import type {
   DiffPatchArgs,
   DiffPatchEntry,
   FetchOptions,
+  PullRequestActionOptions,
   StatusOptions,
   SquashMergeOptions,
   SquashMergeResult,
@@ -152,6 +153,7 @@ export interface HostWorkspace {
   diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult>;
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
   getPullRequest(): Promise<GitHostPullRequest | null>;
+  runPullRequestAction(action: PullRequestActionOptions): Promise<void>;
   listBranches(): Promise<string[]>;
   listFiles(): Promise<string[]>;
 
@@ -262,6 +264,10 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   getPullRequest(): Promise<GitHostPullRequest | null> {
     return this.ws.getPullRequest();
+  }
+
+  runPullRequestAction(action: PullRequestActionOptions): Promise<void> {
+    return this.ws.runPullRequestAction(action);
   }
 
   listBranches(): Promise<string[]> {

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -122,6 +123,7 @@ export async function resolveThreadRuntimeCommandConfig(
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
+    projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
   });
   const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,

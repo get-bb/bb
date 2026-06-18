@@ -178,9 +178,7 @@ export const timelineParentChangeSchema = z.object({
   nextParentThreadId: z.string().nullable(),
   nextParentThreadTitle: z.string().nullable(),
 });
-export type TimelineParentChange = z.infer<
-  typeof timelineParentChangeSchema
->;
+export type TimelineParentChange = z.infer<typeof timelineParentChangeSchema>;
 
 const timelineSystemRowBaseSchema = timelineRowBaseSchema.extend({
   kind: z.literal("system"),
@@ -513,3 +511,72 @@ export const timelineRowSchema: z.ZodType<TimelineRow> = z.lazy(() =>
 );
 
 export type TimelineToolArgs = JsonObject | null;
+
+/**
+ * Incremental update to a previously-fetched timeline window. The server
+ * computes it by reprojecting the full window (correct by construction — all
+ * turn-collapse / window-eviction / finalize / background-task-fold semantics
+ * are preserved) and diffing it against the rows the client last received.
+ *
+ * `upsertRows` carries the full body of every row that was added or changed.
+ * `rowOrder` is the complete, ordered id list of the current window, so the
+ * client reconstructs the exact row order and membership without guessing —
+ * any id present in `rowOrder` but absent from `upsertRows` is an unchanged row
+ * the client already holds. See {@link applyTimelineDelta}.
+ */
+export const timelineDeltaSchema = z.object({
+  upsertRows: z.array(timelineRowSchema),
+  rowOrder: z.array(z.string()),
+});
+export type TimelineDelta = z.infer<typeof timelineDeltaSchema>;
+
+/**
+ * Diff a freshly-projected window against the rows the client last held. Pure;
+ * used by the server to build a {@link TimelineDelta}.
+ */
+export function computeTimelineRowDelta(
+  prevRows: readonly TimelineRow[],
+  currentRows: readonly TimelineRow[],
+): TimelineDelta {
+  const prevById = new Map<string, string>();
+  for (const row of prevRows) {
+    prevById.set(row.id, JSON.stringify(row));
+  }
+  const upsertRows: TimelineRow[] = [];
+  const rowOrder: string[] = [];
+  for (const row of currentRows) {
+    rowOrder.push(row.id);
+    if (prevById.get(row.id) !== JSON.stringify(row)) {
+      upsertRows.push(row);
+    }
+  }
+  return { upsertRows, rowOrder };
+}
+
+/**
+ * Apply a {@link TimelineDelta} to the rows the client currently holds,
+ * yielding the new full window. Returns `null` when the delta references a row
+ * the client neither holds nor was sent (a stale/mismatched base) — the caller
+ * should fall back to a full fetch.
+ */
+export function applyTimelineDelta(
+  prevRows: readonly TimelineRow[],
+  delta: TimelineDelta,
+): TimelineRow[] | null {
+  const byId = new Map<string, TimelineRow>();
+  for (const row of prevRows) {
+    byId.set(row.id, row);
+  }
+  for (const row of delta.upsertRows) {
+    byId.set(row.id, row);
+  }
+  const result: TimelineRow[] = [];
+  for (const id of delta.rowOrder) {
+    const row = byId.get(id);
+    if (row === undefined) {
+      return null;
+    }
+    result.push(row);
+  }
+  return result;
+}

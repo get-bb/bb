@@ -8,8 +8,7 @@ import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
-const SKILL_NAME_PATTERN =
-  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SKILL_FRONTMATTER_DELIMITER = "---";
 
 const skillFrontmatterSchema = z
@@ -33,6 +32,7 @@ const skillFrontmatterSchema = z
 export interface ResolveInjectedSkillSourcesArgs {
   builtinSkillsRootPath: string;
   dataDir: string;
+  projectSkillsRootPath?: string;
 }
 
 interface SkillCandidateSource {
@@ -185,27 +185,13 @@ function readSkillCandidate(
     return null;
   }
 
-  if (args.sourceType === "builtin") {
-    return {
-      sourceType: "builtin",
-      name: frontmatter.data.name,
-      description: frontmatter.data.description,
-      sourceRootPath: args.candidatePath,
-      skillFilePath,
-    };
-  }
-
-  if (args.sourceType === "data-dir") {
-    return {
-      sourceType: "data-dir",
-      name: frontmatter.data.name,
-      description: frontmatter.data.description,
-      sourceRootPath: args.candidatePath,
-      skillFilePath,
-    };
-  }
-
-  throw new Error(`Unsupported injected skill source type: ${args.sourceType}`);
+  return {
+    sourceType: args.sourceType,
+    name: frontmatter.data.name,
+    description: frontmatter.data.description,
+    sourceRootPath: args.candidatePath,
+    skillFilePath,
+  };
 }
 
 function readSkillsRoot(
@@ -242,9 +228,11 @@ function readSkillsRoot(
     return [];
   }
 
-  const entries = fs.readdirSync(args.skillsRootPath, {
-    withFileTypes: true,
-  }).sort(sortDirentsByName);
+  const entries = fs
+    .readdirSync(args.skillsRootPath, {
+      withFileTypes: true,
+    })
+    .sort(sortDirentsByName);
   const sources: HostDaemonInjectedSkillSource[] = [];
 
   for (const entry of entries) {
@@ -354,6 +342,14 @@ export function resolveInjectedSkillSources(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
 ): HostDaemonInjectedSkillSource[] {
+  const projectSources =
+    args.projectSkillsRootPath !== undefined
+      ? readSkillsRoot({
+          logger,
+          skillsRootPath: args.projectSkillsRootPath,
+          sourceType: "project",
+        })
+      : [];
   const builtinSources = readSkillsRoot({
     logger,
     skillsRootPath: args.builtinSkillsRootPath,
@@ -371,6 +367,19 @@ export function resolveInjectedSkillSources(
     builtinSources,
     userSources,
   });
+  const globalSources = excludeCollisions(logger, [
+    ...activeBuiltinSources,
+    ...userSources,
+  ]);
+  const activeProjectSources = excludeCollisions(logger, projectSources);
+  const projectNames = new Set(
+    activeProjectSources.map((source) => source.name),
+  );
 
-  return excludeCollisions(logger, [...activeBuiltinSources, ...userSources]);
+  return [...activeProjectSources, ...globalSources]
+    .filter(
+      (source) =>
+        source.sourceType === "project" || !projectNames.has(source.name),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
 }

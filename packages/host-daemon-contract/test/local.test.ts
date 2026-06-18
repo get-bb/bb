@@ -93,7 +93,7 @@ describe("pathsExistResponseSchema", () => {
 });
 
 describe("provider CLI schemas", () => {
-  it("accepts status for Codex and Claude Code", () => {
+  it("accepts status for provider CLIs", () => {
     expect(
       providerCliStatusResponseSchema.parse({
         codex: {
@@ -132,6 +132,25 @@ describe("provider CLI schemas", () => {
           },
           needsUpdate: true,
         },
+        cursor: {
+          displayName: "Cursor",
+          executableName: "agent",
+          executablePath: null,
+          installed: false,
+          installSource: "notInstalled",
+          currentVersion: null,
+          latestVersion: null,
+          npmPackageName: null,
+          npmGlobalPackageVersion: null,
+          installAction: {
+            kind: "install",
+            label: "Install",
+            commandKind: "shell",
+            command:
+              'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-cli-install.XXXXXX") && trap \'rm -f "$tmp"\' EXIT && curl -fsSL https://cursor.com/install -o "$tmp" && bash "$tmp"',
+          },
+          needsUpdate: false,
+        },
       }).claudeCode.needsUpdate,
     ).toBe(true);
 
@@ -167,6 +186,19 @@ describe("provider CLI schemas", () => {
             command:
               'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-cli-install.XXXXXX") && trap \'rm -f "$tmp"\' EXIT && curl -fsSL https://claude.ai/install.sh -o "$tmp" && bash "$tmp"',
           },
+          needsUpdate: false,
+        },
+        cursor: {
+          displayName: "Cursor",
+          executableName: "agent",
+          executablePath: "/Users/me/.local/bin/agent",
+          installed: true,
+          installSource: "external",
+          currentVersion: null,
+          latestVersion: null,
+          npmPackageName: null,
+          npmGlobalPackageVersion: null,
+          installAction: null,
           needsUpdate: false,
         },
       }).claudeCode.installAction,

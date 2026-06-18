@@ -57,6 +57,42 @@ interface ReorderThreadQueuedMessageMutationRequest extends QueuedMessageReorder
   id: string;
 }
 
+function getHttpErrorBodyMessage(error: api.HttpError): string | null {
+  const body = error.body;
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("message" in body) ||
+    typeof body.message !== "string"
+  ) {
+    return null;
+  }
+  return body.message;
+}
+
+function isQueuedMessageNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof api.HttpError &&
+    error.status === 404 &&
+    error.code === "invalid_request" &&
+    getHttpErrorBodyMessage(error) === "Queued message not found"
+  );
+}
+
+async function deleteThreadQueuedMessageOrConfirmMissing({
+  id,
+  queuedMessageId,
+}: DeleteThreadQueuedMessageMutationRequest): Promise<void> {
+  try {
+    await api.deleteThreadQueuedMessage(id, queuedMessageId);
+  } catch (error) {
+    if (isQueuedMessageNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 export function useCreateThread() {
   const queryClient = useQueryClient();
 
@@ -268,11 +304,7 @@ export function useDeleteThreadQueuedMessage() {
       errorMessage: "Failed to delete queued message.",
       showErrorToast: false,
     },
-    mutationFn: ({
-      id,
-      queuedMessageId,
-    }: DeleteThreadQueuedMessageMutationRequest) =>
-      api.deleteThreadQueuedMessage(id, queuedMessageId),
+    mutationFn: deleteThreadQueuedMessageOrConfirmMissing,
     onMutate: async (variables): Promise<RemoveQueuedMessageTransaction> =>
       beginRemoveQueuedMessageTransaction({
         queryClient,

@@ -21,6 +21,7 @@ export type {
   DiffOptions,
   DiffResult,
   FetchOptions,
+  PullRequestActionOptions,
   SquashMergeOptions,
   SquashMergeResult,
   StatusOptions,

@@ -15,6 +15,7 @@ import {
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
 import {
   collectCachedThreadIdsForEnvironment,
+  disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
@@ -241,6 +242,7 @@ export function createRealtimeCacheEffects({
     dispose: () => {
       invalidationScheduler.dispose();
       environmentInvalidator.dispose();
+      disposeTrailingActiveRefetches(queryClient);
       resetThreadChangeState(threadChangeState);
     },
     handleChanged: (message) => {

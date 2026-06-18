@@ -23,6 +23,7 @@ import {
 import {
   prepareRuntimeShellEnv,
   resolveLocalBbExecutableDirectory,
+  resolveUserShellPath,
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
@@ -152,12 +153,23 @@ export async function startHostDaemon(
     const bbExecutableDirectory =
       options.bbExecutableDirectory ??
       (await resolveLocalBbExecutableDirectory());
+    const logger =
+      options.logger ??
+      createLogger({
+        component: "host-daemon",
+        base: { serverUrl },
+        dataDir,
+        transportMode: "worker",
+      });
     const hostWatcher = options.hostWatcher ?? (await createHostWatcher());
-    const runtimeShellEnv = prepareRuntimeShellEnv({
-      bbExecutableDirectory,
-      hostDaemonPort: localApiConfig?.port,
-      serverUrl,
-    });
+    const resolveRuntimeShellEnv = async () =>
+      prepareRuntimeShellEnv({
+        bbExecutableDirectory,
+        hostDaemonPort: localApiConfig?.port,
+        inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
+        serverUrl,
+      });
+    const runtimeShellEnv = await resolveRuntimeShellEnv();
     app = await createHostDaemonApp({
       dataDir,
       serverUrl,
@@ -172,18 +184,12 @@ export async function startHostDaemon(
           ? undefined
           : hostDaemonConfig?.BB_APP_URL,
       devAppPort: hostDaemonConfig?.BB_DEV_APP_PORT,
-      logger:
-        options.logger ??
-        createLogger({
-          component: "host-daemon",
-          base: { serverUrl },
-          dataDir,
-          transportMode: "worker",
-        }),
+      logger,
       releaseLock,
       localApiConfig,
       createRuntime: options.createRuntime,
       runtimeShellEnv,
+      resolveRuntimeShellEnv,
       hostWatcher,
       onToolCall: options.onToolCall,
       pickFolder: options.pickFolder,

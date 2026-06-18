@@ -1,10 +1,4 @@
-import {
-  mkdir,
-  mkdtemp,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -252,6 +246,45 @@ describe("injected skill source discovery", () => {
         message: "Built-in injected skill overridden by user skill",
       }),
     ]);
+  });
+
+  it("lets a project skill override global skills with the same name", async () => {
+    const dataDir = await makeTempDir();
+    const workspacePath = await makeTempDir();
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "bb-cli",
+      description: "Built-in copy.",
+    });
+    await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "bb-cli",
+      description: "User copy.",
+    });
+    const projectSkillRoot = await writeSkill({
+      rootPath: path.join(workspacePath, ".bb", "skills"),
+      name: "bb-cli",
+      description: "Project copy.",
+    });
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+      projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "project",
+        name: "bb-cli",
+        description: "Project copy.",
+        sourceRootPath: projectSkillRoot,
+        skillFilePath: path.join(projectSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
   });
 
   it("resolves the bundled built-in skills root with valid built-in skills", async () => {

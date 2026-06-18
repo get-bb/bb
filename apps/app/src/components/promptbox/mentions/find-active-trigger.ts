@@ -4,6 +4,23 @@ import type {
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
 
+interface ActiveTriggerEditor {
+  state: {
+    selection: {
+      empty: boolean;
+      from: number;
+    };
+    doc: {
+      textBetween(
+        from: number,
+        to: number,
+        blockSeparator?: string,
+        leafText?: string,
+      ): string;
+    };
+  };
+}
+
 /**
  * Builds the word-boundary detection regex for a trigger char. A trigger only
  * fires at the start of input or after whitespace / an opening bracket, so a
@@ -11,15 +28,12 @@ import type {
  *
  * - `@` (mention) keeps its self-exclusion query class `[^\s@]*`, so a second
  *   `@` ends the current query rather than extending it.
- * - command triggers (`/`, `$`) capture the whole token up to whitespace
+ * - command triggers (`/`) capture the whole token up to whitespace
  *   (`\S*`), so a namespaced name like `frontend:component` is captured whole.
- *
- * `$` is escaped because it is a regex metacharacter.
  */
 function triggerPattern(char: TypeaheadTrigger["char"]): RegExp {
-  const escapedChar = char === "$" ? "\\$" : char;
   const queryClass = char === "@" ? "[^\\s@]*" : "\\S*";
-  return new RegExp(`(^|[\\s([{])${escapedChar}(${queryClass})$`, "u");
+  return new RegExp(`(^|[\\s([{])${char}(${queryClass})$`, "u");
 }
 
 /**
@@ -34,7 +48,7 @@ function triggerPattern(char: TypeaheadTrigger["char"]): RegExp {
  * trigger matches.
  */
 export function findActiveTrigger(
-  editor: Editor,
+  editor: ActiveTriggerEditor | Editor,
   triggers: readonly TypeaheadTrigger[],
 ): ActiveTrigger | null {
   const selection = editor.state.selection;

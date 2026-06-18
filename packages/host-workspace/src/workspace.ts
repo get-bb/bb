@@ -9,7 +9,11 @@ import type {
   WorkspaceStatus,
 } from "@bb/domain";
 import path from "node:path";
-import { getPullRequestForBranch } from "./git-host.js";
+import {
+  getPullRequestForBranch,
+  runPullRequestActionForBranch,
+  type GitHostPullRequestAction,
+} from "./git-host.js";
 import {
   createTempDir,
   detectGitRepo,
@@ -81,6 +85,8 @@ export interface SquashMergeResult {
   commitSubject: string;
   targetBranch: string;
 }
+
+export type PullRequestActionOptions = GitHostPullRequestAction;
 
 type DiffSummary = {
   diff: string;
@@ -633,6 +639,19 @@ export class Workspace {
       return null;
     }
     return getPullRequestForBranch({ cwd: this.path, branch });
+  }
+
+  async runPullRequestAction(
+    action: PullRequestActionOptions,
+  ): Promise<void> {
+    const branch = await getCurrentBranch(this.path);
+    if (!branch) {
+      throw new WorkspaceError(
+        "invalid_request",
+        "Cannot update pull request from a detached workspace",
+      );
+    }
+    return runPullRequestActionForBranch({ cwd: this.path, branch, action });
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {

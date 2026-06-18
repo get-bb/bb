@@ -57,6 +57,13 @@ interface RuntimeOptionsRef {
   current: AgentRuntimeOptions | null;
 }
 
+interface RuntimeManagerProviderMaintenanceInternals {
+  createProviderMaintenanceRuntime: (args: {
+    dataDir: string;
+  }) => Promise<AgentRuntime>;
+  providerMaintenanceRuntime: AgentRuntime | null;
+}
+
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
@@ -192,6 +199,7 @@ function createFakeWorkspace(path: string) {
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => null),
+    runPullRequestAction: vi.fn(async () => undefined),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
@@ -995,6 +1003,38 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("passes shell PATH through to provider process env", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+        BB_SERVER_URL: "http://127.0.0.1:3334",
+        OPENAI_API_KEY: "test-openai-key",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: {
+          PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+          BB_SERVER_URL: "http://127.0.0.1:3334",
+          OPENAI_API_KEY: "test-openai-key",
+        },
+      }),
+    );
+  });
+
   it("merges managed shell env into future runtime creation", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
@@ -1030,6 +1070,134 @@ describe("RuntimeManager", () => {
         },
       }),
     );
+  });
+
+  it("recreates the provider maintenance runtime after base shell env changes", async () => {
+    const dataDir = await makeTempDir("bb-provider-maintenance-");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({
+      createRuntime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await expect(
+      manager.ensureProviderMaintenanceRuntime({ dataDir }),
+    ).resolves.toBe(firstRuntime);
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+      BB_SERVER_URL: "http://127.0.0.1:3334",
+    });
+    await expect(
+      manager.ensureProviderMaintenanceRuntime({ dataDir }),
+    ).resolves.toBe(secondRuntime);
+
+    expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+    expect(createRuntime).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        env: {
+          PATH: "/new/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/new/bin:/usr/bin",
+          BB_SERVER_URL: "http://127.0.0.1:3334",
+        },
+      }),
+    );
+  });
+
+  it("does not let stale provider maintenance creation replace a newer runtime", async () => {
+    const dataDir = await makeTempDir("bb-provider-maintenance-race-");
+    const staleRuntime = createFakeRuntime();
+    const currentRuntime = createFakeRuntime();
+    const staleCreation = createDeferred<AgentRuntime>();
+    const manager = new RuntimeManager({
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+    const managerInternals =
+      manager as unknown as RuntimeManagerProviderMaintenanceInternals;
+    vi.spyOn(
+      managerInternals,
+      "createProviderMaintenanceRuntime",
+    )
+      .mockImplementationOnce(() => staleCreation.promise)
+      .mockImplementationOnce(async () => currentRuntime);
+
+    const staleRuntimePromise = manager.ensureProviderMaintenanceRuntime({
+      dataDir,
+    });
+    const replaceShellEnvPromise = manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+    const currentRuntimePromise = manager.ensureProviderMaintenanceRuntime({
+      dataDir,
+    });
+
+    await expect(currentRuntimePromise).resolves.toBe(currentRuntime);
+    expect(managerInternals.providerMaintenanceRuntime).toBe(currentRuntime);
+
+    staleCreation.resolve(staleRuntime);
+    await expect(staleRuntimePromise).resolves.toBe(staleRuntime);
+    await replaceShellEnvPromise;
+
+    expect(managerInternals.providerMaintenanceRuntime).toBe(currentRuntime);
+    expect(staleRuntime.shutdown).toHaveBeenCalledTimes(1);
+    expect(currentRuntime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("evicts idle environment runtimes after base shell env changes", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeUndefined();
+    expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        env: {
+          PATH: "/new/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/new/bin:/usr/bin",
+        },
+      }),
+    );
+    expect(secondRuntime.shutdown).not.toHaveBeenCalled();
   });
 
   it("reuses the existing runtime for subsequent requests", async () => {

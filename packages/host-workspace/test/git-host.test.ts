@@ -1,5 +1,26 @@
-import { describe, expect, it } from "vitest";
-import { parseGitHostPullRequest } from "../src/git-host.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  parseGitHostPullRequest,
+  runPullRequestActionForBranch,
+  type GitHostPullRequestAction,
+} from "../src/git-host.js";
+
+const execFileMock = vi.hoisted(() => vi.fn());
+
+vi.mock("node:child_process", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:child_process")>(
+      "node:child_process",
+    );
+  return {
+    ...actual,
+    execFile: execFileMock,
+  };
+});
+
+beforeEach(() => {
+  execFileMock.mockReset();
+});
 
 function ghJson(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -137,5 +158,99 @@ describe("parseGitHostPullRequest", () => {
     ["a non-url", ghJson({ url: "not-a-url" })],
   ])("returns null for %s", (_label, stdout) => {
     expect(parseGitHostPullRequest(stdout)).toBeNull();
+  });
+});
+
+describe("runPullRequestActionForBranch", () => {
+  function mockGhSuccess(): void {
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: readonly string[],
+        _options: object,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, "", "");
+      },
+    );
+  }
+
+  it.each([
+    [
+      "ready",
+      { operation: "ready" },
+      ["pr", "ready", "--", "bb/pr-actions"],
+    ],
+    [
+      "draft",
+      { operation: "draft" },
+      ["pr", "ready", "--undo", "--", "bb/pr-actions"],
+    ],
+    [
+      "merge",
+      { operation: "merge", method: "merge" },
+      ["pr", "merge", "--merge", "--", "bb/pr-actions"],
+    ],
+    [
+      "squash",
+      { operation: "merge", method: "squash" },
+      ["pr", "merge", "--squash", "--", "bb/pr-actions"],
+    ],
+    [
+      "rebase",
+      { operation: "merge", method: "rebase" },
+      ["pr", "merge", "--rebase", "--", "bb/pr-actions"],
+    ],
+  ] satisfies readonly [
+    string,
+    GitHostPullRequestAction,
+    readonly string[],
+  ][])("runs gh pr %s for the branch", async (_label, action, expectedArgs) => {
+    mockGhSuccess();
+
+    await runPullRequestActionForBranch({
+      cwd: "/tmp/workspace",
+      branch: "bb/pr-actions",
+      action,
+    });
+
+    expect(execFileMock).toHaveBeenCalledWith(
+      "gh",
+      expectedArgs,
+      expect.objectContaining({
+        cwd: "/tmp/workspace",
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 60_000,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("maps a missing gh executable to a workspace error", async () => {
+    const error = Object.assign(new Error("spawn gh ENOENT"), {
+      code: "ENOENT",
+    });
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: readonly string[],
+        _options: object,
+        callback: (error: Error) => void,
+      ) => {
+        callback(error);
+      },
+    );
+
+    await expect(
+      runPullRequestActionForBranch({
+        cwd: "/tmp/workspace",
+        branch: "bb/pr-actions",
+        action: { operation: "ready" },
+      }),
+    ).rejects.toMatchObject({
+      code: "git_host_cli_unavailable",
+      name: "WorkspaceError",
+    });
   });
 });

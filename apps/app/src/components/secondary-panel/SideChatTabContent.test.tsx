@@ -210,7 +210,7 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
   useCommandSuggestions: (args: unknown) => {
     mocks.commandSuggestionArgs.push(args);
     return {
-      trigger: "$",
+      trigger: "/",
       suggestions: [],
       isLoading: false,
       isError: false,
@@ -459,7 +459,7 @@ describe("SideChatTabContent", () => {
       environmentId: null,
       query: null,
     });
-    expect(screen.getByTestId("command-trigger").textContent).toBe("$");
+    expect(screen.getByTestId("command-trigger").textContent).toBe("/");
 
     fireEvent.click(screen.getByRole("button", { name: "Mention query" }));
     expect(mocks.promptMentionSetQuery).toHaveBeenCalledWith("readme");

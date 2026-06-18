@@ -211,5 +211,9 @@ function toModelLoadErrorCode(
     return "missing_executable";
   }
 
+  if (error.body.code === "auth_required") {
+    return "auth_required";
+  }
+
   return "failed";
 }

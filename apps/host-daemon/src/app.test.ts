@@ -281,6 +281,15 @@ function createFakeRuntime(): AgentRuntime {
   };
 }
 
+function createFakeRuntimeWithModelList(
+  listModels: AgentRuntime["listModels"],
+): AgentRuntime {
+  return {
+    ...createFakeRuntime(),
+    listModels,
+  };
+}
+
 function createCommandApprovalRequest(): PendingInteractionCreate {
   return {
     threadId: "thr_app_interactive",
@@ -369,6 +378,86 @@ async function createAppFixture(
 }
 
 describe("createHostDaemonApp", () => {
+  it("refreshes runtime shell env before provider model listing", async () => {
+    const dataDir = await makeTempDir("bb-host-daemon-app-models-");
+    const fetchRecorder = createFetchRecorder();
+    const logger = createLogger();
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const model = {
+      id: "cursor-model",
+      model: "cursor-model",
+      displayName: "Cursor Model",
+      description: "Test model",
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "medium" as const,
+      isDefault: true,
+    };
+    const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
+      models: [model],
+      selectedOnlyModels: [],
+    }));
+    const resolveRuntimeShellEnv = vi.fn(async () => ({
+      PATH: "/shell/bin:/usr/bin",
+      BB_SERVER_URL: "http://127.0.0.1:3334",
+    }));
+    const app = await createHostDaemonApp({
+      dataDir,
+      serverUrl: "http://127.0.0.1:3334",
+      hostKey: "host-key-app-test",
+      hostType: "persistent",
+      hostId: "host-app-test",
+      hostName: "App Test Host",
+      instanceId: "instance-app-test",
+      logger,
+      releaseLock: async () => undefined,
+      localApiConfig: null,
+      runtimeShellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+      resolveRuntimeShellEnv,
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntimeWithModelList(listModels);
+      },
+      fetchFn: fetchRecorder.fetchFn,
+      createWebSocket: createOpeningWebSocket(),
+    });
+
+    try {
+      const response = await app.router.handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "provider-models-app-test",
+        command: {
+          type: "provider.list_models",
+          providerId: "cursor",
+        },
+      });
+
+      expect(response).toMatchObject({
+        ok: true,
+        result: {
+          models: [model],
+          selectedOnlyModels: [],
+        },
+      });
+      expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1);
+      expect(runtimeOptions.current).toEqual(
+        expect.objectContaining({
+          env: {
+            PATH: "/shell/bin:/usr/bin",
+          },
+          shellEnv: {
+            PATH: "/shell/bin:/usr/bin",
+            BB_SERVER_URL: "http://127.0.0.1:3334",
+          },
+        }),
+      );
+      expect(listModels).toHaveBeenCalledWith({ providerId: "cursor" });
+    } finally {
+      await app.daemon.shutdown("test");
+    }
+  });
+
   it("runs the idle provider session reaper on a non-overlapping interval", async () => {
     const logger = createLogger();
     const firstReap =

@@ -6,6 +6,7 @@ import type {
   ThreadPullRequest,
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
+import type { PullRequestMergeMethod } from "@bb/server-contract";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -26,6 +27,13 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 export interface ContextBannerMergeBaseConfig {
@@ -73,6 +81,13 @@ export interface ThreadPromptChildThreadsSection {
 
 export interface ThreadPromptPullRequestSection {
   pullRequest: ThreadPullRequest;
+  actions?: {
+    isPending?: boolean;
+    onMarkReady?: () => void;
+    onMerge?: (method: PullRequestMergeMethod) => void;
+    onConvertToDraft?: () => void;
+    selectedMergeMethod?: PullRequestMergeMethod;
+  };
 }
 
 /**
@@ -377,10 +392,106 @@ function ThreadUnarchiveTextAction({
       type="button"
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
-      className="rounded px-1 py-0.5 text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex items-center whitespace-nowrap rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
     >
       {isPending ? "Unarchiving..." : "Unarchive"}
     </button>
+  );
+}
+
+function PullRequestReadyTextAction({
+  disabled,
+  onMarkReady,
+}: {
+  disabled?: boolean;
+  onMarkReady: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onMarkReady}
+      disabled={Boolean(disabled)}
+      className="inline-flex items-center whitespace-nowrap rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {disabled ? "Marking..." : "Mark ready"}
+    </button>
+  );
+}
+
+const PULL_REQUEST_MERGE_ACTIONS: readonly {
+  method: PullRequestMergeMethod;
+  label: string;
+}[] = [
+  { method: "merge", label: "Merge" },
+  { method: "squash", label: "Squash merge" },
+  { method: "rebase", label: "Rebase and merge" },
+];
+
+function PullRequestMergeSplitButton({
+  disabled,
+  onConvertToDraft,
+  onMerge,
+  selectedMethod,
+}: {
+  disabled?: boolean;
+  onConvertToDraft?: () => void;
+  onMerge: (method: PullRequestMergeMethod) => void;
+  selectedMethod: PullRequestMergeMethod;
+}) {
+  const selectedAction =
+    PULL_REQUEST_MERGE_ACTIONS.find(
+      (action) => action.method === selectedMethod,
+    ) ?? PULL_REQUEST_MERGE_ACTIONS[0];
+  return (
+    <div className="inline-flex overflow-hidden rounded border border-border bg-transparent">
+      <button
+        type="button"
+        disabled={Boolean(disabled)}
+        onClick={() => onMerge(selectedAction.method)}
+        className="px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {selectedAction.label}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            disabled={Boolean(disabled)}
+            className="inline-flex items-center border-l border-border px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            aria-label="Choose pull request merge method"
+            title="Choose pull request merge method"
+          >
+            <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          sideOffset={2}
+          mobileTitle="Merge pull request"
+        >
+          {PULL_REQUEST_MERGE_ACTIONS.map((action) => (
+            <DropdownMenuItem
+              key={action.method}
+              onSelect={() => onMerge(action.method)}
+              textValue={action.label}
+            >
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+          {onConvertToDraft ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={onConvertToDraft}
+                textValue="Convert to draft"
+              >
+                Convert to draft
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -672,6 +783,29 @@ export function ThreadPromptContextBanner({
     showParentThread && !showGit && !showChildThreads && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
+  const pullRequestActions = pullRequestSection?.actions;
+  const pullRequestAction =
+    pullRequest && pullRequestActions ? (
+      pullRequest.state === "draft" && pullRequestActions.onMarkReady ? (
+        <BannerActionSlot>
+          <PullRequestReadyTextAction
+            disabled={pullRequestActions.isPending}
+            onMarkReady={pullRequestActions.onMarkReady}
+          />
+        </BannerActionSlot>
+      ) : pullRequest.state === "open" &&
+        pullRequest.mergeability.state === "mergeable" &&
+        pullRequestActions.onMerge ? (
+        <BannerActionSlot>
+          <PullRequestMergeSplitButton
+            disabled={pullRequestActions.isPending}
+            onConvertToDraft={pullRequestActions.onConvertToDraft}
+            onMerge={pullRequestActions.onMerge}
+            selectedMethod={pullRequestActions.selectedMergeMethod ?? "merge"}
+          />
+        </BannerActionSlot>
+      ) : null
+    ) : null;
 
   return (
     <PromptStackCard
@@ -768,6 +902,7 @@ export function ThreadPromptContextBanner({
             onToggle={() => onToggleSection("git")}
           />
         ) : null}
+        {pullRequestAction}
         {segmentAction}
       </div>
       {showParentThread && parentThreadSection && !isParentThreadOnly ? (

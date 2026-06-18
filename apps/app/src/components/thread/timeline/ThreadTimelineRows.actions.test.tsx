@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
+import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
@@ -55,6 +55,62 @@ describe("ThreadTimelineRows actions", () => {
     );
 
     expect(markup).toContain('aria-label="Send to main thread"');
+  });
+
+  it("hides assistant message actions inside completed turn summaries", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadTimelineRows
+        initialExpanded={new Set(["turn_completed"])}
+        timelineRows={[
+          turnRow({
+            id: "turn_completed",
+            status: "completed",
+            durationMs: 1_000,
+            children: [
+              conversationRow({
+                id: "agent_completed",
+                role: "assistant",
+                text: "Archived assistant response.",
+              }),
+            ],
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain("Worked for");
+    expect(markup).toContain("Archived assistant response.");
+    expect(markup).not.toContain('aria-label="Copy message"');
+  });
+
+  it("keeps assistant message actions visible inside pending turn rows", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadTimelineRows
+        initialExpanded={new Set(["turn_pending"])}
+        timelineRows={[
+          turnRow({
+            id: "turn_pending",
+            status: "pending",
+            durationMs: null,
+            children: [
+              conversationRow({
+                id: "agent_pending",
+                role: "assistant",
+                text: "Streaming assistant response.",
+              }),
+            ],
+          }),
+        ]}
+        threadRuntimeDisplayStatus="active"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain("Working");
+    expect(markup).toContain("Streaming assistant response.");
+    expect(markup).toContain('aria-label="Copy message"');
   });
 
   it("passes the selected assistant row branch point to side-chat replies", async () => {
