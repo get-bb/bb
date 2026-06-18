@@ -366,7 +366,6 @@ function getThreadRowOptions({
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
-    isEnvGrouped,
   };
 
   if (!isParent) {
@@ -656,8 +655,10 @@ function EnvironmentThreadGroupHeader({
       ? `${environmentName} (${branchName})`
       : environmentName
     : branchName
-      ? `Worktree: ${branchName}`
+      ? branchName
       : "Worktree";
+  const displayName = environmentName || branchName || "Worktree";
+  const showBranchName = Boolean(environmentName && branchName);
   const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
   // glyph (pending > working > unread). Expanded: the children show their own
@@ -684,25 +685,25 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center justify-center",
-            COARSE_POINTER_GLYPH_BOX_CLASS,
-          )}
+      <span
+        className={cn(
+          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
+          COARSE_POINTER_GLYPH_BOX_CLASS,
+        )}
+        aria-hidden="true"
+      >
+        <Icon
+          name={iconName}
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
-        >
-          <Icon
-            name={iconName}
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
+        />
+      </span>
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
         <span className="min-w-0 truncate">
-          <span>{environmentName ?? "Worktree"}</span>
-          {branchName ? (
+          <span>{displayName}</span>
+          {showBranchName ? (
             <>
-              <span>{environmentName ? " · " : ": "}</span>
+              <span> · </span>
               <span>{branchName}</span>
             </>
           ) : null}
@@ -1269,7 +1270,6 @@ function ProjectRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
               isActive
                 ? SIDEBAR_ROW_SELECTED_STATE_CLASS
                 : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -1282,6 +1282,13 @@ function ProjectRowComponent({
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={handleProjectRowToggle}
+              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",

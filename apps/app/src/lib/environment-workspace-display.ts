@@ -20,16 +20,3 @@ export function getEnvironmentWorkspaceLabelIconName(
 ): IconName {
   return getEnvironmentWorkspaceDisplayIconName(kind) ?? PersistentHostIconName;
 }
-
-export function getEnvironmentWorkspaceDisplayIconLabel(
-  kind: EnvironmentWorkspaceDisplayKind,
-): string | null {
-  switch (kind) {
-    case "managed-worktree":
-      return "Managed worktree environment";
-    case "unmanaged-worktree":
-      return "Git worktree environment";
-    case "other":
-      return null;
-  }
-}
