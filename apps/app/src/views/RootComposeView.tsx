@@ -1164,6 +1164,12 @@ export function RootComposeView(props: RootComposeViewProps) {
       supportsPermissionModeSelection,
     ],
   );
+  const handleCancelForkDraft = useCallback(() => {
+    setForkSeed(null);
+    window.requestAnimationFrame(() => {
+      promptBoxRef.current?.focusEnd();
+    });
+  }, []);
 
   const promptHeader = useMemo(() => {
     if (forkSeed === null) return null;
@@ -1171,19 +1177,28 @@ export function RootComposeView(props: RootComposeViewProps) {
       <div className="flex">
         {/* `-ml-1.5` shifts the pill 6px left so its icon column lines up
             with the prompt controls below the card. */}
-        <span
+        <div
           aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
           title={`Forking ${forkSeed.sourceThreadTitle}`}
-          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs font-medium text-muted-foreground"
+          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
         >
           <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 truncate">
             Forking {forkSeed.sourceThreadTitle}
           </span>
-        </span>
+          <button
+            type="button"
+            aria-label="Cancel fork"
+            title="Cancel fork"
+            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={handleCancelForkDraft}
+          >
+            <Icon name="X" className="size-3" aria-hidden />
+          </button>
+        </div>
       </div>
     );
-  }, [forkSeed]);
+  }, [forkSeed, handleCancelForkDraft]);
 
   if (!hasSidebarNavigationSettled) {
     return (
