@@ -1178,6 +1178,7 @@ function ProjectRowComponent({
                 "select-none",
             )}
             title={project.name}
+            onClick={handleProjectRowToggle}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
