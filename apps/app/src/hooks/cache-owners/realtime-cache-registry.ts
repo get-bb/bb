@@ -103,6 +103,91 @@ interface CollectCachedThreadIdsForEnvironmentArgs {
   queryClient: QueryClient;
 }
 
+interface InvalidateQueryKeysWithoutCancelingActiveFetchesArgs {
+  queryClient: QueryClient;
+  queryKeys: readonly QueryKey[];
+}
+
+interface ScheduleTrailingActiveRefetchArgs {
+  queryClient: QueryClient;
+  queryKey: QueryKey;
+}
+
+const trailingActiveRefetchUnsubscribers = new WeakMap<
+  QueryClient,
+  Map<string, () => void>
+>();
+
+function timelineInvalidationKey(queryKey: QueryKey): string {
+  return JSON.stringify(queryKey);
+}
+
+function hasActiveFetchingQueries(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): boolean {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey, type: "active" })
+    .some((query) => query.state.fetchStatus !== "idle");
+}
+
+function scheduleTrailingActiveRefetch({
+  queryClient,
+  queryKey,
+}: ScheduleTrailingActiveRefetchArgs): void {
+  const scheduleKey = timelineInvalidationKey(queryKey);
+  let unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
+  if (!unsubscribers) {
+    unsubscribers = new Map();
+    trailingActiveRefetchUnsubscribers.set(queryClient, unsubscribers);
+  }
+  if (unsubscribers.has(scheduleKey)) {
+    return;
+  }
+
+  const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+    if (hasActiveFetchingQueries(queryClient, queryKey)) {
+      return;
+    }
+
+    unsubscribe();
+    unsubscribers.delete(scheduleKey);
+    void queryClient
+      .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+      .catch(() => {
+        // Individual query state already captures the refetch error.
+      });
+  });
+  unsubscribers.set(scheduleKey, unsubscribe);
+}
+
+function invalidateQueryKeysWithoutCancelingActiveFetches({
+  queryClient,
+  queryKeys,
+}: InvalidateQueryKeysWithoutCancelingActiveFetchesArgs): void {
+  for (const queryKey of queryKeys) {
+    const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
+    // Avoid aborting the active timeline request on every event batch, but keep
+    // one trailing refetch so an event that raced the in-flight read is not lost.
+    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
+    if (hadActiveFetch) {
+      scheduleTrailingActiveRefetch({ queryClient, queryKey });
+    }
+  }
+}
+
+export function disposeTrailingActiveRefetches(queryClient: QueryClient): void {
+  const unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
+  if (!unsubscribers) {
+    return;
+  }
+  for (const unsubscribe of unsubscribers.values()) {
+    unsubscribe();
+  }
+  trailingActiveRefetchUnsubscribers.delete(queryClient);
+}
+
 export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "thread-created": {
     flush: "debounced",
@@ -497,11 +582,15 @@ function dirtyThreadSearchQueries(): QueryKey[] {
 }
 
 function dirtyThreadTimelineQueries({
+  queryClient,
   threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
+}: ThreadRealtimeDirtyContext): void {
   // Window only: completed turn-summary-details are immutable, so realtime
   // event batches must not refetch open detail panels (see helper docs).
-  return getThreadTimelineWindowInvalidationQueryKeys({ threadId });
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+  });
 }
 
 function dirtyThreadQueueContentQueries({
