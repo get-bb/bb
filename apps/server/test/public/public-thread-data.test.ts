@@ -1382,7 +1382,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("rejects send requests whose senderThreadId is in another project", async () => {
+  it("queues send requests whose senderThreadId is in another project", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness, {
         thread: {
@@ -1418,20 +1418,16 @@ describe("public thread data routes", () => {
         },
       );
 
-      expect(response.status).toBe(400);
-      expect(JSON.stringify(await readJson(response))).toContain(
-        "wrong_project",
-      );
-      // The forged cross-project send must take no effect: no queued message
-      // and no turn-request event recorded on the target thread.
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      expect(
-        harness.db
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(0);
+      // Sender attribution is allowed across projects, so the message queues
+      // with the cross-project sender preserved for the reply affordance.
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({ ok: true });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        {
+          senderThreadId: crossProjectSender.id,
+          threadId: thread.id,
+        },
+      ]);
     });
   });
 
