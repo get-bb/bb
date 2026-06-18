@@ -72,8 +72,10 @@ import type {
   BuildEventProjectionMessagesOptions,
   BuildEventProjectionOptions,
   EventProjectionMessage,
+  EventProjectionWorkflowMessage,
   EventProjection,
 } from "./event-projection-types.js";
+import { getMessageStartedAt } from "./format-helpers.js";
 import {
   createProjectionState,
   finalizeProjectionState,
@@ -110,11 +112,13 @@ interface BuildFlatProjectionDataArgs {
 
 interface BuildFlatProjectionDataResult {
   activeThinking: ActiveThinking | null;
+  activeWorkflow: EventProjectionWorkflowMessage | null;
   messages: EventProjectionMessage[];
 }
 
 interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
+  activeWorkflow: EventProjectionWorkflowMessage | null;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
@@ -129,6 +133,28 @@ const PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES = new Set([
   "wait",
   "closeAgent",
 ]);
+
+function selectActiveWorkflowMessage(
+  messages: readonly EventProjectionMessage[],
+): EventProjectionWorkflowMessage | null {
+  let best: EventProjectionWorkflowMessage | null = null;
+  for (const message of messages) {
+    if (
+      message.kind !== "workflow" ||
+      message.status !== "pending" ||
+      message.skipTranscript
+    ) {
+      continue;
+    }
+    if (
+      best === null ||
+      getMessageStartedAt(message) > getMessageStartedAt(best)
+    ) {
+      best = message;
+    }
+  }
+  return best;
+}
 
 function buildClientTurnRequestById(
   events: ThreadEventWithMeta[],
@@ -635,6 +661,7 @@ function buildFlatProjectionData(
     const operation = parseOperationMessage(decoded, meta, {
       includeProviderUnhandledOperations:
         args.options?.includeProviderUnhandledOperations,
+      threadName: args.options?.threadName ?? "",
     });
     if (operation) {
       flushToolActivityBeforeNonToolMessage(state);
@@ -687,11 +714,13 @@ function buildFlatProjectionData(
   }
 
   finalizeProjectionState({ state, options: args.options });
+  const messages = sortEventProjectionMessagesBySource(state.messages);
   return {
     activeThinking: args.includeActiveThinking
       ? buildProjectionActiveThinking(state, args.options?.threadStatus)
       : null,
-    messages: sortEventProjectionMessagesBySource(state.messages),
+    activeWorkflow: selectActiveWorkflowMessage(messages),
+    messages,
   };
 }
 
@@ -706,6 +735,7 @@ function buildDetailedProjection(
     ...projection,
     state: {
       activeThinking: args.activeThinking,
+      activeWorkflow: args.activeWorkflow,
     },
   });
   return applyProjectionTurnMessageDetail(
@@ -728,6 +758,7 @@ function buildFullEventProjection(
   });
   return buildDetailedProjection({
     activeThinking: flatProjection.activeThinking,
+    activeWorkflow: flatProjection.activeWorkflow,
     events,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -742,6 +773,7 @@ export function buildEventProjectionEntries(
     return {
       state: {
         activeThinking: null,
+        activeWorkflow: null,
       },
       entries: [],
     };
@@ -758,6 +790,7 @@ export function buildEventProjectionEntries(
   });
   return buildDetailedProjection({
     activeThinking: null,
+    activeWorkflow: flatProjection.activeWorkflow,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -772,6 +805,7 @@ export function buildEventProjection(
     return {
       state: {
         activeThinking: null,
+        activeWorkflow: null,
       },
       entries: [],
     };

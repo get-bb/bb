@@ -1,3 +1,7 @@
+import {
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
 import type {
   PermissionMode,
   PromptInput,
@@ -27,10 +31,17 @@ export interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
   input: PromptInput[];
 }
 
-export function isThreadForkable(
-  sourceThread: Pick<Thread, "environmentId"> | null,
-): boolean {
-  return sourceThread !== null && sourceThread.environmentId !== null;
+type ForkableThread = Pick<Thread, "environmentId" | "providerId">;
+
+export function isThreadForkable(sourceThread: ForkableThread | null): boolean {
+  if (sourceThread === null || sourceThread.environmentId === null) {
+    return false;
+  }
+  if (!isAgentProviderId(sourceThread.providerId)) {
+    return false;
+  }
+  return getBuiltInAgentProviderInfo(sourceThread.providerId).capabilities
+    .supportsFork;
 }
 
 export function buildForkThreadRequest({
@@ -44,7 +55,16 @@ export function buildForkThreadRequest({
   serviceTier,
   sourceSeqEnd,
   sourceThreadId,
-}: BuildForkThreadRequestArgs): AppCreateThreadRequest {
+}: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
+  if (
+    !isThreadForkable({
+      environmentId,
+      providerId,
+    })
+  ) {
+    return null;
+  }
+
   return {
     environment: { type: "reuse", environmentId },
     input,

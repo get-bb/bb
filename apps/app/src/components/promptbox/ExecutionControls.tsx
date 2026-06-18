@@ -18,6 +18,8 @@ export interface ExecutionModelConfig {
   active?: { model: string } | null;
   selected: string;
   options: readonly PickerOption<string>[];
+  /** Models behind the picker's collapsed "More models" section. */
+  moreOptions: readonly PickerOption<string>[];
   isLoading: boolean;
   loadFailed: boolean;
   loadError?: SystemExecutionOptionsModelLoadError | null;
@@ -93,6 +95,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           hasMultipleProviders={provider.hasMultiple ?? false}
           modelValue={model.active?.model ?? model.selected}
           modelOptions={model.options}
+          moreModelOptions={model.moreOptions}
           modelIsLoading={model.isLoading}
           modelLoadFailed={model.loadFailed}
           modelLoadError={model.loadError}

@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 36 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 37 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -577,6 +577,24 @@ const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
+/**
+ * Run a one-shot command in an environment workspace and capture its output.
+ * Used by script-mode automations (no agent, no token spend). The daemon spawns
+ * `command` with `args`, captures combined stdout/stderr as `output`, and returns
+ * the exit code without throwing on non-zero. `timedOut` is true when the process
+ * was SIGKILL'd after `timeoutMs`. The server fills every field at the boundary.
+ */
+const hostRunScriptCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("host.run_script"),
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    cwd: z.string().min(1),
+    env: z.record(z.string(), z.string()),
+    timeoutMs: z.number().int().positive(),
+  })
+  .strict();
+
 const fileReadResultSchema = z.object({
   path: z.string(),
   content: z.string(),
@@ -721,6 +739,14 @@ const workspaceCommitResultSchema = z.object({
 const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
   merged: z.boolean(),
 });
+const hostRunScriptResultSchema = z
+  .object({
+    exitCode: z.number().int().nullable(),
+    output: z.string(),
+    durationMs: z.number().int().nonnegative(),
+    timedOut: z.boolean(),
+  })
+  .strict();
 
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
@@ -888,6 +914,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.squash_merge",
     schema: workspaceSquashMergeCommandSchema,
     resultSchema: workspaceSquashMergeResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "host.run_script": defineHostDaemonCommandDescriptor({
+    type: "host.run_script",
+    schema: hostRunScriptCommandSchema,
+    resultSchema: hostRunScriptResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

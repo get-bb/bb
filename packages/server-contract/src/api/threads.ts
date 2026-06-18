@@ -15,12 +15,16 @@ import {
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
+  threadSearchSourceKindSchema,
   threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
-import { timelineRowSchema } from "../thread-timeline.js";
+import {
+  timelineRowSchema,
+  timelineWorkflowWorkRowSchema,
+} from "../thread-timeline.js";
 import {
   environmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -41,7 +45,7 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli"]);
+export const threadCreateOriginSchema = z.enum(["app", "cli", "automation"]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
@@ -179,6 +183,54 @@ export type SendQueuedMessageResponse = z.infer<
 
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
+
+export const threadSearchHighlightRangeSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().positive(),
+  })
+  .strict()
+  .refine((range) => range.end > range.start, {
+    message: "highlight range end must be greater than start",
+  });
+export type ThreadSearchHighlightRange = z.infer<
+  typeof threadSearchHighlightRangeSchema
+>;
+
+export const threadSearchMatchSchema = z
+  .object({
+    sourceKind: threadSearchSourceKindSchema,
+    text: z.string(),
+    highlightRanges: z.array(threadSearchHighlightRangeSchema),
+  })
+  .strict();
+export type ThreadSearchMatch = z.infer<typeof threadSearchMatchSchema>;
+
+export const threadSearchResultSchema = z
+  .object({
+    thread: threadListEntrySchema,
+    matches: z.array(threadSearchMatchSchema),
+  })
+  .strict();
+export type ThreadSearchResult = z.infer<typeof threadSearchResultSchema>;
+
+export const threadSearchResultGroupSchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    results: z.array(threadSearchResultSchema),
+  })
+  .strict();
+export type ThreadSearchResultGroup = z.infer<
+  typeof threadSearchResultGroupSchema
+>;
+
+export const threadSearchResponseSchema = z
+  .object({
+    active: threadSearchResultGroupSchema,
+    archived: threadSearchResultGroupSchema,
+  })
+  .strict();
+export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 
 // canSpawnChild is a server-derived policy flag: true when the thread's
 // hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH, so a fork/side-chat may
@@ -320,6 +372,12 @@ export const threadListQuerySchema = z.object({
 });
 export type ThreadListQuery = z.infer<typeof threadListQuerySchema>;
 
+export const threadSearchQuerySchema = z.object({
+  query: z.string().trim().min(2),
+  limitPerGroup: z.string().regex(/^\d+$/).optional(),
+});
+export type ThreadSearchQuery = z.infer<typeof threadSearchQuerySchema>;
+
 export const timelinePaginationCursorSchema = z
   .object({
     anchorSeq: z.number().int().positive(),
@@ -348,10 +406,11 @@ export const threadTimelineQuerySchema = z
     beforeAnchorId: z.string().min(1),
     /**
      * When `"true"`, the response omits row generation and returns
-     * `rows: []` with the tail-only fields (`activeThinking`, `pendingTodos`,
-     * `contextWindowUsage`) populated normally. Used by the CLI to read
-     * tail state without paying for the full row payload on every
-     * `bb status` invocation. Implies `latest` page semantics.
+     * `rows: []` with the tail-only fields (`activeThinking`,
+     * `activeWorkflow`, `pendingTodos`, `contextWindowUsage`) populated
+     * normally. Used by the CLI to read tail state without paying for the full
+     * row payload on every `bb status` invocation. Implies `latest` page
+     * semantics.
      */
     summaryOnly: z.enum(["true", "false"]),
   })
@@ -454,6 +513,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
+  activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),

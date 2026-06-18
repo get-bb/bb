@@ -263,6 +263,14 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useMarkThreadRead: () => ({ mutate: mocks.noopMutate }),
+}));
+
+vi.mock("@/hooks/useThreadReadTracking", () => ({
+  useThreadReadTracking: () => undefined,
+}));
+
 vi.mock("@/hooks/mutations/project-mutations", () => ({
   useUploadPromptAttachment: () => ({
     isPending: false,
@@ -303,6 +311,7 @@ describe("SideChatTabContent", () => {
 
     render(
       <SideChatTabContent
+        isActive={true}
         tab={tab}
         sourceThread={sourceThread}
         sourceEnvironment={null}

@@ -64,6 +64,7 @@ export interface NewThreadBranchConfig {
   isNew: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
+  priorityOptions?: readonly string[];
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -308,6 +309,7 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
           isCreatingNew={branch.isNew}
           options={branch.options}
           remoteOptions={branch.remoteOptions}
+          priorityOptions={branch.priorityOptions}
           loading={branch.loading}
           placeholder={branch.placeholder}
           triggerLabel={branch.triggerLabel}

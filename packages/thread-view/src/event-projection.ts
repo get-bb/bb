@@ -3,6 +3,7 @@ import type { AcceptedClientRequestContext } from "./accepted-client-request-con
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionMessage,
+  EventProjectionWorkflowMessage,
 } from "./event-projection-message.js";
 
 export const eventProjectionTurnStatusValues = [
@@ -33,6 +34,11 @@ export interface EventProjectionState {
    * null because only the thread-level timeline owns live thinking state.
    */
   activeThinking: ActiveThinking | null;
+  /**
+   * Root-projection-only active workflow selected before completed turns are
+   * summarized. Nested child projections expose null.
+   */
+  activeWorkflow: EventProjectionWorkflowMessage | null;
 }
 
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {

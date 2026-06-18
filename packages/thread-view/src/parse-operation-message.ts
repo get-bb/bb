@@ -6,10 +6,14 @@ import type {
 import { ownershipChangeOperationMetadataSchema } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { getCompactionKey } from "./compaction-lifecycle.js";
+import { OWNERSHIP_CHANGE_VERBS } from "./family-a-verbs.js";
 import type { EventMeta } from "./event-decode.js";
 import { capitalize, messageId } from "./format-helpers.js";
 import { buildProviderUnhandledDetail } from "./provider-unhandled-detail.js";
-import { readProvisioningTranscript } from "./provisioning-helpers.js";
+import {
+  provisioningTitleForStatus,
+  readProvisioningTranscript,
+} from "./provisioning-helpers.js";
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionPermissionGrantGrantScope,
@@ -26,8 +30,19 @@ import type {
 
 type ParseOperationMessageOptions = Pick<
   BuildEventProjectionMessagesOptions,
-  "includeProviderUnhandledOperations"
+  "includeProviderUnhandledOperations" | "threadName"
 >;
+
+/**
+ * Prefix a thread name onto a bare action verb, e.g. ("Fix auth bug",
+ * "assigned to parent") → "Fix auth bug assigned to parent". Falls back to
+ * capitalizing the verb when the thread has no name so the title is never an
+ * orphaned fragment.
+ */
+function withThreadName(threadName: string, verb: string): string {
+  const name = threadName.trim();
+  return name.length > 0 ? `${name} ${verb}` : capitalize(verb);
+}
 
 type PermissionGrantLifecycleEvent = Extract<
   ThreadEvent,
@@ -46,6 +61,8 @@ function providerDisplayName(providerId: string): string {
       return "Codex";
     case "pi":
       return "Pi";
+    case "acp-cursor":
+      return "Cursor";
     default:
       return providerId;
   }
@@ -102,33 +119,64 @@ function createThreadOperationMetadata(
   };
 }
 
-function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
+function threadInterruptedTitle(
+  reason: SystemThreadInterruptedReason,
+): string {
   switch (reason) {
     case "manual-stop":
       return "Stopped manually";
     case "host-daemon-restarted":
-      return "Host daemon restarted";
+      return "Stopped — host daemon restarted";
     // Legacy persisted watchdog interruption; no current producer.
     case "provider-turn-idle":
-      return "Provider turn stopped responding";
+      return "Stopped — provider turn stopped responding";
     default:
       return assertNever(reason);
   }
 }
 
+/**
+ * Compose "{thread} {verb} {parent}", falling back to "{thread} {verb} parent"
+ * when the parent thread name is null (deleted/renamed/untitled parent).
+ */
+function ownershipTitleWithParent(
+  threadName: string,
+  verb: string,
+  parentTitle: string | null,
+): string {
+  const parent =
+    parentTitle !== null && parentTitle.trim().length > 0
+      ? parentTitle.trim()
+      : "parent";
+  return withThreadName(threadName, `${verb} ${parent}`);
+}
+
 function ownershipChangeOperationTitle(
   meta: EventProjectionOwnershipChangeThreadOperationMetadata,
+  threadName: string,
 ): string {
   switch (meta.status) {
     case "completed": {
       const action = meta.metadata?.action;
       switch (action) {
         case "assign":
-          return "Thread assigned to parent";
+          return ownershipTitleWithParent(
+            threadName,
+            OWNERSHIP_CHANGE_VERBS.assign,
+            meta.metadata?.nextParentThreadTitle ?? null,
+          );
         case "release":
-          return "Thread released from parent";
+          return ownershipTitleWithParent(
+            threadName,
+            OWNERSHIP_CHANGE_VERBS.release,
+            meta.metadata?.previousParentThreadTitle ?? null,
+          );
         case "transfer":
-          return "Thread transferred to new parent";
+          return ownershipTitleWithParent(
+            threadName,
+            OWNERSHIP_CHANGE_VERBS.transfer,
+            meta.metadata?.nextParentThreadTitle ?? null,
+          );
         case undefined:
           return "Ownership change completed";
         default:
@@ -144,12 +192,13 @@ function ownershipChangeOperationTitle(
 
 export function threadOperationTitle(
   meta: EventProjectionThreadOperationMetadata | null,
+  threadName: string,
 ): string {
   if (!meta) return "Operation update";
 
   switch (meta.operation) {
     case "ownership_change":
-      return ownershipChangeOperationTitle(meta);
+      return ownershipChangeOperationTitle(meta, threadName);
     case "other":
       return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
         meta.rawStatus
@@ -382,6 +431,7 @@ export function parseOperationMessage(
   | EventProjectionPermissionGrantLifecycleMessage
   | EventProjectionUserQuestionLifecycleMessage
   | null {
+  const threadName = options?.threadName ?? "";
   if (decoded.type === "provider/unhandled") {
     if (options?.includeProviderUnhandledOperations !== true) {
       return null;
@@ -445,24 +495,11 @@ export function parseOperationMessage(
       return null;
     }
     const transcript = readProvisioningTranscript(decoded.entries);
-    const title = (() => {
-      switch (status) {
-        case "active":
-          return "Provisioning thread";
-        case "completed":
-          return "Provisioned thread";
-        case "failed":
-          return "Provisioning thread failed";
-        case "cancelled":
-          return "Provisioning stopped";
-        default:
-          return "Provisioning thread";
-      }
-    })();
+    const operationStatus = provisioningOperationStatus(status);
     return op(decoded, meta, "thread-provisioning", {
       opType: "thread-provisioning",
-      title,
-      status: provisioningOperationStatus(status),
+      title: provisioningTitleForStatus(operationStatus),
+      status: operationStatus,
       provisioning: {
         environmentId,
         provisioningId,
@@ -477,7 +514,7 @@ export function parseOperationMessage(
 
   if (decoded.type === "system/operation") {
     const threadOperation = createThreadOperationMetadata(decoded);
-    const title = threadOperationTitle(threadOperation);
+    const title = threadOperationTitle(threadOperation, threadName);
 
     const branch =
       typeof decoded.metadata?.branch === "string"
@@ -538,7 +575,7 @@ export function interruptOperationMessage(
       message.title = "Operation interrupted";
       return;
     case "thread-provisioning":
-      message.title = "Provisioning thread interrupted";
+      message.title = provisioningTitleForStatus("interrupted");
       return;
     case "compaction":
       message.title = "Context compaction interrupted";
@@ -558,7 +595,7 @@ export function finalizeOperationMessage(
     switch (message.opType) {
       case "thread-provisioning":
         message.status = "error";
-        message.title = "Provisioning thread failed";
+        message.title = provisioningTitleForStatus("error");
         message.completedAt = message.createdAt;
         return;
       default:

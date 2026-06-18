@@ -74,6 +74,8 @@ import {
   useSendThreadMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
+import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import {
   SIDE_CHAT_PERMISSION_MODE,
   buildSideChatCreateRequest,
@@ -98,6 +100,8 @@ export interface SetSideChatThreadId {
 }
 
 export interface SideChatTabContentProps {
+  /** Only the active side-chat tab is visible; inactive tabs stay mounted. */
+  isActive: boolean;
   tab: SideChatFixedPanelTab;
   /** The main thread the side chat is anchored to (lineage + provider source). */
   sourceThread: Thread;
@@ -278,6 +282,7 @@ function SideChatConversation({
  * cross-thread send transport (`senderThreadId`).
  */
 export function SideChatTabContent({
+  isActive,
   tab,
   sourceThread,
   sourceEnvironment,
@@ -289,6 +294,7 @@ export function SideChatTabContent({
   const createThread = useCreateThread();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
+  const markThreadRead = useMarkThreadRead();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const sendThreadMessage = useSendThreadMessage();
@@ -299,6 +305,10 @@ export function SideChatTabContent({
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
+  });
+  useThreadReadTracking({
+    markThreadRead,
+    thread: isActive ? childThreadQuery.data : undefined,
   });
   // Build the SAME execution + permission configs the main thread builds (see
   // ThreadDetailPromptArea), seeded from the parent thread's resolved options
@@ -1014,6 +1024,7 @@ export function SideChatTabContent({
     reasoningLevel,
     activeModel,
     modelOptions,
+    moreModelOptions,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -1035,6 +1046,7 @@ export function SideChatTabContent({
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        moreOptions: moreModelOptions,
         loadError: modelLoadError,
         isLoading: isLoadingModels,
         loadFailed: modelLoadError !== null,
@@ -1058,6 +1070,7 @@ export function SideChatTabContent({
       isLoadingModels,
       modelLoadError,
       modelOptions,
+      moreModelOptions,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -1086,7 +1099,12 @@ export function SideChatTabContent({
     if (sourceEnvironment === null) {
       // Personal-project side chats inherit the parent's local workspace with no
       // discrete environment row; the main thread renders "Working locally".
-      return <ThreadEnvironmentSummary environmentLabel="Working locally" />;
+      return (
+        <ThreadEnvironmentSummary
+          environmentLabel="Working locally"
+          environmentCompactLabel="Local"
+        />
+      );
     }
     const host: EnvironmentDisplayHostContext = {
       locality: isLocalDaemonHost(sourceEnvironment.hostId)

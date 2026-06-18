@@ -61,6 +61,8 @@ interface ModelReasoningPickerProps {
   // Model state
   modelValue: string;
   modelOptions: readonly PickerOption<string>[];
+  /** Models rendered behind a collapsed "More models" row. */
+  moreModelOptions?: readonly PickerOption<string>[];
   modelIsLoading?: boolean;
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
@@ -105,6 +107,7 @@ export function ModelReasoningPicker({
   hasMultipleProviders,
   modelValue,
   modelOptions,
+  moreModelOptions = [],
   modelIsLoading = false,
   modelLoadFailed = false,
   modelLoadError,
@@ -131,6 +134,8 @@ export function ModelReasoningPicker({
   const [previewProviderId, setPreviewProviderId] = useState<string | null>(
     null,
   );
+  // "More models" expansion is per-open: it resets when the popover closes.
+  const [showMoreModels, setShowMoreModels] = useState(false);
 
   const activeProviderId = previewProviderId ?? selectedProviderId;
 
@@ -210,6 +215,22 @@ export function ModelReasoningPicker({
         : model.displayName || model.model,
     }));
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
+  const previewMoreModelOptions = useMemo((): readonly PickerOption<string>[] => {
+    if (!isPreviewing) return moreModelOptions;
+    const models = previewQuery.data?.selectedOnlyModels;
+    if (!models || models.length === 0) return [];
+    return models.map((model) => ({
+      value: model.model,
+      label: formatModelLabel
+        ? formatModelLabel(model.displayName || model.model)
+        : model.displayName || model.model,
+    }));
+  }, [
+    isPreviewing,
+    moreModelOptions,
+    previewQuery.data?.selectedOnlyModels,
+    formatModelLabel,
+  ]);
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -235,6 +256,7 @@ export function ModelReasoningPicker({
   const activeModelFailureMessage =
     activeModelLoadErrorMessage ?? "Could not load models.";
   const activeModelOptions = previewModelOptions;
+  const activeMoreModelOptions = previewMoreModelOptions;
   const hasActiveModelOptions = activeModelOptions.length > 0;
   const activeModelErrorIsProviderSpecific =
     activeModelLoadErrorMatches && activeModelLoadError !== null;
@@ -260,7 +282,10 @@ export function ModelReasoningPicker({
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) setPreviewProviderId(null);
+    if (!nextOpen) {
+      setPreviewProviderId(null);
+      setShowMoreModels(false);
+    }
   }, []);
 
   const handleModelSelect = useCallback(
@@ -449,16 +474,37 @@ export function ModelReasoningPicker({
               Loading models…
             </div>
           ) : hasActiveModelOptions ? (
-            activeModelOptions.map((option) => (
-              <MenuRowButton
-                key={option.value}
-                // The menu always reflects the provider whose models it lists
-                // (either committed or previewed) — strip with `activeProviderId`.
-                label={stripModelBrandPrefix(option.label, activeProviderId)}
-                selected={!isPreviewing && option.value === modelValue}
-                onClick={() => handleModelSelect(option.value)}
-              />
-            ))
+            <>
+              {activeModelOptions.map((option) => (
+                <MenuRowButton
+                  key={option.value}
+                  // The menu always reflects the provider whose models it lists
+                  // (either committed or previewed) — strip with `activeProviderId`.
+                  label={stripModelBrandPrefix(option.label, activeProviderId)}
+                  selected={!isPreviewing && option.value === modelValue}
+                  onClick={() => handleModelSelect(option.value)}
+                />
+              ))}
+              {activeMoreModelOptions.length > 0 ? (
+                <MoreModelsToggleRow
+                  expanded={showMoreModels}
+                  onToggle={() => setShowMoreModels((current) => !current)}
+                />
+              ) : null}
+              {showMoreModels
+                ? activeMoreModelOptions.map((option) => (
+                    <MenuRowButton
+                      key={option.value}
+                      label={stripModelBrandPrefix(
+                        option.label,
+                        activeProviderId,
+                      )}
+                      selected={!isPreviewing && option.value === modelValue}
+                      onClick={() => handleModelSelect(option.value)}
+                    />
+                  ))
+                : null}
+            </>
           ) : (
             <div
               className={cn(
@@ -545,6 +591,36 @@ function MenuSectionLabel({ children }: { children: React.ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+// Disclosure row for the collapsed secondary model pool. Same row metrics as
+// MenuRowButton so the list reads as one column; muted to read as an
+// affordance rather than a model.
+function MoreModelsToggleRow({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const isCompactViewport = useIsCompactViewport();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground",
+        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+      )}
+    >
+      <span>{expanded ? "Fewer models" : "More models"}</span>
+      <Icon
+        name={expanded ? "ChevronUp" : "ChevronDown"}
+        className="size-3.5 shrink-0"
+      />
+    </button>
   );
 }
 

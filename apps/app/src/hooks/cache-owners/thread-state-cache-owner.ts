@@ -10,6 +10,7 @@ import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
 import { removeEnvironmentScopedQueries } from "./environment-cache-effects";
@@ -54,6 +55,10 @@ interface ThreadPinSuccessArgs extends ThreadRuntimeCacheArgs {
 
 interface BeginThreadPinTransactionArgs extends ThreadIdCacheArgs {
   pinnedAt: number;
+}
+
+interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
+  lastReadAt: number | null;
 }
 
 interface ReorderPinnedThreadTransactionRequest extends ReorderPinnedThreadRequest {
@@ -167,6 +172,16 @@ function updateThreadPinStateInLists({
   );
 }
 
+function getOptimisticLastReadAt(
+  thread: Pick<ThreadWithRuntime, "latestAttentionAt">,
+  lastReadAt: number | null,
+): number | null {
+  if (lastReadAt === null) {
+    return null;
+  }
+  return Math.max(lastReadAt, thread.latestAttentionAt);
+}
+
 function applyPinnedRootResponseToLists({
   orderedRoots,
   queryClient,
@@ -225,13 +240,15 @@ export function applyThreadUpdateResult({
 }
 
 interface OptimisticThreadFieldTransactionArgs extends ThreadIdCacheArgs {
-  patch: Partial<ThreadWithRuntime>;
+  patch?: Partial<ThreadWithRuntime>;
+  patchThread?: (thread: ThreadWithRuntime) => ThreadWithRuntime;
   applyToLists: (queryClient: QueryClient, threadId: string) => void;
 }
 
 async function runOptimisticThreadFieldTransaction({
   applyToLists,
   patch,
+  patchThread,
   queryClient,
   threadId,
 }: OptimisticThreadFieldTransactionArgs): Promise<ThreadListMutationTransaction> {
@@ -255,9 +272,13 @@ async function runOptimisticThreadFieldTransaction({
         return thread;
       }
 
+      if (patchThread) {
+        return patchThread(thread);
+      }
+
       return {
         ...thread,
-        ...patch,
+        ...(patch ?? {}),
       };
     },
   );
@@ -304,6 +325,32 @@ export function beginUnpinThreadTransaction({
         ),
       ),
     patch: { pinnedAt: null },
+    queryClient,
+    threadId,
+  });
+}
+
+export function beginThreadReadStateTransaction({
+  lastReadAt,
+  queryClient,
+  threadId,
+}: BeginThreadReadStateTransactionArgs): Promise<ThreadListMutationTransaction> {
+  return runOptimisticThreadFieldTransaction({
+    applyToLists: (queryClient, threadId) =>
+      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
+        list.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                lastReadAt: getOptimisticLastReadAt(thread, lastReadAt),
+              }
+            : thread,
+        ),
+      ),
+    patchThread: (thread) => ({
+      ...thread,
+      lastReadAt: getOptimisticLastReadAt(thread, lastReadAt),
+    }),
     queryClient,
     threadId,
   });
@@ -478,6 +525,7 @@ export function settleArchiveThreadsTransaction({
 }: SettleArchiveThreadsTransactionArgs): void {
   queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
   queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
+  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   for (const threadId of response?.archivedThreadIds ??
     transaction?.archivedThreadIds ??
     []) {

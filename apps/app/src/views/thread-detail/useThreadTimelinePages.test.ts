@@ -40,6 +40,8 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     role: "user",
     initiator: "user",
     senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
     text: args.id,
     mentions: [],
     attachments: null,
@@ -95,6 +97,7 @@ function makeTimelineResponse(
   return {
     rows,
     activeThinking: null,
+    activeWorkflow: null,
     pendingTodos: null,
     goal: null,
     timelinePage: {

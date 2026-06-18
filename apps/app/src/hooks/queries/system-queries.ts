@@ -36,10 +36,11 @@ export function useSystemExecutionOptions(
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({ environmentId, providerId }),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getSystemExecutionOptions({
         environmentId: args.environmentId,
         providerId: args.providerId,
+        signal,
       }),
     enabled,
     staleTime: 60_000,
@@ -52,7 +53,7 @@ export function useSystemConfig(options?: QueryOptions) {
 
   return useQuery<SystemConfigResponse>({
     queryKey: systemConfigQueryKey(),
-    queryFn: () => api.getSystemConfig(),
+    queryFn: ({ signal }) => api.getSystemConfig(signal),
     enabled,
     staleTime: 60_000,
   });
@@ -63,7 +64,7 @@ const SYSTEM_VERSION_STALE_TIME_MS = 60 * 60 * 1000;
 export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
-    queryFn: () => api.getSystemVersion(),
+    queryFn: ({ signal }) => api.getSystemVersion(signal),
     enabled: options?.enabled ?? true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -82,13 +83,14 @@ export function useLocalProviderCliStatus({
 }: UseLocalProviderCliStatusArgs) {
   return useQuery<ProviderCliStatusResponse>({
     queryKey: localProviderCliStatusQueryKey(daemonPort),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchProviderCliStatus(
         requireEnabledQueryArg({
           value: daemonPort,
           hookName: "useLocalProviderCliStatus",
           argName: "daemonPort",
         }),
+        signal,
       ),
     enabled: (enabled ?? true) && daemonPort !== null,
     refetchOnMount: false,

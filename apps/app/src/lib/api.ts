@@ -11,6 +11,10 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
+  Automation,
+  AutomationRunListResponse,
+  AutomationRunResponse,
+  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -49,6 +53,7 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
+  ThreadSearchResponse,
   ThreadResponse,
   ThreadWithIncludesResponse,
   PathListIncludeQueryValue,
@@ -95,10 +100,12 @@ interface GetThreadTimelineArgs {
   id: string;
   includeNestedRows?: boolean;
   segmentLimit?: number;
+  signal?: AbortSignal;
 }
 
 interface GetThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsRequest {
   id: string;
+  signal?: AbortSignal;
 }
 
 interface GetEnvironmentFilePreviewArgs {
@@ -506,6 +513,108 @@ export async function deleteProject(id: string): Promise<void> {
   await requestVoid(apiClient.projects[":id"].$delete({ param: { id } }));
 }
 
+export async function listAutomations(
+  signal?: AbortSignal,
+): Promise<AutomationsOverviewResponse> {
+  return request<AutomationsOverviewResponse>(
+    apiClient.automations.$get(undefined, requestOptions(signal)),
+  );
+}
+
+interface AutomationRef {
+  projectId: string;
+  automationId: string;
+}
+
+interface GetAutomationArgs extends AutomationRef {
+  signal?: AbortSignal;
+}
+
+interface ListAutomationRunsArgs extends AutomationRef {
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
+export async function getAutomation({
+  projectId,
+  automationId,
+  signal,
+}: GetAutomationArgs): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].$get(
+      { param: { id: projectId, automationId } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function listAutomationRuns({
+  projectId,
+  automationId,
+  limit,
+  cursor,
+  signal,
+}: ListAutomationRunsArgs): Promise<AutomationRunListResponse> {
+  return request<AutomationRunListResponse>(
+    apiClient.projects[":id"].automations[":automationId"].runs.$get(
+      {
+        param: { id: projectId, automationId },
+        query: {
+          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function pauseAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].pause.$post({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function resumeAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].resume.$post({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function runAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<AutomationRunResponse> {
+  return request<AutomationRunResponse>(
+    apiClient.projects[":id"].automations[":automationId"].run.$post({
+      param: { id: projectId, automationId },
+      json: {},
+    }),
+  );
+}
+
+export async function deleteAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<void> {
+  await requestVoid(
+    apiClient.projects[":id"].automations[":automationId"].$delete({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
 export async function addProjectSource(
   projectId: string,
   req: CreateProjectSourceRequest,
@@ -548,6 +657,7 @@ interface SearchProjectPathsArgs {
   limit: number;
   includeFiles: boolean;
   includeDirectories: boolean;
+  signal?: AbortSignal;
 }
 
 interface SearchEnvironmentPathsArgs {
@@ -556,6 +666,7 @@ interface SearchEnvironmentPathsArgs {
   limit: number;
   includeFiles: boolean;
   includeDirectories: boolean;
+  signal?: AbortSignal;
 }
 
 function toPathListIncludeQueryValue(
@@ -573,21 +684,24 @@ export async function searchProjectPaths(
   args: SearchProjectPathsArgs,
 ): Promise<WorkspacePathListResponse> {
   return request<WorkspacePathListResponse>(
-    apiClient.projects[":id"].paths.$get({
-      param: { id: args.projectId },
-      query: {
-        query: args.query,
-        limit: String(args.limit),
-        // The project-source listing has no environment to scope to; the shared
-        // query schema still carries the field, so send the empty string (=
-        // null) to select the default source.
-        environmentId: "",
-        includeFiles: toPathListIncludeQueryValue(args.includeFiles),
-        includeDirectories: toPathListIncludeQueryValue(
-          args.includeDirectories,
-        ),
+    apiClient.projects[":id"].paths.$get(
+      {
+        param: { id: args.projectId },
+        query: {
+          query: args.query,
+          limit: String(args.limit),
+          // The project-source listing has no environment to scope to; the shared
+          // query schema still carries the field, so send the empty string (=
+          // null) to select the default source.
+          environmentId: "",
+          includeFiles: toPathListIncludeQueryValue(args.includeFiles),
+          includeDirectories: toPathListIncludeQueryValue(
+            args.includeDirectories,
+          ),
+        },
       },
-    }),
+      requestOptions(args.signal),
+    ),
   );
 }
 
@@ -596,17 +710,20 @@ export async function searchEnvironmentPaths(
   args: SearchEnvironmentPathsArgs,
 ): Promise<WorkspacePathListResponse> {
   return request<WorkspacePathListResponse>(
-    apiClient.environments[":id"].paths.$get({
-      param: { id: args.environmentId },
-      query: {
-        query: args.query,
-        limit: String(args.limit),
-        includeFiles: toPathListIncludeQueryValue(args.includeFiles),
-        includeDirectories: toPathListIncludeQueryValue(
-          args.includeDirectories,
-        ),
+    apiClient.environments[":id"].paths.$get(
+      {
+        param: { id: args.environmentId },
+        query: {
+          query: args.query,
+          limit: String(args.limit),
+          includeFiles: toPathListIncludeQueryValue(args.includeFiles),
+          includeDirectories: toPathListIncludeQueryValue(
+            args.includeDirectories,
+          ),
+        },
       },
-    }),
+      requestOptions(args.signal),
+    ),
   );
 }
 
@@ -617,6 +734,7 @@ interface ListProjectCommandsArgs {
   query: string;
   limit: number;
   offset: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -632,16 +750,19 @@ export async function listProjectCommands(
   args: ListProjectCommandsArgs,
 ): Promise<CommandListResponse> {
   return request<CommandListResponse>(
-    apiClient.projects[":id"].commands.$get({
-      param: { id: args.projectId },
-      query: {
-        provider: args.providerId,
-        environmentId: args.environmentId ?? "",
-        ...(args.query.length > 0 ? { query: args.query } : {}),
-        limit: String(args.limit),
-        ...(args.offset > 0 ? { offset: String(args.offset) } : {}),
+    apiClient.projects[":id"].commands.$get(
+      {
+        param: { id: args.projectId },
+        query: {
+          provider: args.providerId,
+          environmentId: args.environmentId ?? "",
+          ...(args.query.length > 0 ? { query: args.query } : {}),
+          limit: String(args.limit),
+          ...(args.offset > 0 ? { offset: String(args.offset) } : {}),
+        },
       },
-    }),
+      requestOptions(args.signal),
+    ),
   );
 }
 
@@ -649,12 +770,16 @@ export async function getProjectSourceBranches(
   projectId: string,
   hostId: string,
   args?: ProjectBranchListRequest,
+  signal?: AbortSignal,
 ): Promise<ProjectBranchesResponse> {
   return request<ProjectBranchesResponse>(
-    apiClient.projects[":id"].branches.$get({
-      param: { id: projectId },
-      query: buildProjectBranchesQuery(hostId, args),
-    }),
+    apiClient.projects[":id"].branches.$get(
+      {
+        param: { id: projectId },
+        query: buildProjectBranchesQuery(hostId, args),
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -713,6 +838,11 @@ export interface ThreadListFilters {
   offset?: number;
 }
 
+export interface ThreadSearchFilters {
+  query: string;
+  limitPerGroup?: number;
+}
+
 function toBooleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
 }
@@ -751,9 +881,34 @@ export async function listThreads(
   );
 }
 
-export async function getThread(id: string): Promise<ThreadResponse> {
+export async function searchThreads(
+  filters: ThreadSearchFilters,
+  signal?: AbortSignal,
+): Promise<ThreadSearchResponse> {
+  return request<ThreadSearchResponse>(
+    apiClient.threads.search.$get(
+      {
+        query: {
+          query: filters.query,
+          ...(filters.limitPerGroup !== undefined
+            ? { limitPerGroup: String(filters.limitPerGroup) }
+            : {}),
+        },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function getThread(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ThreadResponse> {
   return request<ThreadResponse>(
-    apiClient.threads[":id"].$get({ param: { id } }),
+    apiClient.threads[":id"].$get(
+      { param: { id } },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -985,9 +1140,13 @@ export async function createThreadQueuedMessage(
 
 export async function listThreadQueuedMessages(
   id: string,
+  signal?: AbortSignal,
 ): Promise<ThreadQueuedMessageListResponse> {
   return request<ThreadQueuedMessageListResponse>(
-    apiClient.threads[":id"]["queued-messages"].$get({ param: { id } }),
+    apiClient.threads[":id"]["queued-messages"].$get(
+      { param: { id } },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -1048,11 +1207,15 @@ export async function stopThread(id: string): Promise<void> {
 
 export async function getThreadDefaultExecutionOptions(
   id: string,
+  signal?: AbortSignal,
 ): Promise<ResolvedThreadExecutionOptions | null> {
   return request<ResolvedThreadExecutionOptions | null>(
-    apiClient.threads[":id"]["default-execution-options"].$get({
-      param: { id },
-    }),
+    apiClient.threads[":id"]["default-execution-options"].$get(
+      {
+        param: { id },
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -1182,12 +1345,16 @@ export async function getEnvironmentPullRequest(
 export async function getEnvironmentDiffBranches(
   id: string,
   args?: EnvironmentBranchListRequest,
+  signal?: AbortSignal,
 ): Promise<EnvironmentDiffBranchesResponse> {
   return request<EnvironmentDiffBranchesResponse>(
-    apiClient.environments[":id"].diff.branches.$get({
-      param: { id },
-      query: buildEnvironmentDiffBranchesQuery(args),
-    }),
+    apiClient.environments[":id"].diff.branches.$get(
+      {
+        param: { id },
+        query: buildEnvironmentDiffBranchesQuery(args),
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -1215,41 +1382,49 @@ export async function getThreadTimeline({
   id,
   includeNestedRows = false,
   segmentLimit,
+  signal,
 }: GetThreadTimelineArgs): Promise<ThreadTimelineResponse> {
   return request<ThreadTimelineResponse>(
-    apiClient.threads[":id"].timeline.$get({
-      param: { id },
-      query: {
-        ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
-        ...(segmentLimit !== undefined
-          ? { segmentLimit: String(segmentLimit) }
-          : {}),
-        ...(beforeCursor
-          ? {
-              beforeAnchorSeq: String(beforeCursor.anchorSeq),
-              beforeAnchorId: beforeCursor.anchorId,
-            }
-          : {}),
+    apiClient.threads[":id"].timeline.$get(
+      {
+        param: { id },
+        query: {
+          ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
+          ...(segmentLimit !== undefined
+            ? { segmentLimit: String(segmentLimit) }
+            : {}),
+          ...(beforeCursor
+            ? {
+                beforeAnchorSeq: String(beforeCursor.anchorSeq),
+                beforeAnchorId: beforeCursor.anchorId,
+              }
+            : {}),
+        },
       },
-    }),
+      requestOptions(signal),
+    ),
   );
 }
 
 export async function getThreadTimelineTurnSummaryDetails({
   id,
+  signal,
   turnId,
   sourceSeqStart,
   sourceSeqEnd,
 }: GetThreadTimelineTurnSummaryDetailsArgs): Promise<TimelineTurnSummaryDetailsResponse> {
   return request<TimelineTurnSummaryDetailsResponse>(
-    apiClient.threads[":id"].timeline["turn-summary-details"].$get({
-      param: { id },
-      query: {
-        turnId,
-        sourceSeqStart: String(sourceSeqStart),
-        sourceSeqEnd: String(sourceSeqEnd),
+    apiClient.threads[":id"].timeline["turn-summary-details"].$get(
+      {
+        param: { id },
+        query: {
+          turnId,
+          sourceSeqStart: String(sourceSeqStart),
+          sourceSeqEnd: String(sourceSeqEnd),
+        },
       },
-    }),
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -1275,6 +1450,7 @@ export async function getEnvironmentDiffFile(
   target: DiffFileTarget,
   path: string,
   side: DiffFileSide,
+  signal?: AbortSignal,
 ): Promise<EnvironmentDiffFileResponse> {
   const baseQuery = (() => {
     switch (target.type) {
@@ -1303,10 +1479,13 @@ export async function getEnvironmentDiffFile(
   })();
 
   return request<EnvironmentDiffFileResponse>(
-    apiClient.environments[":id"].diff.file.$get({
-      param: { id },
-      query: { ...baseQuery, path, side },
-    }),
+    apiClient.environments[":id"].diff.file.$get(
+      {
+        param: { id },
+        query: { ...baseQuery, path, side },
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -1349,18 +1528,23 @@ function buildEnvironmentDiffTargetQuery(
 export async function getEnvironmentDiffFiles(
   id: string,
   target: WorkspaceDiffTarget,
+  signal?: AbortSignal,
 ): Promise<EnvironmentDiffFilesResponse> {
   return request<EnvironmentDiffFilesResponse>(
-    apiClient.environments[":id"].diff.files.$get({
-      param: { id },
-      query: buildEnvironmentDiffTargetQuery(target),
-    }),
+    apiClient.environments[":id"].diff.files.$get(
+      {
+        param: { id },
+        query: buildEnvironmentDiffTargetQuery(target),
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
 interface GetEnvironmentDiffPatchesArgs {
   target: WorkspaceDiffTarget;
   paths: string[];
+  signal?: AbortSignal;
 }
 
 /**
@@ -1370,27 +1554,34 @@ interface GetEnvironmentDiffPatchesArgs {
  */
 export async function getEnvironmentDiffPatches(
   id: string,
-  { target, paths }: GetEnvironmentDiffPatchesArgs,
+  { target, paths, signal }: GetEnvironmentDiffPatchesArgs,
 ): Promise<EnvironmentDiffPatchResponse> {
   return request<EnvironmentDiffPatchResponse>(
-    apiClient.environments[":id"].diff.patch.$post({
-      param: { id },
-      json: { target, paths },
-    }),
+    apiClient.environments[":id"].diff.patch.$post(
+      {
+        param: { id },
+        json: { target, paths },
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
 export async function getSystemExecutionOptions(args: {
   environmentId?: string;
   providerId?: string;
+  signal?: AbortSignal;
 }): Promise<SystemExecutionOptionsResponse> {
   return request<SystemExecutionOptionsResponse>(
-    apiClient.system["execution-options"].$get({
-      query: {
-        ...(args.environmentId ? { environmentId: args.environmentId } : {}),
-        ...(args.providerId ? { providerId: args.providerId } : {}),
+    apiClient.system["execution-options"].$get(
+      {
+        query: {
+          ...(args.environmentId ? { environmentId: args.environmentId } : {}),
+          ...(args.providerId ? { providerId: args.providerId } : {}),
+        },
       },
-    }),
+      requestOptions(args.signal),
+    ),
   );
 }
 
@@ -1400,12 +1591,20 @@ export async function listSystemProviders(): Promise<SystemProviderInfo[]> {
   );
 }
 
-export async function getSystemVersion(): Promise<SystemVersionResponse> {
-  return request<SystemVersionResponse>(apiClient.system.version.$get());
+export async function getSystemVersion(
+  signal?: AbortSignal,
+): Promise<SystemVersionResponse> {
+  return request<SystemVersionResponse>(
+    apiClient.system.version.$get({}, requestOptions(signal)),
+  );
 }
 
-export async function getSystemConfig(): Promise<SystemConfigResponse> {
-  return request<SystemConfigResponse>(apiClient.system.config.$get());
+export async function getSystemConfig(
+  signal?: AbortSignal,
+): Promise<SystemConfigResponse> {
+  return request<SystemConfigResponse>(
+    apiClient.system.config.$get({}, requestOptions(signal)),
+  );
 }
 
 export async function updateExperiments(
@@ -1416,6 +1615,6 @@ export async function updateExperiments(
   );
 }
 
-export async function listHosts(): Promise<Host[]> {
-  return request<Host[]>(apiClient.hosts.$get());
+export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
+  return request<Host[]>(apiClient.hosts.$get({}, requestOptions(signal)));
 }

@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { ThreadComposerBootstrapResponse } from "@bb/server-contract";
 import { apiClient } from "@/lib/api-server";
-import { request } from "@/lib/api";
+import { request, requestOptions } from "@/lib/api";
 import { hydrateThreadComposerBootstrap } from "../cache-owners/composer-cache-owner";
 import { requireEnabledQueryArg } from "./query-helpers";
 
@@ -33,6 +33,7 @@ interface FetchAndHydrateThreadComposerBootstrapArgs {
   environmentId: string | null;
   providerId: string | null;
   queryClient: QueryClient;
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -58,11 +59,15 @@ export function threadComposerBootstrapEnvironmentQueryKeyPrefix(
 
 export function fetchThreadComposerBootstrap(
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<ThreadComposerBootstrapResponse> {
   return request<ThreadComposerBootstrapResponse>(
-    apiClient.threads[":id"]["composer-bootstrap"].$get({
-      param: { id: threadId },
-    }),
+    apiClient.threads[":id"]["composer-bootstrap"].$get(
+      {
+        param: { id: threadId },
+      },
+      requestOptions(signal),
+    ),
   );
 }
 
@@ -70,9 +75,10 @@ export async function fetchAndHydrateThreadComposerBootstrap({
   environmentId,
   providerId,
   queryClient,
+  signal,
   threadId,
 }: FetchAndHydrateThreadComposerBootstrapArgs): Promise<ThreadComposerBootstrapResponse> {
-  const bootstrap = await fetchThreadComposerBootstrap(threadId);
+  const bootstrap = await fetchThreadComposerBootstrap(threadId, signal);
   hydrateThreadComposerBootstrap({
     bootstrap,
     environmentId,
@@ -93,11 +99,12 @@ export function useThreadComposerBootstrap(
 
   return useQuery<ThreadComposerBootstrapResponse>({
     queryKey: threadComposerBootstrapQueryKey(id, environmentId),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchAndHydrateThreadComposerBootstrap({
         environmentId,
         providerId,
         queryClient,
+        signal,
         threadId: requireThreadId(id, "useThreadComposerBootstrap"),
       }),
     enabled: (options?.enabled ?? true) && Boolean(id),

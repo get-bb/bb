@@ -12,6 +12,7 @@ import type {
   TimelineSystemRow,
   TimelineTurnRow,
   TimelineUserConversationRow,
+  TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import {
   readTerminalOutputLines,
@@ -70,6 +71,11 @@ interface ThreadTimelineFromEventsBaseOptions {
   isLatestPage: boolean;
   threadStatus: Thread["status"];
   /**
+   * Display name of the thread, used by operation rows that describe a
+   * relationship to another thread. Empty string when the thread is unnamed.
+   */
+  threadName: string;
+  /**
    * Absolute path of the thread's workspace root, used to relativize the
    * absolute file paths persisted by provider file-edit tool calls. Null when
    * the thread has no environment (the path is then left as-is).
@@ -91,6 +97,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 
 export interface ThreadTimelineFromEventsResult {
   activeThinking: ActiveThinking | null;
+  activeWorkflow: TimelineWorkflowWorkRow | null;
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -105,6 +112,8 @@ export interface ThreadTimelineSourceSeqRange {
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   threadStatus: Thread["status"];
+  /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
+  threadName: string;
   /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
   workspaceRoot: string | null;
 }
@@ -184,6 +193,10 @@ const ROOT_TIMELINE_ROW_ID_PREFIX = "";
 type TimelineOperationMessage = Extract<
   EventProjectionMessage,
   { kind: "operation" }
+>;
+type TimelineWorkflowMessage = Extract<
+  EventProjectionMessage,
+  { kind: "workflow" }
 >;
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
@@ -291,6 +304,32 @@ function buildTimelineRowBase(
     sourceSeqEnd: message.sourceSeqEnd,
     startedAt: getMessageStartedAt(message),
     createdAt: message.createdAt,
+  };
+}
+
+function buildWorkflowWorkRow(
+  message: TimelineWorkflowMessage,
+  rowIdPrefix: string,
+): TimelineWorkflowWorkRow | null {
+  // Ambient/housekeeping tasks stay out of both the inline transcript and the
+  // prompt-stack workflow banner.
+  if (message.skipTranscript) {
+    return null;
+  }
+  return {
+    ...buildTimelineRowBase(message, rowIdPrefix),
+    kind: "work",
+    workKind: "workflow",
+    status: message.status,
+    itemId: message.itemId,
+    workflowName: message.workflowName,
+    description: message.description,
+    taskStatus: message.taskStatus,
+    workflow: message.workflow,
+    usage: message.usage,
+    summary: message.summary,
+    error: message.error,
+    completedAt: message.completedAt,
   };
 }
 
@@ -481,6 +520,8 @@ function convertMessage(
           attachments: toConversationAttachments(message.attachments),
           initiator: message.initiator,
           senderThreadId: message.senderThreadId,
+          systemMessageKind: message.systemMessageKind,
+          systemMessageSubject: message.systemMessageSubject,
           turnRequest: message.turnRequest,
         },
       ];
@@ -623,28 +664,10 @@ function convertMessage(
         },
       ];
     }
-    case "workflow":
-      // Ambient/housekeeping tasks stay out of the inline transcript.
-      if (message.skipTranscript) {
-        return [];
-      }
-      return [
-        {
-          ...buildTimelineRowBase(message, options.rowIdPrefix),
-          kind: "work",
-          workKind: "workflow",
-          status: message.status,
-          itemId: message.itemId,
-          workflowName: message.workflowName,
-          description: message.description,
-          taskStatus: message.taskStatus,
-          workflow: message.workflow,
-          usage: message.usage,
-          summary: message.summary,
-          error: message.error,
-          completedAt: message.completedAt,
-        },
-      ];
+    case "workflow": {
+      const row = buildWorkflowWorkRow(message, options.rowIdPrefix);
+      return row ? [row] : [];
+    }
     case "permission-grant-lifecycle":
       return [
         {
@@ -753,6 +776,8 @@ function convertPendingSteerMessage(
     attachments: toConversationAttachments(message.attachments),
     initiator: message.initiator,
     senderThreadId: message.senderThreadId,
+    systemMessageKind: message.systemMessageKind,
+    systemMessageSubject: message.systemMessageSubject,
     turnRequest: message.turnRequest,
   };
 }
@@ -1077,6 +1102,7 @@ export function buildThreadTimelineFromEvents(
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     threadStatus: args.options.threadStatus,
+    threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
   } satisfies Parameters<typeof buildEventProjection>[1];
   const projection = buildEventProjection(args.events, projectionOptions);
@@ -1096,6 +1122,12 @@ export function buildThreadTimelineFromEvents(
 
   return {
     activeThinking: projection.state.activeThinking,
+    activeWorkflow: projection.state.activeWorkflow
+      ? buildWorkflowWorkRow(
+          projection.state.activeWorkflow,
+          ROOT_TIMELINE_ROW_ID_PREFIX,
+        )
+      : null,
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
     ),
@@ -1120,6 +1152,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     threadStatus: args.options.threadStatus,
+    threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
   const nestedRows = buildTimelineRows(projection, {

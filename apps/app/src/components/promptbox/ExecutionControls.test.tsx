@@ -25,6 +25,7 @@ function makeExecutionControlsProps(
       active: null,
       selected: "gpt-5",
       options: [{ value: "gpt-5", label: "GPT-5" }],
+      moreOptions: [],
       isLoading: false,
       loadFailed: false,
       loadError: null,

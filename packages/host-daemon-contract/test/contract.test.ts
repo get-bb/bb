@@ -237,6 +237,21 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       state: "OPEN",
       url: "https://github.com/acme/bb/pull/42",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "feature/host-rpc",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [
+        {
+          name: "test",
+          status: "completed",
+          conclusion: "success",
+          url: null,
+        },
+      ],
+      reviewDecision: "APPROVED",
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     },
   },
 };
@@ -288,6 +303,12 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     commitSha: "abcdef123456",
     commitSubject: "Merge feature",
     merged: true,
+  },
+  "host.run_script": {
+    exitCode: 0,
+    output: "ok\n",
+    durationMs: 12,
+    timedOut: false,
   },
 };
 
@@ -1792,7 +1813,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(36);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(37);
   });
 
   it("parses valid session open and event batch payloads", () => {

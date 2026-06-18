@@ -273,12 +273,16 @@ export const TimelineFileDiffBlock = memo(function TimelineFileDiffBlock({
         size="base"
         contentKey={diffContentKey}
         className="mt-1"
+        scrollClassName="rounded-lg border border-border bg-background"
+        showAboveFade={false}
       >
         <div data-timeline-file-diff="">
           <GitDiffCard
             fileDiff={renderablePatch.fileDiff}
             diffViewOptions={cardDiffViewOptions}
             filePathRoot={workspaceRootPath}
+            cardClassName="rounded-none border-0 bg-transparent"
+            showStuckHeaderEdge={false}
             stickyHeader
           />
         </div>

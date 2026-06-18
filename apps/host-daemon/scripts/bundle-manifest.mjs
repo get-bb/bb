@@ -51,6 +51,20 @@ export const bundleTargets = [
   },
   {
     banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "agent-runtime",
+      "src",
+      "acp",
+      "bridge",
+      "bridge.ts",
+    ),
+    label: "acp bridge",
+    outfile: resolve(packageRoot, "dist", "bb-acp-bridge.mjs"),
+  },
+  {
+    banner: NODE_ESM_REQUIRE_BANNER,
     entryPoint: resolve(workspaceRoot, "apps", "cli", "src", "index.ts"),
     executable: true,
     label: "bb cli",

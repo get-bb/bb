@@ -5,9 +5,25 @@ import type {
   ReasoningLevel,
 } from "@bb/domain";
 
-const AGENT_PROVIDER_ID_VALUES = ["codex", "claude-code", "pi"] as const;
+const AGENT_PROVIDER_ID_VALUES = [
+  "codex",
+  "claude-code",
+  "pi",
+  "acp-cursor",
+] as const;
 export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_ID_VALUES);
 export type AgentProviderId = z.infer<typeof agentProviderIdSchema>;
+
+const ACP_AGENT_PROVIDER_ID_VALUES = [
+  "acp-cursor",
+] as const satisfies readonly AgentProviderId[];
+export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDER_ID_VALUES)[number];
+
+export function isAcpAgentProviderId(
+  value: string,
+): value is AcpAgentProviderId {
+  return (ACP_AGENT_PROVIDER_ID_VALUES as readonly string[]).includes(value);
+}
 
 /**
  * Server- and daemon-internal capability facts about a built-in provider —
@@ -85,6 +101,21 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["full"],
 };
 
+// Shared by all ACP (Agent Client Protocol) providers: the external agent owns
+// its own model selection, tool execution, and session naming, so BB-side
+// capabilities stay minimal. Permission modes are enforced cooperatively by
+// the ACP bridge (permission-request policy + client fs write policy).
+const ACP_CAPABILITIES: ProviderCapabilities = {
+  supportsArchive: false,
+  supportsRename: false,
+  supportsServiceTier: false,
+  supportsUserQuestion: false,
+  // ACP has no session-fork primitive; the adapter has no thread/fork handler,
+  // so forks are blocked at the server boundary rather than failing at runtime.
+  supportsFork: false,
+  supportedPermissionModes: ["full", "workspace-write", "readonly"],
+};
+
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
@@ -104,6 +135,19 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh"],
+};
+
+// ACP agents manage reasoning effort internally; "medium" is the single
+// synthetic level so execution-option resolution has a valid value to carry.
+const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: false,
+  supportsExecutionOverride: false,
+  backsHostDaemonAiServices: false,
+  // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
+  // the ACP bridge resolves (model, level) to the exact variant id at session
+  // launch. This ladder is the coarse fallback — per-model efforts from
+  // `model/list` are the precise set.
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
 
 /**
@@ -146,6 +190,15 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       id: "pi",
     },
     serverCapabilities: PI_SERVER_CAPABILITIES,
+  },
+  {
+    info: {
+      available: true,
+      capabilities: ACP_CAPABILITIES,
+      displayName: "Cursor",
+      id: "acp-cursor",
+    },
+    serverCapabilities: ACP_SERVER_CAPABILITIES,
   },
 ];
 

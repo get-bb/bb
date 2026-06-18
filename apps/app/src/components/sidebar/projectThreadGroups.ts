@@ -40,6 +40,10 @@ export type ProjectThreadItem =
   | { kind: "environment"; group: EnvironmentThreadGroup };
 
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
+type SidebarProjectThreadShape = Pick<
+  ThreadListEntry,
+  "originKind" | "childOrigin"
+>;
 
 interface BuildThreadNodeArgs {
   ancestorThreadIds: ReadonlySet<string>;
@@ -228,9 +232,7 @@ function isRootThread(
 export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
 ): ProjectThreadItem[] {
-  const projectThreads = allProjectThreads.filter(
-    (thread) => (thread.originKind ?? thread.childOrigin) !== "side-chat",
-  );
+  const projectThreads = allProjectThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
   const childrenByParentId = new Map<string, ThreadListEntry[]>();
 
@@ -281,6 +283,12 @@ export function buildProjectThreadGroups(
   }
 
   return buildSortedItems(rootNodes);
+}
+
+export function isSidebarProjectThread(
+  thread: SidebarProjectThreadShape,
+): boolean {
+  return (thread.originKind ?? thread.childOrigin) !== "side-chat";
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group

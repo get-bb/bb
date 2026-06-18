@@ -97,6 +97,7 @@ const readOnlyExecution = makeExecutionControlsProps({
     active: { model: "gpt-5.5" },
     selected: "gpt-5.5",
     options: STORY_CODEX_MODELS,
+    moreOptions: [],
     isLoading: false,
     loadFailed: false,
     onChange: noop,
@@ -327,7 +328,6 @@ const dirtyContextBannerSection =
 
 const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
   <ThreadPromptContextBanner
-    todoSection={null}
     archivedSection={null}
     environmentGoneSection={null}
     gitSection={{
@@ -342,6 +342,7 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
+    pullRequestSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />
@@ -349,13 +350,13 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
 
 const archivedContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
-    todoSection={null}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
     environmentGoneSection={null}
     gitSection={null}
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
+    pullRequestSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />
@@ -363,13 +364,13 @@ const archivedContextBannerElement: ReactNode = (
 
 const environmentGoneContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
-    todoSection={null}
     archivedSection={null}
     environmentGoneSection={{ status: "destroyed" }}
     gitSection={null}
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
+    pullRequestSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />

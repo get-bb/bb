@@ -107,6 +107,7 @@ function createFollowUpPromptBoxProps(
       model: {
         selected: "gpt-5",
         options: [],
+        moreOptions: [],
         isLoading: false,
         loadFailed: false,
         onChange: vi.fn(),

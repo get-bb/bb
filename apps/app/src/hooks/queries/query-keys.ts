@@ -1,5 +1,5 @@
 import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { ThreadListFilters } from "@/lib/api";
+import type { ThreadListFilters, ThreadSearchFilters } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -20,6 +20,7 @@ export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
 export const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 export const THREADS_QUERY_KEY = "threads";
+export const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
@@ -56,6 +57,9 @@ export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
+export const AUTOMATIONS_QUERY_KEY = "automations";
+export const AUTOMATION_DETAIL_QUERY_KEY = "automationDetail";
+export const AUTOMATION_RUNS_QUERY_KEY = "automationRuns";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -66,6 +70,13 @@ export interface ThreadListQueryFilters {
   archived: boolean;
   limit?: number;
 }
+
+export interface ThreadSearchQueryFilters {
+  query: ThreadSearchFilters["query"];
+  limitPerGroup: NonNullable<ThreadSearchFilters["limitPerGroup"]>;
+}
+
+export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
   projectId: string;
@@ -126,6 +137,13 @@ export type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
 export type ThreadListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   ThreadListQueryFilters,
+];
+export type ThreadSearchQueryKey = readonly [
+  typeof THREAD_SEARCH_QUERY_KEY,
+  ThreadSearchQueryFilters,
+];
+export type ThreadSearchQueryKeyPrefix = readonly [
+  typeof THREAD_SEARCH_QUERY_KEY,
 ];
 export type ArchivedThreadsListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
@@ -400,6 +418,23 @@ export type LocalPathExistenceQueryKey = readonly [
 export type LocalPathExistenceQueryKeyPrefix = readonly [
   typeof LOCAL_PATH_EXISTENCE_QUERY_KEY,
 ];
+export type AutomationsQueryKey = readonly [typeof AUTOMATIONS_QUERY_KEY];
+export type AutomationDetailQueryKey = readonly [
+  typeof AUTOMATION_DETAIL_QUERY_KEY,
+  string,
+  string,
+];
+export type AutomationRunsQueryKey = readonly [
+  typeof AUTOMATION_RUNS_QUERY_KEY,
+  string,
+  string,
+];
+export type AllAutomationDetailQueryKeyPrefix = readonly [
+  typeof AUTOMATION_DETAIL_QUERY_KEY,
+];
+export type AllAutomationRunsQueryKeyPrefix = readonly [
+  typeof AUTOMATION_RUNS_QUERY_KEY,
+];
 
 export interface ProjectDefaultExecutionOptionsQueryKeyArgs {
   projectId: string;
@@ -526,6 +561,16 @@ export function threadListQueryKey(
   filters: ThreadListQueryFilters,
 ): ThreadListQueryKey {
   return [THREADS_QUERY_KEY, filters];
+}
+
+export function threadSearchQueryKey(
+  filters: ThreadSearchQueryFilters,
+): ThreadSearchQueryKey {
+  return [THREAD_SEARCH_QUERY_KEY, filters];
+}
+
+export function threadSearchQueryKeyPrefix(): ThreadSearchQueryKeyPrefix {
+  return [THREAD_SEARCH_QUERY_KEY];
 }
 
 export function archivedThreadsListQueryKey(
@@ -965,4 +1010,30 @@ export function localPathExistenceQueryKey(
 
 export function localPathExistenceQueryKeyPrefix(): LocalPathExistenceQueryKeyPrefix {
   return [LOCAL_PATH_EXISTENCE_QUERY_KEY];
+}
+
+export function automationsQueryKey(): AutomationsQueryKey {
+  return [AUTOMATIONS_QUERY_KEY];
+}
+
+export function automationDetailQueryKey(
+  projectId: string,
+  automationId: string,
+): AutomationDetailQueryKey {
+  return [AUTOMATION_DETAIL_QUERY_KEY, projectId, automationId];
+}
+
+export function automationRunsQueryKey(
+  projectId: string,
+  automationId: string,
+): AutomationRunsQueryKey {
+  return [AUTOMATION_RUNS_QUERY_KEY, projectId, automationId];
+}
+
+export function allAutomationDetailQueryKeyPrefix(): AllAutomationDetailQueryKeyPrefix {
+  return [AUTOMATION_DETAIL_QUERY_KEY];
+}
+
+export function allAutomationRunsQueryKeyPrefix(): AllAutomationRunsQueryKeyPrefix {
+  return [AUTOMATION_RUNS_QUERY_KEY];
 }

@@ -15,6 +15,7 @@ import {
   beginArchiveThreadTransaction,
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
+  beginThreadReadStateTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinThreadTransaction,
@@ -260,10 +261,7 @@ export function useDeleteThread() {
     meta: {
       errorMessage: "Failed to delete thread.",
     },
-    mutationFn: ({
-      childThreadsConfirmed,
-      id,
-    }: DeleteThreadMutationRequest) =>
+    mutationFn: ({ childThreadsConfirmed, id }: DeleteThreadMutationRequest) =>
       api.deleteThread(id, { childThreadsConfirmed }),
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
@@ -293,6 +291,19 @@ export function useMarkThreadRead() {
       showErrorToast: false,
     },
     mutationFn: (threadId: string) => api.markThreadRead(threadId),
+    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+      beginThreadReadStateTransaction({
+        lastReadAt: Date.now(),
+        queryClient,
+        threadId,
+      }),
+    onError: (_error, threadId, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
     },
@@ -308,6 +319,19 @@ export function useMarkThreadUnread() {
       showErrorToast: false,
     },
     mutationFn: (threadId: string) => api.markThreadUnread(threadId),
+    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+      beginThreadReadStateTransaction({
+        lastReadAt: null,
+        queryClient,
+        threadId,
+      }),
+    onError: (_error, threadId, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
     },

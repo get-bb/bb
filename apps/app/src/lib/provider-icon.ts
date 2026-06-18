@@ -4,6 +4,7 @@ import {
 } from "@bb/agent-providers";
 import type { ComponentType } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
+import { CursorIcon } from "@/components/icons/CursorIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
 
@@ -40,6 +41,11 @@ export function getProviderIconInfo(
     case "pi":
       return {
         icon: PiIcon,
+        ariaLabel: providerInfo.displayName,
+      };
+    case "acp-cursor":
+      return {
+        icon: CursorIcon,
         ariaLabel: providerInfo.displayName,
       };
     default:

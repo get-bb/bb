@@ -23,6 +23,7 @@ import {
   threadListQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
+  threadSearchQueryKey,
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
@@ -285,6 +286,61 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("invalidates cached thread search results when indexed thread content changes", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
+    queryClient.setQueryData(threadSearchKey, {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    effects.dispose();
+  });
+
+  it("invalidates cached thread search results when environment metadata changes", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "branch-label",
+    });
+    queryClient.setQueryData(threadSearchKey, {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env_1",
+      changes: ["metadata-changed"],
+    });
+    vi.advanceTimersByTime(250);
+
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    effects.dispose();
+  });
+
   it("refetches active root thread lists without refetching child lists for order changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -353,8 +409,9 @@ describe("createRealtimeCacheEffects", () => {
     const unsubscribeRootThreadList = rootThreadListObserver.subscribe(
       () => {},
     );
-    const unsubscribeChildThreadList =
-      childThreadListObserver.subscribe(() => {});
+    const unsubscribeChildThreadList = childThreadListObserver.subscribe(
+      () => {},
+    );
     const unsubscribeGlobalActiveThreadList =
       globalActiveThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalRootThreadList =

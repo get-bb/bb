@@ -139,7 +139,8 @@
     }
   }
 
-  @container promptbox-shell (max-width: 28rem) {
+  @container promptbox-shell (max-width: 22rem) {
+    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }

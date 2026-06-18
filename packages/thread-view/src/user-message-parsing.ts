@@ -285,6 +285,12 @@ function buildClientUserMessage({
       : { scope: decoded.scope }),
     initiator: decoded.initiator,
     senderThreadId: decoded.senderThreadId,
+    // Legacy defaulting lives in `storedTurnRequestEventDataSchema`, so decoded
+    // rows always carry concrete values at runtime. These `??` fallbacks only
+    // satisfy the base in-flight schema's `.optional()` static type; they never
+    // fire for a decoded stored event.
+    systemMessageKind: decoded.systemMessageKind ?? "unlabeled",
+    systemMessageSubject: decoded.systemMessageSubject ?? null,
     turnRequest,
     text: parsedInput.text,
     mentions: parsedInput.mentions,

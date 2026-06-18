@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { registerAutomationCommands } from "./commands/automation.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
@@ -44,7 +45,7 @@ Quick start:
   bb status
   bb project list
   bb thread show
-  bb thread spawn --provider codex --prompt "..."
+  bb thread spawn --project <id> --provider codex --prompt "..."
 `;
 });
 
@@ -64,6 +65,7 @@ registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
+registerAutomationCommands(program, getUrl);
 registerGuideCommand(program);
 
 program.parseAsync(process.argv).catch((err) => {

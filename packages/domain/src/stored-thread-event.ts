@@ -2,6 +2,8 @@ import { z } from "zod";
 import { resolvedThreadExecutionOptionsSchema } from "./shared-types.js";
 import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
+  systemMessageKindSchema,
+  systemMessageSubjectSchema,
   turnRequestEventDataSchema,
   turnRequestTargetSchema,
 } from "./thread-events.js";
@@ -93,6 +95,11 @@ const LEGACY_TURN_REQUEST_TARGET = {
 const storedTurnRequestEventDataSchema = turnRequestEventDataSchema.extend({
   senderThreadId: z.string().nullable().default(null),
   target: turnRequestTargetSchema.default(LEGACY_TURN_REQUEST_TARGET),
+  // Family-B taxonomy fields are new, so pre-change rows lack them. Default to
+  // the generic `unlabeled` / no-subject shape here so old rows load without a
+  // backfill migration — same pattern as `senderThreadId`.
+  systemMessageKind: systemMessageKindSchema.default("unlabeled"),
+  systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
   execution: resolvedThreadExecutionOptionsSchema,
 });
 

@@ -78,14 +78,38 @@ describe("buildForkThreadRequest", () => {
 
     expect(request).not.toHaveProperty("serviceTier");
   });
+
+  it("returns null when the provider cannot fork sessions", () => {
+    expect(
+      buildForkThreadRequest({
+        environmentId: "env_source",
+        input: [{ type: "text", text: "Continue from here", mentions: [] }],
+        model: "gpt-5",
+        permissionMode: "readonly",
+        projectId: "proj_test",
+        providerId: "acp-cursor",
+        reasoningLevel: "medium",
+        serviceTier: undefined,
+        sourceSeqEnd: undefined,
+        sourceThreadId: "thr_source",
+        sourceThreadTitle: "Investigate flaky test",
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("isThreadForkable", () => {
-  it("is true only when the source thread has an environment id", () => {
+  it("is true only when the source thread has an environment id and fork-capable provider", () => {
     expect(isThreadForkable(makeThread({ environmentId: "env_source" }))).toBe(
       true,
     );
     expect(isThreadForkable(makeThread({ environmentId: null }))).toBe(false);
+    expect(isThreadForkable(makeThread({ providerId: "acp-cursor" }))).toBe(
+      false,
+    );
+    expect(isThreadForkable(makeThread({ providerId: "not-a-provider" }))).toBe(
+      false,
+    );
     expect(isThreadForkable(null)).toBe(false);
   });
 });

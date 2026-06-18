@@ -73,7 +73,11 @@ export function ThreadTerminalContent({
     );
   }
 
-  if (controller.activeSession.status !== "running") {
+  const shouldRenderTerminalView =
+    controller.activeSession.status === "running" ||
+    controller.shouldRetainActiveTerminalView;
+
+  if (!shouldRenderTerminalView) {
     const inactiveContent = getInactiveTerminalContent({
       canCreateTerminal: controller.canCreateTerminal,
       status: controller.activeSession.status,

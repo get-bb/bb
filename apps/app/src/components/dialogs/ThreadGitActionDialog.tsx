@@ -342,9 +342,6 @@ export function ThreadGitActionDialogContent({
                     value={selectedMergeBaseBranch}
                     options={mergeBaseCandidates}
                     remoteOptions={remoteMergeBaseCandidates}
-                    selectedOptionKind={
-                      mergeBaseCandidateGroups.selectedOptionKind
-                    }
                     loading={mergeBaseBranchOptionsLoading}
                     onChange={(branch) => onMergeBaseBranchChange?.(branch)}
                     onSearchQueryChange={onMergeBaseBranchSearchQueryChange}

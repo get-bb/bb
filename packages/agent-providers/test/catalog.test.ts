@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getBuiltInAgentProviderInfo,
   getBuiltInAgentProviderServerCapabilities,
+  isAcpAgentProviderId,
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
@@ -49,7 +50,27 @@ describe("agent provider catalog", () => {
         },
         available: true,
       },
+      {
+        id: "acp-cursor",
+        displayName: "Cursor",
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: false,
+          supportsServiceTier: false,
+          supportsUserQuestion: false,
+          supportsFork: false,
+          supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        },
+        available: true,
+      },
     ]);
+  });
+
+  it("classifies ACP provider ids", () => {
+    expect(isAcpAgentProviderId("acp-cursor")).toBe(true);
+    expect(isAcpAgentProviderId("codex")).toBe(false);
+    expect(isAcpAgentProviderId("claude-code")).toBe(false);
+    expect(isAcpAgentProviderId("pi")).toBe(false);
   });
 
   it("declares the backend-only server capability facts per provider", () => {
@@ -70,6 +91,12 @@ describe("agent provider catalog", () => {
       supportsExecutionOverride: false,
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high", "xhigh"],
+    });
+    expect(getBuiltInAgentProviderServerCapabilities("acp-cursor")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
     });
   });
 

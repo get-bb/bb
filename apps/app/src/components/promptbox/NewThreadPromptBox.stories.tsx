@@ -439,6 +439,7 @@ function ClaudeProviderRow() {
               { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
               { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
             ],
+            moreOptions: [],
             isLoading: false,
             loadFailed: false,
             onChange: noop,

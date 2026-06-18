@@ -9,6 +9,8 @@ import type {
   PromptMentionResource,
   PromptTextMention,
   ResolvedThreadExecutionOptions,
+  SystemMessageKind,
+  SystemMessageSubject,
   Thread,
 } from "@bb/domain";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
@@ -46,7 +48,16 @@ import {
 
 const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
-interface QueueParentSystemMessageArgs {
+// Family-B taxonomy stamping carried alongside the message input from each emit
+// site to the persisted `client/turn/requested` event. `senderThreadId` is null
+// for these `initiator: "system"` messages, so the subject must be stamped at
+// emit time.
+export interface ParentSystemMessageTaxonomy {
+  systemMessageKind: SystemMessageKind;
+  systemMessageSubject: SystemMessageSubject | null;
+}
+
+interface QueueParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
   input: PromptInput[];
   parentThreadId: string;
 }
@@ -95,7 +106,7 @@ interface RenderedParentSystemSlotParts {
   suffix: string;
 }
 
-interface QueueReadyParentSystemMessageArgs {
+interface QueueReadyParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
   environment: ReadyThreadEnvironment;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
@@ -170,15 +181,27 @@ export function buildParentSystemInputFromTemplateSlot(
   });
 }
 
+/**
+ * Canonical display label for a thread that is the subject of a parent-facing
+ * system message: the trimmed title, or the thread id when untitled. Shared by
+ * the stamped `systemMessageSubject.threadName` and the body's `@thread`
+ * mention label so the two can't drift.
+ */
+export function parentSystemThreadLabel(thread: {
+  id: string;
+  title: string | null;
+}): string {
+  return thread.title?.trim() || thread.id;
+}
+
 export function buildParentSystemThreadMention(
   args: BuildParentSystemThreadMentionArgs,
 ): ParentSystemRenderedMention {
-  const label = args.thread.title?.trim() || args.thread.id;
   return {
     serializedText: `@thread:${args.thread.id}`,
     resource: {
       kind: "thread",
-      label,
+      label: parentSystemThreadLabel(args.thread),
       projectId: args.thread.projectId,
       threadId: args.thread.id,
     },
@@ -209,6 +232,8 @@ function queueActiveParentSystemMessageInTransaction(
     execution: args.execution,
     initiator: "system",
     senderThreadId: null,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
     requestMethod: "turn/start",
     source: PARENT_SYSTEM_MESSAGE_SOURCE,
     target: {
@@ -337,6 +362,8 @@ async function queueReadyParentSystemMessage(
         execution: args.execution,
         initiator: "system",
         senderThreadId: null,
+        systemMessageKind: args.systemMessageKind,
+        systemMessageSubject: args.systemMessageSubject,
         requestMethod: "turn/start",
         source: PARENT_SYSTEM_MESSAGE_SOURCE,
         target: { kind: "new-turn" },
@@ -416,6 +443,8 @@ export async function queueParentSystemMessage(
       initiator: "system",
       input: args.input,
       senderThreadId: null,
+      systemMessageKind: args.systemMessageKind,
+      systemMessageSubject: args.systemMessageSubject,
       thread: parentThread,
     })
   ) {
@@ -430,5 +459,7 @@ export async function queueParentSystemMessage(
     input: args.input,
     execution,
     environment: readyEnvironment,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
   });
 }

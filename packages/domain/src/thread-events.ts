@@ -37,6 +37,41 @@ export const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);
 export type ThreadTurnInitiator = z.infer<typeof threadTurnInitiatorSchema>;
 
+// One value per Family-B system-message action, plus an explicit `unlabeled`
+// for legacy/pre-taxonomy messages (rendered generically). `unlabeled` beats a
+// nullable field: its meaning is self-documenting and avoids `null`-as-default.
+export const systemMessageKindValues = [
+  "ownership-assigned",
+  "ownership-removed",
+  "child-needs-attention",
+  "child-completed",
+  "child-failed",
+  "child-interrupted",
+  "child-outcome-batch",
+  "unlabeled",
+] as const;
+export const systemMessageKindSchema = z.enum(systemMessageKindValues);
+export type SystemMessageKind = z.infer<typeof systemMessageKindSchema>;
+
+// The subject a system message concerns: a single thread or a batch of threads
+// (count only). Stamped at emit time because `senderThreadId` is null for
+// `initiator: "system"` messages, so the subject is otherwise unrecoverable
+// downstream. This schema is just the union of subject shapes; the
+// required-but-nullable read-model contract is documented on the row field in
+// `@bb/server-contract`'s `thread-timeline.ts`.
+export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("thread"),
+    threadId: z.string(),
+    threadName: z.string(),
+  }),
+  z.object({
+    kind: z.literal("thread-batch"),
+    count: z.number(),
+  }),
+]);
+export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;
+
 export const threadProvisioningReasonValues = [
   "thread-created",
   "boot-created-thread",
@@ -99,6 +134,11 @@ export const turnRequestEventDataSchema = z.object({
   // (initiator: "agent", senderThreadId: null from before the field
   // existed) still parse — the stored variant defaults both fields.
   senderThreadId: z.string().nullable(),
+  // Family-B system-message taxonomy fields. Optional at the persisted-event
+  // level: legacy events (pre-taxonomy) lack them and must still parse. The
+  // projection defaults absent values to `unlabeled` / `null`.
+  systemMessageKind: systemMessageKindSchema.optional(),
+  systemMessageSubject: systemMessageSubjectSchema.nullable().optional(),
   input: z.array(promptInputSchema),
   target: turnRequestTargetSchema,
   request: z.object({

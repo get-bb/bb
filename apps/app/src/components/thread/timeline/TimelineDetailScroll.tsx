@@ -31,6 +31,7 @@ export interface TimelineDetailScrollProps {
    * only the scroll mechanics (max-height, overflow, fade affordances).
    */
   scrollClassName?: string;
+  showAboveFade?: boolean;
   children: ReactNode;
 }
 
@@ -48,6 +49,7 @@ export function TimelineDetailScroll({
   contentKey,
   className,
   scrollClassName,
+  showAboveFade = true,
   children,
 }: TimelineDetailScrollProps) {
   const sticky = useStickyBottomScroll<HTMLDivElement>({
@@ -92,7 +94,7 @@ export function TimelineDetailScroll({
         <div
           ref={overflow.topSentinelRef}
           aria-hidden
-          className="h-px w-full"
+          className="-mb-px h-px w-full"
         />
         {children}
         <div
@@ -101,7 +103,7 @@ export function TimelineDetailScroll({
           className="h-px w-full"
         />
       </div>
-      {aboveOverflow ? (
+      {showAboveFade && aboveOverflow ? (
         <div
           aria-hidden
           data-detail-scroll-fade="above"

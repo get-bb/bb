@@ -35,6 +35,8 @@ const USER_ROW = {
   attachments: null,
   initiator: "user",
   senderThreadId: null,
+  systemMessageKind: "unlabeled",
+  systemMessageSubject: null,
   turnRequest: { kind: "message", status: "accepted" },
 } satisfies TimelineRow;
 
@@ -44,6 +46,7 @@ function makeTimelineResponse(
   return {
     rows,
     activeThinking: null,
+    activeWorkflow: null,
     pendingTodos: null,
     goal: null,
     timelinePage: {

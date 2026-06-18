@@ -32,3 +32,4 @@ Run `bb guide <chapter>` for command details:
   environments   Environment operations, commits, and merges
   providers      Discovering providers and models
   projects       Project CRUD and sources
+  automations    Scheduled agent and script automations

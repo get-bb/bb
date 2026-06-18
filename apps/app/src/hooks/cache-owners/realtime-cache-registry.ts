@@ -61,6 +61,9 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allAutomationDetailQueryKeyPrefix,
+  allAutomationRunsQueryKeyPrefix,
+  automationsQueryKey,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
@@ -75,6 +78,7 @@ import {
   systemConfigQueryKey,
   systemProvidersQueryKey,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadTerminalsQueryKey,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
@@ -115,11 +119,13 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Active detail should reconcile to deleted/not-found.
       dirtyThreadTimelineQueries, // Active timeline should stop showing stale rows.
       dirtyProjectPromptHistoryQueries, // Deleted prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "events-appended": {
     flush: "debounced",
     dirty: [
+      dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
     ],
@@ -127,6 +133,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "interactions-changed": {
     flush: "debounced",
     dirty: [
+      dirtyThreadSearchQueries, // Result rows render pending-interaction state.
       dirtyThreadPendingInteractionQueries, // Composer reads the interaction list directly.
       patchThreadListPendingInteractionState, // Sidebar badge patches from notification metadata.
     ],
@@ -143,6 +150,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // List rows render display title.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread by title.
     ],
   },
   "queue-changed": {
@@ -157,6 +165,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries, // Archive state moves threads between active/archived lists.
       dirtyThreadDetailQueries, // Detail controls and banners depend on archive state.
       dirtyProjectPromptHistoryQueries, // Archived prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "pin-state-changed": {
@@ -223,6 +232,7 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
       dirtyEnvironmentWorkspaceStateQueries, // Metadata can change workspace-state request resolution.
       dirtyEnvironmentBranchListQueries, // Branch metadata can change merge-base options.
       dirtyEnvironmentThreadListQueries, // Sidebar/worktree rows project environment labels from thread lists.
+      dirtyThreadSearchQueries, // Search rows cache thread list entries with environment labels.
     ],
   },
   "status-changed": {
@@ -259,11 +269,13 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-updated": {
     dirty: [
       dirtyProjectListQueries, // Name/settings fields are embedded in sidebar navigation/project caches.
+      dirtyAutomationQueries, // Automation rows render the owning project's name.
     ],
   },
   "project-deleted": {
     dirty: [
       dirtyProjectListQueries, // Deleted projects must disappear from navigation/pickers.
+      dirtyAutomationQueries, // Deleting a project cascades its automations out of the overview.
     ],
   },
   "project-sources-changed": {
@@ -280,6 +292,16 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-order-changed": {
     dirty: [
       dirtyProjectListQueries, // Sidebar order depends on project ordering.
+    ],
+  },
+  "automations-changed": {
+    dirty: [
+      dirtyAutomationQueries, // Automation create/update/pause/resume/delete changes the overview.
+    ],
+  },
+  "automation-runs-changed": {
+    dirty: [
+      dirtyAutomationQueries, // A new/closed run updates the denormalized last-run summary on rows.
     ],
   },
 } satisfies ProjectChangeRegistry;
@@ -467,6 +489,10 @@ function dirtyThreadDetailQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return getThreadDetailInvalidationQueryKeys({ threadId });
+}
+
+function dirtyThreadSearchQueries(): QueryKey[] {
+  return [threadSearchQueryKeyPrefix()];
 }
 
 function dirtyThreadTimelineQueries({
@@ -691,6 +717,19 @@ function dirtyThreadStorageQueriesForEnvironment({
 
 function dirtyProjectListQueries(): QueryKey[] {
   return getProjectListInvalidationQueryKeys();
+}
+
+function dirtyAutomationQueries(): QueryKey[] {
+  // The realtime change kinds (`automations-changed`, `automation-runs-changed`)
+  // don't carry the affected automation's project + id, so dirty the whole
+  // detail/runs families by prefix alongside the cross-project overview. This
+  // keeps an open detail view live-updating after a run completes or the
+  // automation is paused/resumed elsewhere.
+  return [
+    automationsQueryKey(),
+    allAutomationDetailQueryKeyPrefix(),
+    allAutomationRunsQueryKeyPrefix(),
+  ];
 }
 
 function dirtyProjectSourceDependentQueries({

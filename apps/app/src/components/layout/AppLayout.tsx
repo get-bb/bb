@@ -19,6 +19,7 @@ import {
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useThread,
@@ -26,7 +27,6 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { isThreadRead } from "@/lib/thread-read-state";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -45,6 +45,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
+  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
@@ -54,6 +55,7 @@ import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
+import { getFaviconUnreadCount } from "./faviconUnreadCount";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -216,6 +218,7 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
+  "/automations": { title: "Automations" },
 };
 
 interface AppHeaderProps {
@@ -370,7 +373,16 @@ export function AppLayout({ children }: AppLayoutProps) {
     isArchivedView,
     isSettingsView,
     isRootView,
+    isAutomationDetailView,
+    automationId,
+    automationProjectId,
   } = useRouteState();
+  const { data: automationDetail } = useAutomationDetail(
+    automationProjectId ?? "",
+    automationId ?? "",
+    { enabled: isAutomationDetailView },
+  );
+  const automationName = automationDetail?.name ?? "Automation";
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -433,7 +445,16 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isArchivedView && projectId
+    : isAutomationDetailView
+      ? {
+          title: "",
+          subtitle: undefined,
+          breadcrumbs: [
+            { label: "Automations", to: getAutomationsRoutePath() },
+            { label: automationName },
+          ],
+        }
+      : isArchivedView && projectId
       ? {
           title: "",
           subtitle: undefined,
@@ -468,6 +489,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (isThreadView) {
       return threadDisplayTitle;
     }
+    if (isAutomationDetailView) {
+      return `${automationName} · Automations`;
+    }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;
     }
@@ -480,11 +504,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = routeTitles[location.pathname]?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
-  const unreadCount = isThreadView
-    ? thread && !isThreadRead(thread)
-      ? 1
-      : 0
-    : sidebarThreads.filter((candidate) => !isThreadRead(candidate)).length;
+  const unreadCount = getFaviconUnreadCount({
+    isThreadView,
+    sidebarThreads,
+    thread,
+  });
   const faviconBadge = unreadCount > 0 ? "unread" : "none";
   useFaviconBadge(faviconBadge);
 

@@ -84,7 +84,6 @@ import {
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
-import { selectActiveWorkflowRow } from "./selectActiveWorkflowRow";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -137,7 +136,7 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
-import { useThreadReadTracking } from "./useThreadReadTracking";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
@@ -637,6 +636,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const {
     activeThinking,
+    activeWorkflow,
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
@@ -649,10 +649,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadTimelinePages({
     threadId: threadId ?? "",
   });
-  const activeWorkflow = useMemo(
-    () => selectActiveWorkflowRow(timelineRows),
-    [timelineRows],
-  );
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const markThreadRead = useMarkThreadRead();
@@ -1830,9 +1826,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
+      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
-      environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
@@ -1873,6 +1869,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       activeWorkflow={activeWorkflow}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
+      pullRequest={pullRequest}
       thread={thread}
     />
   );

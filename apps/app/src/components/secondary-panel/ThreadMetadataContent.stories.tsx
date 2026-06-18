@@ -5,6 +5,7 @@ import {
 import {
   PanelStage,
   baseProps,
+  makePullRequest,
   makeThread,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -29,12 +30,7 @@ export function Overview() {
         hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
       >
         {render({
-          pullRequest: {
-            number: 128,
-            title: "Show the branch's GitHub pull request in the Info tab",
-            state: "open",
-            url: "https://github.com/acme/bb/pull/128",
-          },
+          pullRequest: makePullRequest(),
         })}
       </StoryRow>
       <StoryRow
@@ -69,35 +65,6 @@ export function Overview() {
           environment: null,
           workspaceStatus: undefined,
         })}
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-// The pull-request row in the full Info panel, so each state is visible in its
-// real position alongside Branch / Merge base / Git status.
-export function PullRequest() {
-  const url = "https://github.com/acme/bb/pull/128";
-  const title = "Show the branch's GitHub pull request in the Info tab";
-  return (
-    <StoryCard>
-      <StoryRow
-        label="open"
-        hint="the PR row sits with the Branch / Merge base / Git status group"
-      >
-        {render({ pullRequest: { number: 128, title, state: "open", url } })}
-      </StoryRow>
-      <StoryRow label="draft">
-        {render({ pullRequest: { number: 128, title, state: "draft", url } })}
-      </StoryRow>
-      <StoryRow label="merged">
-        {render({ pullRequest: { number: 128, title, state: "merged", url } })}
-      </StoryRow>
-      <StoryRow label="closed">
-        {render({ pullRequest: { number: 128, title, state: "closed", url } })}
-      </StoryRow>
-      <StoryRow label="no PR" hint="row omitted entirely when there is no PR">
-        {render({ pullRequest: null })}
       </StoryRow>
     </StoryCard>
   );
