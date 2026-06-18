@@ -69,11 +69,13 @@
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
 
 - `scripts/bb-dev-app status` prints the active branch, dev URLs, data dir, and logs.
-- `scripts/bb-dev-app current` restarts dev server and desktop on the current branch.
-- `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches dev server and desktop from this checkout.
-- `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches dev server and desktop.
+- `scripts/bb-dev-app current` restarts the dev server on the current branch.
+- `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.
+- `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches the dev server.
 - `scripts/bb-dev-app stop` stops the launcher-managed dev server and desktop.
 - `scripts/bb-dev-app logs dev` and `scripts/bb-dev-app logs desktop` follow logs.
+
+By default the launcher starts only the dev server (web frontend, server, host daemon). Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
 
 Branch switches intentionally keep dirty work in this checkout; git will stop if a local file would be overwritten. Set `BB_DEV_APP_STASH_DIRTY=1` for a one-off launch that stashes first.
 
