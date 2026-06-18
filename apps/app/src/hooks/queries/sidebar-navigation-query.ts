@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
@@ -44,4 +45,28 @@ export function useSidebarNavigation(options?: QueryOptions) {
     enabled,
     staleTime: Infinity,
   });
+}
+
+/**
+ * Read the active project's display name from the shared sidebar-navigation
+ * cache. The sidebar owns the realtime subscriptions and initial load; this only
+ * reads the cached projects (no extra subscriptions) so surfaces like the
+ * follow-up composer footer can label the current project. Returns undefined
+ * until the cache is populated or when the project is unknown.
+ */
+export function useProjectDisplayName(
+  projectId: string | undefined,
+): string | undefined {
+  const { data } = useQuery<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    staleTime: Infinity,
+  });
+  if (!data || !projectId) {
+    return undefined;
+  }
+  if (projectId === PERSONAL_PROJECT_ID) {
+    return data.personalProject.name;
+  }
+  return data.projects.find((project) => project.id === projectId)?.name;
 }

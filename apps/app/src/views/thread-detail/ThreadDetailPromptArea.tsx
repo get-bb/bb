@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -44,6 +45,7 @@ import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
@@ -267,6 +269,10 @@ export function ThreadDetailPromptArea({
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
+  // The personal project isn't a meaningful label in the footer, so skip it.
+  const projectName = useProjectDisplayName(
+    thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
+  );
   const promptDraft = usePromptDraftStorage({
     kind: "thread",
     projectId,
@@ -920,6 +926,7 @@ export function ThreadDetailPromptArea({
     () =>
       environmentLabel ? (
         <ThreadEnvironmentSummary
+          projectName={projectName}
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
@@ -933,6 +940,7 @@ export function ThreadDetailPromptArea({
       environmentIcon,
       environmentLabel,
       onCreateNewThreadInWorktree,
+      projectName,
     ],
   );
   const promptStack = useMemo(
