@@ -140,26 +140,34 @@ const PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES = new Set([
 function selectActiveWorkflowMessage(
   messages: readonly EventProjectionMessage[],
 ): EventProjectionWorkflowMessage | null {
-  let best: EventProjectionWorkflowMessage | null = null;
+  // The prompt-box banner surfaces a single running background task. A running
+  // workflow takes precedence; a backgrounded shell command surfaces there only
+  // when no workflow is active. Within each kind the most recently started wins.
+  let bestWorkflow: EventProjectionWorkflowMessage | null = null;
+  let bestCommand: EventProjectionWorkflowMessage | null = null;
   for (const message of messages) {
     if (
       message.kind !== "workflow" ||
-      // The prompt-box active banner is workflow-only; backgrounded shell
-      // commands surface inline in the timeline, not in the banner.
-      message.taskType !== LOCAL_WORKFLOW_TASK_TYPE ||
       message.status !== "pending" ||
       message.skipTranscript
     ) {
       continue;
     }
-    if (
-      best === null ||
-      getMessageStartedAt(message) > getMessageStartedAt(best)
+    if (message.taskType === LOCAL_WORKFLOW_TASK_TYPE) {
+      if (
+        bestWorkflow === null ||
+        getMessageStartedAt(message) > getMessageStartedAt(bestWorkflow)
+      ) {
+        bestWorkflow = message;
+      }
+    } else if (
+      bestCommand === null ||
+      getMessageStartedAt(message) > getMessageStartedAt(bestCommand)
     ) {
-      best = message;
+      bestCommand = message;
     }
   }
-  return best;
+  return bestWorkflow ?? bestCommand;
 }
 
 function buildClientTurnRequestById(

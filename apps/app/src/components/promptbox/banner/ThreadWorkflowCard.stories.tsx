@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { WorkflowProgressSnapshot } from "@bb/domain";
 import { ThreadWorkflowCard } from "./ThreadWorkflowCard";
-import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  backgroundCommandRow,
+  workflowRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -71,6 +74,16 @@ const runningWorkflow = workflowRow({
   usage: { totalTokens: 633_400, toolUses: 261, durationMs: 326_000 },
 });
 
+// A backgrounded shell command (Bash run_in_background): no agent tree, so the
+// card is a non-expandable single line — name + live elapsed time.
+const runningCommand = backgroundCommandRow({
+  id: "thr_fixture:bg:tail-dev-log:running",
+  status: "pending",
+  taskStatus: "running",
+  description: "Tail the dev server log",
+  startedAt: Date.now() - 8_000,
+});
+
 function FauxComposer() {
   return (
     <div className="rounded-lg border border-border bg-popover p-3">
@@ -122,6 +135,21 @@ export function Overview() {
             isExpanded={collapsed}
             onToggle={() => setCollapsed((value) => !value)}
           />
+        </Stage>
+      </StoryRow>
+      <StoryRow
+        label="background command"
+        hint="backgrounded shell command: non-expandable single line with live time"
+      >
+        <Stage>
+          <div className="flex flex-col gap-2">
+            <ThreadWorkflowCard
+              workflow={runningCommand}
+              isExpanded={false}
+              onToggle={() => undefined}
+            />
+            <FauxComposer />
+          </div>
         </Stage>
       </StoryRow>
     </StoryCard>

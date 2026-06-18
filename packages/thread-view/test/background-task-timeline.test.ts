@@ -442,7 +442,7 @@ describe("background task timeline projection", () => {
     expect(row.completedAt).not.toBeNull();
   });
 
-  it("keeps backgrounded shell commands out of the active-workflow banner", () => {
+  it("surfaces a running background command in the prompt-box banner", () => {
     const timeline = buildTimeline(
       [
         turnStarted("turn-1", 1),
@@ -471,9 +471,50 @@ describe("background task timeline projection", () => {
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
-    // A running shell command renders inline but never hijacks the prompt-box
-    // workflow banner (contrast: an active workflow does surface there).
-    expect(timeline.activeWorkflow).toBeNull();
+    // A running shell command surfaces in the prompt-box banner like a workflow.
+    expect(timeline.activeWorkflow).toMatchObject({
+      itemId: "task:bmn5wv33k",
+      taskType: "local_bash",
+      status: "pending",
+      taskStatus: "running",
+    });
+  });
+
+  it("prefers a running workflow over a background command in the banner", () => {
+    // The workflow starts first and the shell command later; the banner still
+    // shows the workflow — a workflow takes precedence regardless of recency.
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({ status: "pending", taskStatus: "running" }),
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({ status: "pending", taskStatus: "running" }),
+          },
+          3,
+        ),
+        turnCompleted("turn-1", 4),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    expect(timeline.activeWorkflow).toMatchObject({
+      itemId: "task:wf-1",
+      taskType: "local_workflow",
+    });
   });
 
   it("hides skip_transcript tasks from the timeline", () => {
