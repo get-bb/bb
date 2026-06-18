@@ -9,7 +9,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mockWindowSelection({ node, text }: { node: Node; text: string }) {
+function makeWindowSelection({
+  node,
+  text,
+}: {
+  node: Node;
+  text: string;
+}): Selection {
   const rect = new DOMRect(10, 20, 30, 8);
   const range = {
     commonAncestorContainer: node,
@@ -19,7 +25,7 @@ function mockWindowSelection({ node, text }: { node: Node; text: string }) {
       item: (index: number) => (index === 0 ? rect : null),
     }),
   } as unknown as Range;
-  vi.spyOn(window, "getSelection").mockReturnValue({
+  return {
     anchorNode: node,
     commonAncestorContainer: node,
     focusNode: node,
@@ -27,7 +33,13 @@ function mockWindowSelection({ node, text }: { node: Node; text: string }) {
     isCollapsed: false,
     rangeCount: 1,
     toString: () => text,
-  } as unknown as Selection);
+  } as unknown as Selection;
+}
+
+function mockWindowSelection({ node, text }: { node: Node; text: string }) {
+  vi.spyOn(window, "getSelection").mockReturnValue(
+    makeWindowSelection({ node, text }),
+  );
 }
 
 function waitForAnimationFrame(): Promise<void> {
@@ -120,6 +132,41 @@ describe("SelectableMessageProse", () => {
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({
           text: "Triple click selectable paragraph text",
+        }),
+      ),
+    );
+  });
+
+  it("keeps checking triple-click selections that arrive after the first settled read", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Late triple click selectable paragraph text
+      </SelectableMessageProse>,
+    );
+    const textNode = getByText(
+      "Late triple click selectable paragraph text",
+    ).firstChild;
+    expect(textNode).not.toBeNull();
+
+    const selection = makeWindowSelection({
+      node: textNode!,
+      text: "Late triple click selectable paragraph text",
+    });
+    let readCount = 0;
+    vi.spyOn(window, "getSelection").mockImplementation(() => {
+      readCount += 1;
+      return readCount === 1 ? null : selection;
+    });
+
+    fireEvent.pointerDown(document);
+    fireEvent.pointerUp(document);
+    fireEvent.click(document, { detail: 3 });
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Late triple click selectable paragraph text",
         }),
       ),
     );

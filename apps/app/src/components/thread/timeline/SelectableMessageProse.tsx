@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
+const SETTLED_SELECTION_READ_DELAYS_MS = [0, 32];
+
 export interface MessageProseSelection {
   text: string;
   rect: DOMRect;
@@ -108,10 +110,19 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
-    let deferredRead: number | null = null;
+    let deferredReads: number[] = [];
+    const clearDeferredReads = () => {
+      for (const timeoutId of deferredReads) {
+        window.clearTimeout(timeoutId);
+      }
+      deferredReads = [];
+    };
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
+      if (next !== null || hadSelection) {
+        clearDeferredReads();
+      }
       if (next === null && !hadSelection) return;
       hadSelection = next !== null;
       onSelectRef.current?.(next);
@@ -127,13 +138,14 @@ export function SelectableMessageProse({
     };
     const scheduleAfterSelectionSettles = () => {
       cancelFrame();
-      if (deferredRead !== null) {
-        window.clearTimeout(deferredRead);
+      clearDeferredReads();
+      for (const delay of SETTLED_SELECTION_READ_DELAYS_MS) {
+        const timeoutId = window.setTimeout(() => {
+          deferredReads = deferredReads.filter((id) => id !== timeoutId);
+          schedule();
+        }, delay);
+        deferredReads.push(timeoutId);
       }
-      deferredRead = window.setTimeout(() => {
-        deferredRead = null;
-        schedule();
-      }, 0);
     };
     const handleSelectionChange = () => {
       if (pointerIsDown) {
@@ -164,7 +176,7 @@ export function SelectableMessageProse({
     document.addEventListener("keyup", schedule);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      if (deferredRead !== null) window.clearTimeout(deferredRead);
+      clearDeferredReads();
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerEnd);
       document.removeEventListener("pointercancel", handlePointerEnd);
