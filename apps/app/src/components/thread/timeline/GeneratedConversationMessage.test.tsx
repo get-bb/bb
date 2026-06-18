@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import { ConversationMessageContent } from "./ConversationMessageContent";
@@ -70,7 +70,10 @@ afterEach(() => {
 
 const TWO_LINE_BODY = "first report line\nsecond report line";
 
-function renderChildCompletedBody(text: string) {
+function renderChildCompletedBody(
+  text: string,
+  onOpenLink?: (link: { href: string }) => boolean,
+) {
   return render(
     <MemoryRouter>
       <RouteNavigationProvider>
@@ -90,6 +93,7 @@ function renderChildCompletedBody(text: string) {
           }}
           attachments={null}
           mentions={[]}
+          onOpenLink={onOpenLink}
           text={text}
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
@@ -209,5 +213,22 @@ describe("GeneratedConversationMessage markdown body (system)", () => {
     expect(pill?.closest("a")?.getAttribute("href")).toBe(
       "/projects/proj_demo/threads/thr_child",
     );
+  });
+
+  it("routes system markdown web links through the shared open-link handler", () => {
+    const onOpenLink = vi.fn(() => true);
+    renderChildCompletedBody(
+      "Generated summary\n\n[Docs](https://example.com/docs)",
+      onOpenLink,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Rebuild comments finished/u }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Docs" }));
+
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
   });
 });

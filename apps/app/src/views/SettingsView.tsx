@@ -391,7 +391,7 @@ export function InAppBrowserLinkSettingsControl({
   return (
     <SettingsWithControl
       label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      description="Open http and https links from chat in the in-app browser panel instead of your default browser."
+      description="Open http and https links from bb in the in-app browser panel instead of your default browser."
     >
       <Switch
         checked={enabled}

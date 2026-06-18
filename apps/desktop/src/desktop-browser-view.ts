@@ -257,6 +257,7 @@ function shouldBlockEntryTopLevelRequest(
   const webContentsId = entry.view.webContents.id;
   return shouldBlockBrowserRequest({
     url,
+    method: "GET",
     resourceType: "mainFrame",
     isMainFrame: true,
     targetWebContentsId: webContentsId,
@@ -402,6 +403,7 @@ export function createDesktopBrowserViewManager(
       callback({
         cancel: shouldBlockBrowserRequest({
           url: details.url,
+          method: details.method,
           resourceType: details.resourceType,
           isMainFrame: isMainFrameRequest,
           targetWebContentsId,

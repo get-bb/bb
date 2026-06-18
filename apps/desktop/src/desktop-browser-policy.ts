@@ -45,6 +45,7 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
 
 export interface ShouldBlockBrowserRequestArgs {
   url: string;
+  method: string;
   resourceType: string;
   isMainFrame: boolean;
   targetWebContentsId: number | null;
@@ -261,6 +262,11 @@ function browserRequestHasEntryAttribution(
   );
 }
 
+function isReadOnlyMainFrameRequestMethod(method: string): boolean {
+  const normalizedMethod = method.trim().toUpperCase();
+  return normalizedMethod === "GET" || normalizedMethod === "HEAD";
+}
+
 function localRequestProtocolClass(protocol: string): string | null {
   if (protocol === "http:" || protocol === "ws:") {
     return "local";
@@ -409,7 +415,19 @@ export function shouldBlockBrowserRequest(
   const isMainFrameRequest =
     args.isMainFrame || args.resourceType === "mainFrame";
   if (isMainFrameRequest) {
-    return !isAllowedBrowserUrl(args.url);
+    if (!isAllowedBrowserUrl(args.url)) {
+      return true;
+    }
+    const parsed = parseBrowserRequestUrl(args.url);
+    if (
+      !isReadOnlyMainFrameRequestMethod(args.method) &&
+      parsed !== null &&
+      (isLoopbackBrowserRequestHost(parsed.host) ||
+        isPrivateBrowserRequestHost(parsed.host))
+    ) {
+      return true;
+    }
+    return false;
   }
   const parsed = parseBrowserRequestUrl(args.url);
   if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {

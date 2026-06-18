@@ -5,16 +5,17 @@ import { createJsonLocalStorage } from "./browser-storage";
 export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
 
 /**
- * Default ON: the feature routes chat links into the desktop in-app browser
+ * Default ON: the feature routes bb links into the desktop in-app browser
  * instead of the external OS browser. Users can turn it OFF to fall back to the
  * external-open behavior. The preference only has an effect on desktop builds
- * (see {@link resolveChatLinkOpenTarget}); on web there is no in-app browser.
+ * (see {@link resolveInAppBrowserLinkOpenTarget}); on web there is no in-app
+ * browser.
  */
 export const OPEN_LINKS_IN_APP_BROWSER_DEFAULT = true;
 
-export type ChatLinkOpenTarget = "in-app-browser" | "default";
+export type InAppBrowserLinkOpenTarget = "in-app-browser" | "default";
 
-interface ResolveChatLinkOpenTargetArgs {
+interface ResolveInAppBrowserLinkOpenTargetArgs {
   /** Whether the desktop in-app browser surface is available in this build. */
   desktopBrowserAvailable: boolean;
   /** The persisted user preference. */
@@ -32,17 +33,17 @@ export function isHttpOrHttpsUrl(url: string): boolean {
 }
 
 /**
- * Decides where a chat link click should open. Returns `"in-app-browser"` only
+ * Decides where a bb link click should open. Returns `"in-app-browser"` only
  * when the desktop browser surface exists, the user preference is on, and the
  * href is a normal http(s) URL. Every other case returns `"default"`, leaving
  * the anchor's existing behavior (external open for web links, internal routing
  * for relative links, mail client for mailto, etc.) untouched.
  */
-export function resolveChatLinkOpenTarget({
+export function resolveInAppBrowserLinkOpenTarget({
   desktopBrowserAvailable,
   openInAppBrowser,
   url,
-}: ResolveChatLinkOpenTargetArgs): ChatLinkOpenTarget {
+}: ResolveInAppBrowserLinkOpenTargetArgs): InAppBrowserLinkOpenTarget {
   if (desktopBrowserAvailable && openInAppBrowser && isHttpOrHttpsUrl(url)) {
     return "in-app-browser";
   }

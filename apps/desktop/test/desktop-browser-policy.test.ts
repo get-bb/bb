@@ -386,6 +386,7 @@ describe("shouldBlockBrowserRequest", () => {
 
   const baseRequest: ShouldBlockBrowserRequestArgs = {
     url: "http://localhost:3000/",
+    method: "GET",
     resourceType: "mainFrame",
     isMainFrame: true,
     targetWebContentsId: 1,
@@ -429,6 +430,37 @@ describe("shouldBlockBrowserRequest", () => {
     ]) {
       expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(false);
     }
+  });
+
+  it("blocks non-read-only main-frame requests to local targets", () => {
+    for (const url of [
+      "http://localhost:3000/api",
+      "http://127.0.0.1:38886/api",
+      "http://192.168.1.1/action",
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          method: "POST",
+          url,
+        }),
+      ).toBe(true);
+    }
+
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        method: "POST",
+        url: "https://example.com/form",
+      }),
+    ).toBe(false);
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        method: "HEAD",
+        url: "http://localhost:3000/",
+      }),
+    ).toBe(false);
   });
 
   it("blocks non-http(s) main-frame requests", () => {
@@ -660,6 +692,7 @@ describe("loopback SPA subresource firewall (regression)", () => {
     "requestingFrameOriginKey"
   > = {
     url: "http://localhost:5173/src/main.tsx",
+    method: "GET",
     resourceType: "script",
     isMainFrame: false,
     targetWebContentsId: 1,

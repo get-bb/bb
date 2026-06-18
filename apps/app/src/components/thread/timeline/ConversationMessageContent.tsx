@@ -68,6 +68,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
@@ -97,10 +98,8 @@ export interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps,
     AssistantMessageRowIdentity {
   role: "assistant";
-  // Assistant content renders through MarkdownPreview, which is the only
-  // surface with clickable links. User messages render as plain text
-  // (CollapsibleMessageText), so this handler lives on the assistant variant
-  // only — never accepted-but-ignored.
+  // Assistant content and generated system rows render through MarkdownPreview,
+  // which is the only message body surface with clickable web links.
   onOpenLink?: ThreadTimelineLinkHandler;
   /**
    * Fork the active thread from this agent message. Omitted when forking is
@@ -148,6 +147,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -295,6 +295,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  onOpenLink,
   onOpenLocalFileLink,
   projectId,
   resolveMentionLink,
@@ -320,6 +321,7 @@ function UserConversationMessage({
         attachmentItems={attachmentItems}
         childOrigin={childOrigin}
         mentions={bodyMentions}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -353,6 +355,7 @@ function UserConversationMessage({
         attachmentItems={attachmentItems}
         childOrigin={null}
         mentions={bodyMentions}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -519,6 +522,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}

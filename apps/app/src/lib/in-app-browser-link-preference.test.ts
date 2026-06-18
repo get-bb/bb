@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isHttpOrHttpsUrl,
-  resolveChatLinkOpenTarget,
+  resolveInAppBrowserLinkOpenTarget,
 } from "./in-app-browser-link-preference";
 
 describe("isHttpOrHttpsUrl", () => {
@@ -21,17 +21,17 @@ describe("isHttpOrHttpsUrl", () => {
   });
 });
 
-describe("resolveChatLinkOpenTarget", () => {
+describe("resolveInAppBrowserLinkOpenTarget", () => {
   it("routes http(s) links into the in-app browser on desktop when enabled", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveInAppBrowserLinkOpenTarget({
         desktopBrowserAvailable: true,
         openInAppBrowser: true,
         url: "https://example.com/docs",
       }),
     ).toBe("in-app-browser");
     expect(
-      resolveChatLinkOpenTarget({
+      resolveInAppBrowserLinkOpenTarget({
         desktopBrowserAvailable: true,
         openInAppBrowser: true,
         url: "http://example.com",
@@ -41,7 +41,7 @@ describe("resolveChatLinkOpenTarget", () => {
 
   it("keeps default behavior when the preference is off", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveInAppBrowserLinkOpenTarget({
         desktopBrowserAvailable: true,
         openInAppBrowser: false,
         url: "https://example.com/docs",
@@ -51,7 +51,7 @@ describe("resolveChatLinkOpenTarget", () => {
 
   it("keeps default behavior when the desktop browser is unavailable (web)", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveInAppBrowserLinkOpenTarget({
         desktopBrowserAvailable: false,
         openInAppBrowser: true,
         url: "https://example.com/docs",
@@ -67,7 +67,7 @@ describe("resolveChatLinkOpenTarget", () => {
       "#section",
     ]) {
       expect(
-        resolveChatLinkOpenTarget({
+        resolveInAppBrowserLinkOpenTarget({
           desktopBrowserAvailable: true,
           openInAppBrowser: true,
           url,

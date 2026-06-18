@@ -9,6 +9,7 @@ import type {
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { cn } from "@/lib/utils";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -27,7 +28,10 @@ import type {
   TimelineTitleActionResolver,
   TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
-import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
+import type {
+  ThreadTimelineLinkHandler,
+  ThreadTimelineLocalFileLinkHandler,
+} from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
@@ -41,6 +45,7 @@ interface GeneratedConversationMessageProps {
    */
   childOrigin: ThreadChildOrigin | null;
   mentions: readonly PromptTextMention[];
+  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -355,6 +360,7 @@ export const GeneratedConversationMessage = memo(
     attachmentItems,
     childOrigin,
     mentions,
+    onOpenLink,
     onOpenLocalFileLink,
     projectId,
     resolveMentionLink,
@@ -381,6 +387,9 @@ export const GeneratedConversationMessage = memo(
       [mentions, messageText.length, trimStartLength],
     );
     const requestLabel = turnRequestLabel(turnRequest);
+    const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
+      return onOpenLink === undefined ? undefined : { onOpenLink };
+    }, [onOpenLink]);
     const title = useMemo(
       () =>
         generatedConversationTitle({
@@ -449,6 +458,7 @@ export const GeneratedConversationMessage = memo(
             // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
             <MarkdownPreview
               content={collapsedPreviewLine}
+              linkRouting={linkRouting}
               threadMentions={
                 resolveSegmentLinkHref
                   ? {
@@ -491,6 +501,7 @@ export const GeneratedConversationMessage = memo(
               sourceKind === "system" ? (
                 <MarkdownPreview
                   content={messageText}
+                  linkRouting={linkRouting}
                   threadMentions={
                     resolveSegmentLinkHref
                       ? {
@@ -532,6 +543,7 @@ export const GeneratedConversationMessage = memo(
       [
         attachmentItems.filePaths,
         attachmentItems.imageItems,
+        linkRouting,
         messageText,
         messageMentions,
         onOpenLocalFileLink,

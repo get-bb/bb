@@ -111,6 +111,7 @@ interface FakeWebFrameMain {
 
 interface FakeOnBeforeRequestDetails {
   url: string;
+  method?: string;
   resourceType: FakeResourceType;
   webContentsId?: number;
   frame?: FakeWebFrameMain | null;
@@ -556,6 +557,7 @@ interface AttachBrowserTabArgs {
 
 interface BrowserRequestBlockedArgs {
   url: string;
+  method?: string;
   resourceType: FakeResourceType;
   frameOrigin?: string | null;
   webContentsId?: number;
@@ -601,6 +603,7 @@ function requireOnBeforeRequestListener(): FakeOnBeforeRequestListener {
 function browserRequestBlocked(args: BrowserRequestBlockedArgs): boolean {
   const details: FakeOnBeforeRequestDetails = {
     url: args.url,
+    method: args.method ?? "GET",
     resourceType: args.resourceType,
   };
   if (args.webContentsId !== undefined) {
@@ -711,6 +714,41 @@ describe("DesktopBrowserViewManager", () => {
         webContentsId: 0,
       }),
     ).toBe(false);
+  });
+
+  it("blocks local main-frame form posts while allowing local get navigations", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 53,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
+        method: "GET",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(false);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
+        method: "POST",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(true);
   });
 
   it("allows unattributed loopback main-frame requests with matching tabs", () => {

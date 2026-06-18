@@ -119,7 +119,7 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
-  resolveChatLinkOpenTarget,
+  resolveInAppBrowserLinkOpenTarget,
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
 import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
@@ -602,7 +602,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   }, [openTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
-  // and chat links keep their external-open behavior.
+  // and handled web links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
@@ -1504,7 +1504,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
     ({ href }) => {
       if (
-        resolveChatLinkOpenTarget({
+        resolveInAppBrowserLinkOpenTarget({
           desktopBrowserAvailable,
           openInAppBrowser: openLinksInAppBrowser,
           url: href,
