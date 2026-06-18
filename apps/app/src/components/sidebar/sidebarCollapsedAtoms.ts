@@ -6,6 +6,8 @@ const COLLAPSED_THREADS_STORAGE_KEY = "bb.sidebar.collapsedThreads";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
+const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
+const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 
 export type SidebarSectionId =
   | "pinned"
@@ -14,6 +16,13 @@ export type SidebarSectionId =
 export type CollapsibleSidebarSectionId =
   | "projects"
   | "threads";
+
+// "project" keeps the per-project grouping; "chronological" flattens every
+// non-pinned thread into a single All Threads bucket.
+export type SidebarOrganizationMode = "project" | "chronological";
+// Only meaningful in chronological mode. "updated" reuses the status-aware
+// activity heuristic; "created" sorts by the literal createdAt field.
+export type SidebarChronologicalSort = "updated" | "created";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
@@ -57,3 +66,19 @@ export const sidebarSectionOrderAtom = atomWithStorage<SidebarSectionId[]>(
   createJsonLocalStorage<SidebarSectionId[]>(),
   { getOnInit: true },
 );
+
+export const sidebarOrganizationModeAtom =
+  atomWithStorage<SidebarOrganizationMode>(
+    ORGANIZATION_MODE_STORAGE_KEY,
+    "project",
+    createJsonLocalStorage<SidebarOrganizationMode>(),
+    { getOnInit: true },
+  );
+
+export const sidebarChronologicalSortAtom =
+  atomWithStorage<SidebarChronologicalSort>(
+    CHRONOLOGICAL_SORT_STORAGE_KEY,
+    "updated",
+    createJsonLocalStorage<SidebarChronologicalSort>(),
+    { getOnInit: true },
+  );

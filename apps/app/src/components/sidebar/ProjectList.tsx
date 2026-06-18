@@ -60,9 +60,14 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
-import { ProjectThreadTree } from "./ProjectRow";
+import { ChronologicalThreadTree, ProjectThreadTree } from "./ProjectRow";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { ProjectThreadListState } from "./ProjectRow";
+import {
+  compareByCreatedAtDescending,
+  compareStandardThreads,
+  type ThreadComparator,
+} from "./projectThreadGroups";
 import {
   ProjectListProjects,
   type ProjectListReorderBindings,
@@ -79,10 +84,25 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
+  sidebarChronologicalSortAtom,
+  sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
+  type SidebarChronologicalSort,
+  type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
@@ -406,6 +426,101 @@ function ProjectListThreadsSectionActions({
   );
 }
 
+function isOrganizationMode(value: string): value is SidebarOrganizationMode {
+  return value === "project" || value === "chronological";
+}
+
+function isChronologicalSort(value: string): value is SidebarChronologicalSort {
+  return value === "updated" || value === "created";
+}
+
+// Shared "Organize sidebar" menu rendered on both the Projects and Threads
+// section headers. The organization mode is global, so either header's menu
+// drives the whole sidebar.
+function SidebarOrganizeMenu() {
+  const [organizationMode, setOrganizationMode] = useAtom(
+    sidebarOrganizationModeAtom,
+  );
+  const [chronologicalSort, setChronologicalSort] = useAtom(
+    sidebarChronologicalSortAtom,
+  );
+  const handleModeChange = useCallback(
+    (value: string) => {
+      if (isOrganizationMode(value)) {
+        setOrganizationMode(value);
+      }
+    },
+    [setOrganizationMode],
+  );
+  const handleSortChange = useCallback(
+    (value: string) => {
+      if (isChronologicalSort(value)) {
+        setChronologicalSort(value);
+      }
+    },
+    [setChronologicalSort],
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Organize sidebar"
+          title="Organize sidebar"
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>Organize sidebar</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuRadioGroup
+              value={organizationMode}
+              onValueChange={handleModeChange}
+            >
+              <DropdownMenuRadioItem value="project">
+                By project
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="chronological">
+                Chronological list
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        {organizationMode === "chronological" ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Sort by</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={chronologicalSort}
+                  onValueChange={handleSortChange}
+                >
+                  <DropdownMenuRadioItem value="updated">
+                    Updated at
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="created">
+                    Created at
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ProjectListNavigationLoadingState() {
   return (
     <div
@@ -516,10 +631,12 @@ function TopLevelSidebarSection({
         <span
           className={cn(
             "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
-            actions && "pr-14",
+            actions && "pr-14 max-md:pointer-coarse:pr-[4.5rem]",
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
+          {/* pr-14 reserves room for two action buttons (organize + new) on
+              fine pointers; coarse pointers need a little more. */}
           {collapseControl ? (
             <button
               type="button"
@@ -892,6 +1009,15 @@ function ProjectListComponent({
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
+  const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
+  const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
+  const chronologicalComparator = useMemo<ThreadComparator>(
+    () =>
+      chronologicalSort === "created"
+        ? compareByCreatedAtDescending
+        : compareStandardThreads,
+    [chronologicalSort],
+  );
   const collapsedProjectIds = useMemo(
     () => new Set(collapsedProjectIdList),
     [collapsedProjectIdList],
@@ -1173,6 +1299,22 @@ function ProjectListComponent({
     threads: threadsByProject.get(PERSONAL_PROJECT_ID),
   });
 
+  // Chronological mode flattens every non-pinned thread (across all projects)
+  // into a single bucket. Pinned threads and their descendants stay in the
+  // Pinned section, matching how project mode excludes them.
+  const nonPinnedThreads = useMemo(
+    () =>
+      threads.filter(
+        (thread) =>
+          !pinnedSidebarState.effectivePinnedThreadIds.has(thread.id),
+      ),
+    [pinnedSidebarState.effectivePinnedThreadIds, threads],
+  );
+  const allThreadsListState = getProjectThreadListState({
+    status: projectsState.status,
+    threads: nonPinnedThreads,
+  });
+
   const pinnedSectionContent = (
     <PinnedThreadTree
       rootNodes={pinnedSidebarState.rootNodes}
@@ -1215,18 +1357,38 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
   );
-  const projectsSectionActions = onNewProject ? (
-    <ProjectListProjectsSectionActions
-      onNewProject={onNewProject}
-      isCreatingProject={isCreatingProject}
+  const allThreadsSectionContent = (
+    <ChronologicalThreadTree
+      threadListState={allThreadsListState}
+      compareThreads={chronologicalComparator}
+      selectedThreadId={selectedThreadId}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={toggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
-  ) : undefined;
+  );
+  const projectsSectionActions = (
+    <>
+      <SidebarOrganizeMenu />
+      {onNewProject ? (
+        <ProjectListProjectsSectionActions
+          onNewProject={onNewProject}
+          isCreatingProject={isCreatingProject}
+        />
+      ) : null}
+    </>
+  );
   const projectsSectionActionsAlwaysVisible =
     projectsState.status === "ready" && renderedProjects.length === 0;
   const threadsSectionActions = (
-    <ProjectListThreadsSectionActions
-      onNewThread={handleCreateProjectlessThread}
-    />
+    <>
+      <SidebarOrganizeMenu />
+      <ProjectListThreadsSectionActions
+        onNewThread={handleCreateProjectlessThread}
+      />
+    </>
   );
 
   if (threadSearch?.isActive) {
@@ -1250,6 +1412,31 @@ function ProjectListComponent({
     return (
       <ProjectListShell>
         <ProjectListNavigationLoadingState />
+      </ProjectListShell>
+    );
+  }
+
+  if (organizationMode === "chronological") {
+    return (
+      <ProjectListShell>
+        <div className="space-y-4">
+          {hasPinnedSection ? (
+            <TopLevelSidebarSection label="Pinned">
+              {pinnedSectionContent}
+            </TopLevelSidebarSection>
+          ) : null}
+          <TopLevelSidebarSection
+            label="All Threads"
+            actions={threadsSectionActions}
+            actionsMobileAlways
+            collapseControl={{
+              isCollapsed: collapsedSidebarSectionIds.has("threads"),
+              onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
+            }}
+          >
+            {allThreadsSectionContent}
+          </TopLevelSidebarSection>
+        </div>
       </ProjectListShell>
     );
   }

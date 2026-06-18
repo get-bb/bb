@@ -2,6 +2,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   buildProjectThreadGroups,
+  compareByCreatedAtDescending,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
@@ -340,6 +341,40 @@ describe("buildProjectThreadGroups", () => {
       },
       childCount: 2,
     });
+  });
+
+  it("orders roots by literal createdAt when given the created comparator", () => {
+    const threads = [
+      createThread({
+        id: "active-old",
+        status: "active",
+        createdAt: 10,
+        latestAttentionAt: 5,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+      createThread({
+        id: "idle-new",
+        status: "idle",
+        createdAt: 50,
+        latestAttentionAt: 5,
+      }),
+    ];
+
+    // Default heuristic pins active rows ahead of idle ones.
+    expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
+      "active-old",
+      "idle-new",
+    ]);
+
+    // The created comparator ignores status and sorts purely by createdAt desc.
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups(threads, compareByCreatedAtDescending),
+      ),
+    ).toEqual(["idle-new", "active-old"]);
   });
 
   it("sorts top-level manager roots with the regular root ordering", () => {
