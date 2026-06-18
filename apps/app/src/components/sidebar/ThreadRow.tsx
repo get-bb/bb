@@ -313,9 +313,7 @@ function ThreadRowComponent({
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-    parentDragBindings &&
-      !parentDragBindings.disabled &&
-      "select-none cursor-grab active:cursor-grabbing",
+    parentDragBindings && !parentDragBindings.disabled && "select-none",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
