@@ -650,15 +650,7 @@ function EnvironmentThreadGroupHeader({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const environmentName = representativeThread.environmentName;
   const branchName = representativeThread.environmentBranchName;
-  const headerTitle = environmentName
-    ? branchName
-      ? `${environmentName} (${branchName})`
-      : environmentName
-    : branchName
-      ? branchName
-      : "Worktree";
   const displayName = environmentName || branchName || "Worktree";
-  const showBranchName = Boolean(environmentName && branchName);
   const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
   // glyph (pending > working > unread). Expanded: the children show their own
@@ -701,17 +693,11 @@ function EnvironmentThreadGroupHeader({
       <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
         <span className="min-w-0 truncate">
           <span>{displayName}</span>
-          {showBranchName ? (
-            <>
-              <span> · </span>
-              <span>{branchName}</span>
-            </>
-          ) : null}
         </span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
-          expandLabel={`Expand ${headerTitle} threads`}
-          collapseLabel={`Collapse ${headerTitle} threads`}
+          expandLabel={`Expand ${displayName} threads`}
+          collapseLabel={`Collapse ${displayName} threads`}
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
