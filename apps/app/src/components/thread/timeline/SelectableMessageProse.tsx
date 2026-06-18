@@ -1,7 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
-const SETTLED_SELECTION_READ_DELAYS_MS = [0, 32];
-
 export interface MessageProseSelection {
   text: string;
   rect: DOMRect;
@@ -110,19 +108,9 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
-    let deferredReads: number[] = [];
-    const clearDeferredReads = () => {
-      for (const timeoutId of deferredReads) {
-        window.clearTimeout(timeoutId);
-      }
-      deferredReads = [];
-    };
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
-      if (next !== null || hadSelection) {
-        clearDeferredReads();
-      }
       if (next === null && !hadSelection) return;
       hadSelection = next !== null;
       onSelectRef.current?.(next);
@@ -136,16 +124,9 @@ export function SelectableMessageProse({
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
     };
-    const scheduleAfterSelectionSettles = () => {
+    const scheduleFresh = () => {
       cancelFrame();
-      clearDeferredReads();
-      for (const delay of SETTLED_SELECTION_READ_DELAYS_MS) {
-        const timeoutId = window.setTimeout(() => {
-          deferredReads = deferredReads.filter((id) => id !== timeoutId);
-          schedule();
-        }, delay);
-        deferredReads.push(timeoutId);
-      }
+      schedule();
     };
     const handleSelectionChange = () => {
       if (pointerIsDown) {
@@ -158,32 +139,36 @@ export function SelectableMessageProse({
     };
     const handlePointerEnd = () => {
       pointerIsDown = false;
-      scheduleAfterSelectionSettles();
+      schedule();
     };
-    const handleClick = (event: MouseEvent) => {
+    const handleMultiClick = (event: MouseEvent) => {
       if (event.detail < 2) {
         return;
       }
-      scheduleAfterSelectionSettles();
+      // Multi-click selection can be finalized after pointerup. Replace any
+      // stale pointerup read with one explicitly tied to the completed click.
+      scheduleFresh();
     };
+    const node = nodeRef.current;
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("pointerup", handlePointerEnd);
     document.addEventListener("pointercancel", handlePointerEnd);
     document.addEventListener("mouseup", handlePointerEnd);
-    document.addEventListener("click", handleClick);
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
+    node?.addEventListener("click", handleMultiClick);
+    node?.addEventListener("dblclick", scheduleFresh);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      clearDeferredReads();
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerEnd);
       document.removeEventListener("pointercancel", handlePointerEnd);
       document.removeEventListener("mouseup", handlePointerEnd);
-      document.removeEventListener("click", handleClick);
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
+      node?.removeEventListener("click", handleMultiClick);
+      node?.removeEventListener("dblclick", scheduleFresh);
     };
   }, []);
 

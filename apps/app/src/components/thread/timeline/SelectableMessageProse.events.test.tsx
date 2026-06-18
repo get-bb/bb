@@ -105,68 +105,53 @@ describe("SelectableMessageProse", () => {
     );
   });
 
-  it("reports triple-click selections that settle after pointer release", async () => {
+  it("reports double-click selections from the message click target", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Double click target paragraph text
+      </SelectableMessageProse>,
+    );
+    const target = getByText("Double click target paragraph text");
+    const textNode = target.firstChild;
+    expect(textNode).not.toBeNull();
+
+    mockWindowSelection({
+      node: textNode!,
+      text: "Double click target paragraph text",
+    });
+    fireEvent.doubleClick(target, { detail: 2 });
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Double click target paragraph text",
+        }),
+      ),
+    );
+  });
+
+  it("reports triple-click selections from the message click target", async () => {
     const onSelect = vi.fn();
     const { getByText } = render(
       <SelectableMessageProse onSelect={onSelect}>
         Triple click selectable paragraph text
       </SelectableMessageProse>,
     );
-    const textNode = getByText(
-      "Triple click selectable paragraph text",
-    ).firstChild;
+    const target = getByText("Triple click selectable paragraph text");
+    const textNode = target.firstChild;
     expect(textNode).not.toBeNull();
-
-    fireEvent.pointerDown(document);
-    fireEvent(document, new Event("selectionchange"));
-    fireEvent.pointerUp(document);
-    expect(onSelect).not.toHaveBeenCalled();
 
     mockWindowSelection({
       node: textNode!,
       text: "Triple click selectable paragraph text",
     });
-    fireEvent.click(document, { detail: 3 });
+    fireEvent.click(target, { detail: 3 });
 
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({
           text: "Triple click selectable paragraph text",
-        }),
-      ),
-    );
-  });
-
-  it("keeps checking triple-click selections that arrive after the first settled read", async () => {
-    const onSelect = vi.fn();
-    const { getByText } = render(
-      <SelectableMessageProse onSelect={onSelect}>
-        Late triple click selectable paragraph text
-      </SelectableMessageProse>,
-    );
-    const textNode = getByText(
-      "Late triple click selectable paragraph text",
-    ).firstChild;
-    expect(textNode).not.toBeNull();
-
-    const selection = makeWindowSelection({
-      node: textNode!,
-      text: "Late triple click selectable paragraph text",
-    });
-    let readCount = 0;
-    vi.spyOn(window, "getSelection").mockImplementation(() => {
-      readCount += 1;
-      return readCount === 1 ? null : selection;
-    });
-
-    fireEvent.pointerDown(document);
-    fireEvent.pointerUp(document);
-    fireEvent.click(document, { detail: 3 });
-
-    await waitFor(() =>
-      expect(onSelect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: "Late triple click selectable paragraph text",
         }),
       ),
     );
