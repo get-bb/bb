@@ -42,6 +42,7 @@ import {
 } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+  COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
@@ -69,8 +70,6 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 import {
-  SIDEBAR_LEADING_CLUSTER_CLASS,
-  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -137,6 +136,8 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
+const PROJECT_ROW_LEADING_SLOT_CLASS =
+  "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
 
 interface ProjectThreadTreeGroupProps {
   children: ReactNode;
@@ -666,24 +667,11 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <span
-        className={cn(
-          SIDEBAR_LEADING_CLUSTER_CLASS,
-          "relative z-10 text-left text-subtle-foreground/80",
-        )}
-      >
-        <SidebarChildToggleChevron
-          isCollapsed={isCollapsed}
-          expandLabel={`Expand ${headerTitle} threads`}
-          collapseLabel={`Collapse ${headerTitle} threads`}
-          expandTitle="Expand worktree threads"
-          collapseTitle="Collapse worktree threads"
-          onToggle={() => onToggleCollapsed(environmentId)}
-        />
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
         <span
           className={cn(
-            SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-            "pointer-events-none",
+            "inline-flex shrink-0 items-center justify-center",
+            COARSE_POINTER_GLYPH_BOX_CLASS,
           )}
           aria-hidden="true"
         >
@@ -693,7 +681,7 @@ function EnvironmentThreadGroupHeader({
             aria-hidden="true"
           />
         </span>
-        <span className="pointer-events-none min-w-0 truncate">
+        <span className="min-w-0 truncate">
           <span>{environmentName ?? "Worktree"}</span>
           {branchName ? (
             <>
@@ -702,6 +690,15 @@ function EnvironmentThreadGroupHeader({
             </>
           ) : null}
         </span>
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Expand ${headerTitle} threads`}
+          collapseLabel={`Collapse ${headerTitle} threads`}
+          expandTitle="Expand worktree threads"
+          collapseTitle="Collapse worktree threads"
+          onToggle={() => onToggleCollapsed(environmentId)}
+          revealOnHover
+        />
       </span>
       <span
         className={cn(
@@ -1186,10 +1183,18 @@ function ProjectRowComponent({
           >
             <span
               className={cn(
-                SIDEBAR_LEADING_CLUSTER_CLASS,
-                "relative z-10 pl-1.5 text-left",
+                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
+                PROJECT_ROW_LEADING_SLOT_CLASS,
               )}
+              aria-hidden
             >
+              <Icon
+                name={isCollapsed ? "Folder" : "FolderOpen"}
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </span>
+            <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+              <span className="min-w-0 truncate">{project.name}</span>
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
@@ -1197,22 +1202,8 @@ function ProjectRowComponent({
                 expandTitle="Expand project threads"
                 collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
+                revealOnHover
               />
-              <span
-                className={cn(
-                  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-                  "pointer-events-none text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
-                )}
-                aria-hidden
-              >
-                <Icon
-                  name={isCollapsed ? "Folder" : "FolderOpen"}
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </span>
-              <span className="pointer-events-none min-w-0 truncate">
-                {project.name}
-              </span>
             </span>
             {isLocalPathInvalid ? (
               <NavLink

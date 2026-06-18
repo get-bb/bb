@@ -44,7 +44,6 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_CARET_BOX_CLASS,
   SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -346,19 +345,6 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${threadTitle} threads`}
-            collapseLabel={`Collapse ${threadTitle} threads`}
-            expandTitle="Expand child threads"
-            collapseTitle="Collapse child threads"
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover={false}
-          />
-        ) : (
-          <span className={cn("shrink-0", SIDEBAR_CARET_BOX_CLASS)} />
-        )}
         {thread.childOrigin === "fork" ? (
           <span
             className={cn(
@@ -392,6 +378,17 @@ function ThreadRowComponent({
         ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
+        {parentOptions && hasChildren ? (
+          <SidebarChildToggleChevron
+            isCollapsed={isParentCollapsed}
+            expandLabel={`Expand ${threadTitle} threads`}
+            collapseLabel={`Collapse ${threadTitle} threads`}
+            expandTitle="Expand child threads"
+            collapseTitle="Collapse child threads"
+            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            revealOnHover={!isParentCollapsed}
+          />
+        ) : null}
       </span>
       <span
         className={cn(

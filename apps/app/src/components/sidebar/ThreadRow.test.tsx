@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
@@ -119,5 +120,28 @@ describe("ThreadRow", () => {
     });
 
     expect(screen.queryByLabelText("Managed worktree environment")).toBeNull();
+  });
+
+  it("renders parent-thread carets after the thread title", () => {
+    renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isEnvGrouped: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+        onToggleCollapsed: vi.fn(),
+      },
+      thread: createThread({ title: "Parent thread" }),
+    });
+
+    const title = screen.getByText("Parent thread");
+    const caret = screen.getByLabelText("Collapse Parent thread threads");
+    expect(
+      title.compareDocumentPosition(caret) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(caret.className).toContain("bb-sidebar-hover-actions");
   });
 });
