@@ -511,7 +511,7 @@ export function ModelReasoningPicker({
             <div
               className={cn(
                 "px-2 text-xs leading-relaxed text-muted-foreground",
-                isCompactViewport ? "pb-3 pt-1" : "pb-2 pt-0.5",
+                isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
               )}
               title={activeModelLoadErrorMessage ?? undefined}
             >
