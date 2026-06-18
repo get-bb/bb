@@ -822,6 +822,14 @@ describe("server-contract canonical schemas", () => {
       options: { method: "rebase" },
     });
 
+    expect(
+      environmentActionRequestSchema.parse({
+        action: "pull_request_draft",
+      }),
+    ).toMatchObject({
+      action: "pull_request_draft",
+    });
+
     expect(() =>
       environmentActionRequestSchema.parse({
         action: "pull_request_merge",
@@ -867,6 +875,16 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject({
       action: "pull_request_merge",
       method: "squash",
+    });
+
+    expect(
+      contract.environmentActionResponseSchema.parse({
+        action: "pull_request_draft",
+        message: "Pull request converted to draft",
+        ok: true,
+      }),
+    ).toMatchObject({
+      action: "pull_request_draft",
     });
 
     expect(

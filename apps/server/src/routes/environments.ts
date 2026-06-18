@@ -184,6 +184,21 @@ function assertCanMarkPullRequestReady(
   }
 }
 
+function assertCanConvertPullRequestToDraft(
+  pullRequest: ThreadPullRequest | null,
+): void {
+  if (!pullRequest) {
+    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
+  }
+  if (pullRequest.state !== "open") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Pull request is not open",
+    );
+  }
+}
+
 function assertCanMergePullRequest(
   pullRequest: ThreadPullRequest | null,
 ): void {
@@ -793,6 +808,39 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           ok: true,
           action: "pull_request_ready",
           message: "Pull request marked ready",
+        });
+      }
+      case "pull_request_draft": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const pullRequest = await getPullRequestForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanConvertPullRequestToDraft(pullRequest);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "draft",
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_draft",
+          message: "Pull request converted to draft",
         });
       }
       case "pull_request_merge": {

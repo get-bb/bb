@@ -53,6 +53,7 @@ export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
   | { operation: "ready" }
+  | { operation: "draft" }
   | { operation: "merge"; method: GitHostPullRequestMergeMethod };
 
 interface RunPullRequestActionForBranchArgs {
@@ -293,6 +294,8 @@ function buildPullRequestActionArgs(
   switch (action.operation) {
     case "ready":
       return ["pr", "ready", "--", branch];
+    case "draft":
+      return ["pr", "ready", "--undo", "--", branch];
     case "merge":
       return ["pr", "merge", getMergeMethodFlag(action.method), "--", branch];
   }

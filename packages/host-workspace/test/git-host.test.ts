@@ -182,6 +182,11 @@ describe("runPullRequestActionForBranch", () => {
       ["pr", "ready", "--", "bb/pr-actions"],
     ],
     [
+      "draft",
+      { operation: "draft" },
+      ["pr", "ready", "--undo", "--", "bb/pr-actions"],
+    ],
+    [
       "merge",
       { operation: "merge", method: "merge" },
       ["pr", "merge", "--merge", "--", "bb/pr-actions"],

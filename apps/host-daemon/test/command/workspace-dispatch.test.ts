@@ -215,6 +215,24 @@ describe("workspace command dispatch", () => {
       dispatchCommand(
         {
           type: "workspace.pull_request_action",
+          operation: "draft",
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "draft",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
           operation: "merge",
           method: "rebase",
           environmentId: "env-1",

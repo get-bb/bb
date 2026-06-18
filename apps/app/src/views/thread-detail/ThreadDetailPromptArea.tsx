@@ -106,6 +106,7 @@ interface ThreadDetailPromptAreaProps {
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
   onEscapeEmptyPrompt?: () => void;
+  onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
   pullRequestMergeMethod: PullRequestMergeMethod;
@@ -175,6 +176,7 @@ export function ThreadDetailPromptArea({
   environmentLabel,
   onCreateNewThreadInWorktree,
   onEscapeEmptyPrompt,
+  onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
   pullRequestMergeMethod,
@@ -303,13 +305,19 @@ export function ThreadDetailPromptArea({
         return null;
       }
       const actions =
-        onPullRequestReady || onPullRequestMerge || isEnvironmentActionPending
+        onPullRequestReady ||
+        onPullRequestMerge ||
+        onPullRequestDraft ||
+        isEnvironmentActionPending
           ? {
               isPending: isEnvironmentActionPending,
               ...(onPullRequestReady
                 ? { onMarkReady: onPullRequestReady }
                 : {}),
               ...(onPullRequestMerge ? { onMerge: onPullRequestMerge } : {}),
+              ...(onPullRequestDraft
+                ? { onConvertToDraft: onPullRequestDraft }
+                : {}),
               ...(onPullRequestMerge
                 ? { selectedMergeMethod: pullRequestMergeMethod }
                 : {}),
@@ -319,6 +327,7 @@ export function ThreadDetailPromptArea({
     },
     [
       isEnvironmentActionPending,
+      onPullRequestDraft,
       onPullRequestMerge,
       onPullRequestReady,
       pullRequest,

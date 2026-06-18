@@ -195,11 +195,24 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    await entry.workspace.runPullRequestAction(
-      command.operation === "ready"
-        ? { operation: "ready" }
-        : { operation: "merge", method: command.method },
-    );
+    switch (command.operation) {
+      case "ready":
+        await entry.workspace.runPullRequestAction({ operation: "ready" });
+        break;
+      case "draft":
+        await entry.workspace.runPullRequestAction({ operation: "draft" });
+        break;
+      case "merge":
+        await entry.workspace.runPullRequestAction({
+          operation: "merge",
+          method: command.method,
+        });
+        break;
+      default: {
+        const _exhaustive: never = command;
+        throw new Error(`Unhandled pull request operation: ${_exhaustive}`);
+      }
+    }
     return {};
   },
   "host.run_script": runScript,

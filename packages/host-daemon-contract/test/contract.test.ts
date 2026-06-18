@@ -758,6 +758,21 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "workspace.pull_request_action",
+        operation: "draft",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "draft",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
         operation: "merge",
         method: "squash",
         environmentId: "env_123",
@@ -1858,7 +1873,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(38);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(39);
   });
 
   it("parses valid session open and event batch payloads", () => {

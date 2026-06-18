@@ -1252,6 +1252,31 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       });
     }
   }, [requestEnvironmentAction, thread?.environmentId]);
+  const handlePullRequestDraft = useCallback(async () => {
+    const environmentId = thread?.environmentId;
+    if (!environmentId) {
+      return;
+    }
+    const toastId = appToast.loading("Converting pull request to draft");
+    try {
+      const response = await requestEnvironmentAction.mutateAsync({
+        id: environmentId,
+        action: "pull_request_draft",
+      });
+      if (response.action !== "pull_request_draft") {
+        throw new Error("Expected pull request draft action response.");
+      }
+      appToast.success(response.message, { id: toastId });
+    } catch (error) {
+      appToast.error("Failed to update pull request", {
+        id: toastId,
+        description: getMutationErrorMessage({
+          error,
+          fallbackMessage: "Pull request was not updated",
+        }),
+      });
+    }
+  }, [requestEnvironmentAction, thread?.environmentId]);
   const handlePullRequestMerge = useCallback(
     async (method: PullRequestMergeMethod) => {
       const environmentId = thread?.environmentId;
@@ -1885,6 +1910,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         props.surface === "popout" ? props.onPopoutHide : undefined
       }
       onPullRequestMerge={handlePullRequestMerge}
+      onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
       composerQueriesEnabled={hasThreadComposerBootstrapReady}

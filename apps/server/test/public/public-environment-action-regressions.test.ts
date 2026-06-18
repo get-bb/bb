@@ -144,6 +144,63 @@ describe("public environment action regressions", () => {
     });
   });
 
+  it("converts open pull requests back to draft through the environment action route", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-draft",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-draft-env",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_draft",
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        pullRequest: rawPullRequest(),
+      });
+
+      const draftCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request_action" &&
+          command.environmentId === environment.id,
+      );
+      expect(draftCommand.command).toMatchObject({
+        operation: "draft",
+      });
+      await reportQueuedCommandSuccess(harness, draftCommand, {});
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        action: "pull_request_draft",
+        ok: true,
+      });
+    });
+  });
+
   it("rejects blocked pull request merges before dispatching a merge command", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

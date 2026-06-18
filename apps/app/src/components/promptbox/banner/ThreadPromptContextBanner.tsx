@@ -31,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -83,6 +84,7 @@ export interface ThreadPromptPullRequestSection {
     isPending?: boolean;
     onMarkReady?: () => void;
     onMerge?: (method: PullRequestMergeMethod) => void;
+    onConvertToDraft?: () => void;
     selectedMergeMethod?: PullRequestMergeMethod;
   };
 }
@@ -426,10 +428,12 @@ const PULL_REQUEST_MERGE_ACTIONS: readonly {
 
 function PullRequestMergeSplitButton({
   disabled,
+  onConvertToDraft,
   onMerge,
   selectedMethod,
 }: {
   disabled?: boolean;
+  onConvertToDraft?: () => void;
   onMerge: (method: PullRequestMergeMethod) => void;
   selectedMethod: PullRequestMergeMethod;
 }) {
@@ -473,6 +477,17 @@ function PullRequestMergeSplitButton({
               {action.label}
             </DropdownMenuItem>
           ))}
+          {onConvertToDraft ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={onConvertToDraft}
+                textValue="Convert to draft"
+              >
+                Convert to draft
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -781,6 +796,7 @@ export function ThreadPromptContextBanner({
         <BannerActionSlot>
           <PullRequestMergeSplitButton
             disabled={pullRequestActions.isPending}
+            onConvertToDraft={pullRequestActions.onConvertToDraft}
             onMerge={pullRequestActions.onMerge}
             selectedMethod={pullRequestActions.selectedMergeMethod ?? "merge"}
           />

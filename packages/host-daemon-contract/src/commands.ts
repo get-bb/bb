@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 38 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 39 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -571,6 +571,13 @@ const workspacePullRequestReadyCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
+const workspacePullRequestDraftCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("draft"),
+  })
+  .strict();
+
 const workspacePullRequestMergeCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.pull_request_action"),
@@ -583,6 +590,7 @@ const workspacePullRequestActionCommandSchema = z.discriminatedUnion(
   "operation",
   [
     workspacePullRequestReadyCommandSchema,
+    workspacePullRequestDraftCommandSchema,
     workspacePullRequestMergeCommandSchema,
   ],
 );
