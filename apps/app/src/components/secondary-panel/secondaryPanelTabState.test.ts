@@ -5,6 +5,7 @@ import {
   createGitDiffFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
+  createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -168,6 +169,26 @@ describe("secondaryPanelTabState", () => {
     expect(state.secondary.activeTabId).toBe(workspaceTab.id);
     expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([
       workspaceTab.id,
+    ]);
+  });
+
+  it("replaces the transient new tab when starting a side chat", () => {
+    const newTab = createNewTabFixedPanelTab();
+    const sideChatTab = createSideChatFixedPanelTab({
+      sourceMessageText: "",
+      title: "Side chat",
+    });
+    let state = createEmptyFixedPanelTabsState();
+
+    state = openSecondaryPanelTabInState({ state, tab: newTab });
+    state = replaceNewTabWithSecondaryPanelTabInState({
+      state,
+      tab: sideChatTab,
+    });
+
+    expect(state.secondary.activeTabId).toBe(sideChatTab.id);
+    expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([
+      sideChatTab.id,
     ]);
   });
 });

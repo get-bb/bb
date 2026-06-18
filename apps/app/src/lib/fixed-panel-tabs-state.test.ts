@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   areFixedPanelTabsEquivalent,
   buildFixedPanelTabId,
+  createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -134,6 +135,31 @@ describe("fixed-panel-tabs-state", () => {
 });
 
 describe("side-chat fixed panel tabs", () => {
+  it("does not require crypto.randomUUID for generated tab ids", () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+      randomUUID: undefined,
+      subtle: originalCrypto.subtle,
+    });
+
+    try {
+      const sideChatTab = createSideChatFixedPanelTab({
+        sourceMessageText: "",
+        title: "Side chat",
+      });
+      const browserTab = createBrowserFixedPanelTab({
+        environmentId: null,
+        url: "",
+      });
+
+      expect(sideChatTab.id).toMatch(/^side-chat:/);
+      expect(browserTab.id).toMatch(/^browser:.+:none$/);
+    } finally {
+      vi.stubGlobal("crypto", originalCrypto);
+    }
+  });
+
   it("round-trips side-chat tabs (threadId null and set)", () => {
     const pendingTab = createSideChatFixedPanelTab({
       sourceMessageText: "Why this index? Full source agent message text.",

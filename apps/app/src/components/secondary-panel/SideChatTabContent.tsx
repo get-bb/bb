@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   Environment,
+  PromptInput,
   PromptTextMention,
   ThreadQueuedMessage,
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type { Thread } from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
+import type {
+  TimelineConversationAttachments,
+  TimelineRow,
+  TimelineUserConversationRow,
+} from "@bb/server-contract";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -39,31 +51,27 @@ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
   messageBodyHasQuote,
   renderMessageBodyWithQuotes,
 } from "@/components/thread/timeline/ConversationMessageMentions";
-import { Skeleton } from "@/components/ui/skeleton.js";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   isRunningThreadRuntimeDisplayStatus,
-  TimelineStatusIndicator,
-  TimelineWorkingIndicator,
-  ThreadTimelineRows,
+  ThreadTimelinePanelContent,
+  ThreadTimelineSurface,
+  useThreadTimelineController,
+  type ThreadTimelineRowFilter,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSelectionAddToChatHandler,
+  type UseThreadTimelineControllerResult,
 } from "@/components/thread/timeline";
-import { ConversationTimeline } from "@/components/ui/conversation.js";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   useThread,
   useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
-  useThreadTimeline,
 } from "@/hooks/queries/thread-queries";
 import {
   useCreateThreadQueuedMessage,
@@ -82,7 +90,6 @@ import {
   buildSideChatMessageInput,
   resolveSideChatReplyReference,
 } from "@/lib/side-chat-create-request";
-import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -121,6 +128,8 @@ export interface SideChatTabContentProps {
 
 interface SideChatConversationProps {
   isSideChatTurnSubmitting: boolean;
+  leadingContent: ReactNode;
+  timeline: UseThreadTimelineControllerResult;
   threadId: string;
   /**
    * Hand a side-chat agent message back to the main thread (the per-message
@@ -128,6 +137,110 @@ interface SideChatConversationProps {
    */
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
+}
+
+const isVisibleSideChatTimelineRow: ThreadTimelineRowFilter = (row) =>
+  !(
+    row.kind === "system" &&
+    row.systemKind === "operation" &&
+    row.operationKind === "thread-provisioning"
+  );
+
+interface OptimisticSideChatUserRowArgs {
+  createdAt: number;
+  input: readonly PromptInput[];
+  tabId: string;
+  threadId: string;
+}
+
+function emptyTimelineConversationAttachments(): TimelineConversationAttachments {
+  return {
+    webImages: 0,
+    localImages: 0,
+    localFiles: 0,
+    imageUrls: [],
+    localImagePaths: [],
+    localFilePaths: [],
+  };
+}
+
+function hasTimelineConversationAttachments(
+  attachments: TimelineConversationAttachments,
+): boolean {
+  return (
+    attachments.webImages > 0 ||
+    attachments.localImages > 0 ||
+    attachments.localFiles > 0
+  );
+}
+
+function buildOptimisticSideChatUserRow({
+  createdAt,
+  input,
+  tabId,
+  threadId,
+}: OptimisticSideChatUserRowArgs): TimelineUserConversationRow {
+  const textSegments: string[] = [];
+  const mentions: PromptTextMention[] = [];
+  const attachments = emptyTimelineConversationAttachments();
+  let textOffset = 0;
+
+  for (const entry of input) {
+    if (entry.type === "text") {
+      if (entry.text.trim().length > 0) {
+        if (textSegments.length > 0) {
+          textOffset += 2;
+        }
+        for (const mention of entry.mentions) {
+          mentions.push({
+            ...mention,
+            start: textOffset + mention.start,
+            end: textOffset + mention.end,
+          });
+        }
+        textSegments.push(entry.text);
+        textOffset += entry.text.length;
+      }
+      continue;
+    }
+
+    if (entry.type === "image") {
+      attachments.webImages += 1;
+      attachments.imageUrls.push(entry.url);
+      continue;
+    }
+
+    if (entry.type === "localImage") {
+      attachments.localImages += 1;
+      attachments.localImagePaths.push(entry.path);
+      continue;
+    }
+
+    attachments.localFiles += 1;
+    attachments.localFilePaths.push(entry.path);
+  }
+
+  return {
+    id: `${tabId}:optimistic-first-user-message`,
+    threadId,
+    turnId: `${tabId}:optimistic-first-user-turn`,
+    sourceSeqStart: 0,
+    sourceSeqEnd: 0,
+    startedAt: createdAt,
+    createdAt,
+    kind: "conversation",
+    role: "user",
+    initiator: "user",
+    senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
+    text: textSegments.join("\n\n"),
+    mentions,
+    attachments: hasTimelineConversationAttachments(attachments)
+      ? attachments
+      : null,
+    turnRequest: { kind: "message", status: "accepted" },
+  };
 }
 
 function timelineRowsContainUserMessage(rows: readonly TimelineRow[]): boolean {
@@ -163,110 +276,26 @@ function shouldQueueSideChatMessage(
  */
 function SideChatConversation({
   isSideChatTurnSubmitting,
+  leadingContent,
+  timeline,
   threadId,
   onSendToMainMessage,
   onSelectionAddToChat,
 }: SideChatConversationProps) {
-  const preferredTheme = usePreferredTheme();
-  const threadQuery = useThread(threadId);
-  const timelineQuery = useThreadTimeline(threadId);
-  // Hide the worktree-provisioning transcript from the side-chat timeline — it's
-  // setup noise in a focused reply view. The main thread still shows it.
-  const rows = (timelineQuery.data?.rows ?? []).filter(
-    (row) =>
-      !(
-        row.kind === "system" &&
-        row.systemKind === "operation" &&
-        row.operationKind === "thread-provisioning"
-      ),
-  );
-  const activeThinking = timelineQuery.data?.activeThinking ?? null;
-  const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
-  const isProvisioningDisplayStatus =
-    displayStatus === "provisioning" || displayStatus === "starting";
-  const ongoingIndicatorLabel =
-    displayStatus === "host-reconnecting"
-      ? "Waiting for reconnection"
-      : isProvisioningDisplayStatus
-        ? "Provisioning side chat..."
-        : undefined;
-  const showActiveThinking =
-    activeThinking !== null && ongoingIndicatorLabel === undefined;
-  const activeThinkingText = activeThinking?.text.trim() ?? "";
-  const activeThinkingDetails =
-    showActiveThinking && activeThinkingText.length > 0
-      ? activeThinking?.text
-      : undefined;
-  const ongoingIndicatorKey =
-    showActiveThinking && activeThinking
-      ? activeThinking.id
-      : (ongoingIndicatorLabel ?? "working");
-  const showOngoingIndicator =
-    threadQuery.data?.status !== "stopping" &&
-    (isProvisioningDisplayStatus ||
-      (!timelineQuery.isPending &&
-        (isSideChatTurnSubmitting ||
-          isRunningThreadRuntimeDisplayStatus(displayStatus))));
-  const displayedRows = rows;
-
-  // A persisted side-chat tab can outlive its child thread (the thread was
-  // deleted). The thread query then 404s — show an explicit terminal empty
-  // state instead of the indefinite "Waiting…" placeholder below.
-  const isChildThreadMissing =
-    threadQuery.error instanceof HttpError && threadQuery.error.status === 404;
-  if (isChildThreadMissing) {
-    return (
-      <EmptyStatePanel className="mx-2 rounded-lg">
-        This side chat is no longer available.
-      </EmptyStatePanel>
-    );
-  }
-
-  if (
-    timelineQuery.isPending &&
-    displayedRows.length === 0 &&
-    !showOngoingIndicator
-  ) {
-    return (
-      <div className="space-y-2 px-2 pt-2">
-        <Skeleton className="h-4 w-3/4 rounded-sm" />
-        <Skeleton className="h-4 w-2/3 rounded-sm" />
-        <Skeleton className="h-4 w-1/2 rounded-sm" />
-      </div>
-    );
-  }
-
-  if (timelineQuery.isError && displayedRows.length === 0) {
-    return (
-      <TimelineStatusIndicator
-        label="Failed to load side chat"
-        className="mx-2 mt-4 text-destructive"
-      />
-    );
-  }
-
   return (
-    <>
-      {displayedRows.length > 0 ? (
-        <ThreadTimelineRows
-          themeType={preferredTheme}
-          timelineRows={[...displayedRows]}
-          threadId={threadId}
-          threadRuntimeDisplayStatus={displayStatus}
-          onSendToMainMessage={onSendToMainMessage}
-          onSelectionAddToChat={onSelectionAddToChat}
-          workspaceRootPath={undefined}
-        />
-      ) : null}
-      <HeightTransition visible={showOngoingIndicator}>
-        <TimelineWorkingIndicator
-          key={ongoingIndicatorKey}
-          details={activeThinkingDetails}
-          isThinking={showActiveThinking}
-          label={ongoingIndicatorLabel}
-        />
-      </HeightTransition>
-    </>
+    <ThreadTimelinePanelContent
+      isTurnSubmitting={isSideChatTurnSubmitting}
+      leadingContent={leadingContent}
+      missingThreadLabel="This side chat is no longer available."
+      onSendToMainMessage={onSendToMainMessage}
+      onSelectionAddToChat={onSelectionAddToChat}
+      provisioningLabel="Provisioning side chat..."
+      rowFilter={isVisibleSideChatTimelineRow}
+      showLoadOlderRows={false}
+      threadId={threadId}
+      timeline={timeline}
+      timelineErrorLabel="Failed to load side chat"
+    />
   );
 }
 
@@ -362,6 +391,8 @@ export function SideChatTabContent({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
+  const [optimisticFirstUserRow, setOptimisticFirstUserRow] =
+    useState<TimelineUserConversationRow | null>(null);
   const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
     action: QueuedMessageProcessingAction;
     id: string;
@@ -430,8 +461,11 @@ export function SideChatTabContent({
     }),
     [defaultExecutionOptions],
   );
-  const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
+  const childTimeline = useThreadTimelineController({
     enabled: childThreadId !== null,
+    rowFilter: isVisibleSideChatTimelineRow,
+    surfaceKey: childThreadId !== null ? `side-chat:${childThreadId}` : tab.id,
+    threadId: childThreadId ?? "",
   });
   const { data: queuedMessages = [] } = useThreadQueuedMessages(
     childThreadId ?? "",
@@ -440,8 +474,24 @@ export function SideChatTabContent({
     },
   );
   const childHasUserMessage = useMemo(
-    () => timelineRowsContainUserMessage(childTimelineQuery.data?.rows ?? []),
-    [childTimelineQuery.data?.rows],
+    () => timelineRowsContainUserMessage(childTimeline.timelineRows),
+    [childTimeline.timelineRows],
+  );
+  const childTimelineRowsWithOptimisticFirstUserRow = useMemo(() => {
+    if (optimisticFirstUserRow === null || childHasUserMessage) {
+      return childTimeline.timelineRows;
+    }
+    return [optimisticFirstUserRow, ...childTimeline.timelineRows];
+  }, [childHasUserMessage, childTimeline.timelineRows, optimisticFirstUserRow]);
+  const displayedChildTimeline = useMemo(
+    () =>
+      childTimelineRowsWithOptimisticFirstUserRow === childTimeline.timelineRows
+        ? childTimeline
+        : {
+            ...childTimeline,
+            timelineRows: childTimelineRowsWithOptimisticFirstUserRow,
+          },
+    [childTimeline, childTimelineRowsWithOptimisticFirstUserRow],
   );
   const queuedMessagesById = useMemo(() => {
     const next = new Map<string, ThreadQueuedMessage>();
@@ -469,6 +519,11 @@ export function SideChatTabContent({
       isMountedRef.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (childHasUserMessage) {
+      setOptimisticFirstUserRow(null);
+    }
+  }, [childHasUserMessage]);
 
   const createSideChatThread = useCallback(async (
     input: ReturnType<typeof buildSideChatMessageInput>,
@@ -668,6 +723,20 @@ export function SideChatTabContent({
     if (submittedInput.length === 0 || isSideChatTurnSubmitting) {
       return;
     }
+    const shouldShowOptimisticFirstMessage =
+      childThreadIdRef.current === null &&
+      !childHasUserMessageRef.current &&
+      queuedMessageCountRef.current === 0;
+    if (shouldShowOptimisticFirstMessage) {
+      setOptimisticFirstUserRow(
+        buildOptimisticSideChatUserRow({
+          createdAt: Date.now(),
+          input: submittedInput,
+          tabId: tab.id,
+          threadId: childThreadIdRef.current ?? tab.id,
+        }),
+      );
+    }
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setAttachmentError(null);
     setIsSideChatTurnSubmitting(true);
@@ -676,6 +745,7 @@ export function SideChatTabContent({
         if (!isMountedRef.current) {
           return;
         }
+        setOptimisticFirstUserRow(null);
         promptDraft.restoreIfEmpty(submittedDraft);
         appToast.error(
           getMutationErrorMessage({
@@ -701,6 +771,7 @@ export function SideChatTabContent({
     promptDraft,
     sendOrQueueSideChatInput,
     sideChatRuntimeDisplayStatus,
+    tab.id,
   ]);
 
   const queuedMessageActionPending =
@@ -1171,6 +1242,35 @@ export function SideChatTabContent({
       </div>
     </div>
   );
+  const sideChatLeadingContent = hasTriggerMessage ? (
+    // The agent message this side chat replies to, rendered like a steer
+    // message — a "Replying to" header above a left-aligned bubble — so
+    // it's clear which message is in focus and the styling matches the
+    // main timeline.
+    <div className="mx-1 mb-2 flex flex-col items-start gap-1">
+      <span className="text-xs leading-none text-muted-foreground">
+        <Icon
+          name="CornerDownRight"
+          className="mr-1 inline-block size-3 align-middle"
+        />
+        Replying to
+      </span>
+      <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
+        {messageBodyHasQuote(triggerMessageText) ? (
+          <div className="max-h-20 overflow-hidden break-words">
+            {renderMessageBodyWithQuotes({
+              mentions: [],
+              text: triggerMessageText,
+            })}
+          </div>
+        ) : (
+          <p className="line-clamp-2 whitespace-pre-wrap break-words">
+            {triggerMessageText}
+          </p>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
@@ -1182,51 +1282,33 @@ export function SideChatTabContent({
         footer={sideChatFooter}
         scrollAnchorThreadId={childThreadId ?? undefined}
       >
-        <ConversationTimeline className="flex-1">
-          {hasTriggerMessage ? (
-            // The agent message this side chat replies to, rendered like a steer
-            // message — a "Replying to" header above a left-aligned bubble — so
-            // it's clear which message is in focus and the styling matches the
-            // main timeline.
-            <div className="mx-1 mb-2 flex flex-col items-start gap-1">
-              <span className="text-xs leading-none text-muted-foreground">
-                <Icon
-                  name="CornerDownRight"
-                  className="mr-1 inline-block size-3 align-middle"
-                />
-                Replying to
-              </span>
-              <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
-                {messageBodyHasQuote(triggerMessageText) ? (
-                  <div className="max-h-20 overflow-hidden break-words">
-                    {renderMessageBodyWithQuotes({
-                      mentions: [],
-                      text: triggerMessageText,
-                    })}
-                  </div>
-                ) : (
-                  <p className="line-clamp-2 whitespace-pre-wrap break-words">
-                    {triggerMessageText}
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : null}
-          {childThreadId !== null ? (
-            <SideChatConversation
-              isSideChatTurnSubmitting={isSideChatTurnSubmitting}
-              threadId={childThreadId}
-              onSendToMainMessage={
-                canSendMessageToMain ? sendMessageToMain : undefined
-              }
-              onSelectionAddToChat={handleSelectionAddToChat}
-            />
-          ) : isSideChatTurnSubmitting ? (
-            <div className="px-1">
-              <TimelineWorkingIndicator label="Starting side chat..." />
-            </div>
-          ) : null}
-        </ConversationTimeline>
+        {childThreadId !== null ? (
+          <SideChatConversation
+            isSideChatTurnSubmitting={isSideChatTurnSubmitting}
+            leadingContent={sideChatLeadingContent}
+            timeline={displayedChildTimeline}
+            threadId={childThreadId}
+            onSendToMainMessage={
+              canSendMessageToMain ? sendMessageToMain : undefined
+            }
+            onSelectionAddToChat={handleSelectionAddToChat}
+          />
+        ) : (
+          <ThreadTimelineSurface
+            activeThinking={null}
+            leadingContent={sideChatLeadingContent}
+            isThreadTimelinePending={false}
+            timelineError={false}
+            showOngoingIndicator={isSideChatTurnSubmitting}
+            ongoingIndicatorLabel="Starting side chat..."
+            timelineRows={
+              optimisticFirstUserRow === null ? [] : [optimisticFirstUserRow]
+            }
+            threadId={tab.id}
+            threadRuntimeDisplayStatus="starting"
+            workspaceRootPath={undefined}
+          />
+        )}
       </BottomAnchoredScrollBody>
     </div>
   );

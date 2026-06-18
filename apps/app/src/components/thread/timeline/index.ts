@@ -1,6 +1,21 @@
 export { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 export { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 export type { ThreadTimelineRowsProps } from "./ThreadTimelineRows.js";
+export {
+  ThreadTimelinePanelContent,
+  type ThreadTimelinePanelContentProps,
+} from "./ThreadTimelinePanelContent.js";
+export {
+  ThreadTimelineSurface,
+  type HostConnectionNotice,
+  type ThreadTimelineSurfaceProps,
+} from "./ThreadTimelineSurface.js";
+export {
+  useThreadTimelineController,
+  type ThreadTimelineRowFilter,
+  type UseThreadTimelineControllerArgs,
+  type UseThreadTimelineControllerResult,
+} from "./useThreadTimelineController.js";
 export type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 export {
   TimelineStatusIndicator,

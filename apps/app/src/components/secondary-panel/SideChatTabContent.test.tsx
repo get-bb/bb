@@ -130,6 +130,52 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 
 vi.mock("@/components/thread/timeline", () => ({
   isRunningThreadRuntimeDisplayStatus: (status: string) => status === "active",
+  ThreadTimelinePanelContent: (props: {
+    isTurnSubmitting?: boolean;
+    leadingContent?: ReactNode;
+    onSendToMainMessage?: unknown;
+    provisioningLabel?: string;
+    timeline: { timelineRows: Array<{ text?: string }> };
+  }) => {
+    if (props.timeline.timelineRows.length > 0) {
+      mocks.timelineRowsProps.push({
+        onSendToMainMessage: props.onSendToMainMessage,
+      });
+    }
+    return (
+      <div>
+        {props.leadingContent}
+        {props.timeline.timelineRows.map((row, index) => (
+          <div key={index} data-testid="side-chat-timeline-row">
+            {row.text}
+          </div>
+        ))}
+        {mocks.threadRuntimeDisplayStatus === "provisioning" ? (
+          <div>{props.provisioningLabel ?? "Provisioning thread..."}</div>
+        ) : props.isTurnSubmitting ? (
+          <div>Working</div>
+        ) : null}
+      </div>
+    );
+  },
+  ThreadTimelineSurface: (props: {
+    leadingContent?: ReactNode;
+    ongoingIndicatorLabel?: string;
+    showOngoingIndicator: boolean;
+    timelineRows: Array<{ text?: string }>;
+  }) => (
+    <div>
+      {props.leadingContent}
+      {props.timelineRows.map((row, index) => (
+        <div key={index} data-testid="side-chat-timeline-row">
+          {row.text}
+        </div>
+      ))}
+      {props.showOngoingIndicator ? (
+        <div>{props.ongoingIndicatorLabel ?? "Working"}</div>
+      ) : null}
+    </div>
+  ),
   ThreadTimelineRows: (props: { onSendToMainMessage?: unknown }) => {
     mocks.timelineRowsProps.push(props);
     return <div data-testid="side-chat-timeline-rows" />;
@@ -138,6 +184,19 @@ vi.mock("@/components/thread/timeline", () => ({
   TimelineWorkingIndicator: ({ label }: { label?: string }) => (
     <div>{label ?? "Working"}</div>
   ),
+  useThreadTimelineController: () => ({
+    activeThinking: null,
+    activeWorkflow: null,
+    contextWindowUsage: undefined,
+    goal: null,
+    hasOlderTimelineRows: false,
+    isLoadingOlderTimelineRows: false,
+    loadOlderTimelineRows: vi.fn(),
+    pendingTodos: null,
+    timelineError: null,
+    timelineLoading: false,
+    timelineRows: mocks.threadTimelineRows,
+  }),
 }));
 
 vi.mock("@/components/thread/timeline/ConversationMessageMentions", () => ({
@@ -389,6 +448,35 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
+  });
+
+  it("keeps the first submitted message visible while the side chat starts", async () => {
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({ onSetThreadId, threadId: null }),
+    );
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Compare the tradeoffs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(screen.getByText("Compare the tradeoffs")).toBeTruthy();
+    expect(screen.getByText("Starting side chat...")).toBeTruthy();
+
+    await waitFor(() =>
+      expect(onSetThreadId).toHaveBeenCalledWith({
+        tabId: "side-chat:one",
+        threadId: "thr_side",
+      }),
+    );
+
+    mocks.threadRuntimeDisplayStatus = "provisioning";
+    rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
+
+    expect(screen.getByText("Compare the tradeoffs")).toBeTruthy();
+    expect(screen.getByText("Provisioning side chat...")).toBeTruthy();
   });
 
   it("submits side-chat attachments with the normal prompt input", async () => {

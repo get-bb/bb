@@ -11,6 +11,7 @@ import {
   type ThreadTimelineLocalFileLink,
   type ThreadTimelineLocalFileLinkHandler,
   type TimelineTitleActionResolver,
+  useThreadTimelineController,
 } from "@/components/thread/timeline";
 import {
   isActiveTerminalSessionStatus,
@@ -144,7 +145,6 @@ import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/u
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
-import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
@@ -683,7 +683,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     timelineError,
     timelineLoading,
     timelineRows,
-  } = useThreadTimelinePages({
+  } = useThreadTimelineController({
     threadId: threadId ?? "",
   });
   const sendMessage = useSendThreadMessage();
@@ -766,7 +766,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // from the thread's tip (empty source text ⇒ no "replying to" reference).
   const handleStartSideChat = useCallback(() => {
     if (!canStartSideChat || !threadId) return;
-    openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
+    openSideChat({
+      replaceNewTab: true,
+      sourceThreadId: threadId,
+      sourceMessageText: "",
+    });
   }, [canStartSideChat, openSideChat, threadId]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one

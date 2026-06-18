@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nanoid } from "nanoid";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -464,7 +465,7 @@ export function createBrowserFixedPanelTab({
   environmentId,
   url,
 }: CreateBrowserFixedPanelTabArgs): BrowserFixedPanelTab {
-  const browserInstanceId = crypto.randomUUID();
+  const browserInstanceId = nanoid();
   return {
     environmentId,
     id: buildFixedPanelTabId({
@@ -497,7 +498,7 @@ export function createSideChatFixedPanelTab({
   title,
 }: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
   return {
-    id: `side-chat:${crypto.randomUUID()}`,
+    id: `side-chat:${nanoid()}`,
     kind: "side-chat",
     sourceMessageText,
     sourceSeqEnd,

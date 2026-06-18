@@ -85,6 +85,7 @@ export interface UpdateBrowserTabArgs {
 }
 
 export interface OpenSideChatArgs {
+  replaceNewTab?: boolean;
   sourceThreadId: string;
   sourceMessageText: string;
   sourceSeqEnd?: number;
@@ -349,20 +350,29 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
-  // Opens a message-anchored side chat: appends a side-chat tab (threadId null
-  // until first send creates the child), activates it, and reveals the panel. A
-  // fresh tab per call mirrors the browser-tab model — the source message is not
-  // a stable identity.
+  // Opens a side chat: normally appends a fresh tab because the source message
+  // is not a stable identity; the New tab launcher can opt into replacing its
+  // transient tab, matching file/browser launcher behavior.
   const openSideChat = useCallback(
-    ({ sourceMessageText, sourceSeqEnd }: OpenSideChatArgs) => {
+    ({
+      replaceNewTab = false,
+      sourceMessageText,
+      sourceSeqEnd,
+    }: OpenSideChatArgs) => {
       const nextTab = createSideChatFixedPanelTab({
         sourceMessageText,
         sourceSeqEnd,
         title: SIDE_CHAT_TAB_TITLE,
       });
-      updateFixedPanelTabsState((state) =>
-        openSecondaryPanelTabInState({ state, tab: nextTab }),
-      );
+      updateFixedPanelTabsState((state) => {
+        if (replaceNewTab) {
+          return replaceNewTabWithSecondaryPanelTabInState({
+            state,
+            tab: nextTab,
+          });
+        }
+        return openSecondaryPanelTabInState({ state, tab: nextTab });
+      });
     },
     [updateFixedPanelTabsState],
   );
