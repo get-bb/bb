@@ -88,19 +88,14 @@ import {
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
-  type SidebarChronologicalSort,
-  type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -426,12 +421,54 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-function isOrganizationMode(value: string): value is SidebarOrganizationMode {
-  return value === "project" || value === "chronological";
+
+interface SidebarOrganizeMenuSectionLabelProps {
+  children: React.ReactNode;
+  className?: string;
 }
 
-function isChronologicalSort(value: string): value is SidebarChronologicalSort {
-  return value === "updated" || value === "created";
+function SidebarOrganizeMenuSectionLabel({
+  children,
+  className,
+}: SidebarOrganizeMenuSectionLabelProps) {
+  return (
+    <DropdownMenuLabel
+      className={cn(
+        "px-2 pb-0.5 text-xs font-semibold text-muted-foreground",
+        className,
+      )}
+    >
+      {children}
+    </DropdownMenuLabel>
+  );
+}
+
+interface SidebarOrganizeMenuOptionProps {
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+}
+
+function SidebarOrganizeMenuOption({
+  label,
+  selected,
+  onSelect,
+}: SidebarOrganizeMenuOptionProps) {
+  return (
+    <DropdownMenuItem
+      onSelect={onSelect}
+      className="flex items-center justify-between gap-3"
+    >
+      <span className="truncate text-xs">{label}</span>
+      <Icon
+        name="Check"
+        className={cn(
+          COARSE_POINTER_ICON_SIZE_CLASS,
+          selected ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </DropdownMenuItem>
+  );
 }
 
 // Shared "Organize sidebar" menu rendered on both the Projects and Threads
@@ -443,22 +480,6 @@ function SidebarOrganizeMenu() {
   );
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
-  );
-  const handleModeChange = useCallback(
-    (value: string) => {
-      if (isOrganizationMode(value)) {
-        setOrganizationMode(value);
-      }
-    },
-    [setOrganizationMode],
-  );
-  const handleSortChange = useCallback(
-    (value: string) => {
-      if (isChronologicalSort(value)) {
-        setChronologicalSort(value);
-      }
-    },
-    [setChronologicalSort],
   );
 
   return (
@@ -475,45 +496,39 @@ function SidebarOrganizeMenu() {
             COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
           )}
         >
-          <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+          <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Organize sidebar</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup
-              value={organizationMode}
-              onValueChange={handleModeChange}
-            >
-              <DropdownMenuRadioItem value="project">
-                By project
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="chronological">
-                Chronological list
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+        <SidebarOrganizeMenuSectionLabel className="pt-1.5">
+          Organize sidebar
+        </SidebarOrganizeMenuSectionLabel>
+        <SidebarOrganizeMenuOption
+          label="By project"
+          selected={organizationMode === "project"}
+          onSelect={() => setOrganizationMode("project")}
+        />
+        <SidebarOrganizeMenuOption
+          label="Chronological list"
+          selected={organizationMode === "chronological"}
+          onSelect={() => setOrganizationMode("chronological")}
+        />
         {organizationMode === "chronological" ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Sort by</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={chronologicalSort}
-                  onValueChange={handleSortChange}
-                >
-                  <DropdownMenuRadioItem value="updated">
-                    Updated at
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="created">
-                    Created at
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            <SidebarOrganizeMenuSectionLabel className="pt-2">
+              Sort by
+            </SidebarOrganizeMenuSectionLabel>
+            <SidebarOrganizeMenuOption
+              label="Updated at"
+              selected={chronologicalSort === "updated"}
+              onSelect={() => setChronologicalSort("updated")}
+            />
+            <SidebarOrganizeMenuOption
+              label="Created at"
+              selected={chronologicalSort === "created"}
+              onSelect={() => setChronologicalSort("created")}
+            />
           </>
         ) : null}
       </DropdownMenuContent>
