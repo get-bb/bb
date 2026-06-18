@@ -107,6 +107,7 @@ describe("fetchThreadPendingTodos", () => {
     return {
       activeThinking: null,
       activeWorkflow: null,
+      activeBackgroundCommands: [],
       pendingTodos,
       goal: null,
       rows: [],
