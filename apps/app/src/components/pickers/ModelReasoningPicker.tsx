@@ -463,7 +463,9 @@ export function ModelReasoningPicker({
               "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
           )}
         >
-          <MenuSectionLabel>Model</MenuSectionLabel>
+          {isShowingModelError ? null : (
+            <MenuSectionLabel>Model</MenuSectionLabel>
+          )}
           {activeModelIsLoading ? (
             <div
               className={cn(
