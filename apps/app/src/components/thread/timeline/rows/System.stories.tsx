@@ -39,7 +39,7 @@ const provisioningPending: TimelineRow = systemRow({
   createdAt: Date.now(),
   systemKind: "operation",
   operationKind: "thread-provisioning",
-  title: "Provisioning Fix auth bug",
+  title: "Provisioning thread",
   detail:
     "Creating worktree (305ms)\n" +
     "HEAD is now at 37eeec85 Refactor timeline row titles\n" +
@@ -67,7 +67,7 @@ const provisioningCompleted: TimelineRow = systemRow({
   createdAt: 1778027670469,
   systemKind: "operation",
   operationKind: "thread-provisioning",
-  title: "Fix auth bug provisioned",
+  title: "Provisioned thread",
   detail:
     "Created worktree (305ms)\n" +
     "Using workspace: /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb\n" +
@@ -132,7 +132,7 @@ const threadInterruptedManualStop: TimelineRow = systemRow({
   createdAt: 1776810312000,
   systemKind: "operation",
   operationKind: "thread-interrupted",
-  title: "Investigate timeline stopped manually",
+  title: "Stopped manually",
   detail: null,
   status: "interrupted",
   completedAt: 1776810312000,

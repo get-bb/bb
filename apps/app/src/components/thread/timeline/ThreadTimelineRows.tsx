@@ -1277,10 +1277,10 @@ function leadingIconForWorkRow(
 }
 
 /**
- * Per-action leading glyph for Family-A system operation rows, keyed by
- * `operationKind` (and the parent-change action) so each lifecycle event reads
- * at a glance. Warning / deprecation / provider-unhandled / generic and
- * non-operation system rows keep no leading glyph.
+ * Per-action leading glyph for system operation rows, keyed by `operationKind`
+ * (and the parent-change action) so each lifecycle event reads at a glance.
+ * Warning / deprecation / provider-unhandled / generic and non-operation system
+ * rows keep no leading glyph.
  */
 // Pure operation-kind → leading-icon mapping (exported for exhaustive testing).
 // Warning / deprecation / provider-unhandled / generic keep no leading glyph.

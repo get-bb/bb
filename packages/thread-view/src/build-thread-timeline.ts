@@ -71,8 +71,8 @@ interface ThreadTimelineFromEventsBaseOptions {
   isLatestPage: boolean;
   threadStatus: Thread["status"];
   /**
-   * Display name of the thread, interpolated into Family-A operation-row titles
-   * (e.g. "Fix auth bug provisioned"). Empty string when the thread is unnamed.
+   * Display name of the thread, used by operation rows that describe a
+   * relationship to another thread. Empty string when the thread is unnamed.
    */
   threadName: string;
   /**

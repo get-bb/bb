@@ -40,7 +40,7 @@ export interface RenderTimelineFixtureArgs {
   events: ThreadEventRow[];
   includeNestedRows?: boolean;
   // `threadName` defaults to "" so existing fixtures need not supply it; pass a
-  // name to exercise Family-A thread-named operation-row titles.
+  // name to exercise operation rows that describe relationships to other threads.
   projectionOptions: Omit<BuildEventProjectionOptions, "threadName"> & {
     threadName?: string;
   };

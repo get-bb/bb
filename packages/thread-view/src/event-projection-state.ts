@@ -191,7 +191,6 @@ function getMessageTurnFinalization(
 function finalizePendingMessageForInterruptedTurn(
   message: EventProjectionMessage,
   finalization: TurnPendingFinalization,
-  threadName: string,
 ): void {
   if (finalization.status !== "interrupted") {
     return;
@@ -210,7 +209,7 @@ function finalizePendingMessageForInterruptedTurn(
       }
       return;
     case "operation":
-      interruptOperationMessage(message, threadName);
+      interruptOperationMessage(message);
       return;
     case "permission-grant-lifecycle":
       if (message.status === "pending") {
@@ -233,10 +232,7 @@ function finalizePendingMessageForInterruptedTurn(
   }
 }
 
-function finalizeInterruptedTurnPendingMessages(
-  state: ProjectionState,
-  threadName: string,
-): void {
+function finalizeInterruptedTurnPendingMessages(state: ProjectionState): void {
   if (state.pendingFinalizationByTurnId.size === 0) {
     return;
   }
@@ -256,16 +252,13 @@ function finalizeInterruptedTurnPendingMessages(
     if (!finalization) {
       continue;
     }
-    finalizePendingMessageForInterruptedTurn(message, finalization, threadName);
+    finalizePendingMessageForInterruptedTurn(message, finalization);
   }
 }
 
 export function finalizeProjectionState(
   args: FinalizeProjectionMessagesArgs,
 ): void {
-  finalizeInterruptedTurnPendingMessages(
-    args.state,
-    args.options?.threadName ?? "",
-  );
+  finalizeInterruptedTurnPendingMessages(args.state);
   finalizePendingMessages(args);
 }

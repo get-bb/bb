@@ -6,14 +6,14 @@ import type {
 import { ownershipChangeOperationMetadataSchema } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { getCompactionKey } from "./compaction-lifecycle.js";
-import {
-  OWNERSHIP_CHANGE_VERBS,
-  PROVISIONING_LEADING_VERB,
-} from "./family-a-verbs.js";
+import { OWNERSHIP_CHANGE_VERBS } from "./family-a-verbs.js";
 import type { EventMeta } from "./event-decode.js";
 import { capitalize, messageId } from "./format-helpers.js";
 import { buildProviderUnhandledDetail } from "./provider-unhandled-detail.js";
-import { readProvisioningTranscript } from "./provisioning-helpers.js";
+import {
+  provisioningTitleForStatus,
+  readProvisioningTranscript,
+} from "./provisioning-helpers.js";
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionPermissionGrantGrantScope,
@@ -35,22 +35,13 @@ type ParseOperationMessageOptions = Pick<
 
 /**
  * Prefix a thread name onto a bare action verb, e.g. ("Fix auth bug",
- * "provisioned") → "Fix auth bug provisioned". Falls back to capitalizing the
- * verb when the thread has no name so the title is never an orphaned fragment.
+ * "assigned to parent") → "Fix auth bug assigned to parent". Falls back to
+ * capitalizing the verb when the thread has no name so the title is never an
+ * orphaned fragment.
  */
 function withThreadName(threadName: string, verb: string): string {
   const name = threadName.trim();
   return name.length > 0 ? `${name} ${verb}` : capitalize(verb);
-}
-
-/**
- * Prefix a leading verb onto a thread name, e.g. ("Provisioning", "Fix auth
- * bug") → "Provisioning Fix auth bug". Falls back to "{verb} thread" when the
- * thread has no name.
- */
-function leadingVerbWithThreadName(verb: string, threadName: string): string {
-  const name = threadName.trim();
-  return name.length > 0 ? `${verb} ${name}` : `${verb} thread`;
 }
 
 type PermissionGrantLifecycleEvent = Extract<
@@ -130,19 +121,15 @@ function createThreadOperationMetadata(
 
 function threadInterruptedTitle(
   reason: SystemThreadInterruptedReason,
-  threadName: string,
 ): string {
   switch (reason) {
     case "manual-stop":
-      return withThreadName(threadName, "stopped manually");
+      return "Stopped manually";
     case "host-daemon-restarted":
-      return withThreadName(threadName, "stopped — host daemon restarted");
+      return "Stopped — host daemon restarted";
     // Legacy persisted watchdog interruption; no current producer.
     case "provider-turn-idle":
-      return withThreadName(
-        threadName,
-        "stopped — provider turn stopped responding",
-      );
+      return "Stopped — provider turn stopped responding";
     default:
       return assertNever(reason);
   }
@@ -485,7 +472,7 @@ export function parseOperationMessage(
   if (decoded.type === "system/thread/interrupted") {
     return op(decoded, meta, "thread-interrupted", {
       opType: "thread-interrupted",
-      title: threadInterruptedTitle(decoded.reason, threadName),
+      title: threadInterruptedTitle(decoded.reason),
       status: "interrupted",
     });
   }
@@ -508,30 +495,11 @@ export function parseOperationMessage(
       return null;
     }
     const transcript = readProvisioningTranscript(decoded.entries);
-    const title = (() => {
-      switch (status) {
-        case "active":
-          return leadingVerbWithThreadName(
-            PROVISIONING_LEADING_VERB,
-            threadName,
-          );
-        case "completed":
-          return withThreadName(threadName, "provisioned");
-        case "failed":
-          return withThreadName(threadName, "failed to provision");
-        case "cancelled":
-          return withThreadName(threadName, "provisioning stopped");
-        default:
-          return leadingVerbWithThreadName(
-            PROVISIONING_LEADING_VERB,
-            threadName,
-          );
-      }
-    })();
+    const operationStatus = provisioningOperationStatus(status);
     return op(decoded, meta, "thread-provisioning", {
       opType: "thread-provisioning",
-      title,
-      status: provisioningOperationStatus(status),
+      title: provisioningTitleForStatus(operationStatus),
+      status: operationStatus,
       provisioning: {
         environmentId,
         provisioningId,
@@ -597,7 +565,6 @@ export function parseOperationMessage(
 
 export function interruptOperationMessage(
   message: EventProjectionOperationMessage,
-  threadName: string,
 ): void {
   if (message.status !== "pending") return;
   message.status = "interrupted";
@@ -605,16 +572,13 @@ export function interruptOperationMessage(
 
   switch (message.opType) {
     case "operation":
-      message.title = withThreadName(threadName, "operation interrupted");
+      message.title = "Operation interrupted";
       return;
     case "thread-provisioning":
-      message.title = withThreadName(threadName, "provisioning interrupted");
+      message.title = provisioningTitleForStatus("interrupted");
       return;
     case "compaction":
-      message.title = withThreadName(
-        threadName,
-        "context compaction interrupted",
-      );
+      message.title = "Context compaction interrupted";
       return;
     default:
       return;
@@ -626,13 +590,12 @@ export function finalizeOperationMessage(
   options: BuildEventProjectionMessagesOptions | undefined,
 ): void {
   if (message.status !== "pending") return;
-  const threadName = options?.threadName ?? "";
 
   if (options?.threadStatus === "error") {
     switch (message.opType) {
       case "thread-provisioning":
         message.status = "error";
-        message.title = withThreadName(threadName, "failed to provision");
+        message.title = provisioningTitleForStatus("error");
         message.completedAt = message.createdAt;
         return;
       default:
@@ -640,5 +603,5 @@ export function finalizeOperationMessage(
     }
   }
 
-  interruptOperationMessage(message, threadName);
+  interruptOperationMessage(message);
 }

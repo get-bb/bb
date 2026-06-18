@@ -419,9 +419,9 @@ export interface BuildEventProjectionMessagesOptions {
   includeProviderUnhandledOperations?: boolean;
   threadStatus?: Thread["status"];
   /**
-   * Display name of the thread these messages belong to. Family-A operation-row
-   * titles interpolate it (e.g. "Fix auth bug provisioned"). Empty string when
-   * the thread has no name; the title builders fall back to a bare verb.
+   * Display name of the thread these messages belong to. Used by operation rows
+   * that describe a relationship to another thread. Empty string when the thread
+   * has no name; the title builders fall back to a bare verb.
    */
   threadName: string;
 }
