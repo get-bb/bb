@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
 import type { MessageProseSelection } from "./SelectableMessageProse";
@@ -11,6 +11,7 @@ function makeSelection(): MessageProseSelection {
   return {
     text: "selected text",
     rect: new DOMRect(10, 10, 100, 20),
+    sourceSeqEnd: 12,
   };
 }
 
@@ -36,5 +37,25 @@ describe("TimelineSelectionMenu", () => {
     );
 
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("passes the selection branch point to side-chat replies", () => {
+    const onReplyInSideChat = vi.fn();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onDismiss={vi.fn()}
+        onReplyInSideChat={onReplyInSideChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
+
+    expect(onReplyInSideChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "selected text",
+        sourceSeqEnd: 12,
+      }),
+    );
   });
 });

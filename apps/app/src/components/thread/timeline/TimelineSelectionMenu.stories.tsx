@@ -20,7 +20,8 @@ type Handlers = Pick<
 
 const logHandlers: Handlers = {
   onAddToChat: (text) => console.log("onAddToChat", text),
-  onReplyInSideChat: (text) => console.log("onReplyInSideChat", text),
+  onReplyInSideChat: (selection) =>
+    console.log("onReplyInSideChat", selection.text),
   onDismiss: () => console.log("onDismiss"),
 };
 
@@ -143,8 +144,8 @@ export function Interactive() {
             selected="flip reads over once every row is populated"
             handlers={{
               onAddToChat: (text) => push(`Add to chat: "${text}"`),
-              onReplyInSideChat: (text) =>
-                push(`Reply in side chat: "${text}"`),
+              onReplyInSideChat: (selection) =>
+                push(`Reply in side chat: "${selection.text}"`),
               onDismiss: () => push("Dismissed"),
             }}
           />

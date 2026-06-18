@@ -67,6 +67,13 @@ export type ThreadTimelineSendToMainMessageHandler = (
  */
 export type ThreadTimelineSelectionAddToChatHandler = (text: string) => void;
 
+export interface ThreadTimelineSelectionReplyInSideChatTarget {
+  /** Visible selected text the side chat is anchored to. */
+  messageText: string;
+  /** Last source event sequence included in the provider-history fork. */
+  sourceSeqEnd?: number;
+}
+
 /**
  * Open a side chat anchored on the selected agent-message text ("Reply in side
  * chat"). Distinct from the per-message Reply handler only in that the anchor is
@@ -75,7 +82,7 @@ export type ThreadTimelineSelectionAddToChatHandler = (text: string) => void;
  * unavailable.
  */
 export type ThreadTimelineSelectionReplyInSideChatHandler = (
-  text: string,
+  target: ThreadTimelineSelectionReplyInSideChatTarget,
 ) => void;
 
 export type ThreadTimelineUnreadDividerPlacement =

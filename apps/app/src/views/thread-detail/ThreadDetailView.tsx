@@ -755,8 +755,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // context handed to the agent are exactly the highlighted text — unlike the
   // per-message Reply button, which anchors on the whole message.
   const handleSelectionReplyInSideChat = useCallback(
-    (selectionText: string) => {
-      handleSideChatMessage({ messageText: selectionText });
+    (target: { messageText: string; sourceSeqEnd?: number }) => {
+      handleSideChatMessage(target);
     },
     [handleSideChatMessage],
   );

@@ -86,5 +86,6 @@ describe("MessageActionBar", () => {
     expect(overflowTrigger.className).toContain(
       "max-md:pointer-coarse:inline-flex",
     );
+    expect(overflowTrigger.className).not.toContain("opacity-0");
   });
 });

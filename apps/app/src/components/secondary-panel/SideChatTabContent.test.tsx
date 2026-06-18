@@ -22,6 +22,10 @@ const mocks = vi.hoisted(() => ({
   promptMentionArgs: [] as unknown[],
   promptMentionSetQuery: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
+  threadTimelineRows: [] as unknown[],
+  timelineRowsProps: [] as Array<{
+    onSendToMainMessage?: unknown;
+  }>,
   threadRuntimeDisplayStatus: "idle",
   uploadPromptAttachmentMutateAsync: vi.fn(),
 }));
@@ -126,7 +130,10 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 
 vi.mock("@/components/thread/timeline", () => ({
   isRunningThreadRuntimeDisplayStatus: (status: string) => status === "active",
-  ThreadTimelineRows: () => <div />,
+  ThreadTimelineRows: (props: { onSendToMainMessage?: unknown }) => {
+    mocks.timelineRowsProps.push(props);
+    return <div data-testid="side-chat-timeline-rows" />;
+  },
   TimelineStatusIndicator: ({ label }: { label: string }) => <div>{label}</div>,
   TimelineWorkingIndicator: ({ label }: { label?: string }) => (
     <div>{label ?? "Working"}</div>
@@ -236,7 +243,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   }),
   useThreadQueuedMessages: () => ({ data: [] }),
   useThreadTimeline: () => ({
-    data: { activeThinking: null, rows: [] },
+    data: { activeThinking: null, rows: mocks.threadTimelineRows },
     isError: false,
     isPending: false,
   }),
@@ -283,6 +290,8 @@ afterEach(() => {
   window.localStorage.clear();
   mocks.commandSuggestionArgs.length = 0;
   mocks.promptMentionArgs.length = 0;
+  mocks.threadTimelineRows.length = 0;
+  mocks.timelineRowsProps.length = 0;
   mocks.threadRuntimeDisplayStatus = "idle";
   vi.clearAllMocks();
 });
@@ -294,6 +303,18 @@ describe("SideChatTabContent", () => {
 
   function renderSideChat({ threadId }: { threadId: string | null }) {
     const onSetThreadId = vi.fn();
+    const view = render(buildSideChatElement({ onSetThreadId, threadId }));
+
+    return { onSetThreadId, view };
+  }
+
+  function buildSideChatElement({
+    onSetThreadId,
+    threadId,
+  }: {
+    onSetThreadId: (args: { tabId: string; threadId: string }) => void;
+    threadId: string | null;
+  }) {
     const tab: SideChatFixedPanelTab = {
       id: "side-chat:one",
       kind: "side-chat",
@@ -309,7 +330,7 @@ describe("SideChatTabContent", () => {
       providerId: "codex",
     } as Thread;
 
-    render(
+    return (
       <SideChatTabContent
         isActive={true}
         tab={tab}
@@ -318,10 +339,8 @@ describe("SideChatTabContent", () => {
         sourceTimelineRows={[]}
         resolveMentionLink={() => null}
         onSetThreadId={onSetThreadId}
-      />,
+      />
     );
-
-    return { onSetThreadId };
   }
 
   it("does not create a side-chat child thread just by opening the tab", () => {
@@ -481,5 +500,73 @@ describe("SideChatTabContent", () => {
       mode: "steer-if-active",
     });
     expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat the hidden reply reference before timeline hydration catches up", async () => {
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    mocks.sendThreadMessageMutateAsync.mockResolvedValueOnce(undefined);
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({ onSetThreadId, threadId: null }),
+    );
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "First question" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Follow-up before hydration" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_side",
+        input: [
+          {
+            type: "text",
+            text: "Follow-up before hydration",
+            mentions: [],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("hides send-to-main actions while the side chat is running", () => {
+    mocks.threadRuntimeDisplayStatus = "active";
+    mocks.threadTimelineRows.push({
+      kind: "conversation",
+      role: "assistant",
+      text: "Side-chat answer",
+    });
+    renderSideChat({ threadId: "thr_side" });
+
+    expect(
+      mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
+        ?.onSendToMainMessage,
+    ).toBeUndefined();
+  });
+
+  it("shows send-to-main actions when the side chat is idle", () => {
+    mocks.threadTimelineRows.push({
+      kind: "conversation",
+      role: "assistant",
+      text: "Side-chat answer",
+    });
+    renderSideChat({ threadId: "thr_side" });
+
+    expect(
+      mocks.timelineRowsProps[mocks.timelineRowsProps.length - 1]
+        ?.onSendToMainMessage,
+    ).toEqual(expect.any(Function));
   });
 });

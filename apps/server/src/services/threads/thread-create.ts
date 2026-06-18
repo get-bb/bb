@@ -451,6 +451,13 @@ export async function createThreadFromRequest(
       "sourceThreadId requires an originKind",
     );
   }
+  if (originKind === null && requestInput.sourceSeqEnd !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceSeqEnd requires an originKind",
+    );
+  }
   const sourceThread = sourceThreadId
     ? requireLiveSourceThread(deps, {
         projectId: requestInput.projectId,

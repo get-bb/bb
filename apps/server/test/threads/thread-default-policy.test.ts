@@ -14,7 +14,7 @@ import {
 
 type PolicyTestThread = Pick<
   Thread,
-  "parentThreadId" | "projectId" | "providerId"
+  "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
 >;
 type PolicyTestParentThread = Pick<
   Thread,
@@ -30,6 +30,8 @@ function makeThread(
   overrides: Partial<PolicyTestThread> = {},
 ): PolicyTestThread {
   return {
+    childOrigin: null,
+    originKind: null,
     parentThreadId: null,
     projectId: "proj-1",
     providerId: "codex",
@@ -272,6 +274,19 @@ describe("resolveThreadDefaultPermissionMode", () => {
 });
 
 describe("resolveThreadExecutionPermissionMode", () => {
+  it("forces side chats to readonly before requested or stored permissions", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        requestedPermissionMode: "full",
+        lastExecutionPermissionMode: "full",
+        projectExecutionPermissionMode: "full",
+        thread: makeThread({
+          originKind: "side-chat",
+        }),
+      }),
+    ).toBe("readonly");
+  });
+
   it("prefers requested permission modes over every fallback", () => {
     expect(
       resolveThreadExecutionPermissionMode({

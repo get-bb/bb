@@ -58,6 +58,8 @@ export interface EnvironmentPickerUIProps {
   reuseDisabled?: boolean;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
+  /** Render as a non-interactive label while preserving the selected mode. */
+  disabled?: boolean;
   className?: string;
   /** Render with the menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
@@ -73,6 +75,7 @@ export function EnvironmentPickerUI({
   isLocal,
   reuseDisabled,
   muted,
+  disabled = false,
   className,
   defaultOpen,
   modal,
@@ -143,18 +146,20 @@ export function EnvironmentPickerUI({
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           aria-label="Environment"
+          disabled={disabled}
           title={`Environment: ${selected.modeLabel}`}
           data-promptbox-icon-only-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
+            !disabled && OPTION_INTERACTIVE_CLASS_NAME,
             muted && OPTION_MUTED_CLASS_NAME,
+            disabled && "cursor-default disabled:opacity-100",
             className,
           )}
         >
@@ -174,13 +179,15 @@ export function EnvironmentPickerUI({
               {selected.compactModeLabel}
             </span>
           </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              "shrink-0 text-muted-foreground",
-              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-            )}
-          />
+          {disabled ? null : (
+            <Icon
+              name="ChevronDown"
+              className={cn(
+                "shrink-0 text-muted-foreground",
+                COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+              )}
+            />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

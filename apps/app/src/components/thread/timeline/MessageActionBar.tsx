@@ -211,7 +211,7 @@ export function MessageActionBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className={cn(MOBILE_OVERFLOW_TRIGGER_CLASS, HOVER_REVEAL_CLASS)}
+              className={MOBILE_OVERFLOW_TRIGGER_CLASS}
               aria-label="Message actions"
               title="Message actions"
             >

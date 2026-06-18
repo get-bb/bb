@@ -43,6 +43,8 @@ export interface WorktreePickerProps {
   onChange: (environmentId: string) => void;
   /** Match the dim hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
+  /** Render as a non-interactive label while preserving the selected worktree. */
+  disabled?: boolean;
   /** Story-only escape hatch. */
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction; defaults to Radix's true. */
@@ -59,6 +61,7 @@ export function WorktreePicker({
   value,
   onChange,
   muted,
+  disabled = false,
   defaultOpen,
   modal,
 }: WorktreePickerProps) {
@@ -71,18 +74,20 @@ export function WorktreePicker({
     activeOption?.name ?? activeOption?.branchName ?? "Pick a worktree";
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           aria-label="Worktree"
+          disabled={disabled}
           title={`Worktree: ${triggerLabel}`}
           data-promptbox-icon-only-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
+            !disabled && OPTION_INTERACTIVE_CLASS_NAME,
             muted && OPTION_MUTED_CLASS_NAME,
+            disabled && "cursor-default disabled:opacity-100",
           )}
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
@@ -94,13 +99,15 @@ export function WorktreePicker({
               {triggerLabel}
             </span>
           </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              "shrink-0 text-muted-foreground",
-              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-            )}
-          />
+          {disabled ? null : (
+            <Icon
+              name="ChevronDown"
+              className={cn(
+                "shrink-0 text-muted-foreground",
+                COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+              )}
+            />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

@@ -333,6 +333,8 @@ export function SideChatTabContent({
   const createThreadPromiseRef = useRef<Promise<string | null> | null>(null);
   const childThreadIdRef = useRef<string | null>(childThreadId);
   const childHasUserMessageRef = useRef(false);
+  const createdInitialMessageThreadIdRef = useRef<string | null>(null);
+  const observedChildThreadIdRef = useRef<string | null>(childThreadId);
   const isMountedRef = useRef(false);
   const queuedMessageCountRef = useRef(0);
   const promptDraft = usePromptDraftStorage({
@@ -450,7 +452,15 @@ export function SideChatTabContent({
   }, [queuedMessages]);
 
   childThreadIdRef.current = childThreadId;
-  childHasUserMessageRef.current = childHasUserMessage;
+  if (observedChildThreadIdRef.current !== childThreadId) {
+    observedChildThreadIdRef.current = childThreadId;
+    childHasUserMessageRef.current =
+      childThreadId !== null &&
+      (createdInitialMessageThreadIdRef.current === childThreadId ||
+        childHasUserMessage);
+  } else if (childHasUserMessage) {
+    childHasUserMessageRef.current = true;
+  }
   queuedMessageCountRef.current = queuedMessages.length;
 
   useEffect(() => {
@@ -491,6 +501,7 @@ export function SideChatTabContent({
       .then((thread) => {
         childThreadIdRef.current = thread.id;
         childHasUserMessageRef.current = true;
+        createdInitialMessageThreadIdRef.current = thread.id;
         onSetThreadId({ tabId: tab.id, threadId: thread.id });
         return thread.id;
       })
@@ -586,6 +597,8 @@ export function SideChatTabContent({
   const sideChatRuntimeDisplayStatus =
     childThreadQuery.data?.runtime.displayStatus ??
     "idle";
+  const canSendMessageToMain =
+    !isRunningThreadRuntimeDisplayStatus(sideChatRuntimeDisplayStatus);
   const isDefaultExecutionOptionsLoading =
     defaultExecutionOptions === undefined && executionOptionsQuery.isLoading;
   const isSideChatStopRequested =
@@ -1202,7 +1215,9 @@ export function SideChatTabContent({
             <SideChatConversation
               isSideChatTurnSubmitting={isSideChatTurnSubmitting}
               threadId={childThreadId}
-              onSendToMainMessage={sendMessageToMain}
+              onSendToMainMessage={
+                canSendMessageToMain ? sendMessageToMain : undefined
+              }
               onSelectionAddToChat={handleSelectionAddToChat}
             />
           ) : isSideChatTurnSubmitting ? (

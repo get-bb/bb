@@ -1055,15 +1055,18 @@ export function RootComposeView(props: RootComposeViewProps) {
       supportsServiceTier,
     ],
   );
+  const isForkDraft = forkSeed !== null;
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
       onChange: setEnvironmentSelectionValue,
       sources: projectSources,
       reuseDisabled: reuseThreadOptions.length === 0,
+      disabled: isForkDraft,
     }),
     [
       effectiveEnvironmentValue,
+      isForkDraft,
       projectSources,
       reuseThreadOptions.length,
       setEnvironmentSelectionValue,
@@ -1080,8 +1083,14 @@ export function RootComposeView(props: RootComposeViewProps) {
           ? parsedEnvironment.environmentId
           : null,
       onChange: handleWorktreeChange,
+      disabled: isForkDraft,
     };
-  }, [parsedEnvironment, reuseThreadOptions, setEnvironmentSelectionValue]);
+  }, [
+    isForkDraft,
+    parsedEnvironment,
+    reuseThreadOptions,
+    setEnvironmentSelectionValue,
+  ]);
   const branchConfig = useMemo(
     () => ({
       value:
@@ -1110,6 +1119,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       optionDisabledTitle: branchUiState.mutationBlocker?.title,
       createDisabledReason: branchUiState.mutationBlocker?.label,
       createDisabledTitle: branchUiState.mutationBlocker?.title,
+      disabled: isForkDraft,
       onChange: handleBranchChange,
       onClear: handleClearBranch,
       onCreate: handleCreateBranchFromSeed,
@@ -1121,6 +1131,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeBranchesQuery.isFetching,
       branchOptions,
       branchEnvironmentMode,
+      isForkDraft,
       priorityBranchOptions,
       remoteBranchOptions,
       branchUiState.currentBranch,
@@ -1225,6 +1236,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             !quickCreateProject.isAvailable || quickCreateProject.isCreating,
           isCreating: quickCreateProject.isCreating,
         },
+        disabled: isForkDraft,
       }}
       execution={executionConfig}
     />

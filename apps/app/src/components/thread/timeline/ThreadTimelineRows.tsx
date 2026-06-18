@@ -838,6 +838,15 @@ function ConversationRow({ row }: ConversationRowProps) {
     onSendToMainMessage === undefined
       ? undefined
       : () => onSendToMainMessage({ messageText: row.text });
+  const onSelectProse =
+    reportProseSelection === undefined
+      ? undefined
+      : (selection: MessageProseSelection | null) =>
+          reportProseSelection(
+            selection === null
+              ? null
+              : { ...selection, sourceSeqEnd: row.sourceSeqEnd },
+          );
   return (
     <ConversationMessageContent
       attachments={row.attachments}
@@ -846,7 +855,7 @@ function ConversationRow({ row }: ConversationRowProps) {
       onSideChat={onSideChat}
       onSendToMain={onSendToMain}
       forkDisabled={!canSpawnChild}
-      onSelectProse={reportProseSelection}
+      onSelectProse={onSelectProse}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
@@ -1698,8 +1707,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [onSelectionAddToChat],
   );
   const handleSelectionReplyInSideChat = useCallback(
-    (text: string) => {
-      onSelectionReplyInSideChat?.(text);
+    (selection: MessageProseSelection) => {
+      onSelectionReplyInSideChat?.({
+        messageText: selection.text,
+        sourceSeqEnd: selection.sourceSeqEnd,
+      });
       setActiveSelection(null);
     },
     [onSelectionReplyInSideChat],

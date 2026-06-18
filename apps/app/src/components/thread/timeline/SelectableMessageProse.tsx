@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 export interface MessageProseSelection {
   text: string;
   rect: DOMRect;
+  sourceSeqEnd?: number;
 }
 
 export interface SelectableMessageProseProps {

@@ -1038,6 +1038,23 @@ describe("server-contract canonical schemas", () => {
     expect(parsed.startedOnBehalfOf).toBeNull();
   });
 
+  it("rejects sourceSeqEnd on normal thread starts", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [{ type: "text", text: "Start normally", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        sourceSeqEnd: 12,
+      }),
+    ).toThrow("sourceSeqEnd requires an originKind");
+  });
+
   it("accepts an agent startedOnBehalfOf with a sender thread", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",

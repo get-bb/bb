@@ -14,22 +14,22 @@ const SELECTION_ACTION_BUTTON_CLASS =
 interface SelectionAction {
   icon: IconName;
   label: string;
-  onSelect: (text: string) => void;
+  onSelect: (selection: MessageProseSelection) => void;
 }
 
 export interface TimelineSelectionMenuProps {
   selection: MessageProseSelection | null;
   onAddToChat?: (text: string) => void;
-  onReplyInSideChat?: (text: string) => void;
+  onReplyInSideChat?: (selection: MessageProseSelection) => void;
   onDismiss: () => void;
 }
 
 function ActionButton({
   action,
-  text,
+  selection,
 }: {
   action: SelectionAction;
-  text: string;
+  selection: MessageProseSelection;
 }) {
   return (
     <button
@@ -39,7 +39,7 @@ function ActionButton({
       // receives the selected text (and the menu stays anchored).
       onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
       onClick={() => {
-        action.onSelect(text);
+        action.onSelect(selection);
         // Clear the lingering highlight so the source text doesn't read as
         // "still selected" after the quote/side-chat has been created.
         window.getSelection()?.removeAllRanges();
@@ -100,7 +100,8 @@ export function TimelineSelectionMenu({
           {
             icon: "MessageSquarePlus" as const,
             label: "Add to chat",
-            onSelect: onAddToChat,
+            onSelect: (currentSelection: MessageProseSelection) =>
+              onAddToChat(currentSelection.text),
           },
         ]
       : []),
@@ -116,7 +117,7 @@ export function TimelineSelectionMenu({
   ];
   if (actions.length === 0) return null;
 
-  const { rect, text } = selection;
+  const { rect } = selection;
 
   return (
     <Popover
@@ -160,7 +161,7 @@ export function TimelineSelectionMenu({
             {index > 0 ? (
               <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
             ) : null}
-            <ActionButton action={action} text={text} />
+            <ActionButton action={action} selection={selection} />
           </div>
         ))}
       </PopoverContent>

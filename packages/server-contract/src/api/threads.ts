@@ -127,6 +127,13 @@ export const createThreadRequestSchema = z
         path: ["input"],
       });
     }
+    if (originKind === null && value.sourceSeqEnd !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "sourceSeqEnd requires an originKind",
+        path: ["sourceSeqEnd"],
+      });
+    }
   });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
