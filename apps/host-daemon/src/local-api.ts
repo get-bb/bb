@@ -57,6 +57,7 @@ export interface StartLocalApiServerOptions {
   /** Optional public app origin (e.g. `https://app.example.com`); allowed
    * origin for CORS when the frontend is served from a non-localhost domain. */
   appUrl?: string;
+  getProviderCliEnv?: () => Promise<NodeJS.ProcessEnv>;
   getConnected: () => boolean;
   listWorkspaceOpenTargets?: WorkspaceOpenTargetListHandler;
   openInTarget?: OpenInTargetHandler;
@@ -158,9 +159,14 @@ export async function startLocalApiServer(
     }),
   );
 
-  get("/provider-clis/status", async (c) =>
-    c.json(providerCliStatusResponseSchema.parse(await getProviderCliStatus())),
-  );
+  get("/provider-clis/status", async (c) => {
+    const env = await options.getProviderCliEnv?.();
+    return c.json(
+      providerCliStatusResponseSchema.parse(
+        await getProviderCliStatus(env ? { env } : {}),
+      ),
+    );
+  });
 
   app.post("/provider-clis/install", async (c) => {
     const parsed = providerCliInstallRequestSchema.safeParse(
@@ -174,10 +180,12 @@ export async function startLocalApiServer(
     }
 
     try {
+      const env = await options.getProviderCliEnv?.();
       return new Response(
         streamProviderCliInstall({
           provider: parsed.data.provider,
           actionKind: parsed.data.actionKind,
+          ...(env ? { env } : {}),
         }),
         {
           headers: {

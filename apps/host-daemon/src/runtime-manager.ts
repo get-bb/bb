@@ -235,11 +235,29 @@ interface RunCancellableEnvironmentProvisionArgs {
   work: (signal: AbortSignal) => Promise<void>;
 }
 
+function shellEnvEquals(
+  left: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  right: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+  return leftEntries.every(([key, value]) => right[key] === value);
+}
+
+function providerProcessEnvFromShellEnv(
+  shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+): Record<string, string> | null {
+  return shellEnv.PATH ? { PATH: shellEnv.PATH } : null;
+}
+
 export class RuntimeManager {
   private readonly createRuntime;
   private readonly hostWatcher;
   private readonly provisionWorkspace;
-  private readonly baseShellEnv;
+  private baseShellEnv;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
   private readonly pendingEnvironmentProvisions = new Map<
@@ -338,6 +356,18 @@ export class RuntimeManager {
       ...this.baseShellEnv,
       ...this.managedShellEnv,
     };
+  }
+
+  async replaceBaseShellEnv(
+    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  ): Promise<void> {
+    if (shellEnvEquals(this.baseShellEnv, shellEnv)) {
+      return;
+    }
+
+    this.baseShellEnv = { ...shellEnv };
+    await this.shutdownProviderMaintenanceRuntime();
+    await this.evictIdleRuntimeEntries();
   }
 
   private getInjectedSkillsLogger(): InjectedSkillsLogger | undefined {
@@ -481,6 +511,42 @@ export class RuntimeManager {
     shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
   ): void {
     this.managedShellEnv = { ...shellEnv };
+  }
+
+  private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+    const existingRuntime = this.providerMaintenanceRuntime;
+    const pendingRuntime = this.pendingProviderMaintenanceRuntime;
+    this.providerMaintenanceRuntime = null;
+    this.pendingProviderMaintenanceRuntime = null;
+
+    const resolvedPendingRuntime = pendingRuntime
+      ? await pendingRuntime.catch(() => null)
+      : null;
+    if (
+      resolvedPendingRuntime &&
+      this.providerMaintenanceRuntime === resolvedPendingRuntime
+    ) {
+      this.providerMaintenanceRuntime = null;
+    }
+
+    const runtimes = [...new Set([existingRuntime, resolvedPendingRuntime])];
+    await Promise.all(
+      runtimes.map((runtime) => runtime?.shutdown() ?? Promise.resolve()),
+    );
+  }
+
+  private async evictIdleRuntimeEntries(): Promise<void> {
+    const idleEntries = [...this.entries.values()].filter(
+      (entry) => !this.entryHasActiveRuntimeWork(entry),
+    );
+
+    for (const entry of idleEntries) {
+      await this.stopWatchingStatus(entry);
+      this.entries.delete(entry.environmentId);
+    }
+
+    await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
   async openWorkspace(path: string): Promise<HostWorkspace> {
@@ -818,10 +884,13 @@ export class RuntimeManager {
     await mkdir(workspacePath, { recursive: true });
 
     let runtime: AgentRuntime | null = null;
+    const shellEnv = this.getShellEnv();
+    const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath,
       additionalWorkspaceWriteRoots: [],
-      shellEnv: this.getShellEnv(),
+      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
+      shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
       onEvent: (event) => {
@@ -883,11 +952,14 @@ export class RuntimeManager {
       workspaceRoots: workspaceWriteRoots,
     });
     let runtime: AgentRuntime | null = null;
+    const shellEnv = this.getShellEnv();
+    const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
       ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
-      shellEnv: this.getShellEnv(),
+      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
+      shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
       onEvent: (event) => {

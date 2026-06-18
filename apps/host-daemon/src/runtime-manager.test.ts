@@ -996,6 +996,38 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("passes shell PATH through to provider process env", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+        BB_SERVER_URL: "http://127.0.0.1:3334",
+        OPENAI_API_KEY: "test-openai-key",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: {
+          PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
+          BB_SERVER_URL: "http://127.0.0.1:3334",
+          OPENAI_API_KEY: "test-openai-key",
+        },
+      }),
+    );
+  });
+
   it("merges managed shell env into future runtime creation", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
@@ -1031,6 +1063,93 @@ describe("RuntimeManager", () => {
         },
       }),
     );
+  });
+
+  it("recreates the provider maintenance runtime after base shell env changes", async () => {
+    const dataDir = await makeTempDir("bb-provider-maintenance-");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({
+      createRuntime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await expect(
+      manager.ensureProviderMaintenanceRuntime({ dataDir }),
+    ).resolves.toBe(firstRuntime);
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+      BB_SERVER_URL: "http://127.0.0.1:3334",
+    });
+    await expect(
+      manager.ensureProviderMaintenanceRuntime({ dataDir }),
+    ).resolves.toBe(secondRuntime);
+
+    expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+    expect(createRuntime).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        env: {
+          PATH: "/new/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/new/bin:/usr/bin",
+          BB_SERVER_URL: "http://127.0.0.1:3334",
+        },
+      }),
+    );
+  });
+
+  it("evicts idle environment runtimes after base shell env changes", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeUndefined();
+    expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        env: {
+          PATH: "/new/bin:/usr/bin",
+        },
+        shellEnv: {
+          PATH: "/new/bin:/usr/bin",
+        },
+      }),
+    );
+    expect(secondRuntime.shutdown).not.toHaveBeenCalled();
   });
 
   it("reuses the existing runtime for subsequent requests", async () => {

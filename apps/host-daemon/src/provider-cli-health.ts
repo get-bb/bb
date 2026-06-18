@@ -79,6 +79,7 @@ interface InspectProviderCliArgs {
 }
 
 interface GetProviderCliStatusArgs {
+  env?: NodeJS.ProcessEnv;
   runner?: ProviderCliCommandRunner;
   nodePlatform?: NodeJS.Platform;
 }
@@ -86,6 +87,7 @@ interface GetProviderCliStatusArgs {
 export interface SpawnProviderCliInstallProcessArgs {
   command: string;
   args: string[];
+  env?: NodeJS.ProcessEnv;
 }
 
 export type ProviderCliInstallProcessErrorListener = (error: Error) => void;
@@ -109,6 +111,7 @@ export interface ProviderCliInstallProcessSpawner {
 interface StreamProviderCliInstallArgs {
   provider: ProviderCliKey;
   actionKind: ProviderCliInstallActionKind;
+  env?: NodeJS.ProcessEnv;
   nodePlatform?: NodeJS.Platform;
   installProcessSpawner?: ProviderCliInstallProcessSpawner;
 }
@@ -483,14 +486,17 @@ function createCommandResult(
   };
 }
 
-export function createSpawnProviderCliCommandRunner(): ProviderCliCommandRunner {
+export function createSpawnProviderCliCommandRunner(
+  env: NodeJS.ProcessEnv = process.env,
+): ProviderCliCommandRunner {
   return {
-    run: runProviderCliCommand,
+    run: (args) => runProviderCliCommand(args, env),
   };
 }
 
 export async function runProviderCliCommand(
   args: RunProviderCliCommandArgs,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<ProviderCliCommandResult> {
   return await new Promise<ProviderCliCommandResult>((resolve) => {
     let child;
@@ -498,7 +504,7 @@ export async function runProviderCliCommand(
       child = spawnPortableOutputProcess({
         command: args.command,
         args: [...args.args],
-        env: process.env,
+        env,
       });
     } catch (error) {
       resolve(
@@ -675,7 +681,7 @@ export async function inspectProviderCli({
 export async function getProviderCliStatus(
   args: GetProviderCliStatusArgs = {},
 ): Promise<ProviderCliStatusResponse> {
-  const runner = args.runner ?? createSpawnProviderCliCommandRunner();
+  const runner = args.runner ?? createSpawnProviderCliCommandRunner(args.env);
   const nodePlatform = args.nodePlatform ?? process.platform;
   const [codex, claudeCode, cursor] = await Promise.all([
     inspectProviderCli({
@@ -724,7 +730,7 @@ export function createPtyProviderCliInstallProcessSpawner(): ProviderCliInstallP
       const pty = spawnPty(ptyCommand.command, ptyCommand.args, {
         cols: 120,
         cwd: process.cwd(),
-        env: process.env,
+        env: args.env ?? process.env,
         name: "xterm-256color",
         rows: 30,
       });
@@ -815,6 +821,7 @@ function closeInstallStream({
 export function streamProviderCliInstall({
   provider,
   actionKind,
+  env,
   nodePlatform = process.platform,
   installProcessSpawner = createPtyProviderCliInstallProcessSpawner(),
 }: StreamProviderCliInstallArgs): ReadableStream<Uint8Array> {
@@ -852,6 +859,7 @@ export function streamProviderCliInstall({
         state.childProcess = installProcessSpawner.spawn({
           command,
           args: commandArgs,
+          ...(env ? { env } : {}),
         });
       } catch (error) {
         writeInstallEvent({
