@@ -105,6 +105,11 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
+interface ShouldNavigateAfterThreadCreateArgs {
+  isForkDraft: boolean;
+  navigateToThreadAfterCreate: boolean;
+}
+
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
 function readReuseEnvironmentIdFromLocationState(
@@ -115,6 +120,13 @@ function readReuseEnvironmentIdFromLocationState(
     .reuseEnvironmentId;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return null;
+}
+
+export function shouldNavigateAfterThreadCreate({
+  isForkDraft,
+  navigateToThreadAfterCreate,
+}: ShouldNavigateAfterThreadCreateArgs): boolean {
+  return isForkDraft || navigateToThreadAfterCreate;
 }
 
 function readForkThreadCreateSeedFromLocationState(
@@ -809,6 +821,10 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
 
     try {
+      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+        isForkDraft: forkSeed !== null,
+        navigateToThreadAfterCreate,
+      });
       const request =
         forkSeed !== null
           ? buildForkThreadRequest({
@@ -845,7 +861,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           projectId: thread.projectId,
           threadId: thread.id,
         });
-      } else if (navigateToThreadAfterCreate) {
+      } else if (shouldNavigateToCreatedThread) {
         navigate(
           getThreadRoutePath({
             projectId: thread.projectId,

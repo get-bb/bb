@@ -44,6 +44,7 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
+import { deriveTitleFallback } from "./title-generation.js";
 import {
   advanceThreadProvisioning,
   requestThreadProvision,
@@ -89,6 +90,12 @@ interface ResolveForkDescriptorArgs {
   sourceThread: Thread | null;
 }
 
+interface DeriveThreadCreateTitleFallbackArgs {
+  input: ThreadCreateServiceRequestInput["input"];
+  originKind: ThreadOriginKind | null;
+  sourceThread: Thread | null;
+}
+
 /**
  * Resolve the native-fork descriptor for a source-derived thread, or null when
  * it cannot be provisioned as a fork. Both forks and side chats are native
@@ -99,8 +106,8 @@ interface ResolveForkDescriptorArgs {
  * already has a provider session, and a new workspace on the same host as the
  * source (a cross-host clone of a provider session is not possible).
  * Returns null when the request has no source provenance or the source session
- * cannot be cloned; the consumer treats a null descriptor for an
- * empty-input child as an unforkable error rather than a silent fresh start.
+ * cannot be cloned; the consumer treats a null descriptor for a source-derived
+ * thread as an unforkable error rather than a silent fresh start.
  */
 function resolveForkDescriptor(
   deps: Pick<ThreadCreateDeps, "db">,
@@ -150,6 +157,30 @@ function childHostIdForResolvedEnvironment(
     case "personal":
       return resolvedEnvironment.hostId;
   }
+}
+
+function sourceThreadDisplayTitle(sourceThread: Thread): string {
+  const title = sourceThread.title?.trim();
+  if (title) return title;
+  const titleFallback = sourceThread.titleFallback?.trim();
+  if (titleFallback) return titleFallback;
+  return `Thread ${sourceThread.id.slice(0, 8)}`;
+}
+
+function deriveThreadCreateTitleFallback({
+  input,
+  originKind,
+  sourceThread,
+}: DeriveThreadCreateTitleFallbackArgs): string | null {
+  const inputFallback = deriveTitleFallback(input);
+  if (inputFallback !== null) {
+    return inputFallback;
+  }
+  if (originKind !== "side-chat" || sourceThread === null) {
+    return null;
+  }
+
+  return `Side chat of ${sourceThreadDisplayTitle(sourceThread)}`;
 }
 
 interface EnsureCreateHostOnlineArgs {
@@ -438,6 +469,13 @@ export async function createThreadFromRequest(
     (originKind !== null ? requestInput.parentThreadId : undefined);
   const hierarchyParentThreadId =
     originKind === null ? requestInput.parentThreadId : undefined;
+  if (originKind === "fork" && requestInput.input.length === 0) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "fork input must contain at least one entry",
+    );
+  }
   const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
         parentThreadId: hierarchyParentThreadId,
@@ -545,6 +583,11 @@ export async function createThreadFromRequest(
       requestedEnvironment: requestInput.environment,
     }),
     providerId,
+    titleFallback: deriveThreadCreateTitleFallback({
+      input: requestInput.input,
+      originKind,
+      sourceThread,
+    }),
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     environment: request.environment,

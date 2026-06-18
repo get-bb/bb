@@ -7,7 +7,6 @@ import {
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
   events as storedEvents,
-  updateThread,
 } from "@bb/db";
 import type {
   AcceptedDaemonEvent,
@@ -389,12 +388,6 @@ async function applyEventEffects(
           });
         }
         continue;
-      }
-
-      if (event.type === "thread/name/updated") {
-        updateThread(deps.db, deps.hub, entry.threadId, {
-          title: event.threadName,
-        });
       }
     } catch (error) {
       deps.logger.error(

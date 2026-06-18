@@ -100,10 +100,10 @@ export const createThreadRequestSchema = z
     providerId: z.string().min(1).optional(),
     origin: threadCreateOriginSchema,
     title: z.string().min(1).optional(),
-    // A source-derived native fork/side chat may establish the cloned provider
-    // session with an empty timeline, so it can carry no input. A normal thread
-    // start requires at least one input, enforced by the refinement below rather
-    // than a blanket `.min(1)`.
+    // A source-derived side-chat preload may establish the cloned provider
+    // session without a first prompt. Normal starts and forks require at least
+    // one input entry, enforced by the refinement below rather than a blanket
+    // `.min(1)`.
     input: z.array(promptInputSchema),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
@@ -125,6 +125,13 @@ export const createThreadRequestSchema = z
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+    if (originKind === "fork" && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "fork input must contain at least one entry",
         path: ["input"],
       });
     }

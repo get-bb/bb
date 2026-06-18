@@ -1075,6 +1075,26 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("input must contain at least one entry");
   });
 
+  it("rejects empty input for a fork", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        originKind: "fork",
+        sourceSeqEnd: 12,
+        sourceThreadId: "thr_source",
+        startedOnBehalfOf: null,
+      }),
+    ).toThrow("fork input must contain at least one entry");
+  });
+
   it("accepts empty input for a source-derived side chat preload", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",
