@@ -10,6 +10,7 @@ import {
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
+import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import {
   defaultListModels,
   shutdownDefaultListModelsRuntimes,
@@ -222,7 +223,9 @@ export async function createHostDaemonApp(
     _args: HandleServerSessionInvalidatedArgs,
   ): void => undefined;
 
-  function maybeInvalidateServerSession(args: MaybeInvalidateSessionArgs): void {
+  function maybeInvalidateServerSession(
+    args: MaybeInvalidateSessionArgs,
+  ): void {
     if (
       args.observedSessionId === null ||
       !(args.error instanceof ServerResponseError) ||
@@ -407,10 +410,11 @@ export async function createHostDaemonApp(
     onThreadStorageWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "thread-storage",
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Thread storage watch unavailable; retrying in background",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
@@ -425,11 +429,12 @@ export async function createHostDaemonApp(
     onWorkspaceStatusWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "workspace-status",
           environmentId: error.environmentId,
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Workspace status watch unavailable; retrying in background",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
   });
@@ -474,10 +479,11 @@ export async function createHostDaemonApp(
     onDataDirSkillsWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "data-dir-skills",
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Data-dir skills watch unavailable",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
@@ -722,6 +728,13 @@ export async function createHostDaemonApp(
   const eventLoopStallMonitor = startEventLoopStallMonitor({
     logger: options.logger,
   });
+  const hostDaemonHealthMonitor = startHostDaemonHealthMonitor({
+    logger: options.logger,
+    getWatchCounts: () => ({
+      workspaceWatches: watchManager.workspaceWatchCount(),
+      threadStorageTargets: watchManager.threadStorageWatchTargetCount(),
+    }),
+  });
 
   const daemon = createDaemon({
     identity: {
@@ -737,6 +750,7 @@ export async function createHostDaemonApp(
     shutdownRuntimes: async () => {
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
+      hostDaemonHealthMonitor.stop();
       await localApi?.close();
       await watchManager.shutdown();
       await terminalManager.shutdownAll();
