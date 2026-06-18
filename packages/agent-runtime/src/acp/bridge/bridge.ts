@@ -181,6 +181,8 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 };
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
+const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
+  "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.";
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
@@ -200,13 +202,17 @@ async function loadAgentModelCatalog(
       listCommand.command,
       listCommand.args,
       { timeout: MODEL_LIST_TIMEOUT_MS },
-      (error, out) => {
+      (error, out, stderr) => {
         if (!error) {
           resolveExec(out);
           return;
         }
         if (isMissingExecutableError(error)) {
           rejectExec(error);
+          return;
+        }
+        if (isAuthRequiredModelListError(error, out, stderr)) {
+          rejectExec(new AcpModelListAuthRequiredError());
           return;
         }
         resolveExec(null);
@@ -239,6 +245,33 @@ function isMissingExecutableError(error: unknown): boolean {
     "syscall" in error &&
     typeof error.syscall === "string" &&
     error.syscall.startsWith("spawn")
+  );
+}
+
+class AcpModelListAuthRequiredError extends Error {
+  readonly code = "auth_required";
+
+  constructor() {
+    super(AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE);
+    this.name = "AcpModelListAuthRequiredError";
+  }
+}
+
+function isAuthRequiredModelListError(
+  error: unknown,
+  stdout: string,
+  stderr: string,
+): boolean {
+  const text = [
+    error instanceof Error ? error.message : String(error),
+    stdout,
+    stderr,
+  ].join("\n");
+  return (
+    text.includes("Authentication required") &&
+    (text.includes("agent login") ||
+      text.includes("CURSOR_API_KEY") ||
+      text.includes("CURSOR_AUTH_TOKEN"))
   );
 }
 

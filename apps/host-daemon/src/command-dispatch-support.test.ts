@@ -19,6 +19,7 @@ vi.mock("@bb/agent-runtime", async (importOriginal) => {
 
 import {
   defaultListModels,
+  getErrorCode,
   shutdownDefaultListModelsRuntimes,
 } from "./command-dispatch-support.js";
 
@@ -93,6 +94,16 @@ describe("command dispatch support", () => {
 
   beforeEach(() => {
     createAgentRuntimeMock.mockReset();
+  });
+
+  it("classifies Cursor model-list authentication errors", () => {
+    expect(
+      getErrorCode(
+        new Error(
+          "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
+        ),
+      ),
+    ).toBe("auth_required");
   });
 
   it("reuses the default model list runtime until shutdown", async () => {

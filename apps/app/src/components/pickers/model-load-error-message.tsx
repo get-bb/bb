@@ -45,6 +45,10 @@ export function formatModelLoadErrorText({
     return `Could not load models for ${providerLabel}. Please make sure the ${providerCliLabel({ error, providerLabel })} is installed.`;
   }
 
+  if (error.code === "auth_required") {
+    return `Could not load models for ${providerLabel}. Cursor agent is installed but not authenticated. Run agent login or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.`;
+  }
+
   return `Could not load models for ${providerLabel}.`;
 }
 
@@ -69,6 +73,16 @@ export function ModelLoadErrorMessage({
           {helpLink.label}
         </a>{" "}
         is installed.
+      </>
+    );
+  }
+
+  if (error.code === "auth_required") {
+    return (
+      <>
+        Could not load models for {providerLabel}. Cursor agent is installed but
+        not authenticated. Run <code>agent login</code> or set{" "}
+        <code>CURSOR_API_KEY</code>/<code>CURSOR_AUTH_TOKEN</code>.
       </>
     );
   }

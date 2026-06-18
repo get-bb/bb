@@ -879,6 +879,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     !selectedProviderId ||
     isLoadingModels ||
     modelLoadError?.code === "missing_executable" ||
+    modelLoadError?.code === "auth_required" ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||

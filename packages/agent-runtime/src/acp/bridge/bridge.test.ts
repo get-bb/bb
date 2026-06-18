@@ -246,6 +246,27 @@ describe("acp bridge", () => {
     );
   });
 
+  it("fails model/list when the list command reports Cursor auth is required", async () => {
+    const authId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "console.error(\"Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.\");",
+            "process.exit(1);",
+          ].join(""),
+        ],
+      },
+      primaryModels: [],
+    });
+
+    const response = await waitForResponse(authId);
+    expect(response.error?.message).toBe(
+      "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
+    );
+  });
+
   it("falls back to the synthetic model when the list command prints no models", async () => {
     const emptyId = sendRequest("model/list", {
       listCommand: {
