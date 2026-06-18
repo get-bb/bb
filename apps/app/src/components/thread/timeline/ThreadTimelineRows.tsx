@@ -15,6 +15,7 @@ import {
   type QueryCacheNotifyEvent,
   type QueryClient,
 } from "@tanstack/react-query";
+import { isBackgroundCommandTaskType } from "@bb/domain";
 import type {
   ThreadChildOrigin,
   ThreadRuntimeDisplayStatus,
@@ -1314,7 +1315,8 @@ function leadingIconForWorkRow(
     case "delegation":
       return "UserRoundPlus";
     case "workflow":
-      return "ListTodo";
+      // Backgrounded shell commands reuse the workflow row but read as commands.
+      return isBackgroundCommandTaskType(row.taskType) ? "Terminal" : "ListTodo";
     case "approval":
       return "Lock";
     case "question":

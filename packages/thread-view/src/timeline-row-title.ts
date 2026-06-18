@@ -1,4 +1,7 @@
-import { isSettledWorkflowAgentState } from "@bb/domain";
+import {
+  isBackgroundCommandTaskType,
+  isSettledWorkflowAgentState,
+} from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -869,7 +872,43 @@ function formatWorkflowAgentProgress(
   return `(${done}/${agents.length} agents)`;
 }
 
+function backgroundCommandVerbForStatus(status: TimelineRowStatus): {
+  text: string;
+  shimmer: boolean;
+} {
+  switch (status) {
+    case "pending":
+      return { text: "Running background command:", shimmer: true };
+    case "completed":
+      return { text: "Ran background command:", shimmer: false };
+    case "error":
+      return { text: "Background command failed:", shimmer: false };
+    case "interrupted":
+      return { text: "Background command interrupted:", shimmer: false };
+    default:
+      return assertNever(status);
+  }
+}
+
+function mapBackgroundCommandTitle(
+  row: TimelineViewWorkflowWorkRow,
+): TimelineTitle {
+  const verb = backgroundCommandVerbForStatus(row.status);
+  return makeTitle({
+    segments: [
+      segment(verb.text, { shimmer: verb.shimmer }),
+      segment(row.description, { em: true, truncate: true }),
+    ],
+    decorations: filterNull([
+      durationDecoration(row.startedAt, row.completedAt),
+    ]),
+  });
+}
+
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
+  if (isBackgroundCommandTaskType(row.taskType)) {
+    return mapBackgroundCommandTitle(row);
+  }
   const verb = workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
   const segments: TimelineTitleSegment[] = [

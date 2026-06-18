@@ -165,6 +165,7 @@ export interface WorkflowRowArgs extends RowBaseOverrideArgs {
   status?: TimelineRowStatus;
   summary?: string | null;
   taskStatus?: TimelineWorkflowWorkRow["taskStatus"];
+  taskType?: string;
   turnId?: string | null;
   usage?: TimelineWorkflowWorkRow["usage"];
   workflow?: TimelineWorkflowWorkRow["workflow"];
@@ -759,6 +760,7 @@ export function workflowRow({
   status = "completed",
   summary = null,
   taskStatus = "completed",
+  taskType = "local_workflow",
   threadId,
   turnId,
   usage = null,
@@ -781,6 +783,7 @@ export function workflowRow({
     workKind: "workflow",
     status,
     itemId: itemId ?? id,
+    taskType,
     workflowName,
     description,
     taskStatus,
@@ -790,6 +793,24 @@ export function workflowRow({
     error,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
   };
+}
+
+/**
+ * A backgrounded shell command (Bash run_in_background). Reuses the workflow
+ * work row with `taskType: "local_bash"` and no workflow snapshot — the shell
+ * lifecycle only carries description, status, and a terminal summary.
+ */
+export function backgroundCommandRow(
+  args: WorkflowRowArgs = {},
+): TimelineWorkflowWorkRow {
+  return workflowRow({
+    description: "Count ticks from 1 to 6 with 1 second delays",
+    workflowName: null,
+    workflow: null,
+    usage: null,
+    ...args,
+    taskType: "local_bash",
+  });
 }
 
 export function approvalRow({

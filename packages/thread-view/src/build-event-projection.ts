@@ -1,5 +1,8 @@
 import type { ThreadEvent } from "@bb/domain";
-import { requireThreadEventScopeTurnId } from "@bb/domain";
+import {
+  LOCAL_WORKFLOW_TASK_TYPE,
+  requireThreadEventScopeTurnId,
+} from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
 import {
   parseBackgroundTaskLifecycleEvent,
@@ -141,6 +144,9 @@ function selectActiveWorkflowMessage(
   for (const message of messages) {
     if (
       message.kind !== "workflow" ||
+      // The prompt-box active banner is workflow-only; backgrounded shell
+      // commands surface inline in the timeline, not in the banner.
+      message.taskType !== LOCAL_WORKFLOW_TASK_TYPE ||
       message.status !== "pending" ||
       message.skipTranscript
     ) {
