@@ -74,6 +74,36 @@ const interrupted: TimelineRow = backgroundCommandRow({
   durationMs: 30_000,
 });
 
+// Several background commands at once: each backgroundTask item folds into its
+// own row (keyed by item id), so concurrent commands simply stack — two still
+// running plus one already finished.
+const concurrent: TimelineRow[] = [
+  backgroundCommandRow({
+    id: "thr_fixture:bg:dev-server:running",
+    description: "Run the dev server",
+    status: "pending",
+    taskStatus: "running",
+    summary: null,
+    startedAt: Date.now() - 14_000,
+  }),
+  backgroundCommandRow({
+    id: "thr_fixture:bg:watch-tests:running",
+    description: "Watch and re-run tests",
+    status: "pending",
+    taskStatus: "running",
+    summary: null,
+    startedAt: Date.now() - 6_000,
+  }),
+  backgroundCommandRow({
+    id: "thr_fixture:bg:build:completed",
+    description: "Build the project",
+    status: "completed",
+    taskStatus: "completed",
+    summary: 'Background command "Build the project" completed (exit code 0)',
+    durationMs: 42_000,
+  }),
+];
+
 export function Overview() {
   return (
     <StoryCard>
@@ -115,6 +145,19 @@ export function Overview() {
           <ThreadTimelineRows
             {...baseProps}
             timelineRows={[interrupted]}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="multiple"
+        hint="concurrent background commands each get their own row (2 running + 1 done)"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows
+            {...baseProps}
+            threadRuntimeDisplayStatus="active"
+            initialExpanded={new Set(["thr_fixture:bg:build:completed"])}
+            timelineRows={concurrent}
           />
         </TimelineStage>
       </StoryRow>
