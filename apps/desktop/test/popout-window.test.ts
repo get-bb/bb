@@ -9,6 +9,10 @@ import {
   shouldHandlePopoutToggleSender,
   shouldHandlePopoutWindowSender,
 } from "../src/popout-ipc-authorization.js";
+import {
+  POPOUT_WINDOW_HEIGHT,
+  POPOUT_WINDOW_WIDTH,
+} from "@bb/desktop-contract";
 
 const electronMock = vi.hoisted(() => {
   interface Bounds {
@@ -356,12 +360,12 @@ describe("createPopoutWindowManager", () => {
       backgroundColor: "#00000000",
       frame: false,
       hasShadow: false,
-      height: 620,
+      height: POPOUT_WINDOW_HEIGHT,
       paintWhenInitiallyHidden: true,
       resizable: false,
       skipTaskbar: true,
       transparent: true,
-      width: 480,
+      width: POPOUT_WINDOW_WIDTH,
     });
     expect(browserWindow?.options).not.toHaveProperty("type");
     expect(browserWindow?.options.webPreferences).toMatchObject({
