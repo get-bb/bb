@@ -99,8 +99,13 @@ describe("command dispatch support", () => {
   it("classifies Cursor model-list authentication errors", () => {
     expect(
       getErrorCode(
+        new Error("Cursor agent is not authenticated."),
+      ),
+    ).toBe("auth_required");
+    expect(
+      getErrorCode(
         new Error(
-          "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
+          "Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
         ),
       ),
     ).toBe("auth_required");

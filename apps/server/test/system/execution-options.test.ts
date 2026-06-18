@@ -233,8 +233,7 @@ describe("resolveSystemExecutionOptions", () => {
         modelErrorsByProviderId: {
           "acp-cursor": {
             errorCode: "auth_required",
-            errorMessage:
-              "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
+            errorMessage: "Cursor agent is not authenticated.",
           },
         },
       });

@@ -263,7 +263,7 @@ describe("acp bridge", () => {
 
     const response = await waitForResponse(authId);
     expect(response.error?.message).toBe(
-      "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
+      "Cursor agent is not authenticated.",
     );
   });
 

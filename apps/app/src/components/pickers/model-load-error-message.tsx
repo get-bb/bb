@@ -46,7 +46,7 @@ export function formatModelLoadErrorText({
   }
 
   if (error.code === "auth_required") {
-    return `Could not load models for ${providerLabel}. Cursor agent is installed but not authenticated. Run agent login or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.`;
+    return `Could not load models for ${providerLabel}. Cursor agent is not authenticated.`;
   }
 
   return `Could not load models for ${providerLabel}.`;
@@ -80,9 +80,8 @@ export function ModelLoadErrorMessage({
   if (error.code === "auth_required") {
     return (
       <>
-        Could not load models for {providerLabel}. Cursor agent is installed but
-        not authenticated. Run <code>agent login</code> or set{" "}
-        <code>CURSOR_API_KEY</code>/<code>CURSOR_AUTH_TOKEN</code>.
+        Could not load models for {providerLabel}. Cursor agent is not
+        authenticated.
       </>
     );
   }

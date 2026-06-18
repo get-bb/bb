@@ -182,7 +182,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
-  "Cursor agent is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.";
+  "Cursor agent is not authenticated.";
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;

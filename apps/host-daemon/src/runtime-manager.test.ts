@@ -57,6 +57,13 @@ interface RuntimeOptionsRef {
   current: AgentRuntimeOptions | null;
 }
 
+interface RuntimeManagerProviderMaintenanceInternals {
+  createProviderMaintenanceRuntime: (args: {
+    dataDir: string;
+  }) => Promise<AgentRuntime>;
+  providerMaintenanceRuntime: AgentRuntime | null;
+}
+
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
@@ -1104,6 +1111,47 @@ describe("RuntimeManager", () => {
         },
       }),
     );
+  });
+
+  it("does not let stale provider maintenance creation replace a newer runtime", async () => {
+    const dataDir = await makeTempDir("bb-provider-maintenance-race-");
+    const staleRuntime = createFakeRuntime();
+    const currentRuntime = createFakeRuntime();
+    const staleCreation = createDeferred<AgentRuntime>();
+    const manager = new RuntimeManager({
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+    const managerInternals =
+      manager as unknown as RuntimeManagerProviderMaintenanceInternals;
+    vi.spyOn(
+      managerInternals,
+      "createProviderMaintenanceRuntime",
+    )
+      .mockImplementationOnce(() => staleCreation.promise)
+      .mockImplementationOnce(async () => currentRuntime);
+
+    const staleRuntimePromise = manager.ensureProviderMaintenanceRuntime({
+      dataDir,
+    });
+    const replaceShellEnvPromise = manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+    const currentRuntimePromise = manager.ensureProviderMaintenanceRuntime({
+      dataDir,
+    });
+
+    await expect(currentRuntimePromise).resolves.toBe(currentRuntime);
+    expect(managerInternals.providerMaintenanceRuntime).toBe(currentRuntime);
+
+    staleCreation.resolve(staleRuntime);
+    await expect(staleRuntimePromise).resolves.toBe(staleRuntime);
+    await replaceShellEnvPromise;
+
+    expect(managerInternals.providerMaintenanceRuntime).toBe(currentRuntime);
+    expect(staleRuntime.shutdown).toHaveBeenCalledTimes(1);
+    expect(currentRuntime.shutdown).not.toHaveBeenCalled();
   });
 
   it("evicts idle environment runtimes after base shell env changes", async () => {

@@ -51,6 +51,7 @@ const SHELL_ENV_COMMAND = [
   `printf '%s\\n' ${SHELL_ENV_END_MARKER}`,
 ].join("; ");
 const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
+const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
 function getDefaultCliExecutablePath(): string {
   return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
@@ -117,17 +118,45 @@ function defaultSpawnUserShellEnv(
     let stderr = "";
     let settled = false;
     let timeout: NodeJS.Timeout | undefined;
+    let forceKillTimeout: NodeJS.Timeout | undefined;
     let child: ReturnType<typeof spawn>;
 
-    function settle(result: UserShellEnvSpawnResult): void {
+    function clearTimeouts(args?: { keepForceKillTimeout?: boolean }): void {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
+      if (!args?.keepForceKillTimeout && forceKillTimeout) {
+        clearTimeout(forceKillTimeout);
+        forceKillTimeout = undefined;
+      }
+    }
+
+    function settle(
+      result: UserShellEnvSpawnResult,
+      args?: { keepForceKillTimeout?: boolean },
+    ): void {
       if (settled) {
         return;
       }
       settled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
+      clearTimeouts(args);
       resolveSpawn(result);
+    }
+
+    function forceKillChildAfterDelay(): void {
+      if (forceKillTimeout) {
+        return;
+      }
+      forceKillTimeout = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, USER_SHELL_ENV_FORCE_KILL_AFTER_MS);
+      forceKillTimeout.unref();
+    }
+
+    function terminateChild(): void {
+      child.kill("SIGTERM");
+      forceKillChildAfterDelay();
     }
 
     try {
@@ -147,18 +176,34 @@ function defaultSpawnUserShellEnv(
     }
 
     timeout = setTimeout(() => {
-      child.kill("SIGTERM");
+      terminateChild();
+      settle(
+        {
+          error: new Error(
+            `Shell env probe timed out after ${args.timeoutMs}ms`,
+          ),
+          signal: "SIGTERM",
+          status: null,
+          stderr,
+          stdout,
+        },
+        { keepForceKillTimeout: true },
+      );
     }, args.timeoutMs);
+    timeout.unref();
 
     if (!child.stdout || !child.stderr) {
-      child.kill("SIGTERM");
-      settle({
-        error: new Error("Shell env probe did not attach stdout and stderr"),
-        signal: null,
-        status: null,
-        stderr,
-        stdout,
-      });
+      terminateChild();
+      settle(
+        {
+          error: new Error("Shell env probe did not attach stdout and stderr"),
+          signal: null,
+          status: null,
+          stderr,
+          stdout,
+        },
+        { keepForceKillTimeout: true },
+      );
       return;
     }
 
@@ -171,6 +216,10 @@ function defaultSpawnUserShellEnv(
       stderr += chunk;
     });
     child.on("error", (error) => {
+      if (settled) {
+        clearTimeouts();
+        return;
+      }
       settle({
         error,
         signal: null,
@@ -180,6 +229,10 @@ function defaultSpawnUserShellEnv(
       });
     });
     child.on("close", (status, signal) => {
+      if (settled) {
+        clearTimeouts();
+        return;
+      }
       settle({
         signal,
         status,

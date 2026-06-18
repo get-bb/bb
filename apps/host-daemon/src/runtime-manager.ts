@@ -230,6 +230,11 @@ interface PendingEnvironmentProvision {
   done: Promise<unknown>;
 }
 
+interface PendingProviderMaintenanceRuntime {
+  generation: number;
+  promise: Promise<AgentRuntime>;
+}
+
 interface RunCancellableEnvironmentProvisionArgs {
   environmentId: string;
   work: (signal: AbortSignal) => Promise<void>;
@@ -265,8 +270,9 @@ export class RuntimeManager {
     PendingEnvironmentProvision
   >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
-  private pendingProviderMaintenanceRuntime: Promise<AgentRuntime> | null =
+  private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
+  private providerMaintenanceRuntimeGeneration = 0;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
@@ -516,11 +522,14 @@ export class RuntimeManager {
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
     const existingRuntime = this.providerMaintenanceRuntime;
     const pendingRuntime = this.pendingProviderMaintenanceRuntime;
+    this.providerMaintenanceRuntimeGeneration += 1;
     this.providerMaintenanceRuntime = null;
-    this.pendingProviderMaintenanceRuntime = null;
+    if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
+      this.pendingProviderMaintenanceRuntime = null;
+    }
 
     const resolvedPendingRuntime = pendingRuntime
-      ? await pendingRuntime.catch(() => null)
+      ? await pendingRuntime.promise.catch(() => null)
       : null;
     if (
       resolvedPendingRuntime &&
@@ -563,19 +572,33 @@ export class RuntimeManager {
       return this.providerMaintenanceRuntime;
     }
     if (this.pendingProviderMaintenanceRuntime) {
-      return this.pendingProviderMaintenanceRuntime;
+      return this.pendingProviderMaintenanceRuntime.promise;
     }
 
-    const creation = this.createProviderMaintenanceRuntime(args).then(
-      (runtime) => {
-        this.providerMaintenanceRuntime = runtime;
+    const generation = this.providerMaintenanceRuntimeGeneration;
+    let pendingRuntime!: PendingProviderMaintenanceRuntime;
+    const promise = Promise.resolve()
+      .then(() => this.createProviderMaintenanceRuntime(args))
+      .then((runtime) => {
+        if (
+          this.pendingProviderMaintenanceRuntime === pendingRuntime &&
+          this.providerMaintenanceRuntimeGeneration === generation
+        ) {
+          this.providerMaintenanceRuntime = runtime;
+        }
         return runtime;
-      },
-    );
-    this.pendingProviderMaintenanceRuntime = creation.finally(() => {
-      this.pendingProviderMaintenanceRuntime = null;
-    });
-    return this.pendingProviderMaintenanceRuntime;
+      })
+      .finally(() => {
+        if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
+          this.pendingProviderMaintenanceRuntime = null;
+        }
+      });
+    pendingRuntime = {
+      generation,
+      promise,
+    };
+    this.pendingProviderMaintenanceRuntime = pendingRuntime;
+    return promise;
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
@@ -819,16 +842,7 @@ export class RuntimeManager {
       // lifecycle via explicit environment.destroy commands. Daemon shutdown
       // should only release in-memory state and stop provider processes.
     }
-    const providerMaintenanceRuntime =
-      this.providerMaintenanceRuntime ??
-      (this.pendingProviderMaintenanceRuntime
-        ? await this.pendingProviderMaintenanceRuntime.catch(() => null)
-        : null);
-    this.providerMaintenanceRuntime = null;
-    this.pendingProviderMaintenanceRuntime = null;
-    if (providerMaintenanceRuntime) {
-      await providerMaintenanceRuntime.shutdown();
-    }
+    await this.shutdownProviderMaintenanceRuntime();
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
     await this.cleanupUnusedInjectedSkillStagingDirs([]);

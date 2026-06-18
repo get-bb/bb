@@ -85,7 +85,7 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
 const CURSOR_AUTH_REQUIRED_PATTERN =
-  /Cursor agent is installed but not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN)/is;
+  /Cursor agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN)/is;
 
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 

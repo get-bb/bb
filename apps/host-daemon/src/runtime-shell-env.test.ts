@@ -201,6 +201,33 @@ describe("resolveLocalBbExecutableDirectory", () => {
 });
 
 describe("resolveUserShellPath", () => {
+  it("settles when the shell env probe times out even if the shell ignores SIGTERM", async () => {
+    const shellDir = await makeTempDir("bb-shell-timeout-");
+    const shellPath = path.join(shellDir, "ignore-term-shell");
+    await fs.writeFile(
+      shellPath,
+      [
+        "#!/usr/bin/env node",
+        'process.on("SIGTERM", () => {});',
+        "setInterval(() => {}, 1000);",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    await fs.chmod(shellPath, 0o755);
+
+    const startedAt = Date.now();
+
+    await expect(
+      resolveUserShellPath({
+        env: { SHELL: shellPath, PATH: "/usr/bin" },
+        platform: "linux",
+        timeoutMs: 25,
+      }),
+    ).resolves.toBeNull();
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+
   it("loads PATH from the configured interactive login shell", async () => {
     const shellPath = "/root/.local/bin:/usr/local/bin:/usr/bin";
     const fakeSpawn = createFakeShellEnvSpawn({
