@@ -49,10 +49,8 @@ export interface ShouldBlockBrowserRequestArgs {
   isMainFrame: boolean;
   targetWebContentsId: number | null;
   entryWebContentsId: number | null;
-  pendingTrustedLocalTopLevelOriginKey: string | null;
   currentMainFrameLocalOriginKey: string | null;
   requestingFrameOriginKey: string | null;
-  mainFrameInitiatorOriginKey: string | null;
 }
 
 interface ParsedBrowserRequestUrl {
@@ -284,8 +282,9 @@ function isAllowedPublicBrowserPopupUrl(url: string): boolean {
 }
 
 /**
- * Whether a request host (URL hostname, no port) is a loopback host that may be
- * allowed only through explicit trusted browser-chrome navigation.
+ * Whether a request host (URL hostname, no port) is a loopback host. Loopback
+ * top-level navigation is allowed, but non-main-frame requests are guarded so
+ * browsed pages cannot invisibly reach local services.
  */
 export function isLoopbackBrowserRequestHost(rawHost: string): boolean {
   const host = normalizeBrowserRequestHost(rawHost);
@@ -390,18 +389,6 @@ export function resolveRequestingFrameLocalOriginKey(
 }
 
 /**
- * Trusted top-level local navigations may only target loopback `http(s)` URLs.
- */
-export function isAllowedTrustedLocalTopLevelUrl(url: string): boolean {
-  const parsed = parseBrowserRequestUrl(url);
-  return (
-    parsed !== null &&
-    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-    isLoopbackBrowserRequestHost(parsed.host)
-  );
-}
-
-/**
  * Whether a network request URL must be blocked by the current coarse
  * loopback/LAN firewall. Only `http(s)`/`ws(s)` carry a remote host worth
  * guarding; `data:`/`blob:`/`about:` have none and are allowed (`webSecurity`
@@ -419,6 +406,11 @@ export function isBlockedBrowserRequestUrl(url: string): boolean {
 export function shouldBlockBrowserRequest(
   args: ShouldBlockBrowserRequestArgs,
 ): boolean {
+  const isMainFrameRequest =
+    args.isMainFrame || args.resourceType === "mainFrame";
+  if (isMainFrameRequest) {
+    return !isAllowedBrowserUrl(args.url);
+  }
   const parsed = parseBrowserRequestUrl(args.url);
   if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {
     return false;
@@ -435,20 +427,6 @@ export function shouldBlockBrowserRequest(
   const targetOriginKey = localRequestOriginKey(args.url);
   if (targetOriginKey === null) {
     return true;
-  }
-  const isMainFrameRequest =
-    args.isMainFrame || args.resourceType === "mainFrame";
-  if (isMainFrameRequest) {
-    if (!isAllowedTrustedLocalTopLevelUrl(args.url)) {
-      return true;
-    }
-    if (targetOriginKey === args.pendingTrustedLocalTopLevelOriginKey) {
-      return false;
-    }
-    return (
-      targetOriginKey !== args.currentMainFrameLocalOriginKey ||
-      args.mainFrameInitiatorOriginKey !== args.currentMainFrameLocalOriginKey
-    );
   }
   if (
     args.currentMainFrameLocalOriginKey === null ||

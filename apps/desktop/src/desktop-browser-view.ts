@@ -23,7 +23,6 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  isAllowedTrustedLocalTopLevelUrl,
   localRequestOriginKey,
   resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
@@ -63,10 +62,7 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
-  pendingTrustedLocalTopLevelOriginKey: string | null;
   currentMainFrameLocalOriginKey: string | null;
-  pendingMainFrameNavigationOriginKey: string | null;
-  pendingMainFrameNavigationInitiatorOriginKey: string | null;
   /**
    * The last renderer-measured panel rect. The renderer is the placement
    * authority — it re-measures and pushes whenever its layout actually moves
@@ -239,120 +235,21 @@ function setEntryDesiredBounds(args: SetEntryDesiredBoundsArgs): void {
 }
 
 function clearEntryLocalOriginState(entry: BrowserViewEntry): void {
-  entry.pendingTrustedLocalTopLevelOriginKey = null;
   entry.currentMainFrameLocalOriginKey = null;
-  entry.pendingMainFrameNavigationOriginKey = null;
-  entry.pendingMainFrameNavigationInitiatorOriginKey = null;
-}
-
-function clearEntryPendingMainFrameNavigation(entry: BrowserViewEntry): void {
-  entry.pendingMainFrameNavigationOriginKey = null;
-  entry.pendingMainFrameNavigationInitiatorOriginKey = null;
-}
-
-function clearEntryPendingLocalNavigationState(entry: BrowserViewEntry): void {
-  entry.pendingTrustedLocalTopLevelOriginKey = null;
-  clearEntryPendingMainFrameNavigation(entry);
-}
-
-function prepareEntryForTrustedTopLevelLoad(
-  entry: BrowserViewEntry,
-  url: string,
-): boolean {
-  if (!isAllowedBrowserUrl(url)) {
-    return false;
-  }
-  if (isAllowedTrustedLocalTopLevelUrl(url)) {
-    clearEntryPendingMainFrameNavigation(entry);
-    entry.pendingTrustedLocalTopLevelOriginKey = localRequestOriginKey(url);
-    return true;
-  }
-  clearEntryPendingLocalNavigationState(entry);
-  return true;
-}
-
-function findUniquePendingTrustedLocalEntryForRequest(
-  entriesByKey: Iterable<BrowserViewEntry>,
-  url: string,
-): BrowserViewEntry | null {
-  const originKey = localRequestOriginKey(url);
-  if (originKey === null) {
-    return null;
-  }
-
-  let match: BrowserViewEntry | null = null;
-  for (const entry of entriesByKey) {
-    if (entry.view.webContents.isDestroyed()) {
-      continue;
-    }
-    if (entry.pendingTrustedLocalTopLevelOriginKey !== originKey) {
-      continue;
-    }
-    if (match !== null) {
-      return null;
-    }
-    match = entry;
-  }
-  return match;
 }
 
 function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
   const committedOriginKey = localRequestOriginKey(url);
-  clearEntryPendingMainFrameNavigation(entry);
-  if (
-    committedOriginKey !== null &&
-    (committedOriginKey === entry.pendingTrustedLocalTopLevelOriginKey ||
-      committedOriginKey === entry.currentMainFrameLocalOriginKey)
-  ) {
-    entry.pendingTrustedLocalTopLevelOriginKey = null;
+  if (committedOriginKey !== null) {
     entry.currentMainFrameLocalOriginKey = committedOriginKey;
     return;
   }
   clearEntryLocalOriginState(entry);
 }
 
-function clearBlockedLocalTopLevelLoad(
-  entry: BrowserViewEntry,
-  url: string,
-): void {
-  if (localRequestOriginKey(url) !== null) {
-    clearEntryPendingLocalNavigationState(entry);
-  }
-}
-
-function historyNavigationTargetUrl(
-  entry: BrowserViewEntry,
-  offset: number,
-): string | null {
-  const history = entry.view.webContents.navigationHistory;
-  const targetEntry = history.getEntryAtIndex(
-    history.getActiveIndex() + offset,
-  );
-  return typeof targetEntry?.url === "string" ? targetEntry.url : null;
-}
-
-function prepareEntryForHistoryNavigation(
-  entry: BrowserViewEntry,
-  offset: number,
-): void {
-  const targetUrl = historyNavigationTargetUrl(entry, offset);
-  const targetOriginKey =
-    targetUrl === null ? null : localRequestOriginKey(targetUrl);
-  if (
-    targetOriginKey !== null &&
-    targetOriginKey === entry.currentMainFrameLocalOriginKey
-  ) {
-    clearEntryPendingMainFrameNavigation(entry);
-    entry.pendingTrustedLocalTopLevelOriginKey = targetOriginKey;
-    return;
-  }
-  clearEntryPendingLocalNavigationState(entry);
-}
-
 function shouldBlockEntryTopLevelRequest(
   entry: BrowserViewEntry,
   url: string,
-  mainFrameInitiatorOriginKey: string | null,
 ): boolean {
   if (!isAllowedBrowserUrl(url)) {
     return true;
@@ -364,48 +261,9 @@ function shouldBlockEntryTopLevelRequest(
     isMainFrame: true,
     targetWebContentsId: webContentsId,
     entryWebContentsId: webContentsId,
-    pendingTrustedLocalTopLevelOriginKey:
-      entry.pendingTrustedLocalTopLevelOriginKey,
     currentMainFrameLocalOriginKey: entry.currentMainFrameLocalOriginKey,
     requestingFrameOriginKey: null,
-    mainFrameInitiatorOriginKey,
   });
-}
-
-function requestingFrameOriginKey(origin: string | undefined): string | null {
-  return origin === undefined ? null : localRequestOriginKey(origin);
-}
-
-function rememberAllowedTopLevelNavigation(
-  entry: BrowserViewEntry,
-  url: string,
-  mainFrameInitiatorOriginKey: string | null,
-): void {
-  const targetOriginKey = localRequestOriginKey(url);
-  if (
-    targetOriginKey !== null &&
-    targetOriginKey !== entry.pendingTrustedLocalTopLevelOriginKey
-  ) {
-    entry.pendingMainFrameNavigationOriginKey = targetOriginKey;
-    entry.pendingMainFrameNavigationInitiatorOriginKey =
-      mainFrameInitiatorOriginKey;
-    return;
-  }
-  clearEntryPendingMainFrameNavigation(entry);
-}
-
-function pendingMainFrameInitiatorOriginKey(
-  entry: BrowserViewEntry,
-  url: string,
-): string | null {
-  const targetOriginKey = localRequestOriginKey(url);
-  if (
-    targetOriginKey === null ||
-    targetOriginKey !== entry.pendingMainFrameNavigationOriginKey
-  ) {
-    return null;
-  }
-  return entry.pendingMainFrameNavigationInitiatorOriginKey;
 }
 
 function buildBrowserState(
@@ -529,10 +387,9 @@ export function createDesktopBrowserViewManager(
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
-    // Network firewall: untrusted pages must not be able to reach bb's loopback
-    // services or the user's LAN. This fires for ALL resource types — top-level
-    // navigation, subresources, fetch/XHR, and WebSockets — so CORS-bypassing
-    // requests to 127.0.0.1 / private ranges are cancelled before they are sent.
+    // Network firewall: untrusted pages must not invisibly reach bb's loopback
+    // services or the user's LAN. Top-level http(s) navigation remains allowed;
+    // subresources, fetch/XHR, iframes, and WebSockets are guarded here.
     browserSession.webRequest.onBeforeRequest((details, callback) => {
       const targetWebContentsId = details.webContentsId ?? null;
       const entry =
@@ -542,29 +399,15 @@ export function createDesktopBrowserViewManager(
       const attributedEntry =
         entry === null || entry.view.webContents.isDestroyed() ? null : entry;
       const isMainFrameRequest = details.resourceType === "mainFrame";
-      const liveEntry =
-        attributedEntry ??
-        (isMainFrameRequest
-          ? findUniquePendingTrustedLocalEntryForRequest(
-              entries.values(),
-              details.url,
-            )
-          : null);
-      const effectiveTargetWebContentsId =
-        attributedEntry === null
-          ? (liveEntry?.view.webContents.id ?? targetWebContentsId)
-          : targetWebContentsId;
       callback({
         cancel: shouldBlockBrowserRequest({
           url: details.url,
           resourceType: details.resourceType,
           isMainFrame: isMainFrameRequest,
-          targetWebContentsId: effectiveTargetWebContentsId,
-          entryWebContentsId: liveEntry?.view.webContents.id ?? null,
-          pendingTrustedLocalTopLevelOriginKey:
-            liveEntry?.pendingTrustedLocalTopLevelOriginKey ?? null,
+          targetWebContentsId,
+          entryWebContentsId: attributedEntry?.view.webContents.id ?? null,
           currentMainFrameLocalOriginKey:
-            liveEntry?.currentMainFrameLocalOriginKey ?? null,
+            attributedEntry?.currentMainFrameLocalOriginKey ?? null,
           requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
             origin: details.frame?.origin,
             url: details.frame?.url,
@@ -573,10 +416,6 @@ export function createDesktopBrowserViewManager(
             // SPA dev server (Vite, etc.) is not blocked into a blank page.
             isTopFrame: details.frame?.parent === null,
           }),
-          mainFrameInitiatorOriginKey:
-            liveEntry === null || !isMainFrameRequest
-              ? null
-              : pendingMainFrameInitiatorOriginKey(liveEntry, details.url),
         }),
       });
     });
@@ -610,62 +449,22 @@ export function createDesktopBrowserViewManager(
       if (!event.isMainFrame) {
         return;
       }
-      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
-        event.initiator?.origin,
-      );
-      if (
-        shouldBlockEntryTopLevelRequest(
-          entry,
-          event.url,
-          mainFrameInitiatorOriginKey,
-        )
-      ) {
+      if (shouldBlockEntryTopLevelRequest(entry, event.url)) {
         event.preventDefault();
-        clearBlockedLocalTopLevelLoad(entry, event.url);
-        return;
       }
-      rememberAllowedTopLevelNavigation(
-        entry,
-        event.url,
-        mainFrameInitiatorOriginKey,
-      );
     });
     webContents.on("will-navigate", (event, url) => {
-      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
-        event.initiator?.origin,
-      );
-      if (
-        shouldBlockEntryTopLevelRequest(entry, url, mainFrameInitiatorOriginKey)
-      ) {
+      if (shouldBlockEntryTopLevelRequest(entry, url)) {
         event.preventDefault();
-        clearBlockedLocalTopLevelLoad(entry, url);
-        return;
       }
-      rememberAllowedTopLevelNavigation(
-        entry,
-        url,
-        mainFrameInitiatorOriginKey,
-      );
     });
     webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
       if (!isMainFrame) {
         return;
       }
-      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
-        event.initiator?.origin,
-      );
-      if (
-        shouldBlockEntryTopLevelRequest(entry, url, mainFrameInitiatorOriginKey)
-      ) {
+      if (shouldBlockEntryTopLevelRequest(entry, url)) {
         event.preventDefault();
-        clearBlockedLocalTopLevelLoad(entry, url);
-        return;
       }
-      rememberAllowedTopLevelNavigation(
-        entry,
-        url,
-        mainFrameInitiatorOriginKey,
-      );
     });
 
     webContents.setWindowOpenHandler((details) => {
@@ -749,12 +548,8 @@ export function createDesktopBrowserViewManager(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame || errorCode === ERR_ABORTED) {
-          if (isMainFrame && errorCode === ERR_ABORTED) {
-            clearEntryPendingLocalNavigationState(entry);
-          }
           return;
         }
-        clearBlockedLocalTopLevelLoad(entry, validatedURL);
         entry.lastErrorText =
           errorDescription.length > 0
             ? errorDescription
@@ -781,10 +576,7 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
-      pendingTrustedLocalTopLevelOriginKey: null,
       currentMainFrameLocalOriginKey: null,
-      pendingMainFrameNavigationOriginKey: null,
-      pendingMainFrameNavigationInitiatorOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
       visible: false,
@@ -803,12 +595,11 @@ export function createDesktopBrowserViewManager(
     if (entry.view.webContents.getURL() === url) {
       return;
     }
-    if (!prepareEntryForTrustedTopLevelLoad(entry, url)) {
+    if (!isAllowedBrowserUrl(url)) {
       return;
     }
     entry.lastErrorText = null;
     entry.view.webContents.loadURL(url).catch(() => {
-      clearEntryPendingLocalNavigationState(entry);
       // Usually surfaced through `did-fail-load`; swallow the rejection.
     });
   }
@@ -883,7 +674,6 @@ export function createDesktopBrowserViewManager(
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
-          prepareEntryForHistoryNavigation(entry, -1);
           entry.view.webContents.navigationHistory.goBack();
         }
       });
@@ -891,29 +681,17 @@ export function createDesktopBrowserViewManager(
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
-          prepareEntryForHistoryNavigation(entry, 1);
           entry.view.webContents.navigationHistory.goForward();
         }
       });
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        const currentOriginKey = localRequestOriginKey(
-          entry.view.webContents.getURL(),
-        );
-        if (
-          currentOriginKey !== null &&
-          currentOriginKey === entry.currentMainFrameLocalOriginKey
-        ) {
-          clearEntryPendingMainFrameNavigation(entry);
-          entry.pendingTrustedLocalTopLevelOriginKey = currentOriginKey;
-        }
         entry.view.webContents.reload();
       });
     },
     stop({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        clearEntryPendingLocalNavigationState(entry);
         entry.view.webContents.stop();
       });
     },
