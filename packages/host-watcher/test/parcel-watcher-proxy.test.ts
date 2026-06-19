@@ -67,6 +67,14 @@ class FakeParcel implements ParcelWatcherBackend {
     }
   }
 
+  emitError(dir: string, message: string): void {
+    for (const subscription of this.subscriptions) {
+      if (subscription.dir === dir && !subscription.unsubscribed) {
+        subscription.callback(new Error(message), []);
+      }
+    }
+  }
+
   activeDirs(): string[] {
     return this.subscriptions
       .filter((subscription) => !subscription.unsubscribed)
@@ -225,6 +233,44 @@ describe("createParcelWatcherProxy", () => {
     await subscription.unsubscribe();
     await flush();
     expect(current().parcel.activeDirs()).toEqual([]);
+    proxy.dispose();
+  });
+
+  it("recycles the child and replays when it reports a backend error (EINTR)", async () => {
+    const { proxy, children, current } = createHarness();
+    const received: string[] = [];
+    let errorCount = 0;
+    await proxy.subscribe("/root", (error, events) => {
+      if (error) {
+        errorCount += 1;
+        return;
+      }
+      for (const event of events) {
+        received.push(event.path);
+      }
+    });
+    await flush();
+    expect(children).toHaveLength(1);
+
+    // Parcel's shared backend dies in the child (inotify EINTR).
+    current().parcel.emitError(
+      "/root",
+      "Unable to poll: Interrupted system call",
+    );
+    await flush();
+
+    // The proxy SIGKILLed the child (reclaiming the leak) and replayed onto a
+    // fresh one — without surfacing a terminal error to the caller.
+    expect(children[0]?.exited).toBe(true);
+    expect(children).toHaveLength(2);
+    expect(current().parcel.activeDirs()).toEqual(["/root"]);
+    expect(errorCount).toBe(0);
+
+    // Events flow again on the fresh backend.
+    current().parcel.emit("/root", [
+      { path: "/root/healed.ts", type: "update" },
+    ]);
+    expect(received).toEqual(["/root/healed.ts"]);
     proxy.dispose();
   });
 

@@ -1,10 +1,13 @@
 import { createForkChannel } from "./parcel-subprocess/fork-channel.js";
-import { createParcelWatcherProxy } from "./parcel-subprocess/parcel-watcher-proxy.js";
+import {
+  createParcelWatcherProxy,
+  type ParcelWatcherProxy,
+} from "./parcel-subprocess/parcel-watcher-proxy.js";
 
 // Type-only handle on the @parcel/watcher module. Importing the *types* never
-// loads the native addon, so the parent process stays parcel-free when running
-// in subprocess mode (BB_WATCHER_SUBPROCESS=1) — the native backend, and thus
-// the inotify EINTR leak/hang, is confined to the child.
+// loads the native addon, so the parent process stays parcel-free when the
+// daemon installs the subprocess backend — the native backend, and thus the
+// inotify EINTR leak/hang, is confined to the child.
 type ParcelWatcherModule = typeof import("@parcel/watcher");
 type ParcelWatcherSubscribe = ParcelWatcherModule["subscribe"];
 type ParcelWatcherCallback = Parameters<ParcelWatcherSubscribe>[1];
@@ -44,36 +47,47 @@ function createInProcessBackend(): ParcelWatcherBackend {
   };
 }
 
-function createSubprocessBackend(): ParcelWatcherBackend {
+export type ParcelWatcherBackendLogLevel = "info" | "warn" | "error";
+export type ParcelWatcherBackendLogger = (
+  level: ParcelWatcherBackendLogLevel,
+  message: string,
+  fields?: Record<string, unknown>,
+) => void;
+
+/**
+ * Build the subprocess-isolated backend: parcel runs in a forked child that is
+ * SIGKILLed and respawned (with subscriptions replayed) whenever it dies,
+ * wedges, or reports a backend error such as an inotify EINTR. The SIGKILL lets
+ * the OS reclaim the child's leaked inotify fds and parked threads wholesale.
+ * The host daemon installs this at startup via {@link setParcelWatcherBackend}.
+ */
+export function createSubprocessParcelWatcherBackend(options?: {
+  log?: ParcelWatcherBackendLogger;
+}): ParcelWatcherProxy {
   return createParcelWatcherProxy({
     spawnChannel: createForkChannel,
-    log: (level, message, fields) => {
-      const line = `[host-watcher:subprocess] ${message}`;
-      if (level === "error") {
-        console.error(line, fields ?? "");
-      } else if (level === "warn") {
-        console.warn(line, fields ?? "");
-      } else {
-        console.info(line, fields ?? "");
-      }
-    },
+    log: options?.log,
   });
 }
 
-let cachedBackend: ParcelWatcherBackend | undefined;
+let installedBackend: ParcelWatcherBackend | undefined;
+let inProcessBackend: ParcelWatcherBackend | undefined;
 
 /**
- * Returns the process-wide parcel watcher backend. Defaults to the real
- * in-process watcher; set BB_WATCHER_SUBPROCESS=1 to isolate parcel in a child
- * process that is transparently respawned (and its subscriptions replayed) when
- * it dies or wedges.
+ * Install the process-wide watcher backend. The daemon calls this once at
+ * startup with the subprocess backend. Left unset (e.g. in unit tests) the real
+ * in-process watcher is used, so parcel can be mocked directly.
  */
+export function setParcelWatcherBackend(backend: ParcelWatcherBackend): void {
+  installedBackend = backend;
+}
+
 export function getParcelWatcherBackend(): ParcelWatcherBackend {
-  if (cachedBackend === undefined) {
-    cachedBackend =
-      process.env.BB_WATCHER_SUBPROCESS === "1"
-        ? createSubprocessBackend()
-        : createInProcessBackend();
+  if (installedBackend !== undefined) {
+    return installedBackend;
   }
-  return cachedBackend;
+  if (inProcessBackend === undefined) {
+    inProcessBackend = createInProcessBackend();
+  }
+  return inProcessBackend;
 }

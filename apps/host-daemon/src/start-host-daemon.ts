@@ -4,7 +4,12 @@ import {
   type HostDaemonConnectionConfig,
 } from "@bb/config/host-daemon";
 import type { HostType, ToolCallRequest, ToolCallResponse } from "@bb/domain";
-import { createHostWatcher, type HostWatcher } from "@bb/host-watcher";
+import {
+  createHostWatcher,
+  createSubprocessParcelWatcherBackend,
+  setParcelWatcherBackend,
+  type HostWatcher,
+} from "@bb/host-watcher";
 import { createLogger } from "@bb/logger";
 import { type CreateHostDaemonAppOptions, createHostDaemonApp } from "./app.js";
 import {
@@ -161,7 +166,26 @@ export async function startHostDaemon(
         dataDir,
         transportMode: "worker",
       });
-    const hostWatcher = options.hostWatcher ?? (await createHostWatcher());
+    let hostWatcher = options.hostWatcher;
+    if (hostWatcher === undefined) {
+      // Run @parcel/watcher in an isolated child process. A parcel inotify
+      // crash/hang/leak is then contained in the child and self-heals via
+      // SIGKILL + respawn, instead of taking down the daemon.
+      setParcelWatcherBackend(
+        createSubprocessParcelWatcherBackend({
+          log: (level, message, fields) => {
+            if (level === "error") {
+              logger.error(fields ?? {}, message);
+            } else if (level === "warn") {
+              logger.warn(fields ?? {}, message);
+            } else {
+              logger.info(fields ?? {}, message);
+            }
+          },
+        }),
+      );
+      hostWatcher = await createHostWatcher();
+    }
     const resolveRuntimeShellEnv = async () =>
       prepareRuntimeShellEnv({
         bbExecutableDirectory,

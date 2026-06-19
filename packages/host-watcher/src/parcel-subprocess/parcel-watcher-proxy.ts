@@ -247,7 +247,19 @@ export function createParcelWatcherProxy(
         break;
       }
       case "watch-error":
+        // Parcel's shared inotify backend died in the child (e.g. an EINTR poll
+        // interruption), which takes down every watch at once. Recycle the whole
+        // child: the SIGKILL reclaims the leaked fds/threads, and the respawn
+        // re-arms every subscription on a fresh backend — so the watch
+        // self-heals instead of going permanently dead.
+        log("warn", "Watcher child reported a backend error; recycling", {
+          watchError: message.message,
+        });
+        killAndRestart();
+        break;
       case "subscribe-failed": {
+        // A single subscription failed to establish (e.g. its path vanished).
+        // Surface it to the caller, which gates on existence and retries.
         const record = subscriptions.get(message.id);
         record?.callback(new Error(message.message), []);
         break;
