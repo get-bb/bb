@@ -89,7 +89,6 @@ export function isSecondaryFileTab(
     case "terminal":
     case "new-tab":
     case "side-chat":
-    case "compose":
       return true;
     case "thread-info":
     case "git-diff":
@@ -402,7 +401,6 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "terminal":
       case "new-tab":
       case "side-chat":
-      case "compose":
       case "thread-storage-file-preview":
         displayable.push(tab);
         break;

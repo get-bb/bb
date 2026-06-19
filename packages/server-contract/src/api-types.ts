@@ -2,7 +2,6 @@ export * from "./api/shared.js";
 export * from "./api/automations.js";
 export * from "./api/projects.js";
 export * from "./api/environments.js";
-export * from "./api/peer-share.js";
 export * from "./api/system.js";
 export * from "./api/terminals.js";
 export * from "./api/threads.js";

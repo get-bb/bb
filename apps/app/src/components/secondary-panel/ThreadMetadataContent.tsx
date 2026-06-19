@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { ThreadStorageBrowser } from "./ThreadStorageBrowser";
-import { PeerShareDialog } from "@/components/peer-share/PeerShareDialog";
 import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
 import { Link } from "react-router-dom";
 import type {
@@ -961,30 +960,6 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   );
 }
 
-function ShareRow({ thread }: { thread: Thread }) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  return (
-    <DetailRow
-      label={<DetailRowIconLabel icon="Globe">Share</DetailRowIconLabel>}
-      valueClassName="min-w-0"
-    >
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setIsDialogOpen(true)}
-        className="h-7"
-      >
-        Send to nearby device
-      </Button>
-      <PeerShareDialog
-        threadId={thread.id}
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-      />
-    </DetailRow>
-  );
-}
-
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
@@ -1056,7 +1031,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       />
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      <ShareRow thread={thread} />
       <ThreadCommitsRow
         workspaceStatus={workspaceStatus}
         onCommitClick={onCommitClick}

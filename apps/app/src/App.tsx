@@ -5,7 +5,6 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
-import { PeerShareIncomingWatcher } from "./components/peer-share/PeerShareIncomingWatcher";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
@@ -96,7 +95,6 @@ function PopoutRouteFallback() {
 function AppRoutes() {
   return (
     <AppLayout>
-      <PeerShareIncomingWatcher />
       <Suspense fallback={null}>
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />

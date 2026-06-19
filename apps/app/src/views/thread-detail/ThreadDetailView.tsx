@@ -114,7 +114,6 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
-import { ComposeTabDeck } from "@/components/secondary-panel/ComposeTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
@@ -564,24 +563,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeWorkspaceFileStatusLabel,
     activeSideChatTabId,
     activateSideChatTab,
-    activeComposeTabId,
-    activateComposeTab,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
     closeTab,
-    closeComposeTab,
     closeSideChatTab,
-    composeTabs,
     isNewTabActive,
-    openComposeTab,
     openTab,
     openSideChat,
     openExistingSideChatTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
-    setComposeThreadId,
     setSideChatThreadId,
     sideChatTabs,
     updateBrowserTab,
@@ -1087,10 +1080,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
-  const handleStartCompose = useCallback(() => {
-    openComposeTab({ replaceNewTab: true });
-    openCompactDrawer();
-  }, [openComposeTab, openCompactDrawer]);
   const handleStartTerminal = useCallback(() => {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
@@ -1267,30 +1256,15 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               onSelect: () => activateSideChatTab(tab.id),
               onClose: () => closeSideChatTab(tab.id),
             };
-          case "compose":
-            return {
-              id: tab.id,
-              filename: tab.title,
-              isActive: tab.id === activeComposeTabId,
-              leadingVisual: (
-                <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
-              ),
-              statusLabel: null,
-              onSelect: () => activateComposeTab(tab.id),
-              onClose: () => closeComposeTab(tab.id),
-            };
         }
       },
     );
     return tabs.length > 0 ? tabs : undefined;
   }, [
     activateSideChatTab,
-    activateComposeTab,
-    activeComposeTabId,
     activeFixedSecondaryTabId,
     activeSideChatTabId,
     closeTab,
-    closeComposeTab,
     closeSideChatTab,
     handleActivateFileTab,
     handleActivateTerminalTab,
@@ -2054,7 +2028,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       focusRequest={newTabFocusRequest}
       onSelect={handleSelectFileSearchResult}
       onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
-      onStartCompose={handleStartCompose}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
@@ -2105,15 +2078,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sourceTimelineRows={timelineRows}
       resolveMentionLink={resolveMentionLink}
       onSetThreadId={setSideChatThreadId}
-    />
-  );
-  const isComposeTabActive = activeComposeTabId !== null;
-  const composeDeck = (
-    <ComposeTabDeck
-      composeTabs={composeTabs}
-      activeComposeTabId={activeComposeTabId}
-      resolveMentionLink={resolveMentionLink}
-      onSetThreadId={setComposeThreadId}
     />
   );
 
@@ -2171,8 +2135,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           isBrowserTabActive,
           sideChatDeck,
           isSideChatTabActive,
-          composeDeck,
-          isComposeTabActive,
           isOpen: isSecondaryPanelOpen,
           onClose: closeSecondaryPanel,
           onCollapse: closeSecondaryPanel,

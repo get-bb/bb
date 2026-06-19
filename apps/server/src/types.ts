@@ -4,7 +4,6 @@ import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
-import type { PeerShareService } from "./services/peer-share/peer-share-service.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TelemetryService } from "./services/system/telemetry.js";
@@ -46,11 +45,6 @@ export interface AppDeps {
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;
   machineAuth: MachineAuthService;
-  /**
-   * "AirDrop for threads" service. Optional so tests that don't exercise peer
-   * sharing can omit it; routes register only when present (see start-server).
-   */
-  peerShare?: PeerShareService;
   pendingInteractions: PendingInteractionLifecycle;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
