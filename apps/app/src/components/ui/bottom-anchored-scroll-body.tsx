@@ -403,14 +403,15 @@ export function BottomAnchoredScrollBody({
 
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
-  // restores it. Continuous capture (vs. on unmount) is required: the timeline
-  // subtree is force-remounted via `key={threadId}`, and an unmount-time read
-  // races that teardown.
-  const writeScrollAnchor = useCallback(() => {
+  // restores it. Continuous capture keeps the atom current while mounted; cleanup
+  // flushes through the effect-captured scroll area because refs can be nulled
+  // during unmount.
+  const writeScrollAnchor = useCallback((scrollAreaOverride?: HTMLElement) => {
     if (scrollAnchorThreadId === undefined) return;
-    const scrollArea = scrollAreaRef.current;
+    const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
     if (!scrollArea) return;
-    const atBottom = isScrolledNearBottom(scrollArea);
+    const atBottom =
+      shouldStickToBottomRef.current || isScrolledNearBottom(scrollArea);
     const anchorAtom =
       threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
     if (atBottom) {
@@ -672,7 +673,7 @@ export function BottomAnchoredScrollBody({
         window.clearTimeout(captureThrottle.trailingTimeout);
         captureThrottle.trailingTimeout = null;
       }
-      writeScrollAnchor();
+      writeScrollAnchor(scrollArea);
     };
   }, [
     cancelQueuedRestore,
