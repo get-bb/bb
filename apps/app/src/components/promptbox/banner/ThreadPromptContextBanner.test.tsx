@@ -263,6 +263,27 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("data-promptbox-hide-compact");
   });
 
+  it("reserves compact icon widths so banner segments do not overlap", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={makeGitSection("uncommitted")}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={{ pullRequest: pullRequestFixture }}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("min-w-11");
+    expect(markup).toContain("min-w-12");
+    expect(markup).toContain("min-w-9");
+    expect(markup).toContain("overflow-hidden");
+  });
+
   it("keeps the pull request action visible beside other context segments", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner

@@ -177,11 +177,13 @@ export function PullRequestStatusPill({
   pullRequest: ThreadPullRequest;
   className?: string;
 }) {
+  const hasCheckIcon = getPullRequestGithubCheckStatus(pullRequest) !== null;
   return (
     <span
       title={PR_STATUS_ICON[pullRequest.state].title}
       className={cn(
         "flex h-5 shrink-0 cursor-pointer items-center gap-1",
+        hasCheckIcon ? "min-w-9" : "min-w-4",
         className,
       )}
     >

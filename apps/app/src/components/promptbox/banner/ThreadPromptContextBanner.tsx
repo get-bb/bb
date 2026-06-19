@@ -243,7 +243,7 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex min-w-0 items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
+        "flex min-w-12 items-center overflow-hidden rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
@@ -517,11 +517,11 @@ function PullRequestBannerLink({
       onClick={handlePullRequestClick}
       title={pullRequest.title}
       aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
-      className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex min-w-11 items-center gap-1.5 overflow-hidden rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <PullRequestStatusPill pullRequest={pullRequest} />
       {showLabel ? (
-        <span className="shrink-0">
+        <span className="min-w-0 truncate">
           PR #{pullRequest.number}
           {showStateLabel && pullRequest.state !== "open"
             ? ` · ${stateDisplay.label}`
