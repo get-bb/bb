@@ -380,7 +380,7 @@ function UserConversationMessage({
 
   return (
     <div className="w-full">
-      <div className="group/message ml-auto w-fit max-w-[80%]">
+      <div className="group/message ml-auto w-fit max-w-[70%]">
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
             <TurnRequestLabel
@@ -389,7 +389,7 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="rounded-2xl bg-surface-recessed px-3.5 py-2 text-sm leading-relaxed text-foreground">
+        <div className="rounded-2xl border border-border bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
