@@ -52,6 +52,7 @@ interface UseEnvironmentDiffFilesOptions extends QueryOptions {
 
 const ENVIRONMENT_PULL_REQUEST_STALE_MS = 30_000;
 const ENVIRONMENT_SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
+const ENVIRONMENT_ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_LIMIT = 50;
 /** Staleness window for the environment diff TOC query. */
@@ -132,6 +133,21 @@ export function getEnvironmentPullRequestStaleTime(
     : ENVIRONMENT_PULL_REQUEST_STALE_MS;
 }
 
+export function getEnvironmentPullRequestRefetchInterval(
+  pullRequest: ThreadPullRequest | null | undefined,
+): number | false {
+  if (!pullRequest || pullRequest.state !== "open") {
+    return false;
+  }
+  if (
+    pullRequest.checks.state === "pending" ||
+    pullRequest.mergeability.state === "unknown"
+  ) {
+    return ENVIRONMENT_ACTIVE_PULL_REQUEST_REFETCH_MS;
+  }
+  return false;
+}
+
 export function useEnvironmentPullRequest(
   environmentId: string | null | undefined,
   options?: QueryOptions,
@@ -149,6 +165,8 @@ export function useEnvironmentPullRequest(
     enabled,
     refetchOnMount: true,
     refetchOnWindowFocus: "always",
+    refetchInterval: (query) =>
+      getEnvironmentPullRequestRefetchInterval(query.state.data?.pullRequest),
     staleTime: (query) =>
       getEnvironmentPullRequestStaleTime(query.state.data?.pullRequest),
   });
