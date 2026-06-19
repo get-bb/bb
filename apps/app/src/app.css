@@ -118,9 +118,11 @@
     }
   }
 
-  @container promptbox-shell (max-width: 34rem) {
+  @container promptbox-shell (max-width: 22rem) {
     [data-promptbox-shell] [data-promptbox-full-label],
-    [data-promptbox-shell] [data-promptbox-hide-compact] {
+    [data-promptbox-shell] [data-promptbox-hide-compact],
+    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
+    [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }
 
@@ -136,13 +138,6 @@
     [data-promptbox-shell] [data-promptbox-project-control] {
       flex-shrink: 0;
       max-inline-size: 10rem;
-    }
-  }
-
-  @container promptbox-shell (max-width: 22rem) {
-    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
-    [data-promptbox-shell] [data-promptbox-hide-tiny] {
-      display: none !important;
     }
   }
 
