@@ -831,18 +831,18 @@ export function PromptBoxInternal({
     extensions: [
       StarterKit.configure({
         // Markdown formatting: marks (bold/italic/code) + block nodes
-        // (heading/lists/codeBlock/blockquote). Each enabled node/mark has a
+        // (heading/lists/blockquote). Each enabled node/mark has a
         // markdown text representation in prompt-editor-serialization.ts so the
         // submitted prompt is plain markdown. StarterKit ships input rules for
-        // these (`# `, `- `, `1. `, ```` ``` ````, `**`, `_`, `` ` ``), so
-        // typing applies formatting live. link/underline stay disabled: they
-        // have no clean markdown round-trip here (underline isn't markdown;
-        // links need authoring UI we don't provide).
+        // these (`# `, `- `, `1. `, `**`, `_`, `` ` ``), so typing applies
+        // formatting live. Code blocks/link/underline stay disabled: code
+        // blocks make multiline prompt editing too sticky; underline isn't
+        // markdown; links need authoring UI we don't provide.
         blockquote: {},
         bold: {},
         bulletList: {},
         code: {},
-        codeBlock: {},
+        codeBlock: false,
         dropcursor: false,
         gapcursor: false,
         heading: {},
@@ -1884,7 +1884,6 @@ export function PromptBoxInternal({
                 "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
                 "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
                 "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
-                "[&_.ProseMirror_pre]:my-1 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-surface-selected [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_pre]:font-mono [&_.ProseMirror_pre]:text-[0.9em] [&_.ProseMirror_pre_code]:bg-transparent [&_.ProseMirror_pre_code]:p-0",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",

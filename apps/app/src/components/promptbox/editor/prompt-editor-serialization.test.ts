@@ -23,7 +23,7 @@ const schema = getSchema([
     bold: {},
     bulletList: {},
     code: {},
-    codeBlock: {},
+    codeBlock: false,
     dropcursor: false,
     gapcursor: false,
     heading: {},
@@ -249,18 +249,6 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
         },
       ]).text,
     ).toBe("- a\n  - a1");
-  });
-
-  it("serializes a fenced code block with its language", () => {
-    expect(
-      serialize([
-        {
-          type: "codeBlock",
-          attrs: { language: "js" },
-          content: [{ type: "text", text: "const a = 1;\nconst b = 2;" }],
-        },
-      ]).text,
-    ).toBe("```js\nconst a = 1;\nconst b = 2;\n```");
   });
 
   it("separates stacked blocks with a single newline", () => {

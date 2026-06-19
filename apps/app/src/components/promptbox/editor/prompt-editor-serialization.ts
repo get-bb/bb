@@ -431,17 +431,6 @@ export function promptEditorValueFromDoc(
       return;
     }
 
-    if (node.type.name === "codeBlock") {
-      if (hasSerializedBlock) {
-        text += "\n";
-      }
-      hasSerializedBlock = true;
-      const language =
-        typeof node.attrs.language === "string" ? node.attrs.language : "";
-      text += `\`\`\`${language}\n${node.textContent}\n\`\`\``;
-      return;
-    }
-
     if (node.type.name === "bulletList" || node.type.name === "orderedList") {
       appendListItems(node, node.type.name === "orderedList", 0);
       return;

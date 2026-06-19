@@ -12,7 +12,7 @@ const schema = getSchema([
     bold: {},
     bulletList: {},
     code: {},
-    codeBlock: {},
+    codeBlock: false,
     dropcursor: false,
     gapcursor: false,
     heading: {},
