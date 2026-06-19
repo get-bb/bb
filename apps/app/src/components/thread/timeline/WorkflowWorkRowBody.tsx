@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { isSettledWorkflowAgentState } from "@bb/domain";
 import type {
   WorkflowAgentSnapshot,
@@ -5,6 +6,7 @@ import type {
 } from "@bb/domain";
 import type { TimelineViewWorkflowWorkRow } from "@bb/thread-view";
 import { Icon } from "../../ui/icon.js";
+import type { DetailScrollSize } from "../../ui/detail-scroll-size.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { cn } from "@/lib/utils";
 
@@ -216,10 +218,227 @@ function phaseProgressLabel(agents: readonly WorkflowAgentSnapshot[]): string {
   return `${settled}/${agents.length}`;
 }
 
+function groupKey(group: WorkflowPhaseGroup): string {
+  return group.phase ? `phase-${group.phase.index}` : "unphased";
+}
+
+/**
+ * The phase that should be expanded by default in collapsible mode: the one
+ * with a running agent, else the first phase still in flight, else the last
+ * phase that ever produced an agent. Returns null when there is nothing to
+ * surface (no agents at all).
+ */
+function activePhaseKey(groups: readonly WorkflowPhaseGroup[]): string | null {
+  const running = groups.find((group) =>
+    group.agents.some((agent) => agent.state === "running"),
+  );
+  if (running) {
+    return groupKey(running);
+  }
+  const inFlight = groups.find(
+    (group) =>
+      group.agents.length > 0 &&
+      !group.agents.every((agent) => isSettledWorkflowAgentState(agent.state)),
+  );
+  if (inFlight) {
+    return groupKey(inFlight);
+  }
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i].agents.length > 0) {
+      return groupKey(groups[i]);
+    }
+  }
+  return null;
+}
+
+function StaticPhaseGroup({
+  group,
+  workflowSettled,
+}: {
+  group: WorkflowPhaseGroup;
+  workflowSettled: boolean;
+}) {
+  const agentLines = group.agents.map((agent) => (
+    <WorkflowAgentLine
+      key={agent.index}
+      agent={agent}
+      workflowSettled={workflowSettled}
+    />
+  ));
+  // Phase-less trailing agents have no header.
+  if (!group.phase) {
+    return <div>{agentLines}</div>;
+  }
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 px-2 py-0.5">
+        <span className="text-xs font-medium text-foreground">
+          {group.phase.title}
+        </span>
+        <span className="text-xs text-subtle-foreground">
+          {phaseProgressLabel(group.agents)}
+        </span>
+      </div>
+      {agentLines}
+    </div>
+  );
+}
+
+// Leaves a small gap above the active phase when it scrolls into view so its
+// header clears the container's top fade instead of sitting flush against it.
+const ACTIVE_PHASE_SCROLL_OFFSET = 12;
+
+function CollapsiblePhaseSection({
+  group,
+  expanded,
+  isActive,
+  onToggle,
+  workflowSettled,
+}: {
+  group: WorkflowPhaseGroup;
+  expanded: boolean;
+  /**
+   * Whether this is the workflow's active phase. When a phase becomes active it
+   * scrolls itself to the top of the container so the view follows the run
+   * forward instead of leaving the user parked on a finished phase.
+   */
+  isActive: boolean;
+  onToggle: () => void;
+  workflowSettled: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const scroller = el.closest("[data-detail-scroll-area]");
+    if (scroller instanceof HTMLElement) {
+      scroller.scrollTop +=
+        el.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        ACTIVE_PHASE_SCROLL_OFFSET;
+    }
+  }, [isActive]);
+
+  const agentLines = group.agents.map((agent) => (
+    <WorkflowAgentLine
+      key={agent.index}
+      agent={agent}
+      workflowSettled={workflowSettled}
+    />
+  ));
+
+  // Phase-less trailing agents have no header to collapse under.
+  if (!group.phase) {
+    return <div ref={ref}>{agentLines}</div>;
+  }
+
+  const progress = phaseProgressLabel(group.agents);
+  // A declared-but-empty phase has nothing to reveal, so it isn't a toggle.
+  if (group.agents.length === 0) {
+    return (
+      <div ref={ref} className="flex items-center gap-1.5 px-2 py-0.5">
+        <span className="size-3 shrink-0" aria-hidden="true" />
+        <span className="text-xs font-medium text-foreground">
+          {group.phase.title}
+        </span>
+        <span className="text-xs text-subtle-foreground">{progress}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left transition-colors hover:bg-state-hover"
+      >
+        <Icon
+          name="ChevronDown"
+          className={cn(
+            "size-3 shrink-0 text-subtle-foreground transition-transform duration-200",
+            !expanded && "-rotate-90",
+          )}
+          aria-hidden="true"
+        />
+        <span className="text-xs font-medium text-foreground">
+          {group.phase.title}
+        </span>
+        <span className="text-xs text-subtle-foreground">{progress}</span>
+      </button>
+      {expanded ? agentLines : null}
+    </div>
+  );
+}
+
+/**
+ * Collapsible phase tree for the prompt-stack banner. Expansion is derived from
+ * the active phase so it auto-advances as the run progresses — the live phase is
+ * open and the rest collapse, with no extra render to keep state in sync. A
+ * click records an override that sticks across active changes, so a phase the
+ * user explicitly opened (or closed) stays that way.
+ */
+function CollapsiblePhaseGroups({
+  groups,
+  workflowSettled,
+}: {
+  groups: readonly WorkflowPhaseGroup[];
+  workflowSettled: boolean;
+}) {
+  const activeKey = activePhaseKey(groups);
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
+  );
+  const isExpanded = (key: string): boolean =>
+    overrides.get(key) ?? key === activeKey;
+  const toggle = (key: string) =>
+    setOverrides((current) => {
+      const wasExpanded = current.get(key) ?? key === activeKey;
+      const next = new Map(current);
+      next.set(key, !wasExpanded);
+      return next;
+    });
+
+  return (
+    <>
+      {groups.map((group) => {
+        const key = groupKey(group);
+        return (
+          <CollapsiblePhaseSection
+            key={key}
+            group={group}
+            expanded={isExpanded(key)}
+            isActive={key === activeKey}
+            onToggle={() => toggle(key)}
+            workflowSettled={workflowSettled}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export function WorkflowWorkRowBody({
   row,
+  size = "delegation",
+  collapsiblePhases = false,
 }: {
   row: TimelineViewWorkflowWorkRow;
+  /** Max-height tier for the scroll container. */
+  size?: DetailScrollSize;
+  /**
+   * When true, each phase is an independent collapse toggle and expansion
+   * follows the active phase as the run advances. Used by the prompt-stack
+   * banner where a long workflow needs to stay glanceable; the timeline keeps
+   * phases fully open.
+   */
+  collapsiblePhases?: boolean;
 }) {
   const workflowSettled = row.status !== "pending";
 
@@ -243,32 +462,28 @@ export function WorkflowWorkRowBody({
 
   return (
     <TimelineDetailScroll
-      size="delegation"
-      streaming={row.status === "pending"}
+      size={size}
+      // Collapsible mode lets the active phase pull itself into view instead of
+      // chasing the bottom, which in a long run would only show empty queued
+      // phases.
+      streaming={collapsiblePhases ? false : row.status === "pending"}
       contentKey={contentKey}
     >
       <div className="flex flex-col gap-1 py-1">
-        {groups.map((group) => (
-          <div key={group.phase?.index ?? "unphased"}>
-            {group.phase ? (
-              <div className="flex items-baseline gap-2 px-2 py-0.5">
-                <span className="text-xs font-medium text-foreground">
-                  {group.phase.title}
-                </span>
-                <span className="text-xs text-subtle-foreground">
-                  {phaseProgressLabel(group.agents)}
-                </span>
-              </div>
-            ) : null}
-            {group.agents.map((agent) => (
-              <WorkflowAgentLine
-                key={agent.index}
-                agent={agent}
-                workflowSettled={workflowSettled}
-              />
-            ))}
-          </div>
-        ))}
+        {collapsiblePhases ? (
+          <CollapsiblePhaseGroups
+            groups={groups}
+            workflowSettled={workflowSettled}
+          />
+        ) : (
+          groups.map((group) => (
+            <StaticPhaseGroup
+              key={groupKey(group)}
+              group={group}
+              workflowSettled={workflowSettled}
+            />
+          ))
+        )}
         {row.error ? (
           <div className="px-2 py-0.5 text-xs text-destructive/80">
             {row.error}

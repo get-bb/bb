@@ -52,10 +52,12 @@ export interface ThreadWorkflowCardProps {
  * Collapsible workflow card for the prompt stack above the composer. Surfaces a
  * running Workflow tool run the same way ThreadGoalCard surfaces the active
  * goal: collapsed shows the workflow name, agent progress, and live elapsed
- * time; expanded reveals the full phase/agent tree (reusing WorkflowWorkRowBody
- * so there is a single rendering path). Only rendered while
- * the workflow is running — once it settles it drops out of the prompt stack
- * and its timeline row carries the terminal state.
+ * time; expanded reveals the phase/agent tree (reusing WorkflowWorkRowBody so
+ * there is a single rendering path). In the banner the tree caps at a max
+ * height and scrolls, and each phase is its own collapse toggle whose expansion
+ * follows the active phase as the run advances, so a long run stays glanceable.
+ * Only rendered while the workflow is running — once it settles it drops out of
+ * the prompt stack and its timeline row carries the terminal state.
  */
 export function ThreadWorkflowCard({
   workflow,
@@ -128,7 +130,7 @@ export function ThreadWorkflowCard({
         )}
       >
         <div className="overflow-hidden bg-popover">
-          <WorkflowWorkRowBody row={workflow} />
+          <WorkflowWorkRowBody row={workflow} size="base" collapsiblePhases />
         </div>
       </section>
     </PromptStackCard>

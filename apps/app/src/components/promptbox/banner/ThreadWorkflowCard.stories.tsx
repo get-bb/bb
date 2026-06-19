@@ -1,5 +1,10 @@
-import { useState } from "react";
-import type { WorkflowProgressSnapshot } from "@bb/domain";
+import { useMemo, useState } from "react";
+import type {
+  WorkflowAgentSnapshot,
+  WorkflowAgentState,
+  WorkflowPhaseSnapshot,
+  WorkflowProgressSnapshot,
+} from "@bb/domain";
 import { ThreadWorkflowCard } from "./ThreadWorkflowCard";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
@@ -71,6 +76,104 @@ const runningWorkflow = workflowRow({
   usage: { totalTokens: 633_400, toolUses: 261, durationMs: 326_000 },
 });
 
+// A long workflow (~40 phases) so the banner's max-height/scroll and per-phase
+// collapse are exercised. Phases before the active one are done, the active one
+// has a running agent, and the rest are queued.
+const PHASE_VERBS = [
+  "Scan",
+  "Map",
+  "Audit",
+  "Refactor",
+  "Verify",
+  "Synthesize",
+  "Index",
+  "Trace",
+  "Validate",
+  "Summarize",
+];
+const PHASE_TARGETS = [
+  "data model",
+  "server routes",
+  "CLI surface",
+  "UI components",
+  "auth flow",
+  "migrations",
+  "telemetry",
+  "fixtures",
+  "docs",
+  "tests",
+];
+
+function phaseTitle(i: number): string {
+  const verb = PHASE_VERBS[i % PHASE_VERBS.length];
+  const target = PHASE_TARGETS[(i * 3) % PHASE_TARGETS.length];
+  return `${verb} ${target}`;
+}
+
+function slug(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+function buildManyPhasesSnapshot(
+  phaseCount: number,
+  activePhase: number,
+): WorkflowProgressSnapshot {
+  const phases: WorkflowPhaseSnapshot[] = [];
+  const agents: WorkflowAgentSnapshot[] = [];
+  const progressAt = 1780540129098;
+  let agentIndex = 1;
+  for (let p = 1; p <= phaseCount; p++) {
+    const title = phaseTitle(p - 1);
+    phases.push({ index: p, title });
+    const agentCount = ((p - 1) % 3) + 1; // 1..3 agents per phase
+    for (let a = 0; a < agentCount; a++) {
+      const done = p < activePhase;
+      const running = p === activePhase && a === 0;
+      const state: WorkflowAgentState = done
+        ? "done"
+        : running
+          ? "running"
+          : "queued";
+      const agent: WorkflowAgentSnapshot = {
+        index: agentIndex++,
+        label: `${slug(title)}-${a + 1}`,
+        state,
+        model: a % 2 === 0 ? "opus" : "haiku",
+        attempt: 1,
+        cached: false,
+        lastProgressAt: progressAt,
+        phaseIndex: p,
+        phaseTitle: title,
+        queuedAt: progressAt - 2_000,
+      };
+      if (state !== "queued") {
+        agent.startedAt = progressAt - 1_000;
+      }
+      if (done) {
+        agent.tokens = 42_000 + ((p * 7 + a * 13) % 90) * 1_000;
+        agent.toolCalls = 18 + ((p * 5 + a * 7) % 40);
+        agent.durationMs = 150_000 + ((p * 11 + a * 17) % 130) * 1_000;
+      } else if (running) {
+        agent.tokens = 28_400;
+        agent.toolCalls = 9;
+      }
+      agents.push(agent);
+    }
+  }
+  return { phases, agents };
+}
+
+const manyPhasesWorkflow = workflowRow({
+  id: "thr_fixture:workflow:many-phases:running",
+  status: "pending",
+  taskStatus: "running",
+  workflowName: "bb-repo-wide-audit",
+  description: "Audit the entire repository across forty phases",
+  startedAt: Date.now() - 1_472_000,
+  workflow: buildManyPhasesSnapshot(40, 12),
+  usage: { totalTokens: 4_210_000, toolUses: 1_284, durationMs: 1_472_000 },
+});
+
 function FauxComposer() {
   return (
     <div className="rounded-lg border border-border bg-popover p-3">
@@ -86,11 +189,15 @@ function FauxComposer() {
   );
 }
 
-function ToggleableCard() {
+function ToggleableCard({
+  workflow,
+}: {
+  workflow: typeof runningWorkflow;
+}) {
   const [expanded, setExpanded] = useState(true);
   return (
     <ThreadWorkflowCard
-      workflow={runningWorkflow}
+      workflow={workflow}
       isExpanded={expanded}
       onToggle={() => setExpanded((value) => !value)}
     />
@@ -107,7 +214,7 @@ export function Overview() {
       >
         <Stage>
           <div className="flex flex-col gap-2">
-            <ToggleableCard />
+            <ToggleableCard workflow={runningWorkflow} />
             <FauxComposer />
           </div>
         </Stage>
@@ -122,6 +229,69 @@ export function Overview() {
             isExpanded={collapsed}
             onToggle={() => setCollapsed((value) => !value)}
           />
+        </Stage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ManyPhases() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="40 phases"
+        hint="caps at a max height and scrolls; each phase is its own toggle and only the active phase is expanded by default"
+      >
+        <Stage>
+          <div className="flex flex-col gap-2">
+            <ToggleableCard workflow={manyPhasesWorkflow} />
+            <FauxComposer />
+          </div>
+        </Stage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function AutoAdvance() {
+  const [activePhase, setActivePhase] = useState(3);
+  const [expanded, setExpanded] = useState(true);
+  const workflow = useMemo(
+    () =>
+      workflowRow({
+        id: "thr_fixture:workflow:auto-advance:running",
+        status: "pending",
+        taskStatus: "running",
+        workflowName: "bb-repo-wide-audit",
+        description: "Audit the entire repository across forty phases",
+        startedAt: Date.now() - 1_472_000,
+        workflow: buildManyPhasesSnapshot(40, activePhase),
+        usage: { totalTokens: 4_210_000, toolUses: 1_284, durationMs: 1_472_000 },
+      }),
+    [activePhase],
+  );
+  return (
+    <StoryCard>
+      <StoryRow
+        label="auto-advance"
+        hint="advancing the run moves the open phase forward and scrolls it into view; phases you toggle yourself stay as you left them"
+      >
+        <Stage>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setActivePhase((p) => Math.min(40, p + 1))}
+              className="self-start rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-state-hover"
+            >
+              Advance to phase {Math.min(40, activePhase + 1)}
+            </button>
+            <ThreadWorkflowCard
+              workflow={workflow}
+              isExpanded={expanded}
+              onToggle={() => setExpanded((value) => !value)}
+            />
+            <FauxComposer />
+          </div>
         </Stage>
       </StoryRow>
     </StoryCard>
