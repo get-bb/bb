@@ -1,10 +1,22 @@
 import {
   promptInputHasCommandMention,
   requireThreadEventScopeTurnId,
+  removeCommandMentionsFromPromptInput,
   type Thread,
   type ThreadTimelineActivePromptMode,
 } from "@bb/domain";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
+import { parsePromptInput } from "./user-message-parsing.js";
+
+type PlanModeProviderId = ThreadTimelineActivePromptMode["providerId"];
+
+const PLAN_COMMAND_SELECTOR = { trigger: "/", name: "plan" } as const;
+
+function isPlanModeProviderId(
+  providerId: string | undefined,
+): providerId is PlanModeProviderId {
+  return providerId === "claude-code" || providerId === "codex";
+}
 
 interface ActiveTurnInput {
   request: Extract<
@@ -12,6 +24,16 @@ interface ActiveTurnInput {
     { type: "client/turn/requested" }
   >;
   seq: number;
+}
+
+function promptTextWithoutPlanCommand(
+  request: ActiveTurnInput["request"],
+): string {
+  const cleanedInput = removeCommandMentionsFromPromptInput(
+    request.input,
+    PLAN_COMMAND_SELECTOR,
+  );
+  return parsePromptInput(cleanedInput)?.text.trim() ?? "";
 }
 
 function extractActiveTurnInputs(
@@ -74,7 +96,7 @@ export function extractThreadTimelineActivePromptMode({
   providerId: string | undefined;
   threadStatus: Thread["status"];
 }): ThreadTimelineActivePromptMode | null {
-  if (threadStatus !== "active" || providerId !== "claude-code") {
+  if (threadStatus !== "active" || !isPlanModeProviderId(providerId)) {
     return null;
   }
 
@@ -82,8 +104,7 @@ export function extractThreadTimelineActivePromptMode({
   for (const activeTurn of extractActiveTurnInputs(events)) {
     if (
       !promptInputHasCommandMention(activeTurn.request.input, {
-        trigger: "/",
-        name: "plan",
+        ...PLAN_COMMAND_SELECTOR,
       })
     ) {
       continue;
@@ -96,7 +117,8 @@ export function extractThreadTimelineActivePromptMode({
   return latestPlanTurn
     ? {
         mode: "plan",
-        providerId: "claude-code",
+        providerId,
+        prompt: promptTextWithoutPlanCommand(latestPlanTurn.request),
       }
     : null;
 }

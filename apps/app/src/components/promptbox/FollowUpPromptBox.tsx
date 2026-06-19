@@ -8,7 +8,11 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import type { PromptTextMention, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type {
+  PromptTextMention,
+  ThreadRuntimeDisplayStatus,
+  ThreadTimelineActivePromptMode,
+} from "@bb/domain";
 import {
   PromptBoxInternal,
   type AttachmentsConfig,
@@ -28,7 +32,10 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import { permissionDisplayForPromptMode } from "./effective-prompt-mode";
+import {
+  permissionDisplayForActivePromptMode,
+  permissionDisplayForPromptMode,
+} from "./effective-prompt-mode";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
   scrollToBottomOnSubmit?: boolean;
@@ -137,6 +144,7 @@ export interface FollowUpPromptBoxProps {
    * and passes it as a single element. Pass null to hide the stack entirely.
    */
   stack: ReactNode | null;
+  activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
@@ -197,6 +205,7 @@ function FollowUpPromptBoxWithComposer({
   id,
   attachments,
   stack,
+  activePromptMode,
   composer,
   environmentSummary,
   contextWindowUsage,
@@ -236,12 +245,18 @@ function FollowUpPromptBoxWithComposer({
   );
   const permissionDisplayOverride = useMemo(
     () =>
+      permissionDisplayForActivePromptMode(activePromptMode) ??
       permissionDisplayForPromptMode({
         providerId: execution.provider.selectedId,
         value: composer.message,
         mentionRanges: composer.mentionRanges,
       }),
-    [composer.mentionRanges, composer.message, execution.provider.selectedId],
+    [
+      activePromptMode,
+      composer.mentionRanges,
+      composer.message,
+      execution.provider.selectedId,
+    ],
   );
   // The side chat renders the SAME permission picker as the main thread, just
   // disabled (read-only) — identical label and position. No static-label

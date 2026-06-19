@@ -346,6 +346,7 @@ export function ThreadDetailPromptArea({
   );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
+  const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
@@ -996,6 +997,17 @@ export function ThreadDetailPromptArea({
       projectName,
     ],
   );
+  const activePromptModeCard = useMemo(
+    () => (
+      <ThreadPromptModeCard
+        activePromptMode={activePromptMode}
+        isExpanded={isPromptModeExpanded}
+        onExitPlanMode={handleStopThread}
+        onToggle={() => setIsPromptModeExpanded((value) => !value)}
+      />
+    ),
+    [activePromptMode, handleStopThread, isPromptModeExpanded],
+  );
   const promptStack = useMemo(
     () => (
       <>
@@ -1009,7 +1021,7 @@ export function ThreadDetailPromptArea({
           isExpanded={isBackgroundCommandsExpanded}
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
-        <ThreadPromptModeCard activePromptMode={activePromptMode} />
+        {activePromptModeCard}
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -1095,7 +1107,7 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       goal,
-      activePromptMode,
+      activePromptModeCard,
       isGoalExpanded,
       isTodoExpanded,
       activeWorkflow,
@@ -1118,11 +1130,22 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
+    if (!activePromptMode) {
+      return (
+        <ThreadPendingInteractionBanner
+          interaction={activePendingInteraction}
+          threadId={thread.id}
+        />
+      );
+    }
     return (
-      <ThreadPendingInteractionBanner
-        interaction={activePendingInteraction}
-        threadId={thread.id}
-      />
+      <div className="space-y-2">
+        {activePromptModeCard}
+        <ThreadPendingInteractionBanner
+          interaction={activePendingInteraction}
+          threadId={thread.id}
+        />
+      </div>
     );
   }
 
@@ -1131,6 +1154,7 @@ export function ThreadDetailPromptArea({
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={attachmentsConfig}
       stack={promptStack}
+      activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
       focusEndKey={focusEndKey}

@@ -28,21 +28,60 @@ export function Overview() {
   return (
     <StoryCard>
       <StoryRow
-        label="creating plan"
-        hint="active Claude Code plan mode indicator above the composer"
+        label="collapsed"
+        hint="active Claude Code plan mode indicator with cleaned prompt"
       >
         <Stage>
           <div className="flex flex-col gap-2">
             <ThreadPromptModeCard
-              activePromptMode={{ mode: "plan", providerId: "claude-code" }}
+              activePromptMode={{
+                mode: "plan",
+                providerId: "claude-code",
+                prompt: "inspect the failing command before making changes",
+              }}
+              isExpanded={false}
+              onExitPlanMode={() => {}}
+              onToggle={() => {}}
             />
             <FauxComposer />
           </div>
         </Stage>
       </StoryRow>
+      <StoryRow label="expanded" hint="unfurled prompt body is capped">
+        <Stage>
+          <ThreadPromptModeCard
+            activePromptMode={{
+              mode: "plan",
+              providerId: "claude-code",
+              prompt:
+                "inspect the failing command before making changes. Check the relevant timeline state, compare the provider-specific behavior, and explain the safest implementation path before editing.",
+            }}
+            isExpanded
+            onExitPlanMode={() => {}}
+            onToggle={() => {}}
+          />
+        </Stage>
+      </StoryRow>
+      <StoryRow label="codex" hint="same banner for Codex plan mode">
+        <Stage>
+          <ThreadPromptModeCard
+            activePromptMode={{
+              mode: "plan",
+              providerId: "codex",
+              prompt: "review the merge conflicts and propose a fix plan",
+            }}
+            isExpanded={false}
+            onToggle={() => {}}
+          />
+        </Stage>
+      </StoryRow>
       <StoryRow label="inactive" hint="renders nothing without active mode">
         <Stage>
-          <ThreadPromptModeCard activePromptMode={null} />
+          <ThreadPromptModeCard
+            activePromptMode={null}
+            isExpanded={false}
+            onToggle={() => {}}
+          />
         </Stage>
       </StoryRow>
     </StoryCard>

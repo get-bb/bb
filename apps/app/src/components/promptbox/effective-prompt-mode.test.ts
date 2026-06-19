@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { permissionDisplayForPromptMode } from "./effective-prompt-mode";
+import {
+  permissionDisplayForActivePromptMode,
+  permissionDisplayForPromptMode,
+} from "./effective-prompt-mode";
 
 describe("permissionDisplayForPromptMode", () => {
   it("shows plan mode for a Claude Code plan command pill", () => {
@@ -53,6 +56,28 @@ describe("permissionDisplayForPromptMode", () => {
             },
           },
         ],
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("permissionDisplayForActivePromptMode", () => {
+  it("shows Plan Mode while Claude Code is actively planning", () => {
+    expect(
+      permissionDisplayForActivePromptMode({
+        mode: "plan",
+        providerId: "claude-code",
+        prompt: "inspect the failing test",
+      }),
+    ).toMatchObject({ label: "Plan Mode", compactLabel: "Plan" });
+  });
+
+  it("does not relabel Codex plan mode as a permission mode", () => {
+    expect(
+      permissionDisplayForActivePromptMode({
+        mode: "plan",
+        providerId: "codex",
+        prompt: "inspect the failing test",
       }),
     ).toBeUndefined();
   });

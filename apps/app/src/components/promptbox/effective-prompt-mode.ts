@@ -1,5 +1,6 @@
 import {
   promptInputHasCommandMention,
+  type ThreadTimelineActivePromptMode,
   type PromptTextMention,
 } from "@bb/domain";
 
@@ -43,4 +44,16 @@ export function permissionDisplayForPromptMode(
     return undefined;
   }
   return CLAUDE_PLAN_PERMISSION_DISPLAY;
+}
+
+export function permissionDisplayForActivePromptMode(
+  activePromptMode: ThreadTimelineActivePromptMode | null | undefined,
+): PermissionDisplayOverride | undefined {
+  if (
+    activePromptMode?.mode === "plan" &&
+    activePromptMode.providerId === "claude-code"
+  ) {
+    return CLAUDE_PLAN_PERMISSION_DISPLAY;
+  }
+  return undefined;
 }
