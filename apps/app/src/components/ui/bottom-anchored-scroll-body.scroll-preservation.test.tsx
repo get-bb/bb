@@ -352,6 +352,81 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
   });
 
+  it("preserves bottom intent when unmounting during transient off-bottom layout", () => {
+    const { scrollArea, rowElements, unmount } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -20,
+      bottom: 80,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: 80,
+      bottom: 180,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      // Layout/streaming has temporarily left us visibly off the physical bottom,
+      // but no user scroll intent disabled sticky-bottom.
+      scrollTop: 250,
+    });
+
+    unmount();
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+  });
+
+  it("preserves a user-scrolled row when unmounting before the scroll event", () => {
+    const { scrollArea, rowElements, unmount } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -20,
+      bottom: 80,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
+      top: 80,
+      bottom: 180,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.wheel(scrollArea);
+    unmount();
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+  });
+
   it("restores thread A's own anchor after a fast A -> B -> A switch", () => {
     // Leave A mid-timeline at row-b.
     const a1 = renderTimeline({

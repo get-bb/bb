@@ -259,6 +259,7 @@ export function BottomAnchoredScrollBody({
     lastWriteAt: number;
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
+  const userDetachedFromBottomRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const cancelPendingScrollRestore = useCallback(() => {
@@ -327,6 +328,7 @@ export function BottomAnchoredScrollBody({
     cancelPendingScrollRestore();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
+    userDetachedFromBottomRef.current = false;
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
     if (scrollArea) {
@@ -398,19 +400,34 @@ export function BottomAnchoredScrollBody({
     pendingPrependAnchorRef.current = null;
   });
 
+  const hasRecentUserScrollIntent = useCallback(() => {
+    return (
+      pointerScrollIntentRef.current ||
+      window.performance.now() <= userScrollIntentUntilRef.current
+    );
+  }, []);
+
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
-  // restores it. Continuous capture (vs. on unmount) is required: the timeline
-  // subtree is force-remounted via `key={threadId}`, and an unmount-time read
-  // races that teardown.
-  const writeScrollAnchor = useCallback(() => {
+  // restores it. Continuous capture keeps the atom current while mounted; cleanup
+  // flushes through the effect-captured scroll area because refs can be nulled
+  // during unmount.
+  const writeScrollAnchor = useCallback((scrollAreaOverride?: HTMLElement) => {
     if (scrollAnchorThreadId === undefined) return;
-    const scrollArea = scrollAreaRef.current;
+    const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
     if (!scrollArea) return;
-    const atBottom = isScrolledNearBottom(scrollArea);
+    const atBottomByGeometry = isScrolledNearBottom(scrollArea);
     const anchorAtom =
       threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
-    if (atBottom) {
+    if (atBottomByGeometry) {
+      userDetachedFromBottomRef.current = false;
+      store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
+      return;
+    }
+    if (hasRecentUserScrollIntent()) {
+      userDetachedFromBottomRef.current = true;
+    }
+    if (shouldStickToBottomRef.current && !userDetachedFromBottomRef.current) {
       store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
       return;
     }
@@ -422,7 +439,7 @@ export function BottomAnchoredScrollBody({
       offsetWithinRow: topMostRow.offsetWithinRow,
       atBottom: false,
     });
-  }, [scrollAnchorThreadId, store]);
+  }, [hasRecentUserScrollIntent, scrollAnchorThreadId, store]);
 
   const captureScrollAnchorThrottled = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
@@ -504,6 +521,7 @@ export function BottomAnchoredScrollBody({
     if (!scrollArea) return;
 
     if (isScrolledNearBottom(scrollArea)) {
+      userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;
       setIsAtBottom(true);
       // A deliberate scroll to the bottom during the restore settle window means
@@ -512,18 +530,15 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    const hasUserScrollIntent =
-      pointerScrollIntentRef.current ||
-      window.performance.now() <= userScrollIntentUntilRef.current;
+    if (!hasRecentUserScrollIntent()) return;
 
-    if (!hasUserScrollIntent) return;
-
+    userDetachedFromBottomRef.current = true;
     shouldStickToBottomRef.current = false;
     setIsAtBottom(false);
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore]);
+  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();
@@ -669,7 +684,7 @@ export function BottomAnchoredScrollBody({
         window.clearTimeout(captureThrottle.trailingTimeout);
         captureThrottle.trailingTimeout = null;
       }
-      writeScrollAnchor();
+      writeScrollAnchor(scrollArea);
     };
   }, [
     cancelQueuedRestore,
