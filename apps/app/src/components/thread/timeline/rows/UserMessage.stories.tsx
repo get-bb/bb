@@ -818,6 +818,7 @@ export function ParentChildSystemMessages() {
               senderThreadTitle={null}
               childOrigin={null}
               senderChildOrigin={null}
+              resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={fixture.message.text}
