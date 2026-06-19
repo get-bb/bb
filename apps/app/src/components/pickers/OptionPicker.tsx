@@ -83,6 +83,8 @@ interface OptionPickerProps<T extends string> {
    * counterpart, just disabled.
    */
   disabled?: boolean;
+  /** Keep the chevron visible even when disabled, for effective modes that explain why the menu is locked. */
+  showChevronWhenDisabled?: boolean;
 }
 
 export function OptionDisplay({
@@ -146,6 +148,7 @@ export function OptionPicker<T extends string>({
   align = "start",
   displayOverride,
   disabled,
+  showChevronWhenDisabled,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
   const selectedTone = displayOverride
@@ -208,8 +211,7 @@ export function OptionPicker<T extends string>({
           <span className="min-w-0 truncate">{selectedLabel}</span>
         )}
       </span>
-      {/* Disabled triggers drop the chevron entirely — there is no menu to open. */}
-      {disabled ? null : (
+      {disabled && !showChevronWhenDisabled ? null : (
         <Icon
           name="ChevronDown"
           className={cn(

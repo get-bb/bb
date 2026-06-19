@@ -40,4 +40,25 @@ describe("PermissionModePicker", () => {
       "Permission mode: Plan Mode - Claude Code will plan without normal full-access execution.",
     );
   });
+
+  it("can keep the chevron visible while disabled", () => {
+    render(
+      <PermissionModePicker
+        value="full"
+        options={permissionOptions}
+        onChange={vi.fn()}
+        supported
+        disabled
+        showChevronWhenDisabled
+        displayOverride={{
+          label: "Plan Mode",
+          compactLabel: "Plan",
+        }}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Permission mode" });
+    expect(trigger).toHaveProperty("disabled", true);
+    expect(trigger.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
+  });
 });

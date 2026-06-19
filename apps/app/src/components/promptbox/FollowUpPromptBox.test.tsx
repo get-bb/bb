@@ -9,6 +9,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   scrollToBottom: vi.fn(),
+  permissionModePicker: vi.fn(),
 }));
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
@@ -55,7 +56,13 @@ vi.mock("@/components/promptbox/ExecutionControls", () => ({
 }));
 
 vi.mock("@/components/pickers/PermissionModePicker", () => ({
-  PermissionModePicker: () => null,
+  PermissionModePicker: (props: {
+    disabled?: boolean;
+    showChevronWhenDisabled?: boolean;
+  }) => {
+    mocks.permissionModePicker(props);
+    return null;
+  },
 }));
 
 vi.mock("@/views/thread-detail/ThreadTimelineScrollToBottomButton", () => ({
@@ -173,5 +180,30 @@ describe("FollowUpPromptBox", () => {
 
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
     expect(mocks.scrollToBottom).not.toHaveBeenCalled();
+  });
+
+  it("disables the permission picker while plan mode is active", () => {
+    const props = createFollowUpPromptBoxProps({
+      kind: "queue",
+      onStop: vi.fn(),
+    });
+
+    render(
+      <FollowUpPromptBox
+        {...props}
+        activePromptMode={{
+          mode: "plan",
+          providerId: "codex",
+          prompt: "inspect the failing test",
+        }}
+      />,
+    );
+
+    expect(mocks.permissionModePicker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disabled: true,
+        showChevronWhenDisabled: true,
+      }),
+    );
   });
 });

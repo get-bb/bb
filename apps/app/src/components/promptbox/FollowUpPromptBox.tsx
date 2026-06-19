@@ -35,6 +35,8 @@ import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/
 import {
   permissionDisplayForActivePromptMode,
   permissionDisplayForPromptMode,
+  shouldDisablePermissionPickerForActivePromptMode,
+  shouldDisablePermissionPickerForPromptMode,
 } from "./effective-prompt-mode";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
@@ -243,24 +245,32 @@ function FollowUpPromptBoxWithComposer({
     () => <ExecutionControls {...execution} disabled={readOnly} />,
     [execution, readOnly],
   );
-  const permissionDisplayOverride = useMemo(
-    () =>
-      permissionDisplayForActivePromptMode(activePromptMode) ??
-      permissionDisplayForPromptMode({
-        providerId: execution.provider.selectedId,
-        value: composer.message,
-        mentionRanges: composer.mentionRanges,
-      }),
+  const promptModeInput = useMemo(
+    () => ({
+      providerId: execution.provider.selectedId,
+      value: composer.message,
+      mentionRanges: composer.mentionRanges,
+    }),
     [
-      activePromptMode,
       composer.mentionRanges,
       composer.message,
       execution.provider.selectedId,
     ],
   );
-  // The side chat renders the SAME permission picker as the main thread, just
-  // disabled (read-only) — identical label and position. No static-label
-  // special-casing: `readOnly` flows to the picker's `disabled`.
+  const permissionDisplayOverride = useMemo(
+    () =>
+      permissionDisplayForActivePromptMode(activePromptMode) ??
+      permissionDisplayForPromptMode(promptModeInput),
+    [activePromptMode, promptModeInput],
+  );
+  const permissionPickerDisabledByPlanMode =
+    shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
+    shouldDisablePermissionPickerForPromptMode(promptModeInput);
+  const permissionPickerDisabled =
+    readOnly || permissionPickerDisabledByPlanMode;
+  // Side chat and active plan mode render the same permission picker as the
+  // main thread, but non-interactive so the displayed effective mode cannot
+  // diverge from the provider mode driving the current turn.
   const permissionControl = useMemo(
     () => (
       <PermissionModePicker
@@ -268,7 +278,8 @@ function FollowUpPromptBoxWithComposer({
         options={permission.options}
         onChange={permission.onChange}
         supported={permission.supported}
-        disabled={readOnly}
+        disabled={permissionPickerDisabled}
+        showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
         displayOverride={permissionDisplayOverride}
         className="h-6"
       />
@@ -279,7 +290,8 @@ function FollowUpPromptBoxWithComposer({
       permission.supported,
       permission.value,
       permissionDisplayOverride,
-      readOnly,
+      permissionPickerDisabledByPlanMode,
+      permissionPickerDisabled,
     ],
   );
   const stackRef = useRef<HTMLDivElement>(null);

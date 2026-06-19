@@ -9,10 +9,10 @@ afterEach(() => {
 });
 
 describe("ThreadPromptModeCard", () => {
-  it("shows the creating-plan state and cleaned prompt for active plan mode", () => {
+  it("toggles plan mode and shows the prompt only when expanded", () => {
     const onToggle = vi.fn();
     const onExitPlanMode = vi.fn();
-    render(
+    const { rerender } = render(
       <ThreadPromptModeCard
         activePromptMode={{
           mode: "plan",
@@ -26,7 +26,7 @@ describe("ThreadPromptModeCard", () => {
     );
 
     expect(screen.getByLabelText("Prompt mode").textContent).toContain(
-      "Creating plan",
+      "Plan",
     );
     expect(screen.getByLabelText("Prompt mode").textContent).toContain(
       "inspect the failing command",
@@ -34,10 +34,25 @@ describe("ThreadPromptModeCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Exit plan mode" }));
     expect(onExitPlanMode).toHaveBeenCalledTimes(1);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Plan mode: Creating plan" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ThreadPromptModeCard
+        activePromptMode={{
+          mode: "plan",
+          providerId: "claude-code",
+          prompt: "inspect the failing command",
+        }}
+        isExpanded={false}
+        onExitPlanMode={onExitPlanMode}
+        onToggle={onToggle}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Plan" }).textContent,
+    ).not.toContain("inspect the failing command");
   });
 
   it("hides when there is no active prompt mode", () => {

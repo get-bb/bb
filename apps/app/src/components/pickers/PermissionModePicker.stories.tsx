@@ -36,6 +36,25 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="plan mode locked"
+        hint="effective Plan Mode display, underlying permission unchanged"
+      >
+        <PermissionModePicker
+          value="full"
+          options={allOptions}
+          onChange={noop}
+          supported
+          disabled
+          showChevronWhenDisabled
+          displayOverride={{
+            label: "Plan Mode",
+            compactLabel: "Plan",
+            description:
+              "Claude Code will plan without normal full-access execution.",
+          }}
+        />
+      </StoryRow>
+      <StoryRow
         label="non-muted"
         hint="explicit muted={false} — for non-prompt-box use"
       >

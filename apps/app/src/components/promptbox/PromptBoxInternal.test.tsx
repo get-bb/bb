@@ -223,6 +223,15 @@ async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
   });
 }
 
+function pastePlainText(text: string) {
+  fireEvent.paste(getPromptEditorElement(), {
+    clipboardData: {
+      items: [],
+      getData: (type: string) => (type === "text/plain" ? text : ""),
+    },
+  });
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -477,6 +486,44 @@ describe("PromptBoxInternal prompt actions", () => {
           source: "command",
           origin: "user",
           label: "plan",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("pastes prompt action command tokens as goal and plan pills", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+    const text = "/plan inspect first\n/goal finish the change";
+
+    await focusPromptEnd(promptBoxRef);
+    pastePlainText(text);
+
+    await waitFor(() => expect(latestValue(changes)).toBe(text));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+      {
+        start: "/plan inspect first\n".length,
+        end: "/plan inspect first\n/goal".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "goal",
+          source: "command",
+          origin: "user",
+          label: "goal",
           argumentHint: null,
         },
       },

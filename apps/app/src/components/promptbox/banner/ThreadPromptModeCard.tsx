@@ -4,7 +4,6 @@ import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 
 const PROMPT_MODE_CARD_ROW_HEIGHT = 32;
-const PROMPT_PREVIEW_MAX_CHARS = 420;
 
 export interface ThreadPromptModeCardProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
@@ -16,13 +15,6 @@ export interface ThreadPromptModeCardProps {
 const BODY_ID = "thread-prompt-mode-card-body";
 const TOGGLE_ID = "thread-prompt-mode-card-toggle";
 
-function truncatedPrompt(prompt: string): string {
-  if (prompt.length <= PROMPT_PREVIEW_MAX_CHARS) {
-    return prompt;
-  }
-  return `${prompt.slice(0, PROMPT_PREVIEW_MAX_CHARS).trimEnd()}...`;
-}
-
 export function ThreadPromptModeCard({
   activePromptMode,
   isExpanded,
@@ -32,8 +24,8 @@ export function ThreadPromptModeCard({
   if (activePromptMode?.mode !== "plan") {
     return null;
   }
-  const promptPreview = truncatedPrompt(activePromptMode.prompt);
-  const hasPrompt = promptPreview.length > 0;
+  const promptText = activePromptMode.prompt.trim();
+  const hasPrompt = promptText.length > 0;
 
   return (
     <PromptStackCard
@@ -47,7 +39,7 @@ export function ThreadPromptModeCard({
           id={TOGGLE_ID}
           aria-expanded={isExpanded}
           aria-controls={BODY_ID}
-          aria-label="Plan mode: Creating plan"
+          aria-label="Plan"
           onClick={onToggle}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
@@ -56,17 +48,9 @@ export function ThreadPromptModeCard({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
-          <span className="shrink-0 font-medium opacity-70">
-            Creating plan
+          <span className="min-w-0 flex-1 truncate text-left font-medium opacity-70">
+            Plan
           </span>
-          {hasPrompt ? (
-            <span
-              className="min-w-0 flex-1 truncate text-left text-muted-foreground"
-              title={activePromptMode.prompt}
-            >
-              {promptPreview}
-            </span>
-          ) : null}
           <Icon
             name="ChevronDown"
             className={cn(
@@ -104,9 +88,9 @@ export function ThreadPromptModeCard({
           <div className="px-3 pb-2.5 pt-2">
             <p
               className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90"
-              title={activePromptMode.prompt}
+              title={promptText}
             >
-              {hasPrompt ? promptPreview : "No prompt text."}
+              {hasPrompt ? promptText : "No prompt text."}
             </p>
           </div>
         </div>

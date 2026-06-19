@@ -49,6 +49,8 @@ export interface PermissionModePickerProps {
    * e.g. the side chat). The selected mode still shows; the menu never opens.
    */
   disabled?: boolean;
+  /** Keep the chevron visible while disabled, used for plan-mode permission locks. */
+  showChevronWhenDisabled?: boolean;
 }
 
 /**
@@ -69,6 +71,7 @@ export function PermissionModePicker({
   modal,
   displayOverride,
   disabled,
+  showChevronWhenDisabled,
 }: PermissionModePickerProps) {
   const compactOptions = useMemo(
     () => addPermissionModeCompactLabels(options),
@@ -91,6 +94,7 @@ export function PermissionModePicker({
       align="end"
       displayOverride={displayOverride}
       disabled={disabled}
+      showChevronWhenDisabled={showChevronWhenDisabled}
     />
   );
 }

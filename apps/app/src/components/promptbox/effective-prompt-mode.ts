@@ -57,3 +57,15 @@ export function permissionDisplayForActivePromptMode(
   }
   return undefined;
 }
+
+export function shouldDisablePermissionPickerForPromptMode(
+  args: PromptModeInput,
+): boolean {
+  return isClaudePlanModePrompt(args);
+}
+
+export function shouldDisablePermissionPickerForActivePromptMode(
+  activePromptMode: ThreadTimelineActivePromptMode | null | undefined,
+): boolean {
+  return activePromptMode?.mode === "plan";
+}

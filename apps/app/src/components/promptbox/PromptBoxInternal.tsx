@@ -396,8 +396,105 @@ function normalizePastedPlainText(text: string): string {
   return text.replace(/\r\n?/gu, "\n");
 }
 
-function promptEditorValueFromPlainText(text: string): PromptEditorValue {
-  return { text: normalizePastedPlainText(text), mentions: [] };
+function promptActionCommandMentionsFromText(
+  text: string,
+  actions: readonly PromptBoxAction[] | undefined,
+): PromptTextMention[] {
+  const mentions: PromptTextMention[] = [];
+
+  for (const action of actions ?? []) {
+    const commandAction = promptActionCommandFromAction(action);
+    if (commandAction === null) {
+      continue;
+    }
+
+    let searchStart = 0;
+    while (searchStart < text.length) {
+      const start = text.indexOf(commandAction.serializedText, searchStart);
+      if (start === -1) {
+        break;
+      }
+
+      const end = start + commandAction.serializedText.length;
+      const before = start === 0 ? "" : text[start - 1]!;
+      const after = end >= text.length ? "" : text[end]!;
+      const hasTokenBoundaryBefore = before === "" || /\s/u.test(before);
+      const hasTokenBoundaryAfter = after === "" || /\s/u.test(after);
+
+      if (hasTokenBoundaryBefore && hasTokenBoundaryAfter) {
+        mentions.push({
+          start,
+          end,
+          resource: promptCommandResourceFromSuggestion({
+            suggestion: commandAction.suggestion,
+            trigger: commandAction.trigger,
+          }),
+        });
+      }
+
+      searchStart = end;
+    }
+  }
+
+  return mentions.sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+}
+
+function mergePromptTextMentions(
+  baseMentions: readonly PromptTextMention[],
+  additionalMentions: readonly PromptTextMention[],
+): PromptTextMention[] {
+  const merged = [...baseMentions].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+
+  for (const additionalMention of additionalMentions) {
+    const overlapsExisting = merged.some(
+      (mention) =>
+        additionalMention.start < mention.end &&
+        additionalMention.end > mention.start,
+    );
+    if (!overlapsExisting) {
+      merged.push(additionalMention);
+    }
+  }
+
+  return merged.sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+}
+
+function withPromptActionCommandMentions(
+  value: PromptEditorValue,
+  promptActions: readonly PromptBoxAction[] | undefined,
+): PromptEditorValue {
+  const promptActionMentions = promptActionCommandMentionsFromText(
+    value.text,
+    promptActions,
+  );
+  if (promptActionMentions.length === 0) {
+    return value;
+  }
+
+  return {
+    ...value,
+    mentions: mergePromptTextMentions(value.mentions, promptActionMentions),
+  };
+}
+
+function promptEditorValueFromPlainText(
+  text: string,
+  promptActions?: readonly PromptBoxAction[],
+): PromptEditorValue {
+  const normalizedText = normalizePastedPlainText(text);
+  return withPromptActionCommandMentions(
+    {
+      text: normalizedText,
+      mentions: [],
+    },
+    promptActions,
+  );
 }
 
 function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
@@ -530,19 +627,20 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 
 function promptEditorValueFromClipboardPaste(
   clipboardData: DataTransfer | null,
+  promptActions?: readonly PromptBoxAction[],
 ): PromptEditorValue | null {
   const html = clipboardData?.getData("text/html") ?? "";
   const hasHtml = html.trim().length > 0;
   if (hasHtml) {
     const richValue = promptEditorValueFromRichHtml(html);
     if (richValue.hasMentions) {
-      return richValue.value;
+      return withPromptActionCommandMentions(richValue.value, promptActions);
     }
   }
 
   const plainText = clipboardData?.getData("text/plain") ?? "";
   if (plainText.length > 0) {
-    return promptEditorValueFromPlainText(plainText);
+    return promptEditorValueFromPlainText(plainText, promptActions);
   }
 
   if (!hasHtml) {
@@ -1159,6 +1257,7 @@ export function PromptBoxInternal({
 
         const pastedValue = promptEditorValueFromClipboardPaste(
           event.clipboardData ?? null,
+          promptActions,
         );
         if (pastedValue === null) return false;
 
