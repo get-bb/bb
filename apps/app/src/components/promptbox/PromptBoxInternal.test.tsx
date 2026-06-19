@@ -122,6 +122,12 @@ function latestChange(
   return changes[changes.length - 1];
 }
 
+async function waitForPromptFocus() {
+  await waitFor(() =>
+    expect(document.activeElement).toBe(getPromptEditorElement()),
+  );
+}
+
 async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
   await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
   await act(async () => {
@@ -264,5 +270,66 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Goal");
 
     expect(changes).toHaveLength(0);
+  });
+
+  it("replaces a just-selected plan action with goal at the cursor", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Plan");
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    await waitForPromptFocus();
+
+    await selectPromptAction("Goal");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/goal".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "goal",
+          source: "command",
+          origin: "user",
+          label: "goal",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("replaces a just-selected goal action with skills at the cursor", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Goal");
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    await waitForPromptFocus();
+
+    await selectPromptAction("Skills");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    expect(latestChange(changes)?.mentions).toEqual([]);
+  });
+
+  it("keeps typed content after a prompt action when selecting another action", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Plan");
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    await waitForPromptFocus();
+
+    await act(async () => {
+      promptBoxRef.current?.insertTextAtCursor("clean up");
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan clean up"));
+
+    await selectPromptAction("Goal");
+
+    await waitFor(() => expect(latestValue(changes)).toContain("clean up"));
+    expect(latestValue(changes)).not.toBe("/goal ");
   });
 });

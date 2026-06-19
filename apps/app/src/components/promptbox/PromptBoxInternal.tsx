@@ -64,6 +64,7 @@ import {
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
+  parsePromptEditorMentionAttrs,
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
@@ -606,18 +607,110 @@ function promptActionTextImmediatelyBeforeCursor(
   return before.endsWith(actionText);
 }
 
+function promptActionCommandSerializedText(action: PromptBoxAction): string {
+  if (!action.command) {
+    return action.text;
+  }
+  return `${action.command.trigger}${action.command.name}`;
+}
+
+function isPromptActionCommandMention(
+  node: ProseMirrorNode,
+  actions: readonly PromptBoxAction[],
+): boolean {
+  if (node.type.name !== "mention") {
+    return false;
+  }
+  const attrs = parsePromptEditorMentionAttrs(node.attrs);
+  if (!attrs || attrs.resource.kind !== "command") {
+    return false;
+  }
+  const resource = attrs.resource;
+  return actions.some((action) => {
+    const command = action.command;
+    if (!command) {
+      return false;
+    }
+    return (
+      resource.trigger === command.trigger &&
+      resource.name === command.name &&
+      attrs.serializedText === promptActionCommandSerializedText(action)
+    );
+  });
+}
+
+function getPromptActionRangeImmediatelyBeforeCursor({
+  editor,
+  actions,
+}: {
+  editor: Editor;
+  actions: readonly PromptBoxAction[];
+}): PromptActionInsertionRange | null {
+  const selection = editor.state.selection;
+  if (!selection.empty) {
+    return null;
+  }
+
+  const { $from } = selection;
+  const cursorOffset = $from.parentOffset;
+  const parentStart = $from.start();
+  let searchOffset = cursorOffset;
+
+  while (searchOffset > 0) {
+    const previous = $from.parent.childBefore(searchOffset);
+    const node = previous.node;
+    if (!node) {
+      return null;
+    }
+    const sizeBeforeSearchOffset = searchOffset - previous.offset;
+    if (node.isText) {
+      const textBeforeCursor = (node.text ?? "").slice(
+        0,
+        sizeBeforeSearchOffset,
+      );
+      if (/\S/u.test(textBeforeCursor)) {
+        return null;
+      }
+      searchOffset = previous.offset;
+      continue;
+    }
+    if (
+      sizeBeforeSearchOffset === node.nodeSize &&
+      isPromptActionCommandMention(node, actions)
+    ) {
+      return {
+        from: parentStart + previous.offset,
+        to: selection.from,
+      };
+    }
+    return null;
+  }
+
+  return null;
+}
+
 function getPromptActionInsertionRange({
   editor,
   action,
+  actions,
   triggers,
 }: {
   editor: Editor;
   action: PromptBoxAction;
+  actions: readonly PromptBoxAction[];
   triggers: readonly TypeaheadTrigger[];
 }): PromptActionInsertionRange | null {
   const selection = editor.state.selection;
   if (!selection.empty) {
     return { from: selection.from, to: selection.to };
+  }
+
+  const previousPromptActionRange = getPromptActionRangeImmediatelyBeforeCursor({
+    editor,
+    actions,
+  });
+  if (previousPromptActionRange !== null) {
+    return previousPromptActionRange;
   }
 
   const activeCommandTrigger = findActiveTrigger(editor, triggers);
@@ -1577,6 +1670,7 @@ export function PromptBoxInternal({
       const insertionRange = getPromptActionInsertionRange({
         editor: currentEditor,
         action,
+        actions: promptActions ?? [],
         triggers: promptActionTriggers(triggers, commandAction),
       });
       if (insertionRange === null) {
@@ -1638,7 +1732,13 @@ export function PromptBoxInternal({
       currentEditor.view.dispatch(transaction.scrollIntoView());
       focusAfterPromptAction(currentEditor);
     },
-    [finishApply, focusAfterPromptAction, onCommandQueryChange, triggers],
+    [
+      finishApply,
+      focusAfterPromptAction,
+      onCommandQueryChange,
+      promptActions,
+      triggers,
+    ],
   );
 
   const getTextBeforeCursor = useCallback((): string | undefined => {
