@@ -28,6 +28,7 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import { permissionDisplayForPromptMode } from "./effective-prompt-mode";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
   scrollToBottomOnSubmit?: boolean;
@@ -233,6 +234,15 @@ function FollowUpPromptBoxWithComposer({
     () => <ExecutionControls {...execution} disabled={readOnly} />,
     [execution, readOnly],
   );
+  const permissionDisplayOverride = useMemo(
+    () =>
+      permissionDisplayForPromptMode({
+        providerId: execution.provider.selectedId,
+        value: composer.message,
+        mentionRanges: composer.mentionRanges,
+      }),
+    [composer.mentionRanges, composer.message, execution.provider.selectedId],
+  );
   // The side chat renders the SAME permission picker as the main thread, just
   // disabled (read-only) — identical label and position. No static-label
   // special-casing: `readOnly` flows to the picker's `disabled`.
@@ -244,6 +254,7 @@ function FollowUpPromptBoxWithComposer({
         onChange={permission.onChange}
         supported={permission.supported}
         disabled={readOnly}
+        displayOverride={permissionDisplayOverride}
         className="h-6"
       />
     ),
@@ -252,6 +263,7 @@ function FollowUpPromptBoxWithComposer({
       permission.options,
       permission.supported,
       permission.value,
+      permissionDisplayOverride,
       readOnly,
     ],
   );

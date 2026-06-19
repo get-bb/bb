@@ -45,6 +45,7 @@ import {
 } from "@/components/pickers/WorktreePicker";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { permissionDisplayForPromptMode } from "./effective-prompt-mode";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
 
@@ -210,6 +211,15 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
   const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
+  const permissionDisplayOverride = useMemo(
+    () =>
+      permissionDisplayForPromptMode({
+        providerId: execution.provider.selectedId,
+        value,
+        mentionRanges,
+      }),
+    [execution.provider.selectedId, mentionRanges, value],
+  );
   const submitTitle = isSubmitting
     ? "Submitting..."
     : execution.model.isLoading
@@ -276,6 +286,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             options={modeConfig.permission.options}
             onChange={modeConfig.permission.onChange}
             supported={modeConfig.permission.supported}
+            displayOverride={permissionDisplayOverride}
           />
         </div>
       </div>
