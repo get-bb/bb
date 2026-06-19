@@ -260,7 +260,7 @@ function renderDecoration(
           >
             {durationText ? <span>{durationText}</span> : null}
             <span className={STATUS_DECORATION_TEXT_CLASS}>
-              {decoration.status}
+              {`· ${decoration.status}`}
             </span>
           </span>
         );
@@ -284,7 +284,7 @@ function renderDecoration(
           key={index}
           className={cn("shrink-0 whitespace-pre", STATUS_DECORATION_TEXT_CLASS)}
         >
-          {text}
+          {`· ${text}`}
         </span>
       );
     }
