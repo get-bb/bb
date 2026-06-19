@@ -15,7 +15,6 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@/lib/utils";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
-import { Icon } from "@/components/ui/icon.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 
 /**
@@ -237,35 +236,27 @@ function renderDecoration(
     }
     case "status":
     case "summary-status": {
-      // A single row's error status renders as a bare error icon in place of
-      // the "(error)" tag (parentheses dropped); its duration, when present,
-      // stays as plain text. The denied/interrupted annotations and the
-      // rolled-up "(N errors)" summary keep their text tag. The icon inherits
-      // the muted decoration tone — these tool-call errors are non-actionable,
-      // so they blend in with their siblings rather than shouting in red.
-      // `title.plain` keeps the "(error)" text, so the tooltip and CLI/plain
-      // renderer are unchanged.
-      if (decoration.kind === "status" && decoration.status === "error") {
+      // Single-row error/interrupted statuses render as compact mono words,
+      // without parentheses, so they read as annotations rather than another
+      // icon beside the row glyph. `title.plain` keeps the canonical
+      // parenthesized text for tooltips and plain renderers.
+      if (
+        decoration.kind === "status" &&
+        (decoration.status === "error" || decoration.status === "interrupted")
+      ) {
         const durationText =
           decoration.durationMs === null
             ? null
             : durationToCompactString(decoration.durationMs);
-        const hasDuration = durationText !== null;
         return (
           <span
             key={index}
-            className={cn(
-              baseClass,
-              "inline-flex items-center gap-1",
-              hasDuration ? null : "self-center leading-none",
-            )}
+            className={cn(baseClass, "inline-flex items-baseline gap-1")}
           >
-            {durationText}
-            <Icon
-              name="CircleX"
-              aria-label="error"
-              className="size-3.5 shrink-0"
-            />
+            {durationText ? <span>{durationText}</span> : null}
+            <span className="font-mono text-xs leading-none">
+              {decoration.status}
+            </span>
           </span>
         );
       }
