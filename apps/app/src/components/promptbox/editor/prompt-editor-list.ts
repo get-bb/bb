@@ -61,10 +61,39 @@ export function createLiftPromptListItemTransaction(args: {
     : null;
 }
 
+function isSelectionInEmptyListItem(state: EditorState): boolean {
+  const { selection } = state;
+  if (!selection.empty) return false;
+
+  const { $from } = selection;
+  if (
+    $from.parent.type.name !== "paragraph" ||
+    $from.parent.content.size > 0
+  ) {
+    return false;
+  }
+
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.name !== "listItem") continue;
+    return (
+      node.childCount === 1 &&
+      node.firstChild?.type.name === "paragraph" &&
+      node.firstChild.content.size === 0
+    );
+  }
+
+  return false;
+}
+
 export function createPromptListNewlineTransaction(args: {
   state: EditorState;
   editor: SplitListEditorContext;
 }): Transaction | null {
+  if (isSelectionInEmptyListItem(args.state)) {
+    return createLiftPromptListItemTransaction(args);
+  }
+
   return (
     createSplitPromptListItemTransaction(args) ??
     createLiftPromptListItemTransaction(args)

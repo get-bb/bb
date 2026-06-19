@@ -68,6 +68,7 @@ import {
 } from "./editor/prompt-editor-blockquote";
 import { exitHeading } from "./editor/prompt-editor-heading";
 import { applyPromptListNewline } from "./editor/prompt-editor-list";
+import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1728,13 +1729,22 @@ export function PromptBoxInternal({
         return true;
       }
 
-      const isHeadingExitKey =
+      const isPromptNewlineKey =
         event.key === "Enter" &&
         !event.metaKey &&
         !event.altKey &&
         !event.ctrlKey &&
         (event.shiftKey || isZenMode || !canSubmitWithEnterKey);
-      if (isHeadingExitKey && currentEditor && exitHeading(currentEditor)) {
+      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
+        event.preventDefault();
+        return true;
+      }
+
+      if (
+        isPromptNewlineKey &&
+        currentEditor &&
+        applyPromptParagraphNewline(currentEditor)
+      ) {
         event.preventDefault();
         return true;
       }

@@ -140,6 +140,101 @@ describe("createSplitPromptListItemTransaction", () => {
 });
 
 describe("createPromptListNewlineTransaction", () => {
+  it("splits then breaks out of a bullet list", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "first" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      8,
+    );
+
+    const splitTransaction = createPromptListNewlineTransaction({
+      state,
+      editor: editorContext,
+    });
+    expect(splitTransaction).not.toBeNull();
+    const splitState = state.apply(splitTransaction!);
+    expect(splitState.doc.toString()).toBe(
+      'doc(bulletList(listItem(paragraph("first")), listItem(paragraph)))',
+    );
+
+    const exitTransaction = createPromptListNewlineTransaction({
+      state: splitState,
+      editor: editorContext,
+    });
+    expect(exitTransaction).not.toBeNull();
+    const exitState = splitState.apply(exitTransaction!);
+
+    expect(exitState.doc.toString()).toBe(
+      'doc(bulletList(listItem(paragraph("first"))), paragraph)',
+    );
+    expect(promptEditorValueFromDoc(exitState.doc).text).toBe("- first\n");
+  });
+
+  it("splits then breaks out of an ordered list", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "orderedList",
+            attrs: { start: 1 },
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "first" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      8,
+    );
+
+    const splitTransaction = createPromptListNewlineTransaction({
+      state,
+      editor: editorContext,
+    });
+    expect(splitTransaction).not.toBeNull();
+    const splitState = state.apply(splitTransaction!);
+    expect(splitState.doc.toString()).toBe(
+      'doc(orderedList(listItem(paragraph("first")), listItem(paragraph)))',
+    );
+
+    const exitTransaction = createPromptListNewlineTransaction({
+      state: splitState,
+      editor: editorContext,
+    });
+    expect(exitTransaction).not.toBeNull();
+    const exitState = splitState.apply(exitTransaction!);
+
+    expect(exitState.doc.toString()).toBe(
+      'doc(orderedList(listItem(paragraph("first"))), paragraph)',
+    );
+    expect(promptEditorValueFromDoc(exitState.doc).text).toBe("1. first\n");
+  });
+
   it("breaks out of a bullet list from an empty item", () => {
     const state = stateFromJson(
       {
