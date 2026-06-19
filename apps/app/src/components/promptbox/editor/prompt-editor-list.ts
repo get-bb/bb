@@ -34,9 +34,46 @@ export function createSplitPromptListItemTransaction(args: {
     : null;
 }
 
-export function splitPromptListItem(editor: Editor): boolean {
+export function createLiftPromptListItemTransaction(args: {
+  state: EditorState;
+  editor: SplitListEditorContext;
+}): Transaction | null {
+  const listItemType = args.state.schema.nodes.listItem;
+  if (!listItemType) return null;
+
+  let nextTransaction: Transaction | null = null;
+  const didLift = commands.liftListItem(listItemType)({
+    state: args.state,
+    tr: args.state.tr,
+    dispatch: (transaction?: Transaction) => {
+      nextTransaction = transaction ?? args.state.tr;
+    },
+    editor: args.editor as Editor,
+    commands: null as never,
+    can: null as never,
+    chain: null as never,
+    view: null as never,
+  });
+
+  const dispatchedTransaction = nextTransaction as Transaction | null;
+  return didLift && dispatchedTransaction?.docChanged
+    ? dispatchedTransaction
+    : null;
+}
+
+export function createPromptListNewlineTransaction(args: {
+  state: EditorState;
+  editor: SplitListEditorContext;
+}): Transaction | null {
+  return (
+    createSplitPromptListItemTransaction(args) ??
+    createLiftPromptListItemTransaction(args)
+  );
+}
+
+export function applyPromptListNewline(editor: Editor): boolean {
   if (!editor.isActive("listItem")) return false;
-  const transaction = createSplitPromptListItemTransaction({
+  const transaction = createPromptListNewlineTransaction({
     state: editor.state,
     editor,
   });

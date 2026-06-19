@@ -4,7 +4,10 @@ import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
-import { createSplitPromptListItemTransaction } from "./prompt-editor-list";
+import {
+  createPromptListNewlineTransaction,
+  createSplitPromptListItemTransaction,
+} from "./prompt-editor-list";
 
 const schema = getSchema([
   StarterKit.configure({
@@ -132,5 +135,92 @@ describe("createSplitPromptListItemTransaction", () => {
     expect(
       createSplitPromptListItemTransaction({ state, editor: editorContext }),
     ).toBeNull();
+  });
+});
+
+describe("createPromptListNewlineTransaction", () => {
+  it("breaks out of a bullet list from an empty item", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "first" }],
+                  },
+                ],
+              },
+              {
+                type: "listItem",
+                content: [{ type: "paragraph" }],
+              },
+            ],
+          },
+        ],
+      },
+      12,
+    );
+
+    const transaction = createPromptListNewlineTransaction({
+      state,
+      editor: editorContext,
+    });
+    expect(transaction).not.toBeNull();
+    const nextState = state.apply(transaction!);
+
+    expect(nextState.doc.toString()).toBe(
+      'doc(bulletList(listItem(paragraph("first"))), paragraph)',
+    );
+    expect(nextState.selection.from).toBe(12);
+    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("- first\n");
+  });
+
+  it("breaks out of an ordered list from an empty item", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "orderedList",
+            attrs: { start: 1 },
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "first" }],
+                  },
+                ],
+              },
+              {
+                type: "listItem",
+                content: [{ type: "paragraph" }],
+              },
+            ],
+          },
+        ],
+      },
+      12,
+    );
+
+    const transaction = createPromptListNewlineTransaction({
+      state,
+      editor: editorContext,
+    });
+    expect(transaction).not.toBeNull();
+    const nextState = state.apply(transaction!);
+
+    expect(nextState.doc.toString()).toBe(
+      'doc(orderedList(listItem(paragraph("first"))), paragraph)',
+    );
+    expect(nextState.selection.from).toBe(12);
+    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("1. first\n");
   });
 });

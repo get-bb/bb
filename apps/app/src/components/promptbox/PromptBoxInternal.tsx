@@ -67,7 +67,7 @@ import {
   insertParagraphBeforeBlockquote,
 } from "./editor/prompt-editor-blockquote";
 import { exitHeading } from "./editor/prompt-editor-heading";
-import { splitPromptListItem } from "./editor/prompt-editor-list";
+import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1712,7 +1712,7 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        splitPromptListItem(currentEditor)
+        applyPromptListNewline(currentEditor)
       ) {
         event.preventDefault();
         return true;
