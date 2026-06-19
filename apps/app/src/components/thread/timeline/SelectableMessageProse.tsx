@@ -17,6 +17,8 @@ export interface SelectableMessageProseProps {
   onSelect?: (selection: MessageProseSelection | null) => void;
 }
 
+export const MULTI_CLICK_SELECTION_REPORT_DELAY_MS = 180;
+
 /**
  * Pure predicate: does `selection` fall entirely within `node`?
  *
@@ -61,6 +63,34 @@ function firstClientRect(range: Range): DOMRect | null {
   return rect.width > 0 || rect.height > 0 ? rect : null;
 }
 
+function normalizeSelectionText(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+function isSelectionBoundarySpillWithinNode(
+  node: HTMLElement,
+  range: Range,
+  selectionText: string,
+): boolean {
+  if (typeof range.intersectsNode !== "function") {
+    return false;
+  }
+  if (!range.intersectsNode(node)) {
+    return false;
+  }
+
+  const normalizedSelectionText = normalizeSelectionText(selectionText);
+  if (normalizedSelectionText.length === 0) {
+    return false;
+  }
+
+  // Triple-clicking a final paragraph can place the focus/common nodes just
+  // outside this wrapper while selecting only this node's text plus newlines.
+  return normalizeSelectionText(node.textContent ?? "").includes(
+    normalizedSelectionText,
+  );
+}
+
 function readSelectionWithinNode(
   node: HTMLElement | null,
 ): MessageProseSelection | null {
@@ -78,6 +108,12 @@ function readSelectionWithinNode(
   });
   if (accepted) {
     const text = selection.toString().trim();
+    const rect = firstClientRect(range);
+    return text.length > 0 && rect !== null ? { text, rect } : null;
+  }
+
+  const text = selection.toString().trim();
+  if (isSelectionBoundarySpillWithinNode(node, range, text)) {
     const rect = firstClientRect(range);
     return text.length > 0 && rect !== null ? { text, rect } : null;
   }
@@ -109,6 +145,7 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
+    let multiClickTimer: number | null = null;
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
@@ -121,21 +158,40 @@ export function SelectableMessageProse({
       window.cancelAnimationFrame(frame);
       frame = null;
     };
+    const cancelMultiClickTimer = () => {
+      if (multiClickTimer === null) return;
+      window.clearTimeout(multiClickTimer);
+      multiClickTimer = null;
+    };
     const schedule = () => {
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
     };
     const scheduleFresh = () => {
+      cancelMultiClickTimer();
       cancelFrame();
       schedule();
+    };
+    const scheduleAfterMultiClickDelay = () => {
+      cancelFrame();
+      cancelMultiClickTimer();
+      multiClickTimer = window.setTimeout(() => {
+        multiClickTimer = null;
+        schedule();
+      }, MULTI_CLICK_SELECTION_REPORT_DELAY_MS);
     };
     const handleSelectionChange = () => {
       if (pointerIsDown) {
         return;
       }
+      if (multiClickTimer !== null) {
+        return;
+      }
       schedule();
     };
     const handlePointerDown = () => {
+      cancelMultiClickTimer();
+      cancelFrame();
       pointerIsDown = true;
     };
     const handlePointerEnd = () => {
@@ -146,9 +202,16 @@ export function SelectableMessageProse({
       if (event.detail < 2) {
         return;
       }
+      if (event.detail === 2) {
+        scheduleAfterMultiClickDelay();
+        return;
+      }
       // Multi-click selection can be finalized after pointerup. Replace any
       // stale pointerup read with one explicitly tied to the completed click.
       scheduleFresh();
+    };
+    const handleDoubleClick = () => {
+      scheduleAfterMultiClickDelay();
     };
     const node = nodeRef.current;
 
@@ -159,9 +222,10 @@ export function SelectableMessageProse({
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
     node?.addEventListener("click", handleMultiClick);
-    node?.addEventListener("dblclick", scheduleFresh);
+    node?.addEventListener("dblclick", handleDoubleClick);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
+      cancelMultiClickTimer();
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerEnd);
       document.removeEventListener("pointercancel", handlePointerEnd);
@@ -169,7 +233,7 @@ export function SelectableMessageProse({
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
       node?.removeEventListener("click", handleMultiClick);
-      node?.removeEventListener("dblclick", scheduleFresh);
+      node?.removeEventListener("dblclick", handleDoubleClick);
     };
   }, []);
 

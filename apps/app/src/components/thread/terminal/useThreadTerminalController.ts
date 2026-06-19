@@ -70,8 +70,7 @@ export function isVisibleTerminalSession({
     return false;
   }
   return (
-    session.status !== "disconnected" ||
-    session.id === retainedTerminalViewId
+    session.status !== "disconnected" || session.id === retainedTerminalViewId
   );
 }
 
@@ -83,8 +82,23 @@ export function shouldCloseDisconnectedTerminalSession({
   session: TerminalSession;
 }): boolean {
   return (
-    session.status === "disconnected" &&
-    session.id !== retainedTerminalViewId
+    session.status === "disconnected" && session.id !== retainedTerminalViewId
+  );
+}
+
+export function shouldAutoCloseCleanTerminalSession({
+  dirtyTerminalIds,
+  session,
+  uiCreatedTerminalIds,
+}: {
+  dirtyTerminalIds: ReadonlySet<string>;
+  session: TerminalSession;
+  uiCreatedTerminalIds: ReadonlySet<string>;
+}): boolean {
+  return (
+    session.lastUserInputAt === null &&
+    uiCreatedTerminalIds.has(session.id) &&
+    !dirtyTerminalIds.has(session.id)
   );
 }
 
@@ -125,6 +139,7 @@ export function useThreadTerminalController({
   const setActiveFixedTerminal =
     useSetFixedRightTerminalActiveTerminal(threadId);
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
+  const uiCreatedTerminalIdsRef = useRef<Set<string>>(new Set());
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
   const closingCleanTerminalIdsRef = useRef<Set<string>>(new Set());
   const closingDisconnectedTerminalIdsRef = useRef<Set<string>>(new Set());
@@ -221,6 +236,7 @@ export function useThreadTerminalController({
             if (closedSession.status !== "exited") {
               return;
             }
+            uiCreatedTerminalIdsRef.current.delete(closedSession.id);
             dirtyTerminalIdsRef.current.delete(closedSession.id);
             closingCleanTerminalIdsRef.current.delete(closedSession.id);
             removeFixedTerminalTab(closedSession.id);
@@ -262,6 +278,7 @@ export function useThreadTerminalController({
         rows: DEFAULT_TERMINAL_ROWS,
       })
       .then((session) => {
+        uiCreatedTerminalIdsRef.current.add(session.id);
         setActiveFixedTerminal(session.id);
       })
       .catch(() => undefined);
@@ -280,6 +297,7 @@ export function useThreadTerminalController({
         { mode: "force", threadId, terminalId },
         {
           onSuccess: () => {
+            uiCreatedTerminalIdsRef.current.delete(terminalId);
             dirtyTerminalIdsRef.current.delete(terminalId);
             closingCleanTerminalIdsRef.current.delete(terminalId);
             removeFixedTerminalTab(terminalId);
@@ -304,8 +322,11 @@ export function useThreadTerminalController({
     }
     for (const session of visibleSessions) {
       if (
-        session.lastUserInputAt !== null ||
-        dirtyTerminalIdsRef.current.has(session.id) ||
+        !shouldAutoCloseCleanTerminalSession({
+          dirtyTerminalIds: dirtyTerminalIdsRef.current,
+          session,
+          uiCreatedTerminalIds: uiCreatedTerminalIdsRef.current,
+        }) ||
         closingCleanTerminalIdsRef.current.has(session.id)
       ) {
         continue;
@@ -318,6 +339,7 @@ export function useThreadTerminalController({
             if (closedSession.status !== "exited") {
               return;
             }
+            uiCreatedTerminalIdsRef.current.delete(closedSession.id);
             dirtyTerminalIdsRef.current.delete(closedSession.id);
             removeFixedTerminalTab(closedSession.id);
           },
@@ -356,6 +378,7 @@ export function useThreadTerminalController({
         { mode: "force", threadId, terminalId },
         {
           onSuccess: () => {
+            uiCreatedTerminalIdsRef.current.delete(terminalId);
             dirtyTerminalIdsRef.current.delete(terminalId);
             closingCleanTerminalIdsRef.current.delete(terminalId);
             removeFixedTerminalTab(terminalId);

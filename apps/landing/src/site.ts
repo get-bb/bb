@@ -5,12 +5,19 @@ export const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
 export const CLI_COMMAND = "npx bb-app@latest";
 
 /** Where on the page a CTA lives, for click-through comparison. */
-export type CtaPlacement = "nav" | "hero" | "closer" | "footer";
+export type CtaPlacement =
+  | "nav"
+  | "hero"
+  | "cli"
+  | "loops"
+  | "local"
+  | "closer"
+  | "footer";
 
 export function downloadMacosHref(placement: CtaPlacement): string {
   return `${DOWNLOAD_MACOS_REDIRECT_PATH}?placement=${placement}`;
 }
 
-export const SITE_TITLE = "bb: the IDE built for humans and agents";
+export const SITE_TITLE = "bb — the IDE for loop-driven development";
 export const SITE_DESCRIPTION =
-  "You and your agents both use bb to orchestrate work: you through the UI, your agents through a CLI made for them. Claude Code, Codex, and Pi. Free, local-first, and open source.";
+  "Orchestrate your coding agents. Drive it yourself, or let your agents and automations drive it for you. Fully open source and local-first, with Claude Code, Codex, Cursor, and Pi.";

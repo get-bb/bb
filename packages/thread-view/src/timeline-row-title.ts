@@ -169,10 +169,10 @@ interface BuildTimelineActivityIntentTitleArgs {
   intent: TimelineActivityIntent;
   pending: boolean;
   /**
-   * When set, append a status decoration ("(error)" / "(interrupted)") after
-   * the intent's title segments. The compact intent rendering used inside
-   * activity bundles relies on this to surface row-level outcomes — the
-   * bundle's own label only conveys an aggregate count.
+   * When set, append an error/interrupted status decoration after the intent's
+   * title segments. The compact intent rendering used inside activity bundles
+   * relies on this to surface row-level outcomes — the bundle's own label only
+   * conveys an aggregate count.
    */
   failureStatus?: "error" | "interrupted";
 }

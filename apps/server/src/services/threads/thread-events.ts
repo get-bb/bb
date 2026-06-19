@@ -5,6 +5,7 @@ import {
   getActiveStoredTurnId,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
+  getStoredTurnRequestEventForTurn,
   getStoredProviderThreadIdAtOrBeforeSequence,
   getThread,
   listStoredTurnStartedKeys,
@@ -75,8 +76,7 @@ export interface ClientTurnRequestedEventArgs {
   type: "client/turn/requested";
 }
 
-export interface PreparedClientTurnRequestedEventArgs
-  extends ClientTurnRequestedEventArgs {
+export interface PreparedClientTurnRequestedEventArgs extends ClientTurnRequestedEventArgs {
   requestId: ClientTurnRequestId;
 }
 
@@ -98,8 +98,7 @@ export interface AppendedClientTurnRequest {
   sequence: number;
 }
 
-export interface AppendedClientTurnRequestWithNotification
-  extends AppendedClientTurnRequest {
+export interface AppendedClientTurnRequestWithNotification extends AppendedClientTurnRequest {
   notificationChanges: ThreadChangeKind[];
   notificationMetadata: ThreadChangeMetadata;
 }
@@ -582,10 +581,11 @@ export function appendPreparedClientTurnRequestedEventInTransaction(
   db: DbTransaction,
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequest {
-  const result = appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
-    db,
-    args,
-  );
+  const result =
+    appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
+      db,
+      args,
+    );
   return {
     requestId: result.requestId,
     sequence: result.sequence,
@@ -967,6 +967,22 @@ export function getLastExecutionOptions(
   threadId: string,
 ): ResolvedThreadExecutionOptions | null {
   const row = getLastStoredTurnRequestEvent(deps.db, threadId);
+
+  return row
+    ? parseStoredTurnRequestEvent({
+        data: row.data,
+        sequence: row.sequence,
+        threadId: row.threadId,
+        type: row.type,
+      }).execution
+    : null;
+}
+
+export function getTurnExecutionOptions(
+  deps: Pick<AppDeps, "db">,
+  args: { threadId: string; turnId: string },
+): ResolvedThreadExecutionOptions | null {
+  const row = getStoredTurnRequestEventForTurn(deps.db, args);
 
   return row
     ? parseStoredTurnRequestEvent({

@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 40 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 41 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,

@@ -365,10 +365,27 @@ const hostDaemonTerminalOpenMessageSchema = z
     requestId: terminalRequestIdSchema,
     terminalId: terminalIdSchema,
     threadId: z.string().min(1),
+    projectId: z.string().min(1),
     environmentId: z.string().min(1),
+    threadStoragePath: z.string().min(1),
     workspaceContext: workspaceContextSchema,
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
+    start: z
+      .discriminatedUnion("mode", [
+        z
+          .object({
+            mode: z.literal("shell"),
+          })
+          .strict(),
+        z
+          .object({
+            mode: z.literal("command"),
+            command: z.string().min(1),
+          })
+          .strict(),
+      ])
+      .default({ mode: "shell" }),
   })
   .strict();
 

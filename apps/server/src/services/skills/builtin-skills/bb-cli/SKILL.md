@@ -67,6 +67,25 @@ For review or fix pipelines, get the environment ID from
 - It opens for any connected client viewing the thread now, or when the user next
   switches to that thread. `delivered: 0` means no bb app is connected.
 
+## Long-Running Commands
+
+- Use `bb thread terminal ...` for long-running commands the user may need to
+  inspect or stop later: dev servers, watch tasks, REPLs, database consoles, and
+  similar processes.
+- Prefer a thread terminal over a one-off foreground command for dev servers.
+  The terminal is a real PTY scoped to the thread's environment and appears in
+  the bb UI as a terminal tab.
+- Start a server with
+  `bb thread terminal start "$BB_THREAD_ID" --title "pnpm dev" --command "pnpm dev"`.
+- Use `bb thread terminal wait <terminal-id> "$BB_THREAD_ID" --contains "Local:" --timeout 120`
+  to wait for readiness from new output. Pass `--from-start` only when matching
+  existing scrollback is intentional.
+- Use `bb thread terminal output <terminal-id> "$BB_THREAD_ID" --json` to read
+  bounded output, then continue with `--since-seq <nextSeq>` when polling.
+- Use `bb thread terminal send <terminal-id> "$BB_THREAD_ID" --text "..." --enter`
+  for interactive input, and `bb thread terminal stop <terminal-id> "$BB_THREAD_ID"`
+  when the process is no longer needed.
+
 ## Failures And Interruptions
 
 - For failed threads, inspect `bb thread show <id> --json` and

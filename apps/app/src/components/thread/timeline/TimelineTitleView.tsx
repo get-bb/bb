@@ -4,7 +4,6 @@ import {
   assertNever,
   durationToCompactString,
   formatDiffStatsText,
-  formatTimelineDecorationText,
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
@@ -95,6 +94,20 @@ function decorationToneClass(tone: TimelineTitleTone): string {
     default:
       return assertNever(tone);
   }
+}
+
+const STATUS_DECORATION_TONE_CLASS = "text-subtle-foreground";
+const STATUS_DECORATION_TEXT_CLASS = cn(
+  "font-mono text-xs font-normal leading-none",
+  STATUS_DECORATION_TONE_CLASS,
+);
+
+function renderStatusDecorationText(text: string): ReactNode {
+  return (
+    <span className={cn(STATUS_DECORATION_TEXT_CLASS, "ml-px opacity-75")}>
+      {text}
+    </span>
+  );
 }
 
 function renderSegment(
@@ -236,16 +249,45 @@ function renderDecoration(
     }
     case "status":
     case "summary-status": {
-      const text = formatTimelineDecorationText(decoration);
+      // Status decorations render as compact mono annotations without
+      // parentheses. `title.plain` keeps the canonical parenthesized text for
+      // tooltips and plain renderers.
+      if (decoration.kind === "status") {
+        const durationText =
+          decoration.durationMs === null
+            ? null
+            : durationToCompactString(decoration.durationMs);
+        return (
+          <span
+            key={index}
+            className={cn(
+              "shrink-0 whitespace-pre",
+              STATUS_DECORATION_TONE_CLASS,
+              "inline-flex items-baseline gap-1",
+            )}
+          >
+            {durationText ? <span>{durationText}</span> : null}
+            {renderStatusDecorationText(decoration.status)}
+          </span>
+        );
+      }
+
+      const parts: string[] = [];
+      if (decoration.errorCount > 0) {
+        parts.push(
+          `${decoration.errorCount} ${
+            decoration.errorCount === 1 ? "error" : "errors"
+          }`,
+        );
+      }
+      if (decoration.interruptedCount > 0) {
+        parts.push(`${decoration.interruptedCount} interrupted`);
+      }
+      const text = parts.join(", ");
       if (text.length === 0) return null;
-      // Status decorations — a single row's "(error)" tag, a rolled-up
-      // summary's "(N errors)" count, and the denied/interrupted annotations —
-      // all render in the muted decoration tone. These tool-call errors are
-      // non-actionable for the user, so they blend in with their siblings
-      // rather than shouting in red.
       return (
-        <span key={index} className={baseClass}>
-          {text}
+        <span key={index} className="shrink-0 whitespace-pre">
+          {renderStatusDecorationText(text)}
         </span>
       );
     }

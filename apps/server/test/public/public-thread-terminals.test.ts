@@ -16,6 +16,7 @@ import {
 import {
   apiErrorSchema,
   terminalServerMessageSchema,
+  terminalOutputResponseSchema,
   type TerminalServerMessage,
   terminalSessionSchema,
   threadTerminalListResponseSchema,
@@ -335,6 +336,215 @@ describe("public thread terminal routes", () => {
       initialCwd: "/tmp/terminal-workspace",
       status: "running",
       title: "zsh",
+    });
+  });
+
+  it("opens a command terminal with thread context for the daemon", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+
+    const responsePromise = fixture.harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/terminals`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          cols: 100,
+          rows: 30,
+          start: { mode: "command", command: "pnpm dev" },
+        }),
+      },
+    );
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+    expect(openMessage).toMatchObject({
+      projectId: fixture.thread.projectId,
+      start: { mode: "command", command: "pnpm dev" },
+      threadStoragePath: expect.stringContaining(fixture.thread.id),
+    });
+
+    acknowledgeTerminalOpen(fixture, openMessage);
+    const response = await responsePromise;
+    expect(response.status).toBe(201);
+  });
+
+  it("sends input to a running terminal over the daemon session", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const session = createTerminalSession(fixture.harness.db, {
+      cols: 120,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: fixture.environment.path ?? "/tmp/terminal-workspace",
+      rows: 32,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+
+    const response = await fixture.harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/terminals/${session.id}/input`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const inputMessage = await waitForDaemonMessage(fixture.socket);
+    expect(inputMessage).toMatchObject({
+      type: "terminal.input",
+      terminalId: session.id,
+      dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
+    });
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        threadId: fixture.thread.id,
+        terminalId: session.id,
+      })?.lastUserInputAt,
+    ).not.toBeNull();
+  });
+
+  it("resizes a running terminal over the daemon session", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const session = createTerminalSession(fixture.harness.db, {
+      cols: 120,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: fixture.environment.path ?? "/tmp/terminal-workspace",
+      rows: 32,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+
+    const response = await fixture.harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/terminals/${session.id}/resize`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cols: 140, rows: 40 }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(terminalSessionSchema.parse(await readJson(response))).toEqual(
+      expect.objectContaining({
+        id: session.id,
+        cols: 140,
+        rows: 40,
+      }),
+    );
+    const resizeMessage = await waitForDaemonMessage(fixture.socket);
+    expect(resizeMessage).toMatchObject({
+      type: "terminal.resize",
+      terminalId: session.id,
+      cols: 140,
+      rows: 40,
+    });
+  });
+
+  it("reads output by requesting daemon replay", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const session = createTerminalSession(fixture.harness.db, {
+      cols: 120,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: fixture.environment.path ?? "/tmp/terminal-workspace",
+      rows: 32,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+
+    const responsePromise = fixture.harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/terminals/${session.id}/output?sinceSeq=2&limitChunks=1&tailBytes=3`,
+    );
+    const attachMessage = await waitForDaemonMessage(fixture.socket);
+    if (attachMessage.type !== "terminal.attach") {
+      throw new Error(
+        `Expected terminal.attach, received ${attachMessage.type}`,
+      );
+    }
+    expect(attachMessage).toMatchObject({
+      terminalId: session.id,
+      sinceSeq: 2,
+    });
+
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.replay",
+        requestId: attachMessage.requestId,
+        terminalId: session.id,
+        chunks: [
+          {
+            seq: 2,
+            dataBase64: Buffer.from("old", "utf8").toString("base64"),
+          },
+          {
+            seq: 3,
+            dataBase64: Buffer.from("new", "utf8").toString("base64"),
+          },
+        ],
+        nextSeq: 4,
+      },
+    });
+
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(
+      terminalOutputResponseSchema.parse(await readJson(response)),
+    ).toEqual({
+      chunks: [
+        {
+          seq: 3,
+          dataBase64: Buffer.from("new", "utf8").toString("base64"),
+        },
+      ],
+      nextSeq: 4,
+      truncated: true,
+    });
+  });
+
+  it("rejects output reads for exited terminals", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const session = createTerminalSession(fixture.harness.db, {
+      cols: 120,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: fixture.environment.path ?? "/tmp/terminal-workspace",
+      rows: 32,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    markTerminalSessionExited(fixture.harness.db, {
+      terminalId: session.id,
+      exitCode: 0,
+      closeReason: "process-exit",
+    });
+
+    const response = await fixture.harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/terminals/${session.id}/output`,
+    );
+
+    expect(response.status).toBe(409);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "terminal_output_unavailable",
     });
   });
 
@@ -704,11 +914,13 @@ describe("public thread terminal routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject({
-      id: stored.id,
-      closeReason: "user",
-      status: "exited",
-    });
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      {
+        id: stored.id,
+        closeReason: "user",
+        status: "exited",
+      },
+    );
     const closeMessage = await waitForDaemonMessage(fixture.socket);
     expect(closeMessage).toMatchObject({
       type: "terminal.close",
@@ -747,11 +959,13 @@ describe("public thread terminal routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject({
-      id: stored.id,
-      lastUserInputAt: 10,
-      status: "running",
-    });
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      {
+        id: stored.id,
+        lastUserInputAt: 10,
+        status: "running",
+      },
+    );
     expect(fixture.socket.sentMessages).toEqual([]);
 
     const forceResponse = await fixture.harness.app.request(

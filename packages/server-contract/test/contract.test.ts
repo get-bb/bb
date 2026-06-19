@@ -27,6 +27,7 @@ import {
   sendMessageRequestSchema,
   terminalClientMessageSchema,
   terminalOutputChunkSchema,
+  terminalOutputResponseSchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -548,6 +549,22 @@ describe("public terminal contracts", () => {
       terminalClientMessageSchema.safeParse({
         type: "input",
         dataBase64: oversizedEncodedPayload,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires output responses to signal truncation", () => {
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+        truncated: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
       }).success,
     ).toBe(false);
   });

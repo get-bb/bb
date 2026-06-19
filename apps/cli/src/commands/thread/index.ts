@@ -5,6 +5,7 @@ import { registerListCommand } from "./list.js";
 import { registerOpenCommand } from "./open.js";
 import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
+import { registerTerminalCommands } from "./terminals.js";
 import { registerWaitCommand } from "./wait.js";
 
 export { statusText } from "./helpers.js";
@@ -21,4 +22,5 @@ export function registerThreadCommands(
   registerOpenCommand(thread, getUrl);
   registerActionsCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
+  registerTerminalCommands(thread, getUrl);
 }

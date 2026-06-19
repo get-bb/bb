@@ -7,6 +7,10 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
+import {
+  handleTerminalToolCall,
+  isTerminalToolName,
+} from "../services/terminals/terminal-tools.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
 export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
@@ -33,6 +37,18 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
           "invalid_request",
           "Thread does not belong to the session host",
         );
+      }
+
+      if (isTerminalToolName(payload.tool)) {
+        const result = await handleTerminalToolCall({
+          callId: payload.callId,
+          deps,
+          tool: payload.tool,
+          toolArgs: payload.arguments,
+          turnId: payload.turnId,
+          threadId: payload.threadId,
+        });
+        return context.json(result);
       }
 
       return context.json({
