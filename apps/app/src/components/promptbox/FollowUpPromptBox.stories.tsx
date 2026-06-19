@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type {
   Environment,
   PermissionMode,
+  PromptMentionResource,
   PromptTextMention,
   ThreadQueuedMessage,
   WorkspaceStatus,
@@ -279,6 +280,75 @@ const historyEntries = [
   },
 ];
 
+interface StoryMentionSpec {
+  token: string;
+  resource: PromptMentionResource;
+}
+
+function storyMention(
+  text: string,
+  { token, resource }: StoryMentionSpec,
+): PromptTextMention {
+  const start = text.indexOf(token);
+  if (start < 0) {
+    throw new Error(`Missing story mention token: ${token}`);
+  }
+  return {
+    start,
+    end: start + token.length,
+    resource,
+  };
+}
+
+function buildStoryMentions(
+  text: string,
+  mentionSpecs: readonly StoryMentionSpec[],
+): PromptTextMention[] {
+  return mentionSpecs.map((spec) => storyMention(text, spec));
+}
+
+const stackedCardsWithPillsMessage = [
+  "Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+  "with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
+].join(" ");
+
+const stackedCardsWithPillsMentions = buildStoryMentions(
+  stackedCardsWithPillsMessage,
+  [
+    {
+      token: "@apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+        label: "FollowUpPromptBox.tsx",
+      },
+    },
+    {
+      token: "@thread:thr_prompt_pills",
+      resource: {
+        kind: "thread",
+        projectId: "proj_promptbox",
+        threadId: "thr_prompt_pills",
+        label: "Prompt pills QA",
+      },
+    },
+    {
+      token: "/github:gh-fix-ci",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "github:gh-fix-ci",
+        source: "skill",
+        origin: "user",
+        label: "github:gh-fix-ci",
+        argumentHint: null,
+      },
+    },
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Stack slot fixtures — ThreadPromptContextBanner + QueuedMessagesList stack
 // above the prompt input. The caller composes them as a single ReactNode.
@@ -433,6 +503,7 @@ type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
   initialMessage?: string;
+  initialMentions?: PromptTextMention[];
   submitMode: FollowUpSubmitMode;
   isFollowUpSubmitting?: boolean;
   threadRuntimeDisplayStatus?: FollowUpComposerRuntimeStatus;
@@ -463,6 +534,7 @@ function PromptStage({ children }: { children: React.ReactNode }) {
 
 function Row({
   initialMessage = "",
+  initialMentions = [],
   submitMode,
   isFollowUpSubmitting = false,
   threadRuntimeDisplayStatus = "idle",
@@ -481,7 +553,8 @@ function Row({
   readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
-  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const [mentionRanges, setMentionRanges] =
+    useState<PromptTextMention[]>(initialMentions);
   const handleChangeMessage = (
     nextMessage: string,
     nextMentions: PromptTextMention[],
@@ -531,6 +604,24 @@ function Row({
         zenModeResetKey={zenModeResetKey}
       />
     </PromptStage>
+  );
+}
+
+function StackedCardsWithPillsRow() {
+  return (
+    <Row
+      submitMode={{ kind: "queue", onStop: noop }}
+      threadRuntimeDisplayStatus="active"
+      initialMessage={stackedCardsWithPillsMessage}
+      initialMentions={stackedCardsWithPillsMentions}
+      stack={
+        <>
+          {contextBannerElement}
+          {queuedMessagesElement}
+        </>
+      }
+      contextWindowUsage={usage}
+    />
   );
 }
 
@@ -692,6 +783,12 @@ export function Overview() {
           contextWindowUsage={usage}
         />
       </StoryRow>
+      <StoryRow
+        label="stacked cards with pills"
+        hint="banner + queued messages above a composer seeded with mention pills"
+      >
+        <StackedCardsWithPillsRow />
+      </StoryRow>
       <StoryRow label="env: worktree" hint="managed worktree label + icon">
         <Row
           submitMode={{ kind: "ready" }}
@@ -720,6 +817,19 @@ export function Overview() {
           permission={readOnlyPermission}
           readOnly
         />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function StackedCardsWithPills() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="stacked cards with pills"
+        hint="banner + queued messages above a composer seeded with mention pills"
+      >
+        <StackedCardsWithPillsRow />
       </StoryRow>
     </StoryCard>
   );

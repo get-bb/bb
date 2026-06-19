@@ -44,15 +44,13 @@ export function PromptMentionPillNodeView({
   const isSelected = decorations.some(
     (decoration) => decoration.spec?.mentionSelected === true,
   );
-  const backgroundClass = isSelected
-    ? "bg-surface-selected"
-    : "bg-surface-raised";
+  const selectedClass = isSelected ? "prompt-mention-pill--selected" : null;
 
   if (!attrs) {
     return (
       <NodeViewWrapper
         as="span"
-        className={cn(EDITOR_MENTION_PILL_CLASS, backgroundClass)}
+        className={cn(EDITOR_MENTION_PILL_CLASS, selectedClass)}
         data-prompt-mention="true"
       >
         {fallbackSerializedText ?? "@mention"}
@@ -102,7 +100,7 @@ export function PromptMentionPillNodeView({
       as="span"
       className={cn(
         EDITOR_MENTION_PILL_CLASS,
-        backgroundClass,
+        selectedClass,
         activate && "cursor-pointer",
       )}
       {...promptMentionClipboardDataAttributes(attrs)}
@@ -115,7 +113,7 @@ export function PromptMentionPillNodeView({
     >
       <Icon
         name={promptMentionIconName(resource)}
-        className="-ml-px size-4 shrink-0 self-center text-muted-foreground"
+        className="-ml-px size-4 shrink-0 self-center"
         aria-hidden
       />
       <span className={cn("truncate", activate && "group-hover:underline")}>

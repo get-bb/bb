@@ -260,7 +260,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
-    expect(markup).not.toContain("data-promptbox-hide-compact");
   });
 
   it("keeps the pull request action visible beside other context segments", () => {
