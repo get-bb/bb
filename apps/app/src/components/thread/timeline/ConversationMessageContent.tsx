@@ -30,11 +30,9 @@ import {
 } from "./GeneratedConversationMessage.js";
 import {
   clipMentionTextToVisibleRange,
-  messageBodyHasQuote,
-  renderMentionTextSegments,
-  renderMessageBodyWithQuotes,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
+import type { MarkdownPromptMentions } from "@/components/ui/markdown-prompt-mentions.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -181,6 +179,8 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 interface CollapsibleMessageTextProps {
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
+  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onOpenLink?: ThreadTimelineLinkHandler;
   text: string;
   /**
    * When set, the first `mutePrefixLength` characters of `text` are rendered
@@ -190,13 +190,11 @@ interface CollapsibleMessageTextProps {
   mutePrefixLength?: number;
 }
 
-function splitPreWrappedLines(text: string): string[] {
-  return text.split(/\r\n|\r|\n/u);
-}
-
 function CollapsibleMessageText({
   mentions,
   resolveMentionLink,
+  resolveSegmentLinkHref,
+  onOpenLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -212,31 +210,49 @@ function CollapsibleMessageText({
   const bodyOffset = showMutedPrefix ? mutePrefixLength : 0;
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const textRef = useRef<HTMLParagraphElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // Cap before rendering so a megabyte paste can't dominate window-resize
+  // reflow. Unlike the prior plain-text path we hand the whole capped body to
+  // the markdown renderer and clamp it visually (markdown block content doesn't
+  // line-clamp cleanly), rather than slicing it by line per collapse state.
   const isTruncated = bodyText.length > USER_MESSAGE_CHAR_CAP;
   const cappedBody = isTruncated
     ? bodyText.slice(0, USER_MESSAGE_CHAR_CAP)
     : bodyText;
-  const lines = splitPreWrappedLines(cappedBody);
-  const exceedsCollapsedLineCount = lines.length > 15;
-  // Collapsed view hands only the visible-by-line-clamp lines to the DOM;
-  // expanded view hands the (already-capped) full text. Both stay below the
-  // hard char cap so a megabyte paste can't dominate window-resize reflow.
-  const renderedBody =
-    isExpanded || !exceedsCollapsedLineCount
-      ? cappedBody
-      : lines.slice(0, 15).join("\n");
+  // Rebase mentions onto the prefix-stripped, char-capped body so their offsets
+  // index into the exact string handed to the markdown renderer (a mention
+  // straddling the cap is dropped, clipping the body to just before it).
+  const body = useMemo(
+    () =>
+      clipMentionTextToVisibleRange({
+        mentions,
+        rangeStart: bodyOffset,
+        text: cappedBody,
+      }),
+    [mentions, bodyOffset, cappedBody],
+  );
+  const promptMentions = useMemo<MarkdownPromptMentions>(
+    () => ({
+      mentions: body.mentions,
+      resolveLinkHref: resolveSegmentLinkHref,
+      resolveMentionLink,
+    }),
+    [body.mentions, resolveSegmentLinkHref, resolveMentionLink],
+  );
+  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
+    () => (onOpenLink ? { onOpenLink } : undefined),
+    [onOpenLink],
+  );
+
+  // Collapsed: clamp the rendered markdown to ~15 lines and reveal the toggle
+  // when it overflows the clamp, measured off the container height (the source
+  // line count no longer maps to rendered height once blocks have margins).
   const isOverflowing = useIsOverflowing({
-    elementRef: textRef,
+    elementRef: bodyRef,
     enabled: !isExpanded,
-    measurementKey: renderedBody,
+    measurementKey: body.text,
   });
-  const showToggle = isExpanded || exceedsCollapsedLineCount || isOverflowing;
-  const safeRenderedBody = clipMentionTextToVisibleRange({
-    mentions,
-    rangeStart: bodyOffset,
-    text: renderedBody,
-  });
+  const showToggle = isExpanded || isOverflowing;
 
   return (
     <>
@@ -248,39 +264,22 @@ function CollapsibleMessageText({
           {prefixText}
         </span>
       ) : null}
-      {messageBodyHasQuote(safeRenderedBody.text) ? (
-        // Quote-containing bodies render as blocks (paragraphs + styled
-        // blockquotes), so `> ` reads like a quote rather than literal text.
-        // `renderedBody` is already line-sliced when collapsed, so the toggle
-        // (driven by line count) still works without a CSS line clamp.
-        <div className="break-words">
-          {renderMessageBodyWithQuotes({
-            mentions: safeRenderedBody.mentions,
-            resolveMentionLink,
-            text: safeRenderedBody.text,
-          })}
-          {isExpanded && isTruncated ? (
-            <span className="text-muted-foreground"> [truncated]</span>
-          ) : null}
-        </div>
-      ) : (
-        <p
-          ref={textRef}
-          className={cn(
-            "whitespace-pre-wrap break-words",
-            !isExpanded && "line-clamp-[15]",
-          )}
-        >
-          {renderMentionTextSegments({
-            mentions: safeRenderedBody.mentions,
-            resolveMentionLink,
-            text: safeRenderedBody.text,
-          })}
-          {isExpanded && isTruncated ? (
-            <span className="text-muted-foreground"> [truncated]</span>
-          ) : null}
-        </p>
-      )}
+      <div
+        ref={bodyRef}
+        className={cn(
+          "break-words",
+          !isExpanded && "max-h-[15lh] overflow-hidden",
+        )}
+      >
+        <MarkdownPreview
+          content={body.text}
+          promptMentions={promptMentions}
+          linkRouting={linkRouting}
+        />
+        {isExpanded && isTruncated ? (
+          <span className="text-muted-foreground">[truncated]</span>
+        ) : null}
+      </div>
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
@@ -395,6 +394,8 @@ function UserConversationMessage({
             <CollapsibleMessageText
               mentions={mentions}
               resolveMentionLink={resolveMentionLink}
+              resolveSegmentLinkHref={resolveSegmentLinkHref}
+              onOpenLink={onOpenLink}
               text={text}
               mutePrefixLength={mutePrefixLength || undefined}
             />
