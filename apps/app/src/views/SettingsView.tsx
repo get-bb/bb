@@ -37,6 +37,7 @@ import {
   type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
+import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@/lib/utils";
 import {
@@ -91,6 +92,11 @@ export interface RootComposeBehaviorSettingsControlProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
 }
 
+export interface RichTextEditingSettingsControlProps {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface FaviconColorSettingsControlProps {
   faviconColor: FaviconColorPreference;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
@@ -103,8 +109,10 @@ export interface GeneralSettingsSectionProps {
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
+  onRichTextEditingChange: (enabled: boolean) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
+  richTextEditing: boolean;
   themePreference: ThemePreference;
 }
 
@@ -368,6 +376,7 @@ export function LocalOpenTargetSettingsSection({
 const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
+const RICH_TEXT_EDITING_SETTING_LABEL = "Rich text formatting in the prompt box";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -402,6 +411,24 @@ export function InAppBrowserLinkSettingsControl({
   );
 }
 
+export function RichTextEditingSettingsControl({
+  enabled,
+  onEnabledChange,
+}: RichTextEditingSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={RICH_TEXT_EDITING_SETTING_LABEL}
+      description="Format the prompt box with Markdown as you type — headings, lists, bold, italic, and inline code. When off, the prompt box stays plain text."
+    >
+      <Switch
+        checked={enabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
 export function GeneralSettingsSection({
   desktopBrowserAvailable,
   faviconColor,
@@ -409,8 +436,10 @@ export function GeneralSettingsSection({
   onFaviconColorChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
+  onRichTextEditingChange,
   onThemePreferenceChange,
   openLinksInAppBrowser,
+  richTextEditing,
   themePreference,
 }: GeneralSettingsSectionProps) {
   return (
@@ -463,6 +492,11 @@ export function GeneralSettingsSection({
           onNavigateToThreadAfterCreateChange={
             onNavigateToThreadAfterCreateChange
           }
+        />
+
+        <RichTextEditingSettingsControl
+          enabled={richTextEditing}
+          onEnabledChange={onRichTextEditingChange}
         />
 
         {desktopBrowserAvailable ? (
@@ -736,6 +770,7 @@ export function SettingsView() {
     useOpenLinksInAppBrowserPreference();
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
+  const [richTextEditing, setRichTextEditing] = useRichTextEditingPreference();
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
@@ -751,10 +786,12 @@ export function SettingsView() {
           faviconColor={faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
+          richTextEditing={richTextEditing}
           themePreference={themePreference}
           onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onRichTextEditingChange={setRichTextEditing}
           onThemePreferenceChange={setPreferredTheme}
         />
 
