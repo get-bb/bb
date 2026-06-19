@@ -17,7 +17,6 @@ import {
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
   threadTimelineGoalSchema,
-  threadTimelinePendingPlanSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -509,7 +508,6 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
-  pendingPlan: threadTimelinePendingPlanSchema.nullable().optional(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),

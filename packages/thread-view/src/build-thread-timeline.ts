@@ -18,7 +18,6 @@ import {
   type ActiveThinking,
   type Thread,
   type ThreadTimelineGoal,
-  type ThreadTimelinePendingPlan,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
@@ -54,7 +53,6 @@ import {
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
-import { extractThreadTimelinePendingPlan } from "./plan-snapshot-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
@@ -64,10 +62,10 @@ interface ThreadTimelineFromEventsBaseOptions {
   includeDebugRawEvents: boolean;
   includeProviderUnhandledOperations: boolean;
   /**
-   * Tail-only state (`pendingPlan`, `pendingTodos`) is only meaningful on the
-   * latest page — these snapshots describe current head state, not historical
-   * state. Caller passes false on older-page requests so projections can skip
-   * extraction work entirely instead of computing it and discarding.
+   * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
+   * this snapshot describes current head state, not historical state. Caller
+   * passes false on older-page requests so projections can skip extraction work
+   * entirely instead of computing it and discarding.
    */
   isLatestPage: boolean;
   threadStatus: Thread["status"];
@@ -100,7 +98,6 @@ export interface ThreadTimelineFromEventsResult {
   activeThinking: ActiveThinking | null;
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
-  pendingPlan: ThreadTimelinePendingPlan | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   rows: TimelineRow[];
 }
@@ -1117,12 +1114,6 @@ export function buildThreadTimelineFromEvents(
     goal: !args.options.isLatestPage
       ? null
       : extractThreadTimelineGoal(args.events),
-    pendingPlan: !args.options.isLatestPage
-      ? null
-      : extractThreadTimelinePendingPlan(
-          args.options.threadStatus,
-          args.events,
-        ),
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(
