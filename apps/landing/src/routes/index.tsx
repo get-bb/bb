@@ -16,7 +16,6 @@ import {
   Mic02Icon,
   MoreHorizontalIcon,
   PlusMinusSquare01Icon,
-  Search01Icon,
   SentIcon,
   Settings01Icon,
   SidebarLeftIcon,
@@ -31,6 +30,7 @@ import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
 import bbIcon from "../assets/bb-icon.png";
+import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, CursorIcon, OpenAiIcon, PiIcon } from "../icons";
 import type { CtaPlacement } from "../site";
@@ -134,27 +134,60 @@ function useScrollReveal() {
   }, []);
 }
 
+/** The app mock assembles itself the first time it scrolls into view: window
+ *  frame, then title bar, sidebar rows, conversation, and composer in sequence.
+ *  The mock is held hidden from first paint by CSS (`html.js` + `:not(.constructing)`)
+ *  so it never flashes finished before it builds. Once the entrance finishes the
+ *  class is swapped to `.constructed` so later re-renders (switching threads,
+ *  opening the diff) don't replay it. Prerender/no-JS/reduced-motion render the
+ *  finished mock with no animation. */
+function useConstructMock() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const mock = document.querySelector("[data-construct]");
+    if (!mock || mock.classList.contains("constructed")) {
+      return;
+    }
+    let timer = 0;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const el = entry.target;
+            el.classList.add("constructing");
+            observer.unobserve(el);
+            timer = window.setTimeout(() => {
+              el.classList.remove("constructing");
+              el.classList.add("constructed");
+            }, 1800);
+          }
+        }
+      },
+      // Threshold 0 (not a ratio) so a mock taller than a small mobile viewport
+      // still triggers; the bottom margin holds it until it is meaningfully in view.
+      { threshold: 0, rootMargin: "0px 0px -20% 0px" },
+    );
+    observer.observe(mock);
+    return () => {
+      observer.disconnect();
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, []);
+}
+
 /* ── Shared bits ──────────────────────────────────────────────────── */
 
 function ProviderChips() {
   return (
     <>
-      <span className="chip">
-        <ClaudeIcon className="chip-icon" />
-        Claude Code
-      </span>
-      <span className="chip">
-        <OpenAiIcon className="chip-icon" />
-        Codex
-      </span>
-      <span className="chip">
-        <CursorIcon className="chip-icon" />
-        Cursor
-      </span>
-      <span className="chip">
-        <PiIcon className="chip-icon" />
-        Pi
-      </span>
+      <ClaudeIcon className="plogo" />
+      <OpenAiIcon className="plogo" />
+      <CursorIcon className="plogo" />
+      <PiIcon className="plogo" />
     </>
   );
 }
@@ -185,9 +218,6 @@ const ChevronDown = ({ className }: IconProps) => (
 );
 const Ellipsis = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MoreHorizontalIcon} className={className} />
-);
-const SearchIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Search01Icon} className={className} />
 );
 const NewThreadIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
@@ -246,6 +276,11 @@ type Step =
   | { kind: "user"; text: string }
   | { kind: "step"; text: string }
   | { kind: "say"; text: ReactNode };
+type Ask = {
+  question: string;
+  options: { label: string; description: string }[];
+  selected: number;
+};
 type MockThread = {
   id: string;
   title: string;
@@ -254,6 +289,8 @@ type MockThread = {
   pr?: number;
   change: { files: number; add: number; del: number };
   transcript: Step[];
+  /** A pending AskUserQuestion that replaces the prompt box (like the app). */
+  ask?: Ask;
 };
 
 const HERO_THREADS: MockThread[] = [
@@ -323,16 +360,22 @@ const HERO_THREADS: MockThread[] = [
         text: "Refactor the timeline cache to drop the duplicate fetch.",
       },
       { kind: "step", text: "Explored 3 files" },
-      {
-        kind: "say",
-        text: (
-          <>
-            Two options: a shared in-flight promise, or a short TTL cache. The
-            promise is simplest — want me to go with that?
-          </>
-        ),
-      },
+      { kind: "say", text: "Found the duplicate fetch — two ways to fix it." },
     ],
+    ask: {
+      question: "How should I dedupe the timeline fetch?",
+      options: [
+        {
+          label: "Shared in-flight promise",
+          description: "One request in flight; everyone awaits it. Simplest.",
+        },
+        {
+          label: "Short TTL cache",
+          description: "Cache the result for a few seconds, then refetch.",
+        },
+      ],
+      selected: 0,
+    },
   },
   {
     id: "lin482",
@@ -357,14 +400,78 @@ const HERO_THREADS: MockThread[] = [
   },
 ];
 
+// The pinned dispatcher thread, kept out of "All Threads".
+const CHIEF: MockThread = {
+  id: "chief",
+  title: "Chief",
+  status: "running",
+  branch: "bb/chief",
+  change: { files: 1, add: 12, del: 0 },
+  transcript: [
+    { kind: "user", text: "Anything need me?" },
+    { kind: "step", text: "Swept 4 active threads" },
+    {
+      kind: "say",
+      text: (
+        <>
+          One thread is waiting on you — <code>Refactor the timeline cache</code>
+          . Sentry triage and LIN-482 are running; the nightly changelog merged.
+        </>
+      ),
+    },
+    { kind: "step", text: "Spawned 2 workers" },
+    {
+      kind: "say",
+      text: "I'll keep dispatching and ping you when something needs a call.",
+    },
+  ],
+};
+
 function ThreadStatus({ status }: { status: Status }) {
-  if (status === "running") {
-    return <Spinner className="trun" />;
-  }
-  if (status === "done") {
-    return <CheckIcon className="tdone" />;
-  }
-  return <span className="twait" aria-hidden />;
+  return (
+    <span className="tstatus" aria-hidden>
+      {status === "running" ? <Spinner className="trun" /> : null}
+      {status === "done" ? <CheckIcon className="tdone" /> : null}
+      {status === "waiting" ? <span className="twait" /> : null}
+    </span>
+  );
+}
+
+// The AskUserQuestion tool. Like the app, it REPLACES the prompt box: a
+// recessed card in the composer slot with the prompt, single-select option
+// rows, and Cancel / Submit answer actions.
+function AskQuestion({ ask }: { ask: Ask }) {
+  const [selected, setSelected] = useState(ask.selected);
+  return (
+    <div className="composer">
+      <div className="askq">
+        <div className="askq-q">{ask.question}</div>
+        <div className="askq-opts">
+          {ask.options.map((opt, i) => (
+            <button
+              key={opt.label}
+              type="button"
+              className={i === selected ? "askq-opt on" : "askq-opt"}
+              aria-pressed={i === selected}
+              onClick={() => setSelected(i)}
+            >
+              <span className="askq-radio">
+                {i === selected ? <CheckIcon className="askq-check" /> : null}
+              </span>
+              <span className="askq-text">
+                <span className="askq-label">{opt.label}</span>
+                <span className="askq-desc">{opt.description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="askq-actions">
+          <span className="askq-cancel">Cancel</span>
+          <span className="askq-submit">Submit answer</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type DiffLine = { t: "ctx" | "add" | "del"; text: string };
@@ -517,7 +624,7 @@ function HeroAppMock() {
   // where the sidebar is always in-flow.
   const [navOpen, setNavOpen] = useState(false);
   const thread =
-    HERO_THREADS.find((candidate) => candidate.id === activeId) ??
+    [CHIEF, ...HERO_THREADS].find((candidate) => candidate.id === activeId) ??
     HERO_THREADS[0];
 
   const openThread = (id: string) => {
@@ -528,7 +635,11 @@ function HeroAppMock() {
 
   return (
     <section className="mockup-wrap">
-      <div className="mock" aria-label="Interactive preview of the bb app">
+      <div
+        className="mock"
+        data-construct
+        aria-label="Interactive preview of the bb app"
+      >
         <div className="mock-bar">
           <div className="bar-left">
             <span className="mock-dots" aria-hidden>
@@ -587,47 +698,53 @@ function HeroAppMock() {
             />
           ) : null}
           <aside className={navOpen ? "side nav-open" : "side"}>
-            <div className="side-row">
-              <button
-                type="button"
-                className={
-                  view === "new"
-                    ? "side-act side-new active-act"
-                    : "side-act side-new"
-                }
-                aria-pressed={view === "new"}
-                onClick={() => {
-                  setView("new");
-                  setNavOpen(false);
-                }}
-              >
-                <NewThreadIcon className="sa-ic" />
-                New thread
-              </button>
-              <SearchIcon className="side-search" />
-            </div>
+            <button
+              type="button"
+              className={
+                view === "new" ? "side-act active-act" : "side-act"
+              }
+              aria-pressed={view === "new"}
+              onClick={() => {
+                setView("new");
+                setNavOpen(false);
+              }}
+            >
+              <NewThreadIcon className="sa-ic" />
+              New thread
+            </button>
             <div className="side-act">
               <ClockIcon className="sa-ic" />
               Automations
             </div>
             <div className="side-label">Pinned</div>
-            <div className="trow trow-pin">
+            <button
+              type="button"
+              className={
+                view === "thread" && activeId === "chief"
+                  ? "trow trow-pin active"
+                  : "trow trow-pin"
+              }
+              aria-pressed={view === "thread" && activeId === "chief"}
+              onClick={() => openThread("chief")}
+            >
               <span className="trow-title">Chief</span>
-            </div>
+            </button>
             <div className="side-label">All Threads</div>
             <ul className="threads">
-              {HERO_THREADS.map((candidate) => {
+              {HERO_THREADS.map((candidate, index) => {
                 const isActive =
                   view === "thread" && candidate.id === activeId;
                 return (
-                  <li key={candidate.id}>
+                  <li
+                    key={candidate.id}
+                    style={{ animationDelay: `${0.6 + index * 0.06}s` }}
+                  >
                     <button
                       type="button"
                       className={isActive ? "trow active" : "trow"}
                       aria-pressed={isActive}
                       onClick={() => openThread(candidate.id)}
                     >
-                      <FolderGitIcon className="trow-glyph" />
                       <span className="trow-title">{candidate.title}</span>
                       <ThreadStatus status={candidate.status} />
                     </button>
@@ -644,29 +761,34 @@ function HeroAppMock() {
             <div className="main">
               <div className="feed">
                 {thread.transcript.map((s, index) => {
+                  const delay = { animationDelay: `${0.66 + index * 0.09}s` };
                   if (s.kind === "user") {
                     return (
-                      <div key={index} className="msg-user">
+                      <div key={index} className="msg-user" style={delay}>
                         {s.text}
                       </div>
                     );
                   }
                   if (s.kind === "step") {
                     return (
-                      <div key={index} className="msg-step">
+                      <div key={index} className="msg-step" style={delay}>
                         <ChevronRight className="step-chev" />
                         {s.text}
                       </div>
                     );
                   }
                   return (
-                    <div key={index} className="msg-say">
+                    <div key={index} className="msg-say" style={delay}>
                       {s.text}
                     </div>
                   );
                 })}
               </div>
-              <Composer thread={thread} />
+              {thread.ask ? (
+                <AskQuestion ask={thread.ask} />
+              ) : (
+                <Composer thread={thread} />
+              )}
             </div>
           ) : (
             <div className="main main-new">
@@ -712,94 +834,100 @@ function Band({
   );
 }
 
-/* ── Band 1 visual: the one code block ────────────────────────────── */
+/* ── Looping visual cycle ─────────────────────────────────────────── */
 
-function SpawnCode() {
-  return (
-    <div className="code mono" aria-label="Spawning a bb thread from the command line">
-      <div className="stanza">
-        <div>
-          <span className="cm"># you, an agent, or any program</span>
-        </div>
-        <div>
-          <span className="cmd">bb</span> <span className="verb">thread spawn</span>{" "}
-          <span className="fl">--project</span> app <span className="pn">\</span>
-        </div>
-        <div>
-          {"  "}
-          <span className="fl">--prompt</span>{" "}
-          <span className="st">"Triage the Sentry spike"</span>
-        </div>
-      </div>
-      <div className="stanza">
-        <div>
-          <span className="cm"># → a thread you can open</span>
-        </div>
-        <div>
-          <span className="out">Thread spawned: thr_a1b2c3</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Band 2 visual: text the bot, bb spawns the thread ────────────── */
-
-// A Telegram-style chat with the bb bot. The user texts a request; the bot acks
-// and a bb thread card appears, its status going spawning → running. Cycles via
-// a keyed remount so the send → spawn sequence replays. CSS-only transitions.
-function AgentChat() {
+/** Drives a looping visual: hold the current item, fade it out, then swap to the
+ *  next and replay its entrance. Returns a monotonic `cycle` (use as the remount
+ *  key; mod by item count for content) and whether it is currently fading out, so
+ *  the outgoing content can ease away before the next appears. Inert under reduced
+ *  motion — the first item just stays shown. */
+function useCycle(holdMs: number, fadeMs: number) {
   const [cycle, setCycle] = useState(0);
+  const [leaving, setLeaving] = useState(false);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
-    const id = setInterval(() => setCycle((c) => c + 1), 7200);
-    return () => clearInterval(id);
-  }, []);
+    let holdTimer = 0;
+    let fadeTimer = 0;
+    const schedule = () => {
+      holdTimer = window.setTimeout(() => {
+        setLeaving(true);
+        fadeTimer = window.setTimeout(() => {
+          setCycle((c) => c + 1);
+          setLeaving(false);
+          schedule();
+        }, fadeMs);
+      }, holdMs);
+    };
+    schedule();
+    return () => {
+      window.clearTimeout(holdTimer);
+      window.clearTimeout(fadeTimer);
+    };
+  }, [holdMs, fadeMs]);
+  return { cycle, leaving };
+}
+
+/* ── Band visual: text the bot, bb spawns the thread ──────────────── */
+
+// A Telegram-style chat with the bb bot. The user texts a request; the bot acks
+// and a bb thread card appears, its status going spawning → running. The chat
+// shell and wallpaper stay put; only the messages cycle — they fade in, hold,
+// then fade out together before the conversation replays. CSS-only transitions.
+function AgentChat() {
+  const { cycle, leaving } = useCycle(6000, 600);
   return (
     <div className="tg" aria-label="Texting the Crunch bot, which spawns a bb thread">
       <div className="tg-bar">
         <ChevronLeft className="tg-back" />
         <span className="tg-contact">
-          <span className="tg-name">Crunch</span>
+          <span className="tg-name">Sawyer&rsquo;s Hermes</span>
           <span className="tg-sub">bot</span>
         </span>
         <span className="tg-av" aria-hidden>
-          <img src={bbIcon} alt="" />
+          <img src={hermesAvatar} alt="" />
         </span>
       </div>
-      <div className="tg-feed" key={cycle}>
-        <div className="tg-msg tg-out" style={{ animationDelay: "0.3s" }}>
-          <span className="tg-bubble">
-            spawn a thread to fix the failing CI on main
-            <span className="tg-time">9:41</span>
-          </span>
-        </div>
-        <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
-          <span className="tg-bubble">
-            On it — spawning a worker thread.
-            <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
-          </span>
-        </div>
-        <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
-          <div className="tg-thread">
-            <div className="tg-thread-top">
-              <img src={bbIcon} alt="" className="tg-thread-mark" />
-              <span className="tg-thread-eyebrow">Worker thread</span>
-              <span className="tg-stat" aria-hidden>
-                <span className="tg-stat-spawn" style={{ animationDelay: "3.5s" }}>
-                  <Spinner className="tg-spin" />
-                  spawning
+      <div className="tg-feed">
+        <div className={leaving ? "tg-msgs leaving" : "tg-msgs"} key={cycle}>
+          <div className="tg-msg tg-out" style={{ animationDelay: "0.3s" }}>
+            <span className="tg-bubble">
+              spawn a thread to fix the failing CI on main
+              <span className="tg-time">9:41</span>
+            </span>
+          </div>
+          <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
+            <span className="tg-bubble">
+              On it — spawning a worker thread.
+              <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
+            </span>
+          </div>
+          <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
+            <div className="tg-thread">
+              <div className="tg-thread-top">
+                <img src={bbIcon} alt="" className="tg-thread-mark" />
+                <span className="tg-thread-eyebrow">Worker thread</span>
+                <span className="tg-stat" aria-hidden>
+                  <span
+                    className="tg-stat-spawn"
+                    style={{ animationDelay: "3.5s" }}
+                  >
+                    <Spinner className="tg-spin" />
+                    spawning
+                  </span>
+                  <span
+                    className="tg-stat-run"
+                    style={{ animationDelay: "3.5s" }}
+                  >
+                    <span className="tg-rdot" />
+                    running
+                  </span>
                 </span>
-                <span className="tg-stat-run" style={{ animationDelay: "3.5s" }}>
-                  <span className="tg-rdot" />
-                  running
-                </span>
-              </span>
+              </div>
+              <div className="tg-thread-title">Fix CI on main</div>
+              <div className="tg-thread-branch mono">bb/fix-ci-on-main</div>
             </div>
-            <div className="tg-thread-title">Fix CI on main</div>
-            <div className="tg-thread-branch mono">bb/fix-ci-on-main</div>
           </div>
         </div>
       </div>
@@ -849,59 +977,54 @@ const RUNS: Run[] = [
 ];
 
 // A compact, BB-native "run receipt": trigger + status pill + steps that check
-// in one by one + final output. It cycles one automation at a time — the motion
-// is text/status/checkmark reveals (CSS, restarted by the keyed remount), not a
-// separate graphic. The principle: show work getting done while you're away.
+// in one by one + final output. It cycles one automation at a time. The card
+// shell stays put — only its contents cycle: they build in, hold, then fade out
+// together before the next run's contents appear (CSS reveals, no card flash).
 function AutomationRun() {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const id = setInterval(() => setIndex((prev) => (prev + 1) % RUNS.length), 4200);
-    return () => clearInterval(id);
-  }, []);
-  const run = RUNS[index];
+  const { cycle, leaving } = useCycle(3800, 400);
+  const run = RUNS[cycle % RUNS.length];
   const outAt = 0.25 + run.steps.length * 0.5;
   const doneAt = outAt + 0.2;
   return (
-    <div className="runcard" key={index} aria-label="An automation run">
-      <div className="run-head">
-        <span className="run-title">{run.title}</span>
-        <span className="run-status" aria-hidden>
-          <span className="rs rs-run" style={{ animationDelay: `${doneAt}s` }}>
-            <span className="rs-dot" />
-            Running
+    <div className="runcard" aria-label="An automation run">
+      <div className={leaving ? "run-body leaving" : "run-body"} key={cycle}>
+        <div className="run-head">
+          <span className="run-title">{run.title}</span>
+          <span className="run-status" aria-hidden>
+            <span className="rs rs-run" style={{ animationDelay: `${doneAt}s` }}>
+              <span className="rs-dot" />
+              Running
+            </span>
+            <span className="rs rs-done" style={{ animationDelay: `${doneAt}s` }}>
+              <CheckIcon className="rs-check" />
+              Done
+            </span>
           </span>
-          <span className="rs rs-done" style={{ animationDelay: `${doneAt}s` }}>
-            <CheckIcon className="rs-check" />
-            Done
-          </span>
-        </span>
-      </div>
-      <div className="run-trigger">
-        {run.triggerKind === "cron" ? (
-          <ClockIcon className="tg-ic" />
-        ) : (
-          <BoltIcon className="tg-ic" />
-        )}
-        <span className="mono">{run.trigger}</span>
-      </div>
-      <div className="run-steps">
-        {run.steps.map((step, i) => (
-          <div
-            className="run-step"
-            key={step}
-            style={{ animationDelay: `${0.25 + i * 0.5}s` }}
-          >
-            <CheckIcon className="st-check" />
-            <span>{step}</span>
-          </div>
-        ))}
-      </div>
-      <div className="run-output" style={{ animationDelay: `${outAt}s` }}>
-        <span className="out-arrow">→</span>
-        <span>{run.output}</span>
+        </div>
+        <div className="run-trigger">
+          {run.triggerKind === "cron" ? (
+            <ClockIcon className="tg-ic" />
+          ) : (
+            <BoltIcon className="tg-ic" />
+          )}
+          <span className="mono">{run.trigger}</span>
+        </div>
+        <div className="run-steps">
+          {run.steps.map((step, i) => (
+            <div
+              className="run-step"
+              key={step}
+              style={{ animationDelay: `${0.25 + i * 0.5}s` }}
+            >
+              <CheckIcon className="st-check" />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+        <div className="run-output" style={{ animationDelay: `${outAt}s` }}>
+          <span className="out-arrow">→</span>
+          <span>{run.output}</span>
+        </div>
       </div>
     </div>
   );
@@ -941,6 +1064,7 @@ function ProviderTree() {
 
 function LandingPage() {
   useScrollReveal();
+  useConstructMock();
   return (
     <div className="wrap">
       <nav className="nav">
@@ -956,20 +1080,10 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
-        <h1>
-          The IDE{" "}
-          <span className="uline">
-            anything
-            <svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden>
-              <path d="M3 9 C 60 3.5, 140 3.5, 197 7" />
-            </svg>
-          </span>{" "}
-          can drive.
-        </h1>
+        <h1>The IDE for Loop Driven Development</h1>
         <p className="sub">
-          You drive it by hand. Your agents, your own scripts, and automations
-          on a loop drive it through the CLI. Every thread lands in one place —
-          local-first, on your machine, waiting for you.
+          Orchestrate your coding agents. Drive it yourself, or let your agents
+          and automations drive it for you.
         </p>
 
         <div className="cta-row">
@@ -982,10 +1096,6 @@ function LandingPage() {
         </div>
 
         <InstallCommand placement="hero" />
-        <p className="fine">
-          Free and open source · macOS (Apple Silicon) · runs anywhere with Node
-          22 and Git
-        </p>
 
         <div className="providers">
           <span className="label">Works with</span>
@@ -998,34 +1108,17 @@ function LandingPage() {
       <Band
         kicker="# anything can drive it"
         title="Anything can kick off work."
-        visual={<SpawnCode />}
-      >
-        <p>
-          The same CLI your agents use is open to any program you write. A shell
-          script, a cron job, your own hermes or openclaw — each can spawn a
-          thread that&rsquo;s waiting in your sidebar when you are.
-        </p>
-        <div className="band-cta">
-          <GitHubLink placement="cli" className="btn btn-ghost btn-sm">
-            Browse the CLI →
-          </GitHubLink>
-        </div>
-      </Band>
-
-      <Band
-        kicker="# bring your own agent"
-        title="Text your agent. It works in bb."
         flip
         visual={<AgentChat />}
       >
         <p>
-          Agents like Hermes and openclaw live in the apps you already chat in —
-          Telegram, Signal, Slack. Give one a job from anywhere and it spawns a
-          thread through the bb CLI.
+          The same CLI your agents use is open to any program you write — a
+          shell script, a cron job, or your own hermes or openclaw bot in
+          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
+          waiting in your sidebar when you are.
         </p>
         <p>
-          The work runs on your machine and is waiting for you when you&rsquo;re
-          back.
+          It runs on your machine, and is waiting for you when you&rsquo;re back.
         </p>
       </Band>
 
@@ -1040,33 +1133,7 @@ function LandingPage() {
           nightly docs, changelogs, error triage. All on your machine, not
           someone else&rsquo;s cloud.
         </p>
-        <div className="band-cta">
-          <GitHubLink placement="loops" className="btn btn-ghost btn-sm">
-            How automations work →
-          </GitHubLink>
-        </div>
       </Band>
-
-      <section className="statement" data-reveal>
-        <p className="kicker"># your machine, your keys</p>
-        <h2 className="sec-title">Local-first. Yours to keep.</h2>
-        <p>
-          bb is free and open source, and runs entirely on your machine using
-          the provider subscriptions you already pay for. No cloud middleman, no
-          lock-in, no per-seat bill.
-        </p>
-        <p className="facts">
-          <span>Free</span>
-          <span>MIT</span>
-          <span>macOS (Apple Silicon)</span>
-          <span>Node 22 + Git anywhere</span>
-        </p>
-        <div className="cta-row">
-          <GitHubLink placement="local" className="btn btn-ghost">
-            Star on GitHub →
-          </GitHubLink>
-        </div>
-      </section>
 
       <Band
         kicker="# mix and match"
@@ -1079,14 +1146,39 @@ function LandingPage() {
           whichever fits — and have one agent spawn and manage another, each in
           its own thread.
         </p>
+        <p>
+          Each runs on your own subscription — the provider plan you already pay
+          for, billed by them, not bb.
+        </p>
         <div className="providers">
           <ProviderChips />
         </div>
       </Band>
 
+      <section className="statement" data-reveal>
+        <p className="kicker"># fully open source</p>
+        <h2 className="sec-title">Fork it. Make it your own.</h2>
+        <p>
+          bb is MIT-licensed end to end. Fork the repo, customize the agents,
+          tools, and UI, and deploy your own build across your whole
+          organization. It still runs local-first on your machines, on the
+          provider subscriptions you already pay for.
+        </p>
+        <p className="facts">
+          <span>MIT licensed</span>
+          <span>Fork and customize</span>
+          <span>Self-host in your org</span>
+        </p>
+        <div className="cta-row">
+          <GitHubLink placement="local" className="btn btn-ghost">
+            View the source →
+          </GitHubLink>
+        </div>
+      </section>
+
       <section className="closer" data-reveal>
-        <h2 className="sec-title">Point anything at it. It&rsquo;s all here for you.</h2>
-        <p>Free and open source. Install in under a minute.</p>
+        <h2 className="sec-title">Start your first loop.</h2>
+        <p>Free, open source, and local-first. Install in under a minute.</p>
         <div className="cta-row">
           <DownloadLink placement="closer" className="btn btn-primary">
             Download for macOS

@@ -3,6 +3,18 @@
    oklch grays, inverted-neutral primary button, a single restrained blue
    accent, Inter Variable. */
 
+/* Metric-adjusted fallback (Arial sized to Inter) shown until Inter loads, so
+   text — the large hero title especially — doesn't reflow/snap when the web
+   font swaps in mid-animation. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  ascent-override: 90.49%;
+  descent-override: 22.56%;
+  line-gap-override: 0%;
+  size-adjust: 107.06%;
+}
+
 :root {
   --bg: oklch(1 0 0);
   --ink: oklch(0.3211 0 0);
@@ -23,8 +35,8 @@
   --code-str: oklch(0.52 0.1 50);
   --radius: 0.5rem;
   --font-sans:
-    "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, sans-serif;
+    "Inter Variable", "Inter Fallback", Inter, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -40,6 +52,10 @@
    any sticky positioning are unaffected. */
 html {
   overflow-x: clip;
+  /* Reserve the scrollbar gutter on both sides so centered sections (hero,
+     statement, closer) stay centered in the viewport rather than nudged left
+     by the vertical scrollbar's width. */
+  scrollbar-gutter: stable both-edges;
 }
 
 body {
@@ -74,6 +90,19 @@ code,
   align-items: center;
   justify-content: space-between;
   padding: 22px 0;
+  animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The header drops in first, then the hero copy rises in below it. */
+@keyframes hdr-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .logo img {
@@ -223,11 +252,12 @@ code,
   }
 }
 
-/* Staggered entrance for hero content. */
+/* Staggered entrance for hero content — rises in just after the nav, matching
+   the app mock's rise so the whole header reads as one entrance. */
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -236,27 +266,28 @@ code,
 }
 
 .hero > * {
-  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.12s;
 }
 
 .hero > :nth-child(2) {
-  animation-delay: 0.07s;
-}
-
-.hero > :nth-child(3) {
-  animation-delay: 0.14s;
-}
-
-.hero > :nth-child(4) {
   animation-delay: 0.21s;
 }
 
+.hero > :nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.hero > :nth-child(4) {
+  animation-delay: 0.39s;
+}
+
 .hero > :nth-child(5) {
-  animation-delay: 0.28s;
+  animation-delay: 0.48s;
 }
 
 .hero > :nth-child(6) {
-  animation-delay: 0.35s;
+  animation-delay: 0.57s;
 }
 
 /* Scroll reveal: sections start hidden only once JS marks them pending,
@@ -287,6 +318,7 @@ code,
   color: var(--dim);
   max-width: 600px;
   font-size: 17.5px;
+  text-wrap: balance;
 }
 
 .install {
@@ -342,44 +374,32 @@ code,
 
 .providers {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 20px;
   justify-content: center;
   margin-top: 44px;
   flex-wrap: wrap;
 }
 
 .providers .label {
-  align-self: center;
   font-size: 13px;
   color: var(--subtle);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 500;
+/* Provider brand marks shown as a plain logo row (no pills). */
+.plogo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
   color: var(--dim);
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  padding: 6px 16px;
   transition:
-    background 0.15s ease,
     color 0.15s ease,
     transform 0.15s ease;
 }
 
-.chip:hover {
-  background: var(--surface);
+.plogo:hover {
   color: var(--ink);
   transform: translateY(-1px);
-}
-
-.chip-icon {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
 }
 
 /* ── Hero app mock (interactive recreation of the bb app) ───────── */
@@ -402,6 +422,147 @@ code,
   box-shadow:
     0 1px 0 color-mix(in oklch, var(--ink) 4%, transparent),
     0 30px 70px -32px color-mix(in oklch, var(--ink) 34%, transparent);
+}
+
+/* ── Self-constructing mock ───────────────────────────────────────────
+   On scroll-in the app assembles itself: frame drops in, title bar slides
+   down (dots pop), sidebar rows cascade from the left, then the
+   conversation rises and the composer settles in last. The `html.js` gate
+   holds it hidden from first paint; JS adds .constructing to play it.
+   Without JS the mock renders finished. */
+@keyframes c-frame {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes c-left {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* When JS is available, hold the whole mock hidden from the first paint until
+   it scrolls into view and assembles. No-JS/prerender skip the `js` class, so
+   the finished mock stays visible. */
+html.js .mock[data-construct]:not(.constructing):not(.constructed) {
+  opacity: 0;
+}
+
+.mock.constructing {
+  animation: c-frame 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* title bar drops down, traffic-light dots pop in */
+.mock.constructing .mock-bar {
+  animation: c-down 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.16s;
+}
+
+.mock.constructing .mock-dots i {
+  animation: c-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.mock.constructing .mock-dots i:nth-child(1) {
+  animation-delay: 0.3s;
+}
+
+.mock.constructing .mock-dots i:nth-child(2) {
+  animation-delay: 0.37s;
+}
+
+.mock.constructing .mock-dots i:nth-child(3) {
+  animation-delay: 0.44s;
+}
+
+/* sidebar rows cascade in from the left */
+.mock.constructing .side > *:not(.threads) {
+  animation: c-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mock.constructing .side > *:nth-child(1) {
+  animation-delay: 0.34s;
+}
+
+.mock.constructing .side > *:nth-child(2) {
+  animation-delay: 0.4s;
+}
+
+.mock.constructing .side > *:nth-child(3) {
+  animation-delay: 0.46s;
+}
+
+.mock.constructing .side > *:nth-child(4) {
+  animation-delay: 0.52s;
+}
+
+.mock.constructing .side > *:nth-child(5) {
+  animation-delay: 0.58s;
+}
+
+/* gear in the footer lands last */
+.mock.constructing .side > *:nth-child(7) {
+  animation-delay: 0.88s;
+}
+
+.mock.constructing .threads li {
+  animation: c-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* per-row delay set inline */
+}
+
+/* conversation rises message by message, composer settles in last */
+.mock.constructing .feed > * {
+  animation: c-up 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* per-message delay set inline */
+}
+
+.mock.constructing .main-new .composer,
+.mock.constructing .feed ~ .composer {
+  animation: c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 1s;
 }
 
 /* window title bar (mirrors the desktop app) */
@@ -581,26 +742,9 @@ code,
   cursor: pointer;
 }
 
-.side-new {
-  flex: 1;
-}
-
 .active-act {
   background: color-mix(in oklch, var(--ink) 7%, var(--bg));
   color: var(--ink);
-}
-
-.side-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.side-search {
-  width: 16px;
-  height: 16px;
-  color: var(--subtle);
-  margin-right: 8px;
 }
 
 .side-foot {
@@ -674,6 +818,17 @@ code,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Fixed-width centered box so every status (spinner / check / dot) aligns,
+   regardless of its own size. */
+.tstatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .trun {
@@ -766,6 +921,116 @@ code,
   background: var(--surface-recessed);
   border-radius: 4px;
   padding: 1px 5px;
+}
+
+/* AskUserQuestion tool — replaces the prompt box (recessed card in the
+   composer slot), mirroring the app's pending-interaction banner. */
+.askq {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-recessed);
+}
+
+.askq-q {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.askq-opts {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.askq-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.askq-opt:hover {
+  background: var(--state-hover);
+}
+
+.askq-opt.on {
+  background: color-mix(in oklch, var(--accent) 8%, var(--bg));
+}
+
+.askq-radio {
+  margin-top: 1px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  color: var(--bg);
+}
+
+.askq-opt.on .askq-radio {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.askq-check {
+  width: 11px;
+  height: 11px;
+}
+
+.askq-text {
+  min-width: 0;
+}
+
+.askq-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.askq-desc {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--subtle);
+}
+
+.askq-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.askq-cancel {
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.askq-submit {
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 /* composer */
@@ -1187,54 +1452,7 @@ code,
   min-width: 0;
 }
 
-/* ── Code panel (Band 1) ────────────────────────────────────────── */
-
-.code {
-  width: 100%;
-  font-size: 13px;
-  line-height: 1.85;
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  padding: 22px;
-  overflow-x: auto;
-  white-space: pre;
-  color: var(--ink);
-}
-
-.code .stanza + .stanza {
-  margin-top: 1.2em;
-}
-
-.code .cm {
-  color: var(--subtle);
-}
-
-.code .cmd {
-  color: var(--accent);
-}
-
-.code .verb {
-  color: var(--code-green);
-}
-
-.code .fl {
-  color: var(--dim);
-}
-
-.code .st {
-  color: var(--code-str);
-}
-
-.code .pn {
-  color: var(--subtle);
-}
-
-.code .out {
-  color: var(--subtle);
-}
-
-/* ── Band 2 visual: Telegram-style chat with the bb bot ─────────── */
+/* ── Band visual: Telegram-style chat with the bb bot ───────────── */
 
 .tg {
   width: 100%;
@@ -1296,8 +1514,9 @@ code,
 }
 
 .tg-av img {
-  width: 18px;
-  height: 18px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* wallpaper + messages */
@@ -1317,6 +1536,24 @@ code,
   background-size:
     17px 17px,
     100% 100%;
+}
+
+/* The messages live in their own layer so they can fade out together at the end
+   of the loop while the wallpaper underneath stays put (no reset flash). */
+.tg-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-msgs.leaving {
+  animation: tg-leave 0.6s ease forwards;
+}
+
+@keyframes tg-leave {
+  to {
+    opacity: 0;
+  }
 }
 
 .tg-msg {
@@ -1548,7 +1785,19 @@ code,
   background: var(--bg);
   box-shadow: 0 14px 36px -22px color-mix(in oklch, var(--ink) 32%, transparent);
   text-align: left;
-  animation: rc-card 0.4s ease;
+}
+
+/* The card shell stays mounted; only its contents cycle. The outgoing run's
+   contents fade out (held in layout so the card keeps its height) before the
+   next run's contents build in. */
+.run-body.leaving {
+  animation: rc-leave 0.4s ease forwards;
+}
+
+@keyframes rc-leave {
+  to {
+    opacity: 0;
+  }
 }
 
 .run-head {
@@ -1588,8 +1837,8 @@ code,
 
 .rs-run {
   color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 9%, var(--bg));
-  border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--bg));
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   animation: rc-out 0.4s ease forwards;
 }
 
@@ -1604,8 +1853,8 @@ code,
 .rs-done {
   opacity: 0;
   color: var(--ok);
-  background: color-mix(in oklch, var(--ok) 10%, var(--bg));
-  border: 1px solid color-mix(in oklch, var(--ok) 30%, var(--bg));
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   animation: rc-in 0.4s ease forwards;
 }
 
@@ -1668,17 +1917,6 @@ code,
 .out-arrow {
   color: var(--accent);
   font-weight: 700;
-}
-
-@keyframes rc-card {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes rc-step {
@@ -1998,6 +2236,7 @@ code,
 /* ── Reduced motion ─────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
+  .nav,
   .hero > * {
     animation: none;
   }
@@ -2046,10 +2285,26 @@ code,
   }
 
   .btn,
-  .chip,
+  .plogo,
   .trow,
   .side,
   [data-reveal] {
     transition: none;
+  }
+
+  /* The mock construction is JS-gated off here, but keep it inert as a
+     safety net so the finished app always shows. */
+  html.js .mock[data-construct]:not(.constructing):not(.constructed) {
+    opacity: 1;
+  }
+
+  .mock.constructing,
+  .mock.constructing .mock-bar,
+  .mock.constructing .mock-dots i,
+  .mock.constructing .side > *,
+  .mock.constructing .threads li,
+  .mock.constructing .feed > *,
+  .mock.constructing .composer {
+    animation: none;
   }
 }

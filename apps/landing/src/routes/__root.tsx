@@ -84,6 +84,13 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Mark JS as available before first paint so the app mock can start
+            hidden and construct itself in. No-JS/prerender keeps it visible. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "document.documentElement.classList.add('js')",
+          }}
+        />
       </head>
       <body>
         {children}

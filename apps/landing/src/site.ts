@@ -18,6 +18,6 @@ export function downloadMacosHref(placement: CtaPlacement): string {
   return `${DOWNLOAD_MACOS_REDIRECT_PATH}?placement=${placement}`;
 }
 
-export const SITE_TITLE = "bb — the IDE anything can drive";
+export const SITE_TITLE = "bb — the IDE for loop-driven development";
 export const SITE_DESCRIPTION =
-  "You drive it by hand; your agents, your own scripts, and automations drive it through a CLI. Every thread lands in one local-first place, waiting for you. Claude Code, Codex, Cursor, and Pi — free and open source.";
+  "Orchestrate your coding agents. Drive it yourself, or let your agents and automations drive it for you. Fully open source and local-first, with Claude Code, Codex, Cursor, and Pi.";
