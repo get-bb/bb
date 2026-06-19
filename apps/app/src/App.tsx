@@ -65,6 +65,15 @@ const PopoutChatView = lazy(() =>
     default: m.PopoutChatView,
   })),
 );
+const PrBadgeOverlapFixtureView = import.meta.env.DEV
+  ? lazy(() =>
+      import("./views/dev-fixtures/PrBadgeOverlapFixtureView").then((m) => ({
+        default: m.PrBadgeOverlapFixtureView,
+      })),
+    )
+  : null;
+
+const PR_BADGE_OVERLAP_FIXTURE_ROUTE_PATH = "/dev-fixtures/pr-badge-overlap";
 
 function PopoutRouteFallback() {
   useEffect(() => {
@@ -131,6 +140,12 @@ function AppRoutes() {
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
+          {PrBadgeOverlapFixtureView ? (
+            <Route
+              path={PR_BADGE_OVERLAP_FIXTURE_ROUTE_PATH}
+              element={<PrBadgeOverlapFixtureView />}
+            />
+          ) : null}
           <Route
             path="*"
             element={<Navigate to={APP_ROOT_ROUTE_PATH} replace />}
