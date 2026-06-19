@@ -110,6 +110,71 @@
     border-color: var(--pill-surface-selected-border);
   }
 
+  /*
+   * Light up the `ultracode` keyword in the prompt editor with animated purple
+   * sparkles (mirrors Claude Code). The wrapping span is added as a ProseMirror
+   * inline decoration (see prompt-ultracode-highlight-extension.ts); it stays
+   * editable text, so this is paint-only. `background-clip: text` shimmers a
+   * purple gradient through the glyphs, and two pseudo-element glints twinkle at
+   * opposite corners. `prefers-reduced-motion` keeps the purple, drops motion.
+   */
+  .prompt-ultracode-highlight {
+    position: relative;
+    font-weight: 600;
+    background: linear-gradient(
+      90deg,
+      oklch(0.62 0.21 300) 0%,
+      oklch(0.74 0.18 318) 30%,
+      oklch(0.82 0.15 286) 50%,
+      oklch(0.74 0.18 318) 70%,
+      oklch(0.62 0.21 300) 100%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ultracode-shimmer 3s linear infinite;
+  }
+
+  .prompt-ultracode-highlight::before,
+  .prompt-ultracode-highlight::after {
+    content: "✦";
+    position: absolute;
+    font-size: 0.62em;
+    line-height: 1;
+    color: oklch(0.84 0.16 308);
+    /* `-webkit-text-fill-color` is inherited, so the transparent fill above
+     * would hide these glyphs — repaint them solid. */
+    -webkit-text-fill-color: oklch(0.84 0.16 308);
+    pointer-events: none;
+    opacity: 0;
+    animation: ultracode-sparkle 1.8s ease-in-out infinite;
+  }
+
+  .prompt-ultracode-highlight::before {
+    top: -0.32em;
+    right: -0.42em;
+  }
+
+  .prompt-ultracode-highlight::after {
+    bottom: -0.22em;
+    left: -0.42em;
+    animation-delay: 0.9s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .prompt-ultracode-highlight {
+      animation: none;
+      background-position: 50% 0%;
+    }
+
+    .prompt-ultracode-highlight::before,
+    .prompt-ultracode-highlight::after {
+      animation: none;
+      opacity: 0.9;
+    }
+  }
+
   [data-promptbox] {
     container: promptbox / inline-size;
   }
@@ -210,5 +275,28 @@
       #000 calc(100% - 1.5rem),
       transparent
     );
+  }
+}
+
+/* Sweep the purple gradient across the `ultracode` glyphs. */
+@keyframes ultracode-shimmer {
+  0% {
+    background-position: 200% 0%;
+  }
+  100% {
+    background-position: -200% 0%;
+  }
+}
+
+/* Twinkle each corner sparkle: fade in, scale up, and spin a quarter turn. */
+@keyframes ultracode-sparkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) rotate(90deg);
   }
 }
