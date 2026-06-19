@@ -2,15 +2,18 @@ import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
   realtimeSubscriptionTargetKey,
+  threadOpenFileSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
   RealtimeSubscriptionTarget,
+  ThreadOpenFileSignal,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
+type OpenFileCallback = (signal: ThreadOpenFileSignal) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
 export type WebSocketConnectionState =
@@ -27,6 +30,11 @@ export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
+  private openFileCallbacks = new Set<OpenFileCallback>();
+  // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
+  // Held in memory only (cleared on reload) so a thread that is not currently
+  // viewed opens the file when it is next viewed. Last write wins per thread.
+  private pendingOpenByThreadId = new Map<string, ThreadOpenFileSignal>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
   private hasConnected = false;
@@ -65,22 +73,36 @@ export class WebSocketManager {
 
     this.socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
+      let parsed: unknown;
       try {
-        // Lenient parse: tolerate a newer server (unknown fields stripped,
-        // unknown change kinds filtered) instead of dropping whole messages
-        // on additive contract changes.
-        const msg = changedMessageLenientSchema.safeParse(
-          JSON.parse(event.data),
-        );
-        if (msg.success) {
-          for (const cb of this.callbacks) {
-            cb(msg.data);
-          }
-        } else {
-          console.error("Ignored invalid realtime message", msg.error);
-        }
+        parsed = JSON.parse(event.data);
       } catch {
         // Ignore malformed messages
+        return;
+      }
+
+      // Ephemeral "open this file in the secondary panel" broadcast. Buffer it
+      // per thread so the panel can open it now (if the thread is in view) or
+      // when the thread is next viewed; also notify live listeners.
+      const openFile = threadOpenFileSignalLenientSchema.safeParse(parsed);
+      if (openFile.success) {
+        this.pendingOpenByThreadId.set(openFile.data.threadId, openFile.data);
+        for (const cb of this.openFileCallbacks) {
+          cb(openFile.data);
+        }
+        return;
+      }
+
+      // Lenient parse: tolerate a newer server (unknown fields stripped,
+      // unknown change kinds filtered) instead of dropping whole messages
+      // on additive contract changes.
+      const msg = changedMessageLenientSchema.safeParse(parsed);
+      if (msg.success) {
+        for (const cb of this.callbacks) {
+          cb(msg.data);
+        }
+      } else {
+        console.error("Ignored invalid realtime message", msg.error);
       }
     };
 
@@ -135,6 +157,27 @@ export class WebSocketManager {
     return () => {
       this.callbacks.delete(callback);
     };
+  }
+
+  onThreadOpenFile(callback: OpenFileCallback): () => void {
+    this.openFileCallbacks.add(callback);
+    return () => {
+      this.openFileCallbacks.delete(callback);
+    };
+  }
+
+  /**
+   * Return and clear the buffered "open file" intent for a thread, if any. The
+   * secondary panel calls this when the thread becomes visible so the file
+   * opens exactly once and is not re-opened on a later visit.
+   */
+  consumePendingOpen(threadId: string): ThreadOpenFileSignal | null {
+    const pending = this.pendingOpenByThreadId.get(threadId);
+    if (!pending) {
+      return null;
+    }
+    this.pendingOpenByThreadId.delete(threadId);
+    return pending;
   }
 
   onConnected(callback: ConnectedCallback): () => void {

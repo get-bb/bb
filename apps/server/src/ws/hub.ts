@@ -19,6 +19,8 @@ import type {
 import {
   serverMessageSchema,
   terminalServerMessageSchema,
+  threadOpenFileSignalSchema,
+  type PanelFileSource,
   type TerminalServerMessage,
 } from "@bb/server-contract";
 
@@ -501,6 +503,33 @@ export class NotificationHub implements DbNotifier {
       }
       this.threadEventWaiters.delete(threadId);
     }
+  }
+
+  /**
+   * Broadcast an ephemeral "open this file in the secondary panel" signal to
+   * every connected client. Nothing is persisted: a client viewing the thread
+   * opens it immediately, while others open it when the thread is next viewed.
+   * Returns how many clients the signal reached.
+   */
+  notifyThreadOpenFile(
+    threadId: string,
+    file: { source: PanelFileSource; path: string; lineNumber: number | null },
+  ): number {
+    const payload = JSON.stringify(
+      threadOpenFileSignalSchema.parse({
+        type: "thread-open-file",
+        threadId,
+        source: file.source,
+        path: file.path,
+        lineNumber: file.lineNumber,
+      }),
+    );
+    let delivered = 0;
+    for (const socket of this.clientKeysBySocket.keys()) {
+      socket.send(payload);
+      delivered += 1;
+    }
+    return delivered;
   }
 
   notifyProject(projectId: string, changes: ProjectChangeKind[]): void {

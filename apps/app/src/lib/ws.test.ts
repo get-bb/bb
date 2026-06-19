@@ -174,3 +174,68 @@ describe("WebSocketManager subscriptions", () => {
     ]);
   });
 });
+
+describe("WebSocketManager open-file signals", () => {
+  const originalWebSocket = globalThis.WebSocket;
+
+  beforeEach(() => {
+    fakeSocketState.instances.length = 0;
+    installOpenWebSocketConstructor();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "WebSocket", {
+      configurable: true,
+      value: originalWebSocket,
+    });
+  });
+
+  function dispatchRaw(payload: unknown): void {
+    const instance = fakeSocketState.instances[0];
+    if (!instance) {
+      throw new Error("Expected websocket instance");
+    }
+    instance.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
+  }
+
+  it("buffers an open-file signal, notifies listeners, and consumes it once", () => {
+    const { manager } = createConnectedManager();
+    const openFile = vi.fn();
+    const changed = vi.fn();
+    manager.onThreadOpenFile(openFile);
+    manager.onChanged(changed);
+
+    const signal = {
+      type: "thread-open-file",
+      threadId: "thr_1",
+      source: "workspace",
+      path: "src/index.ts",
+      lineNumber: 7,
+    };
+    dispatchRaw(signal);
+
+    expect(openFile).toHaveBeenCalledWith(signal);
+    expect(changed).not.toHaveBeenCalled();
+    expect(manager.consumePendingOpen("thr_1")).toEqual(signal);
+    // Consumed exactly once: a later visit does not re-open.
+    expect(manager.consumePendingOpen("thr_1")).toBeNull();
+  });
+
+  it("still routes changed messages to onChanged", () => {
+    const { manager } = createConnectedManager();
+    const changed = vi.fn();
+    const openFile = vi.fn();
+    manager.onChanged(changed);
+    manager.onThreadOpenFile(openFile);
+
+    dispatchRaw({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(openFile).not.toHaveBeenCalled();
+  });
+});

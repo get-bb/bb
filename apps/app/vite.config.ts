@@ -1,13 +1,14 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type UserConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
 export const sharedViteConfig = {
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
   // Keep app and Ladle dep optimization metadata from clobbering each other.
   cacheDir: "node_modules/.vite/app",
   build: {

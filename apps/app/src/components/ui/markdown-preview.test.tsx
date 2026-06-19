@@ -20,6 +20,7 @@ const workspaceLinkRouting = {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -64,5 +65,20 @@ describe("MarkdownPreview", () => {
     fireEvent.click(screen.getByRole("link", { name: "local thread" }));
 
     expect(onOpenLink).toHaveBeenCalledWith({ href });
+  });
+
+  it("rewrites localhost link hrefs without changing the visible text", () => {
+    const displayedText = "http://127.0.0.1:5173";
+
+    render(
+      <MarkdownPreview
+        content={`Open [${displayedText}](http://127.0.0.1:5173/demo).`}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: displayedText });
+    expect(link.getAttribute("href")).toBe(
+      `${window.location.protocol}//${window.location.hostname}:5173/demo`,
+    );
   });
 });

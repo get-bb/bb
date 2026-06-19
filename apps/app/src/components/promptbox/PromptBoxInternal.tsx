@@ -1,10 +1,8 @@
 import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
-import Placeholder from "@tiptap/extension-placeholder";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import {
   useCallback,
   useEffect,
@@ -41,6 +39,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
@@ -57,7 +56,7 @@ import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
-import { PromptMentionExtension } from "./editor/prompt-mention-extension";
+import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
@@ -1173,38 +1172,22 @@ export function PromptBoxInternal({
     syncTriggerStateRef.current = syncTriggerState;
   }, [syncTriggerState]);
 
+  // Markdown rich-text formatting (headings/lists/marks + their live input
+  // rules) is opt-in; the default-OFF preference keeps the prompt box plain
+  // text. Toggling rebuilds the editor (see the `[richTextEditing]` deps below)
+  // so the schema and input rules switch immediately.
+  const [richTextEditing] = useRichTextEditingPreference();
+  const editorExtensions = useMemo(
+    () =>
+      promptEditorExtensions({
+        richTextEditing,
+        getPlaceholder: () => placeholderRef.current,
+      }),
+    [richTextEditing],
+  );
+
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        // Markdown formatting: marks (bold/italic/code) + block nodes
-        // (heading/lists/blockquote). Each enabled node/mark has a
-        // markdown text representation in prompt-editor-serialization.ts so the
-        // submitted prompt is plain markdown. StarterKit ships input rules for
-        // these (`# `, `- `, `1. `, `**`, `_`, `` ` ``), so typing applies
-        // formatting live. Code blocks/link/underline stay disabled: code
-        // blocks make multiline prompt editing too sticky; underline isn't
-        // markdown; links need authoring UI we don't provide.
-        blockquote: {},
-        bold: {},
-        bulletList: {},
-        code: {},
-        codeBlock: false,
-        dropcursor: false,
-        gapcursor: false,
-        heading: {},
-        horizontalRule: false,
-        italic: {},
-        link: false,
-        listItem: {},
-        orderedList: {},
-        strike: false,
-        underline: false,
-      }),
-      Placeholder.configure({
-        placeholder: () => placeholderRef.current,
-      }),
-      PromptMentionExtension,
-    ],
+    extensions: editorExtensions,
     content: promptEditorContentFromValue({
       text: value,
       mentions: mentionRanges,
@@ -1304,7 +1287,10 @@ export function PromptBoxInternal({
       syncTriggerStateRef.current(updatedEditor);
       scheduleRevealEditorSelection();
     },
-  });
+    // Rebuild the editor when the rich-text preference toggles so the schema
+    // and input rules switch. The editor is otherwise created once; its
+    // handlers route through refs (above) to stay current without rebuilding.
+  }, [richTextEditing]);
 
   useEffect(() => {
     editorRef.current = editor;

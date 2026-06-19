@@ -5,6 +5,7 @@ import {
 import type {
   CreateThreadRequest,
   DeleteThreadRequest,
+  PanelFileSource,
   SendMessageRequest,
   ThreadEventsQuery,
   ThreadEventWaitQuery,
@@ -63,6 +64,7 @@ export type ThreadArchiveResult = PublicApiOutput<
   "/threads/:id/archive",
   "$post"
 >;
+export type ThreadOpenResult = PublicApiOutput<"/threads/:id/open", "$post">;
 export type ThreadDeleteResult = PublicApiOutput<"/threads/:id", "$delete">;
 export type ThreadSendResult = PublicApiOutput<"/threads/:id/send", "$post">;
 export type ThreadStopResult = PublicApiOutput<"/threads/:id/stop", "$post">;
@@ -87,6 +89,13 @@ export interface ThreadSendArgs extends SendMessageRequest {
 
 export interface ThreadStatusArgs {
   threadId: string;
+}
+
+export interface ThreadOpenArgs {
+  threadId: string;
+  source: PanelFileSource;
+  path: string;
+  lineNumber: number | null;
 }
 
 export interface ThreadEventsListArgs {
@@ -141,6 +150,7 @@ export interface ThreadsArea {
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
@@ -317,6 +327,18 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].output.$get({
           param: { id: input.threadId },
+        }),
+      );
+    },
+    async open(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].open.$post({
+          param: { id: input.threadId },
+          json: {
+            source: input.source,
+            path: input.path,
+            lineNumber: input.lineNumber,
+          },
         }),
       );
     },

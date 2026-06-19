@@ -143,6 +143,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
@@ -583,6 +584,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     environmentId: thread?.environmentId,
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
+  });
+  useThreadOpenFileSignal({
+    threadId,
+    environmentId: thread?.environmentId,
+    openTab,
   });
   const browserDeckThreadId = thread?.id ?? null;
   const browserDeckEnvironmentId = thread?.environmentId ?? null;

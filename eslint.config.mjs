@@ -91,8 +91,15 @@ export default [
       "react-hooks": reactHooks,
     },
     rules: {
+      ...reactHooks.configs.flat["recommended-latest"].rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+      // Existing app code has compiler-adoption findings in these categories.
+      // Keep them visible in CI without blocking this React Compiler rollout.
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/set-state-in-effect": "warn",
     },
   },
   {

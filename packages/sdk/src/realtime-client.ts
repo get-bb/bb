@@ -553,6 +553,20 @@ export class BbRealtimeClient implements BbRealtime {
       return;
     }
 
+    // Silently skip message types this client does not consume (e.g. the
+    // app-only "thread-open-file" panel signal the server broadcasts to every
+    // socket). Like the lenient inbound parsing, tolerate a newer server
+    // adding message types instead of logging each one as an error.
+    if (
+      typeof parsedMessage === "object" &&
+      parsedMessage !== null &&
+      "type" in parsedMessage &&
+      typeof (parsedMessage as { type: unknown }).type === "string" &&
+      (parsedMessage as { type: string }).type !== "changed"
+    ) {
+      return;
+    }
+
     const parseResult = serverMessageLenientSchema.safeParse(parsedMessage);
     if (!parseResult.success) {
       console.error(

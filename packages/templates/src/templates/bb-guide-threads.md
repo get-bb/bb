@@ -62,6 +62,18 @@ Inspecting:
     --timeout <seconds>                    Timeout
     --poll-interval <ms>                   Polling interval in milliseconds
 
+Opening files in the IDE:
+
+  bb thread open <file> [id]               Open a file in the thread's IDE side panel (defaults to BB_THREAD_ID)
+    --self                                 Target current thread
+    --source <source>                      Path root: workspace (default) or thread-storage
+    --line <number>                        Line number to scroll to
+
+  When the user asks you to open, show, or pull up a file, use bb thread open so it
+  appears in their IDE side panel. The path is workspace-relative (or thread-storage
+  relative with --source thread-storage). It opens for any connected client viewing the
+  thread now, or when the user next switches to it.
+
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
