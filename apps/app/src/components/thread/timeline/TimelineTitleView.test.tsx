@@ -37,9 +37,10 @@ describe("TimelineTitleView", () => {
       plain: "Running command (denied)",
     });
 
-    const status = screen.getByText("· denied");
-    expect(container.textContent).toBe("Running command · denied");
+    const status = screen.getByText("denied").parentElement;
+    expect(container.textContent).toBe("Running command ·denied");
     expect(container.textContent).not.toContain("(denied)");
+    if (status === null) throw new Error("Expected status wrapper.");
     expect(status.classList.contains("font-mono")).toBe(true);
     expect(status.classList.contains("text-xs")).toBe(true);
     expect(status.classList.contains("text-subtle-foreground")).toBe(true);
@@ -67,11 +68,12 @@ describe("TimelineTitleView", () => {
       plain: "Ran 3 tools (2 errors, 1 interrupted)",
     });
 
-    const status = screen.getByText("· 2 errors, 1 interrupted");
+    const status = screen.getByText("2 errors, 1 interrupted").parentElement;
     expect(container.textContent).toBe(
-      "Ran 3 tools · 2 errors, 1 interrupted",
+      "Ran 3 tools ·2 errors, 1 interrupted",
     );
     expect(container.textContent).not.toContain("(2 errors");
+    if (status === null) throw new Error("Expected status wrapper.");
     expect(status.classList.contains("font-mono")).toBe(true);
     expect(status.classList.contains("text-xs")).toBe(true);
     expect(status.classList.contains("text-subtle-foreground")).toBe(true);

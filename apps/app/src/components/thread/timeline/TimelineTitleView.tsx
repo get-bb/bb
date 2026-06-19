@@ -102,6 +102,20 @@ const STATUS_DECORATION_TEXT_CLASS = cn(
   STATUS_DECORATION_TONE_CLASS,
 );
 
+function renderStatusDecorationText(text: string): ReactNode {
+  return (
+    <span
+      className={cn(
+        STATUS_DECORATION_TEXT_CLASS,
+        "-ml-0.5 inline-flex items-baseline gap-0.5",
+      )}
+    >
+      <span aria-hidden="true">·</span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
 function renderSegment(
   segment: TimelineTitleSegment,
   index: number,
@@ -259,9 +273,7 @@ function renderDecoration(
             )}
           >
             {durationText ? <span>{durationText}</span> : null}
-            <span className={STATUS_DECORATION_TEXT_CLASS}>
-              {`· ${decoration.status}`}
-            </span>
+            {renderStatusDecorationText(decoration.status)}
           </span>
         );
       }
@@ -282,9 +294,9 @@ function renderDecoration(
       return (
         <span
           key={index}
-          className={cn("shrink-0 whitespace-pre", STATUS_DECORATION_TEXT_CLASS)}
+          className="shrink-0 whitespace-pre"
         >
-          {`· ${text}`}
+          {renderStatusDecorationText(text)}
         </span>
       );
     }
