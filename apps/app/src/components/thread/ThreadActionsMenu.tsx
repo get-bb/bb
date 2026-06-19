@@ -96,10 +96,7 @@ function ThreadActionsMenuItems({
     <>
       <ThreadActionMenuItem
         surface={surface}
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           toggleRead(thread);
         }}
       >
@@ -107,10 +104,7 @@ function ThreadActionsMenuItems({
       </ThreadActionMenuItem>
       <ThreadActionMenuItem
         surface={surface}
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           togglePin(thread);
         }}
       >
@@ -138,10 +132,7 @@ function ThreadActionsMenuItems({
       </ThreadActionMenuItem>
       <ThreadActionMenuItem
         surface={surface}
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           if (isArchived) {
             unarchiveThread(thread);
             return;
