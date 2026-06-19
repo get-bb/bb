@@ -62,6 +62,9 @@ const PR_STATUS_ICON: Record<
   },
 };
 
+const CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-9";
+const SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-4";
+
 function getGithubCheckStatus(
   state: ThreadPullRequestChecksState,
 ): GithubCheckStatus | null {
@@ -183,7 +186,9 @@ export function PullRequestStatusPill({
       title={PR_STATUS_ICON[pullRequest.state].title}
       className={cn(
         "flex h-5 shrink-0 cursor-pointer items-center gap-1",
-        hasCheckIcon ? "min-w-9" : "min-w-4",
+        hasCheckIcon
+          ? CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS
+          : SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS,
         className,
       )}
     >

@@ -260,10 +260,9 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
-    expect(markup).not.toContain("data-promptbox-hide-compact");
   });
 
-  it("reserves compact icon widths so banner segments do not overlap", () => {
+  it("hides pull request and git labels in compact mode when they share the row", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={makeGitSection("uncommitted")}
@@ -278,10 +277,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("min-w-11");
-    expect(markup).toContain("min-w-12");
-    expect(markup).toContain("min-w-9");
-    expect(markup).toContain("overflow-hidden");
+    expect(markup).toContain("PR #128");
+    expect(markup).toContain("Uncommitted");
+    expect(markup.match(/data-promptbox-hide-compact/g)).toHaveLength(2);
   });
 
   it("keeps the pull request action visible beside other context segments", () => {
