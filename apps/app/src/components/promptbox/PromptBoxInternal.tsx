@@ -639,6 +639,20 @@ function isPromptActionCommandMention(
   });
 }
 
+function findPromptActionTextSuffix(
+  text: string,
+  actions: readonly PromptBoxAction[],
+): PromptBoxAction | null {
+  return (
+    actions.find(
+      (action) =>
+        !action.command &&
+        action.text.length > 0 &&
+        text.endsWith(action.text),
+    ) ?? null
+  );
+}
+
 function getPromptActionRangeImmediatelyBeforeCursor({
   editor,
   actions,
@@ -668,6 +682,17 @@ function getPromptActionRangeImmediatelyBeforeCursor({
         0,
         sizeBeforeSearchOffset,
       );
+      const textAction = findPromptActionTextSuffix(textBeforeCursor, actions);
+      if (textAction) {
+        return {
+          from:
+            parentStart +
+            previous.offset +
+            textBeforeCursor.length -
+            textAction.text.length,
+          to: selection.from,
+        };
+      }
       if (/\S/u.test(textBeforeCursor)) {
         return null;
       }

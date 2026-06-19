@@ -300,6 +300,34 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
+  it("replaces a just-selected skills trigger with plan at the cursor", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Skills");
+    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    await waitForPromptFocus();
+
+    await selectPromptAction("Plan");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
   it("replaces a just-selected goal action with skills at the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
