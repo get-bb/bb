@@ -62,6 +62,9 @@ const PR_STATUS_ICON: Record<
   },
 };
 
+const CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-9";
+const SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-4";
+
 function getGithubCheckStatus(
   state: ThreadPullRequestChecksState,
 ): GithubCheckStatus | null {
@@ -112,7 +115,7 @@ export function PullRequestGithubCheckIcon({
   className?: string;
 }) {
   const status = getPullRequestGithubCheckStatus(pullRequest);
-  const checkStatusClassName = "size-4";
+  const checkStatusClassName = "size-4 shrink-0";
   switch (status) {
     case "success":
       return (
@@ -177,10 +180,17 @@ export function PullRequestStatusPill({
   pullRequest: ThreadPullRequest;
   className?: string;
 }) {
+  const hasCheckIcon = getPullRequestGithubCheckStatus(pullRequest) !== null;
   return (
     <span
       title={PR_STATUS_ICON[pullRequest.state].title}
-      className={cn("flex h-5 items-center gap-1 cursor-pointer", className)}
+      className={cn(
+        "flex h-5 shrink-0 cursor-pointer items-center gap-1",
+        hasCheckIcon
+          ? CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS
+          : SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS,
+        className,
+      )}
     >
       <PullRequestStateIcon state={pullRequest.state} />
       <PullRequestGithubCheckIcon pullRequest={pullRequest} />

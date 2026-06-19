@@ -115,6 +115,12 @@ describe("ThreadTimelineRows actions", () => {
 
   it("passes the selected assistant row branch point to side-chat replies", async () => {
     const onSelectionReplyInSideChat = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
     render(
       <ThreadTimelineRows
         timelineRows={[

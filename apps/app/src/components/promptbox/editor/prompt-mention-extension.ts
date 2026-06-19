@@ -13,7 +13,6 @@ import {
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
-import { cn } from "@/lib/utils";
 
 interface MentionRenderArgs {
   node: Pick<ProseMirrorNode, "attrs">;
@@ -113,7 +112,7 @@ export const PromptMentionExtension = Mention.extend({
     return [
       "span",
       mergeAttributes(options.HTMLAttributes, {
-        class: cn(PROMPT_MENTION_PILL_CLASS, "bg-surface-raised"),
+        class: PROMPT_MENTION_PILL_CLASS,
         ...clipboardAttributes,
         title: renderMentionTitle(attrs),
       }),

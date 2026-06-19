@@ -3,9 +3,12 @@ import type { IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
 // Keeps prompt mention pills aligned with surrounding text. The icon in React
-// render paths opts back into vertical centering with `self-center`.
+// render paths opts back into vertical centering with `self-center`. The
+// theme-specific surface, label color, and icon color all come from the
+// `prompt-mention-pill` component class in app.css; this string owns layout,
+// radius, border width, and type scale only.
 export const PROMPT_MENTION_PILL_CLASS = cn(
-  "inline-flex max-w-full items-baseline gap-0.5 rounded-full border border-surface-selected-border py-0.5 pl-1 pr-1.5 text-xs leading-4 text-foreground",
+  "prompt-mention-pill inline-flex max-w-full items-baseline gap-0.5 rounded-full border py-0.5 pl-1 pr-1.5 text-xs leading-4",
   "align-baseline",
 );
 
