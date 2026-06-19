@@ -148,7 +148,9 @@ export function ThreadBackgroundCommandsCard({
               {others.map((row) => (
                 <div
                   key={row.id}
-                  className="flex min-w-0 items-center gap-1.5 px-2 py-0.5 text-xs"
+                  // px-3 (not px-2) so the icon lines up under the header icon,
+                  // which is offset by the toggle button's own px-1 padding.
+                  className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
                 >
                   <Icon
                     name="Terminal"
