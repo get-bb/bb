@@ -1,7 +1,76 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
-import { suppressPromptEditorAnchorActivation } from "./PromptBoxInternal";
+import { cleanup, render } from "@testing-library/react";
+import {
+  useLayoutEffect,
+  useRef,
+  type ComponentProps,
+} from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  PromptBoxInternal,
+  suppressPromptEditorAnchorActivation,
+  type PromptBoxHandle,
+} from "./PromptBoxInternal";
+
+type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
+
+function createPromptBoxProps(
+  overrides: Partial<PromptBoxProps> = {},
+): PromptBoxProps {
+  return {
+    value: "",
+    mentionRanges: [],
+    onChange: vi.fn(),
+    onSubmit: vi.fn(),
+    mentionMenuPlacement: "bottom",
+    typeahead: {
+      mention: {
+        suggestions: [],
+        isLoading: false,
+        isError: false,
+        onQueryChange: vi.fn(),
+      },
+      command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+    },
+    ...overrides,
+  };
+}
+
+function PromptBoxRaceHarness({
+  onChange,
+  value,
+}: {
+  onChange: PromptBoxProps["onChange"];
+  value: string;
+}) {
+  const promptBoxRef = useRef<PromptBoxHandle | null>(null);
+  const insertedForValueRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (value === "" || insertedForValueRef.current === value) return;
+
+    insertedForValueRef.current = value;
+    promptBoxRef.current?.focusEnd();
+    promptBoxRef.current?.insertTextAtCursor("reply");
+  }, [value]);
+
+  return (
+    <PromptBoxInternal
+      {...createPromptBoxProps({
+        onChange,
+        promptBoxRef,
+        value,
+      })}
+    />
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 function dispatchThroughEditorTarget({
   eventName,
@@ -72,5 +141,23 @@ describe("suppressPromptEditorAnchorActivation", () => {
     expect(result.suppressed).toBe(false);
     expect(result.event.defaultPrevented).toBe(false);
     expect(result.defaultAllowed).toBe(true);
+  });
+});
+
+describe("PromptBoxInternal controlled value sync", () => {
+  it("applies an added quote before focus-end insertion can edit the old document", () => {
+    const onChange = vi.fn();
+    const view = render(
+      <PromptBoxRaceHarness onChange={onChange} value="" />,
+    );
+
+    view.rerender(
+      <PromptBoxRaceHarness onChange={onChange} value={"> selected text\n"} />,
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      "> selected text\nreply",
+      [],
+    );
   });
 });

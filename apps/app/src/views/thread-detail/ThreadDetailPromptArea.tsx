@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
@@ -689,17 +689,9 @@ export function ThreadDetailPromptArea({
   );
 
   const [editFocusNonce, setEditFocusNonce] = useState(0);
-
-  // Focus the composer caret at the end whenever the timeline host appends a
-  // quote ("Add to chat"), so the user can immediately type the reply beneath
-  // the freshly inserted blockquote. Skips the initial mount (nonce starts 0).
-  const previousFocusRequestNonceRef = useRef(composerFocusRequestNonce);
-  useEffect(() => {
-    if (composerFocusRequestNonce !== previousFocusRequestNonceRef.current) {
-      previousFocusRequestNonceRef.current = composerFocusRequestNonce;
-      setEditFocusNonce((nonce) => nonce + 1);
-    }
-  }, [composerFocusRequestNonce]);
+  // Selection quotes and queued-message edits both need the composer caret at
+  // the end of the latest draft; combine their counters into one focus key.
+  const focusEndKey = `${composerFocusRequestNonce}:${editFocusNonce}`;
 
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
@@ -1123,7 +1115,7 @@ export function ThreadDetailPromptArea({
       stack={promptStack}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
-      focusEndKey={editFocusNonce}
+      focusEndKey={focusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}

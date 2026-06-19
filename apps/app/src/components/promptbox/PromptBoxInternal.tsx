@@ -982,7 +982,7 @@ export function PromptBoxInternal({
     valueRef.current = value;
   }, [value]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     const nextValue = {
       text: value,
@@ -1012,11 +1012,9 @@ export function PromptBoxInternal({
 
   // An explicit draft-restore action (e.g. editing a queued message) bumps
   // `focusEndKey` so the caret lands at the END of the restored text. It is a
-  // passive effect defined AFTER the content-sync effect above, so React's
-  // definition-order guarantee runs it once that effect has applied
-  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
-  // an effect ordered before content-sync, would focus("end") against the
-  // pre-edit content and setContent would then map the caret to the start.)
+  // passive effect defined AFTER the layout content-sync effect above, so the
+  // editor has already applied `setContent` for the new draft in the same
+  // commit.
   // Not gated by the coarse-pointer guard since it follows a deliberate click.
   const lastFocusEndKeyRef = useRef(focusEndKey);
   useEffect(() => {
