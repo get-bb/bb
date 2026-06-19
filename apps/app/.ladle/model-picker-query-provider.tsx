@@ -40,7 +40,13 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
       command: { trigger: "/", name: "goal", trailingText: " " },
     },
   ],
-  "claude-code": [{ kind: "skills", trigger: "/" }],
+  "claude-code": [
+    { kind: "skills", trigger: "/" },
+    {
+      kind: "plan",
+      command: { trigger: "/", name: "plan", trailingText: " " },
+    },
+  ],
   pi: [],
 };
 

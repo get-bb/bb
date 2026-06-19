@@ -116,6 +116,10 @@ const CODEX_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 
 const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+  },
 ];
 
 const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [];

@@ -46,7 +46,13 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
-        composerActions: [{ kind: "skills", trigger: "/" }],
+        composerActions: [
+          { kind: "skills", trigger: "/" },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+        ],
         available: true,
       },
       {
