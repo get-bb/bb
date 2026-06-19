@@ -261,11 +261,6 @@ export function BottomAnchoredScrollBody({
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  const clearPendingScrollRestores = useCallback(() => {
-    pendingPrependAnchorRef.current = null;
-    pendingScrollRestoreRef.current = null;
-  }, []);
-
   const cancelQueuedRestore = useCallback(() => {
     if (restoreFrameRef.current === null) return;
     window.cancelAnimationFrame(restoreFrameRef.current);
@@ -325,7 +320,6 @@ export function BottomAnchoredScrollBody({
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
-    clearPendingScrollRestores();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
     shouldStickToBottomRef.current = true;
@@ -334,7 +328,7 @@ export function BottomAnchoredScrollBody({
       scrollElementToBottom(scrollArea);
     }
     queueBottomRestore();
-  }, [clearPendingScrollRestores, queueBottomRestore]);
+  }, [queueBottomRestore]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
@@ -345,13 +339,12 @@ export function BottomAnchoredScrollBody({
       ) {
         return;
       }
-      clearPendingScrollRestores();
       shouldStickToBottomRef.current = false;
       setIsAtBottom(false);
       cancelQueuedRestore();
       element.scrollIntoView(options);
     },
-    [cancelQueuedRestore, clearPendingScrollRestores],
+    [cancelQueuedRestore],
   );
 
   const scrollElementIntoViewClampedToMaxScroll = useCallback(
@@ -362,7 +355,6 @@ export function BottomAnchoredScrollBody({
         return;
       }
 
-      clearPendingScrollRestores();
       scrollArea.scrollTop = getRevealScrollOffsetClampedToMax({
         element,
         scrollArea,
@@ -379,7 +371,7 @@ export function BottomAnchoredScrollBody({
 
       cancelQueuedRestore();
     },
-    [cancelQueuedRestore, clearPendingScrollRestores, queueBottomRestore],
+    [cancelQueuedRestore, queueBottomRestore],
   );
 
   const captureScrollAnchor = useCallback(() => {
@@ -401,25 +393,16 @@ export function BottomAnchoredScrollBody({
     pendingPrependAnchorRef.current = null;
   });
 
-  const hasRecentUserScrollIntent = useCallback(() => {
-    return (
-      pointerScrollIntentRef.current ||
-      window.performance.now() <= userScrollIntentUntilRef.current
-    );
-  }, []);
-
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
-  // restores it. Continuous capture keeps the atom current while mounted; cleanup
-  // flushes through the effect-captured scroll area because refs can be nulled
-  // during unmount.
-  const writeScrollAnchor = useCallback((scrollAreaOverride?: HTMLElement) => {
+  // restores it. Continuous capture (vs. on unmount) is required: the timeline
+  // subtree is force-remounted via `key={threadId}`, and an unmount-time read
+  // races that teardown.
+  const writeScrollAnchor = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
-    const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
+    const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
-    const atBottom =
-      isScrolledNearBottom(scrollArea) ||
-      (shouldStickToBottomRef.current && !hasRecentUserScrollIntent());
+    const atBottom = isScrolledNearBottom(scrollArea);
     const anchorAtom =
       threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
     if (atBottom) {
@@ -434,7 +417,7 @@ export function BottomAnchoredScrollBody({
       offsetWithinRow: topMostRow.offsetWithinRow,
       atBottom: false,
     });
-  }, [hasRecentUserScrollIntent, scrollAnchorThreadId, store]);
+  }, [scrollAnchorThreadId, store]);
 
   const captureScrollAnchorThrottled = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
@@ -524,14 +507,18 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    if (!hasRecentUserScrollIntent()) return;
+    const hasUserScrollIntent =
+      pointerScrollIntentRef.current ||
+      window.performance.now() <= userScrollIntentUntilRef.current;
+
+    if (!hasUserScrollIntent) return;
 
     shouldStickToBottomRef.current = false;
     setIsAtBottom(false);
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
+  }, [cancelQueuedRestore]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();
@@ -677,7 +664,7 @@ export function BottomAnchoredScrollBody({
         window.clearTimeout(captureThrottle.trailingTimeout);
         captureThrottle.trailingTimeout = null;
       }
-      writeScrollAnchor(scrollArea);
+      writeScrollAnchor();
     };
   }, [
     cancelQueuedRestore,
