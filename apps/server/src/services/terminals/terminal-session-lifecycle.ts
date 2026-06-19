@@ -26,7 +26,11 @@ import type {
   CloseThreadTerminalRequest,
   CreateThreadTerminalRequest,
   TerminalClientMessage,
+  TerminalInputRequest,
   TerminalOutputChunk,
+  TerminalOutputQuery,
+  TerminalOutputResponse,
+  TerminalResizeRequest,
   TerminalSession,
   UpdateThreadTerminalRequest,
 } from "@bb/server-contract";
@@ -42,8 +46,17 @@ import {
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
+import {
+  resolveThreadStoragePathFromRoot,
+  resolveThreadStorageRootPath,
+} from "../threads/thread-storage.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
+const DEFAULT_TERMINAL_START: NonNullable<
+  CreateThreadTerminalRequest["start"]
+> = {
+  mode: "shell",
+};
 
 type TerminalOpenedMessage = Extract<
   HostDaemonDaemonWsMessage,
@@ -88,6 +101,14 @@ interface PendingTerminalAttach {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface PendingTerminalOutputRead {
+  daemonSessionId: string;
+  reject: (error: Error) => void;
+  resolve: (message: TerminalReplayMessage) => void;
+  terminalId: string;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 interface WaitForTerminalOpenArgs {
   daemonSessionId: string;
   requestId: string;
@@ -102,6 +123,12 @@ interface WaitForTerminalAttachArgs {
   threadId: string;
 }
 
+interface WaitForTerminalOutputReadArgs {
+  daemonSessionId: string;
+  requestId: string;
+  terminalId: string;
+}
+
 interface ResolvePendingOpenArgs {
   daemonSessionId: string;
   message: TerminalOpenedMessage;
@@ -112,12 +139,22 @@ interface ResolvePendingAttachArgs {
   message: TerminalReplayMessage;
 }
 
+interface ResolvePendingOutputReadArgs {
+  daemonSessionId: string;
+  message: TerminalReplayMessage;
+}
+
 interface RejectPendingOpenArgs {
   daemonSessionId: string;
   message: TerminalErrorMessage;
 }
 
 interface RejectPendingAttachArgs {
+  daemonSessionId: string;
+  message: TerminalErrorMessage;
+}
+
+interface RejectPendingOutputReadsArgs {
   daemonSessionId: string;
   message: TerminalErrorMessage;
 }
@@ -167,6 +204,24 @@ interface DetachBrowserTerminalArgs {
 interface HandleBrowserTerminalMessageArgs {
   message: TerminalClientMessage;
   socket: TerminalClientSocket;
+  terminalId: string;
+  threadId: string;
+}
+
+interface SendThreadTerminalInputArgs {
+  payload: TerminalInputRequest;
+  terminalId: string;
+  threadId: string;
+}
+
+interface ResizeThreadTerminalArgs {
+  payload: TerminalResizeRequest;
+  terminalId: string;
+  threadId: string;
+}
+
+interface ReadThreadTerminalOutputArgs {
+  query: TerminalOutputQuery;
   terminalId: string;
   threadId: string;
 }
@@ -272,6 +327,70 @@ function toTerminalOutputChunk(
   };
 }
 
+function titleFromCommand(command: string): string {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 80) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 77)}...`;
+}
+
+function initialTitleForTerminal(
+  payload: CreateThreadTerminalRequest,
+  existingSessionCount: number,
+): string {
+  if (payload.title !== undefined) {
+    return payload.title;
+  }
+  if (payload.start?.mode === "command") {
+    return titleFromCommand(payload.start.command);
+  }
+  return `Terminal ${existingSessionCount + 1}`;
+}
+
+interface BoundedTerminalOutput {
+  chunks: TerminalOutputChunk[];
+  truncated: boolean;
+}
+
+function applyTerminalOutputBounds(args: {
+  chunks: readonly TerminalOutputChunk[];
+  query: TerminalOutputQuery;
+  replayNextSeq: number;
+  requestedSinceSeq: number;
+}): BoundedTerminalOutput {
+  const { chunks, query, replayNextSeq, requestedSinceSeq } = args;
+  const limitedByChunks =
+    query.limitChunks === undefined ? chunks : chunks.slice(-query.limitChunks);
+  let truncated =
+    limitedByChunks.length < chunks.length ||
+    (chunks[0]?.seq ?? replayNextSeq) > requestedSinceSeq;
+  if (query.tailBytes === undefined) {
+    return { chunks: [...limitedByChunks], truncated };
+  }
+
+  const bounded: TerminalOutputChunk[] = [];
+  let byteLength = 0;
+  for (let index = limitedByChunks.length - 1; index >= 0; index -= 1) {
+    const chunk = limitedByChunks[index];
+    const chunkByteLength = Buffer.byteLength(chunk.dataBase64, "base64");
+    if (bounded.length > 0 && byteLength + chunkByteLength > query.tailBytes) {
+      truncated = true;
+      break;
+    }
+    bounded.unshift(chunk);
+    byteLength += chunkByteLength;
+    if (byteLength >= query.tailBytes) {
+      truncated = truncated || index > 0;
+      break;
+    }
+  }
+  if (bounded.length < limitedByChunks.length) {
+    truncated = true;
+  }
+  return { chunks: bounded, truncated };
+}
+
 function isRunningBrowserTerminalSession(
   row: TerminalSessionRow,
 ): row is RunningBrowserTerminalSession {
@@ -315,6 +434,10 @@ export function toTerminalSession(row: TerminalSessionRow): TerminalSession {
 export class TerminalSessionLifecycle {
   private readonly attachTimeoutMs: number;
   private readonly pendingAttaches = new Map<string, PendingTerminalAttach>();
+  private readonly pendingOutputReads = new Map<
+    string,
+    PendingTerminalOutputRead
+  >();
   private readonly pendingOpens = new Map<string, PendingTerminalOpen>();
   private readonly openTimeoutMs: number;
 
@@ -354,7 +477,18 @@ export class TerminalSessionLifecycle {
       this.options.db,
       thread.id,
     );
-    const title = `Terminal ${existingSessions.length + 1}`;
+    const start = args.payload.start ?? DEFAULT_TERMINAL_START;
+    const title = initialTitleForTerminal(
+      args.payload,
+      existingSessions.length,
+    );
+    const threadStoragePath = resolveThreadStoragePathFromRoot({
+      threadId: thread.id,
+      threadStorageRootPath: resolveThreadStorageRootPath({
+        dataDir: daemonSession.dataDir,
+        env: {},
+      }),
+    });
     const startingSession = createTerminalSession(this.options.db, {
       cols: args.payload.cols,
       daemonSessionId: daemonSession.id,
@@ -372,10 +506,13 @@ export class TerminalSessionLifecycle {
       requestId,
       terminalId: startingSession.id,
       threadId: thread.id,
+      projectId: thread.projectId,
       environmentId: target.environmentId,
+      threadStoragePath,
       workspaceContext: target.workspaceContext,
       cols: args.payload.cols,
       rows: args.payload.rows,
+      start,
     };
 
     const pendingOpen = this.waitForTerminalOpen({
@@ -447,7 +584,7 @@ export class TerminalSessionLifecycle {
       initialCwd: opened.initialCwd,
       rows: opened.rows,
       terminalId: startingSession.id,
-      title: opened.title,
+      title: args.payload.title ?? opened.title,
     });
     if (!runningSession) {
       this.closeStaleOpenedTerminal({
@@ -530,6 +667,175 @@ export class TerminalSessionLifecycle {
       message: "Terminal session closed",
     });
     return terminalSession;
+  }
+
+  sendThreadTerminalInput(args: SendThreadTerminalInputArgs): TerminalSession {
+    requirePublicThread(this.options.db, args.threadId);
+    const current = getTerminalSessionForThread(this.options.db, {
+      terminalId: args.terminalId,
+      threadId: args.threadId,
+    });
+    if (!current) {
+      throw new ApiError(
+        404,
+        "terminal_not_found",
+        "Terminal session not found",
+      );
+    }
+    if (!isRunningBrowserTerminalSession(current)) {
+      throw new ApiError(
+        409,
+        "terminal_not_running",
+        "Terminal session is not running",
+      );
+    }
+
+    const markedInput = markTerminalSessionUserInput(this.options.db, {
+      terminalId: current.id,
+      threadId: args.threadId,
+    });
+    const session = markedInput ?? current;
+    if (markedInput) {
+      this.notifyThreadTerminalsChanged(markedInput.threadId);
+      this.options.hub.sendTerminalClientMessage(markedInput.id, {
+        type: "session-updated",
+        session: toTerminalSession(markedInput),
+      });
+    }
+
+    const sent = this.options.hub.sendDaemonSessionMessage(
+      current.daemonSessionId,
+      {
+        type: "terminal.input",
+        terminalId: current.id,
+        dataBase64: args.payload.dataBase64,
+      },
+    );
+    if (!sent) {
+      this.disconnectDaemonSessionTerminals({
+        daemonSessionId: current.daemonSessionId,
+      });
+      throw new ApiError(502, "host_disconnected", "Host is not connected");
+    }
+    return toTerminalSession(session);
+  }
+
+  resizeThreadTerminal(args: ResizeThreadTerminalArgs): TerminalSession {
+    requirePublicThread(this.options.db, args.threadId);
+    const current = getTerminalSessionForThread(this.options.db, {
+      terminalId: args.terminalId,
+      threadId: args.threadId,
+    });
+    if (!current) {
+      throw new ApiError(
+        404,
+        "terminal_not_found",
+        "Terminal session not found",
+      );
+    }
+    if (!isRunningBrowserTerminalSession(current)) {
+      throw new ApiError(
+        409,
+        "terminal_not_running",
+        "Terminal session is not running",
+      );
+    }
+
+    const resized =
+      current.cols === args.payload.cols && current.rows === args.payload.rows
+        ? current
+        : updateTerminalSessionSize(this.options.db, {
+            cols: args.payload.cols,
+            rows: args.payload.rows,
+            terminalId: current.id,
+            threadId: args.threadId,
+          });
+    const session = resized ?? current;
+    if (resized && resized !== current) {
+      this.notifyThreadTerminalsChanged(resized.threadId);
+      this.options.hub.sendTerminalClientMessage(resized.id, {
+        type: "session-updated",
+        session: toTerminalSession(resized),
+      });
+    }
+
+    const sent = this.options.hub.sendDaemonSessionMessage(
+      current.daemonSessionId,
+      {
+        type: "terminal.resize",
+        terminalId: current.id,
+        cols: args.payload.cols,
+        rows: args.payload.rows,
+      },
+    );
+    if (!sent) {
+      this.disconnectDaemonSessionTerminals({
+        daemonSessionId: current.daemonSessionId,
+      });
+      throw new ApiError(502, "host_disconnected", "Host is not connected");
+    }
+    return toTerminalSession(session);
+  }
+
+  async readThreadTerminalOutput(
+    args: ReadThreadTerminalOutputArgs,
+  ): Promise<TerminalOutputResponse> {
+    requirePublicThread(this.options.db, args.threadId);
+    const current = getTerminalSessionForThread(this.options.db, {
+      terminalId: args.terminalId,
+      threadId: args.threadId,
+    });
+    if (!current) {
+      throw new ApiError(
+        404,
+        "terminal_not_found",
+        "Terminal session not found",
+      );
+    }
+    if (!isRunningBrowserTerminalSession(current)) {
+      throw new ApiError(
+        409,
+        "terminal_output_unavailable",
+        "Terminal output is unavailable because the session is not running",
+      );
+    }
+
+    const requestId = randomUUID();
+    const pendingReplay = this.waitForTerminalOutputRead({
+      daemonSessionId: current.daemonSessionId,
+      requestId,
+      terminalId: current.id,
+    });
+    const sent = this.options.hub.sendDaemonSessionMessage(
+      current.daemonSessionId,
+      {
+        type: "terminal.attach",
+        requestId,
+        terminalId: current.id,
+        sinceSeq: args.query.sinceSeq ?? 0,
+      },
+    );
+    if (!sent) {
+      this.cancelPendingOutputRead(requestId);
+      this.disconnectDaemonSessionTerminals({
+        daemonSessionId: current.daemonSessionId,
+      });
+      throw new ApiError(502, "host_disconnected", "Host is not connected");
+    }
+
+    const requestedSinceSeq = args.query.sinceSeq ?? 0;
+    const replay = await pendingReplay;
+    const bounded = applyTerminalOutputBounds({
+      chunks: replay.chunks.map(toTerminalOutputChunk),
+      query: args.query,
+      replayNextSeq: replay.nextSeq,
+      requestedSinceSeq,
+    });
+    return {
+      chunks: bounded.chunks,
+      nextSeq: replay.nextSeq,
+      truncated: bounded.truncated,
+    };
   }
 
   closeDeletedThreadTerminals(args: CloseDeletedThreadTerminalsArgs): void {
@@ -722,6 +1028,10 @@ export class TerminalSessionLifecycle {
           daemonSessionId: args.sessionId,
           message: args.message,
         });
+        this.rejectPendingOutputReads({
+          daemonSessionId: args.sessionId,
+          message: args.message,
+        });
         return;
       case "terminal.exited":
         const exited = markDaemonTerminalSessionExited(this.options.db, {
@@ -742,6 +1052,11 @@ export class TerminalSessionLifecycle {
             code: "terminal_exited",
             message: "Terminal session exited",
           });
+          this.rejectPendingOutputReadsForTerminal({
+            terminalId: exited.id,
+            code: "terminal_exited",
+            message: "Terminal session exited",
+          });
         }
         return;
       case "terminal.output":
@@ -752,6 +1067,10 @@ export class TerminalSessionLifecycle {
         return;
       case "terminal.replay":
         this.resolvePendingAttach({
+          daemonSessionId: args.sessionId,
+          message: args.message,
+        });
+        this.resolvePendingOutputRead({
           daemonSessionId: args.sessionId,
           message: args.message,
         });
@@ -855,6 +1174,11 @@ export class TerminalSessionLifecycle {
       session: toTerminalSession(args.session),
     });
     this.rejectPendingAttachesForTerminal({
+      terminalId: args.session.id,
+      code: args.code,
+      message: args.message,
+    });
+    this.rejectPendingOutputReadsForTerminal({
       terminalId: args.session.id,
       code: args.code,
       message: args.message,
@@ -1000,6 +1324,11 @@ export class TerminalSessionLifecycle {
         code: "host_disconnected",
         message: "Host disconnected from terminal session",
       });
+      this.rejectPendingOutputReadsForTerminal({
+        terminalId: session.id,
+        code: "host_disconnected",
+        message: "Host disconnected from terminal session",
+      });
       this.options.logger.info(
         { terminalId: session.id, sessionId: args.daemonSessionId },
         "Terminal session disconnected with daemon session",
@@ -1054,6 +1383,30 @@ export class TerminalSessionLifecycle {
     });
   }
 
+  private waitForTerminalOutputRead(
+    args: WaitForTerminalOutputReadArgs,
+  ): Promise<TerminalReplayMessage> {
+    return new Promise<TerminalReplayMessage>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingOutputReads.delete(args.requestId);
+        reject(
+          new ApiError(
+            504,
+            "terminal_output_timeout",
+            "Timed out reading terminal output",
+          ),
+        );
+      }, this.attachTimeoutMs);
+      this.pendingOutputReads.set(args.requestId, {
+        daemonSessionId: args.daemonSessionId,
+        reject,
+        resolve,
+        terminalId: args.terminalId,
+        timeout,
+      });
+    });
+  }
+
   private cancelPendingOpen(requestId: string): void {
     const pending = this.pendingOpens.get(requestId);
     if (!pending) {
@@ -1070,6 +1423,15 @@ export class TerminalSessionLifecycle {
     }
     clearTimeout(pending.timeout);
     this.pendingAttaches.delete(requestId);
+  }
+
+  private cancelPendingOutputRead(requestId: string): void {
+    const pending = this.pendingOutputReads.get(requestId);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingOutputReads.delete(requestId);
   }
 
   private resolvePendingOpen(args: ResolvePendingOpenArgs): void {
@@ -1124,6 +1486,20 @@ export class TerminalSessionLifecycle {
     }
   }
 
+  private resolvePendingOutputRead(args: ResolvePendingOutputReadArgs): void {
+    const pending = this.pendingOutputReads.get(args.message.requestId);
+    if (
+      !pending ||
+      pending.terminalId !== args.message.terminalId ||
+      pending.daemonSessionId !== args.daemonSessionId
+    ) {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingOutputReads.delete(args.message.requestId);
+    pending.resolve(args.message);
+  }
+
   private rejectPendingOpen(args: RejectPendingOpenArgs): void {
     const pending = this.pendingOpens.get(args.message.requestId);
     if (
@@ -1162,6 +1538,26 @@ export class TerminalSessionLifecycle {
     });
   }
 
+  private rejectPendingOutputReads(args: RejectPendingOutputReadsArgs): void {
+    const pending = this.pendingOutputReads.get(args.message.requestId);
+    if (
+      !pending ||
+      pending.terminalId !== args.message.terminalId ||
+      pending.daemonSessionId !== args.daemonSessionId
+    ) {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingOutputReads.delete(args.message.requestId);
+    pending.reject(
+      new ApiError(
+        502,
+        args.message.code,
+        `Terminal output read failed: ${args.message.message}`,
+      ),
+    );
+  }
+
   private rejectPendingOpenForTerminal(
     args: RejectPendingOpenForTerminalArgs,
   ): void {
@@ -1192,6 +1588,19 @@ export class TerminalSessionLifecycle {
         code: args.code,
         message: args.message,
       });
+    }
+  }
+
+  private rejectPendingOutputReadsForTerminal(
+    args: RejectPendingAttachesForTerminalArgs,
+  ): void {
+    for (const [requestId, pending] of this.pendingOutputReads) {
+      if (pending.terminalId !== args.terminalId) {
+        continue;
+      }
+      clearTimeout(pending.timeout);
+      this.pendingOutputReads.delete(requestId);
+      pending.reject(new ApiError(409, args.code, args.message));
     }
   }
 

@@ -755,6 +755,11 @@ export interface FindStoredClientTurnRequestSequenceByRequestIdArgs {
   threadId: string;
 }
 
+export interface GetStoredTurnRequestEventForTurnArgs {
+  threadId: string;
+  turnId: string;
+}
+
 export interface ListStoredThreadProvisioningRowsByProvisioningIdArgs {
   provisioningId: string;
   threadId: string;
@@ -977,6 +982,54 @@ export function findStoredClientTurnRequestSequenceByRequestId(
       .limit(1)
       .get() ?? null;
   return row?.sequence ?? null;
+}
+
+export function getStoredTurnRequestEventForTurn(
+  db: DbQueryConnection,
+  args: GetStoredTurnRequestEventForTurnArgs,
+): StoredTurnRequestEventRow | null {
+  const acceptedInput =
+    db
+      .select({
+        clientRequestId: sql<string | null>`json_extract(${events.data}, '$.clientRequestId')`,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.type, "turn/input/accepted"),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null;
+  const requestIdResult = clientTurnRequestIdSchema.safeParse(
+    acceptedInput?.clientRequestId,
+  );
+  if (!requestIdResult.success) {
+    return null;
+  }
+
+  return (
+    db
+      .select({
+        data: events.data,
+        sequence: events.sequence,
+        threadId: events.threadId,
+        type: events.type,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          sql`json_extract(${events.data}, '$.requestId') = ${requestIdResult.data}`,
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
 }
 
 export function listStoredTurnInputAcceptedRowsByClientRequestIds(

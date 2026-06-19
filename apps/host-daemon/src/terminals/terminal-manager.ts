@@ -44,6 +44,7 @@ export interface TerminalPtyProcess {
 }
 
 export interface SpawnTerminalPtyArgs {
+  args: string[];
   cols: number;
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -122,8 +123,12 @@ interface ShutdownTerminalArgs {
 }
 
 interface BuildTerminalEnvArgs {
+  environmentId: string;
+  projectId: string;
   shellEnv: NodeJS.ProcessEnv;
   terminalId: string;
+  threadId: string;
+  threadStoragePath: string;
 }
 
 interface ResizeTerminalArgs {
@@ -158,7 +163,7 @@ interface TerminalOperationCompletion {
 export const nodePtyAdapter: TerminalPtyAdapter = {
   spawn(args) {
     ensureNodePtySpawnHelperExecutable(args.logger);
-    const pty = spawnPty(args.file, [], {
+    const pty = spawnPty(args.file, args.args, {
       cols: args.cols,
       cwd: args.cwd,
       env: args.env,
@@ -303,7 +308,11 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
   return {
     ...sanitizeInheritedChildProcessEnv({ env: process.env }),
     ...args.shellEnv,
+    BB_ENVIRONMENT_ID: args.environmentId,
+    BB_PROJECT_ID: args.projectId,
     BB_TERMINAL_SESSION_ID: args.terminalId,
+    BB_THREAD_ID: args.threadId,
+    BB_THREAD_STORAGE: args.threadStoragePath,
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
     // zsh emits a highlighted "%" by default when a prompt follows output
@@ -315,6 +324,35 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
 
 function terminalTitleFromShell(shell: string): string {
   return path.basename(shell) || "Terminal";
+}
+
+function terminalTitleFromCommand(command: string): string {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 80) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 77)}...`;
+}
+
+function terminalSpawnArgsForStart(message: TerminalOpenMessage): string[] {
+  switch (message.start.mode) {
+    case "shell":
+      return [];
+    case "command":
+      return ["-lc", message.start.command];
+  }
+}
+
+function terminalTitleForStart(
+  message: TerminalOpenMessage,
+  shell: string,
+): string {
+  switch (message.start.mode) {
+    case "shell":
+      return terminalTitleFromShell(shell);
+    case "command":
+      return terminalTitleFromCommand(message.start.command);
+  }
 }
 
 function createTerminalOperationCompletion(): TerminalOperationCompletion {
@@ -463,11 +501,16 @@ export class TerminalManager {
       });
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
+        args: terminalSpawnArgsForStart(message),
         cols: message.cols,
         cwd: entry.path,
         env: buildTerminalEnv({
+          environmentId: message.environmentId,
+          projectId: message.projectId,
           shellEnv: this.options.runtimeManager.getShellEnv(),
           terminalId: message.terminalId,
+          threadId: message.threadId,
+          threadStoragePath: message.threadStoragePath,
         }),
         file: shell,
         logger: this.options.logger,
@@ -517,7 +560,7 @@ export class TerminalManager {
         requestId: message.requestId,
         terminalId: message.terminalId,
         shell,
-        title: terminalTitleFromShell(shell),
+        title: terminalTitleForStart(message, shell),
         initialCwd: entry.path,
         cols: message.cols,
         rows: message.rows,

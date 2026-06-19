@@ -32,6 +32,7 @@ import {
   wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
   requestQueuedMessageAutoSendForThread,
@@ -293,6 +294,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
           });
     requestThreadStopForCurrentState(deps, thread, environment);
     return context.json({ ok: true });
+  });
+
+  post(routes.open, (context, payload) => {
+    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    parseSafeRelativeRoutePath(payload.path);
+    const delivered = deps.hub.notifyThreadOpenFile(publicThread.id, {
+      source: payload.source,
+      path: payload.path,
+      lineNumber: payload.lineNumber,
+    });
+    return context.json({ delivered });
   });
 
   post(routes.pin, (context) => {
