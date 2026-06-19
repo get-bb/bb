@@ -768,13 +768,16 @@ describe("environment command dispatch", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
+      projectId: "proj-1",
       environmentId: "env-1",
+      threadStoragePath: "/tmp/thread-storage/thr-1",
       workspaceContext: {
         workspacePath: "/tmp/env-1",
         workspaceProvisionType: "managed-worktree",
       },
       cols: 100,
       rows: 30,
+      start: { mode: "shell" },
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -889,5 +892,4 @@ describe("environment command dispatch", () => {
 
     expect(retryResult).toEqual({});
   });
-
 });

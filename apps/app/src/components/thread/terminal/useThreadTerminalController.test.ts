@@ -2,12 +2,11 @@ import type { TerminalSession } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   isVisibleTerminalSession,
+  shouldAutoCloseCleanTerminalSession,
   shouldCloseDisconnectedTerminalSession,
 } from "./useThreadTerminalController";
 
-function terminalSession(
-  overrides: Partial<TerminalSession>,
-): TerminalSession {
+function terminalSession(overrides: Partial<TerminalSession>): TerminalSession {
   return {
     id: "term_1",
     threadId: "thr_1",
@@ -76,6 +75,45 @@ describe("terminal visibility", () => {
       shouldCloseDisconnectedTerminalSession({
         retainedTerminalViewId: null,
         session: terminalSession({ status: "running" }),
+      }),
+    ).toBe(false);
+  });
+
+  it("auto-closes only clean UI-created terminal sessions", () => {
+    const cleanUiCreated = terminalSession({ id: "term_ui" });
+    const external = terminalSession({ id: "term_external" });
+    const dirty = terminalSession({ id: "term_dirty" });
+    const userInput = terminalSession({
+      id: "term_user_input",
+      lastUserInputAt: 2,
+    });
+
+    expect(
+      shouldAutoCloseCleanTerminalSession({
+        dirtyTerminalIds: new Set(["term_dirty"]),
+        session: cleanUiCreated,
+        uiCreatedTerminalIds: new Set(["term_ui", "term_dirty"]),
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoCloseCleanTerminalSession({
+        dirtyTerminalIds: new Set(),
+        session: external,
+        uiCreatedTerminalIds: new Set(["term_ui"]),
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoCloseCleanTerminalSession({
+        dirtyTerminalIds: new Set(["term_dirty"]),
+        session: dirty,
+        uiCreatedTerminalIds: new Set(["term_dirty"]),
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoCloseCleanTerminalSession({
+        dirtyTerminalIds: new Set(),
+        session: userInput,
+        uiCreatedTerminalIds: new Set(["term_user_input"]),
       }),
     ).toBe(false);
   });

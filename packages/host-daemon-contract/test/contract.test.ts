@@ -1895,7 +1895,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(40);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(41);
   });
 
   it("parses valid session open and event batch payloads", () => {
@@ -2485,13 +2485,16 @@ describe("host-daemon session schemas", () => {
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",
+        projectId: "proj_123",
         environmentId: "env_123",
+        threadStoragePath: "/tmp/thread-storage/thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
         },
         cols: TERMINAL_COLS_MAX,
         rows: TERMINAL_ROWS_MAX,
+        start: { mode: "shell" },
       }).success,
     ).toBe(true);
     expect(

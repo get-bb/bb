@@ -96,6 +96,10 @@ import type {
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
   TerminalSession,
+  TerminalInputRequest,
+  TerminalOutputQuery,
+  TerminalOutputResponse,
+  TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadComposerBootstrapResponse,
@@ -178,6 +182,9 @@ import {
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
   threadStoragePathsQuerySchema,
+  terminalInputRequestSchema,
+  terminalOutputQuerySchema,
+  terminalResizeRequestSchema,
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
@@ -694,6 +701,30 @@ export const publicApiRoutes = {
         closeThreadTerminalRequestSchema,
       ),
       response: jsonResponse<TerminalSession>(),
+    }),
+    terminalInput: defineRoute({
+      path: "/threads/:id/terminals/:terminalId/input",
+      method: "post",
+      request: jsonRequest<PathThreadAndTerminal, TerminalInputRequest>(
+        terminalInputRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    terminalResize: defineRoute({
+      path: "/threads/:id/terminals/:terminalId/resize",
+      method: "post",
+      request: jsonRequest<PathThreadAndTerminal, TerminalResizeRequest>(
+        terminalResizeRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    terminalOutput: defineRoute({
+      path: "/threads/:id/terminals/:terminalId/output",
+      method: "get",
+      request: optionalQueryRequest<PathThreadAndTerminal, TerminalOutputQuery>(
+        terminalOutputQuerySchema,
+      ),
+      response: jsonResponse<TerminalOutputResponse>(),
     }),
     timeline: defineRoute({
       path: "/threads/:id/timeline",

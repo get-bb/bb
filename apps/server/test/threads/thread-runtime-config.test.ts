@@ -15,6 +15,7 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
+import { TERMINAL_TOOL_NAMES } from "../../src/services/terminals/terminal-tools.js";
 import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
@@ -30,6 +31,15 @@ interface WriteRuntimeSkillArgs {
   name: string;
   rootPath: string;
 }
+
+const TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER = [
+  TERMINAL_TOOL_NAMES.list,
+  TERMINAL_TOOL_NAMES.start,
+  TERMINAL_TOOL_NAMES.output,
+  TERMINAL_TOOL_NAMES.send,
+  TERMINAL_TOOL_NAMES.resize,
+  TERMINAL_TOOL_NAMES.stop,
+];
 
 async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
   const sourceRootPath = path.join(args.rootPath, args.name);
@@ -700,7 +710,9 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "You are working inside bb, an agentic IDE",
       );
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.dynamicTools.map((tool) => tool.name)).toEqual(
+        TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER,
+      );
     });
   });
 
@@ -742,7 +754,9 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.dynamicTools.map((tool) => tool.name)).toEqual(
+        TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER,
+      );
       expect(runtimeConfig.instructions).not.toContain(
         "bb_send_to_main_thread",
       );

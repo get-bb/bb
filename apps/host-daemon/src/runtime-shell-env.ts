@@ -117,8 +117,8 @@ function defaultSpawnUserShellEnv(
     let stdout = "";
     let stderr = "";
     let settled = false;
-    let timeout: NodeJS.Timeout | undefined;
-    let forceKillTimeout: NodeJS.Timeout | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let forceKillTimeout: ReturnType<typeof setTimeout> | undefined;
     let child: ReturnType<typeof spawn>;
 
     function clearTimeouts(args?: { keepForceKillTimeout?: boolean }): void {
@@ -277,8 +277,7 @@ function parsePathFromUserShellEnv(stdout: string): string | null {
     return null;
   }
   const endIndex = lines.findIndex(
-    (line, index) =>
-      index > startIndex && line.trim() === SHELL_ENV_END_MARKER,
+    (line, index) => index > startIndex && line.trim() === SHELL_ENV_END_MARKER,
   );
   if (endIndex === -1) {
     return null;

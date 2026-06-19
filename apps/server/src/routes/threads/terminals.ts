@@ -37,6 +37,33 @@ export function registerThreadTerminalRoutes(app: Hono, deps: AppDeps): void {
     return context.json(session);
   });
 
+  post(routes.terminalInput, (context, payload) => {
+    const session = deps.terminalSessions.sendThreadTerminalInput({
+      payload,
+      terminalId: context.req.param("terminalId"),
+      threadId: context.req.param("id"),
+    });
+    return context.json(session);
+  });
+
+  post(routes.terminalResize, (context, payload) => {
+    const session = deps.terminalSessions.resizeThreadTerminal({
+      payload,
+      terminalId: context.req.param("terminalId"),
+      threadId: context.req.param("id"),
+    });
+    return context.json(session);
+  });
+
+  get(routes.terminalOutput, async (context, query) => {
+    const output = await deps.terminalSessions.readThreadTerminalOutput({
+      query,
+      terminalId: context.req.param("terminalId"),
+      threadId: context.req.param("id"),
+    });
+    return context.json(output);
+  });
+
   post(routes.closeTerminal, (context, payload) => {
     const session = deps.terminalSessions.closeThreadTerminal({
       payload,

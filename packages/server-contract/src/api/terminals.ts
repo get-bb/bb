@@ -36,6 +36,22 @@ export const createThreadTerminalRequestSchema = z
   .object({
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
+    title: z.string().trim().min(1).max(200).optional(),
+    start: z
+      .discriminatedUnion("mode", [
+        z
+          .object({
+            mode: z.literal("shell"),
+          })
+          .strict(),
+        z
+          .object({
+            mode: z.literal("command"),
+            command: z.string().trim().min(1).max(10_000),
+          })
+          .strict(),
+      ])
+      .optional(),
   })
   .strict();
 export type CreateThreadTerminalRequest = z.infer<
@@ -68,6 +84,46 @@ export const terminalOutputChunkSchema = z
   })
   .strict();
 export type TerminalOutputChunk = z.infer<typeof terminalOutputChunkSchema>;
+
+export const terminalInputRequestSchema = z
+  .object({
+    dataBase64: terminalDataBase64Schema,
+  })
+  .strict();
+export type TerminalInputRequest = z.infer<typeof terminalInputRequestSchema>;
+
+export const terminalResizeRequestSchema = z
+  .object({
+    cols: terminalColsSchema,
+    rows: terminalRowsSchema,
+  })
+  .strict();
+export type TerminalResizeRequest = z.infer<typeof terminalResizeRequestSchema>;
+
+export const terminalOutputQuerySchema = z
+  .object({
+    sinceSeq: z.coerce.number().int().nonnegative().optional(),
+    tailBytes: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(4 * 1024 * 1024)
+      .optional(),
+    limitChunks: z.coerce.number().int().positive().max(10_000).optional(),
+  })
+  .strict();
+export type TerminalOutputQuery = z.infer<typeof terminalOutputQuerySchema>;
+
+export const terminalOutputResponseSchema = z
+  .object({
+    chunks: z.array(terminalOutputChunkSchema),
+    nextSeq: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+  })
+  .strict();
+export type TerminalOutputResponse = z.infer<
+  typeof terminalOutputResponseSchema
+>;
 
 export const terminalClientMessageSchema = z.discriminatedUnion("type", [
   z
