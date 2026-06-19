@@ -9,7 +9,10 @@ import {
   type NewThreadProjectConfig,
   type NewThreadWorktreeConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import type { HistoryConfig } from "@/components/promptbox/PromptBoxInternal";
+import type {
+  HistoryConfig,
+  PromptBoxAction,
+} from "@/components/promptbox/PromptBoxInternal";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -103,6 +106,20 @@ const baseHistory: HistoryConfig = {
   onSelectEntry: noop,
 };
 
+const promptActions: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "$" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
+];
+
 function useControlledValue(initial: string) {
   const [value, setValue] = useState(initial);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -147,6 +164,7 @@ function DefaultRow() {
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
+        promptActions={promptActions}
         modeConfig={baseModeConfig}
         project={baseProject}
         execution={baseExecution}

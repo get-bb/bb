@@ -593,6 +593,36 @@ const projectCommandArgumentHintFixture = buildPromptPillsFixture(
   ],
 );
 
+const planGoalCommandPillsFixture = buildPromptPillsFixture(
+  "/plan clean up unused worktrees and /goal keep the review focused.",
+  [
+    {
+      token: "/plan",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "plan",
+        source: "command",
+        origin: "user",
+        label: "plan",
+        argumentHint: null,
+      },
+    },
+    {
+      token: "/goal",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "goal",
+        source: "command",
+        origin: "user",
+        label: "goal",
+        argumentHint: null,
+      },
+    },
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Story rows. Each row is its own controlled instance.
 // ---------------------------------------------------------------------------
@@ -943,6 +973,28 @@ export function AllPromptPills() {
         hint="project command pill with non-editable argument hint placeholder"
       >
         <PromptBoxStoryInstance fixture={projectCommandArgumentHintFixture} />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function PromptActions() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="action menu"
+        hint="click the + button at the far-left of the prompt controls"
+      >
+        <WithPromptActionsRow />
+      </StoryRow>
+      <StoryRow
+        label="plan and goal pills"
+        hint="/plan and /goal render as command pills after insertion"
+      >
+        <PromptBoxStoryInstance
+          fixture={planGoalCommandPillsFixture}
+          placeholder="Plan or goal command pill"
+        />
       </StoryRow>
     </StoryCard>
   );

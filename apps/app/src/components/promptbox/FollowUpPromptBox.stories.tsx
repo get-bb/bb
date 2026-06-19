@@ -23,6 +23,7 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
+  type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
@@ -80,6 +81,20 @@ const basePermission: ExecutionPermissionConfig = {
   onChange: noop,
   supported: true,
 };
+
+const promptActions: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "$" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
+];
 
 // Read-only footer (side chat): the side chat inherits its parent thread's
 // provider/model and is always read-only. It renders the SAME model/reasoning
@@ -525,6 +540,7 @@ function Row({
         contextWindowUsage={contextWindowUsage}
         execution={execution}
         permission={permission}
+        promptActions={promptActions}
         readOnly={readOnly}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
