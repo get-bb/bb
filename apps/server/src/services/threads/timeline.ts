@@ -1004,9 +1004,14 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  const eventRowsWithBackgroundTaskState =
+    ensureTimelineWindowBackgroundTaskStateRows(db, {
+      threadId: thread.id,
+      rows: eventRows,
+    });
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: [...turnStartedRows, ...eventRows].map((row) =>
-      toThreadEventWithMeta(row),
+    events: [...turnStartedRows, ...eventRowsWithBackgroundTaskState].map(
+      (row) => toThreadEventWithMeta(row),
     ),
     options: {
       includeProviderUnhandledOperations,
