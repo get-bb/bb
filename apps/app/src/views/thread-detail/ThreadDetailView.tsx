@@ -678,6 +678,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [parentThreadSubsetQuery.data, shouldLoadParentThreads],
   );
   const {
+    activePromptMode,
     activeThinking,
     activeWorkflow,
     activeBackgroundCommands,
@@ -2001,6 +2002,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}
+      activePromptMode={activePromptMode}
       goal={goal}
       activeWorkflow={activeWorkflow}
       activeBackgroundCommands={activeBackgroundCommands}

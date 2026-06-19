@@ -9,6 +9,7 @@ import type {
   PendingInteraction,
   ThreadQueuedMessage,
   ThreadPullRequest,
+  ThreadTimelineActivePromptMode,
   ThreadTimelineGoal,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
@@ -29,6 +30,7 @@ import {
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
+import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPromptModeCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import type {
@@ -141,6 +143,8 @@ interface ThreadDetailPromptAreaProps {
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   /** Latest task/todo snapshot from the timeline projection. Null on older pages or when no candidate observed. */
   pendingTodos: ThreadTimelinePendingTodos | null;
+  /** Active provider prompt mode from the latest timeline projection. Null when no prompt mode is active. */
+  activePromptMode: ThreadTimelineActivePromptMode | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
   /** Running workflow row from the timeline. Null when no workflow is active. */
@@ -196,6 +200,7 @@ export function ThreadDetailPromptArea({
   workspaceStatusPending,
   contextBannerMergeBase,
   pendingTodos,
+  activePromptMode,
   goal,
   activeWorkflow,
   activeBackgroundCommands,
@@ -1004,6 +1009,7 @@ export function ThreadDetailPromptArea({
           isExpanded={isBackgroundCommandsExpanded}
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
+        <ThreadPromptModeCard activePromptMode={activePromptMode} />
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -1089,6 +1095,7 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       goal,
+      activePromptMode,
       isGoalExpanded,
       isTodoExpanded,
       activeWorkflow,

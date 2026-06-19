@@ -3,6 +3,7 @@ import type {
   ApprovalPendingInteractionResolution,
   JsonObject,
   OwnershipChangeOperationAction,
+  PromptInput,
   ProviderErrorInfo,
   ThreadEventFileChange,
   ThreadEventItemStatus,
@@ -68,6 +69,28 @@ interface PlanItemEventArgs {
   seq: number;
   text: string;
 }
+
+const claudePlanPromptInput: PromptInput[] = [
+  {
+    type: "text",
+    text: "/plan inspect the failing command",
+    mentions: [
+      {
+        start: 0,
+        end: 5,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ],
+  },
+];
 
 interface PlanDeltaEventArgs {
   itemId?: string;
@@ -798,6 +821,74 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("projects active Claude plan mode from an accepted plan command pill", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: claudePlanPromptInput,
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "active",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toEqual({
+      mode: "plan",
+      providerId: "claude-code",
+    });
+  });
+
+  it("clears active Claude plan mode when the turn completes", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: claudePlanPromptInput,
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+        event.turnCompleted(),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "idle",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toBeNull();
+  });
+
   it("does not project thread-start provider-session markers as provisioning rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const providerSessionMarker = event.threadProvisioning({

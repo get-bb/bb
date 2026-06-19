@@ -149,6 +149,7 @@ function makeThreadTimelineResponse(
   rows: ThreadTimelineResponse["rows"],
 ): ThreadTimelineResponse {
   return {
+    activePromptMode: null,
     activeThinking: null,
     activeWorkflow: null,
     activeBackgroundCommands: [],

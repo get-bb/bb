@@ -18,6 +18,7 @@ import {
   readTerminalOutputLines,
   type ActiveThinking,
   type Thread,
+  type ThreadTimelineActivePromptMode,
   type ThreadTimelineGoal,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
@@ -53,6 +54,7 @@ import {
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
+import { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
@@ -69,6 +71,11 @@ interface ThreadTimelineFromEventsBaseOptions {
    * entirely instead of computing it and discarding.
    */
   isLatestPage: boolean;
+  /**
+   * Current thread provider. Needed for provider-specific prompt modes that are
+   * encoded in command pills on the accepted request.
+   */
+  providerId?: string;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -96,6 +103,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 }
 
 export interface ThreadTimelineFromEventsResult {
+  activePromptMode: ThreadTimelineActivePromptMode | null;
   activeThinking: ActiveThinking | null;
   activeWorkflow: TimelineWorkflowWorkRow | null;
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
@@ -1123,6 +1131,13 @@ export function buildThreadTimelineFromEvents(
   ];
 
   return {
+    activePromptMode: !args.options.isLatestPage
+      ? null
+      : extractThreadTimelineActivePromptMode({
+          events: args.events,
+          providerId: args.options.providerId,
+          threadStatus: args.options.threadStatus,
+        }),
     activeThinking: projection.state.activeThinking,
     activeWorkflow: projection.state.activeWorkflow
       ? buildWorkflowWorkRow(

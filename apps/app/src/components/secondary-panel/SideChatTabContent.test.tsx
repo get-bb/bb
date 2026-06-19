@@ -185,6 +185,7 @@ vi.mock("@/components/thread/timeline", () => ({
     <div>{label ?? "Working"}</div>
   ),
   useThreadTimelineController: () => ({
+    activePromptMode: null,
     activeThinking: null,
     activeWorkflow: null,
     activeBackgroundCommands: [],

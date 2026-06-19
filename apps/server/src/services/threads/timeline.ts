@@ -848,6 +848,7 @@ function buildThreadTimelineInternal(
         options: {
           ...commonProjectionOptions,
           includeNestedRows,
+          providerId: thread.providerId,
           turnMessageDetail: includeNestedRows ? "full" : "summary",
         },
       }),
@@ -868,6 +869,8 @@ function buildThreadTimelineInternal(
   const response: ThreadTimelineResponse = {
     maxSeq: options.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
+    activePromptMode:
+      options.page.kind === "latest" ? timeline.activePromptMode : null,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,
     activeWorkflow:

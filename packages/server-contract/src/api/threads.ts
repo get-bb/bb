@@ -16,6 +16,7 @@ import {
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
+  threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
@@ -534,6 +535,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
