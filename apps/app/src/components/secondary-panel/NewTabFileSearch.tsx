@@ -58,8 +58,11 @@ export interface NewTabFileSearchProps {
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 export type StartSideChatHandler = () => void;
+export type StartComposeHandler = () => void;
 
 export interface NewTabActionsProps {
+  /** Open a full-page new-thread composer in its own tab. */
+  onStartCompose?: StartComposeHandler;
   /** Open a session-based side chat of the current thread in its own tab. */
   onStartSideChat?: StartSideChatHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
@@ -164,6 +167,7 @@ const FILE_SEARCH_SOURCE_LABELS = {
   "thread-storage": "Thread storage",
 } satisfies Record<FileSearchSource, string>;
 
+const START_COMPOSE_ENTRY_ID = "file-search-result-start-compose";
 const START_SIDE_CHAT_ENTRY_ID = "file-search-result-start-side-chat";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
@@ -717,15 +721,21 @@ export function NewTabFileSearch({
 }
 
 export function NewTabActions({
+  onStartCompose,
   onStartSideChat,
   onOpenBrowser,
   onStartTerminal,
 }: NewTabActionsProps) {
+  const showStartComposeEntry = onStartCompose !== undefined;
   const showStartSideChatEntry = onStartSideChat !== undefined;
   const showOpenBrowserEntry =
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable();
   const showStartTerminalEntry = onStartTerminal !== undefined;
+
+  const handleStartCompose = useCallback(() => {
+    onStartCompose?.();
+  }, [onStartCompose]);
 
   const handleStartSideChat = useCallback(() => {
     onStartSideChat?.();
@@ -740,7 +750,10 @@ export function NewTabActions({
   }, [onStartTerminal]);
 
   const hasOpenActions =
-    showStartSideChatEntry || showOpenBrowserEntry || showStartTerminalEntry;
+    showStartComposeEntry ||
+    showStartSideChatEntry ||
+    showOpenBrowserEntry ||
+    showStartTerminalEntry;
 
   if (!hasOpenActions) {
     return null;
@@ -754,6 +767,16 @@ export function NewTabActions({
           className="pb-1"
         />
         <div className="flex flex-col gap-px">
+          {showStartComposeEntry ? (
+            <NewTabActionTile
+              id={START_COMPOSE_ENTRY_ID}
+              iconName="MessageSquarePlus"
+              label="Compose new thread"
+              isActive={false}
+              onActivate={() => undefined}
+              onSelect={handleStartCompose}
+            />
+          ) : null}
           {showStartSideChatEntry ? (
             <NewTabActionTile
               id={START_SIDE_CHAT_ENTRY_ID}

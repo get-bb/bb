@@ -78,6 +78,12 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
+  PeerShareIdentity,
+  PeerShareIdentityUpdate,
+  PeerShareNearbyPeersResponse,
+  PeerShareSendRequest,
+  PeerShareIncomingListResponse,
+  PeerShareAcceptResponse,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -1619,4 +1625,56 @@ export async function updateExperiments(
 
 export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
   return request<Host[]>(apiClient.hosts.$get({}, requestOptions(signal)));
+}
+
+// --- Peer sharing ("AirDrop for threads") ---
+
+export async function getPeerShareIdentity(
+  signal?: AbortSignal,
+): Promise<PeerShareIdentity> {
+  return request<PeerShareIdentity>(
+    apiClient["peer-share"].identity.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function updatePeerShareIdentity(
+  req: PeerShareIdentityUpdate,
+): Promise<PeerShareIdentity> {
+  return request<PeerShareIdentity>(
+    apiClient["peer-share"].identity.$put({ json: req }),
+  );
+}
+
+export async function listPeerSharePeers(
+  signal?: AbortSignal,
+): Promise<PeerShareNearbyPeersResponse> {
+  return request<PeerShareNearbyPeersResponse>(
+    apiClient["peer-share"].peers.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function sendPeerShare(req: PeerShareSendRequest): Promise<void> {
+  await requestVoid(apiClient["peer-share"].send.$post({ json: req }));
+}
+
+export async function listPeerShareIncoming(
+  signal?: AbortSignal,
+): Promise<PeerShareIncomingListResponse> {
+  return request<PeerShareIncomingListResponse>(
+    apiClient["peer-share"].incoming.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function acceptPeerShare(
+  id: string,
+): Promise<PeerShareAcceptResponse> {
+  return request<PeerShareAcceptResponse>(
+    apiClient["peer-share"].incoming[":id"].accept.$post({ param: { id } }),
+  );
+}
+
+export async function declinePeerShare(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["peer-share"].incoming[":id"].decline.$post({ param: { id } }),
+  );
 }

@@ -9,6 +9,7 @@ import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
+import { PeerShareService } from "./services/peer-share/peer-share-service.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
@@ -110,6 +111,20 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
+  // "AirDrop for threads": opt-in LAN exposure via BB_LAN_SHARE. When enabled,
+  // bind the HTTP server to all interfaces so peers can reach the offer
+  // endpoint; otherwise keep the default (loopback) binding.
+  const lanShareEnabled =
+    process.env.BB_LAN_SHARE === "1" || process.env.BB_LAN_SHARE === "true";
+  const peerShare = new PeerShareService({
+    db,
+    hub,
+    logger,
+    dataDir: serverConfig.BB_DATA_DIR,
+    apiPort: serverConfig.BB_SERVER_PORT,
+    lanReachable: lanShareEnabled,
+  });
+
   const { app, closeWebSockets, injectWebSocket } = createApp(
     {
       appVersion,
@@ -120,6 +135,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       lifecycleDedupers,
       logger,
       machineAuth,
+      peerShare,
       pendingInteractions,
       telemetry,
       terminalSessions,
@@ -146,9 +162,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
 
   const server = serve({
     port: serverConfig.BB_SERVER_PORT,
+    ...(lanShareEnabled ? { hostname: "0.0.0.0" } : {}),
     fetch: app.fetch,
   });
   injectWebSocket(server);
+  peerShare.start();
 
   logger.info(
     {
@@ -171,6 +189,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     }
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
+      peerShare.stop();
       clearInterval(sweepInterval);
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {

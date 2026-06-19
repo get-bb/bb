@@ -129,6 +129,15 @@ const sideChatFixedPanelTabSchema = z
     title: z.string().min(1),
   })
   .strict();
+const composeFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("compose"),
+    projectId: z.string().min(1).nullable().default(null),
+    threadId: z.string().min(1).nullable(),
+    title: z.string().min(1),
+  })
+  .strict();
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
@@ -138,6 +147,7 @@ const secondaryFixedPanelTabSchema = z.union([
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
   sideChatFixedPanelTabSchema,
+  composeFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
 ]);
 const secondaryFixedPanelTabGroupStateSchema = z
@@ -237,6 +247,23 @@ export interface SideChatFixedPanelTab {
   title: string;
 }
 
+/**
+ * A full-page new-thread composer hosted in the secondary panel. The thread is
+ * created when the composer is submitted, so `threadId` starts null and is
+ * filled once the new top-level thread exists; from then on the tab renders that
+ * thread's live timeline ("the tab turns into the thread you just launched").
+ * `projectId` is recorded alongside `threadId` for routing/timeline fetches.
+ * Like side-chat/browser tabs, composer + post-create timeline state live in a
+ * kept-mounted deck so they survive switching to another panel tab.
+ */
+export interface ComposeFixedPanelTab {
+  id: string;
+  kind: "compose";
+  projectId: string | null;
+  threadId: string | null;
+  title: string;
+}
+
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
@@ -246,6 +273,7 @@ export type SecondaryFixedPanelTab =
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | SideChatFixedPanelTab
+  | ComposeFixedPanelTab
   | TerminalFixedPanelTab;
 
 /**
@@ -260,6 +288,7 @@ export type SecondaryFileFixedPanelTab =
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | SideChatFixedPanelTab
+  | ComposeFixedPanelTab
   | TerminalFixedPanelTab;
 
 export type FixedPanelTab = SecondaryFixedPanelTab;
@@ -507,6 +536,21 @@ export function createSideChatFixedPanelTab({
   };
 }
 
+/**
+ * Compose tabs get a fresh unique id per instance — there is no stable content
+ * identity until the thread is created, so nothing can key the tab. `threadId`
+ * starts null and is set on submit.
+ */
+export function createComposeFixedPanelTab(): ComposeFixedPanelTab {
+  return {
+    id: `compose:${nanoid()}`,
+    kind: "compose",
+    projectId: null,
+    threadId: null,
+    title: "New thread",
+  };
+}
+
 export function createTerminalFixedPanelTab({
   terminalId,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
@@ -593,6 +637,9 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       // Side-chat tab ids are random UUIDs minted at creation, not derived
       // from content, so there is nothing to normalize.
       return tab;
+    case "compose":
+      // Compose tab ids are random UUIDs minted at creation; nothing to derive.
+      return tab;
   }
 }
 
@@ -658,6 +705,7 @@ function stripTransientFixedPanelTabForStorage(
     case "new-tab":
     case "terminal":
     case "side-chat":
+    case "compose":
       return tab;
   }
 }
@@ -863,6 +911,13 @@ export function areFixedPanelTabsEquivalent(
         b.kind === "side-chat" &&
         a.sourceMessageText === b.sourceMessageText &&
         a.sourceSeqEnd === b.sourceSeqEnd &&
+        a.threadId === b.threadId &&
+        a.title === b.title
+      );
+    case "compose":
+      return (
+        b.kind === "compose" &&
+        a.projectId === b.projectId &&
         a.threadId === b.threadId &&
         a.title === b.title
       );

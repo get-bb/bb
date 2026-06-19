@@ -6,12 +6,14 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import {
   createBrowserFixedPanelTab,
+  createComposeFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
   createSideChatFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type BrowserFixedPanelTab,
+  type ComposeFixedPanelTab,
   type FixedPanelTab,
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
@@ -96,6 +98,12 @@ export interface SetSideChatThreadIdArgs {
   threadId: string;
 }
 
+export interface SetComposeThreadIdArgs {
+  tabId: string;
+  projectId: string;
+  threadId: string;
+}
+
 export type OpenSecondaryPanelTabRequest =
   | { kind: "workspace-file-preview"; tab: WorkspaceFileTabState }
   | { kind: "host-file-preview"; tab: HostFileTabState }
@@ -133,6 +141,10 @@ function isTerminalTab(tab: FixedPanelTab): tab is TerminalFixedPanelTab {
 
 function isSideChatTab(tab: FixedPanelTab): tab is SideChatFixedPanelTab {
   return tab.kind === "side-chat";
+}
+
+function isComposeTab(tab: FixedPanelTab): tab is ComposeFixedPanelTab {
+  return tab.kind === "compose";
 }
 
 // Every side chat uses a constant tab title; the message it was triggered from
@@ -454,6 +466,72 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
+  // Opens a fresh full-page compose tab. Replaces the current new-tab slot when
+  // launched from the new-tab page, otherwise appends a new tab.
+  const openComposeTab = useCallback(
+    ({ replaceNewTab = false }: { replaceNewTab?: boolean } = {}) => {
+      const nextTab = createComposeFixedPanelTab();
+      updateFixedPanelTabsState((state) => {
+        if (replaceNewTab) {
+          return replaceNewTabWithSecondaryPanelTabInState({
+            state,
+            tab: nextTab,
+          });
+        }
+        return openSecondaryPanelTabInState({ state, tab: nextTab });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  // Records the created thread once the composer submits, so the tab renders the
+  // launched thread's timeline and survives reloads.
+  const setComposeThreadId = useCallback(
+    ({ tabId, projectId, threadId: createdThreadId }: SetComposeThreadIdArgs) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (!tab || !isComposeTab(tab) || tab.threadId === createdThreadId) {
+          return state;
+        }
+        return updateSecondaryPanelTabInState({
+          state,
+          tab: {
+            ...tab,
+            projectId,
+            threadId: createdThreadId,
+          },
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const activateComposeTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (!tab || !isComposeTab(tab)) {
+          return state;
+        }
+        return activateSecondaryPanelTabInState(state, tabId);
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const closeComposeTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (!tab || !isComposeTab(tab)) {
+          return state;
+        }
+        return closeSecondaryPanelTabInState(state, tabId);
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
   const selectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
       const tab = createTabForFileSearchSelection({
@@ -525,6 +603,13 @@ export function useThreadFileTabs({
     () => fixedPanelTabsState.secondary.tabs.filter(isSideChatTab),
     [fixedPanelTabsState.secondary.tabs],
   );
+  // Every open compose tab in insertion order. Like side-chat/browser tabs, the
+  // secondary panel keeps each one's composer + post-create timeline mounted
+  // (only the active one shown) so streaming and draft state survive switching.
+  const composeTabs = useMemo(
+    () => fixedPanelTabsState.secondary.tabs.filter(isComposeTab),
+    [fixedPanelTabsState.secondary.tabs],
+  );
   const activeWorkspaceFileTab =
     activeTab?.kind === "workspace-file-preview" &&
     activeTab.environmentId === resolvedEnvironmentId
@@ -538,6 +623,7 @@ export function useThreadFileTabs({
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
   const activeSideChatTab =
     activeTab?.kind === "side-chat" ? activeTab : null;
+  const activeComposeTab = activeTab?.kind === "compose" ? activeTab : null;
 
   return {
     activateTab,
@@ -552,17 +638,23 @@ export function useThreadFileTabs({
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
     activeSideChatTabId: activeSideChatTab?.id ?? null,
     activateSideChatTab,
+    activeComposeTabId: activeComposeTab?.id ?? null,
+    activateComposeTab,
     browserTabs,
     clearActiveFileTabs,
+    closeComposeTab,
     closeSideChatTab,
     closeTab,
+    composeTabs,
     isNewTabActive: activeNewTab !== null,
+    openComposeTab,
     openSideChat,
     openExistingSideChatTab,
     openTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
+    setComposeThreadId,
     setSideChatThreadId,
     sideChatTabs,
     updateBrowserTab,

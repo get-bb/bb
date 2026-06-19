@@ -119,6 +119,18 @@ export interface ThreadSecondaryPanelProps {
    * the content region and the normal content slot is suppressed.
    */
   isSideChatTabActive?: boolean;
+  /**
+   * The persistent compose deck. Like the side-chat deck, it stays mounted
+   * across tab switches so each compose tab's draft + launched-thread timeline
+   * survive deactivation; it self-manages visibility, collapsing to
+   * `display:none` when no compose tab is active.
+   */
+  composeDeck?: ReactNode;
+  /**
+   * Whether the active panel tab is a compose tab. When true the deck fills the
+   * content region and the normal content slot is suppressed.
+   */
+  isComposeTabActive?: boolean;
   isOpen: boolean;
   showGitDiffTab?: boolean;
   onPanelFocus: () => void;
@@ -180,6 +192,7 @@ function resolveActiveFixedPanel({
     case "terminal":
     case "new-tab":
     case "side-chat":
+    case "compose":
       return null;
   }
 }
@@ -197,6 +210,8 @@ export function ThreadSecondaryPanel({
   isBrowserTabActive = false,
   sideChatDeck,
   isSideChatTabActive = false,
+  composeDeck,
+  isComposeTabActive = false,
   isOpen,
   showGitDiffTab = true,
   onPanelFocus,
@@ -483,7 +498,8 @@ export function ThreadSecondaryPanel({
         */}
         {browserDeck}
         {sideChatDeck}
-        {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
+        {composeDeck}
+        {isBrowserTabActive || isSideChatTabActive || isComposeTabActive ? null : hasActiveFileTab ? (
           <div
             className={
               isTerminalTabActive

@@ -253,6 +253,11 @@ export {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
 } from "./events.js";
+export { importThreadEvents } from "./peer-share.js";
+export type {
+  ImportedThreadEventInput,
+  ImportThreadEventsArgs,
+} from "./peer-share.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,

@@ -17,6 +17,7 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerPeerShareRoutes } from "./routes/peer-share.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -249,6 +250,7 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
+  registerPeerShareRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
