@@ -4,7 +4,6 @@ import {
   assertNever,
   durationToCompactString,
   formatDiffStatsText,
-  formatTimelineDecorationText,
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
@@ -96,6 +95,12 @@ function decorationToneClass(tone: TimelineTitleTone): string {
       return assertNever(tone);
   }
 }
+
+const STATUS_DECORATION_TONE_CLASS = "text-subtle-foreground";
+const STATUS_DECORATION_TEXT_CLASS = cn(
+  "font-mono text-xs leading-none",
+  STATUS_DECORATION_TONE_CLASS,
+);
 
 function renderSegment(
   segment: TimelineTitleSegment,
@@ -236,14 +241,10 @@ function renderDecoration(
     }
     case "status":
     case "summary-status": {
-      // Single-row error/interrupted statuses render as compact mono words,
-      // without parentheses, so they read as annotations rather than another
-      // icon beside the row glyph. `title.plain` keeps the canonical
-      // parenthesized text for tooltips and plain renderers.
-      if (
-        decoration.kind === "status" &&
-        (decoration.status === "error" || decoration.status === "interrupted")
-      ) {
+      // Status decorations render as compact mono annotations without
+      // parentheses. `title.plain` keeps the canonical parenthesized text for
+      // tooltips and plain renderers.
+      if (decoration.kind === "status") {
         const durationText =
           decoration.durationMs === null
             ? null
@@ -251,19 +252,38 @@ function renderDecoration(
         return (
           <span
             key={index}
-            className={cn(baseClass, "inline-flex items-baseline gap-1")}
+            className={cn(
+              "shrink-0 whitespace-pre",
+              STATUS_DECORATION_TONE_CLASS,
+              "inline-flex items-baseline gap-1",
+            )}
           >
             {durationText ? <span>{durationText}</span> : null}
-            <span className="font-mono text-xs leading-none">
+            <span className={STATUS_DECORATION_TEXT_CLASS}>
               {decoration.status}
             </span>
           </span>
         );
       }
-      const text = formatTimelineDecorationText(decoration);
+
+      const parts: string[] = [];
+      if (decoration.errorCount > 0) {
+        parts.push(
+          `${decoration.errorCount} ${
+            decoration.errorCount === 1 ? "error" : "errors"
+          }`,
+        );
+      }
+      if (decoration.interruptedCount > 0) {
+        parts.push(`${decoration.interruptedCount} interrupted`);
+      }
+      const text = parts.join(", ");
       if (text.length === 0) return null;
       return (
-        <span key={index} className={baseClass}>
+        <span
+          key={index}
+          className={cn("shrink-0 whitespace-pre", STATUS_DECORATION_TEXT_CLASS)}
+        >
           {text}
         </span>
       );

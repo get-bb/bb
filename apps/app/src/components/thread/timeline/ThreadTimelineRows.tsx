@@ -934,8 +934,8 @@ function TimelineSystemDetailBlock({
   // Mirror the card chrome from TerminalOutputBlock so every system detail body
   // (provisioning transcripts, provider-unhandled payloads, error messages)
   // reads as the same neutral "output" surface as command output. Errors are
-  // flagged by the title's "(error)" tag, not by recoloring the body — that
-  // kept system errors visually consistent with failed command/tool rows.
+  // flagged by the title status annotation, not by recoloring the body — that
+  // keeps system errors visually consistent with failed command/tool rows.
   return (
     <TimelineDetailScroll
       size="base"
