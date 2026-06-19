@@ -401,6 +401,13 @@ export function BottomAnchoredScrollBody({
     pendingPrependAnchorRef.current = null;
   });
 
+  const hasRecentUserScrollIntent = useCallback(() => {
+    return (
+      pointerScrollIntentRef.current ||
+      window.performance.now() <= userScrollIntentUntilRef.current
+    );
+  }, []);
+
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
   // restores it. Continuous capture keeps the atom current while mounted; cleanup
@@ -411,7 +418,8 @@ export function BottomAnchoredScrollBody({
     const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
     if (!scrollArea) return;
     const atBottom =
-      shouldStickToBottomRef.current || isScrolledNearBottom(scrollArea);
+      isScrolledNearBottom(scrollArea) ||
+      (shouldStickToBottomRef.current && !hasRecentUserScrollIntent());
     const anchorAtom =
       threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
     if (atBottom) {
@@ -426,7 +434,7 @@ export function BottomAnchoredScrollBody({
       offsetWithinRow: topMostRow.offsetWithinRow,
       atBottom: false,
     });
-  }, [scrollAnchorThreadId, store]);
+  }, [hasRecentUserScrollIntent, scrollAnchorThreadId, store]);
 
   const captureScrollAnchorThrottled = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
@@ -516,18 +524,14 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    const hasUserScrollIntent =
-      pointerScrollIntentRef.current ||
-      window.performance.now() <= userScrollIntentUntilRef.current;
-
-    if (!hasUserScrollIntent) return;
+    if (!hasRecentUserScrollIntent()) return;
 
     shouldStickToBottomRef.current = false;
     setIsAtBottom(false);
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore]);
+  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();
