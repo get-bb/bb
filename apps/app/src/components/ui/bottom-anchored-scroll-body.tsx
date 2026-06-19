@@ -261,6 +261,10 @@ export function BottomAnchoredScrollBody({
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const [isAtBottom, setIsAtBottom] = useState(true);
 
+  const cancelPendingScrollRestore = useCallback(() => {
+    pendingScrollRestoreRef.current = null;
+  }, []);
+
   const cancelQueuedRestore = useCallback(() => {
     if (restoreFrameRef.current === null) return;
     window.cancelAnimationFrame(restoreFrameRef.current);
@@ -320,6 +324,7 @@ export function BottomAnchoredScrollBody({
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
+    cancelPendingScrollRestore();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
     shouldStickToBottomRef.current = true;
@@ -328,7 +333,7 @@ export function BottomAnchoredScrollBody({
       scrollElementToBottom(scrollArea);
     }
     queueBottomRestore();
-  }, [queueBottomRestore]);
+  }, [cancelPendingScrollRestore, queueBottomRestore]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {

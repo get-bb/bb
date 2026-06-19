@@ -3,7 +3,10 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
+import {
+  BottomAnchoredScrollBody,
+  useBottomAnchoredScroll,
+} from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 
 // Real externals only: the ResizeObserver/rAF used by the scroll body are
@@ -89,9 +92,23 @@ function requireHTMLElement(element: Element | null) {
 interface RenderArgs {
   threadId: string;
   rowIds: string[];
+  showScrollToBottomControl?: boolean;
 }
 
-function renderTimeline({ threadId, rowIds }: RenderArgs) {
+function ScrollToBottomControl() {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <button type="button" onClick={() => bottomAnchor?.scrollToBottom()}>
+      Bottom
+    </button>
+  );
+}
+
+function renderTimeline({
+  threadId,
+  rowIds,
+  showScrollToBottomControl = false,
+}: RenderArgs) {
   const view = render(
     <BottomAnchoredScrollBody
       footer={<div>Footer</div>}
@@ -99,6 +116,7 @@ function renderTimeline({ threadId, rowIds }: RenderArgs) {
       scrollAreaClassName={SCROLL_AREA_CLASS}
       scrollAnchorThreadId={threadId}
     >
+      {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
       {rowIds.map((rowId) => (
         <div key={rowId} data-timeline-row-id={rowId}>
           {rowId}
@@ -120,7 +138,12 @@ function renderTimeline({ threadId, rowIds }: RenderArgs) {
     );
   }
 
-  return { scrollArea, rowElements, unmount: view.unmount };
+  return {
+    getByRole: view.getByRole,
+    scrollArea,
+    rowElements,
+    unmount: view.unmount,
+  };
 }
 
 function readAnchor(threadId: string) {
@@ -294,6 +317,37 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     for (let attempt = 0; attempt < 7; attempt += 1) {
       observer.trigger();
     }
+
+    expect(scrollArea.scrollTop).toBe(300);
+  });
+
+  it("does not let a pending saved-row restore undo an explicit bottom scroll", () => {
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showScrollToBottomControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -100,
+      bottom: 0,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Bottom" }));
+    expect(scrollArea.scrollTop).toBe(300);
+
+    getLatestResizeObserver().trigger();
 
     expect(scrollArea.scrollTop).toBe(300);
   });
