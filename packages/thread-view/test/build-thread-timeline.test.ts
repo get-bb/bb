@@ -63,6 +63,18 @@ interface ImageViewItemEventArgs {
   type: "item/completed" | "item/started";
 }
 
+interface PlanItemEventArgs {
+  itemId?: string;
+  seq: number;
+  text: string;
+}
+
+interface PlanDeltaEventArgs {
+  itemId?: string;
+  seq: number;
+  text: string;
+}
+
 interface TurnStartedEventArgs {
   seq: number;
 }
@@ -130,6 +142,7 @@ interface UserQuestionLifecycleEventArgs {
 }
 
 type BuildTimelineRowsThreadStatus = "active" | "idle";
+type TimelineConversationRow = Extract<TimelineRow, { kind: "conversation" }>;
 
 interface OwnershipOperationCase {
   action: OwnershipChangeOperationAction;
@@ -275,6 +288,53 @@ function imageViewItemEvent({
         type: "imageView",
         id: itemId,
         path,
+      },
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function planDeltaEvent({
+  itemId = "plan-1",
+  seq,
+  text,
+}: PlanDeltaEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/plan/delta",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      itemId,
+      delta: text,
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function planItemCompletedEvent({
+  itemId = "plan-1",
+  seq,
+  text,
+}: PlanItemEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/completed",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "plan",
+        id: itemId,
+        text,
       },
     },
     meta: {
@@ -689,6 +749,26 @@ function collectImageViewRows(
   return imageViewRows;
 }
 
+function collectConversationRows(
+  rows: readonly TimelineRow[],
+): TimelineConversationRow[] {
+  const conversationRows: TimelineConversationRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "conversation") {
+      conversationRows.push(row);
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      conversationRows.push(...collectConversationRows(row.children));
+      continue;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      conversationRows.push(...collectConversationRows(row.childRows));
+    }
+  }
+  return conversationRows;
+}
+
 function collectSystemRows(rows: readonly TimelineRow[]): TimelineSystemRow[] {
   const systemRows: TimelineSystemRow[] = [];
   for (const row of rows) {
@@ -998,6 +1078,29 @@ describe("buildThreadTimelineFromEvents", () => {
         status: "accepted",
       },
     });
+  });
+
+  it("renders completed provider plan items as assistant conversation text", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 0 }),
+      planDeltaEvent({ seq: 1, text: "Draft plan text" }),
+      planItemCompletedEvent({
+        seq: 2,
+        text: "Final plan text",
+      }),
+      turnCompletedEvent({ seq: 3 }),
+    ]);
+
+    const assistantRows = collectConversationRows(rows).filter(
+      (row) => row.role === "assistant",
+    );
+    expect(assistantRows).toEqual([
+      expect.objectContaining({
+        text: "Final plan text",
+        sourceSeqStart: 1,
+        sourceSeqEnd: 2,
+      }),
+    ]);
   });
 
   it.each(ownershipOperationCases)(

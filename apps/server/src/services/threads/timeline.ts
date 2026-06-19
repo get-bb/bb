@@ -96,8 +96,9 @@ interface BuildThreadTimelineOptions {
   page: ThreadTimelinePageRequest;
   /**
    * When true, the response is built without rows (rows: []). The tail-only
-   * fields (`activeThinking`, `pendingTodos`, `contextWindowUsage`) are still
-   * populated. Saves the row-generation work + serialization bytes for
+   * fields (`activeThinking`, `pendingPlan`, `pendingTodos`,
+   * `contextWindowUsage`) are still populated. Saves the row-generation work +
+   * serialization bytes for
    * consumers that only need tail state (e.g. `bb status` / `bb thread show`).
    */
   summaryOnly?: boolean;
@@ -869,6 +870,7 @@ function buildThreadTimelineInternal(
     // pendingTodos is gated inside the projection via `isLatestPage` so the
     // extraction work is skipped on older-page requests entirely; no
     // post-hoc null-out needed here.
+    pendingPlan: timeline.pendingPlan,
     pendingTodos: timeline.pendingTodos,
     goal: timeline.goal,
     contextWindowUsage:

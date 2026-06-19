@@ -639,6 +639,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
+    pendingPlan,
     pendingTodos,
     timelineError,
     timelineLoading,
@@ -1817,6 +1818,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
+      pendingPlan={pendingPlan}
       pendingTodos={pendingTodos}
       goal={goal}
       activeWorkflow={activeWorkflow}

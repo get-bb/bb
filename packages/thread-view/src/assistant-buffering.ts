@@ -1,7 +1,10 @@
 import type { ThreadEvent } from "@bb/domain";
 
 export function parseAssistantDeltaText(decoded: ThreadEvent): string | null {
-  if (decoded.type !== "item/agentMessage/delta") {
+  if (
+    decoded.type !== "item/agentMessage/delta" &&
+    decoded.type !== "item/plan/delta"
+  ) {
     return null;
   }
 
@@ -10,6 +13,9 @@ export function parseAssistantDeltaText(decoded: ThreadEvent): string | null {
 
 export function parseAssistantFinalText(decoded: ThreadEvent): string | null {
   if (decoded.type !== "item/completed") return null;
+  if (decoded.item.type === "plan") {
+    return decoded.item.text.length > 0 ? decoded.item.text : null;
+  }
   if (decoded.item.type !== "agentMessage") return null;
   return decoded.item.text.length > 0 ? decoded.item.text : null;
 }

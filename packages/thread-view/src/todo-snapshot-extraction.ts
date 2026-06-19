@@ -2,7 +2,6 @@ import { z } from "zod";
 import type {
   Thread,
   ThreadEvent,
-  ThreadEventPlanStepStatus,
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
@@ -222,47 +221,6 @@ function extractTodoWriteCandidate(
   };
 }
 
-// Exhaustive over `ThreadEventPlanStepStatus`. `null` means "drop the step
-// from the snapshot" (failed steps are dropped per
-// plans/thread-prompt-context-banner.md Decision 3). Adding a new plan-step
-// status to the domain enum will fail this map at typecheck time, forcing a
-// deliberate decision here.
-const PLAN_STEP_STATUS_MAP: Record<
-  ThreadEventPlanStepStatus,
-  ThreadTimelinePendingTodoItemStatus | null
-> = {
-  active: "in_progress",
-  pending: "pending",
-  completed: "completed",
-  failed: null,
-};
-
-function extractTurnPlanCandidate(
-  event: ThreadEvent,
-  meta: { seq: number; createdAt: number },
-): SnapshotCandidate | null {
-  if (event.type !== "turn/plan/updated") return null;
-  const items: ThreadTimelinePendingTodoItem[] = [];
-  for (let index = 0; index < event.plan.length; index += 1) {
-    const step = event.plan[index]!;
-    const text = trimAndTruncate(step.step);
-    if (text.length === 0) continue;
-    const rawStatus: ThreadEventPlanStepStatus = step.status ?? "pending";
-    const status = PLAN_STEP_STATUS_MAP[rawStatus];
-    if (status === null) continue;
-    items.push({
-      id: todoIdFor(meta.seq, index),
-      text,
-      status,
-    });
-  }
-  return {
-    seq: meta.seq,
-    createdAt: meta.createdAt,
-    items,
-  };
-}
-
 function extractTaskCreateCandidate(
   event: ThreadEvent,
   meta: SnapshotCandidateMeta,
@@ -455,8 +413,8 @@ function extractTaskCandidate(
  * active turn. Returns null when the thread is idle/errored/etc., when no
  * candidate event was observed, or when every candidate failed to parse.
  *
- * TodoWrite and plan events carry complete snapshots. Claude Task tools carry
- * deltas or snapshots, so this walks ordered events and reduces
+ * TodoWrite carries complete legacy snapshots. Claude Task tools carry deltas
+ * or snapshots, so this walks ordered events and reduces
  * TaskCreate/TaskUpdate/TaskList/TaskGet into a current snapshot.
  */
 export function extractThreadTimelinePendingTodos(
@@ -470,7 +428,6 @@ export function extractThreadTimelinePendingTodos(
   for (const { event, meta } of getOrderedThreadEvents(events)) {
     const candidate =
       extractTodoWriteCandidate(event, meta) ??
-      extractTurnPlanCandidate(event, meta) ??
       extractTaskCandidate(event, meta, taskState);
     if (!candidate || candidate.items === null) continue;
     if (best === null || candidate.seq > best.seq) {

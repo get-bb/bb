@@ -58,7 +58,10 @@ export function resolveBufferedTextIdentity(
     null;
 
   if (args.kind === "assistant") {
-    if (args.decoded.type === "item/agentMessage/delta") {
+    if (
+      args.decoded.type === "item/agentMessage/delta" ||
+      args.decoded.type === "item/plan/delta"
+    ) {
       return {
         itemId: args.decoded.itemId,
         kind: "assistant",
@@ -68,7 +71,8 @@ export function resolveBufferedTextIdentity(
     }
     if (
       args.decoded.type === "item/completed" &&
-      args.decoded.item.type === "agentMessage"
+      (args.decoded.item.type === "agentMessage" ||
+        args.decoded.item.type === "plan")
     ) {
       return {
         itemId: args.decoded.item.id,

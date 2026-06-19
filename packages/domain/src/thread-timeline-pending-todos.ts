@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Snapshot of the latest TodoWrite / turn-plan-updated state observed by the
- * timeline projection. Tail-only state on the thread timeline response —
+ * Snapshot of the latest provider task/todo state observed by the timeline
+ * projection. Tail-only state on the thread timeline response —
  * mirrors `activeThinking` semantics: present on `latest` page requests,
  * `null` on older pages or when no candidate was observed.
  *

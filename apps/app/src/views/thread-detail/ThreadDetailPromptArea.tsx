@@ -9,6 +9,7 @@ import type {
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineGoal,
+  ThreadTimelinePendingPlan,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -26,6 +27,7 @@ import {
   type ThreadPromptPullRequestSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadPlanCard } from "@/components/promptbox/banner/ThreadPlanCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
@@ -131,7 +133,9 @@ interface ThreadDetailPromptAreaProps {
    * picker (e.g. thread is on default branch — no merge base to compare).
    */
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
-  /** Latest TODO snapshot from the timeline projection. Null on older pages or when no candidate observed. */
+  /** Latest structured plan snapshot from the timeline projection. Null on older pages or when no candidate observed. */
+  pendingPlan: ThreadTimelinePendingPlan | null;
+  /** Latest task/todo snapshot from the timeline projection. Null on older pages or when no candidate observed. */
   pendingTodos: ThreadTimelinePendingTodos | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
@@ -181,6 +185,7 @@ export function ThreadDetailPromptArea({
   workspaceChangedFilesSection,
   workspaceStatusPending,
   contextBannerMergeBase,
+  pendingPlan,
   pendingTodos,
   goal,
   activeWorkflow,
@@ -290,6 +295,7 @@ export function ThreadDetailPromptArea({
     [pullRequest],
   );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -956,6 +962,15 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
+        <ThreadPlanCard
+          pendingPlan={
+            thread.archivedAt === null && environmentGoneStatus === null
+              ? pendingPlan
+              : null
+          }
+          isExpanded={isPlanExpanded}
+          onToggle={() => setIsPlanExpanded((value) => !value)}
+        />
         <ThreadTodoCard
           pendingTodos={
             thread.archivedAt === null && environmentGoneStatus === null
@@ -1037,12 +1052,14 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      isPlanExpanded,
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,
+      pendingPlan,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,

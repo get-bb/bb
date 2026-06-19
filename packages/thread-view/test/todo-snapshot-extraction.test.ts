@@ -133,7 +133,7 @@ function nonTodoToolCallEvent(seq: number): ThreadEventWithMeta {
 }
 
 describe("extractThreadTimelinePendingTodos", () => {
-  it("returns null when no TodoWrite or plan events are observed", () => {
+  it("returns null when no TodoWrite or task events are observed", () => {
     expect(extractThreadTimelinePendingTodos(ACTIVE, [])).toBeNull();
     expect(
       extractThreadTimelinePendingTodos(ACTIVE, [nonTodoToolCallEvent(1)]),
@@ -528,33 +528,17 @@ describe("extractThreadTimelinePendingTodos", () => {
     });
   });
 
-  it("returns the latest turn/plan/updated snapshot when only plan events exist", () => {
+  it("ignores turn/plan/updated snapshots instead of treating them as todos", () => {
     const result = extractThreadTimelinePendingTodos(ACTIVE, [
       turnPlanEvent({
-        seq: 5,
-        plan: [{ step: "old step", status: "pending" }],
-      }),
-      turnPlanEvent({
-        seq: 12,
-        plan: [
-          { step: "step a", status: "active" },
-          { step: "step b", status: "pending" },
-          { step: "step c", status: "completed" },
-        ],
+        seq: 40,
+        plan: [{ step: "structured plan", status: "active" }],
       }),
     ]);
-    expect(result).toEqual({
-      sourceSeq: 12,
-      updatedAt: 12,
-      items: [
-        { id: "seq:12:0", text: "step a", status: "in_progress" },
-        { id: "seq:12:1", text: "step b", status: "pending" },
-        { id: "seq:12:2", text: "step c", status: "completed" },
-      ],
-    });
+    expect(result).toBeNull();
   });
 
-  it("picks the newest by seq across mixed TodoWrite and plan sources", () => {
+  it("keeps TodoWrite snapshots even when a newer plan snapshot exists", () => {
     const todoOlder = todoWriteEvent({
       seq: 30,
       todos: [{ content: "todo first", status: "pending" }],
@@ -566,18 +550,8 @@ describe("extractThreadTimelinePendingTodos", () => {
     expect(
       extractThreadTimelinePendingTodos(ACTIVE, [todoOlder, planNewer]),
     ).toMatchObject({
-      sourceSeq: 40,
-      items: [{ text: "plan won", status: "in_progress" }],
-    });
-    const todoNewer = todoWriteEvent({
-      seq: 50,
-      todos: [{ content: "todo won", status: "in_progress" }],
-    });
-    expect(
-      extractThreadTimelinePendingTodos(ACTIVE, [planNewer, todoNewer]),
-    ).toMatchObject({
-      sourceSeq: 50,
-      items: [{ text: "todo won", status: "in_progress" }],
+      sourceSeq: 30,
+      items: [{ text: "todo first", status: "pending" }],
     });
   });
 
@@ -637,28 +611,6 @@ describe("extractThreadTimelinePendingTodos", () => {
       sourceSeq: 25,
       updatedAt: 25,
       items: [],
-    });
-  });
-
-  it("drops failed plan steps and skips empty step text", () => {
-    const result = extractThreadTimelinePendingTodos(ACTIVE, [
-      turnPlanEvent({
-        seq: 9,
-        plan: [
-          { step: "kept active", status: "active" },
-          { step: "dropped failure", status: "failed" },
-          { step: "   ", status: "pending" },
-          { step: "kept pending" },
-        ],
-      }),
-    ]);
-    expect(result).toEqual({
-      sourceSeq: 9,
-      updatedAt: 9,
-      items: [
-        { id: "seq:9:0", text: "kept active", status: "in_progress" },
-        { id: "seq:9:3", text: "kept pending", status: "pending" },
-      ],
     });
   });
 
