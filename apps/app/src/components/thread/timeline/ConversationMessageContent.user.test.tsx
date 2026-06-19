@@ -124,9 +124,9 @@ describe("ConversationMessageContent user message markdown", () => {
     expect(screen.getByText(/quoted context/u)).toBeTruthy();
   });
 
-  it("wraps the body in a rounded message bubble", () => {
+  it("wraps the body in a message bubble", () => {
     const { container } = renderUserMessage({ text: "hello there" });
-    const bubble = container.querySelector(".rounded-2xl");
+    const bubble = container.querySelector(".bg-surface-recessed");
     expect(bubble).not.toBeNull();
     expect(bubble?.textContent).toContain("hello there");
   });
