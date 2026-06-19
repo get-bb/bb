@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getSchema } from "@tiptap/core";
+import { getSchema, type Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
-import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
 import {
+  applyPromptListNewline,
   createPromptListNewlineTransaction,
   createSplitPromptListItemTransaction,
 } from "./prompt-editor-list";
@@ -222,5 +223,79 @@ describe("createPromptListNewlineTransaction", () => {
     );
     expect(nextState.selection.from).toBe(12);
     expect(promptEditorValueFromDoc(nextState.doc).text).toBe("1. first\n");
+  });
+});
+
+describe("applyPromptListNewline", () => {
+  it("uses the document selection instead of active node detection", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "first" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      8,
+    );
+    let dispatchedTransaction: Transaction | null = null;
+    const editor = {
+      state,
+      extensionManager: editorContext.extensionManager,
+      isActive: () => false,
+      view: {
+        dispatch: (transaction: Transaction) => {
+          dispatchedTransaction = transaction;
+        },
+      },
+    } as unknown as Editor;
+
+    expect(applyPromptListNewline(editor)).toBe(true);
+    expect(dispatchedTransaction).not.toBeNull();
+
+    const nextState = state.apply(dispatchedTransaction!);
+    expect(nextState.doc.toString()).toBe(
+      'doc(bulletList(listItem(paragraph("first")), listItem(paragraph)))',
+    );
+  });
+
+  it("does not handle ordinary paragraphs", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "first" }],
+          },
+        ],
+      },
+      6,
+    );
+    let didDispatch = false;
+    const editor = {
+      state,
+      extensionManager: editorContext.extensionManager,
+      view: {
+        dispatch: () => {
+          didDispatch = true;
+        },
+      },
+    } as unknown as Editor;
+
+    expect(applyPromptListNewline(editor)).toBe(false);
+    expect(didDispatch).toBe(false);
   });
 });

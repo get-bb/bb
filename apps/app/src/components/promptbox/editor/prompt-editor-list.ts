@@ -72,7 +72,6 @@ export function createPromptListNewlineTransaction(args: {
 }
 
 export function applyPromptListNewline(editor: Editor): boolean {
-  if (!editor.isActive("listItem")) return false;
   const transaction = createPromptListNewlineTransaction({
     state: editor.state,
     editor,
