@@ -74,6 +74,57 @@ Opening files in the IDE:
   relative with --source thread-storage). It opens for any connected client viewing the
   thread now, or when the user next switches to it.
 
+Thread terminals:
+
+  Use thread terminals for long-running commands that should stay alive for the
+  user, such as dev servers, watch tasks, REPLs, and database consoles. Terminals
+  are real PTY sessions scoped to the thread's environment, and they appear in the
+  bb UI as terminal tabs.
+
+  bb thread terminal start [id] --command "pnpm dev"
+    --title <title>                        Display title
+    --cols <n>                             Initial terminal columns
+    --rows <n>                             Initial terminal rows
+    --attach                               Attach interactively after starting
+    --json                                 Print the created terminal session
+
+  bb thread terminal list [id]             List running terminals for a thread
+
+  bb thread terminal attach <terminal-id> [id]
+                                            Attach interactively; Ctrl-B d detaches
+
+  bb thread terminal send <terminal-id> [id]
+    --text <text>                          Text to send
+    --stdin                                Read text from stdin
+    --enter                                Append a newline
+
+  bb thread terminal output <terminal-id> [id]
+    --since-seq <n>                        Read output chunks from a sequence
+    --tail-bytes <n>                       Bound output to latest N bytes
+    --limit-chunks <n>                     Bound output to latest N chunks
+    --json                                 Print chunks, nextSeq, and truncated
+
+  bb thread terminal wait <terminal-id> [id]
+    --contains <text>                      Wait for new output containing text
+    --regex <pattern>                      Wait for new output matching regex
+    --exit                                 Wait until the terminal exits
+    --from-start                           Include existing scrollback
+    --timeout <seconds>                    Timeout
+    --poll-interval <ms>                   Polling interval
+
+  bb thread terminal resize <terminal-id> [id] --cols <n> --rows <n>
+  bb thread terminal stop <terminal-id> [id]
+
+  Inside a thread, the thread ID defaults from BB_THREAD_ID when omitted.
+
+  For a dev server, prefer:
+
+    bb thread terminal start "$BB_THREAD_ID" --title "pnpm dev" --command "pnpm dev"
+    bb thread terminal wait <terminal-id> "$BB_THREAD_ID" --contains "Local:" --timeout 120
+
+  Do not run long-lived servers as one-off foreground commands when the user will
+  need to inspect logs, refresh the page, or stop the process later.
+
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
@@ -104,4 +155,5 @@ Lifecycle:
     --yes                                  Skip confirmation
 
 Read-only commands infer the thread from BB_THREAD_ID.
-Mutating commands require an explicit ID or --self.
+Mutating thread lifecycle and messaging commands require an explicit ID or --self.
+Terminal commands infer the thread from BB_THREAD_ID when omitted.
