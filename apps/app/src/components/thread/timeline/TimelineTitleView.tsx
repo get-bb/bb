@@ -247,13 +247,18 @@ function renderDecoration(
       // renderer are unchanged.
       if (decoration.kind === "status" && decoration.status === "error") {
         const durationText =
-          decoration.durationMs !== null
-            ? `${durationToCompactString(decoration.durationMs)} `
-            : "";
+          decoration.durationMs === null
+            ? null
+            : durationToCompactString(decoration.durationMs);
+        const hasDuration = durationText !== null;
         return (
           <span
             key={index}
-            className={cn(baseClass, "inline-flex items-center")}
+            className={cn(
+              baseClass,
+              "inline-flex items-center gap-1",
+              hasDuration ? null : "self-center leading-none",
+            )}
           >
             {durationText}
             <Icon
