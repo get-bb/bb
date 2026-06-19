@@ -85,6 +85,31 @@
     background-color: var(--surface-selected);
   }
 
+  /*
+   * Mention-pill surface. PROMPT_MENTION_PILL_CLASS owns layout, radius, and
+   * border width; this paints the theme-specific face, border, and soft shadow.
+   * The --selected modifier tints the same chip for the editor's drag-select
+   * highlight (mention icons are SVG and never take the native ::selection
+   * paint, so the pill colors itself).
+   */
+  .prompt-mention-pill {
+    color: var(--pill-foreground);
+    background: var(--pill-surface);
+    border-color: var(--pill-surface-border);
+    box-shadow: var(--pill-shadow);
+  }
+
+  /* Leading mention icon: a plain near-black outline glyph (near-white in dark),
+   * no fill. */
+  .prompt-mention-pill svg {
+    color: var(--pill-icon);
+  }
+
+  .prompt-mention-pill--selected {
+    background: var(--pill-surface-selected);
+    border-color: var(--pill-surface-selected-border);
+  }
+
   [data-promptbox] {
     container: promptbox / inline-size;
   }

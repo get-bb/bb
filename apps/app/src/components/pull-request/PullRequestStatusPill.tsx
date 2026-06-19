@@ -112,7 +112,7 @@ export function PullRequestGithubCheckIcon({
   className?: string;
 }) {
   const status = getPullRequestGithubCheckStatus(pullRequest);
-  const checkStatusClassName = "size-4";
+  const checkStatusClassName = "size-4 shrink-0";
   switch (status) {
     case "success":
       return (
@@ -180,7 +180,10 @@ export function PullRequestStatusPill({
   return (
     <span
       title={PR_STATUS_ICON[pullRequest.state].title}
-      className={cn("flex h-5 items-center gap-1 cursor-pointer", className)}
+      className={cn(
+        "flex h-5 shrink-0 cursor-pointer items-center gap-1",
+        className,
+      )}
     >
       <PullRequestStateIcon state={pullRequest.state} />
       <PullRequestGithubCheckIcon pullRequest={pullRequest} />
