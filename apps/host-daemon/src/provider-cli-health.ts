@@ -21,6 +21,7 @@ const COMMAND_CHECK_TIMEOUT_MS = 5_000;
 const NPM_VIEW_TIMEOUT_MS = 15_000;
 const NPM_INSTALL_STATE_TIMEOUT_MS = 5_000;
 const CLAUDE_CODE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
+const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
 const providerCliNodePtyLogger: HostDaemonLogger = {
   debug() {},
   info() {},
@@ -46,7 +47,7 @@ export interface ProviderCliDefinition {
   key: ProviderCliKey;
   displayName: string;
   executableName: string;
-  npmPackageName: string;
+  npmPackageName: string | null;
   installCommand: ProviderCliInstallCommandDefinition;
   updateCommand: ProviderCliActionCommand;
 }
@@ -78,6 +79,7 @@ interface InspectProviderCliArgs {
 }
 
 interface GetProviderCliStatusArgs {
+  env?: NodeJS.ProcessEnv;
   runner?: ProviderCliCommandRunner;
   nodePlatform?: NodeJS.Platform;
 }
@@ -85,6 +87,7 @@ interface GetProviderCliStatusArgs {
 export interface SpawnProviderCliInstallProcessArgs {
   command: string;
   args: string[];
+  env?: NodeJS.ProcessEnv;
 }
 
 export type ProviderCliInstallProcessErrorListener = (error: Error) => void;
@@ -108,6 +111,7 @@ export interface ProviderCliInstallProcessSpawner {
 interface StreamProviderCliInstallArgs {
   provider: ProviderCliKey;
   actionKind: ProviderCliInstallActionKind;
+  env?: NodeJS.ProcessEnv;
   nodePlatform?: NodeJS.Platform;
   installProcessSpawner?: ProviderCliInstallProcessSpawner;
 }
@@ -208,44 +212,60 @@ export class ProviderCliInstallInProgressError extends Error {
   }
 }
 
+const PROVIDER_CLI_DEFINITIONS = {
+  codex: {
+    key: "codex",
+    displayName: "Codex",
+    executableName: "codex",
+    npmPackageName: "@openai/codex",
+    installCommand: {
+      kind: "npmGlobal",
+    },
+    updateCommand: {
+      commandKind: "exec",
+      displayCommand: "codex update",
+      command: "codex",
+      args: ["update"],
+    },
+  },
+  claudeCode: {
+    key: "claudeCode",
+    displayName: "Claude Code",
+    executableName: "claude",
+    npmPackageName: "@anthropic-ai/claude-code",
+    installCommand: {
+      kind: "downloadedShellScript",
+      scriptUrl: CLAUDE_CODE_INSTALL_SCRIPT_URL,
+    },
+    updateCommand: {
+      commandKind: "exec",
+      displayCommand: "claude update",
+      command: "claude",
+      args: ["update"],
+    },
+  },
+  cursor: {
+    key: "cursor",
+    displayName: "Cursor",
+    executableName: "agent",
+    npmPackageName: null,
+    installCommand: {
+      kind: "downloadedShellScript",
+      scriptUrl: CURSOR_INSTALL_SCRIPT_URL,
+    },
+    updateCommand: {
+      commandKind: "exec",
+      displayCommand: "agent update",
+      command: "agent",
+      args: ["update"],
+    },
+  },
+} satisfies Record<ProviderCliKey, ProviderCliDefinition>;
+
 function getProviderCliDefinition(
   provider: ProviderCliKey,
 ): ProviderCliDefinition {
-  switch (provider) {
-    case "codex":
-      return {
-        key: "codex",
-        displayName: "Codex",
-        executableName: "codex",
-        npmPackageName: "@openai/codex",
-        installCommand: {
-          kind: "npmGlobal",
-        },
-        updateCommand: {
-          commandKind: "exec",
-          displayCommand: "codex update",
-          command: "codex",
-          args: ["update"],
-        },
-      };
-    case "claudeCode":
-      return {
-        key: "claudeCode",
-        displayName: "Claude Code",
-        executableName: "claude",
-        npmPackageName: "@anthropic-ai/claude-code",
-        installCommand: {
-          kind: "downloadedShellScript",
-          scriptUrl: CLAUDE_CODE_INSTALL_SCRIPT_URL,
-        },
-        updateCommand: {
-          commandKind: "exec",
-          displayCommand: "claude update",
-          command: "claude",
-          args: ["update"],
-        },
-      };
-  }
+  return PROVIDER_CLI_DEFINITIONS[provider];
 }
 
 function npmExecutableName(nodePlatform: NodeJS.Platform): string {
@@ -317,6 +337,11 @@ function needsProviderCliUpdate(args: NeedsProviderCliUpdateArgs): boolean {
 }
 
 function npmInstallCommandArgs(definition: ProviderCliDefinition): string[] {
+  if (definition.npmPackageName === null) {
+    throw new Error(
+      `${definition.displayName} CLI does not define an npm package installer.`,
+    );
+  }
   return ["install", "-g", `${definition.npmPackageName}@latest`];
 }
 
@@ -461,14 +486,17 @@ function createCommandResult(
   };
 }
 
-export function createSpawnProviderCliCommandRunner(): ProviderCliCommandRunner {
+export function createSpawnProviderCliCommandRunner(
+  env: NodeJS.ProcessEnv = process.env,
+): ProviderCliCommandRunner {
   return {
-    run: runProviderCliCommand,
+    run: (args) => runProviderCliCommand(args, env),
   };
 }
 
 export async function runProviderCliCommand(
   args: RunProviderCliCommandArgs,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<ProviderCliCommandResult> {
   return await new Promise<ProviderCliCommandResult>((resolve) => {
     let child;
@@ -476,7 +504,7 @@ export async function runProviderCliCommand(
       child = spawnPortableOutputProcess({
         command: args.command,
         args: [...args.args],
-        env: process.env,
+        env,
       });
     } catch (error) {
       resolve(
@@ -556,6 +584,7 @@ export async function inspectProviderCli({
   nodePlatform,
 }: InspectProviderCliArgs): Promise<ProviderCliStatus> {
   const npmCommand = npmExecutableName(nodePlatform);
+  const npmPackageName = definition.npmPackageName;
   const [
     whichResult,
     versionResult,
@@ -573,21 +602,25 @@ export async function inspectProviderCli({
       args: ["--version"],
       timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
     }),
-    runner.run({
-      command: npmCommand,
-      args: ["view", definition.npmPackageName, "version"],
-      timeoutMs: NPM_VIEW_TIMEOUT_MS,
-    }),
+    npmPackageName === null
+      ? Promise.resolve(null)
+      : runner.run({
+          command: npmCommand,
+          args: ["view", npmPackageName, "version"],
+          timeoutMs: NPM_VIEW_TIMEOUT_MS,
+        }),
     runner.run({
       command: npmCommand,
       args: ["prefix", "-g"],
       timeoutMs: NPM_INSTALL_STATE_TIMEOUT_MS,
     }),
-    runner.run({
-      command: npmCommand,
-      args: ["list", "-g", definition.npmPackageName, "--depth=0", "--json"],
-      timeoutMs: NPM_INSTALL_STATE_TIMEOUT_MS,
-    }),
+    npmPackageName === null
+      ? Promise.resolve(null)
+      : runner.run({
+          command: npmCommand,
+          args: ["list", "-g", npmPackageName, "--depth=0", "--json"],
+          timeoutMs: NPM_INSTALL_STATE_TIMEOUT_MS,
+        }),
   ]);
 
   const executablePath = isSuccessfulCommand(whichResult)
@@ -598,16 +631,20 @@ export async function inspectProviderCli({
   const currentVersion = isSuccessfulCommand(versionResult)
     ? extractVersion(`${versionResult.stdout}\n${versionResult.stderr}`)
     : null;
-  const latestVersion = isSuccessfulCommand(latestResult)
-    ? extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`)
-    : null;
+  const latestVersion =
+    latestResult !== null && isSuccessfulCommand(latestResult)
+      ? extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`)
+      : null;
   const npmGlobalPrefix = isSuccessfulCommand(npmPrefixResult)
     ? firstOutputLine(npmPrefixResult.stdout)
     : null;
-  const npmGlobalPackageVersion = parseNpmGlobalPackageVersion(
-    `${npmListResult.stdout}\n${npmListResult.stderr}`,
-    definition.npmPackageName,
-  );
+  const npmGlobalPackageVersion =
+    npmListResult !== null && npmPackageName !== null
+      ? parseNpmGlobalPackageVersion(
+          `${npmListResult.stdout}\n${npmListResult.stderr}`,
+          npmPackageName,
+        )
+      : null;
   const installSource = resolveProviderCliInstallSource({
     installed,
     executablePath,
@@ -634,7 +671,7 @@ export async function inspectProviderCli({
     installSource,
     currentVersion,
     latestVersion,
-    npmPackageName: definition.npmPackageName,
+    npmPackageName,
     npmGlobalPackageVersion,
     installAction,
     needsUpdate,
@@ -644,9 +681,9 @@ export async function inspectProviderCli({
 export async function getProviderCliStatus(
   args: GetProviderCliStatusArgs = {},
 ): Promise<ProviderCliStatusResponse> {
-  const runner = args.runner ?? createSpawnProviderCliCommandRunner();
+  const runner = args.runner ?? createSpawnProviderCliCommandRunner(args.env);
   const nodePlatform = args.nodePlatform ?? process.platform;
-  const [codex, claudeCode] = await Promise.all([
+  const [codex, claudeCode, cursor] = await Promise.all([
     inspectProviderCli({
       definition: getProviderCliDefinition("codex"),
       runner,
@@ -657,12 +694,14 @@ export async function getProviderCliStatus(
       runner,
       nodePlatform,
     }),
+    inspectProviderCli({
+      definition: getProviderCliDefinition("cursor"),
+      runner,
+      nodePlatform,
+    }),
   ]);
 
-  return {
-    codex,
-    claudeCode,
-  };
+  return { codex, claudeCode, cursor };
 }
 
 function providerCliPtyShellCommand(
@@ -691,7 +730,7 @@ export function createPtyProviderCliInstallProcessSpawner(): ProviderCliInstallP
       const pty = spawnPty(ptyCommand.command, ptyCommand.args, {
         cols: 120,
         cwd: process.cwd(),
-        env: process.env,
+        env: args.env ?? process.env,
         name: "xterm-256color",
         rows: 30,
       });
@@ -782,6 +821,7 @@ function closeInstallStream({
 export function streamProviderCliInstall({
   provider,
   actionKind,
+  env,
   nodePlatform = process.platform,
   installProcessSpawner = createPtyProviderCliInstallProcessSpawner(),
 }: StreamProviderCliInstallArgs): ReadableStream<Uint8Array> {
@@ -819,6 +859,7 @@ export function streamProviderCliInstall({
         state.childProcess = installProcessSpawner.spawn({
           command,
           args: commandArgs,
+          ...(env ? { env } : {}),
         });
       } catch (error) {
         writeInstallEvent({

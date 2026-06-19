@@ -556,6 +556,7 @@ interface RowConfig {
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
   pullRequest?: ThreadPullRequest | null;
+  pullRequestActions?: boolean;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -567,6 +568,7 @@ function Row({
   parentThread = null,
   childThreads = null,
   pullRequest = null,
+  pullRequestActions = false,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] =
@@ -590,7 +592,21 @@ function Row({
         environmentGoneSection={environmentGone}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
-        pullRequestSection={pullRequest ? { pullRequest } : null}
+        pullRequestSection={
+          pullRequest
+            ? {
+                pullRequest,
+                ...(pullRequestActions
+                  ? {
+                      actions: {
+                        onMarkReady: noop,
+                        onMerge: noop,
+                      },
+                    }
+                  : {}),
+              }
+            : null
+        }
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) => (previous === next ? null : next))
@@ -620,9 +636,7 @@ export function Overview() {
         label="git — merge-base picker"
         hint="git is the only segment, so the merge-base action is pinned to the far right. It still carries data-promptbox-hide-compact."
       >
-        <div className="w-[40rem] max-w-full overflow-x-auto">
-          <Row section={committedSection} />
-        </div>
+        <Row section={committedSection} />
       </StoryRow>
       <StoryRow
         label="archived thread"
@@ -737,14 +751,20 @@ export function Overview() {
       </StoryRow>
       {pullRequestStateRows.map(({ label, hint, pullRequest }) => (
         <StoryRow key={label} label={`pull request — ${label}`} hint={hint}>
-          <Row pullRequest={pullRequest} mergeBase={null} />
+          <Row pullRequest={pullRequest} mergeBase={null} pullRequestActions />
         </StoryRow>
       ))}
       <StoryRow
         label="pull request + uncommitted"
-        hint="PR segment coexists with existing banner sections"
+        hint="PR number and the shared uncommitted diff label stay visible"
       >
         <Row pullRequest={pullRequestFixture} section={uncommittedSection} />
+      </StoryRow>
+      <StoryRow
+        label="pull request + committed"
+        hint="committed branch changes use the same label with or without PR context"
+      >
+        <Row pullRequest={pullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
         label="uncommitted (collapsed)"

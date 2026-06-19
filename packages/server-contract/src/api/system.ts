@@ -8,6 +8,7 @@ import {
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
   "missing_executable",
+  "auth_required",
   "timeout",
   "failed",
 ]);

@@ -1,7 +1,6 @@
 import type {
   Environment,
   PermissionMode,
-  PromptTextMention,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -81,9 +80,14 @@ interface BuildSideChatBaseRequestArgs {
   providerId: string;
   reasoningLevel: ReasoningLevel;
   serviceTier: ServiceTier | undefined;
+  sourceSeqEnd?: number;
   sourceEnvironment: Environment | null;
   sourceThreadId: string;
   title: string;
+}
+
+interface BuildSideChatCreateRequestArgs extends BuildSideChatBaseRequestArgs {
+  input: AppCreateThreadRequest["input"];
 }
 
 function buildSideChatBaseRequest({
@@ -92,6 +96,7 @@ function buildSideChatBaseRequest({
   providerId,
   reasoningLevel,
   serviceTier,
+  sourceSeqEnd,
   sourceEnvironment,
   sourceThreadId,
   title,
@@ -105,6 +110,7 @@ function buildSideChatBaseRequest({
     permissionMode: SIDE_CHAT_PERMISSION_MODE,
     title,
     environment: resolveChildThreadEnvironment(sourceEnvironment),
+    ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
     sourceThreadId,
     startedOnBehalfOf: null,
     originKind: "side-chat",
@@ -114,10 +120,8 @@ function buildSideChatBaseRequest({
 export interface BuildSideChatMessageInputArgs {
   /** True only for the first user-visible side-chat turn. */
   includeReplyReference: boolean;
-  /** The user's visible question. */
-  question: string;
-  /** Prompt pills selected in the user's visible question. */
-  questionMentions?: readonly PromptTextMention[];
+  /** The user's visible prompt input. */
+  visibleInput: AppCreateThreadRequest["input"];
   /**
    * The anchored-message reply reference (see {@link resolveSideChatReplyReference}),
    * or null when the anchor is the parent's last message. When included, it is
@@ -129,17 +133,11 @@ export interface BuildSideChatMessageInputArgs {
 
 export function buildSideChatMessageInput({
   includeReplyReference,
-  question,
-  questionMentions = [],
+  visibleInput,
   replyReference,
 }: BuildSideChatMessageInputArgs): AppCreateThreadRequest["input"] {
-  const visibleQuestion = {
-    type: "text" as const,
-    text: question,
-    mentions: [...questionMentions],
-  };
   if (!includeReplyReference || replyReference === null) {
-    return [visibleQuestion];
+    return visibleInput;
   }
   return [
     {
@@ -148,21 +146,15 @@ export function buildSideChatMessageInput({
       mentions: [],
       visibility: "agent-only",
     },
-    visibleQuestion,
+    ...visibleInput,
   ];
 }
 
-/**
- * Builds the create-thread request used to warm up a side chat before the user
- * submits. It clones the source provider session into a fresh side-chat thread
- * and lands idle with no visible first message, so the user's first real
- * question can be a fast `send` against an already-provisioned thread.
- */
-export function buildSideChatPreloadRequest(
-  args: BuildSideChatBaseRequestArgs,
+export function buildSideChatCreateRequest(
+  args: BuildSideChatCreateRequestArgs,
 ): AppCreateThreadRequest {
   return {
     ...buildSideChatBaseRequest(args),
-    input: [],
+    input: args.input,
   };
 }

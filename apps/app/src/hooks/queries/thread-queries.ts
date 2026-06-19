@@ -24,6 +24,7 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
+import { applyTimelineDelta } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
@@ -481,7 +482,9 @@ export function useThread(id: string, options?: QueryOptions) {
     refetchOnMount: options?.refetchOnMount ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
-      liftThreadListPlaceholder(getCachedThreadListPlaceholder(queryClient, id)),
+      liftThreadListPlaceholder(
+        getCachedThreadListPlaceholder(queryClient, id),
+      ),
   });
 }
 
@@ -701,20 +704,59 @@ export function useThreadHostFilePreview(
   });
 }
 
+/**
+ * Resolve a timeline response into the full window to cache. A `delta` response
+ * is applied to the window we already hold (preserving unchanged row identity);
+ * a full response is returned as-is. Falls back to a full fetch if the delta's
+ * base is stale (should not happen, since the server only sends a delta when it
+ * can reconstruct our exact window).
+ */
+async function mergeThreadTimelineDelta(
+  previous: ThreadTimelineResponse | undefined,
+  response: ThreadTimelineResponse,
+  fetchFull: () => Promise<ThreadTimelineResponse>,
+): Promise<ThreadTimelineResponse> {
+  if (response.delta === undefined) {
+    return response;
+  }
+  const merged = previous
+    ? applyTimelineDelta(previous.rows, response.delta)
+    : null;
+  if (merged !== null) {
+    return { ...response, rows: merged, delta: undefined };
+  }
+  return fetchFull();
+}
+
 export function useThreadTimeline(
   id: string,
   options?: ThreadTimelineQueryOptions,
 ) {
+  const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<ThreadTimelineResponse>({
     queryKey: threadTimelineQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.getThreadTimeline({
-        id: requireThreadId(id, "useThreadTimeline"),
+    queryFn: async ({ signal }) => {
+      const threadId = requireThreadId(id, "useThreadTimeline");
+      // Ask for a delta against the window we already hold. The server only
+      // honors it when it can still reconstruct exactly what we have; otherwise
+      // it returns the full window.
+      const previous = queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey(id),
+      );
+      const response = await api.getThreadTimeline({
+        id: threadId,
         signal,
-      }),
+        ...(previous?.maxSeq !== undefined
+          ? { afterSequence: previous.maxSeq }
+          : {}),
+      });
+      return mergeThreadTimelineDelta(previous, response, () =>
+        api.getThreadTimeline({ id: threadId, signal }),
+      );
+    },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...(options?.staleTime === undefined

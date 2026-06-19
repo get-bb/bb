@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TerminalSession } from "@bb/server-contract";
 import { isVisibleTerminalSessionStatus } from "@bb/domain";
 import {
@@ -43,6 +43,7 @@ export interface ThreadTerminalController {
   isPanelOpen: boolean;
   isTerminalQueryLoading: boolean;
   showTerminalPlaceholders: boolean;
+  shouldRetainActiveTerminalView: boolean;
   terminalBodyMessage: string;
   threadId: string;
   visibleSessions: readonly TerminalSession[];
@@ -58,8 +59,33 @@ export type ThreadTerminalIdHandler = (terminalId: string) => void;
 export type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
-function isVisibleTerminalSession(session: TerminalSession): boolean {
-  return isVisibleTerminalSessionStatus(session.status);
+export function isVisibleTerminalSession({
+  retainedTerminalViewId,
+  session,
+}: {
+  retainedTerminalViewId: string | null;
+  session: TerminalSession;
+}): boolean {
+  if (!isVisibleTerminalSessionStatus(session.status)) {
+    return false;
+  }
+  return (
+    session.status !== "disconnected" ||
+    session.id === retainedTerminalViewId
+  );
+}
+
+export function shouldCloseDisconnectedTerminalSession({
+  retainedTerminalViewId,
+  session,
+}: {
+  retainedTerminalViewId: string | null;
+  session: TerminalSession;
+}): boolean {
+  return (
+    session.status === "disconnected" &&
+    session.id !== retainedTerminalViewId
+  );
 }
 
 function pickActiveTerminalId(
@@ -101,10 +127,14 @@ export function useThreadTerminalController({
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
   const closingCleanTerminalIdsRef = useRef<Set<string>>(new Set());
+  const closingDisconnectedTerminalIdsRef = useRef<Set<string>>(new Set());
   const latestRequestedTitleRenameRef =
     useRef<TerminalTitleRenameRequest | null>(null);
   const pendingTitleRenameTimeoutRef =
     useRef<TerminalTitleRenameTimeout | null>(null);
+  const [retainedTerminalViewId, setRetainedTerminalViewId] = useState<
+    string | null
+  >(null);
   const terminalsQuery = useThreadTerminals(threadId, {
     enabled: isRightPanelOpen,
   });
@@ -113,8 +143,11 @@ export function useThreadTerminalController({
   const renameTerminal = useRenameThreadTerminal();
   const sessions = terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
   const visibleSessions = useMemo(
-    () => sessions.filter(isVisibleTerminalSession),
-    [sessions],
+    () =>
+      sessions.filter((session) =>
+        isVisibleTerminalSession({ retainedTerminalViewId, session }),
+      ),
+    [retainedTerminalViewId, sessions],
   );
   const activeTerminalId = useMemo(
     () => pickActiveTerminalId(visibleSessions, activeFixedTerminalId),
@@ -122,6 +155,32 @@ export function useThreadTerminalController({
   );
   const activeSession =
     visibleSessions.find((session) => session.id === activeTerminalId) ?? null;
+  const shouldRetainActiveTerminalView =
+    activeSession?.status === "disconnected" &&
+    activeSession.id === retainedTerminalViewId;
+
+  useEffect(() => {
+    if (!isRightPanelOpen) {
+      setRetainedTerminalViewId(null);
+      return;
+    }
+    if (activeSession?.status === "running") {
+      setRetainedTerminalViewId(activeSession.id);
+      return;
+    }
+    if (
+      retainedTerminalViewId !== null &&
+      activeTerminalId !== retainedTerminalViewId
+    ) {
+      setRetainedTerminalViewId(null);
+    }
+  }, [
+    activeSession?.id,
+    activeSession?.status,
+    activeTerminalId,
+    isRightPanelOpen,
+    retainedTerminalViewId,
+  ]);
 
   useEffect(() => {
     if (!isRightPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
@@ -138,6 +197,49 @@ export function useThreadTerminalController({
     setActiveFixedTerminal,
     terminalsQuery.error,
     terminalsQuery.isLoading,
+  ]);
+
+  useEffect(() => {
+    if (!isRightPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
+      return;
+    }
+    for (const session of sessions) {
+      if (
+        !shouldCloseDisconnectedTerminalSession({
+          retainedTerminalViewId,
+          session,
+        }) ||
+        closingDisconnectedTerminalIdsRef.current.has(session.id)
+      ) {
+        continue;
+      }
+      closingDisconnectedTerminalIdsRef.current.add(session.id);
+      closeTerminal.mutate(
+        { mode: "force", threadId, terminalId: session.id },
+        {
+          onSuccess: (closedSession) => {
+            if (closedSession.status !== "exited") {
+              return;
+            }
+            dirtyTerminalIdsRef.current.delete(closedSession.id);
+            closingCleanTerminalIdsRef.current.delete(closedSession.id);
+            removeFixedTerminalTab(closedSession.id);
+          },
+          onSettled: () => {
+            closingDisconnectedTerminalIdsRef.current.delete(session.id);
+          },
+        },
+      );
+    }
+  }, [
+    closeTerminal,
+    isRightPanelOpen,
+    removeFixedTerminalTab,
+    retainedTerminalViewId,
+    sessions,
+    terminalsQuery.error,
+    terminalsQuery.isLoading,
+    threadId,
   ]);
 
   useEffect(() => {
@@ -373,6 +475,7 @@ export function useThreadTerminalController({
     isPanelOpen: isRightPanelOpen,
     isTerminalQueryLoading: terminalsQuery.isLoading,
     showTerminalPlaceholders,
+    shouldRetainActiveTerminalView,
     terminalBodyMessage,
     threadId,
     visibleSessions,

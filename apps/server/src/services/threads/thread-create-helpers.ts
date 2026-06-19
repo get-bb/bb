@@ -10,10 +10,7 @@ import type { BaseBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import type { ThreadCreateServiceRequest } from "./thread-create-request.js";
-import {
-  deriveTitleFallback,
-  sanitizeGeneratedBranchSlug,
-} from "./title-generation.js";
+import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
 
 /**
  * Convert a {@link BaseBranchSpec} to the stored/wire branch-name shape.
@@ -167,7 +164,7 @@ export function createThreadRecord(
     environmentId: args.environmentId,
     providerId: args.request.providerId,
     title: args.request.title ?? null,
-    titleFallback: deriveTitleFallback(args.request.input),
+    titleFallback: args.request.titleFallback,
     parentThreadId: args.request.parentThreadId ?? null,
     sourceThreadId: args.request.sourceThreadId ?? null,
     originKind: args.request.originKind ?? args.request.childOrigin,

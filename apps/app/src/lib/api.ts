@@ -11,6 +11,10 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
+  Automation,
+  AutomationRunListResponse,
+  AutomationRunResponse,
+  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -92,6 +96,7 @@ import type { PathListOptions } from "./path-list-options";
 export type { FilePreview } from "./file-preview";
 
 interface GetThreadTimelineArgs {
+  afterSequence?: number;
   beforeCursor?: TimelinePaginationCursor;
   id: string;
   includeNestedRows?: boolean;
@@ -509,6 +514,108 @@ export async function deleteProject(id: string): Promise<void> {
   await requestVoid(apiClient.projects[":id"].$delete({ param: { id } }));
 }
 
+export async function listAutomations(
+  signal?: AbortSignal,
+): Promise<AutomationsOverviewResponse> {
+  return request<AutomationsOverviewResponse>(
+    apiClient.automations.$get(undefined, requestOptions(signal)),
+  );
+}
+
+interface AutomationRef {
+  projectId: string;
+  automationId: string;
+}
+
+interface GetAutomationArgs extends AutomationRef {
+  signal?: AbortSignal;
+}
+
+interface ListAutomationRunsArgs extends AutomationRef {
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
+export async function getAutomation({
+  projectId,
+  automationId,
+  signal,
+}: GetAutomationArgs): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].$get(
+      { param: { id: projectId, automationId } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function listAutomationRuns({
+  projectId,
+  automationId,
+  limit,
+  cursor,
+  signal,
+}: ListAutomationRunsArgs): Promise<AutomationRunListResponse> {
+  return request<AutomationRunListResponse>(
+    apiClient.projects[":id"].automations[":automationId"].runs.$get(
+      {
+        param: { id: projectId, automationId },
+        query: {
+          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function pauseAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].pause.$post({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function resumeAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].resume.$post({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function runAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<AutomationRunResponse> {
+  return request<AutomationRunResponse>(
+    apiClient.projects[":id"].automations[":automationId"].run.$post({
+      param: { id: projectId, automationId },
+      json: {},
+    }),
+  );
+}
+
+export async function deleteAutomation({
+  projectId,
+  automationId,
+}: AutomationRef): Promise<void> {
+  await requestVoid(
+    apiClient.projects[":id"].automations[":automationId"].$delete({
+      param: { id: projectId, automationId },
+    }),
+  );
+}
+
 export async function addProjectSource(
   projectId: string,
   req: CreateProjectSourceRequest,
@@ -633,9 +740,9 @@ interface ListProjectCommandsArgs {
 
 /**
  * List the provider skills/slash-commands discoverable for a project, scoped by
- * provider + environment, for the in-composer command typeahead (`/` Claude
- * Code, `$` Codex). Serves both the existing-thread follow-up composer and the
- * new-thread composer. Mirrors {@link searchProjectPaths}: the typed Hono
+ * provider + environment, for the in-composer command typeahead (`/`). Serves
+ * both the existing-thread follow-up composer and the new-thread composer.
+ * Mirrors {@link searchProjectPaths}: the typed Hono
  * client resolves the route from `@bb/server-contract`'s public-api schema, so
  * this types against the committed `CommandListResponse` contract with no cast,
  * and encodes a null `environmentId` as the empty string on the wire.
@@ -799,10 +906,7 @@ export async function getThread(
   signal?: AbortSignal,
 ): Promise<ThreadResponse> {
   return request<ThreadResponse>(
-    apiClient.threads[":id"].$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
+    apiClient.threads[":id"].$get({ param: { id } }, requestOptions(signal)),
   );
 }
 
@@ -1272,6 +1376,7 @@ export async function archiveEnvironmentThreads(
 }
 
 export async function getThreadTimeline({
+  afterSequence,
   beforeCursor,
   id,
   includeNestedRows = false,
@@ -1286,6 +1391,9 @@ export async function getThreadTimeline({
           ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
           ...(segmentLimit !== undefined
             ? { segmentLimit: String(segmentLimit) }
+            : {}),
+          ...(afterSequence !== undefined
+            ? { afterSequence: String(afterSequence) }
             : {}),
           ...(beforeCursor
             ? {

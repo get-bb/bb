@@ -64,7 +64,10 @@ export interface ResolveThreadExecutionPermissionModeArgs {
   parentThreadExecutionPermissionMode?: PermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
-  thread: Pick<Thread, "parentThreadId" | "projectId" | "providerId">;
+  thread: Pick<
+    Thread,
+    "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
+  >;
 }
 
 export interface ResolveCreateThreadEnvironmentArgs {
@@ -240,6 +243,9 @@ export function resolveThreadDefaultPermissionMode(
 export function resolveThreadExecutionPermissionMode(
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
+  if ((args.thread.originKind ?? args.thread.childOrigin) === "side-chat") {
+    return "readonly";
+  }
   if (args.requestedPermissionMode) {
     return args.requestedPermissionMode;
   }

@@ -186,6 +186,70 @@ describe("workspace command dispatch", () => {
     expect(result).toEqual({ pullRequest: null });
   });
 
+  it("covers workspace.pull_request_action", async () => {
+    const harness = createHarness({ isWorktree: true });
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
+          operation: "ready",
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "ready",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
+          operation: "draft",
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "draft",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
+          operation: "merge",
+          method: "rebase",
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "merge",
+      method: "rebase",
+    });
+  });
+
   it("rehydrates a missing workspace runtime from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-rehydrate" });
 

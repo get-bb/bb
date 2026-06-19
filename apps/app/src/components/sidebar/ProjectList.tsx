@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useState,
   type CSSProperties,
   type KeyboardEventHandler,
   type MouseEventHandler,
@@ -36,7 +37,10 @@ import {
   useLocalPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getProjectlessArchivedRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -56,12 +60,18 @@ import {
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
-import { ProjectThreadTree } from "./ProjectRow";
+import { ChronologicalThreadTree, ProjectThreadTree } from "./ProjectRow";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { ProjectThreadListState } from "./ProjectRow";
+import {
+  compareByCreatedAtDescending,
+  compareStandardThreads,
+  type ThreadComparator,
+} from "./projectThreadGroups";
 import {
   ProjectListProjects,
   type ProjectListReorderBindings,
@@ -78,12 +88,24 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
+  sidebarChronologicalSortAtom,
+  sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
+  type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
@@ -119,6 +141,8 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
+  onOpenAutomations?: () => void;
+  isAutomationsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -141,6 +165,18 @@ interface ProjectListProjectsSectionActionsProps {
 
 interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
+}
+
+interface SidebarViewOptionsMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
+}
+
+interface SidebarThreadActionsMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onOpenArchivedThreads?: () => void;
 }
 
 interface ProjectListNavigationLoadingRowProps {
@@ -183,7 +219,7 @@ const PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS =
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
   "inline-flex items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 disabled:opacity-50",
-  "h-6 w-7",
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 interface ProjectThreadListStateArgs {
@@ -207,6 +243,7 @@ interface TopLevelSidebarSectionProps {
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
+  actionsOpen?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
@@ -360,8 +397,10 @@ function ProjectListSectionIconButton({
   );
 
   return (
-    <button
+    <Button
       type="button"
+      size="icon"
+      variant="ghost"
       title={title}
       aria-label={ariaLabel}
       disabled={disabled}
@@ -369,7 +408,7 @@ function ProjectListSectionIconButton({
       onClick={handleClick}
     >
       <Icon name={iconName} className={COARSE_POINTER_ICON_SIZE_CLASS} />
-    </button>
+    </Button>
   );
 }
 
@@ -398,6 +437,182 @@ function ProjectListThreadsSectionActions({
       iconName="MessageSquarePlus"
       onClick={onNewThread}
     />
+  );
+}
+
+interface SidebarOrganizeMenuSectionLabelProps {
+  children: ReactNode;
+  className?: string;
+}
+
+function SidebarOrganizeMenuSectionLabel({
+  children,
+  className,
+}: SidebarOrganizeMenuSectionLabelProps) {
+  return (
+    <DropdownMenuLabel
+      className={cn(
+        "px-2 pb-0.5 text-xs font-semibold text-muted-foreground",
+        className,
+      )}
+    >
+      {children}
+    </DropdownMenuLabel>
+  );
+}
+
+interface SidebarOrganizeMenuOptionProps {
+  label: string;
+  selected: boolean;
+  onSelect: (event: Event) => void;
+}
+
+function SidebarOrganizeMenuOption({
+  label,
+  selected,
+  onSelect,
+}: SidebarOrganizeMenuOptionProps) {
+  return (
+    <DropdownMenuItem
+      onSelect={onSelect}
+      className="flex items-center justify-between gap-3"
+    >
+      <span className="truncate text-xs">{label}</span>
+      <Icon
+        name="Check"
+        className={cn(
+          COARSE_POINTER_ICON_SIZE_CLASS,
+          selected ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </DropdownMenuItem>
+  );
+}
+
+// Shared display menu rendered on both the Projects and Threads section
+// headers. The organization mode is global, so either header's menu drives the
+// whole sidebar.
+function SidebarViewOptionsMenu({
+  open,
+  onOpenChange,
+  onOrganizationModeSelect,
+}: SidebarViewOptionsMenuProps) {
+  const [organizationMode, setOrganizationMode] = useAtom(
+    sidebarOrganizationModeAtom,
+  );
+  const [chronologicalSort, setChronologicalSort] = useAtom(
+    sidebarChronologicalSortAtom,
+  );
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Sidebar display options"
+          title="Sidebar display options"
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-52"
+        mobileTitle="Sidebar display options"
+      >
+        <SidebarOrganizeMenuSectionLabel className="pt-1.5">
+          Group by
+        </SidebarOrganizeMenuSectionLabel>
+        <SidebarOrganizeMenuOption
+          label="Project"
+          selected={organizationMode === "project"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOrganizationMode("project");
+            onOrganizationModeSelect?.("project");
+          }}
+        />
+        <SidebarOrganizeMenuOption
+          label="None"
+          selected={organizationMode === "chronological"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOrganizationMode("chronological");
+            onOrganizationModeSelect?.("chronological");
+          }}
+        />
+        <DropdownMenuSeparator />
+        <SidebarOrganizeMenuSectionLabel className="pt-2">
+          Sort by
+        </SidebarOrganizeMenuSectionLabel>
+        <SidebarOrganizeMenuOption
+          label="Updated at"
+          selected={chronologicalSort === "updated"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setChronologicalSort("updated");
+          }}
+        />
+        <SidebarOrganizeMenuOption
+          label="Created at"
+          selected={chronologicalSort === "created"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setChronologicalSort("created");
+          }}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SidebarThreadActionsMenu({
+  open,
+  onOpenChange,
+  onOpenArchivedThreads,
+}: SidebarThreadActionsMenuProps) {
+  if (!onOpenArchivedThreads) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Threads actions"
+          title="Threads actions"
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name="MoreHorizontal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-44"
+        mobileTitle="Threads actions"
+      >
+        <DropdownMenuItem onSelect={onOpenArchivedThreads}>
+          Archived threads
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -438,6 +653,7 @@ function TopLevelSidebarSection({
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
+  actionsOpen = false,
   collapseControl,
   dragBindings,
   sectionRef,
@@ -464,6 +680,18 @@ function TopLevelSidebarSection({
     },
     [collapseControl],
   );
+  const handleSectionLabelClick = useCallback<MouseEventHandler<HTMLDivElement>>(
+    () => {
+      collapseControl?.onToggleCollapsed();
+    },
+    [collapseControl],
+  );
+  const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
+    (event) => {
+      event.stopPropagation();
+    },
+    [],
+  );
   const stopCollapseControlPointerDown = useCallback<
     PointerEventHandler<HTMLButtonElement>
   >((event) => {
@@ -488,22 +716,27 @@ function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
+          // Align the label with the sidebar's standard content inset so the
+          // header text sits in the same column as the rows below it, rather
+          // than hanging left on the narrower inherited group-label padding.
+          SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-1 transition-colors",
-          dragBindings &&
-            !dragBindings.disabled &&
-            "select-none cursor-grab active:cursor-grabbing",
+          dragBindings && !dragBindings.disabled && "select-none",
         )}
         title={label}
+        onClick={collapseControl ? handleSectionLabelClick : undefined}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
         <span
           className={cn(
             "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
-            actions && "pr-14",
+            actions && "pr-[5.75rem] max-md:pointer-coarse:pr-[7.25rem]",
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
+          {/* Reserve room for up to three section action buttons on the right;
+              coarse pointers need a little more. */}
           {collapseControl ? (
             <button
               type="button"
@@ -520,7 +753,7 @@ function TopLevelSidebarSection({
               }
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -538,8 +771,14 @@ function TopLevelSidebarSection({
           ) : null}
         </span>
         {actions ? (
-          <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
+          <span
+            className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center"
+            onClick={stopActionsClick}
+          >
             <span
+              data-sidebar-hover-actions-open={
+                actionsOpen ? "true" : undefined
+              }
               data-sidebar-hover-actions-mobile={
                 actionsMobileAlways
                   ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -547,6 +786,7 @@ function TopLevelSidebarSection({
               }
               className={cn(
                 "inline-flex shrink-0 items-center",
+                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                 !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
               )}
             >
@@ -584,6 +824,8 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
+  onOpenAutomations,
+  isAutomationsActive = false,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -670,6 +912,23 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
+      {onOpenAutomations ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            PROJECT_LIST_ACTION_BUTTON_CLASS,
+            isAutomationsActive && "bg-sidebar-accent text-sidebar-foreground",
+          )}
+          aria-current={isAutomationsActive ? "page" : undefined}
+          onClick={onOpenAutomations}
+          title="Automations"
+        >
+          <Icon name="Clock" />
+          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -840,6 +1099,10 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
+  const handleOpenProjectlessArchivedThreads = useCallback(() => {
+    onProjectSelect?.();
+    navigate(getProjectlessArchivedRoutePath());
+  }, [navigate, onProjectSelect]);
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
   );
@@ -853,6 +1116,58 @@ function ProjectListComponent({
     useAtom(collapsedSidebarSectionIdsAtom);
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
+  );
+  const [isProjectsViewOptionsMenuOpen, setIsProjectsViewOptionsMenuOpen] =
+    useState(false);
+  const [isThreadsActionsMenuOpen, setIsThreadsActionsMenuOpen] =
+    useState(false);
+  const [isThreadsViewOptionsMenuOpen, setIsThreadsViewOptionsMenuOpen] =
+    useState(false);
+  const handleProjectsViewOptionsMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setIsProjectsViewOptionsMenuOpen(open);
+      if (open) {
+        setIsThreadsActionsMenuOpen(false);
+        setIsThreadsViewOptionsMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleThreadsActionsMenuOpenChange = useCallback((open: boolean) => {
+    setIsThreadsActionsMenuOpen(open);
+    if (open) {
+      setIsProjectsViewOptionsMenuOpen(false);
+      setIsThreadsViewOptionsMenuOpen(false);
+    }
+  }, []);
+  const handleThreadsViewOptionsMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setIsThreadsViewOptionsMenuOpen(open);
+      if (open) {
+        setIsProjectsViewOptionsMenuOpen(false);
+        setIsThreadsActionsMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleProjectsViewOptionsOrganizationModeSelect = useCallback(
+    (mode: SidebarOrganizationMode) => {
+      if (mode === "chronological") {
+        setIsProjectsViewOptionsMenuOpen(false);
+        setIsThreadsActionsMenuOpen(false);
+        setIsThreadsViewOptionsMenuOpen(true);
+      }
+    },
+    [],
+  );
+  const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
+  const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
+  const sidebarThreadComparator = useMemo<ThreadComparator>(
+    () =>
+      chronologicalSort === "created"
+        ? compareByCreatedAtDescending
+        : compareStandardThreads,
+    [chronologicalSort],
   );
   const collapsedProjectIds = useMemo(
     () => new Set(collapsedProjectIdList),
@@ -1135,6 +1450,22 @@ function ProjectListComponent({
     threads: threadsByProject.get(PERSONAL_PROJECT_ID),
   });
 
+  // Chronological mode flattens every non-pinned thread (across all projects)
+  // into a single bucket. Pinned threads and their descendants stay in the
+  // Pinned section, matching how project mode excludes them.
+  const nonPinnedThreads = useMemo(
+    () =>
+      threads.filter(
+        (thread) =>
+          !pinnedSidebarState.effectivePinnedThreadIds.has(thread.id),
+      ),
+    [pinnedSidebarState.effectivePinnedThreadIds, threads],
+  );
+  const allThreadsListState = getProjectThreadListState({
+    status: projectsState.status,
+    threads: nonPinnedThreads,
+  });
+
   const pinnedSectionContent = (
     <PinnedThreadTree
       rootNodes={pinnedSidebarState.rootNodes}
@@ -1156,6 +1487,7 @@ function ProjectListComponent({
       collapsedProjectIds={collapsedProjectIds}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={sidebarThreadComparator}
       onProjectSelect={onProjectSelect}
       onCreateProjectThread={handleCreateProjectThread}
       onToggleProjectCollapsed={toggleProjectCollapsed}
@@ -1171,24 +1503,59 @@ function ProjectListComponent({
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={sidebarThreadComparator}
       variant="section"
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
   );
-  const projectsSectionActions = onNewProject ? (
-    <ProjectListProjectsSectionActions
-      onNewProject={onNewProject}
-      isCreatingProject={isCreatingProject}
+  const allThreadsSectionContent = (
+    <ChronologicalThreadTree
+      threadListState={allThreadsListState}
+      compareThreads={sidebarThreadComparator}
+      selectedThreadId={selectedThreadId}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={toggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
-  ) : undefined;
+  );
+  const projectsSectionActions = (
+    <>
+      <SidebarViewOptionsMenu
+        open={isProjectsViewOptionsMenuOpen}
+        onOpenChange={handleProjectsViewOptionsMenuOpenChange}
+        onOrganizationModeSelect={
+          handleProjectsViewOptionsOrganizationModeSelect
+        }
+      />
+      {onNewProject ? (
+        <ProjectListProjectsSectionActions
+          onNewProject={onNewProject}
+          isCreatingProject={isCreatingProject}
+        />
+      ) : null}
+    </>
+  );
   const projectsSectionActionsAlwaysVisible =
     projectsState.status === "ready" && renderedProjects.length === 0;
   const threadsSectionActions = (
-    <ProjectListThreadsSectionActions
-      onNewThread={handleCreateProjectlessThread}
-    />
+    <>
+      <SidebarThreadActionsMenu
+        open={isThreadsActionsMenuOpen}
+        onOpenChange={handleThreadsActionsMenuOpenChange}
+        onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
+      />
+      <SidebarViewOptionsMenu
+        open={isThreadsViewOptionsMenuOpen}
+        onOpenChange={handleThreadsViewOptionsMenuOpenChange}
+      />
+      <ProjectListThreadsSectionActions
+        onNewThread={handleCreateProjectlessThread}
+      />
+    </>
   );
 
   if (threadSearch?.isActive) {
@@ -1212,6 +1579,34 @@ function ProjectListComponent({
     return (
       <ProjectListShell>
         <ProjectListNavigationLoadingState />
+      </ProjectListShell>
+    );
+  }
+
+  if (organizationMode === "chronological") {
+    return (
+      <ProjectListShell>
+        <div className="space-y-4">
+          {hasPinnedSection ? (
+            <TopLevelSidebarSection label="Pinned">
+              {pinnedSectionContent}
+            </TopLevelSidebarSection>
+          ) : null}
+          <TopLevelSidebarSection
+            label="All Threads"
+            actions={threadsSectionActions}
+            actionsOpen={
+              isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen
+            }
+            actionsMobileAlways
+            collapseControl={{
+              isCollapsed: collapsedSidebarSectionIds.has("threads"),
+              onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
+            }}
+          >
+            {allThreadsSectionContent}
+          </TopLevelSidebarSection>
+        </div>
       </ProjectListShell>
     );
   }
@@ -1244,6 +1639,7 @@ function ProjectListComponent({
                   label="Projects"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
+                  actionsOpen={isProjectsViewOptionsMenuOpen}
                   actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
@@ -1263,6 +1659,9 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  actionsOpen={
+                    isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen
+                  }
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),

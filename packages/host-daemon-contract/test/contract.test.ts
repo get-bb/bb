@@ -304,6 +304,13 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     commitSubject: "Merge feature",
     merged: true,
   },
+  "workspace.pull_request_action": {},
+  "host.run_script": {
+    exitCode: 0,
+    output: "ok\n",
+    durationMs: 12,
+    timedOut: false,
+  },
 };
 
 const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
@@ -734,6 +741,65 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "ready",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "ready",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "draft",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "draft",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "merge",
+        method: "squash",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "merge",
+      method: "squash",
+    });
+
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "merge",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toThrow();
+
+    expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/workspace",
@@ -759,6 +825,20 @@ describe("host-daemon command schemas", () => {
       limit: 1000,
       includeFiles: true,
       includeDirectories: true,
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_commands",
+        providerId: "claude-code",
+        cwd: "/tmp/workspace",
+        builtinSkillsRootPath: "/tmp/builtin-skills",
+      }),
+    ).toMatchObject({
+      type: "host.list_commands",
+      providerId: "claude-code",
+      cwd: "/tmp/workspace",
+      builtinSkillsRootPath: "/tmp/builtin-skills",
     });
 
     expect(
@@ -1208,6 +1288,12 @@ describe("host-daemon command schemas", () => {
         sourceType: "data-dir",
       }),
     ).toMatchObject({ sourceType: "data-dir" });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "project",
+      }),
+    ).toMatchObject({ sourceType: "project" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
@@ -1807,7 +1893,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(36);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(40);
   });
 
   it("parses valid session open and event batch payloads", () => {

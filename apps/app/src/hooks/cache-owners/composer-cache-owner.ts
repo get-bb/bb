@@ -23,13 +23,27 @@ export function hydrateThreadComposerBootstrap({
   queryClient,
   threadId,
 }: ThreadComposerBootstrapHydrationArgs): void {
+  const queuedMessagesQueryKey = threadQueuedMessagesQueryKey(threadId);
+  const queuedMessagesQuery = queryClient
+    .getQueryCache()
+    .find({ queryKey: queuedMessagesQueryKey });
+  const hasActiveQueuedMessagesOwner =
+    queuedMessagesQuery?.isActive() ?? false;
+
   queryClient.setQueryData(
     threadDefaultExecutionOptionsQueryKey(threadId),
     bootstrap.defaultExecutionOptions,
   );
   queryClient.setQueryData(
-    threadQueuedMessagesQueryKey(threadId),
-    bootstrap.queuedMessages,
+    queuedMessagesQueryKey,
+    (
+      currentQueuedMessages:
+        | ThreadComposerBootstrapResponse["queuedMessages"]
+        | undefined,
+    ) =>
+      currentQueuedMessages === undefined || !hasActiveQueuedMessagesOwner
+        ? bootstrap.queuedMessages
+        : currentQueuedMessages,
   );
   queryClient.setQueryData(
     threadPromptHistoryQueryKey(threadId),

@@ -820,7 +820,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       collectSystemRows(rows).filter(
         (row) =>
-          row.systemKind === "operation" && row.title === "Provisioned",
+          row.systemKind === "operation" && row.title === "Provisioned thread",
       ),
     ).toHaveLength(1);
   });

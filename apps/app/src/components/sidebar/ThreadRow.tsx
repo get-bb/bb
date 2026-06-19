@@ -42,6 +42,7 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+  SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE,
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
@@ -53,7 +54,6 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
-  isEnvGrouped: boolean;
 }
 
 export type ThreadRowOptions =
@@ -206,35 +206,30 @@ function getThreadUnreadBadgeLabel({
     : "Unread thread requires attention";
 }
 
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
-
 function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
   unreadBadgeTone,
-}: ThreadTrailingIndicatorProps) {
+}: ThreadStatusGlyphProps) {
   const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
 
-  if (showStatusGlyph) {
-    return (
-      <span
-        className={cn(
-          SIDEBAR_ROW_GLYPH_SLOT_CLASS,
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
-      >
-        <ThreadStatusGlyph
-          hasPendingInteraction={hasPendingInteraction}
-          isBusy={isBusy}
-          showUnreadBadge={showUnreadBadge}
-          unreadBadgeTone={unreadBadgeTone}
-        />
-      </span>
-    );
+  if (!showStatusGlyph) {
+    return null;
   }
 
-  return null;
+  return (
+    <span
+      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+    >
+      <ThreadStatusGlyph
+        hasPendingInteraction={hasPendingInteraction}
+        isBusy={isBusy}
+        showUnreadBadge={showUnreadBadge}
+        unreadBadgeTone={unreadBadgeTone}
+      />
+    </span>
+  );
 }
 
 function ThreadRowComponent({
@@ -293,11 +288,9 @@ function ThreadRowComponent({
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
     showActive
-      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+      ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-    parentDragBindings &&
-      !parentDragBindings.disabled &&
-      "select-none cursor-grab active:cursor-grabbing",
+    parentDragBindings && !parentDragBindings.disabled && "select-none",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
@@ -377,7 +370,7 @@ function ThreadRowComponent({
             <ThreadActionsMenu
               thread={thread}
               triggerClassName={cn(
-                "text-muted-foreground",
+                "text-subtle-foreground hover:bg-transparent hover:text-foreground",
                 COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
               )}
               onOpenChange={setIsDropdownActionsOpen}

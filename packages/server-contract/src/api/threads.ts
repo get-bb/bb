@@ -21,7 +21,11 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
-import { timelineRowSchema } from "../thread-timeline.js";
+import {
+  timelineDeltaSchema,
+  timelineRowSchema,
+  timelineWorkflowWorkRowSchema,
+} from "../thread-timeline.js";
 import {
   environmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -42,7 +46,7 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli"]);
+export const threadCreateOriginSchema = z.enum(["app", "cli", "automation"]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
@@ -96,10 +100,10 @@ export const createThreadRequestSchema = z
     providerId: z.string().min(1).optional(),
     origin: threadCreateOriginSchema,
     title: z.string().min(1).optional(),
-    // A source-derived native fork/side chat may establish the cloned provider
-    // session with an empty timeline, so it can carry no input. A normal thread
-    // start requires at least one input, enforced by the refinement below rather
-    // than a blanket `.min(1)`.
+    // A source-derived side-chat preload may establish the cloned provider
+    // session without a first prompt. Normal starts and forks require at least
+    // one input entry, enforced by the refinement below rather than a blanket
+    // `.min(1)`.
     input: z.array(promptInputSchema),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
@@ -109,6 +113,7 @@ export const createThreadRequestSchema = z
     environment: environmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     sourceThreadId: z.string().min(1).optional(),
+    sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
     /** @deprecated Use originKind. */
@@ -121,6 +126,20 @@ export const createThreadRequestSchema = z
         code: "custom",
         message: "input must contain at least one entry",
         path: ["input"],
+      });
+    }
+    if (originKind === "fork" && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "fork input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+    if (originKind === null && value.sourceSeqEnd !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "sourceSeqEnd requires an originKind",
+        path: ["sourceSeqEnd"],
       });
     }
   });
@@ -402,12 +421,20 @@ export const threadTimelineQuerySchema = z
     beforeAnchorId: z.string().min(1),
     /**
      * When `"true"`, the response omits row generation and returns
-     * `rows: []` with the tail-only fields (`activeThinking`, `pendingTodos`,
-     * `contextWindowUsage`) populated normally. Used by the CLI to read
-     * tail state without paying for the full row payload on every
-     * `bb status` invocation. Implies `latest` page semantics.
+     * `rows: []` with the tail-only fields (`activeThinking`,
+     * `activeWorkflow`, `pendingTodos`, `contextWindowUsage`) populated
+     * normally. Used by the CLI to read tail state without paying for the full
+     * row payload on every `bb status` invocation. Implies `latest` page
+     * semantics.
      */
     summaryOnly: z.enum(["true", "false"]),
+    /**
+     * The `maxSeq` the client last received for this window. When provided and
+     * the server can still reconstruct what the client holds, the response is a
+     * `delta` (changed rows only) instead of the full `rows`; otherwise the
+     * server returns the full window and the client replaces.
+     */
+    afterSequence: z.string().regex(/^\d+$/),
   })
   .partial()
   .superRefine((query, context) => {
@@ -508,10 +535,20 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
+  activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
+  activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
+  /** Thread high-water event sequence this window reflects; bumps on append. */
+  maxSeq: z.number().int().nonnegative(),
+  /**
+   * Present only when the request supplied a usable `afterSequence`: the
+   * changed rows + ordering to apply to the client's previous window. When
+   * present, `rows` is empty and the client merges via `applyTimelineDelta`.
+   */
+  delta: timelineDeltaSchema.optional(),
 });
 export type ThreadTimelineResponse = z.infer<
   typeof threadTimelineResponseSchema

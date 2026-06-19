@@ -3,7 +3,10 @@ import { closeSession, events, threads } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import {
+  internalAuthHeaders,
+  listQueuedThreadCommands,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
@@ -413,7 +416,11 @@ describe("internal event and tool-call routes", () => {
       // redelivered completion is an illegal-transition no-op and the thread
       // row is untouched.
       expect(
-        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get(),
+        harness.db
+          .select()
+          .from(threads)
+          .where(eq(threads.id, thread.id))
+          .get(),
       ).toEqual(settledRow);
     });
   });
@@ -465,6 +472,63 @@ describe("internal event and tool-call routes", () => {
         .where(eq(threads.parentThreadId, thread.id))
         .all();
       expect(childThreads).toHaveLength(0);
+    });
+  });
+
+  it("does not support agent side chat send-to-main tool calls", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const mainThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: mainThread.id,
+        status: "active",
+      });
+
+      const response = await harness.app.request(
+        "/internal/session/tool-call",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            threadId: sideChatThread.id,
+            providerThreadId: "provider-side-chat",
+            turnId: "turn-side-chat",
+            callId: "call-send-main",
+            tool: "bb_send_to_main_thread",
+            arguments: {
+              message: "Please carry this back to the main thread.",
+            },
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Unsupported tool: bb_send_to_main_thread",
+          },
+        ],
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", mainThread.id),
+      ).toHaveLength(0);
     });
   });
 

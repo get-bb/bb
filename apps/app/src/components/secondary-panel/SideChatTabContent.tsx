@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   Environment,
   PromptInput,
@@ -7,7 +14,11 @@ import type {
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type { Thread } from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
+import type {
+  TimelineConversationAttachments,
+  TimelineRow,
+  TimelineUserConversationRow,
+} from "@bb/server-contract";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -17,6 +28,8 @@ import {
   type HistoryConfig,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
@@ -30,33 +43,36 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
-import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
+import { usePromptMentions } from "@/hooks/usePromptMentions";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { promptDraftToInput } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
   messageBodyHasQuote,
   renderMessageBodyWithQuotes,
 } from "@/components/thread/timeline/ConversationMessageMentions";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   isRunningThreadRuntimeDisplayStatus,
-  TimelineStatusIndicator,
-  TimelineWorkingIndicator,
-  ThreadTimelineRows,
+  ThreadTimelinePanelContent,
+  ThreadTimelineSurface,
+  useThreadTimelineController,
+  type ThreadTimelineRowFilter,
   type ThreadTimelineSendToMainMessageHandler,
+  type ThreadTimelineSelectionAddToChatHandler,
+  type UseThreadTimelineControllerResult,
 } from "@/components/thread/timeline";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   useThread,
   useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
-  useThreadTimeline,
 } from "@/hooks/queries/thread-queries";
 import {
   useCreateThreadQueuedMessage,
@@ -65,73 +81,35 @@ import {
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
   useSendThreadMessage,
+  useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { useDeleteThread } from "@/hooks/mutations/thread-state-mutations";
+import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import {
   SIDE_CHAT_PERMISSION_MODE,
+  buildSideChatCreateRequest,
   buildSideChatMessageInput,
-  buildSideChatPreloadRequest,
   resolveSideChatReplyReference,
 } from "@/lib/side-chat-create-request";
-import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
-import { promptDraftToInput } from "@/lib/prompt-draft";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
+import {
+  buildSideChatSubmitMode,
+  canSubmitFollowUpShortcut,
+} from "@/views/thread-detail/threadDetailPromptSubmission";
 
 const noop = () => {};
-
-// Side chats do not expose @-mentions / file reach in v1. Provider command
-// typeahead is wired per side chat below so provider-owned prompt actions stay
-// aligned with the normal follow-up composer.
-const SIDE_CHAT_MENTION_TYPEAHEAD: TypeaheadConfig["mention"] = {
-  suggestions: [],
-  isLoading: false,
-  isError: false,
-  onQueryChange: noop,
-};
-
-type SideChatVisibleTextInput = Extract<PromptInput, { type: "text" }>;
-
-function visibleTextInputFromSideChatDraft({
-  mentionRanges,
-  message,
-}: {
-  mentionRanges: readonly PromptTextMention[];
-  message: string;
-}): SideChatVisibleTextInput | null {
-  const input = promptDraftToInput({
-    text: message,
-    mentions: [...mentionRanges],
-    attachments: [],
-  });
-  return (
-    input.find(
-      (item): item is SideChatVisibleTextInput => item.type === "text",
-    ) ?? null
-  );
-}
-
-// Side chats are conversation-only: no @-mentions, no file attachments. The
-// composer requires an attachments config, so wire an inert one (no items, no
-// upload affordance).
-const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
-  items: [],
-  isAttaching: false,
-  error: null,
-};
-
-const SIDE_CHAT_READY_SUBMIT_MODE = {
-  kind: "ready",
-} satisfies FollowUpComposerProps["submitMode"];
 
 export interface SetSideChatThreadId {
   (args: { tabId: string; threadId: string }): void;
 }
 
 export interface SideChatTabContentProps {
+  /** Only the active side-chat tab is visible; inactive tabs stay mounted. */
+  isActive: boolean;
   tab: SideChatFixedPanelTab;
   /** The main thread the side chat is anchored to (lineage + provider source). */
   sourceThread: Thread;
@@ -145,18 +123,125 @@ export interface SideChatTabContentProps {
    * reference (whether the anchor is the parent's last conversation message).
    */
   sourceTimelineRows: readonly TimelineRow[];
+  resolveMentionLink: PromptMentionLinkResolver;
   onSetThreadId: SetSideChatThreadId;
 }
 
 interface SideChatConversationProps {
   isSideChatTurnSubmitting: boolean;
+  leadingContent: ReactNode;
+  timeline: UseThreadTimelineControllerResult;
   threadId: string;
   /**
    * Hand a side-chat agent message back to the main thread (the per-message
-   * "send to main" action). Undefined while the side chat is mid-turn, which
-   * keeps the action out of the bar until the reply is final.
+   * "send to main" action). Undefined only when there is no main-thread target.
    */
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
+}
+
+const isVisibleSideChatTimelineRow: ThreadTimelineRowFilter = (row) =>
+  !(
+    row.kind === "system" &&
+    row.systemKind === "operation" &&
+    row.operationKind === "thread-provisioning"
+  );
+
+interface OptimisticSideChatUserRowArgs {
+  createdAt: number;
+  input: readonly PromptInput[];
+  tabId: string;
+  threadId: string;
+}
+
+function emptyTimelineConversationAttachments(): TimelineConversationAttachments {
+  return {
+    webImages: 0,
+    localImages: 0,
+    localFiles: 0,
+    imageUrls: [],
+    localImagePaths: [],
+    localFilePaths: [],
+  };
+}
+
+function hasTimelineConversationAttachments(
+  attachments: TimelineConversationAttachments,
+): boolean {
+  return (
+    attachments.webImages > 0 ||
+    attachments.localImages > 0 ||
+    attachments.localFiles > 0
+  );
+}
+
+function buildOptimisticSideChatUserRow({
+  createdAt,
+  input,
+  tabId,
+  threadId,
+}: OptimisticSideChatUserRowArgs): TimelineUserConversationRow {
+  const textSegments: string[] = [];
+  const mentions: PromptTextMention[] = [];
+  const attachments = emptyTimelineConversationAttachments();
+  let textOffset = 0;
+
+  for (const entry of input) {
+    if (entry.type === "text") {
+      if (entry.text.trim().length > 0) {
+        if (textSegments.length > 0) {
+          textOffset += 2;
+        }
+        for (const mention of entry.mentions) {
+          mentions.push({
+            ...mention,
+            start: textOffset + mention.start,
+            end: textOffset + mention.end,
+          });
+        }
+        textSegments.push(entry.text);
+        textOffset += entry.text.length;
+      }
+      continue;
+    }
+
+    if (entry.type === "image") {
+      attachments.webImages += 1;
+      attachments.imageUrls.push(entry.url);
+      continue;
+    }
+
+    if (entry.type === "localImage") {
+      attachments.localImages += 1;
+      attachments.localImagePaths.push(entry.path);
+      continue;
+    }
+
+    attachments.localFiles += 1;
+    attachments.localFilePaths.push(entry.path);
+  }
+
+  return {
+    id: `${tabId}:optimistic-first-user-message`,
+    threadId,
+    turnId: `${tabId}:optimistic-first-user-turn`,
+    sourceSeqStart: 0,
+    sourceSeqEnd: 0,
+    startedAt: createdAt,
+    createdAt,
+    kind: "conversation",
+    role: "user",
+    initiator: "user",
+    senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
+    text: textSegments.join("\n\n"),
+    mentions,
+    attachments: hasTimelineConversationAttachments(attachments)
+      ? attachments
+      : null,
+    turnRequest: { kind: "message", status: "accepted" },
+  };
 }
 
 function timelineRowsContainUserMessage(rows: readonly TimelineRow[]): boolean {
@@ -192,116 +277,26 @@ function shouldQueueSideChatMessage(
  */
 function SideChatConversation({
   isSideChatTurnSubmitting,
+  leadingContent,
+  timeline,
   threadId,
   onSendToMainMessage,
+  onSelectionAddToChat,
 }: SideChatConversationProps) {
-  const preferredTheme = usePreferredTheme();
-  const threadQuery = useThread(threadId);
-  const timelineQuery = useThreadTimeline(threadId);
-  // Hide the worktree-provisioning transcript from the side-chat timeline — it's
-  // setup noise in a focused reply view. The main thread still shows it.
-  const rows = (timelineQuery.data?.rows ?? []).filter(
-    (row) =>
-      !(
-        row.kind === "system" &&
-        row.systemKind === "operation" &&
-        row.operationKind === "thread-provisioning"
-      ),
-  );
-  const activeThinking = timelineQuery.data?.activeThinking ?? null;
-  const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
-  const isProvisioningDisplayStatus =
-    displayStatus === "provisioning" || displayStatus === "starting";
-  const ongoingIndicatorLabel =
-    displayStatus === "host-reconnecting"
-      ? "Waiting for reconnection"
-      : isProvisioningDisplayStatus
-        ? "Provisioning side chat..."
-        : undefined;
-  const showActiveThinking =
-    activeThinking !== null && ongoingIndicatorLabel === undefined;
-  const activeThinkingText = activeThinking?.text.trim() ?? "";
-  const activeThinkingDetails =
-    showActiveThinking && activeThinkingText.length > 0
-      ? activeThinking?.text
-      : undefined;
-  const ongoingIndicatorKey =
-    showActiveThinking && activeThinking
-      ? activeThinking.id
-      : (ongoingIndicatorLabel ?? "working");
-  const showOngoingIndicator =
-    threadQuery.data?.status !== "stopping" &&
-    (isProvisioningDisplayStatus ||
-      (!timelineQuery.isPending &&
-        (isSideChatTurnSubmitting ||
-          isRunningThreadRuntimeDisplayStatus(displayStatus))));
-  const displayedRows = rows;
-
-  // A persisted side-chat tab can outlive its child thread (the thread was
-  // deleted). The thread query then 404s — show an explicit terminal empty
-  // state instead of the indefinite "Waiting…" placeholder below.
-  const isChildThreadMissing =
-    threadQuery.error instanceof HttpError && threadQuery.error.status === 404;
-  if (isChildThreadMissing) {
-    return (
-      <EmptyStatePanel className="mx-2 rounded-lg">
-        This side chat is no longer available.
-      </EmptyStatePanel>
-    );
-  }
-
-  if (
-    timelineQuery.isPending &&
-    displayedRows.length === 0 &&
-    !showOngoingIndicator
-  ) {
-    return (
-      <div className="space-y-2 px-2 pt-2">
-        <Skeleton className="h-4 w-3/4 rounded-sm" />
-        <Skeleton className="h-4 w-2/3 rounded-sm" />
-        <Skeleton className="h-4 w-1/2 rounded-sm" />
-      </div>
-    );
-  }
-
-  if (timelineQuery.isError && displayedRows.length === 0) {
-    return (
-      <TimelineStatusIndicator
-        label="Failed to load side chat"
-        className="mx-2 mt-4 text-destructive"
-      />
-    );
-  }
-
-  if (displayedRows.length === 0 && !showOngoingIndicator) {
-    return (
-      <EmptyStatePanel className="mx-2 rounded-lg">
-        Waiting for the side chat to respond…
-      </EmptyStatePanel>
-    );
-  }
-
   return (
-    <>
-      {displayedRows.length > 0 ? (
-        <ThreadTimelineRows
-          themeType={preferredTheme}
-          timelineRows={[...displayedRows]}
-          threadId={threadId}
-          threadRuntimeDisplayStatus={displayStatus}
-          onSendToMainMessage={onSendToMainMessage}
-          workspaceRootPath={undefined}
-        />
-      ) : null}
-      <HeightTransition visible={showOngoingIndicator}>
-        <TimelineWorkingIndicator
-          key={ongoingIndicatorKey}
-          details={activeThinkingDetails}
-          isThinking={showActiveThinking}
-          label={ongoingIndicatorLabel}
-        />
-      </HeightTransition>
-    </>
+    <ThreadTimelinePanelContent
+      isTurnSubmitting={isSideChatTurnSubmitting}
+      leadingContent={leadingContent}
+      missingThreadLabel="This side chat is no longer available."
+      onSendToMainMessage={onSendToMainMessage}
+      onSelectionAddToChat={onSelectionAddToChat}
+      provisioningLabel="Provisioning side chat..."
+      rowFilter={isVisibleSideChatTimelineRow}
+      showLoadOlderRows={false}
+      threadId={threadId}
+      timeline={timeline}
+      timelineErrorLabel="Failed to load side chat"
+    />
   );
 }
 
@@ -309,35 +304,41 @@ function SideChatConversation({
  * Hosts a message-anchored side chat: the child thread's conversation above the
  * shared `FollowUpPromptBox` composer (the same component the main thread uses)
  * with its footer in read-only mode — the side chat inherits the parent's
- * provider/model and is always read-only. The child thread is provisioned as
- * soon as the tab has enough source context (`tab.threadId === null`), so the
- * user's first submit is a normal follow-up turn. Once a thread exists, each
- * side-chat agent reply carries a
+ * provider/model and is always read-only. The child thread is created by the
+ * user's first submit, so opening a side chat is just a draft surface until the
+ * user sends. Once a thread exists, each side-chat agent reply carries a
  * per-message "send to main thread" action that posts that reply into the main
  * thread (rendered there as "Message from {side chat}") via the existing
  * cross-thread send transport (`senderThreadId`).
  */
 export function SideChatTabContent({
+  isActive,
   tab,
   sourceThread,
   sourceEnvironment,
   sourceTimelineRows,
+  resolveMentionLink,
   onSetThreadId,
 }: SideChatTabContentProps) {
   const childThreadId = tab.threadId;
   const createThread = useCreateThread();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
-  const deleteThread = useDeleteThread();
+  const markThreadRead = useMarkThreadRead();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const sendThreadMessage = useSendThreadMessage();
+  const stopThread = useStopThread();
   const { isLocalDaemonHost } = useHostDaemon();
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     sourceThread.id,
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
+  });
+  useThreadReadTracking({
+    markThreadRead,
+    thread: isActive ? childThreadQuery.data : undefined,
   });
   // Build the SAME execution + permission configs the main thread builds (see
   // ThreadDetailPromptArea), seeded from the parent thread's resolved options
@@ -357,34 +358,73 @@ export function SideChatTabContent({
     initialPermissionMode: "readonly",
   });
   // `tab.threadId` only flips after async create resolves and panel state
-  // propagates. Keep the in-flight create promise here so proactive preload and
-  // an immediate Enter key share one side-chat thread.
+  // propagates. Keep the in-flight create promise here so repeated submit
+  // attempts share one side-chat thread.
   const createThreadPromiseRef = useRef<Promise<string | null> | null>(null);
   const childThreadIdRef = useRef<string | null>(childThreadId);
   const childHasUserMessageRef = useRef(false);
-  const deleteThreadMutateRef = useRef(deleteThread.mutate);
-  const hasAcceptedUserMessageRef = useRef(false);
+  const createdInitialMessageThreadIdRef = useRef<string | null>(null);
+  const observedChildThreadIdRef = useRef<string | null>(childThreadId);
   const isMountedRef = useRef(false);
-  const pendingSubmitCountRef = useRef(0);
   const queuedMessageCountRef = useRef(0);
-
-  const [message, setMessage] = useState("");
-  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const promptDraft = usePromptDraftStorage({
+    kind: "side-chat",
+    parentThreadId: sourceThread.id,
+    tabId: tab.id,
+  });
+  const promptContextEnvironmentId =
+    childThreadQuery.data?.environmentId ?? sourceThread.environmentId ?? null;
+  const promptContextThreadId = childThreadId ?? sourceThread.id;
+  const promptMentions = usePromptMentions(sourceThread.projectId, {
+    currentThreadId: promptContextThreadId,
+    environmentId: promptContextEnvironmentId,
+  });
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const providerPromptActions = useMemo(
+    () =>
+      buildProviderPromptActionProps(
+        threadCreationOptions.selectedProviderComposerActions ?? [],
+      ),
+    [threadCreationOptions.selectedProviderComposerActions],
+  );
+  const commandSuggestions = useCommandSuggestions({
+    projectId: sourceThread.projectId,
+    providerId: sourceThread.providerId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
+    environmentId: promptContextEnvironmentId,
+    query: commandQuery,
+  });
+  const uploadPromptAttachment = useUploadPromptAttachment();
+
+  const [composerFocusNonce, setComposerFocusNonce] = useState(0);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
-  const [sideChatPreloadFailed, setSideChatPreloadFailed] = useState(false);
+  const [optimisticFirstUserRow, setOptimisticFirstUserRow] =
+    useState<TimelineUserConversationRow | null>(null);
   const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
     action: QueuedMessageProcessingAction;
     id: string;
   } | null>(null);
   const handleChangeMessage = useCallback(
     (nextValue: string, nextMentions: PromptTextMention[]) => {
-      setMessage(nextValue);
-      setMentionRanges(nextMentions);
+      promptDraft.setTextAndMentions(nextValue, nextMentions);
     },
-    [],
+    [promptDraft],
   );
+  const currentPromptDraft = useMemo(
+    () => ({
+      text: promptDraft.text,
+      mentions: promptDraft.mentions,
+      attachments: promptDraft.attachments,
+    }),
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+  );
+  const currentPromptDraftInput = useMemo(
+    () => promptDraftToInput(currentPromptDraft),
+    [currentPromptDraft],
+  );
+  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
 
   // The anchored-message reply reference: present only when the anchor is NOT
   // the parent's last conversation message (the most recent exchange needs no
@@ -430,8 +470,11 @@ export function SideChatTabContent({
     }),
     [defaultExecutionOptions],
   );
-  const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
+  const childTimeline = useThreadTimelineController({
     enabled: childThreadId !== null,
+    rowFilter: isVisibleSideChatTimelineRow,
+    surfaceKey: childThreadId !== null ? `side-chat:${childThreadId}` : tab.id,
+    threadId: childThreadId ?? "",
   });
   const { data: queuedMessages = [] } = useThreadQueuedMessages(
     childThreadId ?? "",
@@ -440,8 +483,24 @@ export function SideChatTabContent({
     },
   );
   const childHasUserMessage = useMemo(
-    () => timelineRowsContainUserMessage(childTimelineQuery.data?.rows ?? []),
-    [childTimelineQuery.data?.rows],
+    () => timelineRowsContainUserMessage(childTimeline.timelineRows),
+    [childTimeline.timelineRows],
+  );
+  const childTimelineRowsWithOptimisticFirstUserRow = useMemo(() => {
+    if (optimisticFirstUserRow === null || childHasUserMessage) {
+      return childTimeline.timelineRows;
+    }
+    return [optimisticFirstUserRow, ...childTimeline.timelineRows];
+  }, [childHasUserMessage, childTimeline.timelineRows, optimisticFirstUserRow]);
+  const displayedChildTimeline = useMemo(
+    () =>
+      childTimelineRowsWithOptimisticFirstUserRow === childTimeline.timelineRows
+        ? childTimeline
+        : {
+            ...childTimeline,
+            timelineRows: childTimelineRowsWithOptimisticFirstUserRow,
+          },
+    [childTimeline, childTimelineRowsWithOptimisticFirstUserRow],
   );
   const queuedMessagesById = useMemo(() => {
     const next = new Map<string, ThreadQueuedMessage>();
@@ -452,35 +511,32 @@ export function SideChatTabContent({
   }, [queuedMessages]);
 
   childThreadIdRef.current = childThreadId;
-  childHasUserMessageRef.current = childHasUserMessage;
-  deleteThreadMutateRef.current = deleteThread.mutate;
+  if (observedChildThreadIdRef.current !== childThreadId) {
+    observedChildThreadIdRef.current = childThreadId;
+    childHasUserMessageRef.current =
+      childThreadId !== null &&
+      (createdInitialMessageThreadIdRef.current === childThreadId ||
+        childHasUserMessage);
+  } else if (childHasUserMessage) {
+    childHasUserMessageRef.current = true;
+  }
   queuedMessageCountRef.current = queuedMessages.length;
-
-  const deleteSideChatIfUnused = useCallback((threadId: string | null) => {
-    if (
-      threadId === null ||
-      hasAcceptedUserMessageRef.current ||
-      pendingSubmitCountRef.current > 0 ||
-      childHasUserMessageRef.current ||
-      queuedMessageCountRef.current > 0
-    ) {
-      return;
-    }
-    deleteThreadMutateRef.current({
-      id: threadId,
-      childThreadsConfirmed: true,
-    });
-  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      deleteSideChatIfUnused(childThreadIdRef.current);
     };
-  }, [deleteSideChatIfUnused]);
+  }, []);
+  useEffect(() => {
+    if (childHasUserMessage) {
+      setOptimisticFirstUserRow(null);
+    }
+  }, [childHasUserMessage]);
 
-  const ensureSideChatThread = useCallback(async (): Promise<string | null> => {
+  const createSideChatThread = useCallback(async (
+    input: ReturnType<typeof buildSideChatMessageInput>,
+  ): Promise<string | null> => {
     const existingThreadId = childThreadIdRef.current;
     if (existingThreadId !== null) {
       return existingThreadId;
@@ -492,7 +548,8 @@ export function SideChatTabContent({
     if (!canCreateSideChatThread || !executionOptions) {
       return null;
     }
-    const request = buildSideChatPreloadRequest({
+    const request = buildSideChatCreateRequest({
+      input,
       projectId: sourceThread.projectId,
       sourceThreadId: sourceThread.id,
       sourceEnvironment,
@@ -500,25 +557,17 @@ export function SideChatTabContent({
       model: executionOptions.model,
       reasoningLevel: executionOptions.reasoningLevel,
       serviceTier: executionOptions.serviceTier,
+      sourceSeqEnd: tab.sourceSeqEnd ?? undefined,
       title: tab.title,
     });
     const promise = createThread
       .mutateAsync(request)
       .then((thread) => {
         childThreadIdRef.current = thread.id;
-        if (isMountedRef.current) {
-          setSideChatPreloadFailed(false);
-          onSetThreadId({ tabId: tab.id, threadId: thread.id });
-        } else {
-          deleteSideChatIfUnused(thread.id);
-        }
+        childHasUserMessageRef.current = true;
+        createdInitialMessageThreadIdRef.current = thread.id;
+        onSetThreadId({ tabId: tab.id, threadId: thread.id });
         return thread.id;
-      })
-      .catch((error) => {
-        if (isMountedRef.current) {
-          setSideChatPreloadFailed(true);
-        }
-        throw error;
       })
       .finally(() => {
         createThreadPromiseRef.current = null;
@@ -529,61 +578,54 @@ export function SideChatTabContent({
     canCreateSideChatThread,
     createThread,
     defaultExecutionOptions,
-    deleteSideChatIfUnused,
     onSetThreadId,
     sourceEnvironment,
     sourceThread.id,
     sourceThread.projectId,
     sourceThread.providerId,
     tab.id,
+    tab.sourceSeqEnd,
     tab.title,
   ]);
 
-  useEffect(() => {
-    if (childThreadId !== null || sideChatPreloadFailed) {
-      return;
-    }
-    void ensureSideChatThread().catch(() => undefined);
-  }, [childThreadId, ensureSideChatThread, sideChatPreloadFailed]);
-
   const sendOrQueueSideChatInput = useCallback(
-    async (visibleQuestion: SideChatVisibleTextInput) => {
-      const targetThreadId = await ensureSideChatThread();
-      if (targetThreadId === null) {
-        throw new Error("Side chat is not ready to create yet.");
-      }
+    async (visibleInput: ReturnType<typeof buildSideChatMessageInput>) => {
       const input = buildSideChatMessageInput({
         includeReplyReference:
           !childHasUserMessageRef.current &&
           queuedMessageCountRef.current === 0,
-        question: visibleQuestion.text,
-        questionMentions: visibleQuestion.mentions,
         replyReference,
+        visibleInput,
       });
+      const existingThreadId = childThreadIdRef.current;
+      if (existingThreadId === null) {
+        const createdThreadId = await createSideChatThread(input);
+        if (createdThreadId === null) {
+          throw new Error("Side chat is not ready to create yet.");
+        }
+        return;
+      }
       const displayStatus =
-        childThreadIdRef.current === targetThreadId
-          ? (childThreadQuery.data?.runtime.displayStatus ?? "provisioning")
-          : "provisioning";
+        childThreadQuery.data?.runtime.displayStatus ?? "idle";
       if (shouldQueueSideChatMessage(displayStatus)) {
         await createQueuedMessage.mutateAsync({
-          id: targetThreadId,
+          id: existingThreadId,
           input,
           ...sideChatExecutionRequestFields,
         });
       } else {
         await sendThreadMessage.mutateAsync({
-          id: targetThreadId,
+          id: existingThreadId,
           input,
           mode: "queue-if-active",
           ...sideChatExecutionRequestFields,
         });
       }
-      hasAcceptedUserMessageRef.current = true;
     },
     [
       childThreadQuery.data?.runtime.displayStatus,
+      createSideChatThread,
       createQueuedMessage,
-      ensureSideChatThread,
       replyReference,
       sendThreadMessage,
       sideChatExecutionRequestFields,
@@ -592,14 +634,11 @@ export function SideChatTabContent({
 
   // A side chat hands results back to the main thread per agent message (the
   // "send to main thread" action under each reply) via the cross-thread
-  // `senderThreadId` transport. Gate on idle so a mid-stream partial can't be
-  // posted while a turn is in flight, and on the mutation so a click can't
-  // double-send.
-  const childIsIdle = childThreadQuery.data?.runtime.displayStatus === "idle";
-  const canSendToMain = childIsIdle && !sendThreadMessage.isPending;
+  // `senderThreadId` transport. Keep the action visible and guard the handler
+  // against double-sends while the mutation is in flight.
   const sendMessageToMain = useCallback<ThreadTimelineSendToMainMessageHandler>(
     (target) => {
-      if (childThreadId === null) {
+      if (childThreadId === null || sendThreadMessage.isPending) {
         return;
       }
       sendThreadMessage.mutate({
@@ -611,45 +650,112 @@ export function SideChatTabContent({
     },
     [childThreadId, sendThreadMessage, sourceThread.id],
   );
+  const handleSelectionAddToChat =
+    useCallback<ThreadTimelineSelectionAddToChatHandler>(
+      (text) => {
+        promptDraft.addQuote(text);
+        setComposerFocusNonce((nonce) => nonce + 1);
+      },
+      [promptDraft],
+    );
 
   const sideChatRuntimeDisplayStatus =
     childThreadQuery.data?.runtime.displayStatus ??
-    (childThreadId === null ? "provisioning" : "idle");
-  const isSideChatProvisioning =
-    childThreadId === null ||
-    sideChatRuntimeDisplayStatus === "provisioning" ||
-    sideChatRuntimeDisplayStatus === "starting";
-  const sideChatSubmitMode = SIDE_CHAT_READY_SUBMIT_MODE;
-  const composerPlaceholder = sideChatPreloadFailed
-    ? "Retry side chat..."
-    : isSideChatProvisioning
-      ? "Provisioning side chat..."
-      : "Reply in the side chat…";
-  const handleSubmit = useCallback(() => {
-    const visibleQuestion = visibleTextInputFromSideChatDraft({
-      mentionRanges,
-      message,
-    });
-    if (visibleQuestion === null || isSideChatTurnSubmitting) {
+    "idle";
+  const canSendMessageToMain =
+    !isRunningThreadRuntimeDisplayStatus(sideChatRuntimeDisplayStatus);
+  const isDefaultExecutionOptionsLoading =
+    defaultExecutionOptions === undefined && executionOptionsQuery.isLoading;
+  const isSideChatStopRequested =
+    childThreadId !== null &&
+    (childThreadQuery.data?.status === "stopping" ||
+      (stopThread.isPending && stopThread.variables === childThreadId));
+  const handleStopSideChatThread = useCallback(() => {
+    if (childThreadId === null) {
       return;
     }
-    const submittedMessage = message;
-    const submittedMentionRanges = mentionRanges;
-    setMessage("");
-    setMentionRanges([]);
+    stopThread.mutate(childThreadId);
+  }, [childThreadId, stopThread]);
+  const sideChatSubmitMode = useMemo<FollowUpComposerProps["submitMode"]>(
+    () =>
+      buildSideChatSubmitMode({
+        childThreadId,
+        isDefaultExecutionOptionsLoading,
+        isStopRequested: isSideChatStopRequested,
+        onStop: handleStopSideChatThread,
+        runtimeDisplayStatus: sideChatRuntimeDisplayStatus,
+      }),
+    [
+      childThreadId,
+      handleStopSideChatThread,
+      isDefaultExecutionOptionsLoading,
+      isSideChatStopRequested,
+      sideChatRuntimeDisplayStatus,
+    ],
+  );
+  const isSideChatProvisioning =
+    sideChatRuntimeDisplayStatus === "provisioning" ||
+    sideChatRuntimeDisplayStatus === "starting";
+  const composerPlaceholder = isSideChatStopRequested
+    ? "Stopping side chat..."
+    : isSideChatProvisioning
+        ? "Provisioning side chat..."
+        : "Reply in the side chat…";
+  const handleAttachFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      setAttachmentError(null);
+      const failedFiles: string[] = [];
+      for (const file of files) {
+        try {
+          const uploaded = await uploadPromptAttachment.mutateAsync({
+            projectId: sourceThread.projectId,
+            file,
+          });
+          promptDraft.addAttachment(uploaded);
+        } catch {
+          failedFiles.push(file.name);
+        }
+      }
+      if (failedFiles.length > 0) {
+        setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
+      }
+    },
+    [promptDraft, sourceThread.projectId, uploadPromptAttachment],
+  );
+  const handleSubmit = useCallback(() => {
+    const submittedDraft = currentPromptDraft;
+    const submittedInput = currentPromptDraftInput;
+    if (submittedInput.length === 0 || isSideChatTurnSubmitting) {
+      return;
+    }
+    const shouldShowOptimisticFirstMessage =
+      childThreadIdRef.current === null &&
+      !childHasUserMessageRef.current &&
+      queuedMessageCountRef.current === 0;
+    if (shouldShowOptimisticFirstMessage) {
+      setOptimisticFirstUserRow(
+        buildOptimisticSideChatUserRow({
+          createdAt: Date.now(),
+          input: submittedInput,
+          tabId: tab.id,
+          threadId: childThreadIdRef.current ?? tab.id,
+        }),
+      );
+    }
+    promptDraft.clearIfCurrentMatches(submittedDraft);
+    setAttachmentError(null);
     setIsSideChatTurnSubmitting(true);
-    pendingSubmitCountRef.current += 1;
-    void sendOrQueueSideChatInput(visibleQuestion)
+    void sendOrQueueSideChatInput(submittedInput)
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
         }
-        setMessage((current) =>
-          current.length === 0 ? submittedMessage : current,
-        );
-        setMentionRanges((current) =>
-          current.length === 0 ? submittedMentionRanges : current,
-        );
+        setOptimisticFirstUserRow(null);
+        promptDraft.restoreIfEmpty(submittedDraft);
         appToast.error(
           getMutationErrorMessage({
             error,
@@ -663,23 +769,18 @@ export function SideChatTabContent({
         );
       })
       .finally(() => {
-        pendingSubmitCountRef.current = Math.max(
-          0,
-          pendingSubmitCountRef.current - 1,
-        );
         if (isMountedRef.current) {
           setIsSideChatTurnSubmitting(false);
-        } else {
-          deleteSideChatIfUnused(childThreadIdRef.current);
         }
       });
   }, [
-    deleteSideChatIfUnused,
+    currentPromptDraft,
+    currentPromptDraftInput,
     isSideChatTurnSubmitting,
-    mentionRanges,
-    message,
+    promptDraft,
     sendOrQueueSideChatInput,
     sideChatRuntimeDisplayStatus,
+    tab.id,
   ]);
 
   const queuedMessageActionPending =
@@ -716,6 +817,74 @@ export function SideChatTabContent({
     },
     [childThreadId, isSideChatProvisioning, sendQueuedMessage],
   );
+  const isQueueMutationPending =
+    queuedMessageActionPending || createQueuedMessage.isPending;
+  const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
+    hasPromptDraftInput,
+    isFollowUpSubmitting: isSideChatTurnSubmitting,
+    isQueueMutationPending,
+    queuedMessageCount: queuedMessages.length,
+    runtimeDisplayStatus: sideChatRuntimeDisplayStatus,
+    submitModeKind: sideChatSubmitMode.kind,
+  });
+  const handleModifierSubmit = useCallback(() => {
+    if (!canSubmitModifierShortcut || childThreadId === null) {
+      return;
+    }
+
+    const submittedDraft = currentPromptDraft;
+    const submittedInput = currentPromptDraftInput;
+    if (submittedInput.length === 0) {
+      const nextQueuedMessage = queuedMessages[0];
+      if (nextQueuedMessage) {
+        handleSendQueuedImmediately(nextQueuedMessage.id);
+      }
+      return;
+    }
+
+    const input = buildSideChatMessageInput({
+      includeReplyReference: false,
+      replyReference: null,
+      visibleInput: submittedInput,
+    });
+
+    promptDraft.clearIfCurrentMatches(submittedDraft);
+    setAttachmentError(null);
+    setIsSideChatTurnSubmitting(true);
+    void sendThreadMessage
+      .mutateAsync({
+        id: childThreadId,
+        input,
+        mode: "steer-if-active",
+      })
+      .catch((error) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+        promptDraft.restoreIfEmpty(submittedDraft);
+        appToast.error(
+          getMutationErrorMessage({
+            error,
+            fallbackMessage: "Failed to send side chat message",
+            lifecycleOperation: "send_message",
+          }),
+        );
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setIsSideChatTurnSubmitting(false);
+        }
+      });
+  }, [
+    canSubmitModifierShortcut,
+    childThreadId,
+    currentPromptDraft,
+    currentPromptDraftInput,
+    handleSendQueuedImmediately,
+    promptDraft,
+    queuedMessages,
+    sendThreadMessage,
+  ]);
 
   const handleEditQueuedMessage = useCallback(
     (queuedMessageId: string) => {
@@ -734,8 +903,7 @@ export function SideChatTabContent({
         })
         .then(() => {
           const restoredDraft = queuedInputToDraft(queuedMessage.content);
-          setMessage(restoredDraft.text);
-          setMentionRanges(restoredDraft.mentions);
+          promptDraft.setDraft(restoredDraft);
         })
         .catch((error) => {
           appToast.error(
@@ -752,7 +920,7 @@ export function SideChatTabContent({
           );
         });
     },
-    [childThreadId, deleteQueuedMessage, queuedMessagesById],
+    [childThreadId, deleteQueuedMessage, promptDraft, queuedMessagesById],
   );
 
   const handleDeleteQueuedMessage = useCallback(
@@ -847,74 +1015,67 @@ export function SideChatTabContent({
       // shape without inventing a feature the composer never exercises.
       history: {
         currentDraft: {
-          text: message,
-          mentions: mentionRanges,
-          attachments: [],
+          text: promptDraft.text,
+          mentions: promptDraft.mentions,
+          attachments: promptDraft.attachments,
         },
         entries: [],
         onSelectEntry: noop,
       } satisfies HistoryConfig,
       isFollowUpSubmitting: isSideChatTurnSubmitting,
-      message,
-      mentionRanges,
+      message: promptDraft.text,
+      mentionRanges: promptDraft.mentions,
       onChangeMessage: handleChangeMessage,
-      onModifierSubmit: noop,
+      onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
       promptPlaceholder: composerPlaceholder,
-      canModifierSubmit: false,
+      canModifierSubmit: canSubmitModifierShortcut,
       submitMode: sideChatSubmitMode,
       threadRuntimeDisplayStatus: sideChatRuntimeDisplayStatus,
     }),
     [
+      canSubmitModifierShortcut,
       composerPlaceholder,
       handleChangeMessage,
+      handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
-      mentionRanges,
-      message,
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
       sideChatRuntimeDisplayStatus,
       sideChatSubmitMode,
     ],
   );
 
-  // Built the same shape as the main thread's executionConfig (see
-  // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
-  // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
-  // are display-only and their `onChange` is a no-op. The hook supplies the
-  // inherited display values (provider / model / reasoning / permission options).
-  const {
-    selectedProviderId,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderDisplayName,
-    selectedProviderComposerActions,
-    selectedModel,
-    serviceTier,
-    reasoningLevel,
-    activeModel,
-    modelOptions,
-    modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
-    supportsServiceTier,
-    serviceTierSupportByProvider,
-    isLoadingModels,
-  } = threadCreationOptions;
-  const providerPromptActions = useMemo(
-    () => buildProviderPromptActionProps(selectedProviderComposerActions),
-    [selectedProviderComposerActions],
+  const attachmentsConfig = useMemo<AttachmentsConfig>(
+    () => ({
+      items: promptDraft.attachments,
+      projectId: sourceThread.projectId,
+      isAttaching: uploadPromptAttachment.isPending,
+      error: attachmentError,
+      onAttachFiles: handleAttachFiles,
+      onRemove: promptDraft.removeAttachment,
+    }),
+    [
+      attachmentError,
+      handleAttachFiles,
+      promptDraft.attachments,
+      promptDraft.removeAttachment,
+      sourceThread.projectId,
+      uploadPromptAttachment.isPending,
+    ],
   );
-  const commandSuggestions = useCommandSuggestions({
-    projectId: sourceThread.projectId,
-    providerId: sourceThread.providerId,
-    skillsTrigger: providerPromptActions.skillsTrigger,
-    environmentId: sourceThread.environmentId,
-    query: commandQuery,
-  });
+
   const typeaheadConfig = useMemo<TypeaheadConfig>(
     () => ({
-      mention: SIDE_CHAT_MENTION_TYPEAHEAD,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
       command: {
         trigger: commandSuggestions.trigger,
         suggestions: commandSuggestions.suggestions,
@@ -934,8 +1095,38 @@ export function SideChatTabContent({
       commandSuggestions.loadMore,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
+      promptMentions.isError,
+      promptMentions.isLoading,
+      promptMentions.setQuery,
+      promptMentions.suggestions,
+      resolveMentionLink,
     ],
   );
+
+  // Built the same shape as the main thread's executionConfig (see
+  // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
+  // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
+  // are display-only and their `onChange` is a no-op. The hook supplies the
+  // inherited display values (provider / model / reasoning / permission options).
+  const {
+    selectedProviderId,
+    providerOptions,
+    hasMultipleProviders,
+    selectedProviderDisplayName,
+    selectedModel,
+    serviceTier,
+    reasoningLevel,
+    activeModel,
+    modelOptions,
+    moreModelOptions,
+    modelLoadError,
+    reasoningOptions,
+    permissionModeOptions,
+    supportsPermissionModeSelection,
+    supportsServiceTier,
+    serviceTierSupportByProvider,
+    isLoadingModels,
+  } = threadCreationOptions;
 
   const executionConfig = useMemo<ExecutionControlsProps>(
     () => ({
@@ -949,6 +1140,7 @@ export function SideChatTabContent({
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        moreOptions: moreModelOptions,
         loadError: modelLoadError,
         isLoading: isLoadingModels,
         loadFailed: modelLoadError !== null,
@@ -972,6 +1164,7 @@ export function SideChatTabContent({
       isLoadingModels,
       modelLoadError,
       modelOptions,
+      moreModelOptions,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -1038,59 +1231,13 @@ export function SideChatTabContent({
     );
   }, [isLocalDaemonHost, sourceEnvironment]);
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
-        {hasTriggerMessage ? (
-          // The agent message this side chat replies to, rendered like a steer
-          // message — a "Replying to" header above a left-aligned bubble — so
-          // it's clear which message is in focus and the styling matches the
-          // main timeline.
-          <div className="mx-1 mb-3 flex flex-col items-start gap-1">
-            <span className="text-xs leading-none text-muted-foreground">
-              <Icon
-                name="CornerDownRight"
-                className="mr-1 inline-block size-3 align-middle"
-              />
-              Replying to
-            </span>
-            <div className="max-w-full rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
-              {messageBodyHasQuote(triggerMessageText) ? (
-                <div className="max-h-32 overflow-hidden break-words">
-                  {renderMessageBodyWithQuotes({
-                    mentions: [],
-                    text: triggerMessageText,
-                  })}
-                </div>
-              ) : (
-                <p className="line-clamp-3 whitespace-pre-wrap break-words">
-                  {triggerMessageText}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : null}
-        {childThreadId !== null ? (
-          <SideChatConversation
-            isSideChatTurnSubmitting={isSideChatTurnSubmitting}
-            threadId={childThreadId}
-            onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
-          />
-        ) : sideChatPreloadFailed ? (
-          <TimelineStatusIndicator
-            label="Failed to provision side chat"
-            className="mx-2 mt-4 text-destructive"
-          />
-        ) : (
-          <div className="px-1">
-            <TimelineWorkingIndicator label="Provisioning side chat..." />
-          </div>
-        )}
-      </div>
+  const sideChatFooter = (
+    <div className="relative bg-background">
+      <OverflowFade placement="above" tone="background" />
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
-          attachments={SIDE_CHAT_ATTACHMENTS}
-          stack={queuedMessagesStack}
+          attachments={attachmentsConfig}
+          stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
@@ -1100,8 +1247,79 @@ export function SideChatTabContent({
           typeahead={typeaheadConfig}
           promptActions={providerPromptActions.promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
+          focusEndKey={composerFocusNonce}
         />
       </div>
+    </div>
+  );
+  const sideChatLeadingContent = hasTriggerMessage ? (
+    // The agent message this side chat replies to, rendered like a steer
+    // message — a "Replying to" header above a left-aligned bubble — so
+    // it's clear which message is in focus and the styling matches the
+    // main timeline.
+    <div className="mx-1 mb-2 flex flex-col items-start gap-1">
+      <span className="text-xs leading-none text-muted-foreground">
+        <Icon
+          name="CornerDownRight"
+          className="mr-1 inline-block size-3 align-middle"
+        />
+        Replying to
+      </span>
+      <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
+        {messageBodyHasQuote(triggerMessageText) ? (
+          <div className="max-h-20 overflow-hidden break-words">
+            {renderMessageBodyWithQuotes({
+              mentions: [],
+              text: triggerMessageText,
+            })}
+          </div>
+        ) : (
+          <p className="line-clamp-2 whitespace-pre-wrap break-words">
+            {triggerMessageText}
+          </p>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
+      <BottomAnchoredScrollBody
+        key={childThreadId ?? tab.id}
+        scrollAreaClassName="bg-background"
+        contentClassName="!px-2 !pb-3 !pt-3"
+        maxWidthClassName="max-w-none"
+        footer={sideChatFooter}
+        scrollAnchorThreadId={childThreadId ?? undefined}
+      >
+        {childThreadId !== null ? (
+          <SideChatConversation
+            isSideChatTurnSubmitting={isSideChatTurnSubmitting}
+            leadingContent={sideChatLeadingContent}
+            timeline={displayedChildTimeline}
+            threadId={childThreadId}
+            onSendToMainMessage={
+              canSendMessageToMain ? sendMessageToMain : undefined
+            }
+            onSelectionAddToChat={handleSelectionAddToChat}
+          />
+        ) : (
+          <ThreadTimelineSurface
+            activeThinking={null}
+            leadingContent={sideChatLeadingContent}
+            isThreadTimelinePending={false}
+            timelineError={false}
+            showOngoingIndicator={isSideChatTurnSubmitting}
+            ongoingIndicatorLabel="Starting side chat..."
+            timelineRows={
+              optimisticFirstUserRow === null ? [] : [optimisticFirstUserRow]
+            }
+            threadId={tab.id}
+            threadRuntimeDisplayStatus="starting"
+            workspaceRootPath={undefined}
+          />
+        )}
+      </BottomAnchoredScrollBody>
     </div>
   );
 }

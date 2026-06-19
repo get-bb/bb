@@ -167,6 +167,7 @@ export function Overview() {
             text={shortMessage}
             attachments={null}
             turnRequest={null}
+            showActions={true}
           />
         </TimelineStage>
       </StoryRow>
@@ -185,6 +186,7 @@ export function Overview() {
             text={longMessage}
             attachments={null}
             turnRequest={null}
+            showActions={true}
           />
         </TimelineStage>
       </StoryRow>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -13,6 +14,7 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  PullRequestMergeMethod,
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
@@ -28,6 +30,7 @@ import {
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
+import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -45,6 +48,7 @@ import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
@@ -106,6 +110,10 @@ interface ThreadDetailPromptAreaProps {
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
   onEscapeEmptyPrompt?: () => void;
+  onPullRequestDraft?: () => void;
+  onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
+  onPullRequestReady?: () => void;
+  pullRequestMergeMethod: PullRequestMergeMethod;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -137,6 +145,8 @@ interface ThreadDetailPromptAreaProps {
   goal: ThreadTimelineGoal | null;
   /** Running workflow row from the timeline. Null when no workflow is active. */
   activeWorkflow: TimelineWorkflowWorkRow | null;
+  /** Running backgrounded shell command rows, most recent first. Empty when none. */
+  activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
@@ -172,6 +182,10 @@ export function ThreadDetailPromptArea({
   environmentLabel,
   onCreateNewThreadInWorktree,
   onEscapeEmptyPrompt,
+  onPullRequestDraft,
+  onPullRequestMerge,
+  onPullRequestReady,
+  pullRequestMergeMethod,
   isEnvironmentActionPending,
   pendingInteractions,
   onChangedFileClick,
@@ -184,6 +198,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   goal,
   activeWorkflow,
+  activeBackgroundCommands,
   parentThreadSection,
   childThreadsSection,
   pullRequest,
@@ -268,6 +283,10 @@ export function ThreadDetailPromptArea({
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
+  // The personal project isn't a meaningful label in the footer, so skip it.
+  const projectName = useProjectDisplayName(
+    thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
+  );
   const promptDraft = usePromptDraftStorage({
     kind: "thread",
     projectId,
@@ -286,12 +305,45 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
-    () => (pullRequest ? { pullRequest } : null),
-    [pullRequest],
+    () => {
+      if (!pullRequest) {
+        return null;
+      }
+      const actions =
+        onPullRequestReady ||
+        onPullRequestMerge ||
+        onPullRequestDraft ||
+        isEnvironmentActionPending
+          ? {
+              isPending: isEnvironmentActionPending,
+              ...(onPullRequestReady
+                ? { onMarkReady: onPullRequestReady }
+                : {}),
+              ...(onPullRequestMerge ? { onMerge: onPullRequestMerge } : {}),
+              ...(onPullRequestDraft
+                ? { onConvertToDraft: onPullRequestDraft }
+                : {}),
+              ...(onPullRequestMerge
+                ? { selectedMergeMethod: pullRequestMergeMethod }
+                : {}),
+            }
+          : undefined;
+      return actions ? { pullRequest, actions } : { pullRequest };
+    },
+    [
+      isEnvironmentActionPending,
+      onPullRequestDraft,
+      onPullRequestMerge,
+      onPullRequestReady,
+      pullRequest,
+      pullRequestMergeMethod,
+    ],
   );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
+    useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -314,6 +366,7 @@ export function ThreadDetailPromptArea({
     setPermissionMode,
     activeModel,
     modelOptions,
+    moreModelOptions,
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,
@@ -367,7 +420,6 @@ export function ThreadDetailPromptArea({
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
     sendMessage.isPending ||
-    isEnvironmentActionPending ||
     createQueuedMessage.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
@@ -648,17 +700,9 @@ export function ThreadDetailPromptArea({
   );
 
   const [editFocusNonce, setEditFocusNonce] = useState(0);
-
-  // Focus the composer caret at the end whenever the timeline host appends a
-  // quote ("Add to chat"), so the user can immediately type the reply beneath
-  // the freshly inserted blockquote. Skips the initial mount (nonce starts 0).
-  const previousFocusRequestNonceRef = useRef(composerFocusRequestNonce);
-  useEffect(() => {
-    if (composerFocusRequestNonce !== previousFocusRequestNonceRef.current) {
-      previousFocusRequestNonceRef.current = composerFocusRequestNonce;
-      setEditFocusNonce((nonce) => nonce + 1);
-    }
-  }, [composerFocusRequestNonce]);
+  // Selection quotes and queued-message edits both need the composer caret at
+  // the end of the latest draft; combine their counters into one focus key.
+  const focusEndKey = `${composerFocusRequestNonce}:${editFocusNonce}`;
 
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
@@ -832,6 +876,7 @@ export function ThreadDetailPromptArea({
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        moreOptions: moreModelOptions,
         isLoading: isLoadingModels,
         loadFailed: modelLoadFailed,
         loadError: modelLoadError,
@@ -856,6 +901,7 @@ export function ThreadDetailPromptArea({
       modelLoadFailed,
       modelLoadError,
       modelOptions,
+      moreModelOptions,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -928,6 +974,7 @@ export function ThreadDetailPromptArea({
     () =>
       environmentLabel ? (
         <ThreadEnvironmentSummary
+          projectName={projectName}
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
@@ -941,6 +988,7 @@ export function ThreadDetailPromptArea({
       environmentIcon,
       environmentLabel,
       onCreateNewThreadInWorktree,
+      projectName,
     ],
   );
   const promptStack = useMemo(
@@ -950,6 +998,11 @@ export function ThreadDetailPromptArea({
           workflow={activeWorkflow}
           isExpanded={isWorkflowExpanded}
           onToggle={() => setIsWorkflowExpanded((value) => !value)}
+        />
+        <ThreadBackgroundCommandsCard
+          commands={activeBackgroundCommands}
+          isExpanded={isBackgroundCommandsExpanded}
+          onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
         <ThreadGoalCard
           goal={goal}
@@ -1040,6 +1093,8 @@ export function ThreadDetailPromptArea({
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
+      activeBackgroundCommands,
+      isBackgroundCommandsExpanded,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,
@@ -1071,7 +1126,7 @@ export function ThreadDetailPromptArea({
       stack={promptStack}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
-      focusEndKey={editFocusNonce}
+      focusEndKey={focusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}

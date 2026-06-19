@@ -125,6 +125,10 @@ interface ExistingMigrationRow {
   createdAt: number;
 }
 
+interface LatestAppliedMigrationRow {
+  createdAt: number | null;
+}
+
 interface ExistingTableRow {
   name: string;
 }
@@ -491,6 +495,23 @@ function readAppliedMigrationCreatedAts(db: DbConnection): Set<number> {
   return new Set(rows.map((row) => row.createdAt));
 }
 
+function readLatestAppliedMigrationCreatedAt(db: DbConnection): number | null {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return null;
+  }
+
+  const row = db.$client
+    .prepare<[], LatestAppliedMigrationRow>(
+      `
+        SELECT MAX(created_at) AS createdAt
+        FROM __drizzle_migrations
+      `,
+    )
+    .get();
+
+  return row?.createdAt ?? null;
+}
+
 function requireExpectedAppliedMigration(
   migrations: ExpectedAppliedMigration[],
   tag: string,
@@ -528,6 +549,20 @@ function markMigrationApplied(
       `,
     )
     .run(migration.hash, migration.createdAt);
+}
+
+function applyMigrationStatements(
+  db: DbConnection,
+  migration: ExpectedAppliedMigration,
+): void {
+  const apply = db.$client.transaction(() => {
+    for (const statement of migration.sql) {
+      db.$client.exec(statement);
+    }
+    markMigrationApplied(db, migration);
+  });
+
+  apply();
 }
 
 function hasPublishedTimestampFallback(
@@ -1054,6 +1089,65 @@ function applyReorderedCleanupMigrations(
   }
 }
 
+// 0031 externalized large event JSON and 0032 restored it inline, leaving no
+// persistent schema change. If neither migration started, current event rows
+// already match the final state, so only the migration ledger needs repair.
+function skipEventLargeValuesRoundTripForInlineEvents(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "events") ||
+    tableExists(db, "event_large_values")
+  ) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const largeValuesMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0031_mysterious_zaran",
+  );
+  const restoreMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0032_restore_event_large_values",
+  );
+  if (
+    appliedCreatedAts.has(largeValuesMigration.createdAt) ||
+    appliedCreatedAts.has(restoreMigration.createdAt)
+  ) {
+    return;
+  }
+
+  const popoutChatMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0030_popout_chat_experiments",
+  );
+  const dropWorkflowTablesMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0029_drop_workflow_tables",
+  );
+  const latestAppliedMigrationCreatedAt = readLatestAppliedMigrationCreatedAt(db);
+  if (latestAppliedMigrationCreatedAt === null) {
+    return;
+  }
+
+  if (!appliedCreatedAts.has(popoutChatMigration.createdAt)) {
+    if (
+      latestAppliedMigrationCreatedAt !== dropWorkflowTablesMigration.createdAt
+    ) {
+      return;
+    }
+
+    applyMigrationStatements(db, popoutChatMigration);
+  }
+
+  markMigrationApplied(db, largeValuesMigration);
+  markMigrationApplied(db, restoreMigration);
+}
+
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
   if (!tableExists(db, "__drizzle_migrations")) {
     return;
@@ -1211,6 +1305,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     }
     repairBranchLocalThreadSearchMigrations(db);
+    skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
     drizzleMigrate(db, { migrationsFolder });
     applyReorderedCleanupMigrations(db, migrationsFolder);
   } finally {

@@ -150,6 +150,7 @@ type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
   ExtraProps;
 type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & ExtraProps;
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
+  linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
@@ -323,6 +324,56 @@ function buildLocalFileAwareUrlTransform({
   };
 }
 
+function hasMarkdownFileExtension(path: string): boolean {
+  return /\.(?:md|markdown)$/iu.test(path);
+}
+
+function resolveInlineCodeMarkdownFileHref({
+  codeText,
+  localFileRouting,
+}: {
+  codeText: string;
+  localFileRouting: MarkdownLocalFileLinkRouting | undefined;
+}): string | null {
+  if (
+    localFileRouting === undefined ||
+    codeText.length === 0 ||
+    codeText.trim() !== codeText ||
+    codeText.includes("\n") ||
+    codeText.includes("\r")
+  ) {
+    return null;
+  }
+
+  const absoluteLink = parseLocalFileHref({
+    absoluteLinks: localFileRouting.absoluteLinks,
+    href: codeText,
+  });
+  if (absoluteLink !== null) {
+    return hasMarkdownFileExtension(absoluteLink.path) ? codeText : null;
+  }
+
+  if (localFileRouting.relativeLinks === undefined) {
+    return null;
+  }
+
+  const resolvedHref = resolveRelativeLocalFileHref({
+    href: codeText,
+    ...localFileRouting.relativeLinks,
+  });
+  if (resolvedHref === null) {
+    return null;
+  }
+
+  const resolvedLink = parseLocalFileHref({
+    absoluteLinks: localFileRouting.absoluteLinks,
+    href: resolvedHref,
+  });
+  return resolvedLink !== null && hasMarkdownFileExtension(resolvedLink.path)
+    ? resolvedHref
+    : null;
+}
+
 function MarkdownAnchor({
   children,
   href,
@@ -348,14 +399,16 @@ function MarkdownAnchor({
       return;
     }
 
-    if (isAppRouteHref) {
+    // Let timeline/terminal hosts claim web links first. Absolute app-origin
+    // URLs can still be browser destinations even though they resolve to an
+    // app route.
+    if (linkRouting?.onOpenLink && href && linkRouting.onOpenLink({ href })) {
+      event.preventDefault();
       return;
     }
 
-    // Defer ordinary web-link routing (e.g. opening in the in-app browser) to
-    // the handler, which prevents default only when it takes over the open.
-    if (linkRouting?.onOpenLink && href && linkRouting.onOpenLink({ href })) {
-      event.preventDefault();
+    if (isAppRouteHref) {
+      return;
     }
   };
 
@@ -386,6 +439,7 @@ function MarkdownAnchor({
 function MarkdownCode({
   className: codeClassName,
   children,
+  linkRouting,
   node: _node,
   preferredTheme,
   ...props
@@ -425,6 +479,19 @@ function MarkdownCode({
       </div>
     );
   }
+
+  const markdownFileHref = resolveInlineCodeMarkdownFileHref({
+    codeText,
+    localFileRouting: linkRouting?.localFile,
+  });
+  if (markdownFileHref !== null) {
+    return (
+      <MarkdownAnchor href={markdownFileHref} linkRouting={linkRouting}>
+        {codeText}
+      </MarkdownAnchor>
+    );
+  }
+
   return (
     <code
       className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs"
@@ -621,7 +688,13 @@ function buildMarkdownComponents({
   }
 
   function MarkdownCodeRenderer(props: MarkdownCodeProps) {
-    return <MarkdownCode {...props} preferredTheme={preferredTheme} />;
+    return (
+      <MarkdownCode
+        {...props}
+        linkRouting={linkRouting}
+        preferredTheme={preferredTheme}
+      />
+    );
   }
 
   function MarkdownImage({

@@ -3,7 +3,10 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
+  type PermissionMode,
   type ProjectSource,
+  type ReasoningLevel,
+  type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
@@ -45,6 +48,11 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import {
+  buildForkThreadRequest,
+  FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
+  type ForkThreadCreateSeed,
+} from "@/lib/fork-thread-request";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
@@ -98,6 +106,11 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
+interface ShouldNavigateAfterThreadCreateArgs {
+  isForkDraft: boolean;
+  navigateToThreadAfterCreate: boolean;
+}
+
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
 function readReuseEnvironmentIdFromLocationState(
@@ -106,6 +119,81 @@ function readReuseEnvironmentIdFromLocationState(
   if (!state || typeof state !== "object") return null;
   const candidate = (state as { reuseEnvironmentId?: unknown })
     .reuseEnvironmentId;
+  if (typeof candidate === "string" && candidate.length > 0) return candidate;
+  return null;
+}
+
+export function shouldNavigateAfterThreadCreate({
+  isForkDraft,
+  navigateToThreadAfterCreate,
+}: ShouldNavigateAfterThreadCreateArgs): boolean {
+  return isForkDraft || navigateToThreadAfterCreate;
+}
+
+function readForkThreadCreateSeedFromLocationState(
+  state: unknown,
+): ForkThreadCreateSeed | null {
+  if (!state || typeof state !== "object") return null;
+  const candidate = (state as Record<string, unknown>)[
+    FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY
+  ];
+  if (!candidate || typeof candidate !== "object") return null;
+  const value = candidate as Record<string, unknown>;
+  if (
+    typeof value.environmentId !== "string" ||
+    value.environmentId.length === 0 ||
+    typeof value.model !== "string" ||
+    value.model.length === 0 ||
+    typeof value.permissionMode !== "string" ||
+    value.permissionMode.length === 0 ||
+    typeof value.projectId !== "string" ||
+    value.projectId.length === 0 ||
+    typeof value.providerId !== "string" ||
+    value.providerId.length === 0 ||
+    typeof value.reasoningLevel !== "string" ||
+    value.reasoningLevel.length === 0 ||
+    typeof value.sourceThreadId !== "string" ||
+    value.sourceThreadId.length === 0 ||
+    typeof value.sourceThreadTitle !== "string" ||
+    value.sourceThreadTitle.trim().length === 0
+  ) {
+    return null;
+  }
+  if (
+    value.serviceTier !== undefined &&
+    typeof value.serviceTier !== "string"
+  ) {
+    return null;
+  }
+  if (
+    value.sourceSeqEnd !== undefined &&
+    (typeof value.sourceSeqEnd !== "number" ||
+      !Number.isInteger(value.sourceSeqEnd) ||
+      value.sourceSeqEnd < 0)
+  ) {
+    return null;
+  }
+  return {
+    environmentId: value.environmentId,
+    model: value.model,
+    permissionMode: value.permissionMode as PermissionMode,
+    projectId: value.projectId,
+    providerId: value.providerId,
+    reasoningLevel: value.reasoningLevel as ReasoningLevel,
+    serviceTier: value.serviceTier as ServiceTier | undefined,
+    sourceSeqEnd: value.sourceSeqEnd as number | undefined,
+    sourceThreadId: value.sourceThreadId,
+    sourceThreadTitle: value.sourceThreadTitle.trim(),
+  };
+}
+
+// react-router's location.state is freeform unknown — narrow it here at the
+// system boundary before reading.
+export function readInitialPromptFromLocationState(
+  state: unknown,
+): string | null {
+  if (!state || typeof state !== "object") return null;
+  const candidate = (state as { initialPrompt?: unknown }).initialPrompt;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return null;
 }
@@ -309,6 +397,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
+  const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
+    readForkThreadCreateSeedFromLocationState(location.state),
+  );
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
@@ -395,6 +486,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     clearReuseEnvironment,
     activeModel,
     modelOptions,
+    moreModelOptions,
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,
@@ -407,22 +499,59 @@ export function RootComposeView(props: RootComposeViewProps) {
   const executionInputSources = creationOptions.executionInputSources;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
-  // (the "+" affordance on a worktree) seeds the env picker into reuse mode
-  // for that env. This is single-use — clear location.state after applying so
-  // a refresh starts from persisted root-compose selection.
+  // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
+  // that env. A fork seed also pins the first create request to the source
+  // thread/environment. This is single-use — clear location.state after applying
+  // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
       location.state,
     );
-    if (reuseEnvironmentId === null) return;
+    const nextForkSeed = readForkThreadCreateSeedFromLocationState(
+      location.state,
+    );
+    if (reuseEnvironmentId === null && nextForkSeed === null) return;
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
+    }
+    if (nextForkSeed !== null) {
+      setForkSeed(nextForkSeed);
+      setSelectedProviderId(nextForkSeed.providerId);
+      setSelectedModel(nextForkSeed.model);
+      setReasoningLevel(nextForkSeed.reasoningLevel);
+      setPermissionMode(nextForkSeed.permissionMode);
+      setServiceTier(nextForkSeed.serviceTier);
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: null,
     });
-  }, [location.search, location.state, navigate, setEnvironmentSelectionValue]);
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    setEnvironmentSelectionValue,
+    setPermissionMode,
+    setReasoningLevel,
+    setSelectedModel,
+    setSelectedProviderId,
+    setServiceTier,
+  ]);
+
+  // Seed the composer from navigation state `initialPrompt` (e.g. "Create via
+  // chat" from Automations). Single-use: applied only when the current draft is
+  // empty so it never clobbers an in-progress draft, then cleared from
+  // location.state so a refresh starts from the persisted draft.
+  const seedInitialPrompt = promptDraft.restoreIfEmpty;
+  useEffect(() => {
+    const initialPrompt = readInitialPromptFromLocationState(location.state);
+    if (initialPrompt === null) return;
+    seedInitialPrompt({ text: initialPrompt, mentions: [], attachments: [] });
+    navigate(getRootComposeRoutePath() + location.search, {
+      replace: true,
+      state: { focusPrompt: true },
+    });
+  }, [location.search, location.state, navigate, seedInitialPrompt]);
 
   // Worktree picker options come from the project's unarchived threads.
   // Threads on managed or unmanaged worktrees with a non-null environmentId
@@ -627,6 +756,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     (nextProjectId) => {
       const nextRootComposeProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
       if (nextRootComposeProjectId === projectId) return;
+      setForkSeed(null);
       setRootComposeProjectId(nextRootComposeProjectId);
     },
     [projectId, setRootComposeProjectId],
@@ -687,32 +817,53 @@ export function RootComposeView(props: RootComposeViewProps) {
     if (
       submittedInput.length === 0 ||
       createThread.isPending ||
-      !selectedEnvironment
+      (forkSeed === null && !selectedEnvironment)
     ) {
       return;
     }
 
     try {
-      const thread = await createThread.mutateAsync({
-        input: submittedInput,
-        projectId,
-        providerId: selectedProviderId,
-        model: selectedThreadModel,
-        ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-        reasoningLevel,
-        permissionMode,
-        executionInputSources,
-        environment: selectedEnvironment,
+      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+        isForkDraft: forkSeed !== null,
+        navigateToThreadAfterCreate,
       });
+      const request =
+        forkSeed !== null
+          ? buildForkThreadRequest({
+              ...forkSeed,
+              input: submittedInput,
+              model: selectedThreadModel,
+              permissionMode,
+              reasoningLevel,
+              serviceTier: supportsServiceTier ? serviceTier : undefined,
+            })
+          : selectedEnvironment !== null
+            ? {
+                input: submittedInput,
+                projectId,
+                providerId: selectedProviderId,
+                model: selectedThreadModel,
+                ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
+                reasoningLevel,
+                permissionMode,
+                executionInputSources,
+                environment: selectedEnvironment,
+              }
+            : null;
+      if (request === null) {
+        return;
+      }
+      const thread = await createThread.mutateAsync(request);
       setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
+      setForkSeed(null);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (props.surface === "popout") {
         props.onThreadCreated({
           projectId: thread.projectId,
           threadId: thread.id,
         });
-      } else if (navigateToThreadAfterCreate) {
+      } else if (shouldNavigateToCreatedThread) {
         navigate(
           getThreadRoutePath({
             projectId: thread.projectId,
@@ -727,6 +878,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     clearReuseEnvironment,
     createThread,
     executionInputSources,
+    forkSeed,
     navigate,
     navigateToThreadAfterCreate,
     permissionMode,
@@ -744,10 +896,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   const isSubmitDisabled =
     !selectedProviderId ||
     isLoadingModels ||
+    modelLoadError?.code === "missing_executable" ||
+    modelLoadError?.code === "auth_required" ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||
-    !selectedEnvironment ||
+    (forkSeed === null && !selectedEnvironment) ||
     (branchEnvironmentMode === "local" &&
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
@@ -882,13 +1036,14 @@ export function RootComposeView(props: RootComposeViewProps) {
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
-        onChange: setSelectedProviderId,
+        onChange: forkSeed === null ? setSelectedProviderId : undefined,
         hasMultiple: hasMultipleProviders,
       },
       model: {
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        moreOptions: moreModelOptions,
         isLoading: isLoadingModels,
         loadFailed: modelLoadFailed,
         loadError: modelLoadError,
@@ -908,11 +1063,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [
       activeModel,
+      forkSeed,
       hasMultipleProviders,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
       modelOptions,
+      moreModelOptions,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -927,15 +1084,18 @@ export function RootComposeView(props: RootComposeViewProps) {
       supportsServiceTier,
     ],
   );
+  const isForkDraft = forkSeed !== null;
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
       onChange: setEnvironmentSelectionValue,
       sources: projectSources,
       reuseDisabled: reuseThreadOptions.length === 0,
+      disabled: isForkDraft,
     }),
     [
       effectiveEnvironmentValue,
+      isForkDraft,
       projectSources,
       reuseThreadOptions.length,
       setEnvironmentSelectionValue,
@@ -952,8 +1112,14 @@ export function RootComposeView(props: RootComposeViewProps) {
           ? parsedEnvironment.environmentId
           : null,
       onChange: handleWorktreeChange,
+      disabled: isForkDraft,
     };
-  }, [parsedEnvironment, reuseThreadOptions, setEnvironmentSelectionValue]);
+  }, [
+    isForkDraft,
+    parsedEnvironment,
+    reuseThreadOptions,
+    setEnvironmentSelectionValue,
+  ]);
   const branchConfig = useMemo(
     () => ({
       value:
@@ -982,6 +1148,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       optionDisabledTitle: branchUiState.mutationBlocker?.title,
       createDisabledReason: branchUiState.mutationBlocker?.label,
       createDisabledTitle: branchUiState.mutationBlocker?.title,
+      disabled: isForkDraft,
       onChange: handleBranchChange,
       onClear: handleClearBranch,
       onCreate: handleCreateBranchFromSeed,
@@ -993,6 +1160,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeBranchesQuery.isFetching,
       branchOptions,
       branchEnvironmentMode,
+      isForkDraft,
       priorityBranchOptions,
       remoteBranchOptions,
       branchUiState.currentBranch,
@@ -1025,37 +1193,41 @@ export function RootComposeView(props: RootComposeViewProps) {
       supportsPermissionModeSelection,
     ],
   );
+  const handleCancelForkDraft = useCallback(() => {
+    setForkSeed(null);
+    window.requestAnimationFrame(() => {
+      promptBoxRef.current?.focusEnd();
+    });
+  }, []);
 
-  const reuseHeader = useMemo(() => {
-    if (parsedEnvironment?.type !== "reuse") return null;
+  const promptHeader = useMemo(() => {
+    if (forkSeed === null) return null;
     return (
       <div className="flex">
-        {/* `-ml-1.5` shifts the pill 6px left so its GitBranch icon column
-            lines up with the prompt controls below the card. */}
-        <button
-          type="button"
-          onClick={clearReuseEnvironment}
-          title="Stop reusing and start a regular new thread"
-          aria-label="Stop reusing worktree"
-          className="group -ml-1.5 inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        {/* `-ml-1.5` shifts the pill 6px left so its icon column lines up
+            with the prompt controls below the card. */}
+        <div
+          aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
+          title={`Forking ${forkSeed.sourceThreadTitle}`}
+          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
         >
-          <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
-            <Icon
-              name="GitBranch"
-              className="size-3.5 transition-opacity group-hover:opacity-0"
-              aria-hidden
-            />
-            <Icon
-              name="X"
-              className="absolute size-3.5 opacity-0 transition-opacity group-hover:opacity-100"
-              aria-hidden
-            />
+          <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            Forking {forkSeed.sourceThreadTitle}
           </span>
-          Reusing existing worktree
-        </button>
+          <button
+            type="button"
+            aria-label="Cancel fork"
+            title="Cancel fork"
+            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={handleCancelForkDraft}
+          >
+            <Icon name="X" className="size-3" aria-hidden />
+          </button>
+        </div>
       </div>
     );
-  }, [clearReuseEnvironment, parsedEnvironment]);
+  }, [forkSeed, handleCancelForkDraft]);
 
   if (!hasSidebarNavigationSettled) {
     return (
@@ -1096,7 +1268,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         branch: branchConfig,
         worktree: worktreeConfig,
         permission: permissionConfig,
-        header: reuseHeader,
+        header: promptHeader,
       }}
       project={{
         projects: projectOptions,
@@ -1109,6 +1281,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             !quickCreateProject.isAvailable || quickCreateProject.isCreating,
           isCreating: quickCreateProject.isCreating,
         },
+        disabled: isForkDraft,
       }}
       execution={executionConfig}
     />

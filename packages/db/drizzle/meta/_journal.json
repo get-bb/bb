@@ -288,6 +288,13 @@
       "when": 1781660000002,
       "tag": "0040_thread_search_rowid_fts",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1781660000003,
+      "tag": "0041_add_automations",
+      "breakpoints": true
     }
   ]
 }

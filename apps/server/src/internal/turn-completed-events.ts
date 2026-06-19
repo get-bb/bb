@@ -1,4 +1,8 @@
-import { getThread } from "@bb/db";
+import {
+  closeAutomationRun,
+  getRunningAutomationRunByThread,
+  getThread,
+} from "@bb/db";
 import type {
   ThreadEvent,
   ThreadLifecycleEvent,
@@ -54,5 +58,39 @@ export function applyTurnCompletedEvent(
     });
   }
 
+  if (nextStatus) {
+    closeAutomationRunForSettledThread(deps, payload);
+  }
+
   return { nextStatus, thread };
+}
+
+/**
+ * When a settled thread is the run artifact of an agent-mode automation, close
+ * its still-running run row with the terminal turn status and notify the project.
+ */
+function closeAutomationRunForSettledThread(
+  deps: Pick<AppDeps, "db" | "hub">,
+  payload: Extract<ThreadEvent, { type: "turn/completed" }>,
+): void {
+  const run = getRunningAutomationRunByThread(deps.db, payload.threadId);
+  if (!run) {
+    return;
+  }
+  const closed = closeAutomationRun(deps.db, {
+    runId: run.id,
+    status: payload.status === "completed" ? "succeeded" : "failed",
+    error: payload.status === "completed" ? null : `Turn ${payload.status}`,
+    threadId: payload.threadId,
+    now: Date.now(),
+  });
+  if (closed) {
+    const thread = getThread(deps.db, payload.threadId);
+    if (thread) {
+      deps.hub.notifyProject(thread.projectId, [
+        "automations-changed",
+        "automation-runs-changed",
+      ]);
+    }
+  }
 }

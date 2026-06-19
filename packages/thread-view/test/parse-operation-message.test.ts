@@ -71,36 +71,36 @@ function ownershipTitle(
   return operationTitleFor(row, threadName);
 }
 
-describe("parseOperationMessage Family-A thread-named titles", () => {
+describe("parseOperationMessage operation titles", () => {
   describe("thread-provisioning", () => {
-    it("interpolates the thread name across all lifecycle states", () => {
+    it("keeps self-scoped lifecycle titles free of the current thread name", () => {
       expect(provisioningTitle("active", THREAD_NAME)).toBe(
-        "Provisioning Fix auth bug",
+        "Provisioning thread",
       );
       expect(provisioningTitle("completed", THREAD_NAME)).toBe(
-        "Fix auth bug provisioned",
+        "Provisioned thread",
       );
       expect(provisioningTitle("failed", THREAD_NAME)).toBe(
-        "Fix auth bug failed to provision",
+        "Provisioning thread failed",
       );
       expect(provisioningTitle("cancelled", THREAD_NAME)).toBe(
-        "Fix auth bug provisioning stopped",
+        "Provisioning thread interrupted",
       );
     });
 
-    it("falls back to a bare verb when the thread is unnamed", () => {
+    it("does not depend on whether the thread is named", () => {
       expect(provisioningTitle("active", "")).toBe("Provisioning thread");
-      expect(provisioningTitle("completed", "")).toBe("Provisioned");
+      expect(provisioningTitle("completed", "")).toBe("Provisioned thread");
     });
   });
 
   describe("thread-interrupted", () => {
-    it("names the thread for manual-stop and host-daemon-restarted", () => {
+    it("does not name or link back to the current thread", () => {
       expect(interruptedTitle("manual-stop", THREAD_NAME)).toBe(
-        "Fix auth bug stopped manually",
+        "Stopped manually",
       );
       expect(interruptedTitle("host-daemon-restarted", THREAD_NAME)).toBe(
-        "Fix auth bug stopped — host daemon restarted",
+        "Stopped — host daemon restarted",
       );
     });
   });
@@ -144,7 +144,7 @@ describe("parseOperationMessage Family-A thread-named titles", () => {
     });
   });
 
-  describe("post-hoc overrides keep the thread name", () => {
+  describe("post-hoc overrides stay scoped to the current thread", () => {
     function pendingProvisioning(): EventProjectionOperationMessage {
       const row = factory().threadProvisioning({
         status: "active",
@@ -160,19 +160,19 @@ describe("parseOperationMessage Family-A thread-named titles", () => {
       return message;
     }
 
-    it("interruptOperationMessage re-interpolates the name", () => {
+    it("interruptOperationMessage does not add the current thread name", () => {
       const message = pendingProvisioning();
-      interruptOperationMessage(message, THREAD_NAME);
-      expect(message.title).toBe("Fix auth bug provisioning interrupted");
+      interruptOperationMessage(message);
+      expect(message.title).toBe("Provisioning thread interrupted");
     });
 
-    it("finalizeOperationMessage on error re-interpolates the name", () => {
+    it("finalizeOperationMessage on error does not add the current thread name", () => {
       const message = pendingProvisioning();
       finalizeOperationMessage(message, {
         threadStatus: "error",
         threadName: THREAD_NAME,
       });
-      expect(message.title).toBe("Fix auth bug failed to provision");
+      expect(message.title).toBe("Provisioning thread failed");
     });
   });
 });

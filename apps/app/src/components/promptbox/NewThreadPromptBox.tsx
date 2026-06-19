@@ -57,6 +57,7 @@ export interface NewThreadEnvironmentConfig {
   /** When true, the picker's "Reuse existing worktree" entry is disabled.
    * Caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
+  disabled?: boolean;
 }
 
 export interface NewThreadBranchConfig {
@@ -81,6 +82,7 @@ export interface NewThreadBranchConfig {
   onOpenChange?: (open: boolean) => void;
   onSearchQueryChange?: (query: string) => void;
   onCreateBaseChange?: (value: string) => void;
+  disabled?: boolean;
   /**
    * When provided, the picker exposes a "Create new branch" item. Only set
    * for `host:local` (work locally / on host). Managed-worktree mode uses
@@ -95,6 +97,7 @@ export interface NewThreadWorktreeConfig {
    * worktree has been chosen yet. */
   value: string | null;
   onChange: (environmentId: string) => void;
+  disabled?: boolean;
 }
 
 export interface NewThreadProjectConfig {
@@ -108,6 +111,7 @@ export interface NewThreadProjectConfig {
    * (project is required). */
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
+  disabled?: boolean;
 }
 
 export interface NewThreadModeConfig {
@@ -116,7 +120,7 @@ export interface NewThreadModeConfig {
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
   /** Slot rendered inside the prompt box card, above the text area.
-   * Used by RootComposeView to surface the reuse-worktree pill. */
+   * Used by RootComposeView to surface contextual creation state. */
   header?: ReactNode;
 }
 
@@ -254,6 +258,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
               onChange={project.onChange}
               allowNoProject={project.allowNoProject ?? false}
               createProject={project.createProject}
+              disabled={project.disabled}
               className="shrink-0"
             />
           ) : null}
@@ -301,6 +306,7 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
         host={environment.host}
         isLocal={environment.isLocal}
         reuseDisabled={environment.reuseDisabled}
+        disabled={environment.disabled}
         className="shrink-0"
         muted
       />
@@ -325,6 +331,7 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
           optionDisabledTitle={branch.optionDisabledTitle}
           createDisabledReason={branch.createDisabledReason}
           createDisabledTitle={branch.createDisabledTitle}
+          disabled={branch.disabled}
           onChange={branch.onChange}
           onClear={branch.onClear}
           onOpenChange={branch.onOpenChange}
@@ -339,6 +346,7 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
           options={worktree.options}
           value={worktree.value}
           onChange={worktree.onChange}
+          disabled={worktree.disabled}
         />
       ) : null}
     </>
@@ -352,6 +360,7 @@ export interface NewThreadConnectedEnvironmentConfig {
   /** When true, the "Reuse existing worktree" entry in the env picker is
    * disabled — caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
+  disabled?: boolean;
 }
 
 export interface NewThreadConnectedBranchConfig {
@@ -375,6 +384,7 @@ export interface NewThreadConnectedBranchConfig {
   onOpenChange?: (open: boolean) => void;
   onSearchQueryChange?: (query: string) => void;
   onCreateBaseChange?: (value: string) => void;
+  disabled?: boolean;
   onCreate: () => void;
 }
 
@@ -461,6 +471,7 @@ function ConnectedThreadModeBranch({
       onOpenChange: branch.onOpenChange,
       onSearchQueryChange: branch.onSearchQueryChange,
       onCreateBaseChange: branch.onCreateBaseChange,
+      disabled: branch.disabled,
       ...(allowCreate ? { onCreate: branch.onCreate } : {}),
     };
   }, [allowCreate, threadConfig.branch]);

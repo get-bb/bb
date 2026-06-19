@@ -17,7 +17,7 @@ describe("bb guide command output", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, providers, projects.",
+      "Available: threads, environments, providers, projects, automations.",
     );
   });
 });

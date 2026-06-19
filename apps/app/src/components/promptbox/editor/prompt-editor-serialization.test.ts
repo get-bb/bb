@@ -3,7 +3,10 @@ import { getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
 import type { PromptTextMention } from "@bb/domain";
-import { PromptMentionExtension } from "./prompt-mention-extension";
+import {
+  PromptMentionExtension,
+  promptMentionArgumentHintPlaceholder,
+} from "./prompt-mention-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
@@ -110,7 +113,7 @@ describe("prompt editor serialization", () => {
   it("builds command mention resources from provider command suggestions", () => {
     expect(
       promptCommandResourceFromSuggestion({
-        trigger: "$",
+        trigger: "/",
         suggestion: {
           kind: "command",
           name: "review",
@@ -122,7 +125,7 @@ describe("prompt editor serialization", () => {
       }),
     ).toEqual({
       kind: "command",
-      trigger: "$",
+      trigger: "/",
       name: "review",
       source: "skill",
       origin: "user",
@@ -132,14 +135,14 @@ describe("prompt editor serialization", () => {
   });
 
   it("serializes a selected skill as a pill without materializing argument hint text", () => {
-    const text = "$review ";
+    const text = "/review ";
     const mentions: PromptTextMention[] = [
       {
         start: 0,
-        end: "$review".length,
+        end: "/review".length,
         resource: {
           kind: "command",
-          trigger: "$",
+          trigger: "/",
           name: "review",
           source: "skill",
           origin: "user",
@@ -154,10 +157,46 @@ describe("prompt editor serialization", () => {
         type: "mention",
         attrs: {
           resource: mentions[0].resource,
-          serializedText: "$review",
+          serializedText: "/review",
         },
       },
       { type: "text", text: " " },
     ]);
+  });
+
+  it("does not render argument hint placeholders for any command source", () => {
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "/",
+        name: "review",
+        source: "skill",
+        origin: "user",
+        label: "review",
+        argumentHint: "<files>",
+      }),
+    ).toBeNull();
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "/",
+        name: "frontend:component",
+        source: "command",
+        origin: "project",
+        label: "frontend:component",
+        argumentHint: " $ARGUMENTS ",
+      }),
+    ).toBeNull();
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "/",
+        name: "note",
+        source: "command",
+        origin: "user",
+        label: "note",
+        argumentHint: "<note-path>",
+      }),
+    ).toBeNull();
   });
 });

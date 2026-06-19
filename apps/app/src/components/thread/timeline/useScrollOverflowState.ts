@@ -33,6 +33,16 @@ export interface ScrollOverflowStateBinding<TElement extends HTMLElement>
   belowOverflow: boolean;
 }
 
+export interface UseScrollOverflowStateOptions {
+  /**
+   * Adds a measurement fallback for compact scroll regions whose overflow
+   * affordance must appear immediately on mount. IntersectionObserver remains
+   * the primary path; this fallback covers environments where sentinel
+   * intersections are unavailable or stale until the user scrolls.
+   */
+  measureOverflow?: boolean;
+}
+
 interface OverflowFlags {
   above: boolean;
   below: boolean;
@@ -40,7 +50,9 @@ interface OverflowFlags {
 
 export function useScrollOverflowState<
   TElement extends HTMLElement,
->(): ScrollOverflowStateBinding<TElement> {
+>(
+  options: UseScrollOverflowStateOptions = {},
+): ScrollOverflowStateBinding<TElement> {
   const scrollRef = useRef<TElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
@@ -56,6 +68,65 @@ export function useScrollOverflowState<
         : next,
     );
   }, []);
+
+  useEffect(() => {
+    if (!options.measureOverflow || typeof window === "undefined") {
+      return;
+    }
+
+    const scroll = scrollRef.current;
+    if (!scroll) {
+      return;
+    }
+
+    let frame: number | null = null;
+    const measure = () => {
+      frame = null;
+      applyFlags({
+        above: scroll.scrollTop > 1,
+        below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
+      });
+    };
+    const scheduleMeasure = () => {
+      if (frame !== null) return;
+      frame =
+        typeof window.requestAnimationFrame === "function"
+          ? window.requestAnimationFrame(measure)
+          : window.setTimeout(measure, 0);
+    };
+
+    scheduleMeasure();
+    scroll.addEventListener("scroll", scheduleMeasure, { passive: true });
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleMeasure);
+    resizeObserver?.observe(scroll);
+
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(scheduleMeasure);
+    mutationObserver?.observe(scroll, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    return () => {
+      if (frame !== null) {
+        if (typeof window.cancelAnimationFrame === "function") {
+          window.cancelAnimationFrame(frame);
+        } else {
+          window.clearTimeout(frame);
+        }
+      }
+      scroll.removeEventListener("scroll", scheduleMeasure);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [applyFlags, options.measureOverflow]);
 
   useEffect(() => {
     const scroll = scrollRef.current;

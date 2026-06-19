@@ -36,6 +36,14 @@ export function createThreadId(): string {
   return createId("thr");
 }
 
+export function createAutomationId(): string {
+  return createId("auto");
+}
+
+export function createAutomationRunId(): string {
+  return createId("arun");
+}
+
 export function createThreadProvisioningId(): string {
   return createId("tpv");
 }

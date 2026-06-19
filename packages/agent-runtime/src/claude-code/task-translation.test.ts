@@ -481,4 +481,88 @@ describe("claude-code background task translation", () => {
     expect(reopenedStarted).toHaveLength(1);
     expect(backgroundTaskItem(reopenedStarted[0]!).id).toBe("task:wu7ol9ras#2");
   });
+
+  it("materializes a backgrounded shell command (task_type local_bash)", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    const started = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "bmn5wv33k",
+        tool_use_id: "toolu_bash_1",
+        description: "Count ticks from 1 to 6 with 1 second delays",
+        task_type: "local_bash",
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      context,
+    );
+    const startedTask = collectTaskEvents(started);
+    expect(startedTask).toHaveLength(1);
+    expect(startedTask[0]!.type).toBe("item/started");
+    const startedItem = backgroundTaskItem(startedTask[0]!);
+    expect(startedItem).toMatchObject({
+      id: "task:bmn5wv33k",
+      taskType: "local_bash",
+      description: "Count ticks from 1 to 6 with 1 second delays",
+      status: "pending",
+      taskStatus: "running",
+      skipTranscript: false,
+      parentToolCallId: "toolu_bash_1",
+    });
+    // A shell command carries no workflow phase/agent tree.
+    expect(startedItem.workflow).toBeUndefined();
+    expect(startedItem.workflowName).toBeUndefined();
+
+    // The terminal notification settles the row as completed with the provider
+    // summary (which embeds the exit code).
+    const notified = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "bmn5wv33k",
+        tool_use_id: "toolu_bash_1",
+        status: "completed",
+        output_file: "/tmp/tasks/bmn5wv33k.output",
+        summary:
+          'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
+        uuid: "u-2",
+        session_id: "s-1",
+      },
+      context,
+    );
+    const completed = notified.filter(
+      (event) => event.type === "item/backgroundTask/completed",
+    );
+    expect(completed).toHaveLength(1);
+    expect(backgroundTaskItem(completed[0]!)).toMatchObject({
+      id: "task:bmn5wv33k",
+      taskType: "local_bash",
+      status: "completed",
+      taskStatus: "completed",
+      summary:
+        'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
+    });
+  });
+
+  it("does not materialize non-shell, non-workflow task types (e.g. subagents)", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "sub-1",
+        tool_use_id: "toolu_sub_1",
+        description: "background subagent",
+        task_type: "local_subagent",
+        subagent_type: "Explore",
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+    expect(collectTaskEvents(events)).toHaveLength(0);
+  });
 });

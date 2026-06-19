@@ -49,6 +49,7 @@ import {
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
@@ -64,15 +65,18 @@ import {
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
+  buildChronologicalThreadList,
   buildProjectThreadGroups,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
+  type ThreadComparator,
 } from "./projectThreadGroups";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+  SIDEBAR_ROW_SELECTED_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -103,6 +107,7 @@ export interface ProjectRowProps {
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
+  compareThreads: ThreadComparator;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   isLocalPathInvalid: boolean;
@@ -120,10 +125,22 @@ export interface ProjectRowProps {
 export interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
+  compareThreads: ThreadComparator;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
+  onProjectSelect?: () => void;
+  onToggleThreadCollapsed: (threadId: string) => void;
+  onToggleEnvironmentCollapsed: (environmentId: string) => void;
+}
+
+export interface ChronologicalThreadTreeProps {
+  threadListState: ProjectThreadListState;
+  compareThreads: ThreadComparator;
+  selectedThreadId?: string;
+  collapsedThreadIds: Set<string>;
+  collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -349,7 +366,6 @@ function getThreadRowOptions({
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
-    isEnvGrouped,
   };
 
   if (!isParent) {
@@ -408,7 +424,7 @@ function getThreadNodeStickyLevel({
 function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
   return (
     <span
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline opacity-40"
+      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline opacity-70"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -420,7 +436,7 @@ function ThreadTreeLineContinuation({
 }: ThreadTreeLineContinuationProps) {
   return (
     <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-40"
+      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-70"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -571,6 +587,7 @@ function EnvironmentThreadGroupHeaderActions({
             title="Worktree actions"
             className={cn(
               "rounded-md p-0 text-muted-foreground",
+              "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
             )}
           >
@@ -633,13 +650,7 @@ function EnvironmentThreadGroupHeader({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const environmentName = representativeThread.environmentName;
   const branchName = representativeThread.environmentBranchName;
-  const headerTitle = environmentName
-    ? branchName
-      ? `${environmentName} (${branchName})`
-      : environmentName
-    : branchName
-      ? `Worktree: ${branchName}`
-      : "Worktree";
+  const displayName = environmentName || branchName || "Worktree";
   const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
   // glyph (pending > working > unread). Expanded: the children show their own
@@ -666,33 +677,27 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center justify-center",
-            COARSE_POINTER_GLYPH_BOX_CLASS,
-          )}
+      <span
+        className={cn(
+          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
+          COARSE_POINTER_GLYPH_BOX_CLASS,
+        )}
+        aria-hidden="true"
+      >
+        <Icon
+          name={iconName}
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
-        >
-          <Icon
-            name={iconName}
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
+        />
+      </span>
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
         <span className="min-w-0 truncate">
-          <span>{environmentName ?? "Worktree"}</span>
-          {branchName ? (
-            <>
-              <span>{environmentName ? " · " : ": "}</span>
-              <span>{branchName}</span>
-            </>
-          ) : null}
+          <span>{displayName}</span>
         </span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
-          expandLabel={`Expand ${headerTitle} threads`}
-          collapseLabel={`Collapse ${headerTitle} threads`}
+          expandLabel={`Expand ${displayName} threads`}
+          collapseLabel={`Collapse ${displayName} threads`}
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
@@ -747,7 +752,7 @@ function EnvironmentThreadGroupHeader({
         level={stickyLevel}
         className={className}
         style={style}
-        title={headerTitle}
+        title={displayName}
       >
         {content}
       </SidebarStickyTier>
@@ -755,7 +760,7 @@ function EnvironmentThreadGroupHeader({
   }
 
   return (
-    <div className={className} style={style} title={headerTitle}>
+    <div className={className} style={style} title={displayName}>
       {content}
     </div>
   );
@@ -1034,6 +1039,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
+  compareThreads,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1047,8 +1053,8 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () => buildProjectThreadGroups(projectThreads),
-    [projectThreads],
+    () => buildProjectThreadGroups(projectThreads, compareThreads),
+    [compareThreads, projectThreads],
   );
 
   if (threadListState.status === "loading") {
@@ -1112,12 +1118,94 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   );
 });
 
+function getChronologicalItemProjectId(item: ProjectThreadItem): string {
+  return item.kind === "thread"
+    ? item.node.thread.projectId
+    : item.group.nodes[0].thread.projectId;
+}
+
+// Flat "All Threads" bucket for chronological mode: one top-level row per
+// non-pinned thread across all projects, globally ordered by the chosen
+// comparator (no parent/child nesting or worktree grouping, so nothing hides
+// behind a collapsed parent). Derives projectId per row from its own thread so
+// cross-project rows still route correctly.
+export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
+  threadListState,
+  compareThreads,
+  selectedThreadId,
+  collapsedThreadIds,
+  collapsedEnvironmentIds,
+  onProjectSelect,
+  onToggleThreadCollapsed,
+  onToggleEnvironmentCollapsed,
+}: ChronologicalThreadTreeProps) {
+  const threads =
+    threadListState.status === "ready"
+      ? threadListState.threads
+      : EMPTY_PROJECT_THREADS;
+  const rootItems = useMemo(
+    () => buildChronologicalThreadList(threads, compareThreads),
+    [threads, compareThreads],
+  );
+
+  if (threadListState.status === "loading") {
+    return (
+      <div className="group-data-[collapsible=icon]:hidden">
+        <SidebarMenuSkeleton />
+      </div>
+    );
+  }
+
+  if (threads.length === 0) {
+    return (
+      <EmptyState
+        message={
+          threadListState.status === "unavailable"
+            ? "Threads unavailable"
+            : "No threads"
+        }
+        icon={getProjectThreadTreeEmptyStateIcon("section")}
+        className={getProjectThreadTreeEmptyStateClassName("section")}
+        iconClassName="size-3.5"
+        messageClassName={getProjectThreadTreeEmptyStateMessageClassName(
+          "section",
+        )}
+      />
+    );
+  }
+
+  return (
+    <ProjectThreadTreeGroup variant="section">
+      {rootItems.map((item) => (
+        <ThreadTreeItemRow
+          key={
+            item.kind === "thread"
+              ? `thread:${item.node.thread.id}`
+              : `env:${item.group.environmentId}`
+          }
+          projectId={getChronologicalItemProjectId(item)}
+          item={item}
+          depthOffset={0}
+          selectedThreadId={selectedThreadId}
+          collapsedThreadIds={collapsedThreadIds}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          variant="section"
+          onProjectSelect={onProjectSelect}
+          onToggleThreadCollapsed={onToggleThreadCollapsed}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      ))}
+    </ProjectThreadTreeGroup>
+  );
+});
+
 function ProjectRowComponent({
   project,
   threadListState,
   selectedThreadId,
   isActive,
   isCollapsed,
+  compareThreads,
   collapsedThreadIds,
   collapsedEnvironmentIds,
   isLocalPathInvalid,
@@ -1169,16 +1257,24 @@ function ProjectRowComponent({
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
-                ? "bg-sidebar-border text-sidebar-foreground"
+                ? SIDEBAR_ROW_SELECTED_STATE_CLASS
                 : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
-                "select-none cursor-grab active:cursor-grabbing",
+                "select-none",
             )}
             title={project.name}
+            onClick={handleProjectRowToggle}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={handleProjectRowToggle}
+              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
@@ -1233,13 +1329,14 @@ function ProjectRowComponent({
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-10 inline-flex shrink-0 items-center",
+                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
               )}
             >
               <ProjectActionsMenu
                 project={project}
                 onOpenChange={setIsDropdownActionsOpen}
                 triggerClassName={cn(
-                  "relative z-10 text-muted-foreground",
+                  "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               />
@@ -1255,7 +1352,7 @@ function ProjectRowComponent({
                   handleCreateThread();
                 }}
                 className={cn(
-                  "rounded-md p-0 text-muted-foreground",
+                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               >
@@ -1275,6 +1372,7 @@ function ProjectRowComponent({
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
+            compareThreads={compareThreads}
             variant="project"
             onProjectSelect={onProjectSelect}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
@@ -1366,6 +1464,7 @@ function areProjectRowPropsEqual(
     prev.threadListState !== next.threadListState ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
+    prev.compareThreads !== next.compareThreads ||
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||

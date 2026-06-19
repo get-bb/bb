@@ -100,7 +100,7 @@ export type StatusResponse = z.infer<typeof statusResponseSchema>;
 export const healthResponseSchema = z.string().min(1);
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const providerCliKeyValues = ["codex", "claudeCode"] as const;
+export const providerCliKeyValues = ["codex", "claudeCode", "cursor"] as const;
 export const providerCliKeySchema = z.enum(providerCliKeyValues);
 export type ProviderCliKey = z.infer<typeof providerCliKeySchema>;
 
@@ -158,17 +158,17 @@ export const providerCliStatusSchema = z.object({
   installSource: providerCliInstallSourceSchema,
   currentVersion: z.string().min(1).nullable(),
   latestVersion: z.string().min(1).nullable(),
-  npmPackageName: z.string().min(1),
+  npmPackageName: z.string().min(1).nullable(),
   npmGlobalPackageVersion: z.string().min(1).nullable(),
   installAction: providerCliInstallActionSchema.nullable(),
   needsUpdate: z.boolean(),
 });
 export type ProviderCliStatus = z.infer<typeof providerCliStatusSchema>;
 
-export const providerCliStatusResponseSchema = z.object({
-  codex: providerCliStatusSchema,
-  claudeCode: providerCliStatusSchema,
-});
+export const providerCliStatusResponseSchema = z.record(
+  providerCliKeySchema,
+  providerCliStatusSchema,
+);
 export type ProviderCliStatusResponse = z.infer<
   typeof providerCliStatusResponseSchema
 >;

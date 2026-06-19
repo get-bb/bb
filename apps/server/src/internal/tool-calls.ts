@@ -23,7 +23,10 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
         db: deps.db,
         sessionId: payload.sessionId,
       });
-      const { environment } = requireThreadEnvironment(deps.db, payload.threadId);
+      const { environment } = requireThreadEnvironment(
+        deps.db,
+        payload.threadId,
+      );
       if (environment.hostId !== session.hostId) {
         throw new ApiError(
           403,

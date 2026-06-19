@@ -24,6 +24,11 @@ const WORKSPACE_STATUS_WATCH_DEBOUNCE_MS = 75;
 const WORKSPACE_STATUS_WATCH_MAX_WAIT_MS = 500;
 const WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS = 250;
 const WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS = 30_000;
+// Setup runs `git` (ignore discovery, metadata resolution). When a worktree is
+// deleted out from under us, that git command fails every time, so without a
+// cap we re-spawn git forever. Give up after a bounded number of attempts; the
+// server recreates this watch (resetting the count) when the watch set changes.
+const WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS = 10;
 const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
 const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
 const WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -245,6 +250,16 @@ export class WorkspaceStatusWatcher {
     if (this.disposed || this.workspaceRootStartRetryTimer !== null) {
       return;
     }
+    if (
+      this.workspaceRootRetryAttempt >=
+      WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS
+    ) {
+      this.args.onWatchError({
+        message: `Workspace root watch setup failed ${this.workspaceRootRetryAttempt} times (the worktree may have been deleted); giving up until the watch is reconfigured`,
+        rootPath,
+      });
+      return;
+    }
     this.workspaceRootRetryAttempt += 1;
     this.workspaceRootStartRetryTimer = setTimeout(
       () => {
@@ -346,6 +361,16 @@ export class WorkspaceStatusWatcher {
 
   private scheduleMetadataWatchRetry(): void {
     if (this.disposed || this.metadataStartRetryTimer !== null) {
+      return;
+    }
+    if (
+      this.metadataRetryAttempt >=
+      WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS
+    ) {
+      this.args.onWatchError({
+        message: `Workspace metadata watch setup failed ${this.metadataRetryAttempt} times (the worktree may have been deleted); giving up until the watch is reconfigured`,
+        rootPath: this.args.cwd,
+      });
       return;
     }
     this.metadataRetryAttempt += 1;

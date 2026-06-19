@@ -3,7 +3,6 @@ import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -68,6 +67,10 @@ import {
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
+import {
+  exitTrailingBlockquoteBreak,
+  insertParagraphBeforeBlockquote,
+} from "./editor/prompt-editor-blockquote";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -176,16 +179,16 @@ export interface TypeaheadMentionConfig {
 
 /**
  * The command-typeahead half of {@link TypeaheadConfig}. `trigger` is the
- * provider's command char (`/` for Claude Code, `$` for Codex) or `null` when
- * the provider has no command surface — in which case the composer never
- * activates a command trigger and the rest of this config is inert.
+ * provider's command char or `null` when the provider has no command
+ * surface — in which case the composer never activates a command trigger and
+ * the rest of this config is inert.
  *
  * Hosts wire `suggestions` / `isLoading` / `isError` from
  * `useCommandSuggestions`; `onQueryChange` feeds that hook the text typed
  * after the trigger (`null` when no command trigger is active).
  */
 export interface TypeaheadCommandConfig {
-  trigger: "/" | "$" | null;
+  trigger: PromptMentionCommandTrigger | null;
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -808,6 +811,15 @@ function promptActionTriggers(
   ] satisfies TypeaheadTrigger[];
 }
 
+export function suppressPromptEditorAnchorActivation(event: Event): boolean {
+  if (!(event.target instanceof Element)) return false;
+  if (event.target.closest("a[href]") === null) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  return true;
+}
+
 export function PromptBoxInternal({
   id,
   value,
@@ -1102,6 +1114,9 @@ export function PromptBoxInternal({
         role: "textbox",
       },
       handleDOMEvents: {
+        auxclick: (_view, event) => {
+          return suppressPromptEditorAnchorActivation(event);
+        },
         blur: () => {
           triggerKeyRef.current = "";
           if (dismissedTriggerRef.current) {
@@ -1114,6 +1129,9 @@ export function PromptBoxInternal({
           onMentionQueryChange(null);
           onCommandQueryChange(null);
           return false;
+        },
+        click: (_view, event) => {
+          return suppressPromptEditorAnchorActivation(event);
         },
       },
       handleClick: () => {
@@ -1211,7 +1229,7 @@ export function PromptBoxInternal({
     valueRef.current = value;
   }, [value]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     const nextValue = {
       text: value,
@@ -1241,11 +1259,9 @@ export function PromptBoxInternal({
 
   // An explicit draft-restore action (e.g. editing a queued message) bumps
   // `focusEndKey` so the caret lands at the END of the restored text. It is a
-  // passive effect defined AFTER the content-sync effect above, so React's
-  // definition-order guarantee runs it once that effect has applied
-  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
-  // an effect ordered before content-sync, would focus("end") against the
-  // pre-edit content and setContent would then map the caret to the start.)
+  // passive effect defined AFTER the layout content-sync effect above, so the
+  // editor has already applied `setContent` for the new draft in the same
+  // commit.
   // Not gated by the coarse-pointer guard since it follows a deliberate click.
   const lastFocusEndKeyRef = useRef(focusEndKey);
   useEffect(() => {
@@ -1523,7 +1539,7 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
-      if (activeTrigger.char !== "/" && activeTrigger.char !== "$") return;
+      if (activeTrigger.char !== "/") return;
 
       const serializedText = `${activeTrigger.char}${item.name}`;
       const resource = promptCommandResourceFromSuggestion({
@@ -1740,22 +1756,16 @@ export function PromptBoxInternal({
         return;
       }
 
-      const transaction = currentEditor.state.tr.insertText(
-        action.text,
-        insertionRange.from,
-        insertionRange.to,
-      );
-      transaction.setSelection(
-        TextSelection.create(
-          transaction.doc,
-          insertionRange.from + action.text.length,
-        ),
-      );
       triggerKeyRef.current = "";
       dismissedTriggerRef.current = null;
       setSelectedIndex(0);
-      currentEditor.view.dispatch(transaction.scrollIntoView());
-      focusAfterPromptAction(currentEditor);
+      currentEditor
+        .chain()
+        .focus()
+        .deleteRange({ from: insertionRange.from, to: insertionRange.to })
+        .insertContent(action.text)
+        .run();
+      finishApply(currentEditor);
     },
     [
       finishApply,
@@ -2052,6 +2062,22 @@ export function PromptBoxInternal({
       if (isModifierSubmitKey && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
+        return true;
+      }
+
+      const isBlockquoteExitKey =
+        event.key === "Enter" &&
+        event.shiftKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey;
+      if (
+        isBlockquoteExitKey &&
+        currentEditor &&
+        (insertParagraphBeforeBlockquote(currentEditor) ||
+          exitTrailingBlockquoteBreak(currentEditor))
+      ) {
+        event.preventDefault();
         return true;
       }
 

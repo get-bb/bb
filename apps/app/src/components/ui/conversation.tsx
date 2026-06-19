@@ -11,7 +11,12 @@ export function ConversationTimeline({
   className,
 }: ConversationTimelineProps) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-1", className)}>
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-1 [&_button:not(:disabled)]:cursor-pointer",
+        className,
+      )}
+    >
       {children}
     </div>
   );

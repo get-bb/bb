@@ -490,6 +490,8 @@ describe("public thread terminal routes", () => {
       threadId: fixture.thread.id,
       title: "Terminal 1",
     });
+    const browserSocket = createFakeBrowserSocket();
+    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
 
     fixture.harness.deps.terminalSessions.handleDaemonSessionClosed({
       sessionId: fixture.session.id,
@@ -506,6 +508,15 @@ describe("public thread terminal routes", () => {
         status: "disconnected",
       }),
     ]);
+    expect(readBrowserMessages(browserSocket)).toContainEqual(
+      expect.objectContaining({
+        type: "session-updated",
+        session: expect.objectContaining({
+          id: stored.id,
+          status: "disconnected",
+        }),
+      }),
+    );
   });
 
   it("expires disconnected terminals on daemon reconnect without restoring them in v1", async () => {

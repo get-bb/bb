@@ -15,16 +15,22 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "./components/ui/icon";
-import { POPOUT_QUICK_ASK_HEIGHT } from "@bb/desktop-contract";
+import {
+  POPOUT_QUICK_ASK_HEIGHT,
+  POPOUT_SHADOW_MARGIN,
+} from "@bb/desktop-contract";
 
 const ThreadDetailRoute = lazy(
   () => import("./views/thread-detail/ThreadDetailRoute"),
@@ -32,6 +38,16 @@ const ThreadDetailRoute = lazy(
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
     default: m.SettingsView,
+  })),
+);
+const AutomationsView = lazy(() =>
+  import("./views/AutomationsView").then((m) => ({
+    default: m.AutomationsView,
+  })),
+);
+const AutomationDetailView = lazy(() =>
+  import("./views/AutomationDetailView").then((m) => ({
+    default: m.AutomationDetailView,
   })),
 );
 const ProjectSettingsView = lazy(() =>
@@ -60,15 +76,14 @@ function PopoutRouteFallback() {
     };
   }, []);
 
-  const style = {
-    height: `${POPOUT_QUICK_ASK_HEIGHT}px`,
-  };
-
   return (
-    <div className="h-screen overflow-visible bg-transparent text-foreground">
+    <div
+      className="flex h-screen flex-col overflow-visible bg-transparent text-foreground"
+      style={{ padding: `${POPOUT_SHADOW_MARGIN}px` }}
+    >
       <div
-        className="flex min-h-0 w-full flex-col items-center justify-center rounded-2xl border border-border bg-background text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.18)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_16px_48px_rgba(0,0,0,0.55)]"
-        style={style}
+        className="flex min-h-0 w-full flex-col items-center justify-center rounded-2xl border border-border bg-background text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_8px_20px_rgba(0,0,0,0.16)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_8px_20px_rgba(0,0,0,0.5)]"
+        style={{ height: `${POPOUT_QUICK_ASK_HEIGHT}px` }}
       >
         <Icon name="Spinner" className="mb-2 size-4 animate-spin" />
         Loading...
@@ -85,6 +100,14 @@ function AppRoutes() {
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
+            path={AUTOMATIONS_ROUTE_PATH}
+            element={<AutomationsView />}
+          />
+          <Route
+            path={AUTOMATION_DETAIL_ROUTE_PATH}
+            element={<AutomationDetailView />}
+          />
+          <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}
           />
@@ -94,6 +117,10 @@ function AppRoutes() {
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
+            element={<ProjectArchivedThreadsView />}
+          />
+          <Route
+            path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
             element={<ProjectArchivedThreadsView />}
           />
           <Route

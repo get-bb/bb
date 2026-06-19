@@ -9,6 +9,8 @@ const CHECKOUT_CHIP_BASE_CLASS_NAME =
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} transition-colors hover:bg-state-hover hover:text-foreground`;
 
 export interface ThreadEnvironmentSummaryProps {
+  /** Display name of the thread's project, shown alongside the environment. */
+  projectName?: string;
   /** Full mode label used for the title (e.g. "Working locally" / "Worktree"). */
   environmentLabel?: string;
   /** Visible label used in the promptbox footer. */
@@ -36,6 +38,7 @@ export interface ThreadEnvironmentSummaryProps {
  *   within its available space above that breakpoint.
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
+  projectName,
   environmentLabel,
   environmentCompactLabel,
   environmentIcon,
@@ -51,6 +54,17 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
+      {projectName ? (
+        <OptionDisplay
+          label="Project"
+          value={projectName}
+          compactValue={projectName}
+          leading={<Icon name="Folder" className="size-4 shrink-0" />}
+          className="h-6 max-w-[10rem] shrink-0"
+          title={`Project: ${projectName}`}
+          muted
+        />
+      ) : null}
       <OptionDisplay
         label="Environment"
         value={visibleEnvironmentLabel}

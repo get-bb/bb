@@ -72,6 +72,7 @@ import {
   PullRequestGithubCheckIcon,
   PullRequestStateIcon,
 } from "@/components/pull-request/PullRequestStatusPill";
+import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -407,6 +408,7 @@ export interface PullRequestRowProps {
 }
 
 export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
+  const handlePullRequestClick = useUrlAnchorClickHandler(pullRequest?.url);
   if (!pullRequest) return null;
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
@@ -455,6 +457,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         href={pullRequest.url}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={handlePullRequestClick}
         title={pullRequest.title}
         aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
         className="flex h-5 max-w-full min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

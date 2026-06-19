@@ -12,7 +12,7 @@ describe("threadQueuedMessages", () => {
       { type: "text", text: "Second line", mentions: [] },
     ];
 
-    expect(formatQueuedMessagePreview(input)).toBe("First line\n\nSecond line");
+    expect(formatQueuedMessagePreview(input)).toBe("First line Second line");
     expect(
       formatQueuedMessagePreview([
         {
@@ -31,6 +31,20 @@ describe("threadQueuedMessages", () => {
         },
       ]),
     ).toBe("Attachment only (Attachment)");
+  });
+
+  it("omits agent-only side-chat reply references from queued previews", () => {
+    expect(
+      formatQueuedMessagePreview([
+        {
+          type: "text",
+          text: "Replying to this earlier message in the conversation:\n\nEarlier agent reply",
+          mentions: [],
+          visibility: "agent-only",
+        },
+        { type: "text", text: "What should I do next?", mentions: [] },
+      ]),
+    ).toBe("What should I do next?");
   });
 
   it("restores editable drafts from queued messages", () => {
@@ -61,5 +75,42 @@ describe("threadQueuedMessages", () => {
       ],
     });
     expect(attachmentOnlyDraft.attachments[0]?.name).toBe("Attachment");
+  });
+
+  it("omits agent-only queued-message content when restoring a draft", () => {
+    const draft = queuedInputToDraft([
+      {
+        type: "text",
+        text: "Replying to this earlier message in the conversation:\n\nEarlier agent reply",
+        mentions: [],
+        visibility: "agent-only",
+      },
+      {
+        type: "localFile",
+        path: "/tmp/hidden.md",
+        name: "hidden.md",
+        visibility: "agent-only",
+      },
+      { type: "text", text: "What should I do next?", mentions: [] },
+      {
+        type: "localFile",
+        path: "/tmp/visible.md",
+        name: "visible.md",
+        sizeBytes: 12,
+      },
+    ]);
+
+    expect(draft).toEqual({
+      text: "What should I do next?",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          path: "/tmp/visible.md",
+          name: "visible.md",
+          sizeBytes: 12,
+        },
+      ],
+    });
   });
 });

@@ -15,8 +15,12 @@ export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
   "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
+export const AUTOMATIONS_ROUTE_PATH = "/automations";
+export const AUTOMATION_DETAIL_ROUTE_PATH =
+  "/automations/:projectId/:automationId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
+export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
 export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
@@ -57,6 +61,22 @@ export function getRootComposeRoutePath(): string {
   return ROOT_COMPOSE_ROUTE_PATH;
 }
 
+export function getAutomationsRoutePath(): string {
+  return AUTOMATIONS_ROUTE_PATH;
+}
+
+export interface AutomationDetailRoutePathArgs {
+  projectId: string;
+  automationId: string;
+}
+
+export function getAutomationDetailRoutePath({
+  projectId,
+  automationId,
+}: AutomationDetailRoutePathArgs): string {
+  return `/automations/${projectId}/${automationId}`;
+}
+
 export function getPopoutRoutePath(): string {
   return POPOUT_ROUTE_PATH;
 }
@@ -77,7 +97,14 @@ export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
 
+export function getProjectlessArchivedRoutePath(): string {
+  return PROJECTLESS_ARCHIVED_ROUTE_PATH;
+}
+
 export function getProjectArchivedRoutePath(projectId: string): string {
+  if (isProjectlessProjectId(projectId)) {
+    return getProjectlessArchivedRoutePath();
+  }
   return `/projects/${projectId}/archived`;
 }
 
@@ -102,7 +129,10 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,

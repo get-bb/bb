@@ -10,10 +10,8 @@ import {
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
-import {
-  defaultListModels,
-  shutdownDefaultListModelsRuntimes,
-} from "./command-dispatch-support.js";
+import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
+import { shutdownDefaultListModelsRuntimes } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -101,6 +99,9 @@ export interface CreateHostDaemonAppOptions {
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
+  resolveRuntimeShellEnv?: () => Promise<
+    NonNullable<AgentRuntimeOptions["shellEnv"]>
+  >;
   threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
@@ -177,6 +178,12 @@ export function startIdleProviderSessionReaper(
   };
 }
 
+function providerCliEnvFromShellEnv(
+  shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+): NodeJS.ProcessEnv {
+  return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
+}
+
 interface SessionRequestArgs<TResult> {
   request: () => Promise<TResult>;
   source: ServerSessionInvalidationSource;
@@ -222,7 +229,9 @@ export async function createHostDaemonApp(
     _args: HandleServerSessionInvalidatedArgs,
   ): void => undefined;
 
-  function maybeInvalidateServerSession(args: MaybeInvalidateSessionArgs): void {
+  function maybeInvalidateServerSession(
+    args: MaybeInvalidateSessionArgs,
+  ): void {
     if (
       args.observedSessionId === null ||
       !(args.error instanceof ServerResponseError) ||
@@ -407,10 +416,11 @@ export async function createHostDaemonApp(
     onThreadStorageWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "thread-storage",
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Thread storage watch unavailable; retrying in background",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
@@ -425,11 +435,12 @@ export async function createHostDaemonApp(
     onWorkspaceStatusWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "workspace-status",
           environmentId: error.environmentId,
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Workspace status watch unavailable; retrying in background",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
   });
@@ -474,10 +485,11 @@ export async function createHostDaemonApp(
     onDataDirSkillsWatchError: ({ error }) => {
       options.logger.warn(
         {
+          watchSource: "data-dir-skills",
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Data-dir skills watch unavailable",
+        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
@@ -589,6 +601,17 @@ export async function createHostDaemonApp(
     },
     threadStorageRootPath,
   });
+  const refreshRuntimeShellEnv = async () => {
+    if (!options.resolveRuntimeShellEnv) {
+      return runtimeManager.getShellEnv();
+    }
+    const shellEnv = await options.resolveRuntimeShellEnv();
+    await runtimeManager.replaceBaseShellEnv(shellEnv);
+    return runtimeManager.getShellEnv();
+  };
+  const getProviderCliEnv = async () =>
+    providerCliEnvFromShellEnv(await refreshRuntimeShellEnv());
+
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
@@ -623,10 +646,13 @@ export async function createHostDaemonApp(
       }),
     runtimeManager,
     terminalManager,
-    listModels: (args) =>
-      defaultListModels(args, {
-        bridgeBundleDir: options.bridgeBundleDir,
-      }),
+    listModels: async (args) => {
+      await refreshRuntimeShellEnv();
+      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
+        dataDir: options.dataDir,
+      });
+      return runtime.listModels(args);
+    },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
@@ -715,12 +741,20 @@ export async function createHostDaemonApp(
         serverPort: Number(new URL(options.serverUrl).port) || 0,
         devAppPort: options.devAppPort,
         appUrl: options.appUrl,
+        getProviderCliEnv,
         getConnected: () => connection.sessionId != null,
         pickFolder: options.pickFolder,
       })
     : null;
   const eventLoopStallMonitor = startEventLoopStallMonitor({
     logger: options.logger,
+  });
+  const hostDaemonHealthMonitor = startHostDaemonHealthMonitor({
+    logger: options.logger,
+    getWatchCounts: () => ({
+      workspaceWatches: watchManager.workspaceWatchCount(),
+      threadStorageTargets: watchManager.threadStorageWatchTargetCount(),
+    }),
   });
 
   const daemon = createDaemon({
@@ -737,6 +771,7 @@ export async function createHostDaemonApp(
     shutdownRuntimes: async () => {
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
+      hostDaemonHealthMonitor.stop();
       await localApi?.close();
       await watchManager.shutdown();
       await terminalManager.shutdownAll();

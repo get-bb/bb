@@ -51,6 +51,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     isProduction && existsSync(appDistDir) ? appDistDir : undefined;
   const runtimeConfig: ServerRuntimeConfig = {
     appVersion: serverConfig.BB_APP_VERSION,
+    automationsAllowScriptRuns: serverConfig.BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,

@@ -3,8 +3,19 @@ import { z } from "zod";
 
 export const BB_DESKTOP_POPOUT_ID_MAX_LENGTH = 200;
 export const POPOUT_ROUTE_PATH = "/popout";
-export const POPOUT_WINDOW_WIDTH = 480;
-export const POPOUT_WINDOW_HEIGHT = 620;
+// The visible popout card. Its height when a thread is open; the quick-ask
+// composer instead sizes to its content so it grows as the textarea and
+// attachments expand.
+export const POPOUT_CARD_WIDTH = 480;
+export const POPOUT_THREAD_CARD_HEIGHT = 620;
+// Transparent gutter reserved around the card on every side so its drop shadow
+// renders into the (frameless, transparent) window instead of being clipped at
+// the window edges.
+export const POPOUT_SHADOW_MARGIN = 28;
+export const POPOUT_WINDOW_WIDTH = POPOUT_CARD_WIDTH + POPOUT_SHADOW_MARGIN * 2;
+export const POPOUT_WINDOW_HEIGHT =
+  POPOUT_THREAD_CARD_HEIGHT + POPOUT_SHADOW_MARGIN * 2;
+// Height of the loading placeholder shown before the popout renderer mounts.
 export const POPOUT_QUICK_ASK_HEIGHT = 220;
 
 export const bbDesktopPopoutThreadRefSchema = z

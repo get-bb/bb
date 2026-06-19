@@ -9,6 +9,7 @@ import type {
   WorkflowProgressSnapshot,
 } from "@bb/domain";
 import {
+  LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   backgroundTaskItemStatus,
   isSettledBackgroundTaskStatus,
@@ -264,11 +265,22 @@ function buildClaudeTaskCompletedEvent(
 }
 
 /**
+ * Task types bb materializes as background-task timeline rows: dynamic
+ * workflows and backgrounded shell commands. Other task types (subagents,
+ * monitors) share the event family but stay on their own render paths.
+ */
+function isMaterializedTaskType(taskType: string): boolean {
+  return (
+    taskType === LOCAL_WORKFLOW_TASK_TYPE || taskType === LOCAL_BASH_TASK_TYPE
+  );
+}
+
+/**
  * Translates the SDK task event family (task_started / task_progress /
  * task_updated / task_notification). Returns null when the message is not a
  * task message; returns [] for task messages that are intentionally not
- * materialized (non-workflow task types — foreground subagents already render
- * via delegation rows — and events for unknown/settled tasks).
+ * materialized (subagent/monitor task types — foreground subagents already
+ * render via delegation rows — and events for unknown/settled tasks).
  */
 export function translateClaudeTaskMessage(
   args: TranslateClaudeTaskMessageArgs,
@@ -277,7 +289,7 @@ export function translateClaudeTaskMessage(
   if (started.success) {
     const message = started.data;
     const taskType = message.task_type ?? "unknown";
-    if (taskType !== LOCAL_WORKFLOW_TASK_TYPE) {
+    if (!isMaterializedTaskType(taskType)) {
       return [];
     }
     const existing = args.tasks.get(message.task_id);

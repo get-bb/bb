@@ -31,7 +31,12 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getAutomationsRoutePath,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
+import { useRouteState } from "@/hooks/useRouteState";
 import {
   haveSameSidebarThreadSearchNavigationItems,
   type SidebarThreadSearchNavigationItem,
@@ -64,6 +69,7 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
+  const { isAutomationsView } = useRouteState();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
@@ -134,6 +140,11 @@ export function AppSidebar({
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenAutomations = useCallback(() => {
+    closeOnMobile();
+    void navigate(getAutomationsRoutePath());
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -265,6 +276,8 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
+            onOpenAutomations={handleOpenAutomations}
+            isAutomationsActive={isAutomationsView}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,

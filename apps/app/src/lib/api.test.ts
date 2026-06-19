@@ -23,8 +23,11 @@ function makeTimelineResponse(): ThreadTimelineResponse {
   return {
     rows: [],
     activeThinking: null,
+    activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

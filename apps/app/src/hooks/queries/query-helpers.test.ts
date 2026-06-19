@@ -150,8 +150,11 @@ function makeThreadTimelineResponse(
 ): ThreadTimelineResponse {
   return {
     activeThinking: null,
+    activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     rows,
     timelinePage: {
       kind: "latest",
@@ -426,6 +429,7 @@ describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
 
     expect(queryKeys).toEqual([
       ["environmentWorkStatus", "env-1"],
+      ["environmentPullRequest", "env-1"],
       ["environmentDiffFiles", "env-1"],
       ["environmentFilePreview", "env-1"],
     ]);

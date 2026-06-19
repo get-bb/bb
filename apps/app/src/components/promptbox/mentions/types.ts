@@ -3,6 +3,7 @@ import type {
   ProviderCommandOrigin,
   ProviderCommandSource,
 } from "@bb/server-contract";
+import type { PromptMentionCommandTrigger } from "@bb/domain";
 
 export type PromptPathMentionSource = "workspace" | "thread-storage";
 export type PromptPathMentionEntryKind = "file" | "directory";
@@ -38,7 +39,7 @@ export type PromptMentionSuggestion =
  * returned by `GET /projects/:id/commands`. The `kind: "command"` discriminant
  * lets it join the same menu union as {@link PromptMentionSuggestion} while the
  * composer's apply path inserts a prompt pill that serializes back to the
- * provider-native token (`/<name>` for Claude Code, `$<name>` for Codex).
+ * slash command token (`/<name>`).
  */
 export interface ProviderCommandSuggestion {
   kind: "command";
@@ -68,12 +69,12 @@ export function toProviderCommandSuggestion(
 }
 
 /**
- * A typeahead trigger the composer watches for. `@` opens the mention menu;
- * `/` (Claude Code) and `$` (Codex) open the command menu. A thread is bound to
- * one provider, so at most one command trigger is ever active in a composer.
+ * A typeahead trigger the composer watches for. `@` opens the mention menu and
+ * the provider-owned command trigger opens the command menu. A thread is bound
+ * to one provider, so at most one command trigger is ever active in a composer.
  */
 export interface TypeaheadTrigger {
-  char: "@" | "/" | "$";
+  char: "@" | PromptMentionCommandTrigger;
   kind: "mention" | "command";
 }
 

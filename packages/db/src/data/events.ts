@@ -1518,6 +1518,27 @@ export function getLastStoredProviderThreadId(
   return row?.providerThreadId ?? null;
 }
 
+export function getStoredProviderThreadIdAtOrBeforeSequence(
+  db: DbQueryConnection,
+  args: {
+    sequence: number;
+    threadId: string;
+  },
+): string | null {
+  const row = db
+    .select({ providerThreadId: events.providerThreadId })
+    .from(events)
+    .where(
+      sql`${events.threadId} = ${args.threadId}
+        AND ${events.sequence} <= ${args.sequence}
+        AND ${events.providerThreadId} IS NOT NULL`,
+    )
+    .orderBy(sql`${events.sequence} DESC`)
+    .limit(1)
+    .get();
+  return row?.providerThreadId ?? null;
+}
+
 export function listThreadTurnInterruptionEventStates(
   db: DbQueryConnection,
   args: ListThreadTurnInterruptionEventStatesArgs,

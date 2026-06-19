@@ -177,6 +177,7 @@ export function ProjectActionsMenu({
           className={cn(
             "rounded-md p-0 text-muted-foreground",
             triggerClassName,
+            "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
           )}
           aria-label={`${project.name} actions`}
           title={`${project.name} actions`}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
@@ -16,7 +16,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover.js";
 import { Switch } from "@/components/ui/switch.js";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import { cn } from "@/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
@@ -61,6 +60,8 @@ interface ModelReasoningPickerProps {
   // Model state
   modelValue: string;
   modelOptions: readonly PickerOption<string>[];
+  /** Models rendered behind a collapsed "More models" row. */
+  moreModelOptions?: readonly PickerOption<string>[];
   modelIsLoading?: boolean;
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
@@ -105,6 +106,7 @@ export function ModelReasoningPicker({
   hasMultipleProviders,
   modelValue,
   modelOptions,
+  moreModelOptions = [],
   modelIsLoading = false,
   modelLoadFailed = false,
   modelLoadError,
@@ -131,6 +133,8 @@ export function ModelReasoningPicker({
   const [previewProviderId, setPreviewProviderId] = useState<string | null>(
     null,
   );
+  // "More models" expansion is per-open: it resets when the popover closes.
+  const [showMoreModels, setShowMoreModels] = useState(false);
 
   const activeProviderId = previewProviderId ?? selectedProviderId;
 
@@ -210,6 +214,22 @@ export function ModelReasoningPicker({
         : model.displayName || model.model,
     }));
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
+  const previewMoreModelOptions = useMemo((): readonly PickerOption<string>[] => {
+    if (!isPreviewing) return moreModelOptions;
+    const models = previewQuery.data?.selectedOnlyModels;
+    if (!models || models.length === 0) return [];
+    return models.map((model) => ({
+      value: model.model,
+      label: formatModelLabel
+        ? formatModelLabel(model.displayName || model.model)
+        : model.displayName || model.model,
+    }));
+  }, [
+    isPreviewing,
+    moreModelOptions,
+    previewQuery.data?.selectedOnlyModels,
+    formatModelLabel,
+  ]);
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -235,6 +255,7 @@ export function ModelReasoningPicker({
   const activeModelFailureMessage =
     activeModelLoadErrorMessage ?? "Could not load models.";
   const activeModelOptions = previewModelOptions;
+  const activeMoreModelOptions = previewMoreModelOptions;
   const hasActiveModelOptions = activeModelOptions.length > 0;
   const activeModelErrorIsProviderSpecific =
     activeModelLoadErrorMatches && activeModelLoadError !== null;
@@ -256,11 +277,17 @@ export function ModelReasoningPicker({
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
-    hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed;
+    hasSelectedModel &&
+    !modelIsLoading &&
+    !selectedModelLoadFailed &&
+    !isShowingModelError;
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) setPreviewProviderId(null);
+    if (!nextOpen) {
+      setPreviewProviderId(null);
+      setShowMoreModels(false);
+    }
   }, []);
 
   const handleModelSelect = useCallback(
@@ -449,21 +476,42 @@ export function ModelReasoningPicker({
               Loading models…
             </div>
           ) : hasActiveModelOptions ? (
-            activeModelOptions.map((option) => (
-              <MenuRowButton
-                key={option.value}
-                // The menu always reflects the provider whose models it lists
-                // (either committed or previewed) — strip with `activeProviderId`.
-                label={stripModelBrandPrefix(option.label, activeProviderId)}
-                selected={!isPreviewing && option.value === modelValue}
-                onClick={() => handleModelSelect(option.value)}
-              />
-            ))
+            <>
+              {activeModelOptions.map((option) => (
+                <MenuRowButton
+                  key={option.value}
+                  // The menu always reflects the provider whose models it lists
+                  // (either committed or previewed) — strip with `activeProviderId`.
+                  label={stripModelBrandPrefix(option.label, activeProviderId)}
+                  selected={!isPreviewing && option.value === modelValue}
+                  onClick={() => handleModelSelect(option.value)}
+                />
+              ))}
+              {activeMoreModelOptions.length > 0 ? (
+                <MoreModelsToggleRow
+                  expanded={showMoreModels}
+                  onToggle={() => setShowMoreModels((current) => !current)}
+                />
+              ) : null}
+              {showMoreModels
+                ? activeMoreModelOptions.map((option) => (
+                    <MenuRowButton
+                      key={option.value}
+                      label={stripModelBrandPrefix(
+                        option.label,
+                        activeProviderId,
+                      )}
+                      selected={!isPreviewing && option.value === modelValue}
+                      onClick={() => handleModelSelect(option.value)}
+                    />
+                  ))
+                : null}
+            </>
           ) : (
             <div
               className={cn(
-                "px-2 text-xs text-muted-foreground",
-                isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                "px-2 text-xs leading-relaxed text-muted-foreground",
+                isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
               )}
               title={activeModelLoadErrorMessage ?? undefined}
             >
@@ -528,23 +576,50 @@ export function ModelReasoningPicker({
   );
 }
 
-// `sticky top-0` keeps "Model" pinned to the top of its scrolling parent
-// (no-op for "Reasoning" — its parent doesn't scroll). `-mx-1 px-3` covers the
-// scroll container gutter while keeping label text aligned with option rows.
-// The top inset lives inside the opaque sticky label, not on the scroll
-// container, so rows can't peek above it while it is pinned. Uses
-// `CHROME_SECTION_LABEL_CLASS` so these read like the sidebar's
-// Projects/Pinned/Threads section labels.
-function MenuSectionLabel({ children }: { children: React.ReactNode }) {
+// Mirrors DropdownMenuLabel spacing/typography while staying sticky in the
+// scrollable model list.
+function MenuSectionLabel({ children }: { children: ReactNode }) {
+  const isCompactViewport = useIsCompactViewport();
+
   return (
     <div
       className={cn(
-        "sticky top-0 z-10 -mx-1 flex h-8 items-center bg-background px-3 pt-1",
-        CHROME_SECTION_LABEL_CLASS,
+        "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
+        isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
       )}
     >
       {children}
     </div>
+  );
+}
+
+// Disclosure row for the collapsed secondary model pool. Same row metrics as
+// MenuRowButton so the list reads as one column; muted to read as an
+// affordance rather than a model.
+function MoreModelsToggleRow({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const isCompactViewport = useIsCompactViewport();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground",
+        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+      )}
+    >
+      <span>{expanded ? "Fewer models" : "More models"}</span>
+      <Icon
+        name={expanded ? "ChevronUp" : "ChevronDown"}
+        className="size-3.5 shrink-0"
+      />
+    </button>
   );
 }
 

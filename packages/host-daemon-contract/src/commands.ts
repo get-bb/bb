@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 36 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 40 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -91,6 +91,11 @@ export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
         sourceType: z.literal("data-dir"),
+      })
+      .strict(),
+    hostDaemonInjectedSkillSourceBaseSchema
+      .extend({
+        sourceType: z.literal("project"),
       })
       .strict(),
   ],
@@ -386,6 +391,7 @@ const hostListCommandsCommandSchema = z.object({
   type: z.literal("host.list_commands"),
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
+  builtinSkillsRootPath: z.string().min(1),
 });
 
 /**
@@ -562,6 +568,39 @@ const workspacePullRequestCommandSchema =
     type: z.literal("workspace.pull_request"),
   });
 
+const pullRequestMergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
+
+const workspacePullRequestReadyCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("ready"),
+  })
+  .strict();
+
+const workspacePullRequestDraftCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("draft"),
+  })
+  .strict();
+
+const workspacePullRequestMergeCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("merge"),
+    method: pullRequestMergeMethodSchema,
+  })
+  .strict();
+
+const workspacePullRequestActionCommandSchema = z.discriminatedUnion(
+  "operation",
+  [
+    workspacePullRequestReadyCommandSchema,
+    workspacePullRequestDraftCommandSchema,
+    workspacePullRequestMergeCommandSchema,
+  ],
+);
+
 const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.commit"),
@@ -574,6 +613,24 @@ const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
     type: z.literal("workspace.squash_merge"),
     targetBranch: gitBranchNameSchema,
     commitMessage: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Run a one-shot command in an environment workspace and capture its output.
+ * Used by script-mode automations (no agent, no token spend). The daemon spawns
+ * `command` with `args`, captures combined stdout/stderr as `output`, and returns
+ * the exit code without throwing on non-zero. `timedOut` is true when the process
+ * was SIGKILL'd after `timeoutMs`. The server fills every field at the boundary.
+ */
+const hostRunScriptCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("host.run_script"),
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    cwd: z.string().min(1),
+    env: z.record(z.string(), z.string()),
+    timeoutMs: z.number().int().positive(),
   })
   .strict();
 
@@ -721,6 +778,15 @@ const workspaceCommitResultSchema = z.object({
 const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
   merged: z.boolean(),
 });
+const workspacePullRequestActionResultSchema = z.object({}).strict();
+const hostRunScriptResultSchema = z
+  .object({
+    exitCode: z.number().int().nullable(),
+    output: z.string(),
+    durationMs: z.number().int().nonnegative(),
+    timedOut: z.boolean(),
+  })
+  .strict();
 
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
@@ -888,6 +954,24 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.squash_merge",
     schema: workspaceSquashMergeCommandSchema,
     resultSchema: workspaceSquashMergeResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "workspace.pull_request_action": defineHostDaemonCommandDescriptor({
+    type: "workspace.pull_request_action",
+    schema: workspacePullRequestActionCommandSchema,
+    resultSchema: workspacePullRequestActionResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "host.run_script": defineHostDaemonCommandDescriptor({
+    type: "host.run_script",
+    schema: hostRunScriptCommandSchema,
+    resultSchema: hostRunScriptResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

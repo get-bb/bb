@@ -14,6 +14,11 @@ import {
   threadOriginKindValues,
 } from "@bb/domain/thread-child-origin";
 import type {
+  AutomationOrigin,
+  AutomationRunMode,
+  AutomationRunStatus,
+  AutomationRunTrigger,
+  AutomationTriggerType,
   EnvironmentStatus,
   HostType,
   PendingInteractionStatus,
@@ -619,5 +624,88 @@ export const pendingInteractions = sqliteTable(
       table.status,
       table.createdAt,
     ),
+  ],
+);
+
+export const automations = sqliteTable(
+  "automations",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Reuse/re-prompt an existing thread (agent mode). NULL => spawn a new thread
+    // per run. On thread deletion the automation is DISABLED at the app layer;
+    // set null is the hard-delete backstop.
+    targetThreadId: text("target_thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    triggerType: text("trigger_type").$type<AutomationTriggerType>().notNull(),
+    // JSON-as-text: { cron, timezone }
+    triggerConfig: text("trigger_config").notNull(),
+    runMode: text("run_mode").$type<AutomationRunMode>().notNull(),
+    // JSON-as-text; shape depends on run_mode (agent: prompt/provider/model/
+    // permissionMode; script: scriptFile/interpreter/timeoutMs/env). Script
+    // content lives on disk under <dataDir>/automation-scripts/<id>/.
+    execution: text("execution").notNull(),
+    // JSON-as-text: serialized EnvironmentArgs (both modes).
+    environment: text("environment").notNull(),
+    autoArchive: integer("auto_archive", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    origin: text("origin").$type<AutomationOrigin>().notNull(),
+    createdByThreadId: text("created_by_thread_id"),
+    nextRunAt: integer("next_run_at"),
+    lastRunAt: integer("last_run_at"),
+    runCount: integer("run_count").notNull().default(0),
+    lastRunStatus: text("last_run_status").$type<AutomationRunStatus>(),
+    lastRunThreadId: text("last_run_thread_id"),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("automations_project_idx").on(table.projectId),
+    index("automations_due_idx").on(
+      table.enabled,
+      table.triggerType,
+      table.nextRunAt,
+    ),
+    index("automations_target_thread_idx").on(table.targetThreadId),
+  ],
+);
+
+export const automationRuns = sqliteTable(
+  "automation_runs",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automations.id, { onDelete: "cascade" }),
+    runMode: text("run_mode").$type<AutomationRunMode>().notNull(),
+    // Spawned/continued thread for agent runs; null for script runs and skips.
+    threadId: text("thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").$type<AutomationRunStatus>().notNull(),
+    trigger: text("trigger").$type<AutomationRunTrigger>().notNull(),
+    skipReason: text("skip_reason"),
+    error: text("error"),
+    // Captured stdout for script runs (capped + redacted); null for agent runs.
+    output: text("output"),
+    exitCode: integer("exit_code"),
+    idempotencyKey: text("idempotency_key"),
+    scheduledFor: integer("scheduled_for").notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+  },
+  (table) => [
+    index("automation_runs_automation_started_idx").on(
+      table.automationId,
+      table.startedAt,
+    ),
+    index("automation_runs_thread_idx").on(table.threadId),
   ],
 );

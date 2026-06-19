@@ -62,6 +62,7 @@ interface MakeControllerArgs {
   isPanelOpen: boolean;
   isTerminalQueryLoading: boolean;
   showTerminalPlaceholders: boolean;
+  shouldRetainActiveTerminalView?: boolean;
   terminalBodyMessage: string;
   visibleSessions: readonly TerminalSession[];
 }
@@ -87,6 +88,7 @@ function makeController({
   isPanelOpen,
   isTerminalQueryLoading,
   showTerminalPlaceholders,
+  shouldRetainActiveTerminalView = false,
   terminalBodyMessage,
   visibleSessions,
 }: MakeControllerArgs): ThreadTerminalController {
@@ -107,6 +109,7 @@ function makeController({
     isPanelOpen,
     isTerminalQueryLoading,
     showTerminalPlaceholders,
+    shouldRetainActiveTerminalView,
     terminalBodyMessage,
     threadId: THREAD_ID,
     visibleSessions,

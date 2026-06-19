@@ -4,6 +4,7 @@ import {
   type GitBranchRefClassification,
   resolveEnvironmentWorkspaceDisplayKind,
   type Environment,
+  type ThreadPullRequest,
 } from "@bb/domain";
 import {
   publicApiRoutes,
@@ -81,6 +82,24 @@ async function mapNoChangesTo409<TResult>(
   }
 }
 
+async function mapPullRequestActionFailureTo409<TResult>(
+  run: () => Promise<TResult>,
+): Promise<TResult> {
+  try {
+    return await run();
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.body.code === "git_host_command_failed" ||
+        error.body.code === "git_host_cli_unavailable" ||
+        error.body.code === "invalid_request")
+    ) {
+      throw new ApiError(409, "pull_request_action_failed", error.body.message);
+    }
+    throw error;
+  }
+}
+
 function assertSquashMergeTargetIsLocal({
   selectedBranch,
   targetBranch,
@@ -132,6 +151,70 @@ function toWorkspaceDiffTarget(query: EnvironmentDiffQuery) {
 
 function isWorktreeEnvironment(environment: Environment): boolean {
   return resolveEnvironmentWorkspaceDisplayKind({ environment }) !== "other";
+}
+
+async function getPullRequestForWorkspaceTarget(
+  deps: AppDeps,
+  target: ReturnType<typeof requireWorkspaceCommandTarget>,
+): Promise<ThreadPullRequest | null> {
+  const result = await callHostRetryableOnlineRpc(deps, {
+    hostId: target.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "workspace.pull_request",
+      environmentId: target.environmentId,
+      workspaceContext: target.workspaceContext,
+    },
+  });
+  return assembleThreadPullRequest(result.pullRequest);
+}
+
+function assertCanMarkPullRequestReady(
+  pullRequest: ThreadPullRequest | null,
+): void {
+  if (!pullRequest) {
+    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
+  }
+  if (pullRequest.state !== "draft") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Pull request is not a draft",
+    );
+  }
+}
+
+function assertCanConvertPullRequestToDraft(
+  pullRequest: ThreadPullRequest | null,
+): void {
+  if (!pullRequest) {
+    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
+  }
+  if (pullRequest.state !== "open") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Pull request is not open",
+    );
+  }
+}
+
+function assertCanMergePullRequest(
+  pullRequest: ThreadPullRequest | null,
+): void {
+  if (!pullRequest) {
+    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
+  }
+  if (
+    pullRequest.state !== "open" ||
+    pullRequest.mergeability.state !== "mergeable"
+  ) {
+    throw new ApiError(
+      409,
+      "pull_request_not_mergeable",
+      "Pull request is not currently mergeable",
+    );
+  }
 }
 
 /**
@@ -692,6 +775,107 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           message: "Squash merge completed",
           commitSha: result.commitSha,
           commitSubject: result.commitSubject,
+        });
+      }
+      case "pull_request_ready": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const pullRequest = await getPullRequestForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanMarkPullRequestReady(pullRequest);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "ready",
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_ready",
+          message: "Pull request marked ready",
+        });
+      }
+      case "pull_request_draft": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const pullRequest = await getPullRequestForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanConvertPullRequestToDraft(pullRequest);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "draft",
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_draft",
+          message: "Pull request converted to draft",
+        });
+      }
+      case "pull_request_merge": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const pullRequest = await getPullRequestForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanMergePullRequest(pullRequest);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "merge",
+              method: payload.options.method,
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_merge",
+          method: payload.options.method,
+          message: "Pull request merge started",
         });
       }
       default: {

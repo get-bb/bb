@@ -61,6 +61,9 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allAutomationDetailQueryKeyPrefix,
+  allAutomationRunsQueryKeyPrefix,
+  automationsQueryKey,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
@@ -69,6 +72,7 @@ import {
   allThreadTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
+  environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -91,12 +95,97 @@ import {
   getThreadPendingInteractionInvalidationQueryKeys,
   getThreadPromptHistoryInvalidationQueryKeys,
   getThreadQueueContentInvalidationQueryKeys,
-  getThreadTimelineInvalidationQueryKeys,
+  getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 
 interface CollectCachedThreadIdsForEnvironmentArgs {
   environmentId: string;
   queryClient: QueryClient;
+}
+
+interface InvalidateQueryKeysWithoutCancelingActiveFetchesArgs {
+  queryClient: QueryClient;
+  queryKeys: readonly QueryKey[];
+}
+
+interface ScheduleTrailingActiveRefetchArgs {
+  queryClient: QueryClient;
+  queryKey: QueryKey;
+}
+
+const trailingActiveRefetchUnsubscribers = new WeakMap<
+  QueryClient,
+  Map<string, () => void>
+>();
+
+function timelineInvalidationKey(queryKey: QueryKey): string {
+  return JSON.stringify(queryKey);
+}
+
+function hasActiveFetchingQueries(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): boolean {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey, type: "active" })
+    .some((query) => query.state.fetchStatus !== "idle");
+}
+
+function scheduleTrailingActiveRefetch({
+  queryClient,
+  queryKey,
+}: ScheduleTrailingActiveRefetchArgs): void {
+  const scheduleKey = timelineInvalidationKey(queryKey);
+  let unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
+  if (!unsubscribers) {
+    unsubscribers = new Map();
+    trailingActiveRefetchUnsubscribers.set(queryClient, unsubscribers);
+  }
+  if (unsubscribers.has(scheduleKey)) {
+    return;
+  }
+
+  const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+    if (hasActiveFetchingQueries(queryClient, queryKey)) {
+      return;
+    }
+
+    unsubscribe();
+    unsubscribers.delete(scheduleKey);
+    void queryClient
+      .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+      .catch(() => {
+        // Individual query state already captures the refetch error.
+      });
+  });
+  unsubscribers.set(scheduleKey, unsubscribe);
+}
+
+function invalidateQueryKeysWithoutCancelingActiveFetches({
+  queryClient,
+  queryKeys,
+}: InvalidateQueryKeysWithoutCancelingActiveFetchesArgs): void {
+  for (const queryKey of queryKeys) {
+    const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
+    // Avoid aborting the active timeline request on every event batch, but keep
+    // one trailing refetch so an event that raced the in-flight read is not lost.
+    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
+    if (hadActiveFetch) {
+      scheduleTrailingActiveRefetch({ queryClient, queryKey });
+    }
+  }
+}
+
+export function disposeTrailingActiveRefetches(queryClient: QueryClient): void {
+  const unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
+  if (!unsubscribers) {
+    return;
+  }
+  for (const unsubscribe of unsubscribers.values()) {
+    unsubscribe();
+  }
+  trailingActiveRefetchUnsubscribers.delete(queryClient);
 }
 
 export const REALTIME_THREAD_CHANGE_REGISTRY = {
@@ -116,6 +205,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Active detail should reconcile to deleted/not-found.
       dirtyThreadTimelineQueries, // Active timeline should stop showing stale rows.
       dirtyProjectPromptHistoryQueries, // Deleted prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "events-appended": {
@@ -146,6 +236,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // List rows render display title.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread by title.
     ],
   },
   "queue-changed": {
@@ -160,6 +251,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries, // Archive state moves threads between active/archived lists.
       dirtyThreadDetailQueries, // Detail controls and banners depend on archive state.
       dirtyProjectPromptHistoryQueries, // Archived prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "pin-state-changed": {
@@ -263,11 +355,13 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-updated": {
     dirty: [
       dirtyProjectListQueries, // Name/settings fields are embedded in sidebar navigation/project caches.
+      dirtyAutomationQueries, // Automation rows render the owning project's name.
     ],
   },
   "project-deleted": {
     dirty: [
       dirtyProjectListQueries, // Deleted projects must disappear from navigation/pickers.
+      dirtyAutomationQueries, // Deleting a project cascades its automations out of the overview.
     ],
   },
   "project-sources-changed": {
@@ -284,6 +378,16 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-order-changed": {
     dirty: [
       dirtyProjectListQueries, // Sidebar order depends on project ordering.
+    ],
+  },
+  "automations-changed": {
+    dirty: [
+      dirtyAutomationQueries, // Automation create/update/pause/resume/delete changes the overview.
+    ],
+  },
+  "automation-runs-changed": {
+    dirty: [
+      dirtyAutomationQueries, // A new/closed run updates the denormalized last-run summary on rows.
     ],
   },
 } satisfies ProjectChangeRegistry;
@@ -478,9 +582,15 @@ function dirtyThreadSearchQueries(): QueryKey[] {
 }
 
 function dirtyThreadTimelineQueries({
+  queryClient,
   threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadTimelineInvalidationQueryKeys({ threadId });
+}: ThreadRealtimeDirtyContext): void {
+  // Window only: completed turn-summary-details are immutable, so realtime
+  // event batches must not refetch open detail panels (see helper docs).
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+  });
 }
 
 function dirtyThreadQueueContentQueries({
@@ -625,6 +735,9 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
+    queryKey: environmentPullRequestQueryKey(environmentId),
+  });
+  queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
@@ -699,6 +812,19 @@ function dirtyThreadStorageQueriesForEnvironment({
 
 function dirtyProjectListQueries(): QueryKey[] {
   return getProjectListInvalidationQueryKeys();
+}
+
+function dirtyAutomationQueries(): QueryKey[] {
+  // The realtime change kinds (`automations-changed`, `automation-runs-changed`)
+  // don't carry the affected automation's project + id, so dirty the whole
+  // detail/runs families by prefix alongside the cross-project overview. This
+  // keeps an open detail view live-updating after a run completes or the
+  // automation is paused/resumed elsewhere.
+  return [
+    automationsQueryKey(),
+    allAutomationDetailQueryKeyPrefix(),
+    allAutomationRunsQueryKeyPrefix(),
+  ];
 }
 
 function dirtyProjectSourceDependentQueries({

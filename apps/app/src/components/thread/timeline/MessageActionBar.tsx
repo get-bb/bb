@@ -1,5 +1,13 @@
+import { useCallback, useState } from "react";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import {
   Tooltip,
   TooltipContent,
@@ -22,15 +30,30 @@ interface MessageActionBarProps {
   disabled?: boolean;
 }
 
+interface MessageOverflowAction {
+  icon: "Copy" | "Fork" | "SideChat" | "ArrowTurnBackward";
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+}
+
 // Shared hover-reveal classes for every action in the bar: hidden until the
 // surrounding named `group/message` row is hovered or a child control takes
 // keyboard focus (`group-focus-within`, matching disclosure.tsx so tabbing onto
 // an action button reveals the bar). The fork/side-chat buttons mirror
 // CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_svg]:size-5";
+  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
 const HOVER_REVEAL_CLASS =
-  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 max-md:pointer-coarse:opacity-100";
+  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
+const MOBILE_OVERFLOW_TRIGGER_CLASS =
+  "hidden size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-5";
+
+export function findMessageActionTooltipCollisionBoundary(
+  node: HTMLElement | null,
+): HTMLElement | undefined {
+  return node?.closest<HTMLElement>("[data-thread-window]") ?? undefined;
+}
 
 /**
  * Hover-revealed footer of per-message actions (copy, and — when wired —
@@ -49,6 +72,56 @@ export function MessageActionBar({
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
+  const [collisionBoundary, setCollisionBoundary] =
+    useState<HTMLElement | undefined>();
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+  }, []);
+  const overflowActions: MessageOverflowAction[] = [
+    ...(hasCopy
+      ? [
+          {
+            icon: "Copy" as const,
+            label: "Copy message",
+            onSelect: () => {
+              void copyToClipboardWithToast(messageText, {
+                errorMessage: "Failed to copy",
+              });
+            },
+          },
+        ]
+      : []),
+    ...(onFork
+      ? [
+          {
+            icon: "Fork" as const,
+            label: "Fork into new thread",
+            onSelect: onFork,
+            disabled,
+          },
+        ]
+      : []),
+    ...(onSideChat
+      ? [
+          {
+            icon: "SideChat" as const,
+            label: "Reply in side chat",
+            onSelect: onSideChat,
+            disabled,
+          },
+        ]
+      : []),
+    ...(onSendToMain
+      ? [
+          {
+            icon: "ArrowTurnBackward" as const,
+            label: "Send to main thread",
+            onSelect: onSendToMain,
+          },
+        ]
+      : []),
+  ];
+
   if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
     return null;
   }
@@ -56,6 +129,7 @@ export function MessageActionBar({
   return (
     <TooltipProvider delayDuration={300}>
       <div
+        ref={containerRef}
         className={cn(
           "flex items-center gap-2",
           alignment === "end" ? "justify-end" : "justify-start",
@@ -71,11 +145,13 @@ export function MessageActionBar({
                 title={undefined}
                 className={cn(
                   HOVER_REVEAL_CLASS,
-                  "max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_svg]:size-5",
+                  "max-md:pointer-coarse:hidden",
                 )}
               />
             </TooltipTrigger>
-            <TooltipContent>Copy message</TooltipContent>
+            <TooltipContent collisionBoundary={collisionBoundary}>
+              Copy message
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onFork ? (
@@ -91,7 +167,9 @@ export function MessageActionBar({
                 <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Fork into new thread</TooltipContent>
+            <TooltipContent collisionBoundary={collisionBoundary}>
+              Fork into new thread
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onSideChat ? (
@@ -107,7 +185,9 @@ export function MessageActionBar({
                 <Icon name="SideChat" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Reply in side chat</TooltipContent>
+            <TooltipContent collisionBoundary={collisionBoundary}>
+              Reply in side chat
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onSendToMain ? (
@@ -122,9 +202,40 @@ export function MessageActionBar({
                 <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Send to main thread</TooltipContent>
+            <TooltipContent collisionBoundary={collisionBoundary}>
+              Send to main thread
+            </TooltipContent>
           </Tooltip>
         ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={MOBILE_OVERFLOW_TRIGGER_CLASS}
+              aria-label="Message actions"
+              title="Message actions"
+            >
+              <Icon name="MoreHorizontal" className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align={alignment === "end" ? "end" : "start"}
+            mobileTitle="Message actions"
+            className="w-48"
+          >
+            {overflowActions.map((action) => (
+              <DropdownMenuItem
+                key={action.label}
+                disabled={action.disabled}
+                onSelect={action.onSelect}
+                textValue={action.label}
+              >
+                <Icon name={action.icon} aria-hidden="true" />
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </TooltipProvider>
   );

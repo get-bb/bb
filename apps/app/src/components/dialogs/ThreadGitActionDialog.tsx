@@ -9,7 +9,6 @@ import {
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
-import { useBrowserDimmingModal } from "@/hooks/useBrowserDimmingModal";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
@@ -102,11 +101,6 @@ export function ThreadGitActionDialog({
     () => (target ? getDialogCopy(target) : null),
     [target],
   );
-
-  // While this modal is open, hide the in-app browser's native overlay so the
-  // dialog backdrop dims the whole panel (the overlay can't sit behind a DOM
-  // backdrop).
-  useBrowserDimmingModal(target !== null);
 
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>

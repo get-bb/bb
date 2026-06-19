@@ -266,7 +266,11 @@ export function SidebarThreadSearchPanel({
       id={SIDEBAR_THREAD_SEARCH_LISTBOX_ID}
       role="listbox"
       aria-label="Thread search results"
-      className="space-y-3 px-2 pb-3 group-data-[collapsible=icon]:hidden"
+      // Rows and section labels own their horizontal inset (the standard 8px
+      // row padding), matching the rest of the sidebar. A container `px-*` here
+      // would stack on top of that and squeeze the results narrower than every
+      // other sidebar row.
+      className="space-y-3 pb-3 group-data-[collapsible=icon]:hidden"
     >
       {showRecentLoading ? (
         <ThreadSearchMessage

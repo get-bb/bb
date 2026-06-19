@@ -77,6 +77,15 @@ const multipleMessages: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
+const manyMessages: readonly ThreadQueuedMessage[] = Array.from(
+  { length: 9 },
+  (_, index) =>
+    makeQueuedMessage({
+      id: `q_many_${index + 1}`,
+      text: `Queued follow-up ${index + 1}: check the compact one-line row, right-edge text fade, and vertical scroll fade in the queue drawer.`,
+    }),
+);
+
 const withAttachments: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_att_1",
@@ -98,8 +107,8 @@ const longMessage: readonly ThreadQueuedMessage[] = [
 ];
 
 // "Add to chat" appends `> `-prefixed blockquote lines into the draft, so a
-// queued message can carry quote→reply blocks. These exercise the quote branch
-// of the queued row (styled blockquotes, height-capped).
+// queued message can carry quote→reply blocks. The queued row now collapses
+// these into one preview line so quoted messages scan like every other row.
 const quoteSingle: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_quote_single",
@@ -143,9 +152,8 @@ const quoteWithAttachment: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// Quoted and plain messages interleaved in one list — the comparison view:
-// the quoted rows are taller with a top-aligned leading icon, so they're easy
-// to tell apart from the single-line plain rows when scanning the queue.
+// Quoted and plain messages interleaved in one list — both collapse to one row
+// so the queue remains dense even when it contains quote→reply blocks.
 const mixedMessages: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "mix_plain_1",
@@ -191,7 +199,7 @@ export function Blockquotes() {
     <StoryCard>
       <StoryRow
         label="mixed: quoted + plain"
-        hint="scan comparison — quoted rows are taller with a top-aligned leading icon; plain rows are a single centered line"
+        hint="quoted and plain rows both render as one truncated line"
       >
         <PromptStage>
           <StaticQueuedMessagesList queuedMessages={mixedMessages} />
@@ -236,7 +244,7 @@ export function Blockquotes() {
       </StoryRow>
       <StoryRow
         label="long quote (truncated)"
-        hint="height-capped — overflow is clipped so the row stays compact"
+        hint="single-line preview fades at the right edge"
       >
         <PromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteTruncated} />
@@ -305,6 +313,24 @@ export function Overview() {
         </PromptStage>
       </StoryRow>
       <StoryRow
+        label="overflowing queue"
+        hint="height-capped list shows top/bottom fades while scrolling"
+      >
+        <PromptStage>
+          <QueuedMessagesList
+            queuedMessages={manyMessages}
+            sendDisabled={false}
+            actionDisabled={false}
+            processingMessageId={null}
+            processingAction={null}
+            onSendImmediately={noop}
+            onReorder={noop}
+            onEdit={noop}
+            onDelete={noop}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
         label="with attachments"
         hint="attachment counts shown alongside text"
       >
@@ -324,7 +350,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="long message"
-        hint="single line truncates with ellipsis; title attribute carries full text"
+        hint="single line fades at the right edge; title attribute carries full text"
       >
         <PromptStage>
           <QueuedMessagesList

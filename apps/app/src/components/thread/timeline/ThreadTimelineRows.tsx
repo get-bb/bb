@@ -15,6 +15,7 @@ import {
   type QueryCacheNotifyEvent,
   type QueryClient,
 } from "@tanstack/react-query";
+import { isBackgroundCommandTaskType } from "@bb/domain";
 import type {
   ThreadChildOrigin,
   ThreadRuntimeDisplayStatus,
@@ -235,6 +236,7 @@ interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   spacing: TimelineRowsListSpacing;
   className?: string;
   unreadDividerAutoScroll: boolean;
@@ -250,6 +252,7 @@ interface TimelineRowViewProps {
   compactActivityIntents: boolean;
   row: ThreadTimelineViewRow;
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   spacing: TimelineRowsListSpacing;
 }
 
@@ -257,6 +260,7 @@ interface TimelineExpandableRowViewProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
   scopeActive: boolean;
+  showAssistantMessageActions: boolean;
   title: TimelineTitle;
   horizontalPadding: TimelineRowHorizontalPadding;
   row: Exclude<ThreadTimelineViewRow, { kind: "conversation" }>;
@@ -272,11 +276,13 @@ interface TimelineExpandableBodyProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
   row: ThreadTimelineViewRow;
+  showAssistantMessageActions: boolean;
 }
 
 interface TurnRowBodyProps {
   compactActivityIntents: boolean;
   row: TimelineViewTurnRow;
+  showAssistantMessageActions: boolean;
 }
 
 type LazyTurnRowBodyProps = TurnRowBodyProps;
@@ -365,6 +371,7 @@ type TimelineRowsListItem =
 
 interface ConversationRowProps {
   row: TimelineConversationViewRow;
+  showAssistantMessageActions: boolean;
 }
 
 const TimelineRendererStaticContext =
@@ -459,6 +466,7 @@ function areTimelineRowViewPropsEqual(
   return (
     previous.compactActivityIntents === next.compactActivityIntents &&
     previous.scopeActive === next.scopeActive &&
+    previous.showAssistantMessageActions === next.showAssistantMessageActions &&
     previous.spacing === next.spacing &&
     previous.activeLatestBundleId === next.activeLatestBundleId &&
     // The view-row cache keys by the raw rows array, so unchanged query data
@@ -477,6 +485,7 @@ function areTimelineExpandableRowViewPropsEqual(
     previous.activeLatestBundleId === next.activeLatestBundleId &&
     previous.compactActivityIntents === next.compactActivityIntents &&
     previous.scopeActive === next.scopeActive &&
+    previous.showAssistantMessageActions === next.showAssistantMessageActions &&
     previous.title === next.title &&
     previous.horizontalPadding === next.horizontalPadding &&
     // The view-row cache keys by the raw rows array, so unchanged query data
@@ -765,7 +774,10 @@ function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
   );
 }
 
-function ConversationRow({ row }: ConversationRowProps) {
+function ConversationRow({
+  row,
+  showAssistantMessageActions,
+}: ConversationRowProps) {
   const {
     canSpawnChild,
     onForkMessage,
@@ -781,6 +793,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
+    workspaceRootPath,
   } = useTimelineRendererStaticContext();
   if (row.role === "user") {
     const senderThreadMetadata =
@@ -797,6 +810,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         childOrigin={childOrigin}
         initiator={row.initiator}
         mentions={row.mentions}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -814,23 +828,38 @@ function ConversationRow({ row }: ConversationRowProps) {
       />
     );
   }
-  // Fork clones the whole thread (native session fork), so the button forks the
-  // active thread regardless of which agent row it sits on. Omit the handler
-  // entirely when no host can fork, which keeps the Fork button out of the
-  // action bar rather than rendering it dead.
-  const onFork = onForkMessage === undefined ? undefined : onForkMessage;
+  // Fork clones provider history through this row's source sequence. Omit the
+  // handler entirely when no host can fork, which keeps the Fork button out of
+  // the action bar rather than rendering it dead.
+  const onFork =
+    onForkMessage === undefined
+      ? undefined
+      : () => onForkMessage({ sourceSeqEnd: row.sourceSeqEnd });
   // Side chat anchors on the same agent row text; both actions share the
   // canSpawnChild depth guard (both spawn a child thread off the active thread).
   const onSideChat =
     onSideChatMessage === undefined
       ? undefined
-      : () => onSideChatMessage({ messageText: row.text });
+      : () =>
+          onSideChatMessage({
+            messageText: row.text,
+            sourceSeqEnd: row.sourceSeqEnd,
+          });
   // Side chats supply this so each agent message can be handed back to the main
   // thread; omitted on the main timeline, which keeps the action out of the bar.
   const onSendToMain =
     onSendToMainMessage === undefined
       ? undefined
       : () => onSendToMainMessage({ messageText: row.text });
+  const onSelectProse =
+    reportProseSelection === undefined
+      ? undefined
+      : (selection: MessageProseSelection | null) =>
+          reportProseSelection(
+            selection === null
+              ? null
+              : { ...selection, sourceSeqEnd: row.sourceSeqEnd },
+          );
   return (
     <ConversationMessageContent
       attachments={row.attachments}
@@ -839,18 +868,20 @@ function ConversationRow({ row }: ConversationRowProps) {
       onSideChat={onSideChat}
       onSendToMain={onSendToMain}
       forkDisabled={!canSpawnChild}
-      onSelectProse={reportProseSelection}
+      onSelectProse={onSelectProse}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
+      showActions={showAssistantMessageActions}
       sourceSeqEnd={row.sourceSeqEnd}
       sourceSeqStart={row.sourceSeqStart}
       text={row.text}
       threadId={row.threadId}
       turnId={row.turnId}
       turnRequest={row.turnRequest}
+      workspaceRootPath={workspaceRootPath}
     />
   );
 }
@@ -923,6 +954,7 @@ function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
   row,
+  showAssistantMessageActions,
 }: TimelineExpandableBodyProps) {
   const {
     onOpenLink,
@@ -941,6 +973,7 @@ function TimelineExpandableBody({
         <TimelineRowsList
           rows={row.children}
           scopeActive={false}
+          showAssistantMessageActions={showAssistantMessageActions}
           compactActivityIntents={true}
           spacing="bundle"
           unreadDividerAutoScroll={false}
@@ -980,6 +1013,11 @@ function TimelineExpandableBody({
         <TurnRowBody
           row={row}
           compactActivityIntents={compactActivityIntents}
+          // Completed turn details live under "Worked for..." as archival
+          // context; pending "Working" rows keep the streaming affordance.
+          showAssistantMessageActions={
+            showAssistantMessageActions && row.status === "pending"
+          }
         />
       );
     case "work":
@@ -997,6 +1035,7 @@ function TimelineExpandableBody({
                 <TimelineRowsList
                   rows={row.childRows}
                   scopeActive={delegationActive}
+                  showAssistantMessageActions={showAssistantMessageActions}
                   compactActivityIntents={false}
                   spacing="nested"
                   unreadDividerAutoScroll={false}
@@ -1012,12 +1051,14 @@ function TimelineExpandableBody({
                   projectId={projectId}
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
                   role="assistant"
+                  showActions={showAssistantMessageActions}
                   sourceSeqEnd={row.sourceSeqEnd}
                   sourceSeqStart={row.sourceSeqStart}
                   text={row.output}
                   threadId={row.threadId}
                   turnId={row.turnId}
                   turnRequest={null}
+                  workspaceRootPath={workspaceRootPath}
                 />
               ) : null}
             </div>
@@ -1046,12 +1087,17 @@ function TimelineExpandableBody({
   }
 }
 
-function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
+function TurnRowBody({
+  compactActivityIntents,
+  row,
+  showAssistantMessageActions,
+}: TurnRowBodyProps) {
   if (row.children === null) {
     return (
       <LazyTurnRowBody
         compactActivityIntents={compactActivityIntents}
         row={row}
+        showAssistantMessageActions={showAssistantMessageActions}
       />
     );
   }
@@ -1060,6 +1106,7 @@ function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
     <TimelineRowsList
       rows={row.children}
       scopeActive={false}
+      showAssistantMessageActions={showAssistantMessageActions}
       compactActivityIntents={compactActivityIntents}
       spacing="nested"
       className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
@@ -1072,6 +1119,7 @@ function TurnRowBody({ compactActivityIntents, row }: TurnRowBodyProps) {
 function LazyTurnRowBody({
   compactActivityIntents,
   row,
+  showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
   const {
@@ -1128,6 +1176,7 @@ function LazyTurnRowBody({
       <TimelineRowsList
         rows={rows}
         scopeActive={false}
+        showAssistantMessageActions={showAssistantMessageActions}
         compactActivityIntents={compactActivityIntents}
         spacing="nested"
         className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
@@ -1266,7 +1315,8 @@ function leadingIconForWorkRow(
     case "delegation":
       return "UserRoundPlus";
     case "workflow":
-      return "ListTodo";
+      // Backgrounded shell commands reuse the workflow row but read as commands.
+      return isBackgroundCommandTaskType(row.taskType) ? "Terminal" : "ListTodo";
     case "approval":
       return "Lock";
     case "question":
@@ -1277,10 +1327,10 @@ function leadingIconForWorkRow(
 }
 
 /**
- * Per-action leading glyph for Family-A system operation rows, keyed by
- * `operationKind` (and the parent-change action) so each lifecycle event reads
- * at a glance. Warning / deprecation / provider-unhandled / generic and
- * non-operation system rows keep no leading glyph.
+ * Per-action leading glyph for system operation rows, keyed by `operationKind`
+ * (and the parent-change action) so each lifecycle event reads at a glance.
+ * Warning / deprecation / provider-unhandled / generic and non-operation system
+ * rows keep no leading glyph.
  */
 // Pure operation-kind → leading-icon mapping (exported for exhaustive testing).
 // Warning / deprecation / provider-unhandled / generic keep no leading glyph.
@@ -1346,6 +1396,7 @@ function TimelineRowView({
   compactActivityIntents,
   row,
   scopeActive,
+  showAssistantMessageActions,
   spacing,
 }: TimelineRowViewProps) {
   const horizontalPadding = timelineRowHorizontalPadding(spacing);
@@ -1360,7 +1411,12 @@ function TimelineRowView({
   });
 
   if (row.kind === "conversation") {
-    return <ConversationRow row={row} />;
+    return (
+      <ConversationRow
+        row={row}
+        showAssistantMessageActions={showAssistantMessageActions}
+      />
+    );
   }
 
   if (titleState.kind === "compact-activity-intents") {
@@ -1428,6 +1484,7 @@ function TimelineRowView({
       activeLatestBundleId={activeLatestBundleId}
       row={row}
       scopeActive={scopeActive}
+      showAssistantMessageActions={showAssistantMessageActions}
       title={titleState.title}
       horizontalPadding={horizontalPadding}
       compactActivityIntents={compactActivityIntents}
@@ -1444,6 +1501,7 @@ function TimelineExpandableRowView({
   activeLatestBundleId,
   compactActivityIntents,
   scopeActive,
+  showAssistantMessageActions,
   title,
   horizontalPadding,
   row,
@@ -1461,9 +1519,15 @@ function TimelineExpandableRowView({
         activeLatestBundleId={activeLatestBundleId}
         row={row}
         compactActivityIntents={compactActivityIntents}
+        showAssistantMessageActions={showAssistantMessageActions}
       />
     ),
-    [activeLatestBundleId, compactActivityIntents, row],
+    [
+      activeLatestBundleId,
+      compactActivityIntents,
+      row,
+      showAssistantMessageActions,
+    ],
   );
 
   const leadingIcon = leadingIconForRow(row);
@@ -1564,6 +1628,7 @@ function TimelineRowsList({
   compactActivityIntents,
   rows,
   scopeActive,
+  showAssistantMessageActions,
   spacing,
   className,
   unreadDividerAutoScroll,
@@ -1580,7 +1645,7 @@ function TimelineRowsList({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col",
+        "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
         timelineRowsListGapClassName(spacing),
         className,
       )}
@@ -1602,6 +1667,7 @@ function TimelineRowsList({
               activeLatestBundleId={activeLatestBundleId}
               row={item.row}
               scopeActive={scopeActive}
+              showAssistantMessageActions={showAssistantMessageActions}
               spacing={spacing}
               compactActivityIntents={compactActivityIntents}
             />
@@ -1689,8 +1755,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [onSelectionAddToChat],
   );
   const handleSelectionReplyInSideChat = useCallback(
-    (text: string) => {
-      onSelectionReplyInSideChat?.(text);
+    (selection: MessageProseSelection) => {
+      onSelectionReplyInSideChat?.({
+        messageText: selection.text,
+        sourceSeqEnd: selection.sourceSeqEnd,
+      });
       setActiveSelection(null);
     },
     [onSelectionReplyInSideChat],
@@ -1759,6 +1828,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
           <TimelineRowsList
             rows={rows}
             scopeActive={scopeActive}
+            showAssistantMessageActions={true}
             compactActivityIntents={false}
             spacing="top-level"
             unreadDividerAutoScroll={props.unreadDividerAutoScroll ?? true}

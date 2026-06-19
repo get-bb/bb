@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import { promisify } from "node:util";
 import {
   type GitHostPullRequest,
@@ -11,6 +11,7 @@ import {
   gitHostPullRequestSchema,
 } from "@bb/domain";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import { WorkspaceError } from "./git.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,8 @@ const GH_PR_VIEW_TIMEOUT_MS = 10_000;
  * if the field list ever grows.
  */
 const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+const GH_PR_ACTION_TIMEOUT_MS = 60_000;
+const GH_PR_ACTION_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 
 const GH_PR_VIEW_JSON_FIELDS = [
   "number",
@@ -44,6 +47,19 @@ const GH_PR_VIEW_JSON_FIELDS = [
 interface GetPullRequestForBranchArgs {
   cwd: string;
   branch: string;
+}
+
+export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
+
+export type GitHostPullRequestAction =
+  | { operation: "ready" }
+  | { operation: "draft" }
+  | { operation: "merge"; method: GitHostPullRequestMergeMethod };
+
+interface RunPullRequestActionForBranchArgs {
+  cwd: string;
+  branch: string;
+  action: GitHostPullRequestAction;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -260,6 +276,64 @@ function normalizeGitHubPullRequestView(
   return parsed.success ? parsed.data : null;
 }
 
+function getMergeMethodFlag(method: GitHostPullRequestMergeMethod): string {
+  switch (method) {
+    case "merge":
+      return "--merge";
+    case "squash":
+      return "--squash";
+    case "rebase":
+      return "--rebase";
+  }
+}
+
+function buildPullRequestActionArgs(
+  action: GitHostPullRequestAction,
+  branch: string,
+): string[] {
+  switch (action.operation) {
+    case "ready":
+      return ["pr", "ready", "--", branch];
+    case "draft":
+      return ["pr", "ready", "--undo", "--", branch];
+    case "merge":
+      return ["pr", "merge", getMergeMethodFlag(action.method), "--", branch];
+  }
+}
+
+function getExecFileException(error: unknown): ExecFileException | undefined {
+  return error instanceof Error ? (error as ExecFileException) : undefined;
+}
+
+function trimGhOutput(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function createGitHostCommandFailedError(
+  args: string[],
+  error: unknown,
+): WorkspaceError {
+  const execError = getExecFileException(error);
+  if (execError?.code === "ENOENT") {
+    return new WorkspaceError(
+      "git_host_cli_unavailable",
+      "GitHub CLI is not available",
+      { cause: error },
+    );
+  }
+  const stderr = trimGhOutput(execError?.stderr);
+  const stdout = trimGhOutput(execError?.stdout);
+  const detail =
+    stderr || stdout || (error instanceof Error ? error.message : "");
+  return new WorkspaceError(
+    "git_host_command_failed",
+    detail
+      ? `gh ${args.join(" ")} failed: ${detail}`
+      : `gh ${args.join(" ")} failed`,
+    { cause: error },
+  );
+}
+
 /**
  * Parse the stdout of `gh pr view --json <fields>` into a validated
  * {@link GitHostPullRequest}. Returns `null` for any output that is not a
@@ -312,5 +386,26 @@ export async function getPullRequestForBranch(
     // gh-missing / not-authed / no-remote / no-PR / timeout all land here and
     // mean the same thing to the product: there is no PR to show.
     return null;
+  }
+}
+
+/**
+ * Mutate the GitHub pull request for `branch`. Unlike pull-request detection,
+ * mutation failures are meaningful and are surfaced to the caller.
+ */
+export async function runPullRequestActionForBranch(
+  args: RunPullRequestActionForBranchArgs,
+): Promise<void> {
+  const ghArgs = buildPullRequestActionArgs(args.action, args.branch);
+  try {
+    await execFileAsync("gh", ghArgs, {
+      cwd: args.cwd,
+      encoding: "utf8",
+      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      timeout: GH_PR_ACTION_TIMEOUT_MS,
+      maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
+    });
+  } catch (error) {
+    throw createGitHostCommandFailedError(ghArgs, error);
   }
 }

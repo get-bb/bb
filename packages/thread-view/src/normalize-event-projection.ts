@@ -323,6 +323,8 @@ class SemanticProjectionBuilder {
     return {
       state: {
         activeThinking: null,
+        activeWorkflow: null,
+        activeBackgroundCommands: [],
       },
       entries,
     };
@@ -337,7 +339,11 @@ class SemanticProjectionBuilder {
     contexts: readonly SemanticMessageContext[],
   ): EventProjection {
     return {
-      state: { activeThinking: null },
+      state: {
+        activeThinking: null,
+        activeWorkflow: null,
+        activeBackgroundCommands: [],
+      },
       entries: contexts.map((context) => ({
         kind: "projected-message",
         message: this.toSemanticMessage(context.message),

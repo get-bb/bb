@@ -51,8 +51,8 @@ tags: spec, command-menu, ui
 
 # Prompt Plus Menu
 
-The **prompt-plus menu** opens when you type \`/\` for Claude or \`$\` for Codex
-in the promptbox, offering inline command completions.`;
+The **prompt-plus menu** opens when you type \`/\` in the promptbox, offering
+inline skill and command completions.`;
 
 const LISTS_MARKDOWN = `Unordered:
 

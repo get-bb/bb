@@ -147,6 +147,13 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "mcpServer/startupStatus/updated": "noise",
   "model/verification": "unknown",
   "model/rerouted": "unknown",
+  // Background-process gap: unlike Claude Code (which emits a task lifecycle for
+  // Bash run_in_background, materialized as a background-command timeline row),
+  // Codex has no model-facing "run in background" affordance. A model that
+  // backgrounds a command with a trailing `&` produces an ordinary, immediately
+  // completed commandExecution with no lifecycle. These process/* notifications
+  // belong to the client-initiated `process/spawn` API, which bb never calls, so
+  // there is nothing to surface — left "unknown" intentionally.
   "process/exited": "unknown",
   "process/outputDelta": "unknown",
   "rawResponseItem/completed": "noise",

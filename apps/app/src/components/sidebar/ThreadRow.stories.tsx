@@ -57,20 +57,17 @@ const defaultOption: ThreadRowOptions = {
   kind: "default",
   depth: 1,
   isCompact: false,
-  isEnvGrouped: false,
 };
 const childOption: ThreadRowOptions = {
   kind: "default",
   depth: 2,
   isCompact: true,
-  isEnvGrouped: false,
 };
 // Projectless threads are top-level rows (depth 0), flush with project headers.
 const projectlessOption: ThreadRowOptions = {
   kind: "default",
   depth: 0,
   isCompact: false,
-  isEnvGrouped: false,
 };
 function parentOption(
   overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
@@ -79,7 +76,6 @@ function parentOption(
     kind: "parent",
     depth: 1,
     isCompact: false,
-    isEnvGrouped: false,
     isCollapsed: false,
     childCount: 0,
     childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
@@ -149,7 +145,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active"
-        hint="selected thread shows the sidebar-border background"
+        hint="selected thread shows the sidebar-accent background"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -306,7 +302,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="env: managed worktree"
-        hint="trailing icon hint for the workspace display kind"
+        hint="leading worktree icon appears before the thread title"
       >
         <SidebarStage>
           <StoryThreadRow

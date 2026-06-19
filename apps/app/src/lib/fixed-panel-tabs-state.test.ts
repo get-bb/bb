@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   areFixedPanelTabsEquivalent,
   buildFixedPanelTabId,
+  createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -134,14 +135,41 @@ describe("fixed-panel-tabs-state", () => {
 });
 
 describe("side-chat fixed panel tabs", () => {
+  it("does not require crypto.randomUUID for generated tab ids", () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+      randomUUID: undefined,
+      subtle: originalCrypto.subtle,
+    });
+
+    try {
+      const sideChatTab = createSideChatFixedPanelTab({
+        sourceMessageText: "",
+        title: "Side chat",
+      });
+      const browserTab = createBrowserFixedPanelTab({
+        environmentId: null,
+        url: "",
+      });
+
+      expect(sideChatTab.id).toMatch(/^side-chat:/);
+      expect(browserTab.id).toMatch(/^browser:.+:none$/);
+    } finally {
+      vi.stubGlobal("crypto", originalCrypto);
+    }
+  });
+
   it("round-trips side-chat tabs (threadId null and set)", () => {
     const pendingTab = createSideChatFixedPanelTab({
       sourceMessageText: "Why this index? Full source agent message text.",
+      sourceSeqEnd: 12,
       title: "Why this index?",
     });
     const createdTab: SideChatFixedPanelTab = {
       ...createSideChatFixedPanelTab({
         sourceMessageText: "Created side chat source message.",
+        sourceSeqEnd: 18,
         title: "Created side chat",
       }),
       threadId: "thr_side_child",
@@ -167,6 +195,7 @@ describe("side-chat fixed panel tabs", () => {
   it("round-trips a side-chat tab opened from the thread tip", () => {
     const tab = createSideChatFixedPanelTab({
       sourceMessageText: "",
+      sourceSeqEnd: null,
       title: "Side chat",
     });
     const state = createEmptyFixedPanelTabsState({

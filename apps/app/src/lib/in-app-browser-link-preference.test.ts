@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isHttpOrHttpsUrl,
-  resolveChatLinkOpenTarget,
+  openUrlByPreference,
+  resolveUrlOpenTarget,
 } from "./in-app-browser-link-preference";
 
 describe("isHttpOrHttpsUrl", () => {
@@ -21,45 +22,45 @@ describe("isHttpOrHttpsUrl", () => {
   });
 });
 
-describe("resolveChatLinkOpenTarget", () => {
+describe("resolveUrlOpenTarget", () => {
   it("routes http(s) links into the in-app browser on desktop when enabled", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveUrlOpenTarget({
         desktopBrowserAvailable: true,
-        openInAppBrowser: true,
+        openLinksInAppBrowser: true,
         url: "https://example.com/docs",
       }),
     ).toBe("in-app-browser");
     expect(
-      resolveChatLinkOpenTarget({
+      resolveUrlOpenTarget({
         desktopBrowserAvailable: true,
-        openInAppBrowser: true,
+        openLinksInAppBrowser: true,
         url: "http://example.com",
       }),
     ).toBe("in-app-browser");
   });
 
-  it("keeps default behavior when the preference is off", () => {
+  it("routes http(s) links to the external browser when the preference is off", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveUrlOpenTarget({
         desktopBrowserAvailable: true,
-        openInAppBrowser: false,
+        openLinksInAppBrowser: false,
         url: "https://example.com/docs",
       }),
-    ).toBe("default");
+    ).toBe("external-browser");
   });
 
-  it("keeps default behavior when the desktop browser is unavailable (web)", () => {
+  it("routes http(s) links to the external browser when the desktop browser is unavailable (web)", () => {
     expect(
-      resolveChatLinkOpenTarget({
+      resolveUrlOpenTarget({
         desktopBrowserAvailable: false,
-        openInAppBrowser: true,
+        openLinksInAppBrowser: true,
         url: "https://example.com/docs",
       }),
-    ).toBe("default");
+    ).toBe("external-browser");
   });
 
-  it("never routes non-http links, even on desktop with the preference on", () => {
+  it("does not handle non-http links, even on desktop with the preference on", () => {
     for (const url of [
       "mailto:hi@example.com",
       "file:///Users/me/app.ts",
@@ -67,12 +68,68 @@ describe("resolveChatLinkOpenTarget", () => {
       "#section",
     ]) {
       expect(
-        resolveChatLinkOpenTarget({
+        resolveUrlOpenTarget({
           desktopBrowserAvailable: true,
-          openInAppBrowser: true,
+          openLinksInAppBrowser: true,
           url,
         }),
-      ).toBe("default");
+      ).toBe("unhandled");
     }
+  });
+});
+
+describe("openUrlByPreference", () => {
+  it("opens http(s) URLs in the in-app browser when enabled", () => {
+    const openedInApp: string[] = [];
+    const openedExternally: string[] = [];
+
+    expect(
+      openUrlByPreference({
+        desktopBrowserAvailable: true,
+        openExternalBrowser: (url) => openedExternally.push(url),
+        openInAppBrowser: (url) => openedInApp.push(url),
+        openLinksInAppBrowser: true,
+        url: "https://example.com/docs",
+      }),
+    ).toBe(true);
+
+    expect(openedInApp).toEqual(["https://example.com/docs"]);
+    expect(openedExternally).toEqual([]);
+  });
+
+  it("opens http(s) URLs externally when disabled", () => {
+    const openedInApp: string[] = [];
+    const openedExternally: string[] = [];
+
+    expect(
+      openUrlByPreference({
+        desktopBrowserAvailable: true,
+        openExternalBrowser: (url) => openedExternally.push(url),
+        openInAppBrowser: (url) => openedInApp.push(url),
+        openLinksInAppBrowser: false,
+        url: "https://example.com/docs",
+      }),
+    ).toBe(true);
+
+    expect(openedInApp).toEqual([]);
+    expect(openedExternally).toEqual(["https://example.com/docs"]);
+  });
+
+  it("leaves file links and non-web schemes to their dedicated handlers", () => {
+    const openedInApp: string[] = [];
+    const openedExternally: string[] = [];
+
+    expect(
+      openUrlByPreference({
+        desktopBrowserAvailable: true,
+        openExternalBrowser: (url) => openedExternally.push(url),
+        openInAppBrowser: (url) => openedInApp.push(url),
+        openLinksInAppBrowser: true,
+        url: "file:///Users/me/app.ts",
+      }),
+    ).toBe(false);
+
+    expect(openedInApp).toEqual([]);
+    expect(openedExternally).toEqual([]);
   });
 });

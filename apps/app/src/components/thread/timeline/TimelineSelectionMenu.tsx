@@ -9,27 +9,27 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 // hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
 // affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
 
 interface SelectionAction {
   icon: IconName;
   label: string;
-  onSelect: (text: string) => void;
+  onSelect: (selection: MessageProseSelection) => void;
 }
 
 export interface TimelineSelectionMenuProps {
   selection: MessageProseSelection | null;
   onAddToChat?: (text: string) => void;
-  onReplyInSideChat?: (text: string) => void;
+  onReplyInSideChat?: (selection: MessageProseSelection) => void;
   onDismiss: () => void;
 }
 
 function ActionButton({
   action,
-  text,
+  selection,
 }: {
   action: SelectionAction;
-  text: string;
+  selection: MessageProseSelection;
 }) {
   return (
     <button
@@ -39,7 +39,7 @@ function ActionButton({
       // receives the selected text (and the menu stays anchored).
       onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
       onClick={() => {
-        action.onSelect(text);
+        action.onSelect(selection);
         // Clear the lingering highlight so the source text doesn't read as
         // "still selected" after the quote/side-chat has been created.
         window.getSelection()?.removeAllRanges();
@@ -71,9 +71,8 @@ export function TimelineSelectionMenu({
   // Constrain the floating menu to the thread column so it never overlaps the
   // sidebar or secondary panel. The anchor sits inside `[data-thread-window]`,
   // so resolve that ancestor as the Radix collision boundary.
-  const [collisionBoundary, setCollisionBoundary] = useState<HTMLElement | null>(
-    null,
-  );
+  const [collisionBoundary, setCollisionBoundary] =
+    useState<HTMLElement | null>(null);
   const anchorRef = useCallback((node: HTMLDivElement | null) => {
     setCollisionBoundary(
       node?.closest<HTMLElement>("[data-thread-window]") ?? null,
@@ -101,7 +100,8 @@ export function TimelineSelectionMenu({
           {
             icon: "MessageSquarePlus" as const,
             label: "Add to chat",
-            onSelect: onAddToChat,
+            onSelect: (currentSelection: MessageProseSelection) =>
+              onAddToChat(currentSelection.text),
           },
         ]
       : []),
@@ -117,7 +117,7 @@ export function TimelineSelectionMenu({
   ];
   if (actions.length === 0) return null;
 
-  const { rect, text } = selection;
+  const { rect } = selection;
 
   return (
     <Popover
@@ -161,7 +161,7 @@ export function TimelineSelectionMenu({
             {index > 0 ? (
               <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
             ) : null}
-            <ActionButton action={action} text={text} />
+            <ActionButton action={action} selection={selection} />
           </div>
         ))}
       </PopoverContent>

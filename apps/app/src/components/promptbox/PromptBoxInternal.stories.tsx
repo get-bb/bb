@@ -371,7 +371,7 @@ const mixedPromptPillsFixture = buildPromptPillsFixture(
   [
     "Use @apps/app/src/components/promptbox/PromptBoxInternal.tsx with",
     "@apps/app/src/components/promptbox/mentions/ and @thread-storage:notes/status.md;",
-    "then ask @thread:thr_prompt_pills before running $github:gh-fix-ci or /frontend:component.",
+    "then ask @thread:thr_prompt_pills before running /github:gh-fix-ci or /frontend:component.",
   ].join(" "),
   [
     {
@@ -414,10 +414,10 @@ const mixedPromptPillsFixture = buildPromptPillsFixture(
       },
     },
     {
-      token: "$github:gh-fix-ci",
+      token: "/github:gh-fix-ci",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "github:gh-fix-ci",
         source: "skill",
         origin: "user",
@@ -504,13 +504,13 @@ const threadPromptPillsFixture = buildPromptPillsFixture(
 );
 
 const commandPromptPillsFixture = buildPromptPillsFixture(
-  "Try $github:gh-fix-ci $browser:control-in-app-browser /frontend:component and $review.",
+  "Try /github:gh-fix-ci /browser:control-in-app-browser /frontend:component and /review.",
   [
     {
-      token: "$github:gh-fix-ci",
+      token: "/github:gh-fix-ci",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "github:gh-fix-ci",
         source: "skill",
         origin: "user",
@@ -519,10 +519,10 @@ const commandPromptPillsFixture = buildPromptPillsFixture(
       },
     },
     {
-      token: "$browser:control-in-app-browser",
+      token: "/browser:control-in-app-browser",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "browser:control-in-app-browser",
         source: "skill",
         origin: "user",
@@ -543,10 +543,10 @@ const commandPromptPillsFixture = buildPromptPillsFixture(
       },
     },
     {
-      token: "$review",
+      token: "/review",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "review",
         source: "command",
         origin: "user",
@@ -558,13 +558,13 @@ const commandPromptPillsFixture = buildPromptPillsFixture(
 );
 
 const skillArgumentHintFixture = buildPromptPillsFixture(
-  "$moss-hardening-review ",
+  "/moss-hardening-review ",
   [
     {
-      token: "$moss-hardening-review",
+      token: "/moss-hardening-review",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "moss-hardening-review",
         source: "skill",
         origin: "user",
@@ -734,14 +734,14 @@ function WithMentionsRow() {
 
 function WithSkillPillRow() {
   const argumentHint = "[branch | staged] [base=<ref>]";
-  const initialValue = "$moss-hardening-review ";
+  const initialValue = "/moss-hardening-review ";
   const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
     storyMention({
       text: initialValue,
-      token: "$moss-hardening-review",
+      token: "/moss-hardening-review",
       resource: {
         kind: "command",
-        trigger: "$",
+        trigger: "/",
         name: "moss-hardening-review",
         source: "skill",
         origin: "user",
@@ -778,11 +778,11 @@ function WithLiveSkillsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      placeholder="Type $ to insert a skill or command"
+      placeholder="Type / to insert a skill or command"
       typeahead={makeTypeahead(
         {},
         {
-          trigger: "$",
+          trigger: "/",
           suggestions,
           isLoading: false,
           isError: false,
@@ -958,19 +958,19 @@ export function AllPromptPills() {
       </StoryRow>
       <StoryRow
         label="command pills"
-        hint="skill commands, project commands, user commands, and both trigger styles"
+        hint="skill commands, project commands, and user commands"
       >
         <PromptBoxStoryInstance fixture={commandPromptPillsFixture} />
       </StoryRow>
       <StoryRow
-        label="skill arg hint"
-        hint="skill pill with non-editable argument hint placeholder after the caret"
+        label="skill arg metadata"
+        hint="skill pill with argument hint metadata but no prompt placeholder text"
       >
         <PromptBoxStoryInstance fixture={skillArgumentHintFixture} />
       </StoryRow>
       <StoryRow
-        label="project arg hint"
-        hint="project command pill with non-editable argument hint placeholder"
+        label="project arg metadata"
+        hint="project command pill with argument hint metadata but no prompt placeholder text"
       >
         <PromptBoxStoryInstance fixture={projectCommandArgumentHintFixture} />
       </StoryRow>
@@ -1026,13 +1026,13 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="selected skill"
-        hint="skill command pill plus the SKILL.md argument hint placeholder"
+        hint="skill command pill without SKILL.md argument hint placeholder text"
       >
         <WithSkillPillRow />
       </StoryRow>
       <StoryRow
         label="live skills"
-        hint="type $ then select a skill; argument hints render as placeholders"
+        hint="type $ then select a skill; argument hints stay out of the prompt text"
       >
         <WithLiveSkillsRow />
       </StoryRow>

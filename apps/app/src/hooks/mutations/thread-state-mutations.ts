@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
+  ThreadResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
@@ -15,6 +16,8 @@ import {
   beginArchiveThreadTransaction,
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
+  beginThreadReadStateTransaction,
+  beginThreadTitleTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinThreadTransaction,
@@ -60,7 +63,12 @@ interface DeleteThreadMutationRequest {
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    ThreadResponse,
+    Error,
+    UpdateThreadMutationRequest,
+    ThreadListMutationTransaction | undefined
+  >({
     meta: {
       errorMessage: options?.errorMessage ?? "Failed to update thread.",
       ...(options?.lifecycleOperation
@@ -69,6 +77,27 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     },
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       api.updateThread(id, request),
+    onMutate: ({
+      id,
+      title,
+    }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
+      if (title === undefined) {
+        return undefined;
+      }
+
+      return beginThreadTitleTransaction({
+        queryClient,
+        threadId: id,
+        title,
+      });
+    },
+    onError: (_error, variables, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId: variables.id,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
     },
@@ -260,10 +289,7 @@ export function useDeleteThread() {
     meta: {
       errorMessage: "Failed to delete thread.",
     },
-    mutationFn: ({
-      childThreadsConfirmed,
-      id,
-    }: DeleteThreadMutationRequest) =>
+    mutationFn: ({ childThreadsConfirmed, id }: DeleteThreadMutationRequest) =>
       api.deleteThread(id, { childThreadsConfirmed }),
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
@@ -293,6 +319,19 @@ export function useMarkThreadRead() {
       showErrorToast: false,
     },
     mutationFn: (threadId: string) => api.markThreadRead(threadId),
+    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+      beginThreadReadStateTransaction({
+        lastReadAt: Date.now(),
+        queryClient,
+        threadId,
+      }),
+    onError: (_error, threadId, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
     },
@@ -308,6 +347,19 @@ export function useMarkThreadUnread() {
       showErrorToast: false,
     },
     mutationFn: (threadId: string) => api.markThreadUnread(threadId),
+    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+      beginThreadReadStateTransaction({
+        lastReadAt: null,
+        queryClient,
+        threadId,
+      }),
+    onError: (_error, threadId, context) => {
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId,
+        transaction: context,
+      });
+    },
     onSuccess: (thread) => {
       applyThreadReadStateResult({ queryClient, thread });
     },

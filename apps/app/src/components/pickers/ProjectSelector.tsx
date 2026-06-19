@@ -45,6 +45,8 @@ export interface ProjectSelectorProps {
   allowNoProject?: boolean;
   /** When provided, adds a "New project" action. */
   createProject?: ProjectSelectorCreateProjectConfig;
+  /** Render as a non-interactive label while preserving the selected project. */
+  disabled?: boolean;
   className?: string;
   /** Render with the menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
@@ -58,6 +60,7 @@ export function ProjectSelector({
   onChange,
   allowNoProject = false,
   createProject,
+  disabled = false,
   className,
   defaultOpen,
   modal,
@@ -79,18 +82,20 @@ export function ProjectSelector({
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           aria-label="Project"
+          disabled={disabled}
           // Matches OptionPicker's "<label>: <value>" tooltip convention.
           title={`Project: ${triggerLabel}`}
           data-promptbox-project-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
+            !disabled && OPTION_INTERACTIVE_CLASS_NAME,
+            disabled && "cursor-default disabled:opacity-100",
             OPTION_MUTED_CLASS_NAME,
             className,
           )}
@@ -108,11 +113,13 @@ export function ProjectSelector({
               {compactTriggerLabel}
             </span>
           </span>
-          <Icon
-            name="ChevronDown"
-            className="size-3.5 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
+          {disabled ? null : (
+            <Icon
+              name="ChevronDown"
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" className="w-52">

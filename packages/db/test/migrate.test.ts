@@ -181,7 +181,32 @@ interface SeedEventLargeValueBackfillEventArgs {
   type?: string;
 }
 
+interface SeededLargeValueBackfillValues {
+  commandOutput: string;
+  firstDiff: string;
+  secondDiff: string;
+  toolResult: { body: string };
+  webFetchResult: string;
+  webSearchResult: string;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const latestMigrationWhen = Math.max(
+  ...(
+    JSON.parse(
+      readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+    ) as { entries: { when: number }[] }
+  ).entries.map((entry) => entry.when),
+);
+
+function dropAutomationsSchema(db: DbConnection): void {
+  // Several tests migrate to head, rewind the schema to a legacy state, then
+  // re-apply forward. The automations tables (added by 0039) must be dropped as
+  // part of that rewind so the forward re-migrate can re-create them.
+  db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
+  db.$client.prepare("DROP TABLE IF EXISTS automations").run();
+}
 
 function requirePublishedMigrationWhen(tag: string): number {
   const when = publishedMigrationWhensByTag.get(tag);
@@ -213,7 +238,9 @@ const branchLocalThreadSearchMigrationWhen = 1781403656070;
 const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
+const popoutChatExperimentsMigrationWhen = 1781299832942;
 const eventLargeValuesMigrationWhen = 1781403656069;
+const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const cleanupModeDropMigrationWhen = 1781557300000;
 const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
@@ -244,8 +271,29 @@ const pendingInteractionSchemaHonestyMigrationPath = resolve(
   "drizzle",
   "0019_pending_interactions_schema_honesty.sql",
 );
+const eventLargeValuesMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0031_mysterious_zaran.sql",
+);
 function closeConnection(db: DbConnection): void {
   db.$client.close();
+}
+
+// Thread-search replay scenarios start from a full `migrate(db)` and then roll
+// the thread-search migrations back to an earlier state. Any migration that
+// lands AFTER thread-search (e.g. the automations migration) stays applied with
+// a newer timestamp, which would block Drizzle from re-applying the canonical
+// thread-search migrations (it only replays migrations newer than the latest
+// applied row). Clear those later migrations so the replay scenario matches a
+// real upgrade, where thread-search is repaired before later migrations apply.
+// NOTE: when adding a migration after thread-search, drop its schema here too.
+function resetMigrationsAfterThreadSearch(db: DbConnection): void {
+  dropAutomationsSchema(db);
+  db.$client
+    .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
+    .run(threadSearchRowidFtsMigrationWhen);
 }
 
 function dropEnvironmentNameColumn(db: DbConnection): void {
@@ -534,6 +582,96 @@ function seedEventLargeValueBackfillEvent(
     );
 }
 
+function seedEventLargeValueBackfillEvents(
+  db: DbConnection,
+): SeededLargeValueBackfillValues {
+  const values: SeededLargeValueBackfillValues = {
+    commandOutput: "command output ".repeat(48),
+    toolResult: { body: "tool result ".repeat(48) },
+    webFetchResult: "web fetch result ".repeat(40),
+    webSearchResult: "web search result ".repeat(40),
+    firstDiff: "first diff ".repeat(60),
+    secondDiff: "second diff ".repeat(60),
+  };
+
+  seedEventLargeValueBackfillEvent(db, {
+    id: "evt_large_command_output",
+    itemId: "cmd_large",
+    itemKind: "commandExecution",
+    sequence: 1,
+    createdAt: 2001,
+    data: JSON.stringify({
+      item: {
+        id: "cmd_large",
+        type: "commandExecution",
+        aggregatedOutput: values.commandOutput,
+      },
+    }),
+  });
+  seedEventLargeValueBackfillEvent(db, {
+    id: "evt_large_tool_result",
+    itemId: "tool_large",
+    itemKind: "toolCall",
+    sequence: 2,
+    createdAt: 2002,
+    data: JSON.stringify({
+      item: {
+        id: "tool_large",
+        type: "toolCall",
+        result: values.toolResult,
+      },
+    }),
+  });
+  seedEventLargeValueBackfillEvent(db, {
+    id: "evt_large_web_fetch",
+    itemId: "web_fetch_large",
+    itemKind: "webFetch",
+    sequence: 3,
+    createdAt: 2003,
+    data: JSON.stringify({
+      item: {
+        id: "web_fetch_large",
+        type: "webFetch",
+        resultText: values.webFetchResult,
+      },
+    }),
+  });
+  seedEventLargeValueBackfillEvent(db, {
+    id: "evt_large_web_search",
+    itemId: "web_search_large",
+    itemKind: "webSearch",
+    sequence: 4,
+    createdAt: 2004,
+    data: JSON.stringify({
+      item: {
+        id: "web_search_large",
+        type: "webSearch",
+        resultText: values.webSearchResult,
+      },
+    }),
+  });
+  seedEventLargeValueBackfillEvent(db, {
+    id: "evt_large_file_diffs",
+    itemId: "file_large",
+    itemKind: "fileChange",
+    sequence: 5,
+    createdAt: 2005,
+    data: JSON.stringify({
+      item: {
+        id: "file_large",
+        type: "fileChange",
+        changes: [
+          { path: "a.ts", diff: values.firstDiff },
+          { path: "b.ts", diff: "small diff" },
+          { path: "c.ts", diff: values.secondDiff },
+        ],
+      },
+    }),
+  });
+
+  return values;
+}
+
 function readMigratedEventData(db: DbConnection, eventId: string): string {
   const row = db.$client
     .prepare<[string], MigratedEventDataRow>(
@@ -548,6 +686,42 @@ function readMigratedEventData(db: DbConnection, eventId: string): string {
     throw new Error(`Expected migrated event ${eventId}`);
   }
   return row.data;
+}
+
+function expectEventLargeValuesInline(
+  db: DbConnection,
+  values: SeededLargeValueBackfillValues,
+): void {
+  const commandData = JSON.parse(
+    readMigratedEventData(db, "evt_large_command_output"),
+  );
+  expect(commandData.item.aggregatedOutput).toBe(values.commandOutput);
+  expect(commandData.item.truncation).toBeUndefined();
+
+  const toolData = JSON.parse(
+    readMigratedEventData(db, "evt_large_tool_result"),
+  );
+  expect(toolData.item.result).toEqual(values.toolResult);
+  expect(toolData.item.truncation).toBeUndefined();
+
+  const webFetchData = JSON.parse(
+    readMigratedEventData(db, "evt_large_web_fetch"),
+  );
+  expect(webFetchData.item.resultText).toBe(values.webFetchResult);
+  expect(webFetchData.item.truncation).toBeUndefined();
+
+  const webSearchData = JSON.parse(
+    readMigratedEventData(db, "evt_large_web_search"),
+  );
+  expect(webSearchData.item.resultText).toBe(values.webSearchResult);
+  expect(webSearchData.item.truncation).toBeUndefined();
+
+  const fileData = JSON.parse(readMigratedEventData(db, "evt_large_file_diffs"));
+  expect(fileData.item.changes).toEqual([
+    { path: "a.ts", diff: values.firstDiff },
+    { path: "b.ts", diff: "small diff" },
+    { path: "c.ts", diff: values.secondDiff },
+  ]);
 }
 
 function seedPre0017TerminalSessionMigration(
@@ -801,6 +975,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",
         )
         .run(threadSearchRowidFtsMigrationWhen);
+      resetMigrationsAfterThreadSearch(db);
 
       expect(() => migrate(db)).not.toThrow();
 
@@ -891,6 +1066,7 @@ describe("migrate", () => {
           "branch-local-thread-search-rowid-fts-hash",
           branchLocalThreadSearchRowidFtsMigrationWhen,
         );
+      resetMigrationsAfterThreadSearch(db);
 
       expect(() => migrate(db)).not.toThrow();
 
@@ -983,6 +1159,7 @@ describe("migrate", () => {
           branchLocalThreadSearchMigrationWhen,
           branchLocalThreadSearchRowidFtsMigrationWhen,
         );
+      resetMigrationsAfterThreadSearch(db);
 
       expect(() => migrate(db)).not.toThrow();
 
@@ -1020,6 +1197,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       db.$client.exec(`
         INSERT INTO projects (id, name, created_at, updated_at)
@@ -1209,6 +1387,7 @@ describe("migrate", () => {
           `,
         )
         .run(threadSourceOriginMigrationWhen);
+      dropAutomationsSchema(db);
       db.$client.exec(`
         DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
         DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
@@ -2013,6 +2192,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       addPre0017TerminalRuntimeColumns(db);
 
@@ -2638,6 +2818,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       restorePre0022ThreadTypeSchema(db);
       seedPre0017TerminalSessionMigration({ db });
       db.$client
@@ -2724,137 +2905,82 @@ describe("migrate", () => {
     }
   });
 
+  it("skips legacy large event value round trip when values are already inline", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      dropAutomationsSchema(db);
+      seedEventLargeValueBackfillThread(db);
+      const values = seedEventLargeValueBackfillEvents(db);
+
+      markEventLargeValuesMigrationUnapplied(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at = ?
+          `,
+        )
+        .run(popoutChatExperimentsMigrationWhen);
+
+      migrate(db);
+
+      // The skipped round-trip and every migration after it re-apply, so the
+      // latest applied migration is the most recent in the journal (0041).
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
+      expect(readTableNames(db)).not.toContain("event_large_values");
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(eventLargeValuesMigrationWhen),
+      ).toEqual({ count: 1 });
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(eventLargeValuesRestoreMigrationWhen),
+      ).toEqual({ count: 1 });
+
+      expectEventLargeValuesInline(db, values);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("restores legacy large event values to inline payloads", () => {
     const db = createConnection(":memory:");
 
     try {
       migrate(db);
+      dropAutomationsSchema(db);
       seedEventLargeValueBackfillThread(db);
-
-      const commandOutput = "command output ".repeat(48);
-      const toolResult = { body: "tool result ".repeat(48) };
-      const webFetchResult = "web fetch result ".repeat(40);
-      const webSearchResult = "web search result ".repeat(40);
-      const firstDiff = "first diff ".repeat(60);
-      const secondDiff = "second diff ".repeat(60);
-
-      seedEventLargeValueBackfillEvent(db, {
-        id: "evt_large_command_output",
-        itemId: "cmd_large",
-        itemKind: "commandExecution",
-        sequence: 1,
-        createdAt: 2001,
-        data: JSON.stringify({
-          item: {
-            id: "cmd_large",
-            type: "commandExecution",
-            aggregatedOutput: commandOutput,
-          },
-        }),
-      });
-      seedEventLargeValueBackfillEvent(db, {
-        id: "evt_large_tool_result",
-        itemId: "tool_large",
-        itemKind: "toolCall",
-        sequence: 2,
-        createdAt: 2002,
-        data: JSON.stringify({
-          item: {
-            id: "tool_large",
-            type: "toolCall",
-            result: toolResult,
-          },
-        }),
-      });
-      seedEventLargeValueBackfillEvent(db, {
-        id: "evt_large_web_fetch",
-        itemId: "web_fetch_large",
-        itemKind: "webFetch",
-        sequence: 3,
-        createdAt: 2003,
-        data: JSON.stringify({
-          item: {
-            id: "web_fetch_large",
-            type: "webFetch",
-            resultText: webFetchResult,
-          },
-        }),
-      });
-      seedEventLargeValueBackfillEvent(db, {
-        id: "evt_large_web_search",
-        itemId: "web_search_large",
-        itemKind: "webSearch",
-        sequence: 4,
-        createdAt: 2004,
-        data: JSON.stringify({
-          item: {
-            id: "web_search_large",
-            type: "webSearch",
-            resultText: webSearchResult,
-          },
-        }),
-      });
-      seedEventLargeValueBackfillEvent(db, {
-        id: "evt_large_file_diffs",
-        itemId: "file_large",
-        itemKind: "fileChange",
-        sequence: 5,
-        createdAt: 2005,
-        data: JSON.stringify({
-          item: {
-            id: "file_large",
-            type: "fileChange",
-            changes: [
-              { path: "a.ts", diff: firstDiff },
-              { path: "b.ts", diff: "small diff" },
-              { path: "c.ts", diff: secondDiff },
-            ],
-          },
-        }),
-      });
+      const values = seedEventLargeValueBackfillEvents(db);
 
       markEventLargeValuesMigrationUnapplied(db);
+      runMigrationFile({ db, migrationPath: eventLargeValuesMigrationPath });
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: eventLargeValuesMigrationWhen,
+        hash: eventLargeValuesPreOptimizationHash,
+      });
+
       migrate(db);
 
-      // The restore migration and every migration after it (through 0040)
-      // re-apply, so the latest applied migration is the most recent in the journal.
-      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
-        threadSearchRowidFtsMigrationWhen,
-      );
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
-
-      const commandData = JSON.parse(
-        readMigratedEventData(db, "evt_large_command_output"),
-      );
-      expect(commandData.item.aggregatedOutput).toBe(commandOutput);
-      expect(commandData.item.truncation).toBeUndefined();
-
-      const toolData = JSON.parse(
-        readMigratedEventData(db, "evt_large_tool_result"),
-      );
-      expect(toolData.item.result).toEqual(toolResult);
-      expect(toolData.item.truncation).toBeUndefined();
-
-      const webFetchData = JSON.parse(
-        readMigratedEventData(db, "evt_large_web_fetch"),
-      );
-      expect(webFetchData.item.resultText).toBe(webFetchResult);
-      expect(webFetchData.item.truncation).toBeUndefined();
-
-      const webSearchData = JSON.parse(
-        readMigratedEventData(db, "evt_large_web_search"),
-      );
-      expect(webSearchData.item.resultText).toBe(webSearchResult);
-      expect(webSearchData.item.truncation).toBeUndefined();
-
-      const fileData = JSON.parse(
-        readMigratedEventData(db, "evt_large_file_diffs"),
-      );
-      expect(fileData.item.changes).toEqual([
-        { path: "a.ts", diff: firstDiff },
-        { path: "b.ts", diff: "small diff" },
-        { path: "c.ts", diff: secondDiff },
-      ]);
+      expectEventLargeValuesInline(db, values);
     } finally {
       closeConnection(db);
     }

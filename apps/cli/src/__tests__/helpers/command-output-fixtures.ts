@@ -66,8 +66,11 @@ export function makeTimelineResponse(
   return {
     rows,
     activeThinking: null,
+    activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    maxSeq: 0,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
@@ -91,6 +94,8 @@ export function makePendingSteerTimelineRow(): TimelineUserConversationRow {
     mentions: [],
     initiator: "user",
     senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
     turnRequest: { kind: "steer", status: "pending" },
   };
 }

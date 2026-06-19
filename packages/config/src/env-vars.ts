@@ -182,6 +182,13 @@ export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS_ENV = defineEnvVar<boolean>({
+  description:
+    "Allow script-mode automations (which run arbitrary host commands). Defaults to true; set to false to forbid creating script automations and to skip script runs.",
+  name: "BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   description:
     "Permanent placeholder feature flag. Non-functional keep-alive so the flag system has at least one entry; do not gate behavior on it.",
@@ -253,6 +260,8 @@ export const DEFAULT_OPENAI_API_KEY = "";
 export const DEFAULT_BB_POSTHOG_API_KEY =
   "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
 export const DEFAULT_BB_TELEMETRY = true;
+// Script automations work out of the box; operators opt out via env.
+export const DEFAULT_BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;

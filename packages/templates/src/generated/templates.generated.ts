@@ -17,6 +17,17 @@ export const templateDefinitions = [
     }
   },
   {
+    "id": "bbGuideAutomations",
+    "body": "Automation commands\n\nAn automation is a scheduled task. When due it runs in one of two modes:\n\n  agent    Spawn a thread that runs a configured prompt (uses tokens).\n  script   Run a stored command and capture stdout/exit (no agent, no tokens).\n\nThe project defaults to BB_PROJECT_ID, then the personal project, so --project is\nnever required. Inside a thread, automations are stamped origin \"agent\" and record\nthe creating thread automatically.\n\nChoosing a mode:\n\n  Use script when the output is fully determined by code — watchdogs, threshold\n  alerts, health checks, heartbeats, API pollers with a fixed output shape.\n  Design the script to print NOTHING when there is nothing to report: an exit-0\n  run with empty stdout (or a trailing {\"wakeAgent\": false} line) is a silent\n  tick. Any other stdout is surfaced; a non-zero exit / timeout is recorded as a\n  failed run.\n\n  Use agent when the run needs reasoning — summarize a feed, pick interesting\n  items, draft a human-friendly message, or branch on content.\n\n  For a request like \"every 15 minutes, alert me if disk is over 90%\", prefer a\n  script automation: author a small check script whose stdout IS the alert, then\n  schedule it (no model spend per tick):\n\n    # 1. write the check — stays silent unless the threshold is crossed\n    cat > /tmp/disk-watch.sh <<'SH'\n    #!/usr/bin/env bash\n    pct=$(df -P / | awk 'NR==2{gsub(\"%\",\"\",$5); print $5}')\n    [ \"$pct\" -ge 90 ] && echo \"Disk at ${pct}% on $(hostname)\"\n    SH\n    # 2. schedule it\n    bb automation create --name \"Disk watch\" \\\n      --cron \"*/15 * * * *\" --timezone \"America/New_York\" \\\n      --script-file /tmp/disk-watch.sh\n\n  Automations cannot create automations (runs are origin-gated) — never schedule\n  one whose job is to create more. Host-script automations may be disabled by\n  server policy (config.automationsAllowScriptRuns); fall back to an agent\n  automation if script creation is rejected.\n\nEvery command supports --json for machine-readable output.\n\nCreating:\n\n  bb automation create --name \"...\" --cron \"...\" --timezone \"...\" [mode flags]\n\n    --name <name>                  Automation name (required)\n    --cron <expr>                  5-field cron expression, steps OK e.g. */5 * * * * (required)\n    --timezone <tz>                IANA timezone, e.g. America/New_York (required)\n    --project <id>                 Project (defaults to BB_PROJECT_ID, then personal)\n    --environment <id-or-path>     Existing environment ID or unmanaged workspace path\n    --new-environment <kind>       Create a new environment (worktree)\n    --base-branch <branch>         Base branch for new managed environments\n    --disabled                     Create the automation paused\n    --auto-archive                 Auto-archive the spawned thread when it completes\n\n  Agent mode (provide --prompt):\n\n    --prompt <prompt>              Prompt to run when due\n    --provider <id>                Provider ID (required for agent mode)\n    --model <model>                Model ID (required for agent mode)\n    --permission-mode <mode>       full, workspace-write, or readonly (default readonly)\n    --target-thread <id>           Reuse/re-prompt an existing thread\n\n  Script mode (provide --script or --script-file):\n\n    --script <inline>              Inline script content\n    --script-file <path>           Read script content from a local file (uploaded inline)\n    --interpreter <name>           bash, sh, node, or python3 (default by extension)\n    --timeout <ms>                 Timeout in milliseconds\n\n  A script that exits 0 with empty stdout, or whose last non-empty line is\n  {\"wakeAgent\": false}, stays silent. Any other stdout is surfaced.\n\n  Script run environment: scripts run with the bb environment injected and\n  inherit the daemon's PATH, so `bb ...` and `node ...` work without any manual\n  exports. Injected variables:\n\n    BB_SERVER_URL          The bb server API base URL (e.g. http://127.0.0.1:38886)\n    BB_HOST_DAEMON_PORT    The host daemon port\n    BB_PROJECT_ID          The automation's project\n    BB_ENVIRONMENT_ID      The environment the script ran in\n    BB_AUTOMATION_ID       The automation's id\n    BB_AUTOMATION_RUN_ID   This run's id\n\n  A script run's status IS its exit code: exit 0 = succeeded; a non-zero exit is\n  recorded as failed even if the script already produced a visible side effect\n  (e.g. posted a message via `bb thread tell`). Make scripts exit 0 on success\n  and check the exit status of each `bb` call. Captured stdout+stderr is stored\n  on failed runs and shown via `bb automation runs <id> --output <runId>`.\n\nCron format:\n\n  Standard 5-field cron expressions are accepted, including step values like\n  */5 * * * * and */15 * * * *. The minimum granularity is 5 minutes; a schedule\n  that would run more often (e.g. * * * * * or */2 * * * *) is rejected.\n\nListing and inspecting:\n\n  bb automation list                       List automations for a project\n    --project <id>                         Project filter\n\n  bb automation show <automationId>        Show automation details\n  bb automation runs <automationId>        List recent runs\n    --limit <count>                        Maximum runs to return\n    --output <runId>                       Print a script run's captured stdout\n\nManaging:\n\n  bb automation update <automationId>      Update configuration\n    --name <name>                          Set the name\n    --cron <expr>                          Set the cron (requires --timezone)\n    --timezone <tz>                        Set the timezone (requires --cron)\n    --auto-archive                         Enable auto-archive\n\n  bb automation pause <automationId>       Pause (disable, clear next run)\n  bb automation resume <automationId>      Resume (enable, recompute next run)\n  bb automation run <automationId>         Run now (manual trigger)\n    --idempotency-key <key>                Dedup key for replayable run-now\n\n  bb automation delete <automationId>      Delete permanently (cascades run history)\n    --yes                                  Skip confirmation",
+    "fileName": "bb-guide-automations.md",
+    "kind": "instruction",
+    "title": "bb Guide — Automations",
+    "summary": "Command reference for creating and managing scheduled agent and script automations.",
+    "intent": "Provide complete automation command documentation for agents.",
+    "editingNotes": "Keep flags accurate against the CLI implementation. Run the command-output tests after changes.",
+    "variables": {}
+  },
+  {
     "id": "bbGuideEnvironments",
     "body": "Environment commands\n\nEnvironments determine where threads run. Multiple threads can share an environment\n(e.g., a coding thread and a review thread in the same worktree).\n\n  bb environment show <id>                Show environment details (path, branch, status)\n\n  bb environment update <id>              Update environment metadata\n    --merge-base-branch <branch>          Set merge-base branch override\n    --clear-merge-base-branch             Clear merge-base override\n\n  bb environment commit <id>              Create a commit in the environment\n\n  bb environment squash-merge <id>        Squash-merge into a target branch\n    --merge-base-branch <branch>          Target branch (required)",
     "fileName": "bb-guide-environments.md",
@@ -29,7 +40,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideOverview",
-    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources",
+    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources\n  automations    Scheduled agent and script automations",
     "fileName": "bb-guide-overview.md",
     "kind": "instruction",
     "title": "bb Guide Overview",
@@ -110,6 +121,20 @@ export const templateDefinitions = [
     "intent": "Let the agent know bb is available without causing unnecessary orchestration.",
     "editingNotes": "Preserve concise bb framing and keep this compatible with instructionMode append.",
     "variables": {}
+  },
+  {
+    "id": "systemMessageAutomationDue",
+    "body": "[bb automation due:{{automationId}}]\n\n{{prompt}}",
+    "fileName": "system-message-automation-due.md",
+    "kind": "prompt",
+    "title": "Automation Due",
+    "summary": "Wraps an automation prompt when re-prompting an existing target thread on schedule.",
+    "intent": "Mark a turn as originating from a due automation so the agent treats it as a scheduled task.",
+    "editingNotes": "Keep the marker line stable; downstream parsing keys off the 'bb automation due:' prefix.",
+    "variables": {
+      "automationId": "The automation ID that triggered this run, e.g. 'auto_abc123'.",
+      "prompt": "The automation's configured prompt to run."
+    }
   },
   {
     "id": "systemMessageChildThreadNeedsAttention",
@@ -213,6 +238,7 @@ export interface TemplateVariables {
     senderThreadId: string;
     messageText: string;
   };
+  bbGuideAutomations: Record<string, never>;
   bbGuideEnvironments: Record<string, never>;
   bbGuideOverview: Record<string, never>;
   bbGuideProjects: Record<string, never>;
@@ -228,6 +254,10 @@ export interface TemplateVariables {
     cleanedPrompt: string;
   };
   standardAgentAppendInstructions: Record<string, never>;
+  systemMessageAutomationDue: {
+    automationId: string;
+    prompt: string;
+  };
   systemMessageChildThreadNeedsAttention: {
     blockerSummary: string;
     threadMention: string;

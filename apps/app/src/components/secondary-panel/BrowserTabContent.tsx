@@ -24,6 +24,7 @@ import { getBbDesktopInfo, getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 import {
   getBrowserUrlSecurity,
+  getBrowserUrlHost,
   resolveBrowserAddressInput,
 } from "@/lib/browser-url";
 import { useBrowserHistory } from "@/lib/browser-history";
@@ -99,6 +100,13 @@ interface BrowserViewAttachIdentity {
   threadId: string;
 }
 
+interface BrowserPageLoadErrorProps {
+  errorText: string;
+  onOpenExternal: () => void;
+  onRetry: () => void;
+  url: string;
+}
+
 const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
   x: 0,
   y: 0,
@@ -150,6 +158,33 @@ function browserViewBoundsEqual(args: BrowserViewBoundsEqualArgs): boolean {
     args.a.width === args.b.width &&
     args.a.height === args.b.height
   );
+}
+
+function isLocalBrowserUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "::1" ||
+      hostname.startsWith("127.")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function browserPageLoadErrorTitle(args: {
+  errorText: string;
+  url: string;
+}): string {
+  if (isLocalBrowserUrl(args.url)) {
+    return "Server not reachable";
+  }
+  if (args.errorText.includes("ERR_BLOCKED_BY_CLIENT")) {
+    return "Page blocked";
+  }
+  return "Page unavailable";
 }
 
 function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
@@ -294,6 +329,61 @@ function BrowserUnavailable() {
   );
 }
 
+function BrowserPageLoadError({
+  errorText,
+  onOpenExternal,
+  onRetry,
+  url,
+}: BrowserPageLoadErrorProps) {
+  const host = getBrowserUrlHost(url);
+  const title = browserPageLoadErrorTitle({ errorText, url });
+  const message = isLocalBrowserUrl(url)
+    ? `The browser could not reach ${host || "this local server"}. Start the server, then reload.`
+    : "The browser could not load this page. Try reloading or opening it externally.";
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+      <div className="flex w-full max-w-sm flex-col items-center gap-3">
+        <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface-recessed text-muted-foreground">
+          <Icon name="Globe" className="size-6" aria-hidden />
+        </span>
+        <div>
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p
+            className={cn(
+              "mt-1 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+          >
+            {message}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-state-hover"
+          >
+            <Icon name="RotateCcw" className="size-3.5" aria-hidden />
+            Reload
+          </button>
+          <button
+            type="button"
+            onClick={onOpenExternal}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+          >
+            <Icon name="ExternalLink" className="size-3.5" aria-hidden />
+            Open externally
+          </button>
+        </div>
+        <p className="max-w-full truncate pt-1 font-mono text-[11px] text-subtle-foreground">
+          {errorText}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function BrowserTabContent({
   tabId,
   initialUrl,
@@ -343,6 +433,8 @@ export function BrowserTabContent({
     attachedBrowserViewIdentity.threadId === threadId;
 
   const hasPage = currentUrl.length > 0;
+  const pageLoadErrorText = state?.errorText ?? null;
+  const hasPageLoadError = pageLoadErrorText !== null && hasPage;
   // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
   // backdrop the native browser overlay cannot sit behind. While one is open,
   // hide the view and fall back to the DOM new-tab screen so the backdrop dims
@@ -531,6 +623,7 @@ export function BrowserTabContent({
   const isViewVisible =
     canShowNativeBrowserView &&
     hasPage &&
+    !hasPageLoadError &&
     isBrowserViewAttached &&
     !isBrowserDimmingModalOpen;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
@@ -585,6 +678,10 @@ export function BrowserTabContent({
     desktopBrowser?.reload(tabId);
   }, [desktopBrowser, state?.isLoading, tabId]);
 
+  const handleOpenExternal = useCallback(() => {
+    getBbDesktopInfo()?.openExternalUrl(currentUrl);
+  }, [currentUrl]);
+
   if (desktopBrowser === null) {
     return <BrowserUnavailable />;
   }
@@ -603,20 +700,17 @@ export function BrowserTabContent({
         onBack={() => desktopBrowser.goBack(tabId)}
         onForward={() => desktopBrowser.goForward(tabId)}
         onReloadOrStop={handleReloadOrStop}
-        onOpenExternal={() => getBbDesktopInfo()?.openExternalUrl(currentUrl)}
+        onOpenExternal={handleOpenExternal}
       />
-      {state?.errorText != null && hasPage ? (
-        <div
-          className={cn(
-            "border-b border-border bg-destructive/10 px-3 py-2 text-destructive",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          {state.errorText}
-        </div>
-      ) : null}
       <div ref={contentRef} className="relative min-h-0 flex-1">
-        {hasPage && !isBrowserDimmingModalOpen ? null : (
+        {hasPageLoadError ? (
+          <BrowserPageLoadError
+            errorText={pageLoadErrorText}
+            onOpenExternal={handleOpenExternal}
+            onRetry={handleReloadOrStop}
+            url={currentUrl}
+          />
+        ) : hasPage && !isBrowserDimmingModalOpen ? null : (
           <BrowserNewTabScreen
             onNavigateInput={navigateToInput}
             recent={recent}

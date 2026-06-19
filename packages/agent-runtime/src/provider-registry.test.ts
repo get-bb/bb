@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  turnScope,
+} from "@bb/domain";
 import {
   createProviderForId,
   listAvailableProviderInfos,
@@ -96,6 +99,47 @@ describe("provider registry", () => {
     expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
   });
 
+  it("creates the acp cursor provider with the bridge process config", () => {
+    const provider = createProviderForId("acp-cursor");
+    expect(provider.id).toBe("acp-cursor");
+    expect(provider.process.command).toBe("node");
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
+    );
+    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
+  });
+
+  it("passes the configured bridge bundle directory to the acp provider", () => {
+    const provider = createProviderForId("acp-cursor", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeBundleDir: "/tmp",
+    });
+    expect(provider.process.args[0]).toBe("/tmp/bb-acp-bridge.mjs");
+  });
+
+  it("binds the acp cursor provider to its agent launch command", () => {
+    const provider = createProviderForId("acp-cursor");
+    const plan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        agent: { command: "agent", args: ["acp"] },
+      },
+    });
+  });
+
   it("rejects unsupported adapters", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(
       'Unsupported provider "pi-mono"',
@@ -143,6 +187,7 @@ describe("provider registry", () => {
         },
         available: true,
       },
+      { id: "acp-cursor", displayName: "Cursor", available: true },
     ]);
   });
 });

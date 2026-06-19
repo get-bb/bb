@@ -88,6 +88,7 @@ import {
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
+import { BB_DESKTOP_OPEN_NEW_TAB_CHANNEL } from "./desktop-window-command-ipc.js";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
@@ -470,6 +471,12 @@ function refreshApplicationMenu(): void {
         initialUrl: currentWindowUrl,
         stateKey: null,
       });
+    },
+    openNewTab() {
+      desktopWindowFactory?.sendToFocusedWindow(
+        BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+        null,
+      );
     },
     openServerDaemonLogs() {
       void openServerDaemonLogs();

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
   type ThreadTimelineLocalFileLinkHandler,
   type TimelineTitleActionResolver,
+  useThreadTimelineController,
 } from "@/components/thread/timeline";
 import {
   isActiveTerminalSessionStatus,
@@ -16,7 +19,10 @@ import {
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
-import type { TerminalSession } from "@bb/server-contract";
+import type {
+  PullRequestMergeMethod,
+  TerminalSession,
+} from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
@@ -75,6 +81,8 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getSurfaceAwareThreadRoutePath,
   isRoutePath,
@@ -83,7 +91,6 @@ import {
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
-import { selectActiveWorkflowRow } from "./selectActiveWorkflowRow";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -112,15 +119,20 @@ import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightP
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
+  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
-  resolveChatLinkOpenTarget,
+  openUrlByPreference,
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
+import {
+  openUrlInExternalBrowser,
+  UrlOpenRoutingProvider,
+} from "@/lib/url-open-routing";
 import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
@@ -135,9 +147,8 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
-import { useThreadReadTracking } from "./useThreadReadTracking";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
-import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
@@ -186,11 +197,30 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
+import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
+const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY =
+  "bb.pullRequest.mergeMethod";
+
+function isPullRequestMergeMethod(
+  value: string,
+): value is PullRequestMergeMethod {
+  return value === "merge" || value === "squash" || value === "rebase";
+}
+
+const pullRequestMergeMethodAtom = atomWithStorage<PullRequestMergeMethod>(
+  PULL_REQUEST_MERGE_METHOD_STORAGE_KEY,
+  DEFAULT_PULL_REQUEST_MERGE_METHOD,
+  createLocalStorageEnumStorage<PullRequestMergeMethod>(
+    isPullRequestMergeMethod,
+  ),
+  { getOnInit: true },
+);
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
@@ -203,6 +233,19 @@ type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
 type OpenFilePreviewHandler = (relativePath: string) => void;
+
+function getPullRequestMergeLoadingTitle(
+  method: PullRequestMergeMethod,
+): string {
+  switch (method) {
+    case "merge":
+      return "Merging pull request";
+    case "squash":
+      return "Squash merging pull request";
+    case "rebase":
+      return "Rebase merging pull request";
+  }
+}
 
 interface RightPanelFileTabIconProps {
   path: string;
@@ -600,8 +643,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   }, [openTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
-  // and chat links keep their external-open behavior.
+  // and handled web links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
+  const canOpenUrlsInAppBrowser =
+    props.surface === "page" && desktopBrowserAvailable;
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -634,6 +679,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const {
     activeThinking,
+    activeWorkflow,
+    activeBackgroundCommands,
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
@@ -643,15 +690,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     timelineError,
     timelineLoading,
     timelineRows,
-  } = useThreadTimelinePages({
+  } = useThreadTimelineController({
     threadId: threadId ?? "",
   });
-  const activeWorkflow = useMemo(
-    () => selectActiveWorkflowRow(timelineRows),
-    [timelineRows],
-  );
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
+  const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
+    pullRequestMergeMethodAtom,
+  );
   const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
@@ -702,20 +748,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const environment = environmentQuery.data;
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
-    sourceEnvironment: environment ?? null,
   });
   const handleForkMessage =
-    useCallback<ThreadTimelineForkMessageHandler>(() => {
-      void forkThreadFromMessage();
+    useCallback<ThreadTimelineForkMessageHandler>((target) => {
+      void forkThreadFromMessage(target);
     }, [forkThreadFromMessage]);
-  // A fork always runs in a fresh managed worktree branched off the source's
-  // host. Drop the Fork handler (not just disable it) for a host-less source
-  // (a personal-project thread with no environment) — matching the
-  // handler-undefined contract that already removes the button from the action
-  // bar — so that case never shows a Fork button that does nothing on click.
-  // Same predicate `buildForkThreadRequest` gates on, so the button and the
-  // request stay in lockstep.
-  const isForkAvailable = isThreadForkable(environment ?? null);
+  const isForkAvailable = isThreadForkable(thread ?? null);
   const canUseSideChatPanel = props.surface !== "popout";
   const canStartSideChat =
     canUseSideChatPanel && (thread?.canSpawnChild ?? false);
@@ -726,6 +764,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         openSideChat({
           sourceThreadId: threadId,
           sourceMessageText: target.messageText,
+          sourceSeqEnd: target.sourceSeqEnd,
         });
       },
       [canStartSideChat, openSideChat, threadId],
@@ -734,7 +773,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // from the thread's tip (empty source text ⇒ no "replying to" reference).
   const handleStartSideChat = useCallback(() => {
     if (!canStartSideChat || !threadId) return;
-    openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
+    openSideChat({
+      replaceNewTab: true,
+      sourceThreadId: threadId,
+      sourceMessageText: "",
+    });
   }, [canStartSideChat, openSideChat, threadId]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one
@@ -763,11 +806,41 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // context handed to the agent are exactly the highlighted text — unlike the
   // per-message Reply button, which anchors on the whole message.
   const handleSelectionReplyInSideChat = useCallback(
-    (selectionText: string) => {
-      handleSideChatMessage({ messageText: selectionText });
+    (target: { messageText: string; sourceSeqEnd?: number }) => {
+      handleSideChatMessage(target);
     },
     [handleSideChatMessage],
   );
+  const sendSideChatMessageToMain =
+    useCallback<ThreadTimelineSendToMainMessageHandler>(
+      (target) => {
+        if (
+          thread?.id === undefined ||
+          threadOriginKind !== "side-chat" ||
+          threadSourceThreadId === null ||
+          sendMessage.isPending
+        ) {
+          return;
+        }
+
+        sendMessage.mutate({
+          id: threadSourceThreadId,
+          input: [{ type: "text", text: target.messageText, mentions: [] }],
+          mode: "auto",
+          senderThreadId: thread.id,
+        });
+      },
+      [
+        sendMessage,
+        thread?.id,
+        threadOriginKind,
+        threadSourceThreadId,
+      ],
+    );
+  const handleSendToMainMessage =
+    threadOriginKind === "side-chat" && threadSourceThreadId !== null
+      ? sendSideChatMessageToMain
+      : undefined;
   const canUseGitUi = environment?.isGitRepo === true;
   const canCreateTerminal =
     thread?.environmentId !== null &&
@@ -837,6 +910,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [openBrowserTab, openCompactDrawer],
   );
+  const handleOpenUrlByPreference = useCallback(
+    (url: string) =>
+      openUrlByPreference({
+        desktopBrowserAvailable: canOpenUrlsInAppBrowser,
+        openExternalBrowser: openUrlInExternalBrowser,
+        openInAppBrowser: openBrowserTabAndReveal,
+        openLinksInAppBrowser,
+        url,
+      }),
+    [canOpenUrlsInAppBrowser, openBrowserTabAndReveal, openLinksInAppBrowser],
+  );
   const handleSelectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
       selectFileSearchResult(selection);
@@ -861,7 +945,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     if (browserApi.onScopedOpenTab) {
       return browserApi.onScopedOpenTab(({ tabId, url }) => {
         if (browserTabIds.has(tabId)) {
-          openBrowserTabAndReveal(url);
+          handleOpenUrlByPreference(url);
         }
       });
     }
@@ -869,9 +953,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       if (isRoutePath({ path: url })) {
         return;
       }
-      openBrowserTabAndReveal(url);
+      handleOpenUrlByPreference(url);
     });
-  }, [browserTabIds, openBrowserTabAndReveal]);
+  }, [browserTabIds, handleOpenUrlByPreference]);
   const handleSelectStorageBrowserPath =
     useCallback<ThreadStoragePathSelectHandler>(
       (path) => {
@@ -968,6 +1052,31 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (desktopInfo === null || desktopInfo.onOpenNewTab === undefined) {
+      return;
+    }
+    return desktopInfo.onOpenNewTab(handleOpenNewTab);
+  }, [handleOpenNewTab, props.surface]);
+  useEffect(() => {
+    if (props.surface !== "page" || getBbDesktopInfo() === null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isThreadNewTabKeyboardShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      handleOpenNewTab();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleOpenNewTab, props.surface]);
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
@@ -1188,6 +1297,88 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     enabled: canUseGitUi && environment !== undefined,
   });
   const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
+  const handlePullRequestReady = useCallback(async () => {
+    const environmentId = thread?.environmentId;
+    if (!environmentId) {
+      return;
+    }
+    const toastId = appToast.loading("Marking pull request ready");
+    try {
+      const response = await requestEnvironmentAction.mutateAsync({
+        id: environmentId,
+        action: "pull_request_ready",
+      });
+      if (response.action !== "pull_request_ready") {
+        throw new Error("Expected pull request ready action response.");
+      }
+      appToast.success(response.message, { id: toastId });
+    } catch (error) {
+      appToast.error("Failed to update pull request", {
+        id: toastId,
+        description: getMutationErrorMessage({
+          error,
+          fallbackMessage: "Pull request was not updated",
+        }),
+      });
+    }
+  }, [requestEnvironmentAction, thread?.environmentId]);
+  const handlePullRequestDraft = useCallback(async () => {
+    const environmentId = thread?.environmentId;
+    if (!environmentId) {
+      return;
+    }
+    const toastId = appToast.loading("Converting pull request to draft");
+    try {
+      const response = await requestEnvironmentAction.mutateAsync({
+        id: environmentId,
+        action: "pull_request_draft",
+      });
+      if (response.action !== "pull_request_draft") {
+        throw new Error("Expected pull request draft action response.");
+      }
+      appToast.success(response.message, { id: toastId });
+    } catch (error) {
+      appToast.error("Failed to update pull request", {
+        id: toastId,
+        description: getMutationErrorMessage({
+          error,
+          fallbackMessage: "Pull request was not updated",
+        }),
+      });
+    }
+  }, [requestEnvironmentAction, thread?.environmentId]);
+  const handlePullRequestMerge = useCallback(
+    async (method: PullRequestMergeMethod) => {
+      const environmentId = thread?.environmentId;
+      if (!environmentId) {
+        return;
+      }
+      setPullRequestMergeMethod(method);
+      const toastId = appToast.loading(
+        getPullRequestMergeLoadingTitle(method),
+      );
+      try {
+        const response = await requestEnvironmentAction.mutateAsync({
+          id: environmentId,
+          action: "pull_request_merge",
+          options: { method },
+        });
+        if (response.action !== "pull_request_merge") {
+          throw new Error("Expected pull request merge action response.");
+        }
+        appToast.success(response.message, { id: toastId });
+      } catch (error) {
+        appToast.error("Failed to merge pull request", {
+          id: toastId,
+          description: getMutationErrorMessage({
+            error,
+            fallbackMessage: "Pull request was not merged",
+          }),
+        });
+      }
+    },
+    [requestEnvironmentAction, setPullRequestMergeMethod, thread?.environmentId],
+  );
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -1455,20 +1646,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     ],
   );
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
-    ({ href }) => {
-      if (
-        resolveChatLinkOpenTarget({
-          desktopBrowserAvailable,
-          openInAppBrowser: openLinksInAppBrowser,
-          url: href,
-        }) !== "in-app-browser"
-      ) {
-        return false;
-      }
-      openBrowserTabAndReveal(href);
-      return true;
-    },
-    [desktopBrowserAvailable, openBrowserTabAndReveal, openLinksInAppBrowser],
+    ({ href }) => handleOpenUrlByPreference(href),
+    [handleOpenUrlByPreference],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -1788,6 +1967,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onEscapeEmptyPrompt={
         props.surface === "popout" ? props.onPopoutHide : undefined
       }
+      onPullRequestMerge={handlePullRequestMerge}
+      onPullRequestDraft={handlePullRequestDraft}
+      onPullRequestReady={handlePullRequestReady}
+      pullRequestMergeMethod={pullRequestMergeMethod}
       composerQueriesEnabled={hasThreadComposerBootstrapReady}
       composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}
@@ -1820,6 +2003,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       pendingTodos={pendingTodos}
       goal={goal}
       activeWorkflow={activeWorkflow}
+      activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       pullRequest={pullRequest}
@@ -1892,12 +2076,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sourceThread={thread}
       sourceEnvironment={environment ?? null}
       sourceTimelineRows={timelineRows}
+      resolveMentionLink={resolveMentionLink}
       onSetThreadId={setSideChatThreadId}
     />
   );
 
   return (
-    <>
+    <UrlOpenRoutingProvider
+      openInAppBrowser={
+        canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+      }
+    >
       <ThreadDetailSecondaryContent
         footer={composerFooter}
         header={timelineHeader}
@@ -1970,6 +2159,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           onSideChatMessage: canStartSideChat
             ? handleSideChatMessage
             : undefined,
+          onSendToMainMessage: handleSendToMainMessage,
           onSelectionAddToChat: handleSelectionAddToChat,
           onSelectionReplyInSideChat: canStartSideChat
             ? handleSelectionReplyInSideChat
@@ -2027,6 +2217,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           onSquashMerge={gitActions.handleSquashMergeThread}
         />
       ) : null}
-    </>
+    </UrlOpenRoutingProvider>
   );
 }

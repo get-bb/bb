@@ -14,9 +14,8 @@ import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
-import {
-  queueChildThreadNeedsAttentionNotificationBestEffort,
-} from "../services/threads/child-thread-notifications.js";
+import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
+import { isSideChatThread } from "../services/threads/side-chat-thread.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
 interface RequestChildThreadNeedsAttentionNotificationArgs {
@@ -126,7 +125,7 @@ export function registerInternalInteractiveRequestRoutes(
         sessionId: payload.sessionId,
       });
 
-      const { environment } = requireThreadEnvironment(
+      const { environment, thread } = requireThreadEnvironment(
         deps.db,
         payload.interaction.threadId,
       );
@@ -136,6 +135,17 @@ export function registerInternalInteractiveRequestRoutes(
           "invalid_request",
           "Thread does not belong to the session host",
         );
+      }
+
+      if (
+        isSideChatThread(thread) &&
+        isApprovalPendingInteractionPayload(payload.interaction.payload)
+      ) {
+        return context.json({
+          outcome: "rejected",
+          reason:
+            "Side chat threads cannot request command or permission approvals.",
+        });
       }
 
       // Daemons must flush provider turn events before every interactive
@@ -175,7 +185,9 @@ export function registerInternalInteractiveRequestRoutes(
       }
       if (registered.outcome === "created") {
         requestChildThreadNeedsAttentionNotification(deps, {
-          blockerSummary: buildChildThreadBlockerSummary(registered.interaction),
+          blockerSummary: buildChildThreadBlockerSummary(
+            registered.interaction,
+          ),
           childThreadId: registered.interaction.threadId,
         });
       }

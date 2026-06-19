@@ -93,11 +93,13 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 interface BuildThreadTimelineOptions {
   isDevelopment: boolean;
   includeNestedRows?: boolean;
+  /** Thread high-water event sequence this window reflects (echoed to clients). */
+  maxSeq: number;
   page: ThreadTimelinePageRequest;
   /**
    * When true, the response is built without rows (rows: []). The tail-only
-   * fields (`activeThinking`, `pendingTodos`, `contextWindowUsage`) are still
-   * populated. Saves the row-generation work +
+   * fields (`activeThinking`, `activeWorkflow`, `pendingTodos`,
+   * `contextWindowUsage`) are still populated. Saves the row-generation work +
    * serialization bytes for
    * consumers that only need tail state (e.g. `bb status` / `bb thread show`).
    */
@@ -864,9 +866,14 @@ function buildThreadTimelineInternal(
   }
 
   const response: ThreadTimelineResponse = {
+    maxSeq: options.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,
+    activeWorkflow:
+      options.page.kind === "latest" ? timeline.activeWorkflow : null,
+    activeBackgroundCommands:
+      options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     // pendingTodos is gated inside the projection via `isLatestPage` so the
     // extraction work is skipped on older-page requests entirely; no
     // post-hoc null-out needed here.
@@ -997,9 +1004,14 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  const eventRowsWithBackgroundTaskState =
+    ensureTimelineWindowBackgroundTaskStateRows(db, {
+      threadId: thread.id,
+      rows: eventRows,
+    });
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: [...turnStartedRows, ...eventRows].map((row) =>
-      toThreadEventWithMeta(row),
+    events: [...turnStartedRows, ...eventRowsWithBackgroundTaskState].map(
+      (row) => toThreadEventWithMeta(row),
     ),
     options: {
       includeProviderUnhandledOperations,

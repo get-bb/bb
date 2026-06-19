@@ -2,7 +2,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { HostDaemonLogger } from "./logger.js";
 
 interface EventLoopStallMonitorOptions {
-  logger: Pick<HostDaemonLogger, "debug">;
+  logger: Pick<HostDaemonLogger, "warn">;
 }
 
 interface EventLoopStallMonitor {
@@ -34,7 +34,7 @@ export function startEventLoopStallMonitor(
   const timer = setInterval(() => {
     const maxDelayMs = nanosecondsToMilliseconds(histogram.max);
     if (maxDelayMs >= thresholdMs) {
-      options.logger.debug(
+      options.logger.warn(
         {
           intervalMs,
           maxDelayMs: roundDurationMs(maxDelayMs),

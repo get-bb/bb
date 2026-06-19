@@ -1,5 +1,5 @@
 import path from "node:path";
-import { listQueuedThreadMessages } from "@bb/db";
+import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
@@ -41,6 +41,14 @@ import {
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
 } from "../../services/threads/timeline.js";
+import {
+  buildThreadTimelineCacheKey,
+  buildThreadTimelineParamsKey,
+  createThreadTimelineCache,
+} from "../../services/threads/timeline-cache.js";
+import { createTimelineLatestRowsCache } from "../../services/threads/timeline-latest-rows-cache.js";
+import { truncateTimelineResponseOutputs } from "../../services/threads/timeline-output-truncation.js";
+import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
   findThreadEvent,
   getLastThreadOutput,
@@ -310,16 +318,63 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
+  // Both caches live for the server lifetime: registerThreadDataRoutes is
+  // called once at startup. The response cache skips the dominant build cost on
+  // warm/idle hits; the latest-rows cache lets a client that supplies
+  // `afterSequence` receive only the rows that changed (delta) instead of the
+  // whole window — the big streaming win.
+  const timelineCache = createThreadTimelineCache();
+  const timelineLatestRowsCache = createTimelineLatestRowsCache();
 
   get(routes.timeline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const page = parseThreadTimelinePage(query);
+    const includeNestedRows = query.includeNestedRows === "true";
+    const summaryOnly = query.summaryOnly === "true";
+    const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+    const keyArgs = {
+      threadId: thread.id,
+      status: thread.status,
+      environmentId: thread.environmentId,
+      page,
+      includeNestedRows,
+      summaryOnly,
+      isDevelopment: deps.config.isDevelopment,
+    };
+    const full = timelineCache.getOrBuild(
+      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      () =>
+        truncateTimelineResponseOutputs(
+          buildThreadTimeline(deps.db, thread, {
+            isDevelopment: deps.config.isDevelopment,
+            includeNestedRows,
+            maxSeq,
+            page,
+            summaryOnly,
+          }),
+        ),
+    );
+
+    // Delta: when the client tells us the revision it currently holds and our
+    // last-sent snapshot still matches it exactly, return only the changed rows.
+    // Reprojecting the full window first keeps every collapse/eviction/finalize
+    // case correct by construction; the diff is the cheap part.
+    const afterSequence = parseOptionalInteger(
+      query.afterSequence,
+      "afterSequence",
+    );
+    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
+    const previous = timelineLatestRowsCache.get(paramsKey);
+    const delta =
+      afterSequence !== undefined &&
+      previous !== undefined &&
+      previous.maxSeq === afterSequence
+        ? computeTimelineRowDelta(previous.rows, full.rows)
+        : undefined;
+    timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
+
     return context.json(
-      buildThreadTimeline(deps.db, thread, {
-        isDevelopment: deps.config.isDevelopment,
-        includeNestedRows: query.includeNestedRows === "true",
-        page: parseThreadTimelinePage(query),
-        summaryOnly: query.summaryOnly === "true",
-      }),
+      delta === undefined ? full : { ...full, rows: [], delta },
     );
   });
 

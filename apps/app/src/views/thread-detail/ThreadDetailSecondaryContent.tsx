@@ -171,6 +171,7 @@ const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   previous.timelineError === next.timelineError &&
   previous.onForkMessage === next.onForkMessage &&
   previous.onSideChatMessage === next.onSideChatMessage &&
+  previous.onSendToMainMessage === next.onSendToMainMessage &&
   previous.onLoadOlderRows === next.onLoadOlderRows &&
   previous.onSelectionAddToChat === next.onSelectionAddToChat &&
   previous.onSelectionReplyInSideChat === next.onSelectionReplyInSideChat &&

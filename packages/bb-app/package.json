@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.0.18",
+  "version": "0.0.20",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -36,6 +36,7 @@
     "dist",
     "!dist/*.map",
     "host-daemon/dist/bb",
+    "host-daemon/dist/bb-acp-bridge.mjs",
     "host-daemon/dist/bb-claude-code-bridge.mjs",
     "host-daemon/dist/bb-pi-bridge.mjs",
     "host-daemon/dist/daemon-bundle.mjs",

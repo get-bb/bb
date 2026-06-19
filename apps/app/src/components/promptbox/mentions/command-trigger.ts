@@ -65,8 +65,7 @@ export function commandTriggerForComposerActions(
 /**
  * A selected command is a one-position mention atom in the editor doc. The
  * dismissed range is based on that rendered node width plus any space inserted
- * after it, not on the serialized provider token length (`/review`, `$test`,
- * etc.).
+ * after it, not on the serialized provider token length (`/review`, etc.).
  */
 export function commandPillDismissedRangeEnd({
   triggerPosition,

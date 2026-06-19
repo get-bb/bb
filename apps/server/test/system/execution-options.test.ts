@@ -221,4 +221,34 @@ describe("resolveSystemExecutionOptions", () => {
       },
     );
   });
+
+  it("surfaces provider auth-required model load failures", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-auth-required",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          "acp-cursor": {
+            errorCode: "auth_required",
+            errorMessage: "Cursor agent is not authenticated.",
+          },
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-cursor",
+      });
+
+      expect(response.modelLoadError).toEqual({
+        providerId: "acp-cursor",
+        code: "auth_required",
+      });
+      expect(response.models).toEqual([]);
+      expect(response.selectedOnlyModels).toEqual([]);
+    });
+  });
 });

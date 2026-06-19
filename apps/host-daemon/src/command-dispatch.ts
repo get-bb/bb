@@ -26,6 +26,7 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
+import { runScript } from "./command-handlers/run-script.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
@@ -185,6 +186,36 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
+  "workspace.pull_request_action": async (command, options) => {
+    const entry = await requireResolvedWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    switch (command.operation) {
+      case "ready":
+        await entry.workspace.runPullRequestAction({ operation: "ready" });
+        break;
+      case "draft":
+        await entry.workspace.runPullRequestAction({ operation: "draft" });
+        break;
+      case "merge":
+        await entry.workspace.runPullRequestAction({
+          operation: "merge",
+          method: command.method,
+        });
+        break;
+      default: {
+        const _exhaustive: never = command;
+        throw new Error(`Unhandled pull request operation: ${_exhaustive}`);
+      }
+    }
+    return {};
+  },
+  "host.run_script": runScript,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {

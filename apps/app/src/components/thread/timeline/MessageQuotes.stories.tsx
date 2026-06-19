@@ -56,13 +56,13 @@ function ReplyingToCard({ text }: { text: string }) {
         />
         Replying to
       </span>
-      <div className="max-w-full rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
+      <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
         {messageBodyHasQuote(text) ? (
-          <div className="max-h-32 overflow-hidden break-words">
+          <div className="max-h-20 overflow-hidden break-words">
             {renderMessageBodyWithQuotes({ mentions: [], text })}
           </div>
         ) : (
-          <p className="line-clamp-3 whitespace-pre-wrap break-words">{text}</p>
+          <p className="line-clamp-2 whitespace-pre-wrap break-words">{text}</p>
         )}
       </div>
     </div>

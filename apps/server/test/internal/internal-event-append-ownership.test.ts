@@ -413,11 +413,11 @@ describe("internal event append ownership", () => {
           },
         ],
       });
-      expect(getThread(harness.db, thread.id)?.title).toBe(
+      expect(getThread(harness.db, thread.id)?.title).not.toBe(
         "First owned rename",
       );
       expect(getThread(harness.db, secondThread.id)?.title).toBe(
-        "Second owned rename",
+        "Second Thread",
       );
       expect(
         harness.db
@@ -486,7 +486,8 @@ describe("internal event append ownership", () => {
       const parentTurnCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "turn.submit" && command.threadId === parentThread.id,
+          command.type === "turn.submit" &&
+          command.threadId === parentThread.id,
         3_000,
       );
       if (parentTurnCommand.command.type !== "turn.submit") {
@@ -500,9 +501,11 @@ describe("internal event append ownership", () => {
       }
       const threadMention = `@thread:${childThread.id}`;
       expect(input.text).toContain(
-        [`${threadMention} failed.`, "", "Review the thread before deciding next steps."].join(
-          "\n",
-        ),
+        [
+          `${threadMention} failed.`,
+          "",
+          "Review the thread before deciding next steps.",
+        ].join("\n"),
       );
       expect(input.text).not.toContain("No failure output was recorded.");
       expect(input.mentions).toEqual([

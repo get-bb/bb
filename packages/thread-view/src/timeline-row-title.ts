@@ -1,4 +1,7 @@
-import { isSettledWorkflowAgentState } from "@bb/domain";
+import {
+  isBackgroundCommandTaskType,
+  isSettledWorkflowAgentState,
+} from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -13,12 +16,7 @@ import type {
   TimelineWebSearchWorkRow,
 } from "@bb/server-contract";
 import { assertNever } from "./assert-never.js";
-import {
-  OWNERSHIP_CHANGE_VERBS,
-  PROVISIONING_LEADING_VERB,
-  PROVISIONING_SUFFIX_VERBS,
-  THREAD_INTERRUPTED_SUFFIX_VERBS,
-} from "./family-a-verbs.js";
+import { OWNERSHIP_CHANGE_VERBS } from "./family-a-verbs.js";
 import {
   formatFileChangePath,
   getFileChangeAction,
@@ -874,7 +872,43 @@ function formatWorkflowAgentProgress(
   return `(${done}/${agents.length} agents)`;
 }
 
+function backgroundCommandVerbForStatus(status: TimelineRowStatus): {
+  text: string;
+  shimmer: boolean;
+} {
+  switch (status) {
+    case "pending":
+      return { text: "Running background command:", shimmer: true };
+    case "completed":
+      return { text: "Ran background command:", shimmer: false };
+    case "error":
+      return { text: "Background command failed:", shimmer: false };
+    case "interrupted":
+      return { text: "Background command interrupted:", shimmer: false };
+    default:
+      return assertNever(status);
+  }
+}
+
+function mapBackgroundCommandTitle(
+  row: TimelineViewWorkflowWorkRow,
+): TimelineTitle {
+  const verb = backgroundCommandVerbForStatus(row.status);
+  return makeTitle({
+    segments: [
+      segment(verb.text, { shimmer: verb.shimmer }),
+      segment(row.description, { em: true, truncate: true }),
+    ],
+    decorations: filterNull([
+      durationDecoration(row.startedAt, row.completedAt),
+    ]),
+  });
+}
+
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
+  if (isBackgroundCommandTaskType(row.taskType)) {
+    return mapBackgroundCommandTitle(row);
+  }
   const verb = workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
   const segments: TimelineTitleSegment[] = [
@@ -1222,9 +1256,8 @@ function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
 
 /**
  * The thread (not parent) segment for a parent-change row: emphasized, linked to
- * `row.threadId`, matching `threadNamedSystemTitleSegments` and the agent
- * "Message from [thread]" title. Rendered unlinked (plain emphasized) when the
- * row carries no thread id.
+ * `row.threadId`. Rendered unlinked (plain emphasized) when the row carries no
+ * thread id.
  */
 function parentChangeThreadSegment(
   row: TimelineParentChangeSystemRow,
@@ -1338,70 +1371,6 @@ function mapParentChangeSystemTitle(
   });
 }
 
-/**
- * Compose the thread-name portion of a Family-A operation title as an
- * emphasized, linked segment (the same treatment the agent "Message from
- * [thread]" title uses), with the surrounding action verb left muted. The row
- * carries a flat interpolated `title` plus its `threadId`; this splits the
- * title around the thread name using the fixed template affixes the projection
- * builds (see `parse-operation-message.ts`). Returns `null` when the title has
- * no extractable thread name (unnamed thread → bare verb), so the caller falls
- * back to a single neutral segment.
- */
-function threadNamedSystemTitleSegments(
-  row: TimelineSystemViewRow,
-  shimmer: boolean,
-): TimelineTitleSegment[] | null {
-  if (row.systemKind !== "operation") return null;
-
-  const nameSegment = (name: string): TimelineTitleSegment =>
-    segment(name, {
-      em: true,
-      truncate: true,
-      shimmer,
-      ...(row.threadId.length > 0
-        ? { link: { kind: "thread", threadId: row.threadId } }
-        : {}),
-    });
-
-  // Leading-verb form: "Provisioning {name}". A thread with no id has no name to
-  // link, so the active-provisioning fallback title is "Provisioning thread";
-  // gating on an empty `row.threadId` (rather than the literal "Provisioning
-  // thread") lets a thread literally named "thread" still link correctly.
-  const provisioningPrefix = `${PROVISIONING_LEADING_VERB} `;
-  if (
-    row.operationKind === "thread-provisioning" &&
-    row.threadId.length > 0 &&
-    row.title.startsWith(provisioningPrefix)
-  ) {
-    const name = row.title.slice(provisioningPrefix.length);
-    return [segment(PROVISIONING_LEADING_VERB, { shimmer }), nameSegment(name)];
-  }
-
-  // Suffix form: "{name} {verb...}". The verbs are the fixed strings the
-  // projection emits (shared via family-a-verbs). Matching the LONGEST candidate
-  // affix first keeps the split unambiguous when one verb is a prefix of another
-  // or a thread name itself contains one of these words.
-  const suffixVerbs =
-    row.operationKind === "thread-provisioning"
-      ? PROVISIONING_SUFFIX_VERBS
-      : row.operationKind === "thread-interrupted"
-        ? THREAD_INTERRUPTED_SUFFIX_VERBS
-        : [];
-  const verbsByLengthDesc = [...suffixVerbs].sort(
-    (a, b) => b.length - a.length,
-  );
-  for (const verb of verbsByLengthDesc) {
-    const suffix = ` ${verb}`;
-    if (row.title.endsWith(suffix) && row.title.length > suffix.length) {
-      const name = row.title.slice(0, row.title.length - suffix.length);
-      return [nameSegment(name), segment(verb, { shimmer })];
-    }
-  }
-
-  return null;
-}
-
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   const hasError = row.systemKind === "error" || row.status === "error";
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
@@ -1425,12 +1394,6 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   // status; error rows are terminal and reconnect rows carry no status, so this
   // uniform rule leaves both static.
   const shimmer = row.status === "pending";
-  // Provisioning and thread-interrupted rows link the thread name they concern;
-  // every other system row renders its flat title as a single neutral segment.
-  const threadNamedSegments = threadNamedSystemTitleSegments(row, shimmer);
-  if (threadNamedSegments !== null) {
-    return makeTitle({ segments: threadNamedSegments, decorations });
-  }
   return makeTitle({
     segments: [segment(titleText, { shimmer, truncate: true })],
     decorations,

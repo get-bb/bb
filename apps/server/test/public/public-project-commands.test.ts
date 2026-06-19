@@ -159,6 +159,7 @@ describe("public project command typeahead route", () => {
           type: "host.list_commands",
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
+          builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
         },
       ]);
     });
@@ -202,7 +203,45 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/tmp/codex-commands-env",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
+    });
+  });
+
+  it("matches namespaced skills by their direct skill name", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-direct-skill",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/direct-skill-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/direct-skill-env",
+      });
+      registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [
+          skill("alpha-review-notes", "user"),
+          skill("ottonomous:review", "user"),
+          skill("zeta-review", "user"),
+        ],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}&query=review&limit=1`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands.map((command) => command.name)).toEqual([
+        "ottonomous:review",
+      ]);
+      expect(body.truncated).toBe(true);
     });
   });
 
@@ -269,6 +308,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/no-env-project",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -312,6 +352,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -348,6 +389,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: null,
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });
@@ -377,6 +419,7 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: null,
+        builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
     });
   });

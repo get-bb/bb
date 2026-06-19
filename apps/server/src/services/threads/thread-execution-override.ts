@@ -208,7 +208,9 @@ async function loadThreadProviderModels(
       `Unable to load ${thread.providerId} models to validate the change. Try again once the host is connected.`,
     );
   }
-  return result.models;
+  // Selected-only models are browsable in the picker's collapsed "More
+  // models" section, so they are valid swap targets too.
+  return [...result.models, ...result.selectedOnlyModels];
 }
 
 function resolveFallbackModel(deps: AppDeps, thread: Thread): string | null {

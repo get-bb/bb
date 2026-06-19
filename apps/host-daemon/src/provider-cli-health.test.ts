@@ -27,6 +27,13 @@ const CLAUDE_INSTALL_COMMAND = [
   `curl -fsSL ${CLAUDE_INSTALL_SCRIPT_URL} -o "$tmp"`,
   'bash "$tmp"',
 ].join(" && ");
+const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
+const CURSOR_INSTALL_COMMAND = [
+  'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-cli-install.XXXXXX")',
+  "trap 'rm -f \"$tmp\"' EXIT",
+  `curl -fsSL ${CURSOR_INSTALL_SCRIPT_URL} -o "$tmp"`,
+  'bash "$tmp"',
+].join(" && ");
 
 interface FakeCommandBehavior {
   stdout: string;
@@ -201,21 +208,42 @@ const CLAUDE_CODE_DEFINITION: ProviderCliDefinition = {
   },
 };
 
+const CURSOR_DEFINITION: ProviderCliDefinition = {
+  key: "cursor",
+  displayName: "Cursor",
+  executableName: "agent",
+  npmPackageName: null,
+  installCommand: {
+    kind: "downloadedShellScript",
+    scriptUrl: CURSOR_INSTALL_SCRIPT_URL,
+  },
+  updateCommand: {
+    commandKind: "exec",
+    displayCommand: "agent update",
+    command: "agent",
+    args: ["update"],
+  },
+};
+
 function installNpmStateCommands(
   runner: FakeProviderCliCommandRunner,
   definition: ProviderCliDefinition,
   prefix: string,
   packageVersion: string | null,
 ): void {
+  const packageName = definition.npmPackageName;
+  if (packageName === null) {
+    throw new Error(`${definition.displayName} has no npm package`);
+  }
   runner.setSuccess("npm", ["prefix", "-g"], `${prefix}\n`);
   runner.setSuccess(
     "npm",
-    ["list", "-g", definition.npmPackageName, "--depth=0", "--json"],
+    ["list", "-g", packageName, "--depth=0", "--json"],
     packageVersion === null
       ? JSON.stringify({ dependencies: {} })
       : JSON.stringify({
           dependencies: {
-            [definition.npmPackageName]: { version: packageVersion },
+            [packageName]: { version: packageVersion },
           },
         }),
   );
@@ -241,6 +269,14 @@ function installMissingClaudeCommands(
     "2.1.148\n",
   );
   installNpmStateCommands(runner, CLAUDE_CODE_DEFINITION, "/usr/local", null);
+}
+
+function installMissingCursorCommands(
+  runner: FakeProviderCliCommandRunner,
+): void {
+  runner.setExit("which", ["agent"], 1, "agent not found");
+  runner.setSpawnError("agent", ["--version"], "spawn agent ENOENT");
+  runner.setSuccess("npm", ["prefix", "-g"], "/usr/local\n");
 }
 
 function installOutdatedNpmCodexCommands(
@@ -286,6 +322,14 @@ function installCurrentClaudeCommands(
     "/opt/homebrew",
     "2.1.148",
   );
+}
+
+function installCurrentCursorCommands(
+  runner: FakeProviderCliCommandRunner,
+): void {
+  runner.setSuccess("which", ["agent"], "/Users/me/.local/bin/agent\n");
+  runner.setSuccess("agent", ["--version"], "agent 1.2.3\n");
+  runner.setSuccess("npm", ["prefix", "-g"], "/usr/local\n");
 }
 
 async function collectInstallEvents(
@@ -369,6 +413,36 @@ describe("provider CLI health", () => {
     });
   });
 
+  it("reports a missing Cursor agent CLI with the downloaded shell installer action", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    installMissingCursorCommands(runner);
+
+    const status = await inspectProviderCli({
+      definition: CURSOR_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status).toEqual({
+      displayName: "Cursor",
+      executableName: "agent",
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      latestVersion: null,
+      npmPackageName: null,
+      npmGlobalPackageVersion: null,
+      installAction: {
+        kind: "install",
+        label: "Install",
+        commandKind: "shell",
+        command: CURSOR_INSTALL_COMMAND,
+      },
+      needsUpdate: false,
+    });
+  });
+
   it("offers a self-update action when the active executable is npm-global", async () => {
     const runner = new FakeProviderCliCommandRunner();
     installOutdatedNpmCodexCommands(runner);
@@ -431,10 +505,11 @@ describe("provider CLI health", () => {
     expect(status.installAction).toBeNull();
   });
 
-  it("returns both provider keys and queries the confirmed npm packages", async () => {
+  it("returns all provider keys and queries the confirmed npm packages", async () => {
     const runner = new FakeProviderCliCommandRunner();
     installOutdatedNpmCodexCommands(runner);
     installCurrentClaudeCommands(runner);
+    installCurrentCursorCommands(runner);
 
     const status = await getProviderCliStatus({
       runner,
@@ -443,10 +518,13 @@ describe("provider CLI health", () => {
 
     expect(status.codex.needsUpdate).toBe(true);
     expect(status.claudeCode.needsUpdate).toBe(false);
+    expect(status.cursor.installed).toBe(true);
     expect(runner.commandLines()).toContain("npm view @openai/codex version");
     expect(runner.commandLines()).toContain(
       "npm view @anthropic-ai/claude-code version",
     );
+    expect(runner.commandLines()).toContain("which agent");
+    expect(runner.commandLines()).not.toContain("npm view cursor version");
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {
@@ -531,6 +609,49 @@ describe("provider CLI health", () => {
     ]);
     expect(CLAUDE_INSTALL_COMMAND).not.toContain("| bash");
     expect(CLAUDE_INSTALL_COMMAND).toContain('bash "$tmp"');
+  });
+
+  it("streams Cursor installs from a downloaded script file", async () => {
+    const spawner = new FakeProviderCliInstallProcessSpawner();
+    const stream = streamProviderCliInstall({
+      provider: "cursor",
+      actionKind: "install",
+      nodePlatform: "darwin",
+      installProcessSpawner: spawner,
+    });
+    const eventsPromise = collectInstallEvents(stream);
+
+    spawner.lastProcess().stdout.write("installing cursor\n");
+    spawner.lastProcess().emitClose(0, null);
+
+    await expect(eventsPromise).resolves.toEqual([
+      {
+        type: "started",
+        provider: "cursor",
+        command: CURSOR_INSTALL_COMMAND,
+      },
+      {
+        type: "output",
+        provider: "cursor",
+        stream: "stdout",
+        text: "installing cursor\n",
+      },
+      {
+        type: "completed",
+        provider: "cursor",
+        exitCode: 0,
+        signal: null,
+        success: true,
+      },
+    ]);
+    expect(spawner.spawnRequests).toEqual([
+      {
+        command: "sh",
+        args: ["-c", CURSOR_INSTALL_COMMAND],
+      },
+    ]);
+    expect(CURSOR_INSTALL_COMMAND).not.toContain("| bash");
+    expect(CURSOR_INSTALL_COMMAND).toContain('bash "$tmp"');
   });
 
   it("streams provider self-updates with the visible update command", async () => {

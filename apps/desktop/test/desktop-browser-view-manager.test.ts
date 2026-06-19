@@ -111,6 +111,7 @@ interface FakeWebFrameMain {
 
 interface FakeOnBeforeRequestDetails {
   url: string;
+  method?: string;
   resourceType: FakeResourceType;
   webContentsId?: number;
   frame?: FakeWebFrameMain | null;
@@ -556,6 +557,7 @@ interface AttachBrowserTabArgs {
 
 interface BrowserRequestBlockedArgs {
   url: string;
+  method?: string;
   resourceType: FakeResourceType;
   frameOrigin?: string | null;
   webContentsId?: number;
@@ -601,6 +603,7 @@ function requireOnBeforeRequestListener(): FakeOnBeforeRequestListener {
 function browserRequestBlocked(args: BrowserRequestBlockedArgs): boolean {
   const details: FakeOnBeforeRequestDetails = {
     url: args.url,
+    method: args.method ?? "GET",
     resourceType: args.resourceType,
   };
   if (args.webContentsId !== undefined) {
@@ -645,7 +648,7 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
-  it("allows trusted loopback navigations through pending local origin state", () => {
+  it("allows loopback navigation requested from browser chrome", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -680,7 +683,116 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(false);
   });
 
-  it("clears pending local approval after a failed main-frame local load", () => {
+  it("allows an initial loopback tab load when Electron omits webContents attribution", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 53,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://localhost:5173/",
+    });
+    const view = requireFakeView(0);
+
+    expect(view.webContents.loadURLCalls).toEqual(["http://localhost:5173/"]);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+      }),
+    ).toBe(false);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+        webContentsId: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks local main-frame form posts while allowing local get navigations", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 53,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
+        method: "GET",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(false);
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
+        method: "POST",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(true);
+    expect(
+      browserRequestBlocked({
+        url: "http://192.168.1.1/",
+        method: "GET",
+        resourceType: "mainFrame",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(true);
+    expect(view.webContents.emitWillNavigate("http://192.168.1.1/")).toBe(
+      true,
+    );
+  });
+
+  it("allows unattributed loopback main-frame requests with matching tabs", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 54,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://localhost:5173/",
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:b",
+      url: "http://localhost:5173/path",
+    });
+
+    expect(
+      browserRequestBlocked({
+        url: "http://localhost:5173/",
+        resourceType: "mainFrame",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps top-level loopback navigation allowed after a failed local load", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -718,10 +830,10 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("clears pending local approval after an aborted main-frame local load", () => {
+  it("keeps top-level loopback navigation allowed after an aborted local load", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -763,7 +875,7 @@ describe("DesktopBrowserViewManager", () => {
     });
 
     expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      true,
+      false,
     );
     expect(
       browserRequestBlocked({
@@ -771,10 +883,10 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("clears pending local approval when a local load is stopped", () => {
+  it("keeps top-level loopback navigation allowed after a local load is stopped", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -816,10 +928,10 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("allows trusted reloads of the current local main frame", () => {
+  it("allows reloads of the current local main frame", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -843,7 +955,7 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     manager.reload({ hostWindow, tabId: "browser:a" });
 
@@ -856,7 +968,7 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(false);
   });
 
-  it("clears local approval after a local page commits to a public page", () => {
+  it("clears local subresource access after a local page commits to a public page", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -909,7 +1021,7 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(true);
   });
 
-  it("blocks public-to-local redirects after public commit", () => {
+  it("allows public-to-local top-level redirects after public commit", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -929,17 +1041,17 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(
       view.webContents.emitWillRedirect("http://localhost:38886/", true),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       browserRequestBlocked({
         url: "http://localhost:38886/",
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("does not silently regrant localhost access through back or forward history", () => {
+  it("allows local back and forward history as top-level navigation", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -968,7 +1080,7 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.webContents.goBackCalls).toEqual(["goBack"]);
     expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      true,
+      false,
     );
     expect(
       browserRequestBlocked({
@@ -976,7 +1088,7 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     view.webContents.historyEntries = [
       { title: "Public", url: "https://example.com/" },
@@ -989,7 +1101,7 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.webContents.goForwardCalls).toEqual(["goForward"]);
     expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      true,
+      false,
     );
     expect(
       browserRequestBlocked({
@@ -997,7 +1109,7 @@ describe("DesktopBrowserViewManager", () => {
         resourceType: "mainFrame",
         webContentsId: view.webContents.id,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("allows same-origin local back and forward history", () => {
@@ -1057,7 +1169,7 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(false);
   });
 
-  it("allows same-origin local subresources and blocks cross-port loopback requests", () => {
+  it("allows same-origin local subresources and cross-port top-level navigation", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1105,7 +1217,7 @@ describe("DesktopBrowserViewManager", () => {
         true,
         "http://localhost:5173",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       browserRequestBlocked({
         url: "http://localhost:5173/app.js",
@@ -1116,7 +1228,7 @@ describe("DesktopBrowserViewManager", () => {
     ).toBe(false);
   });
 
-  it("blocks localhost requests from public iframes inside a local page", () => {
+  it("allows top-level localhost frame navigation but blocks public iframe subresources", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1140,7 +1252,7 @@ describe("DesktopBrowserViewManager", () => {
         true,
         "https://example.com",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       browserRequestBlocked({
         url: "http://localhost:5173/dashboard",
@@ -1148,7 +1260,7 @@ describe("DesktopBrowserViewManager", () => {
         webContentsId: view.webContents.id,
         frameOrigin: "http://localhost:5173",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       browserRequestBlocked({
         url: "http://localhost:5173/app.js",
@@ -1220,7 +1332,7 @@ describe("DesktopBrowserViewManager", () => {
     ]);
   });
 
-  it("clears local attribution on release and destroy", () => {
+  it("clears local subresource attribution on release and destroy", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1252,9 +1364,10 @@ describe("DesktopBrowserViewManager", () => {
     expect(destroyedView.webContents.destroyed).toBe(true);
     expect(
       browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
+        url: "http://localhost:5173/app.js",
+        resourceType: "script",
         webContentsId: releasedView.webContents.id,
+        frameOrigin: "http://localhost:5173",
       }),
     ).toBe(true);
 
@@ -1276,9 +1389,10 @@ describe("DesktopBrowserViewManager", () => {
     expect(destroyAllView.webContents.destroyed).toBe(true);
     expect(
       browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
+        url: "http://localhost:5173/app.js",
+        resourceType: "script",
         webContentsId: destroyAllView.webContents.id,
+        frameOrigin: "http://localhost:5173",
       }),
     ).toBe(true);
   });

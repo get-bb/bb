@@ -49,7 +49,7 @@ export interface UseCommandSuggestionsResult {
  * hook is inert — never fetches, returns an empty list — when there is no
  * project, no provider, no command trigger for the provider, or no active
  * command query. Unlike mentions, it is enabled even when `query` is empty —
- * `/`/`$` show the full available list.
+ * the provider-owned trigger shows the full available list.
  */
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,

@@ -6,13 +6,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import {
-  POPOUT_QUICK_ASK_HEIGHT,
-  POPOUT_WINDOW_HEIGHT,
+  POPOUT_SHADOW_MARGIN,
   type BbDesktopPopoutThreadChangedPayload,
 } from "@bb/desktop-contract";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
@@ -31,12 +29,9 @@ import {
   useHostListRealtimeSubscription,
   useProjectListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
-import {
-  HEIGHT_TRANSITION_DURATION_MS,
-  HEIGHT_TRANSITION_EASE_CSS,
-} from "@/components/ui/height-transition";
 import { Icon } from "@/components/ui/icon";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+import { cn } from "@/lib/utils";
 
 const ThreadDetailRoute = lazy(
   () => import("./thread-detail/ThreadDetailRoute"),
@@ -52,15 +47,9 @@ interface PopoutShellProps {
   isThreadOpen: boolean;
 }
 
-interface PopoutCardStyle extends CSSProperties {
-  "--popout-card-height": string;
-  "--popout-card-transition-duration": string;
-  "--popout-card-transition-ease": string;
-}
-
 function PopoutLoadingCard() {
   return (
-    <div className="flex h-full min-h-0 items-center justify-center text-sm text-muted-foreground">
+    <div className="flex min-h-[120px] flex-1 items-center justify-center text-sm text-muted-foreground">
       <Icon name="Spinner" className="mr-2 size-4 animate-spin" />
       Loading...
     </div>
@@ -181,25 +170,25 @@ function usePopoutMousePassthrough() {
 }
 
 function PopoutShell({ children, isThreadOpen }: PopoutShellProps) {
-  const cardHeight = isThreadOpen
-    ? POPOUT_WINDOW_HEIGHT
-    : POPOUT_QUICK_ASK_HEIGHT;
-  const cardStyle: PopoutCardStyle = {
-    "--popout-card-height": `${cardHeight}px`,
-    "--popout-card-transition-duration": `${HEIGHT_TRANSITION_DURATION_MS}ms`,
-    "--popout-card-transition-ease": HEIGHT_TRANSITION_EASE_CSS,
-  };
-
+  // The window reserves a transparent gutter of POPOUT_SHADOW_MARGIN on every
+  // side (see desktop-contract). Padding the transparent region by that amount
+  // insets the card so its drop shadow has room to render on all four edges
+  // instead of being clipped at the window bounds. A thread fills the card to a
+  // fixed height; the quick-ask composer sizes to its content so the card grows
+  // downward into the gutter as the textarea and attachments expand.
   return (
     <CompactViewportOverrideProvider isCompactViewport={false}>
       <div
-        className="h-screen overflow-visible bg-transparent text-foreground"
+        className="flex h-screen flex-col overflow-visible bg-transparent text-foreground"
         data-bb-popout-transparent-region=""
+        style={{ padding: `${POPOUT_SHADOW_MARGIN}px` }}
       >
         <div
-          className="flex h-[var(--popout-card-height)] min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.18)] transition-[height] duration-[var(--popout-card-transition-duration)] ease-[var(--popout-card-transition-ease)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_16px_48px_rgba(0,0,0,0.55)]"
+          className={cn(
+            "flex min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_8px_20px_rgba(0,0,0,0.16)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_8px_20px_rgba(0,0,0,0.5)]",
+            isThreadOpen && "flex-1",
+          )}
           data-bb-popout-card=""
-          style={cardStyle}
         >
           <Suspense fallback={<PopoutLoadingCard />}>{children}</Suspense>
         </div>

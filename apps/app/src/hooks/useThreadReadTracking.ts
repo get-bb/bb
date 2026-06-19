@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import type { Thread } from "@bb/domain";
-import { isThreadRead } from "@/lib/thread-read-state";
-import { useMarkThreadRead } from "../../hooks/mutations/thread-state-mutations";
+import {
+  isThreadRead,
+  type ThreadReadState,
+} from "@/lib/thread-read-state";
+
+type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
+
+interface MarkThreadReadMutation {
+  mutate: (threadId: string, options?: { onError?: () => void }) => void;
+}
 
 interface UseThreadReadTrackingParams {
-  markThreadRead: ReturnType<typeof useMarkThreadRead>;
-  thread?: Thread;
+  markThreadRead: MarkThreadReadMutation;
+  thread?: ThreadReadTrackingState;
 }
 
 function isDocumentVisible(): boolean {

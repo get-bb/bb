@@ -11,7 +11,6 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  isAllowedTrustedLocalTopLevelUrl,
   isBlockedBrowserRequestHost,
   isBlockedBrowserRequestUrl,
   isLoopbackBrowserRequestHost,
@@ -379,32 +378,6 @@ describe("localRequestOriginKey", () => {
   });
 });
 
-describe("isAllowedTrustedLocalTopLevelUrl", () => {
-  it("allows only loopback http(s) top-level URLs", () => {
-    expect(isAllowedTrustedLocalTopLevelUrl("http://localhost:5173/")).toBe(
-      true,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("https://app.localhost/")).toBe(
-      true,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("http://127.0.0.1:3000/")).toBe(
-      true,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("http://[::1]:5173/")).toBe(true);
-
-    expect(isAllowedTrustedLocalTopLevelUrl("ws://localhost:5173/ws")).toBe(
-      false,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("https://example.com/")).toBe(
-      false,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("http://0.0.0.0:5173/")).toBe(
-      false,
-    );
-    expect(isAllowedTrustedLocalTopLevelUrl("http://192.168.1.1/")).toBe(false);
-  });
-});
-
 describe("shouldBlockBrowserRequest", () => {
   const localhost3000 = requireLocalOriginKey("http://localhost:3000/");
   const localhost5173 = requireLocalOriginKey("http://localhost:5173/");
@@ -413,14 +386,13 @@ describe("shouldBlockBrowserRequest", () => {
 
   const baseRequest: ShouldBlockBrowserRequestArgs = {
     url: "http://localhost:3000/",
+    method: "GET",
     resourceType: "mainFrame",
     isMainFrame: true,
     targetWebContentsId: 1,
     entryWebContentsId: 1,
-    pendingTrustedLocalTopLevelOriginKey: null,
     currentMainFrameLocalOriginKey: null,
     requestingFrameOriginKey: null,
-    mainFrameInitiatorOriginKey: null,
   };
 
   it("allows public requests regardless of local attribution fields", () => {
@@ -432,7 +404,6 @@ describe("shouldBlockBrowserRequest", () => {
         isMainFrame: false,
         targetWebContentsId: null,
         entryWebContentsId: null,
-        pendingTrustedLocalTopLevelOriginKey: localhost3000,
         currentMainFrameLocalOriginKey: localhost3000,
         requestingFrameOriginKey: null,
       }),
@@ -450,51 +421,72 @@ describe("shouldBlockBrowserRequest", () => {
     ).toBe(false);
   });
 
-  it("blocks explicit 0.0.0.0 firewall targets", () => {
-    for (const url of ["http://0.0.0.0:38886/", "https://0.0.0.0/"]) {
+  it("allows top-level public and loopback http(s) navigations", () => {
+    for (const url of [
+      "http://localhost:3000/",
+      "http://127.0.0.1:38886/",
+      "http://[::1]:5173/",
+      "https://example.com/",
+    ]) {
+      expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(false);
+    }
+  });
+
+  it("blocks top-level private and LAN navigations", () => {
+    for (const url of [
+      "http://0.0.0.0:38886/",
+      "http://192.168.1.1/",
+      "http://printer.local/",
+    ]) {
       expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(true);
     }
   });
 
-  it("allows trusted pending loopback main-frame requests without an initiator", () => {
-    expect(
-      shouldBlockBrowserRequest({
-        ...baseRequest,
-        pendingTrustedLocalTopLevelOriginKey: localhost3000,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows current same-origin loopback main-frame requests only from a matching local initiator", () => {
-    expect(
-      shouldBlockBrowserRequest({
-        ...baseRequest,
-        isMainFrame: false,
-        resourceType: "mainFrame",
-        currentMainFrameLocalOriginKey: localhost3000,
-        mainFrameInitiatorOriginKey: localhost3000,
-      }),
-    ).toBe(false);
-
-    for (const mainFrameInitiatorOriginKey of [
-      null,
-      localRequestOriginKey("https://example.com/"),
-      localhost5173,
-      localhostSecure3000,
+  it("blocks non-read-only main-frame requests to local targets", () => {
+    for (const url of [
+      "http://localhost:3000/api",
+      "http://127.0.0.1:38886/api",
+      "http://192.168.1.1/action",
     ]) {
       expect(
         shouldBlockBrowserRequest({
           ...baseRequest,
-          currentMainFrameLocalOriginKey: localhost3000,
-          mainFrameInitiatorOriginKey,
+          method: "POST",
+          url,
         }),
       ).toBe(true);
     }
+
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        method: "POST",
+        url: "https://example.com/form",
+      }),
+    ).toBe(false);
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        method: "HEAD",
+        url: "http://localhost:3000/",
+      }),
+    ).toBe(false);
   });
 
-  it("blocks unapproved loopback requests", () => {
+  it("blocks non-http(s) main-frame requests", () => {
+    for (const url of [
+      "ws://localhost:3000/socket",
+      "file:///etc/passwd",
+      "data:text/html,<h1>x</h1>",
+      "about:blank",
+      "not a url",
+    ]) {
+      expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(true);
+    }
+  });
+
+  it("blocks unapproved non-main-frame loopback requests", () => {
     for (const resourceType of [
-      "mainFrame",
       "subFrame",
       "script",
       "xhr",
@@ -529,13 +521,16 @@ describe("shouldBlockBrowserRequest", () => {
     }
   });
 
-  it("isolates local approval by attributed webContents id", () => {
+  it("isolates local subresource allowance by attributed webContents id", () => {
     expect(
       shouldBlockBrowserRequest({
         ...baseRequest,
-        pendingTrustedLocalTopLevelOriginKey: localhost3000,
+        resourceType: "script",
+        isMainFrame: false,
         targetWebContentsId: 2,
         entryWebContentsId: 1,
+        currentMainFrameLocalOriginKey: localhost3000,
+        requestingFrameOriginKey: localhost3000,
       }),
     ).toBe(true);
   });
@@ -549,9 +544,12 @@ describe("shouldBlockBrowserRequest", () => {
       expect(
         shouldBlockBrowserRequest({
           ...baseRequest,
+          resourceType: "script",
+          isMainFrame: false,
           targetWebContentsId: request.targetWebContentsId,
           entryWebContentsId: request.entryWebContentsId,
-          pendingTrustedLocalTopLevelOriginKey: localhost3000,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey: localhost3000,
         }),
       ).toBe(true);
     }
@@ -704,13 +702,12 @@ describe("loopback SPA subresource firewall (regression)", () => {
     "requestingFrameOriginKey"
   > = {
     url: "http://localhost:5173/src/main.tsx",
+    method: "GET",
     resourceType: "script",
     isMainFrame: false,
     targetWebContentsId: 1,
     entryWebContentsId: 1,
-    pendingTrustedLocalTopLevelOriginKey: null,
     currentMainFrameLocalOriginKey: originKey,
-    mainFrameInitiatorOriginKey: null,
   };
 
   it("allows a same-origin top-frame subresource resolved via the URL fallback", () => {

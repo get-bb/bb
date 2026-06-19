@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 export interface MessageProseSelection {
   text: string;
   rect: DOMRect;
+  sourceSeqEnd?: number;
 }
 
 export interface SelectableMessageProseProps {
@@ -102,10 +103,12 @@ export function SelectableMessageProse({
     if (typeof window === "undefined") return;
 
     let frame: number | null = null;
-    // `selectionchange` fires globally, so every mounted message would report
-    // `null` on each tick. Only emit `null` once, after this node had reported
-    // a real selection, so N messages don't thrash a shared controller.
+    // Read pointer selections only after release so the floating menu does not
+    // block the cursor or chase the range while the user is still dragging.
+    // Only emit `null` once, after this node had reported a real selection, so
+    // N messages don't thrash a shared controller.
     let hadSelection = false;
+    let pointerIsDown = false;
     const report = () => {
       frame = null;
       const next = readSelectionWithinNode(nodeRef.current);
@@ -113,19 +116,60 @@ export function SelectableMessageProse({
       hadSelection = next !== null;
       onSelectRef.current?.(next);
     };
+    const cancelFrame = () => {
+      if (frame === null) return;
+      window.cancelAnimationFrame(frame);
+      frame = null;
+    };
     const schedule = () => {
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
     };
+    const scheduleFresh = () => {
+      cancelFrame();
+      schedule();
+    };
+    const handleSelectionChange = () => {
+      if (pointerIsDown) {
+        return;
+      }
+      schedule();
+    };
+    const handlePointerDown = () => {
+      pointerIsDown = true;
+    };
+    const handlePointerEnd = () => {
+      pointerIsDown = false;
+      schedule();
+    };
+    const handleMultiClick = (event: MouseEvent) => {
+      if (event.detail < 2) {
+        return;
+      }
+      // Multi-click selection can be finalized after pointerup. Replace any
+      // stale pointerup read with one explicitly tied to the completed click.
+      scheduleFresh();
+    };
+    const node = nodeRef.current;
 
-    document.addEventListener("mouseup", schedule);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    document.addEventListener("mouseup", handlePointerEnd);
+    document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
-    document.addEventListener("selectionchange", schedule);
+    node?.addEventListener("click", handleMultiClick);
+    node?.addEventListener("dblclick", scheduleFresh);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      document.removeEventListener("mouseup", schedule);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+      document.removeEventListener("mouseup", handlePointerEnd);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
-      document.removeEventListener("selectionchange", schedule);
+      node?.removeEventListener("click", handleMultiClick);
+      node?.removeEventListener("dblclick", scheduleFresh);
     };
   }, []);
 

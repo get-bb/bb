@@ -29,17 +29,22 @@ import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/Thread
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 
-type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal>;
+type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
+  scrollToBottomOnSubmit?: boolean;
+};
 
 function PromptBoxWithScrollAnchor({
   onSubmit,
+  scrollToBottomOnSubmit = true,
   submission,
   ...promptBoxProps
 }: PromptBoxWithScrollAnchorProps) {
   const bottomAnchor = useBottomAnchoredScroll();
   const handleSubmit = () => {
     onSubmit();
-    bottomAnchor?.scrollToBottom();
+    if (scrollToBottomOnSubmit) {
+      bottomAnchor?.scrollToBottom();
+    }
   };
   const handleModifierSubmit =
     submission?.onModifierSubmit === undefined
@@ -282,9 +287,8 @@ function FollowUpPromptBoxWithComposer({
   }, []);
   // The elastic pre-size keeps the prompt area's total height constant as the
   // stack (context banner + queued messages) mounts/unmounts so the timeline
-  // doesn't shift. A composer with no stack (the side chat) has nothing to
-  // compensate for, so it uses the plain default height — matching the main
-  // thread composer's input box instead of rendering a banner-height taller.
+  // doesn't shift. Callers that need the main-thread prompt height should pass
+  // an empty stack instead of null.
   const elasticTextareaMinHeight =
     stack === null
       ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT
@@ -311,6 +315,7 @@ function FollowUpPromptBoxWithComposer({
           mentionRanges={composer.mentionRanges}
           onChange={composer.onChangeMessage}
           onSubmit={composer.onSubmit}
+          scrollToBottomOnSubmit={submitMode.kind !== "queue"}
           history={composer.history}
           focusEndKey={focusEndKey}
           placeholder={composer.promptPlaceholder}

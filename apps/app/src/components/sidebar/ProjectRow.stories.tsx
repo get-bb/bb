@@ -17,6 +17,7 @@ import {
   ProjectListProjects,
   type ProjectListRowModel,
 } from "./ProjectListProjects";
+import { compareStandardThreads } from "./projectThreadGroups";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -126,6 +127,7 @@ function InteractiveProjectList({
       collapsedProjectIds={collapsedProjectIds}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      compareThreads={compareStandardThreads}
       onCreateProjectThread={noop}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
@@ -371,7 +373,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active project route"
-        hint="header has the selected sidebar-border background"
+        hint="header has the selected sidebar-accent background"
       >
         {singleProject({
           isActive: true,

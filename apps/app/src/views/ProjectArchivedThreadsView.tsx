@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
@@ -8,6 +8,7 @@ import { Pill } from "@/components/ui/pill.js";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
+import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 
@@ -21,7 +22,7 @@ function getArchivedThreadPillLabel(
 }
 
 export function ProjectArchivedThreadsView() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId } = useRouteState();
   const archivedThreadsQuery = useArchivedThreads({ projectId });
   const unarchiveThread = useUnarchiveThread();
 

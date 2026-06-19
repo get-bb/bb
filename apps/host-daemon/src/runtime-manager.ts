@@ -230,16 +230,39 @@ interface PendingEnvironmentProvision {
   done: Promise<unknown>;
 }
 
+interface PendingProviderMaintenanceRuntime {
+  generation: number;
+  promise: Promise<AgentRuntime>;
+}
+
 interface RunCancellableEnvironmentProvisionArgs {
   environmentId: string;
   work: (signal: AbortSignal) => Promise<void>;
+}
+
+function shellEnvEquals(
+  left: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  right: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+  return leftEntries.every(([key, value]) => right[key] === value);
+}
+
+function providerProcessEnvFromShellEnv(
+  shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+): Record<string, string> | null {
+  return shellEnv.PATH ? { PATH: shellEnv.PATH } : null;
 }
 
 export class RuntimeManager {
   private readonly createRuntime;
   private readonly hostWatcher;
   private readonly provisionWorkspace;
-  private readonly baseShellEnv;
+  private baseShellEnv;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
   private readonly pendingEnvironmentProvisions = new Map<
@@ -247,8 +270,9 @@ export class RuntimeManager {
     PendingEnvironmentProvision
   >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
-  private pendingProviderMaintenanceRuntime: Promise<AgentRuntime> | null =
+  private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
+  private providerMaintenanceRuntimeGeneration = 0;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
@@ -338,6 +362,18 @@ export class RuntimeManager {
       ...this.baseShellEnv,
       ...this.managedShellEnv,
     };
+  }
+
+  async replaceBaseShellEnv(
+    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  ): Promise<void> {
+    if (shellEnvEquals(this.baseShellEnv, shellEnv)) {
+      return;
+    }
+
+    this.baseShellEnv = { ...shellEnv };
+    await this.shutdownProviderMaintenanceRuntime();
+    await this.evictIdleRuntimeEntries();
   }
 
   private getInjectedSkillsLogger(): InjectedSkillsLogger | undefined {
@@ -483,6 +519,45 @@ export class RuntimeManager {
     this.managedShellEnv = { ...shellEnv };
   }
 
+  private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+    const existingRuntime = this.providerMaintenanceRuntime;
+    const pendingRuntime = this.pendingProviderMaintenanceRuntime;
+    this.providerMaintenanceRuntimeGeneration += 1;
+    this.providerMaintenanceRuntime = null;
+    if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
+      this.pendingProviderMaintenanceRuntime = null;
+    }
+
+    const resolvedPendingRuntime = pendingRuntime
+      ? await pendingRuntime.promise.catch(() => null)
+      : null;
+    if (
+      resolvedPendingRuntime &&
+      this.providerMaintenanceRuntime === resolvedPendingRuntime
+    ) {
+      this.providerMaintenanceRuntime = null;
+    }
+
+    const runtimes = [...new Set([existingRuntime, resolvedPendingRuntime])];
+    await Promise.all(
+      runtimes.map((runtime) => runtime?.shutdown() ?? Promise.resolve()),
+    );
+  }
+
+  private async evictIdleRuntimeEntries(): Promise<void> {
+    const idleEntries = [...this.entries.values()].filter(
+      (entry) => !this.entryHasActiveRuntimeWork(entry),
+    );
+
+    for (const entry of idleEntries) {
+      await this.stopWatchingStatus(entry);
+      this.entries.delete(entry.environmentId);
+    }
+
+    await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
+  }
+
   async openWorkspace(path: string): Promise<HostWorkspace> {
     return this.provisionWorkspace({
       workspaceProvisionType: "unmanaged",
@@ -497,19 +572,33 @@ export class RuntimeManager {
       return this.providerMaintenanceRuntime;
     }
     if (this.pendingProviderMaintenanceRuntime) {
-      return this.pendingProviderMaintenanceRuntime;
+      return this.pendingProviderMaintenanceRuntime.promise;
     }
 
-    const creation = this.createProviderMaintenanceRuntime(args).then(
-      (runtime) => {
-        this.providerMaintenanceRuntime = runtime;
+    const generation = this.providerMaintenanceRuntimeGeneration;
+    let pendingRuntime!: PendingProviderMaintenanceRuntime;
+    const promise = Promise.resolve()
+      .then(() => this.createProviderMaintenanceRuntime(args))
+      .then((runtime) => {
+        if (
+          this.pendingProviderMaintenanceRuntime === pendingRuntime &&
+          this.providerMaintenanceRuntimeGeneration === generation
+        ) {
+          this.providerMaintenanceRuntime = runtime;
+        }
         return runtime;
-      },
-    );
-    this.pendingProviderMaintenanceRuntime = creation.finally(() => {
-      this.pendingProviderMaintenanceRuntime = null;
-    });
-    return this.pendingProviderMaintenanceRuntime;
+      })
+      .finally(() => {
+        if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
+          this.pendingProviderMaintenanceRuntime = null;
+        }
+      });
+    pendingRuntime = {
+      generation,
+      promise,
+    };
+    this.pendingProviderMaintenanceRuntime = pendingRuntime;
+    return promise;
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
@@ -753,16 +842,7 @@ export class RuntimeManager {
       // lifecycle via explicit environment.destroy commands. Daemon shutdown
       // should only release in-memory state and stop provider processes.
     }
-    const providerMaintenanceRuntime =
-      this.providerMaintenanceRuntime ??
-      (this.pendingProviderMaintenanceRuntime
-        ? await this.pendingProviderMaintenanceRuntime.catch(() => null)
-        : null);
-    this.providerMaintenanceRuntime = null;
-    this.pendingProviderMaintenanceRuntime = null;
-    if (providerMaintenanceRuntime) {
-      await providerMaintenanceRuntime.shutdown();
-    }
+    await this.shutdownProviderMaintenanceRuntime();
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
@@ -818,10 +898,13 @@ export class RuntimeManager {
     await mkdir(workspacePath, { recursive: true });
 
     let runtime: AgentRuntime | null = null;
+    const shellEnv = this.getShellEnv();
+    const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath,
       additionalWorkspaceWriteRoots: [],
-      shellEnv: this.getShellEnv(),
+      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
+      shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
       onEvent: (event) => {
@@ -883,11 +966,14 @@ export class RuntimeManager {
       workspaceRoots: workspaceWriteRoots,
     });
     let runtime: AgentRuntime | null = null;
+    const shellEnv = this.getShellEnv();
+    const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
       ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
-      shellEnv: this.getShellEnv(),
+      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
+      shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
       onEvent: (event) => {

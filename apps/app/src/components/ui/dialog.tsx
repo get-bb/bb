@@ -4,6 +4,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Slot } from "@radix-ui/react-slot";
 
 import { cn } from "@/lib/utils";
+import { useBrowserDimmingModal } from "@/hooks/useBrowserDimmingModal";
 import {
   DrawerDescription as DrawerDescriptionPrimitive,
   DrawerTitle as DrawerTitlePrimitive,
@@ -187,6 +188,7 @@ type DialogContentProps = React.ComponentPropsWithoutRef<
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, ...props }, ref) => {
     const { isCompactViewport, open, onOpenChange } = useResponsiveDialog();
+    useBrowserDimmingModal(open);
 
     if (isCompactViewport) {
       const domProps = stripRadixContentProps(props);

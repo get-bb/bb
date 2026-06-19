@@ -2,11 +2,28 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageActionBar } from "./MessageActionBar";
+import {
+  findMessageActionTooltipCollisionBoundary,
+  MessageActionBar,
+} from "./MessageActionBar";
 
 afterEach(cleanup);
 
 describe("MessageActionBar", () => {
+  it("uses the nearest thread window as the tooltip collision boundary", () => {
+    const threadWindow = document.createElement("div");
+    threadWindow.setAttribute("data-thread-window", "");
+    const sidePanel = document.createElement("aside");
+    const actionBar = document.createElement("div");
+    threadWindow.append(actionBar);
+    document.body.append(threadWindow, sidePanel);
+
+    expect(findMessageActionTooltipCollisionBoundary(actionBar)).toBe(
+      threadWindow,
+    );
+    expect(findMessageActionTooltipCollisionBoundary(sidePanel)).toBeUndefined();
+  });
+
   it("renders the send-to-main action and fires its handler when supplied", () => {
     const onSendToMain = vi.fn();
     render(
@@ -50,7 +67,7 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps actions visible and tappable on coarse pointers", () => {
+  it("uses a single overflow trigger on coarse pointers", () => {
     render(
       <MessageActionBar
         messageText="An answer."
@@ -60,7 +77,15 @@ describe("MessageActionBar", () => {
     );
 
     const button = screen.getByRole("button", { name: "Reply in side chat" });
-    expect(button.className).toContain("max-md:pointer-coarse:opacity-100");
-    expect(button.className).toContain("max-md:pointer-coarse:size-9");
+    expect(button.className).toContain("max-md:pointer-coarse:hidden");
+
+    const overflowTrigger = screen.getByRole("button", {
+      name: "Message actions",
+    });
+    expect(overflowTrigger.className).toContain("hidden");
+    expect(overflowTrigger.className).toContain(
+      "max-md:pointer-coarse:inline-flex",
+    );
+    expect(overflowTrigger.className).not.toContain("opacity-0");
   });
 });

@@ -174,4 +174,82 @@ describe("@bb/sdk", () => {
     expect(queue.requests).toEqual([]);
   });
 
+  it("defaults automation create to the personal project", async () => {
+    const queue = createFetchQueue([{ body: { id: "auto_1" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.automations.create({
+      name: "Digest",
+      trigger: {
+        triggerType: "schedule",
+        cron: "0 9 * * 1-5",
+        timezone: "America/New_York",
+      },
+      execution: {
+        mode: "agent",
+        prompt: "Summarize.",
+        providerId: "codex",
+        model: "gpt-5",
+        permissionMode: "readonly",
+      },
+      environment: { type: "host", workspace: { type: "personal" } },
+      origin: "human",
+    });
+
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/projects/proj_personal/automations",
+    );
+    expect(queue.requests[0]?.method).toBe("POST");
+  });
+
+  it("stamps origin agent and createdByThreadId from BB_THREAD_ID on create", async () => {
+    const previous = process.env.BB_THREAD_ID;
+    process.env.BB_THREAD_ID = "thr_creator";
+    try {
+      const queue = createFetchQueue([{ body: { id: "auto_2" }, status: 201 }]);
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          baseUrl: "http://bb.test",
+          fetch: queue.fetch,
+          runtime: "node",
+        }),
+      });
+
+      await sdk.automations.create({
+        projectId: "proj_123",
+        name: "Digest",
+        trigger: {
+          triggerType: "schedule",
+          cron: "0 9 * * 1-5",
+          timezone: "America/New_York",
+        },
+        execution: {
+          mode: "agent",
+          prompt: "Summarize.",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: "readonly",
+        },
+        environment: { type: "host", workspace: { type: "personal" } },
+        // origin omitted on purpose: the SDK should fill it from the thread env.
+      } as Parameters<typeof sdk.automations.create>[0]);
+
+      const body = JSON.parse(queue.requests[0]?.bodyText ?? "{}");
+      expect(body.origin).toBe("agent");
+      expect(body.createdByThreadId).toBe("thr_creator");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.BB_THREAD_ID;
+      } else {
+        process.env.BB_THREAD_ID = previous;
+      }
+    }
+  });
+
 });

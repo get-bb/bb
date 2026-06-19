@@ -72,6 +72,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.permissionMode",
       "createThreadRequestSchema.reasoningLevel",
       "createThreadRequestSchema.serviceTier",
+      "createThreadRequestSchema.sourceSeqEnd",
       "createThreadRequestSchema.sourceThreadId",
       "createThreadRequestSchema.title",
     ],
@@ -198,12 +199,18 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.beforeAnchorSeq",
       "threadTimelineQuerySchema.beforeAnchorId",
       "threadTimelineQuerySchema.summaryOnly",
+      "threadTimelineQuerySchema.afterSequence",
     ],
   },
   {
     reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
+  },
+  {
+    reason:
+      "Timeline responses carry a row-patch delta only when the request supplied a usable afterSequence; a full window omits it.",
+    fields: ["threadTimelineResponseSchema.delta"],
   },
   {
     reason:
@@ -804,6 +811,39 @@ describe("server-contract canonical schemas", () => {
       action: "commit",
     });
 
+    expect(
+      environmentActionRequestSchema.parse({
+        action: "pull_request_ready",
+      }),
+    ).toMatchObject({
+      action: "pull_request_ready",
+    });
+
+    expect(
+      environmentActionRequestSchema.parse({
+        action: "pull_request_merge",
+        options: { method: "rebase" },
+      }),
+    ).toMatchObject({
+      action: "pull_request_merge",
+      options: { method: "rebase" },
+    });
+
+    expect(
+      environmentActionRequestSchema.parse({
+        action: "pull_request_draft",
+      }),
+    ).toMatchObject({
+      action: "pull_request_draft",
+    });
+
+    expect(() =>
+      environmentActionRequestSchema.parse({
+        action: "pull_request_merge",
+        options: { method: "admin" },
+      }),
+    ).toThrow();
+
     expect(() =>
       environmentActionRequestSchema.parse({
         action: "commit",
@@ -831,6 +871,28 @@ describe("server-contract canonical schemas", () => {
         ok: true,
       }),
     ).toThrow();
+
+    expect(
+      contract.environmentActionResponseSchema.parse({
+        action: "pull_request_merge",
+        method: "squash",
+        message: "Pull request merge started",
+        ok: true,
+      }),
+    ).toMatchObject({
+      action: "pull_request_merge",
+      method: "squash",
+    });
+
+    expect(
+      contract.environmentActionResponseSchema.parse({
+        action: "pull_request_draft",
+        message: "Pull request converted to draft",
+        ok: true,
+      }),
+    ).toMatchObject({
+      action: "pull_request_draft",
+    });
 
     expect(
       updateEnvironmentRequestSchema.parse({
@@ -893,6 +955,8 @@ describe("server-contract canonical schemas", () => {
       "project-sources-changed",
       "threads-changed",
       "project-order-changed",
+      "automations-changed",
+      "automation-runs-changed",
     ]);
     expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed"]);
   });
@@ -1011,6 +1075,26 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("input must contain at least one entry");
   });
 
+  it("rejects empty input for a fork", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        originKind: "fork",
+        sourceSeqEnd: 12,
+        sourceThreadId: "thr_source",
+        startedOnBehalfOf: null,
+      }),
+    ).toThrow("fork input must contain at least one entry");
+  });
+
   it("accepts empty input for a source-derived side chat preload", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",
@@ -1023,14 +1107,33 @@ describe("server-contract canonical schemas", () => {
         workspace: { type: "unmanaged", path: null },
       },
       originKind: "side-chat",
+      sourceSeqEnd: 12,
       sourceThreadId: "thr_source",
       startedOnBehalfOf: null,
     });
 
     expect(parsed.input).toEqual([]);
     expect(parsed.originKind).toBe("side-chat");
+    expect(parsed.sourceSeqEnd).toBe(12);
     expect(parsed.sourceThreadId).toBe("thr_source");
     expect(parsed.startedOnBehalfOf).toBeNull();
+  });
+
+  it("rejects sourceSeqEnd on normal thread starts", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [{ type: "text", text: "Start normally", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        sourceSeqEnd: 12,
+      }),
+    ).toThrow("sourceSeqEnd requires an originKind");
   });
 
   it("accepts an agent startedOnBehalfOf with a sender thread", () => {

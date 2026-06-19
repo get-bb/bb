@@ -84,6 +84,8 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
+const CURSOR_AUTH_REQUIRED_PATTERN =
+  /Cursor agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN)/is;
 
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 
@@ -144,6 +146,9 @@ export function getErrorCode(error: unknown): string {
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
   }
+  if (isMessageOnlyCursorAuthRequiredError(error)) {
+    return "auth_required";
+  }
   return "command_failed";
 }
 
@@ -169,6 +174,12 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
   return (
     MISSING_EXECUTABLE_PATTERN.test(error.message) &&
     SPAWN_PATTERN.test(error.message)
+  );
+}
+
+function isMessageOnlyCursorAuthRequiredError(error: unknown): boolean {
+  return (
+    error instanceof Error && CURSOR_AUTH_REQUIRED_PATTERN.test(error.message)
   );
 }
 

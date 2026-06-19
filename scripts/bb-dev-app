@@ -36,16 +36,20 @@ LAUNCHER_LOG="${LOG_ROOT}/launcher.log"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/bb-dev-app main [--no-open]
+  By default these start only the source dev server (web frontend, server, host
+  daemon). Pass --desktop to also launch the Electron desktop shell.
+
+  scripts/bb-dev-app main [--no-open] [--desktop]
       Fetch origin/main, switch this checkout to main, fast-forward, then start
-      the source dev server and desktop shell.
+      the source dev server (and the desktop shell with --desktop).
 
-  scripts/bb-dev-app branch <branch> [--no-open]
+  scripts/bb-dev-app branch <branch> [--no-open] [--desktop]
       Switch this checkout to a local branch, or create it from origin/<branch>,
-      then start the source dev server and desktop shell.
+      then start the source dev server (and the desktop shell with --desktop).
 
-  scripts/bb-dev-app current [--no-open]
-      Start the source dev server and desktop shell for the current branch.
+  scripts/bb-dev-app current [--no-open] [--desktop]
+      Start the source dev server for the current branch (and the desktop shell
+      with --desktop).
 
   scripts/bb-dev-app stop
       Stop the launcher-managed dev server and desktop shell.
@@ -294,11 +298,12 @@ open_app_url() {
 
 start_current() {
   local open_after_start="$1"
+  local start_desktop_app="$2"
   stop_dev_app
   ensure_dependencies
   load_config
   start_dev_server
-  start_desktop
+  [[ "${start_desktop_app}" == "1" ]] && start_desktop
   [[ "${open_after_start}" == "1" ]] && open_app_url
   status
 }
@@ -356,25 +361,30 @@ main() {
   mkdir -p "${LOG_ROOT}"
 
   local command="${1:-}"
+  (( $# > 0 )) && shift
   local open_after_start="1"
-  case "${2:-}" in
-    --no-open) open_after_start="0" ;;
-  esac
-  case "${3:-}" in
-    --no-open) open_after_start="0" ;;
-  esac
+  local start_desktop_app="0"
+  local positional=()
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --no-open) open_after_start="0" ;;
+      --desktop) start_desktop_app="1" ;;
+      *) positional+=("${arg}") ;;
+    esac
+  done
 
   case "${command}" in
     main)
       switch_to_main
-      start_current "${open_after_start}"
+      start_current "${open_after_start}" "${start_desktop_app}"
       ;;
     branch)
-      switch_to_branch "${2:-}"
-      start_current "${open_after_start}"
+      switch_to_branch "${positional[1]:-}"
+      start_current "${open_after_start}" "${start_desktop_app}"
       ;;
     current)
-      start_current "${open_after_start}"
+      start_current "${open_after_start}" "${start_desktop_app}"
       ;;
     stop)
       stop_dev_app
@@ -386,7 +396,7 @@ main() {
       print_env
       ;;
     logs)
-      follow_logs "${2:-dev}"
+      follow_logs "${positional[1]:-dev}"
       ;;
     help|-h|--help|"")
       usage

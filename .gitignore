@@ -61,9 +61,6 @@ output.txt
 .claude/settings.local.json
 .codex
 
-# ottonomous
-.otto/
-
 # turborepo
 .turbo
 .claude/

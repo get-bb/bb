@@ -68,6 +68,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
@@ -94,13 +95,10 @@ type AssistantMessageRowIdentity = Pick<
 >;
 
 export interface ConversationMessageContentAssistantProps
-  extends ConversationMessageContentBaseProps,
-    AssistantMessageRowIdentity {
+  extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
-  // Assistant content renders through MarkdownPreview, which is the only
-  // surface with clickable links. User messages render as plain text
-  // (CollapsibleMessageText), so this handler lives on the assistant variant
-  // only — never accepted-but-ignored.
+  // Assistant content and generated system rows render through MarkdownPreview,
+  // which is the only message body surface with clickable web links.
   onOpenLink?: ThreadTimelineLinkHandler;
   /**
    * Fork the active thread from this agent message. Omitted when forking is
@@ -128,7 +126,10 @@ export interface ConversationMessageContentAssistantProps
    * menu. Omitted when no controller is wired in (e.g. delegation output).
    */
   onSelectProse?: (selection: MessageProseSelection | null) => void;
+  /** Shows the hover-revealed copy/fork/side-chat action footer. */
+  showActions: boolean;
   turnRequest: null;
+  workspaceRootPath?: string;
 }
 
 /**
@@ -147,6 +148,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -171,7 +173,9 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  showActions: boolean;
   text: string;
+  workspaceRootPath?: string;
 }
 
 interface CollapsibleMessageTextProps {
@@ -293,6 +297,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  onOpenLink,
   onOpenLocalFileLink,
   projectId,
   resolveMentionLink,
@@ -318,6 +323,7 @@ function UserConversationMessage({
         attachmentItems={attachmentItems}
         childOrigin={childOrigin}
         mentions={bodyMentions}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -351,6 +357,7 @@ function UserConversationMessage({
         attachmentItems={attachmentItems}
         childOrigin={null}
         mentions={bodyMentions}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
@@ -422,7 +429,9 @@ function AssistantConversationMessage({
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
+  showActions,
   text,
+  workspaceRootPath,
 }: AssistantConversationMessageProps) {
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
     if (!onOpenLink && !onOpenLocalFileLink) {
@@ -440,9 +449,15 @@ function AssistantConversationMessage({
         },
         onOpenLink: onOpenLocalFileLink,
       };
+      if (workspaceRootPath !== undefined) {
+        routing.localFile.relativeLinks = {
+          baseDir: workspaceRootPath,
+          rootPath: workspaceRootPath,
+        };
+      }
     }
     return routing;
-  }, [onOpenLink, onOpenLocalFileLink]);
+  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
 
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
@@ -460,23 +475,27 @@ function AssistantConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
-      {/*
-        Copy + fork (S3) + side chat (S4) actions. Each button is dropped
-        entirely (not rendered disabled) when its handler is absent — e.g. fork
-        is omitted for a personal-only source with no host to base a worktree
-        fork on. `disabled` greys both fork and side chat together when the
-        thread is at the spawn-depth cap (both spawn a child thread, one guard).
-      */}
-      <div className="mt-1.5">
-        <MessageActionBar
-          messageText={text}
-          alignment="start"
-          onFork={onFork}
-          onSideChat={onSideChat}
-          onSendToMain={onSendToMain}
-          disabled={forkDisabled}
-        />
-      </div>
+      {showActions ? (
+        /*
+          Copy + fork (S3) + side chat (S4) actions. Each button is dropped
+          entirely (not rendered disabled) when its handler is absent — e.g. fork
+          is omitted for a personal-only source with no host to base a worktree
+          fork on. `disabled` greys both fork and side chat together when the
+          thread is at the spawn-depth cap (both spawn a child thread, one guard).
+        */
+        <div className="relative h-5">
+          <div className="absolute left-0 top-1">
+            <MessageActionBar
+              messageText={text}
+              alignment="start"
+              onFork={onFork}
+              onSideChat={onSideChat}
+              onSendToMain={onSendToMain}
+              disabled={forkDisabled}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -508,6 +527,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
@@ -536,11 +556,13 @@ export function ConversationMessageContent(
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
+      showActions={props.showActions}
       sourceSeqEnd={props.sourceSeqEnd}
       sourceSeqStart={props.sourceSeqStart}
       text={text}
       threadId={props.threadId}
       turnId={props.turnId}
+      workspaceRootPath={props.workspaceRootPath}
     />
   );
 }

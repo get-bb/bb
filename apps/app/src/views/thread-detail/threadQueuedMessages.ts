@@ -2,7 +2,17 @@ import { type PromptInput } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
 
-const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 220;
+const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 140;
+
+interface FormatQueuedMessagePreviewOptions {
+  truncate?: boolean;
+}
+
+function visibleQueuedMessageInput(
+  input: readonly PromptInput[],
+): PromptInput[] {
+  return input.filter((chunk) => chunk.visibility !== "agent-only");
+}
 
 function getAttachmentNameFromPath(path: string): string {
   const trimmedPath = path.trim();
@@ -10,9 +20,11 @@ function getAttachmentNameFromPath(path: string): string {
   return fileNameFromPath(trimmedPath);
 }
 
-export function countQueuedMessageAttachments(input: PromptInput[]): number {
+export function countQueuedMessageAttachments(
+  input: readonly PromptInput[],
+): number {
   let count = 0;
-  for (const chunk of input) {
+  for (const chunk of visibleQueuedMessageInput(input)) {
     if (chunk.type === "localImage" || chunk.type === "localFile") {
       count += 1;
     }
@@ -20,8 +32,10 @@ export function countQueuedMessageAttachments(input: PromptInput[]): number {
   return count;
 }
 
-export function formatQueuedMessagePreview(input: PromptInput[]): string {
-  const text = input
+export function getQueuedMessageVisibleText(
+  input: readonly PromptInput[],
+): string {
+  return visibleQueuedMessageInput(input)
     .filter(
       (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
         chunk.type === "text",
@@ -29,17 +43,28 @@ export function formatQueuedMessagePreview(input: PromptInput[]): string {
     .map((chunk) => chunk.text.trim())
     .filter((chunk) => chunk.length > 0)
     .join("\n\n");
-  const trimmedText = text.trim();
+}
+
+export function formatQueuedMessagePreview(
+  input: readonly PromptInput[],
+  options: FormatQueuedMessagePreviewOptions = {},
+): string {
+  const visibleInput = visibleQueuedMessageInput(input);
+  const text = getQueuedMessageVisibleText(visibleInput);
+  const trimmedText = text.replace(/\s+/g, " ").trim();
   if (trimmedText.length > 0) {
-    if (trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS) {
+    if (
+      options.truncate === false ||
+      trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS
+    ) {
       return trimmedText;
     }
     return `${trimmedText.slice(0, QUEUED_MESSAGE_PREVIEW_MAX_CHARS - 1)}...`;
   }
 
-  const attachmentCount = countQueuedMessageAttachments(input);
+  const attachmentCount = countQueuedMessageAttachments(visibleInput);
   if (attachmentCount === 1) {
-    const firstAttachment = input.find(
+    const firstAttachment = visibleInput.find(
       (chunk) => chunk.type === "localImage" || chunk.type === "localFile",
     );
     if (firstAttachment) {
@@ -59,6 +84,8 @@ export function formatQueuedMessagePreview(input: PromptInput[]): string {
   return "(empty message)";
 }
 
-export function queuedInputToDraft(input: PromptInput[]): PromptDraftState {
-  return promptInputToDraft(input);
+export function queuedInputToDraft(
+  input: readonly PromptInput[],
+): PromptDraftState {
+  return promptInputToDraft(visibleQueuedMessageInput(input));
 }

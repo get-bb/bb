@@ -1,7 +1,9 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  buildChronologicalThreadList,
   buildProjectThreadGroups,
+  compareByCreatedAtDescending,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
@@ -339,6 +341,76 @@ describe("buildProjectThreadGroups", () => {
         unreadError: false,
       },
       childCount: 2,
+    });
+  });
+
+  it("orders roots by literal createdAt when given the created comparator", () => {
+    const threads = [
+      createThread({
+        id: "active-old",
+        status: "active",
+        createdAt: 10,
+        latestAttentionAt: 5,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+      createThread({
+        id: "idle-new",
+        status: "idle",
+        createdAt: 50,
+        latestAttentionAt: 5,
+      }),
+    ];
+
+    // Default heuristic pins active rows ahead of idle ones.
+    expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
+      "active-old",
+      "idle-new",
+    ]);
+
+    // The created comparator ignores status and sorts purely by createdAt desc.
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups(threads, compareByCreatedAtDescending),
+      ),
+    ).toEqual(["idle-new", "active-old"]);
+  });
+
+  describe("buildChronologicalThreadList", () => {
+    it("flattens parent/child threads into globally sorted top-level rows", () => {
+      const items = buildChronologicalThreadList(
+        [
+          createThread({ id: "parent", createdAt: 10, latestAttentionAt: 10 }),
+          createThread({
+            id: "child",
+            parentThreadId: "parent",
+            createdAt: 30,
+            latestAttentionAt: 30,
+          }),
+          createThread({ id: "other", createdAt: 20, latestAttentionAt: 20 }),
+        ],
+        compareByCreatedAtDescending,
+      );
+
+      // No nesting: the child is its own top-level row, ordered globally by
+      // createdAt desc rather than nested under its parent.
+      expect(summarizeItems(items)).toEqual(["child", "other", "parent"]);
+    });
+
+    it("excludes side chats", () => {
+      const items = buildChronologicalThreadList([
+        createThread({ id: "root", createdAt: 10 }),
+        createThread({
+          id: "side",
+          parentThreadId: "root",
+          originKind: "side-chat",
+          createdAt: 20,
+        }),
+      ]);
+
+      expect(summarizeItems(items)).toEqual(["root"]);
     });
   });
 

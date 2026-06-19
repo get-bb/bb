@@ -160,7 +160,22 @@ export type EnvironmentArchiveThreadsResponse = z.infer<
   typeof environmentArchiveThreadsResponseSchema
 >;
 
-export const environmentActionTypeSchema = z.enum(["commit", "squash_merge"]);
+export const pullRequestMergeMethodSchema = z.enum([
+  "merge",
+  "squash",
+  "rebase",
+]);
+export type PullRequestMergeMethod = z.infer<
+  typeof pullRequestMergeMethodSchema
+>;
+
+export const environmentActionTypeSchema = z.enum([
+  "commit",
+  "squash_merge",
+  "pull_request_ready",
+  "pull_request_merge",
+  "pull_request_draft",
+]);
 
 export const squashMergeOptionsSchema = z
   .object({
@@ -168,6 +183,15 @@ export const squashMergeOptionsSchema = z
   })
   .strict();
 export type SquashMergeOptions = z.infer<typeof squashMergeOptionsSchema>;
+
+export const pullRequestMergeOptionsSchema = z
+  .object({
+    method: pullRequestMergeMethodSchema,
+  })
+  .strict();
+export type PullRequestMergeOptions = z.infer<
+  typeof pullRequestMergeOptionsSchema
+>;
 
 export const environmentActionRequestSchema = z.discriminatedUnion("action", [
   z
@@ -179,6 +203,22 @@ export const environmentActionRequestSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("squash_merge"),
       options: squashMergeOptionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("pull_request_ready"),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("pull_request_merge"),
+      options: pullRequestMergeOptionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("pull_request_draft"),
     })
     .strict(),
 ]);
@@ -207,9 +247,40 @@ export type SquashMergeActionResponse = z.infer<
   typeof squashMergeActionResponseSchema
 >;
 
+export const pullRequestReadyActionResponseSchema = z.object({
+  ok: z.literal(true),
+  action: z.literal("pull_request_ready"),
+  message: z.string().min(1),
+});
+export type PullRequestReadyActionResponse = z.infer<
+  typeof pullRequestReadyActionResponseSchema
+>;
+
+export const pullRequestMergeActionResponseSchema = z.object({
+  ok: z.literal(true),
+  action: z.literal("pull_request_merge"),
+  method: pullRequestMergeMethodSchema,
+  message: z.string().min(1),
+});
+export type PullRequestMergeActionResponse = z.infer<
+  typeof pullRequestMergeActionResponseSchema
+>;
+
+export const pullRequestDraftActionResponseSchema = z.object({
+  ok: z.literal(true),
+  action: z.literal("pull_request_draft"),
+  message: z.string().min(1),
+});
+export type PullRequestDraftActionResponse = z.infer<
+  typeof pullRequestDraftActionResponseSchema
+>;
+
 export const environmentActionResponseSchema = z.discriminatedUnion("action", [
   commitActionResponseSchema,
   squashMergeActionResponseSchema,
+  pullRequestReadyActionResponseSchema,
+  pullRequestMergeActionResponseSchema,
+  pullRequestDraftActionResponseSchema,
 ]);
 export type EnvironmentActionResponse = z.infer<
   typeof environmentActionResponseSchema

@@ -303,6 +303,8 @@ export function groupEventProjectionTurns(
   return {
     state: {
       activeThinking: null,
+      activeWorkflow: null,
+      activeBackgroundCommands: [],
     },
     entries: orderedEntryDrafts.map((entryDraft) =>
       createEventProjectionEntry(entryDraft, turnsById),

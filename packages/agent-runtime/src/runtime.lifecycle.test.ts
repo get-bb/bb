@@ -307,7 +307,9 @@ rl.on("line", (line) => {
           (command) => command.type === "skills/configure",
         ),
       ).toBeLessThan(
-        recordedCommands.findIndex((command) => command.type === "thread/start"),
+        recordedCommands.findIndex(
+          (command) => command.type === "thread/start",
+        ),
       );
 
       await runtime.shutdown();

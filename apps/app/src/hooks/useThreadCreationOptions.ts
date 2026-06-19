@@ -113,6 +113,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   clearReuseEnvironment: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
   modelOptions: PickerOption<string>[];
+  moreModelOptions: PickerOption<string>[];
   isLoadingModels: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
@@ -375,6 +376,23 @@ export function useThreadCreationOptions(
     [availableModels],
   );
 
+  // Models behind the picker's collapsed "More models" section. A promoted
+  // current selection already lives in `availableModels`, so it is excluded
+  // here rather than listed twice.
+  const moreModelOptions = useMemo(
+    (): PickerOption<string>[] =>
+      (executionOptionsQuery.data?.selectedOnlyModels ?? [])
+        .filter(
+          (model) =>
+            !availableModels.some((active) => active.model === model.model),
+        )
+        .map((model) => ({
+          value: model.model,
+          label: formatModelLabel(model.displayName || model.model),
+        })),
+    [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
+  );
+
   const activeModel = useMemo(
     () =>
       availableModels.find((model) => model.model === selectedModel) ??
@@ -624,6 +642,7 @@ export function useThreadCreationOptions(
     clearReuseEnvironment,
     activeModel,
     modelOptions,
+    moreModelOptions,
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,

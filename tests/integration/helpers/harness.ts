@@ -225,6 +225,7 @@ async function startIntegrationServer(
   });
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
+    automationsAllowScriptRuns: true,
     builtinSkillsRootPath,
     customModels: [],
     dataDir: serverDataDir,

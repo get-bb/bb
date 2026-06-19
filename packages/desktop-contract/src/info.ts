@@ -20,6 +20,7 @@ export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
+export type BbDesktopOpenNewTabHandler = () => void;
 
 export interface BbDesktopApi extends BbDesktopInfo {
   /**
@@ -39,6 +40,13 @@ export interface BbDesktopApi extends BbDesktopInfo {
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
+  /**
+   * Subscribe to native desktop requests to open the current thread's secondary
+   * panel new-tab page. Optional for desktop shells that predate this command.
+   */
+  onOpenNewTab?(
+    listener: BbDesktopOpenNewTabHandler,
+  ): BbDesktopInfoUnsubscribe;
   /**
    * Open a URL in the user's default system browser, leaving the in-app
    * browser tab. The main process only honors `http(s)` URLs — the address

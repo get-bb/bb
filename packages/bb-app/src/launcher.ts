@@ -1423,6 +1423,10 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "Pi bridge",
       path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
     },
+    {
+      label: "ACP bridge",
+      path: join(context.daemonBundleDir, "bb-acp-bridge.mjs"),
+    },
     { label: "web app", path: join(context.appDistDir, "index.html") },
   ];
 }

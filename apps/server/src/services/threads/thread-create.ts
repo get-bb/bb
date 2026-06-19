@@ -20,7 +20,10 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  getLastProviderThreadId,
+  getProviderThreadIdAtOrBeforeSequence,
+} from "./thread-events.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -41,6 +44,7 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
+import { deriveTitleFallback } from "./title-generation.js";
 import {
   advanceThreadProvisioning,
   requestThreadProvision,
@@ -51,6 +55,7 @@ import type {
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -81,6 +86,13 @@ interface ResolveForkDescriptorArgs {
   childHostId: string | null;
   originKind: ThreadOriginKind | null;
   providerId: string;
+  sourceSeqEnd: number | undefined;
+  sourceThread: Thread | null;
+}
+
+interface DeriveThreadCreateTitleFallbackArgs {
+  input: ThreadCreateServiceRequestInput["input"];
+  originKind: ThreadOriginKind | null;
   sourceThread: Thread | null;
 }
 
@@ -94,8 +106,8 @@ interface ResolveForkDescriptorArgs {
  * already has a provider session, and a new workspace on the same host as the
  * source (a cross-host clone of a provider session is not possible).
  * Returns null when the request has no source provenance or the source session
- * cannot be cloned; the consumer treats a null descriptor for an
- * empty-input child as an unforkable error rather than a silent fresh start.
+ * cannot be cloned; the consumer treats a null descriptor for a source-derived
+ * thread as an unforkable error rather than a silent fresh start.
  */
 function resolveForkDescriptor(
   deps: Pick<ThreadCreateDeps, "db">,
@@ -110,10 +122,13 @@ function resolveForkDescriptor(
   ) {
     return null;
   }
-  const sourceProviderThreadId = getLastProviderThreadId(
-    deps,
-    args.sourceThread.id,
-  );
+  const sourceProviderThreadId =
+    args.sourceSeqEnd === undefined
+      ? getLastProviderThreadId(deps, args.sourceThread.id)
+      : getProviderThreadIdAtOrBeforeSequence(deps, {
+          sequence: args.sourceSeqEnd,
+          threadId: args.sourceThread.id,
+        });
   if (sourceProviderThreadId === null) {
     return null;
   }
@@ -142,6 +157,30 @@ function childHostIdForResolvedEnvironment(
     case "personal":
       return resolvedEnvironment.hostId;
   }
+}
+
+function sourceThreadDisplayTitle(sourceThread: Thread): string {
+  const title = sourceThread.title?.trim();
+  if (title) return title;
+  const titleFallback = sourceThread.titleFallback?.trim();
+  if (titleFallback) return titleFallback;
+  return `Thread ${sourceThread.id.slice(0, 8)}`;
+}
+
+function deriveThreadCreateTitleFallback({
+  input,
+  originKind,
+  sourceThread,
+}: DeriveThreadCreateTitleFallbackArgs): string | null {
+  const inputFallback = deriveTitleFallback(input);
+  if (inputFallback !== null) {
+    return inputFallback;
+  }
+  if (originKind !== "side-chat" || sourceThread === null) {
+    return null;
+  }
+
+  return `Side chat of ${sourceThreadDisplayTitle(sourceThread)}`;
 }
 
 interface EnsureCreateHostOnlineArgs {
@@ -430,6 +469,13 @@ export async function createThreadFromRequest(
     (originKind !== null ? requestInput.parentThreadId : undefined);
   const hierarchyParentThreadId =
     originKind === null ? requestInput.parentThreadId : undefined;
+  if (originKind === "fork" && requestInput.input.length === 0) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "fork input must contain at least one entry",
+    );
+  }
   const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
         parentThreadId: hierarchyParentThreadId,
@@ -441,6 +487,13 @@ export async function createThreadFromRequest(
       400,
       "invalid_request",
       "sourceThreadId requires an originKind",
+    );
+  }
+  if (originKind === null && requestInput.sourceSeqEnd !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceSeqEnd requires an originKind",
     );
   }
   const sourceThread = sourceThreadId
@@ -530,6 +583,11 @@ export async function createThreadFromRequest(
       requestedEnvironment: requestInput.environment,
     }),
     providerId,
+    titleFallback: deriveThreadCreateTitleFallback({
+      input: requestInput.input,
+      originKind,
+      sourceThread,
+    }),
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     environment: request.environment,
@@ -542,7 +600,14 @@ export async function createThreadFromRequest(
 
   switch (resolvedEnvironment.type) {
     case "reuse": {
-      const environment = resolvedEnvironment.environment;
+      let environment = resolvedEnvironment.environment;
+      if (environment.status === "retiring") {
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId: environment.id,
+          event: { type: "retire.cancelled" },
+        });
+        environment = getEnvironment(deps.db, environment.id) ?? environment;
+      }
       if (
         environment.status !== "ready" &&
         environment.status !== "provisioning"
@@ -628,6 +693,7 @@ export async function createThreadFromRequest(
     childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
     originKind: request.originKind ?? null,
     providerId: request.providerId,
+    sourceSeqEnd: request.sourceSeqEnd,
     sourceThread,
   });
 
