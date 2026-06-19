@@ -37,6 +37,7 @@ import {
   type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
+import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,11 @@ export interface InAppBrowserLinkSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface RewriteLocalhostLinksSettingsControlProps {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RootComposeBehaviorSettingsControlProps {
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
@@ -109,9 +115,11 @@ export interface GeneralSettingsSectionProps {
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
+  onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
+  rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   themePreference: ThemePreference;
 }
@@ -374,6 +382,7 @@ export function LocalOpenTargetSettingsSection({
 }
 
 const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
+const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Rich text formatting in the prompt box";
@@ -411,6 +420,24 @@ export function InAppBrowserLinkSettingsControl({
   );
 }
 
+export function RewriteLocalhostLinksSettingsControl({
+  enabled,
+  onEnabledChange,
+}: RewriteLocalhostLinksSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+      description="When a rendered Markdown link points to localhost or 127.0.0.1, keep the displayed text unchanged but point the link to this page's hostname."
+    >
+      <Switch
+        checked={enabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
 export function RichTextEditingSettingsControl({
   enabled,
   onEnabledChange,
@@ -436,9 +463,11 @@ export function GeneralSettingsSection({
   onFaviconColorChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
+  onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
   onThemePreferenceChange,
   openLinksInAppBrowser,
+  rewriteLocalhostLinks,
   richTextEditing,
   themePreference,
 }: GeneralSettingsSectionProps) {
@@ -505,6 +534,11 @@ export function GeneralSettingsSection({
             onEnabledChange={onOpenLinksInAppBrowserChange}
           />
         ) : null}
+
+        <RewriteLocalhostLinksSettingsControl
+          enabled={rewriteLocalhostLinks}
+          onEnabledChange={onRewriteLocalhostLinksChange}
+        />
       </div>
     </SettingsSection>
   );
@@ -768,6 +802,8 @@ export function SettingsView() {
   const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
     useOpenLinksInAppBrowserPreference();
+  const [rewriteLocalhostLinks, setRewriteLocalhostLinks] =
+    useRewriteLocalhostLinksPreference();
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [richTextEditing, setRichTextEditing] = useRichTextEditingPreference();
@@ -786,11 +822,13 @@ export function SettingsView() {
           faviconColor={faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
+          rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
           themePreference={themePreference}
           onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
           onThemePreferenceChange={setPreferredTheme}
         />

@@ -48,6 +48,10 @@ import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
+import {
+  rewriteLocalhostLinkHref,
+  useRewriteLocalhostLinksPreference,
+} from "@/lib/localhost-link-rewrite-preference";
 import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +83,7 @@ export interface MarkdownThreadMentions {
 interface MarkdownAnchorProps
   extends ComponentPropsWithoutRef<"a">, ExtraProps {
   linkRouting?: MarkdownLinkRouting;
+  rewriteLocalhostLinks?: boolean;
 }
 
 interface IsMarkdownAppRouteHrefArgs {
@@ -88,6 +93,7 @@ interface IsMarkdownAppRouteHrefArgs {
 interface BuildMarkdownComponentsArgs {
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
+  rewriteLocalhostLinks: boolean;
   setExpandedImageUrl: ExpandedImageUrlSetter;
   threadMentions?: MarkdownThreadMentions;
 }
@@ -152,6 +158,7 @@ type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & ExtraProps;
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
+  rewriteLocalhostLinks: boolean;
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
@@ -378,19 +385,26 @@ function MarkdownAnchor({
   children,
   href,
   linkRouting,
+  rewriteLocalhostLinks,
   ...anchorProps
 }: MarkdownAnchorProps) {
   const localFileRouting = linkRouting?.localFile;
   const onOpenLocalFileLink = localFileRouting?.onOpenLink;
-  const isAppRouteHref = isMarkdownAppRouteHref({ href });
+  const rewrittenHref = rewriteLocalhostLinkHref({
+    currentHostname:
+      typeof window === "undefined" ? undefined : window.location.hostname,
+    enabled: rewriteLocalhostLinks ?? false,
+    href,
+  });
+  const isAppRouteHref = isMarkdownAppRouteHref({ href: rewrittenHref });
   const localFileLink =
     !isAppRouteHref && localFileRouting
       ? parseLocalFileHref({
           absoluteLinks: localFileRouting.absoluteLinks,
-          href,
+          href: rewrittenHref,
         })
       : null;
-  const anchorHref = buildLocalFileAnchorHref(localFileLink, href);
+  const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
@@ -402,7 +416,11 @@ function MarkdownAnchor({
     // Let timeline/terminal hosts claim web links first. Absolute app-origin
     // URLs can still be browser destinations even though they resolve to an
     // app route.
-    if (linkRouting?.onOpenLink && href && linkRouting.onOpenLink({ href })) {
+    if (
+      linkRouting?.onOpenLink &&
+      rewrittenHref &&
+      linkRouting.onOpenLink({ href: rewrittenHref })
+    ) {
       event.preventDefault();
       return;
     }
@@ -442,6 +460,7 @@ function MarkdownCode({
   linkRouting,
   node: _node,
   preferredTheme,
+  rewriteLocalhostLinks,
   ...props
 }: MarkdownCodeRendererProps) {
   const codeText = String(children ?? "").replace(/\n$/, "");
@@ -486,7 +505,11 @@ function MarkdownCode({
   });
   if (markdownFileHref !== null) {
     return (
-      <MarkdownAnchor href={markdownFileHref} linkRouting={linkRouting}>
+      <MarkdownAnchor
+        href={markdownFileHref}
+        linkRouting={linkRouting}
+        rewriteLocalhostLinks={rewriteLocalhostLinks}
+      >
         {codeText}
       </MarkdownAnchor>
     );
@@ -680,11 +703,18 @@ function resolveMarkdownSourceMedia({
 function buildMarkdownComponents({
   linkRouting,
   preferredTheme,
+  rewriteLocalhostLinks,
   setExpandedImageUrl,
   threadMentions,
 }: BuildMarkdownComponentsArgs): Components {
   function MarkdownLink(props: MarkdownAnchorProps) {
-    return <MarkdownAnchor {...props} linkRouting={linkRouting} />;
+    return (
+      <MarkdownAnchor
+        {...props}
+        linkRouting={linkRouting}
+        rewriteLocalhostLinks={rewriteLocalhostLinks}
+      />
+    );
   }
 
   function MarkdownCodeRenderer(props: MarkdownCodeProps) {
@@ -693,6 +723,7 @@ function buildMarkdownComponents({
         {...props}
         linkRouting={linkRouting}
         preferredTheme={preferredTheme}
+        rewriteLocalhostLinks={rewriteLocalhostLinks}
       />
     );
   }
@@ -874,6 +905,7 @@ function MarkdownPreviewComponent({
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
+  const [rewriteLocalhostLinks] = useRewriteLocalhostLinksPreference();
   const contentRef = useMarkdownContentWidthVariable();
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
@@ -894,10 +926,11 @@ function MarkdownPreviewComponent({
       buildMarkdownComponents({
         linkRouting,
         preferredTheme,
+        rewriteLocalhostLinks,
         setExpandedImageUrl,
         threadMentions,
       }),
-    [linkRouting, preferredTheme, threadMentions],
+    [linkRouting, preferredTheme, rewriteLocalhostLinks, threadMentions],
   );
   // The thread-mention pipeline only activates when `threadMentions` is set.
   // Assistant content (no mentions) keeps the unchanged `[remarkGfm]` pipeline,
