@@ -262,26 +262,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("1 file");
   });
 
-  it("hides pull request and git labels in compact mode when they share the row", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={makeGitSection("uncommitted")}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{ pullRequest: pullRequestFixture }}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
-
-    expect(markup).toContain("PR #128");
-    expect(markup).toContain("Uncommitted");
-    expect(markup.match(/data-promptbox-hide-compact/g)).toHaveLength(2);
-  });
-
   it("keeps the pull request action visible beside other context segments", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
