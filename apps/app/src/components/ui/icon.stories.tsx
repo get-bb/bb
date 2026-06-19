@@ -29,7 +29,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   ChevronsUp: "Git diff toolbar expand-all",
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
-  CircleDashed: "Thread row busy spinner, child-thread busy section indicator",
+  CircleDashed: "Child-thread busy section indicator",
   CircleX: "Auth callback failure state",
   Clock: "Thread duration and timestamp affordances",
   Code: "Right-panel source file visual, Mermaid source toggle",
