@@ -945,6 +945,30 @@ export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
   if (!args.report.ok) {
+    if (args.report.errorCode !== "unknown_environment") {
+      return emptyCommandResultSideEffects();
+    }
+
+    const finalized = finalizeStoppedThreadInTransaction(args.deps, {
+      threadId: args.command.threadId,
+    });
+    if (finalized) {
+      return {
+        postCommitActions: [
+          {
+            name: "Environment cleanup advance after missing runtime stop",
+            context: {
+              environmentId: args.command.environmentId,
+              threadId: args.command.threadId,
+            },
+            run: (deps) =>
+              runEnvironmentCleanupAdvance(deps, {
+                environmentId: args.command.environmentId,
+              }),
+          },
+        ],
+      };
+    }
     return emptyCommandResultSideEffects();
   }
 

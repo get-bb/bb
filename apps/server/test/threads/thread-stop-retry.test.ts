@@ -119,6 +119,45 @@ describe("thread stop dispatch", () => {
     });
   });
 
+  it("settles a stopped thread when the host reports no runtime exists", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedActiveThreadStopFixture({
+        harness,
+        value: 4,
+      });
+
+      requestThreadStopForCurrentState(harness.deps, thread, environment);
+
+      const stopCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "stopping",
+      });
+
+      await reportQueuedCommandError(harness, stopCommand, {
+        errorCode: "unknown_environment",
+        errorMessage: "No runtime exists for environment env_missing_runtime",
+      });
+      await waitForStopRpcIdle({ threadId: thread.id });
+
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "idle",
+      });
+      const threadEvents = listEvents(harness.db, { threadId: thread.id });
+      expect(
+        threadEvents.filter(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toHaveLength(1);
+      expect(
+        threadEvents.filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(0);
+    });
+  });
+
   it("treats a second stop completion as a no-op after the stop already settled", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedActiveThreadStopFixture({
