@@ -20,18 +20,20 @@ import {
 const schema = getSchema([
   StarterKit.configure({
     blockquote: {},
-    bold: false,
-    bulletList: false,
-    code: false,
+    bold: {},
+    bulletList: {},
+    code: {},
     codeBlock: false,
     dropcursor: false,
     gapcursor: false,
-    heading: false,
+    heading: {},
     horizontalRule: false,
-    italic: false,
-    listItem: false,
-    orderedList: false,
+    italic: {},
+    link: false,
+    listItem: {},
+    orderedList: {},
     strike: false,
+    underline: false,
   }),
   PromptMentionExtension,
 ]);
@@ -106,6 +108,298 @@ describe("prompt editor serialization round-trip", () => {
     expect(result.mentions[0]!.start).toBe(mention.start);
     expect(result.mentions[0]!.end).toBe(mention.end);
     expect(result.mentions[0]!.resource).toEqual(mention.resource);
+  });
+});
+
+describe("prompt editor markdown serialization (doc -> markdown text)", () => {
+  function serialize(content: unknown[]): PromptEditorValue {
+    const doc = Node.fromJSON(schema, { type: "doc", content });
+    return promptEditorValueFromDoc(doc);
+  }
+
+  it("serializes bold, italic, and code marks", () => {
+    expect(
+      serialize([
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "x", marks: [{ type: "bold" }] }],
+        },
+      ]).text,
+    ).toBe("**x**");
+    expect(
+      serialize([
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "y", marks: [{ type: "italic" }] }],
+        },
+      ]).text,
+    ).toBe("_y_");
+    expect(
+      serialize([
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "z", marks: [{ type: "code" }] }],
+        },
+      ]).text,
+    ).toBe("`z`");
+  });
+
+  it("nests bold outside italic", () => {
+    expect(
+      serialize([
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "x",
+              marks: [{ type: "bold" }, { type: "italic" }],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("**_x_**");
+  });
+
+  it("serializes headings with the right level", () => {
+    expect(
+      serialize([
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Title" }],
+        },
+      ]).text,
+    ).toBe("## Title");
+  });
+
+  it("serializes bullet and ordered lists", () => {
+    expect(
+      serialize([
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "a" }] },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "b" }] },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("- a\n- b");
+    expect(
+      serialize([
+        {
+          type: "orderedList",
+          attrs: { start: 1 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "a" }] },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "b" }] },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("1. a\n2. b");
+    expect(
+      serialize([
+        {
+          type: "orderedList",
+          attrs: { start: 3 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "c" }] },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "d" }] },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("3. c\n4. d");
+  });
+
+  it("indents nested lists", () => {
+    expect(
+      serialize([
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "a" }] },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "a1" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("- a\n  - a1");
+  });
+
+  it("separates stacked blocks with a single newline", () => {
+    expect(
+      serialize([
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "H" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "para" }] },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "i" }] },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("# H\npara\n- i");
+  });
+
+  it("keeps a mention's offset correct inside a heading", () => {
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_1",
+      projectId: "proj_1",
+      label: "@thr",
+    };
+    const result = serialize([
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        content: [
+          { type: "text", text: "see " },
+          { type: "mention", attrs: { resource, serializedText: "@thr" } },
+        ],
+      },
+    ]);
+    // "## see @thr" -> mention spans the "@thr" token after the "## see " prefix.
+    expect(result.text).toBe("## see @thr");
+    expect(result.mentions).toHaveLength(1);
+    expect(result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end)).toBe(
+      "@thr",
+    );
+    expect(result.mentions[0]!.resource).toEqual(resource);
+  });
+
+  it("keeps a mention's offset correct inside a list item", () => {
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_1",
+      projectId: "proj_1",
+      label: "@thr",
+    };
+    const result = serialize([
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "first" }] },
+            ],
+          },
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "ping " },
+                  {
+                    type: "mention",
+                    attrs: { resource, serializedText: "@thr" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(result.text).toBe("- first\n- ping @thr");
+    expect(result.mentions).toHaveLength(1);
+    expect(
+      result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),
+    ).toBe("@thr");
+  });
+
+  it("keeps a mention's offset correct inside an ordered list with a custom start", () => {
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_1",
+      projectId: "proj_1",
+      label: "@thr",
+    };
+    const result = serialize([
+      {
+        type: "orderedList",
+        attrs: { start: 10 },
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "ping " },
+                  {
+                    type: "mention",
+                    attrs: { resource, serializedText: "@thr" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(result.text).toBe("10. ping @thr");
+    expect(result.mentions).toHaveLength(1);
+    expect(
+      result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),
+    ).toBe("@thr");
   });
 });
 

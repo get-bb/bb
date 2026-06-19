@@ -71,6 +71,9 @@ import {
   exitTrailingBlockquoteBreak,
   insertParagraphBeforeBlockquote,
 } from "./editor/prompt-editor-blockquote";
+import { exitHeading } from "./editor/prompt-editor-heading";
+import { applyPromptListNewline } from "./editor/prompt-editor-list";
+import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1173,19 +1176,29 @@ export function PromptBoxInternal({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
+        // Markdown formatting: marks (bold/italic/code) + block nodes
+        // (heading/lists/blockquote). Each enabled node/mark has a
+        // markdown text representation in prompt-editor-serialization.ts so the
+        // submitted prompt is plain markdown. StarterKit ships input rules for
+        // these (`# `, `- `, `1. `, `**`, `_`, `` ` ``), so typing applies
+        // formatting live. Code blocks/link/underline stay disabled: code
+        // blocks make multiline prompt editing too sticky; underline isn't
+        // markdown; links need authoring UI we don't provide.
         blockquote: {},
-        bold: false,
-        bulletList: false,
-        code: false,
+        bold: {},
+        bulletList: {},
+        code: {},
         codeBlock: false,
         dropcursor: false,
         gapcursor: false,
-        heading: false,
+        heading: {},
         horizontalRule: false,
-        italic: false,
-        listItem: false,
-        orderedList: false,
+        italic: {},
+        link: false,
+        listItem: {},
+        orderedList: {},
         strike: false,
+        underline: false,
       }),
       Placeholder.configure({
         placeholder: () => placeholderRef.current,
@@ -2173,8 +2186,37 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
+        applyPromptListNewline(currentEditor)
+      ) {
+        event.preventDefault();
+        return true;
+      }
+
+      if (
+        isBlockquoteExitKey &&
+        currentEditor &&
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
+      ) {
+        event.preventDefault();
+        return true;
+      }
+
+      const isPromptNewlineKey =
+        event.key === "Enter" &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        (event.shiftKey || isZenMode || !canSubmitWithEnterKey);
+      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
+        event.preventDefault();
+        return true;
+      }
+
+      if (
+        isPromptNewlineKey &&
+        currentEditor &&
+        applyPromptParagraphNewline(currentEditor)
       ) {
         event.preventDefault();
         return true;
@@ -2316,6 +2358,15 @@ export function PromptBoxInternal({
                 "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
                 "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
+                // Markdown formatting styles (mirrors what the timeline renders).
+                "[&_.ProseMirror_h1]:my-1 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold",
+                "[&_.ProseMirror_h2]:my-1 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold",
+                "[&_.ProseMirror_h3]:my-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold",
+                "[&_.ProseMirror_h4]:my-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h5]:font-semibold [&_.ProseMirror_h6]:font-semibold",
+                "[&_.ProseMirror_ul]:my-1 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
+                "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
+                "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
+                "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",

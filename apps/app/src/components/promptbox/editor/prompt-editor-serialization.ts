@@ -261,6 +261,31 @@ function mentionAttrsFromNode(
   return parsePromptEditorMentionAttrs(node.attrs);
 }
 
+/**
+ * Markdown delimiters that wrap a text run carrying inline marks. `code` is
+ * literal, so it never combines with emphasis. Bold wraps outside italic, e.g.
+ * a run with both marks becomes `**_text_**`.
+ */
+function markdownDelimitersForMarks(
+  marks: readonly ProseMirrorNode["marks"][number][],
+): { open: string; close: string } {
+  const names = new Set(marks.map((mark) => mark.type.name));
+  if (names.has("code")) {
+    return { open: "`", close: "`" };
+  }
+  let open = "";
+  let close = "";
+  if (names.has("bold")) {
+    open = `${open}**`;
+    close = `**${close}`;
+  }
+  if (names.has("italic")) {
+    open = `${open}_`;
+    close = `_${close}`;
+  }
+  return { open, close };
+}
+
 export function promptEditorValueFromDoc(
   doc: ProseMirrorNode,
 ): PromptEditorValue {
@@ -270,7 +295,12 @@ export function promptEditorValueFromDoc(
 
   const appendInline = (node: ProseMirrorNode) => {
     if (node.type.name === "text") {
-      text += node.text ?? "";
+      const value = node.text ?? "";
+      if (value.length === 0) {
+        return;
+      }
+      const { open, close } = markdownDelimitersForMarks(node.marks);
+      text += `${open}${value}${close}`;
       return;
     }
     if (node.type.name === "hardBreak") {
@@ -335,6 +365,44 @@ export function promptEditorValueFromDoc(
     }
   };
 
+  // Serialize a bullet/ordered list. Each item gets an indent + marker on its
+  // own line; the marker is appended to the running text before the item's
+  // inline content, so mention offsets recorded during that walk are correct.
+  // Nested lists recurse with deeper indentation.
+  const appendListItems = (
+    listNode: ProseMirrorNode,
+    ordered: boolean,
+    depth: number,
+  ) => {
+    let itemNumber =
+      ordered && typeof listNode.attrs.start === "number"
+        ? listNode.attrs.start
+        : 1;
+    for (let index = 0; index < listNode.childCount; index += 1) {
+      const item = listNode.child(index);
+      if (hasSerializedBlock) {
+        text += "\n";
+      }
+      hasSerializedBlock = true;
+      const indent = "  ".repeat(depth);
+      const marker = ordered ? `${itemNumber}. ` : "- ";
+      text += `${indent}${marker}`;
+      for (let childIndex = 0; childIndex < item.childCount; childIndex += 1) {
+        const block = item.child(childIndex);
+        if (
+          block.type.name === "bulletList" ||
+          block.type.name === "orderedList"
+        ) {
+          appendListItems(block, block.type.name === "orderedList", depth + 1);
+        } else {
+          // Paragraph (or other inline block) shares the marker line.
+          appendChildren(block);
+        }
+      }
+      itemNumber += 1;
+    }
+  };
+
   const appendNode = (node: ProseMirrorNode) => {
     if (
       node.type.name === "text" ||
@@ -351,6 +419,23 @@ export function promptEditorValueFromDoc(
       }
       hasSerializedBlock = true;
       appendBlockquote(node);
+      return;
+    }
+
+    if (node.type.name === "heading") {
+      if (hasSerializedBlock) {
+        text += "\n";
+      }
+      hasSerializedBlock = true;
+      const level = typeof node.attrs.level === "number" ? node.attrs.level : 1;
+      const clampedLevel = Math.min(Math.max(level, 1), 6);
+      text += `${"#".repeat(clampedLevel)} `;
+      appendChildren(node);
+      return;
+    }
+
+    if (node.type.name === "bulletList" || node.type.name === "orderedList") {
+      appendListItems(node, node.type.name === "orderedList", 0);
       return;
     }
 
