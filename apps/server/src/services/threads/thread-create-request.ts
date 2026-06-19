@@ -36,4 +36,5 @@ export interface ThreadCreateServiceRequest extends Omit<
   "providerId"
 > {
   providerId: string;
+  titleFallback: string | null;
 }

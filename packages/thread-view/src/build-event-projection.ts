@@ -1,5 +1,8 @@
 import type { ThreadEvent } from "@bb/domain";
-import { requireThreadEventScopeTurnId } from "@bb/domain";
+import {
+  LOCAL_WORKFLOW_TASK_TYPE,
+  requireThreadEventScopeTurnId,
+} from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
 import {
   parseBackgroundTaskLifecycleEvent,
@@ -113,12 +116,14 @@ interface BuildFlatProjectionDataArgs {
 interface BuildFlatProjectionDataResult {
   activeThinking: ActiveThinking | null;
   activeWorkflow: EventProjectionWorkflowMessage | null;
+  activeBackgroundCommands: EventProjectionWorkflowMessage[];
   messages: EventProjectionMessage[];
 }
 
 interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
   activeWorkflow: EventProjectionWorkflowMessage | null;
+  activeBackgroundCommands: EventProjectionWorkflowMessage[];
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
@@ -141,6 +146,9 @@ function selectActiveWorkflowMessage(
   for (const message of messages) {
     if (
       message.kind !== "workflow" ||
+      // The prompt-box active banner is workflow-only; backgrounded shell
+      // commands surface inline in the timeline, not in the banner.
+      message.taskType !== LOCAL_WORKFLOW_TASK_TYPE ||
       message.status !== "pending" ||
       message.skipTranscript
     ) {
@@ -154,6 +162,29 @@ function selectActiveWorkflowMessage(
     }
   }
   return best;
+}
+
+function selectActiveBackgroundCommandMessages(
+  messages: readonly EventProjectionMessage[],
+): EventProjectionWorkflowMessage[] {
+  // Running backgrounded shell commands, most recently started first. Feeds the
+  // background-commands prompt-box card, which is independent of the
+  // workflow-only banner driven by selectActiveWorkflowMessage.
+  const running: EventProjectionWorkflowMessage[] = [];
+  for (const message of messages) {
+    if (
+      message.kind !== "workflow" ||
+      message.taskType === LOCAL_WORKFLOW_TASK_TYPE ||
+      message.status !== "pending" ||
+      message.skipTranscript
+    ) {
+      continue;
+    }
+    running.push(message);
+  }
+  return running.sort(
+    (a, b) => getMessageStartedAt(b) - getMessageStartedAt(a),
+  );
 }
 
 function buildClientTurnRequestById(
@@ -720,6 +751,7 @@ function buildFlatProjectionData(
       ? buildProjectionActiveThinking(state, args.options?.threadStatus)
       : null,
     activeWorkflow: selectActiveWorkflowMessage(messages),
+    activeBackgroundCommands: selectActiveBackgroundCommandMessages(messages),
     messages,
   };
 }
@@ -736,6 +768,7 @@ function buildDetailedProjection(
     state: {
       activeThinking: args.activeThinking,
       activeWorkflow: args.activeWorkflow,
+      activeBackgroundCommands: args.activeBackgroundCommands,
     },
   });
   return applyProjectionTurnMessageDetail(
@@ -759,6 +792,7 @@ function buildFullEventProjection(
   return buildDetailedProjection({
     activeThinking: flatProjection.activeThinking,
     activeWorkflow: flatProjection.activeWorkflow,
+    activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     events,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -774,6 +808,7 @@ export function buildEventProjectionEntries(
       state: {
         activeThinking: null,
         activeWorkflow: null,
+        activeBackgroundCommands: [],
       },
       entries: [],
     };
@@ -791,6 +826,7 @@ export function buildEventProjectionEntries(
   return buildDetailedProjection({
     activeThinking: null,
     activeWorkflow: flatProjection.activeWorkflow,
+    activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -806,6 +842,7 @@ export function buildEventProjection(
       state: {
         activeThinking: null,
         activeWorkflow: null,
+        activeBackgroundCommands: [],
       },
       entries: [],
     };

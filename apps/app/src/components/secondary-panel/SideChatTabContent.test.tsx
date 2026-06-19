@@ -187,6 +187,7 @@ vi.mock("@/components/thread/timeline", () => ({
   useThreadTimelineController: () => ({
     activeThinking: null,
     activeWorkflow: null,
+    activeBackgroundCommands: [],
     contextWindowUsage: undefined,
     goal: null,
     hasOlderTimelineRows: false,

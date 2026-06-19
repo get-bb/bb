@@ -212,10 +212,10 @@ async function startThreadIfEnvironmentReady(
   // short-circuit, we issue the real start carrying the fork descriptor so the
   // child's provider session is cloned from the parent at its branch point now.
   //
-  // The app sends a fork with empty input, and the runtime starts no first turn
-  // when the start input is empty (its no-input-no-turn guard). So the forked
-  // session is established and the thread lands idle with an empty timeline; the
-  // user steers the first executed turn.
+  // When a side-chat preload is created with empty input, the runtime starts no
+  // first turn (its no-input-no-turn guard). The forked provider session is
+  // established and the thread lands idle; the user steers the first executed
+  // turn later. Submitted fork prompts carry their input and run immediately.
   await requestThreadStart(deps, {
     thread: args.thread,
     environment: {

@@ -427,15 +427,18 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
   });
 
 /**
- * A dynamic workflow run (Claude Code Workflow tool). The row outlives its
- * spawning turn: progress and terminal state arrive via thread-scoped events
- * folded into this single row. `workflow` is the merged phase/agent tree;
- * null when the provider reported no progress records (degraded rendering
- * falls back to description + usage).
+ * A provider background task — a dynamic workflow (Claude Code Workflow tool)
+ * or a backgrounded shell command (Bash run_in_background), discriminated by
+ * `taskType`. The row outlives its spawning turn: progress and terminal state
+ * arrive via thread-scoped events folded into this single row. `workflow` is
+ * the merged phase/agent tree, present only for workflows; null for shell
+ * commands and for workflows the provider reported no progress records for
+ * (degraded rendering falls back to description + summary).
  */
 export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("workflow"),
   itemId: z.string(),
+  taskType: z.string(),
   workflowName: z.string().nullable(),
   description: z.string(),
   taskStatus: backgroundTaskStatusSchema,

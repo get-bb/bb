@@ -42,6 +42,37 @@ async function initRepoWithOptionalSetup(
   return repoPath;
 }
 
+async function initRemoteBackedRepo(): Promise<{
+  remotePath: string;
+  repoPath: string;
+}> {
+  const repoPath = await initRepoWithOptionalSetup();
+  const remotePath = await makeTempDir("bb-provisioning-remote-");
+  await runGit(["init", "--bare"], { cwd: remotePath });
+  await runGit(["remote", "add", "origin", remotePath], { cwd: repoPath });
+  await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
+  await runGit(["fetch", "origin"], { cwd: repoPath });
+  return { remotePath, repoPath };
+}
+
+async function pushRemoteMainCommit(remotePath: string): Promise<string> {
+  const cloneParent = await makeTempDir("bb-provisioning-remote-clone-");
+  const clonePath = path.join(cloneParent, "repo");
+  await runGit(["clone", "--branch", "main", remotePath, clonePath], {
+    cwd: cloneParent,
+  });
+  await runGit(["config", "user.name", "BB Tests"], { cwd: clonePath });
+  await runGit(["config", "user.email", "bb@example.com"], {
+    cwd: clonePath,
+  });
+  await fs.writeFile(path.join(clonePath, "remote.txt"), "remote\n", "utf8");
+  await runGit(["add", "."], { cwd: clonePath });
+  await runGit(["commit", "-m", "Remote edit"], { cwd: clonePath });
+  const head = await runGit(["rev-parse", "HEAD"], { cwd: clonePath });
+  await runGit(["push", "origin", "main"], { cwd: clonePath });
+  return head.stdout.trim();
+}
+
 class AbortAtSetupListenerSignal extends EventTarget implements AbortSignal {
   onabort: ((this: AbortSignal, event: Event) => void) | null = null;
   readonly reason = new Error("test abort");
@@ -92,6 +123,34 @@ describe("workspace provisioning", () => {
     expect(first.path).toBe(targetPath);
     expect(second.path).toBe(targetPath);
     expect(await new Workspace(targetPath).currentBranch).toBe("feature");
+  });
+
+  it("fetches remote base branches before creating worktrees", async () => {
+    const { remotePath, repoPath } = await initRemoteBackedRepo();
+    const parentDir = await makeTempDir("bb-worktree-remote-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    const remoteHead = await pushRemoteMainCommit(remotePath);
+
+    const staleOriginMain = await runGit(["rev-parse", "origin/main"], {
+      cwd: repoPath,
+    });
+    expect(staleOriginMain.stdout.trim()).not.toBe(remoteHead);
+
+    await createWorktree({
+      sourcePath: repoPath,
+      targetPath,
+      branchName: "feature",
+      baseBranch: "origin/main",
+      timeoutMs: 900000,
+    });
+
+    await expect(
+      fs.readFile(path.join(targetPath, "remote.txt"), "utf8"),
+    ).resolves.toBe("remote\n");
+    const worktreeHead = await runGit(["rev-parse", "HEAD"], {
+      cwd: targetPath,
+    });
+    expect(worktreeHead.stdout.trim()).toBe(remoteHead);
   });
 
   it("rolls back failed worktree setup scripts", async () => {

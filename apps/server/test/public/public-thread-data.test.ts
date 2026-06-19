@@ -481,6 +481,124 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates turn-summary workflow details with late background task completion", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const taskData = (
+        status: "pending" | "completed",
+        taskStatus: "running" | "completed",
+      ) => ({
+        item: {
+          type: "backgroundTask" as const,
+          id: "task:wf-1",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status,
+          taskStatus,
+          skipTranscript: false,
+          workflowName: "fixture-mini",
+          ...(status === "completed" ? { summary: "done" } : {}),
+        },
+      });
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "item/started",
+        data: taskData("pending", "running"),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "assistant-1",
+            text: "Workflow launched.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 4,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: threadScope(),
+        sequence: 5,
+        type: "item/backgroundTask/completed",
+        data: taskData("completed", "completed"),
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const turnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow => row.kind === "turn",
+      );
+      expect(turnRow).toBeDefined();
+      if (!turnRow) {
+        throw new Error("Expected a turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+      const workflowRow = details.rows.find(
+        (row) =>
+          row.kind === "work" &&
+          row.workKind === "workflow" &&
+          row.itemId === "task:wf-1",
+      );
+      expect(workflowRow).toBeDefined();
+      if (
+        !workflowRow ||
+        workflowRow.kind !== "work" ||
+        workflowRow.workKind !== "workflow"
+      ) {
+        throw new Error("Expected a workflow detail row");
+      }
+
+      expect(workflowRow.status).toBe("completed");
+      expect(workflowRow.taskStatus).toBe("completed");
+      expect(workflowRow.summary).toBe("done");
+      expect(workflowRow.completedAt).not.toBeNull();
+    });
+  });
+
   it("hydrates turn-summary details when the range overlaps another turn", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

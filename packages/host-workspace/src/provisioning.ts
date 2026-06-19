@@ -232,6 +232,94 @@ function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
   }
 }
 
+async function resolveRemoteBaseBranch(
+  sourcePath: string,
+  baseBranch: string,
+  signal: AbortSignal | undefined,
+): Promise<{ remote: string; branch: string } | null> {
+  if (!baseBranch.includes("/")) {
+    return null;
+  }
+
+  const remotes = (
+    await runGit(["remote"], { cwd: sourcePath, signal })
+  ).stdout
+    .split("\n")
+    .map((remote) => remote.trim())
+    .filter(Boolean);
+  const matchingRemotes = remotes
+    .filter(
+      (remote) =>
+        baseBranch.startsWith(`${remote}/`) &&
+        baseBranch.length > remote.length + 1,
+    )
+    .sort((left, right) => right.length - left.length);
+  const remote = matchingRemotes[0];
+  if (!remote) {
+    return null;
+  }
+
+  return {
+    remote,
+    branch: baseBranch.slice(remote.length + 1),
+  };
+}
+
+async function fetchRemoteBaseBranch(args: {
+  sourcePath: string;
+  baseBranch: string;
+  onProgress: ProgressCallback | undefined;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  const remoteBase = await resolveRemoteBaseBranch(
+    args.sourcePath,
+    args.baseBranch,
+    args.signal,
+  );
+  if (!remoteBase) {
+    return;
+  }
+
+  const startedAt = Date.now();
+  emitStep({
+    onProgress: args.onProgress,
+    key: "git-fetch-started",
+    text: `Fetching ${args.baseBranch}`,
+    status: "started",
+    startedAt,
+  });
+
+  const refspec = `+refs/heads/${remoteBase.branch}:refs/remotes/${remoteBase.remote}/${remoteBase.branch}`;
+  try {
+    await runGit(["fetch", "--quiet", remoteBase.remote, refspec], {
+      cwd: args.sourcePath,
+      signal: args.signal,
+    });
+    emitStep({
+      onProgress: args.onProgress,
+      key: "git-fetch-completed",
+      text: `Fetched ${args.baseBranch}`,
+      status: "completed",
+      startedAt,
+      metadata: {
+        durationMs: Date.now() - startedAt,
+      },
+    });
+  } catch (error) {
+    emitStep({
+      onProgress: args.onProgress,
+      key: "git-fetch-failed",
+      text: `Failed to fetch ${args.baseBranch}`,
+      status: "failed",
+      startedAt,
+      metadata: {
+        durationMs: Date.now() - startedAt,
+      },
+    });
+    throw error;
+  }
+}
+
 export async function createWorktree(
   args: CreateWorkspaceArgs,
 ): Promise<{ path: string }> {
@@ -252,6 +340,14 @@ export async function createWorktree(
       `Cannot resolve default branch for source: ${args.sourcePath}`,
     );
   }
+  throwIfProvisionAborted(args.signal);
+  await fetchRemoteBaseBranch({
+    sourcePath: args.sourcePath,
+    baseBranch,
+    onProgress: args.onProgress,
+    signal: args.signal,
+  });
+
   const gitArgs = [
     "worktree",
     "add",

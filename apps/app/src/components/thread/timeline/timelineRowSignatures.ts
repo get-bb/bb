@@ -165,6 +165,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
       return joinSignatureParts([
         ...baseParts,
         row.itemId,
+        row.taskType,
         row.taskStatus,
         row.workflowName,
         row.description,

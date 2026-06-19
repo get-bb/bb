@@ -357,13 +357,16 @@ export interface EventProjectionDelegationMessage
 }
 
 /**
- * A provider background task (dynamic workflow). One message per item across
- * the whole thread: the turn-scoped item/started anchors placement and
- * later thread-scoped progress/completed events replace its payload in place.
+ * A provider background task — a dynamic workflow or a backgrounded shell
+ * command, discriminated by `taskType`. One message per item across the whole
+ * thread: the turn-scoped item/started anchors placement and later
+ * thread-scoped progress/completed events replace its payload in place.
  */
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
+  /** Raw SDK task discriminant (e.g. "local_workflow", "local_bash"). */
+  taskType: string;
   workflowName: string | null;
   description: string;
   status: Extract<

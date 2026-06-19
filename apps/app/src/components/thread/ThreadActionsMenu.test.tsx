@@ -1,0 +1,106 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { Thread } from "@bb/domain";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+import { ThreadActionsMenu } from "./ThreadActionsMenu";
+
+const mockActions = vi.hoisted(() => ({
+  archiveThreadAndChildren: vi.fn(),
+  requestRename: vi.fn(),
+  requestDelete: vi.fn(),
+  sendToPopout: null,
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+  unarchiveThread: vi.fn(),
+}));
+
+vi.mock("./ThreadActionsProvider", () => ({
+  useThreadActions: () => mockActions,
+}));
+
+function makeThread(overrides: Partial<Thread> = {}): Thread {
+  return {
+    id: "thr_test",
+    projectId: "proj_test",
+    environmentId: "env_test",
+    providerId: "codex",
+    title: null,
+    titleFallback: "Test thread",
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
+    archivedAt: null,
+    pinnedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 100,
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides,
+  };
+}
+
+async function renderOpenMenu(thread: Thread) {
+  const onOpenChange = vi.fn();
+  render(
+    <CompactViewportOverrideProvider isCompactViewport={true}>
+      <ThreadActionsMenu thread={thread} onOpenChange={onOpenChange} />
+    </CompactViewportOverrideProvider>,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+  await screen.findByRole("menuitem", { name: /Mark as / });
+  expect(onOpenChange).toHaveBeenLastCalledWith(true);
+  return onOpenChange;
+}
+
+describe("ThreadActionsMenu", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    {
+      label: "Mark as read",
+      thread: makeThread(),
+      action: mockActions.toggleRead,
+    },
+    {
+      label: "Mark as unread",
+      thread: makeThread({ lastReadAt: 100, latestAttentionAt: 50 }),
+      action: mockActions.toggleRead,
+    },
+    {
+      label: "Pin",
+      thread: makeThread(),
+      action: mockActions.togglePin,
+    },
+    {
+      label: "Unpin",
+      thread: makeThread({ pinnedAt: 100 }),
+      action: mockActions.togglePin,
+    },
+    {
+      label: "Archive",
+      thread: makeThread(),
+      action: mockActions.archiveThreadAndChildren,
+    },
+    {
+      label: "Unarchive",
+      thread: makeThread({ archivedAt: 100 }),
+      action: mockActions.unarchiveThread,
+    },
+  ])("closes after selecting $label", async ({ label, thread, action }) => {
+    const onOpenChange = await renderOpenMenu(thread);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: label }));
+
+    expect(action).toHaveBeenCalledWith(thread);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+});

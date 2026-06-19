@@ -151,6 +151,7 @@ function makeThreadTimelineResponse(
   return {
     activeThinking: null,
     activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
     maxSeq: 0,

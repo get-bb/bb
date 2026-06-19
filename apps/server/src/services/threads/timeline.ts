@@ -872,6 +872,8 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activeThinking : null,
     activeWorkflow:
       options.page.kind === "latest" ? timeline.activeWorkflow : null,
+    activeBackgroundCommands:
+      options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     // pendingTodos is gated inside the projection via `isLatestPage` so the
     // extraction work is skipped on older-page requests entirely; no
     // post-hoc null-out needed here.
@@ -1002,9 +1004,14 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  const eventRowsWithBackgroundTaskState =
+    ensureTimelineWindowBackgroundTaskStateRows(db, {
+      threadId: thread.id,
+      rows: eventRows,
+    });
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: [...turnStartedRows, ...eventRows].map((row) =>
-      toThreadEventWithMeta(row),
+    events: [...turnStartedRows, ...eventRowsWithBackgroundTaskState].map(
+      (row) => toThreadEventWithMeta(row),
     ),
     options: {
       includeProviderUnhandledOperations,

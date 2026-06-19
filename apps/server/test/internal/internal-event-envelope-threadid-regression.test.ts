@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { createThread, getThread } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -66,8 +66,57 @@ describe("internal event envelope threadId regression", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(getThread(harness.db, threadA.id)?.title).toBe("hacked");
+      expect(getThread(harness.db, threadA.id)?.title).toBe("Owned thread");
       expect(getThread(harness.db, threadB.id)?.title).toBe("Foreign thread");
+    });
+  });
+
+  it("does not apply provider names to thread titles", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-fork-provider-title",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = createThread(harness.db, harness.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        title: null,
+        titleFallback: "Summarize the work",
+        status: "active",
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          sessionId: session.id,
+          events: [
+            createTestDaemonEventEnvelope({
+              threadId: thread.id,
+              event: {
+                type: "thread/name/updated",
+                threadId: thread.id,
+                providerThreadId: "provider-thread",
+                scope: threadScope(),
+                threadName: "Provider supplied name",
+              },
+            }),
+          ],
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.title).toBeNull();
+      expect(getThread(harness.db, thread.id)?.titleFallback).toBe(
+        "Summarize the work",
+      );
     });
   });
 });

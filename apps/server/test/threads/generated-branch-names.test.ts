@@ -23,10 +23,12 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
+import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import {
   advanceThreadProvisioning,
@@ -332,8 +334,9 @@ describe("generated managed branch names", () => {
         .filter((event) => event.type === "system/thread-provisioning")
         .map(
           (event) =>
-            systemThreadProvisioningEventDataSchema.parse(JSON.parse(event.data))
-              .status,
+            systemThreadProvisioningEventDataSchema.parse(
+              JSON.parse(event.data),
+            ).status,
         );
       expect(provisioningStatuses).toContain("cancelled");
       expect(
@@ -611,6 +614,79 @@ describe("generated managed branch names", () => {
         type: "thread.rename",
         threadId: thread.id,
         title: "Generated Rename Title",
+      });
+    });
+  });
+
+  it("generates titles for submitted fork threads", async () => {
+    mockThreadMetadata({ title: "Generated Fork Title" });
+
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-generated-fork-title",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/generated-fork-title-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/generated-fork-title-project",
+        status: "ready",
+        workspaceProvisionType: "unmanaged",
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: sourceThread.id,
+        turnId: "turn-generated-fork-title-source",
+        providerThreadId: "provider-generated-fork-title-source",
+      });
+
+      const input = textInput("Continue this fork and generate a useful title");
+      const fork = await createThreadFromRequest(harness.deps, {
+        environment: { type: "reuse", environmentId: environment.id },
+        input,
+        model: "gpt-5",
+        origin: "app",
+        originKind: "fork",
+        projectId: project.id,
+        providerId: "codex",
+        sourceThreadId: sourceThread.id,
+        startedOnBehalfOf: null,
+      });
+
+      expect(getThread(harness.db, fork.id)?.titleFallback).toBe(
+        "Continue this fork and generate a useful title",
+      );
+
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (start.command.type !== "thread.start") {
+        throw new Error("Expected a thread.start command");
+      }
+      expect(start.command.input).toEqual(input);
+      expect(start.command.fork).toEqual({
+        sourceProviderThreadId: "provider-generated-fork-title-source",
+      });
+
+      await reportQueuedCommandSuccess(
+        harness,
+        start,
+        { providerThreadId: "provider-generated-fork-title" },
+        { hostId: host.id },
+      );
+
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, fork.id)?.title).toBe(
+          "Generated Fork Title",
+        );
       });
     });
   });

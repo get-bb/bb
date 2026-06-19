@@ -87,6 +87,25 @@ function taskItem(args: {
   };
 }
 
+function bashTaskItem(args: {
+  taskStatus: ThreadEventBackgroundTaskItem["taskStatus"];
+  status: ThreadEventBackgroundTaskItem["status"];
+  summary?: string;
+  id?: string;
+  description?: string;
+}): ThreadEventBackgroundTaskItem {
+  return {
+    type: "backgroundTask",
+    id: args.id ?? "task:bmn5wv33k",
+    taskType: "local_bash",
+    description: args.description ?? "Count ticks from 1 to 6 with 1 second delays",
+    status: args.status,
+    taskStatus: args.taskStatus,
+    skipTranscript: false,
+    ...(args.summary ? { summary: args.summary } : {}),
+  };
+}
+
 const RUNNING_SNAPSHOT: WorkflowProgressSnapshot = {
   phases: [
     { index: 1, title: "Scan" },
@@ -376,6 +395,150 @@ describe("background task timeline projection", () => {
       taskStatus: "running",
       workflowName: "fixture-mini",
     });
+  });
+
+  it("folds a backgrounded shell command into one background-command row", () => {
+    const rows = buildTimelineRows([
+      turnStarted("turn-1", 1),
+      withMeta(
+        {
+          type: "item/started",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: turnScope("turn-1"),
+          item: bashTaskItem({ status: "pending", taskStatus: "running" }),
+        },
+        2,
+      ),
+      withMeta(
+        {
+          type: "item/backgroundTask/completed",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: threadScope(),
+          item: bashTaskItem({
+            status: "completed",
+            taskStatus: "completed",
+            summary:
+              'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
+          }),
+        },
+        3,
+      ),
+    ]);
+
+    const workflowRows = findWorkflowRows(rows);
+    expect(workflowRows).toHaveLength(1);
+    const row = workflowRows[0]!;
+    expect(row).toMatchObject({
+      workKind: "workflow",
+      taskType: "local_bash",
+      status: "completed",
+      taskStatus: "completed",
+      workflowName: null,
+      workflow: null,
+      description: "Count ticks from 1 to 6 with 1 second delays",
+      summary:
+        'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
+    });
+    expect(row.completedAt).not.toBeNull();
+  });
+
+  it("keeps backgrounded shell commands out of the active-workflow banner", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({ status: "pending", taskStatus: "running" }),
+          },
+          2,
+        ),
+        turnCompleted("turn-1", 3),
+        withMeta(
+          {
+            type: "item/backgroundTask/progress",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: bashTaskItem({ status: "pending", taskStatus: "running" }),
+          },
+          4,
+        ),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    // A running shell command never hijacks the workflow banner, but it does
+    // drive its own independent background-commands card.
+    expect(timeline.activeWorkflow).toBeNull();
+    expect(timeline.activeBackgroundCommands).toHaveLength(1);
+    expect(timeline.activeBackgroundCommands[0]).toMatchObject({
+      itemId: "task:bmn5wv33k",
+      taskType: "local_bash",
+      status: "pending",
+    });
+  });
+
+  it("lists running background commands most-recent-first and excludes workflows", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({ status: "pending", taskStatus: "running" }),
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:cmd-early",
+              description: "Run the dev server",
+            }),
+          },
+          3,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:cmd-late",
+              description: "Watch and re-run tests",
+            }),
+          },
+          4,
+        ),
+        turnCompleted("turn-1", 5),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    // The workflow drives the workflow banner; the two shell commands drive the
+    // background-commands card, ordered most recently started first.
+    expect(timeline.activeWorkflow).toMatchObject({ taskType: "local_workflow" });
+    expect(
+      timeline.activeBackgroundCommands.map((row) => row.itemId),
+    ).toEqual(["task:cmd-late", "task:cmd-early"]);
   });
 
   it("hides skip_transcript tasks from the timeline", () => {

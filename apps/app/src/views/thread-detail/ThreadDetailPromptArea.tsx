@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
@@ -29,6 +29,7 @@ import {
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
+import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -143,6 +144,8 @@ interface ThreadDetailPromptAreaProps {
   goal: ThreadTimelineGoal | null;
   /** Running workflow row from the timeline. Null when no workflow is active. */
   activeWorkflow: TimelineWorkflowWorkRow | null;
+  /** Running backgrounded shell command rows, most recent first. Empty when none. */
+  activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
@@ -194,6 +197,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   goal,
   activeWorkflow,
+  activeBackgroundCommands,
   parentThreadSection,
   childThreadsSection,
   pullRequest,
@@ -343,6 +347,8 @@ export function ThreadDetailPromptArea({
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
+    useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -683,17 +689,9 @@ export function ThreadDetailPromptArea({
   );
 
   const [editFocusNonce, setEditFocusNonce] = useState(0);
-
-  // Focus the composer caret at the end whenever the timeline host appends a
-  // quote ("Add to chat"), so the user can immediately type the reply beneath
-  // the freshly inserted blockquote. Skips the initial mount (nonce starts 0).
-  const previousFocusRequestNonceRef = useRef(composerFocusRequestNonce);
-  useEffect(() => {
-    if (composerFocusRequestNonce !== previousFocusRequestNonceRef.current) {
-      previousFocusRequestNonceRef.current = composerFocusRequestNonce;
-      setEditFocusNonce((nonce) => nonce + 1);
-    }
-  }, [composerFocusRequestNonce]);
+  // Selection quotes and queued-message edits both need the composer caret at
+  // the end of the latest draft; combine their counters into one focus key.
+  const focusEndKey = `${composerFocusRequestNonce}:${editFocusNonce}`;
 
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
@@ -990,6 +988,11 @@ export function ThreadDetailPromptArea({
           isExpanded={isWorkflowExpanded}
           onToggle={() => setIsWorkflowExpanded((value) => !value)}
         />
+        <ThreadBackgroundCommandsCard
+          commands={activeBackgroundCommands}
+          isExpanded={isBackgroundCommandsExpanded}
+          onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
+        />
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -1079,6 +1082,8 @@ export function ThreadDetailPromptArea({
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
+      activeBackgroundCommands,
+      isBackgroundCommandsExpanded,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,
@@ -1110,7 +1115,7 @@ export function ThreadDetailPromptArea({
       stack={promptStack}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
-      focusEndKey={editFocusNonce}
+      focusEndKey={focusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}

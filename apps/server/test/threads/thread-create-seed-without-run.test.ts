@@ -44,7 +44,7 @@ function threadStartTurnRequest(
 }
 
 describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
-  it("persists an agent fork anchor while cloning the source provider session", async () => {
+  it("persists an agent fork start while cloning the source provider session", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-seed-without-run",
@@ -71,6 +71,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
         providerThreadId: "provider-seed-without-run-source",
       });
 
+      const input = textInput("Continue from the fork point");
       const fork = await createThreadFromRequest(harness.deps, {
         environment: {
           type: "host",
@@ -80,7 +81,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
             path: "/tmp/seed-without-run-project",
           },
         },
-        input: [],
+        input,
         origin: "app",
         originKind: "fork",
         projectId: project.id,
@@ -107,20 +108,15 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       if (queuedStart.command.type !== "thread.start") {
         throw new Error("Expected a thread.start command");
       }
-      expect(queuedStart.command.input).toEqual([]);
+      expect(queuedStart.command.input).toEqual(input);
       expect(queuedStart.command.fork).toEqual({
         sourceProviderThreadId: "provider-seed-without-run-source",
       });
-
-      await reportQueuedCommandSuccess(harness, queuedStart, {
-        providerThreadId: "provider-seed-without-run-fork",
-      });
-
-      expect(getThread(harness.db, fork.id)?.status).toBe("idle");
       const persistedFork = getThread(harness.db, fork.id);
       expect(persistedFork?.originKind).toBe("fork");
       expect(persistedFork?.sourceThreadId).toBe(sourceThread.id);
       expect(persistedFork?.parentThreadId).toBeNull();
+      expect(persistedFork?.titleFallback).toBe("Continue from the fork point");
     });
   });
 
@@ -155,6 +151,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
         sequence: 9,
       });
 
+      const forkInput = textInput("Continue from the earlier source sequence");
       const fork = await createThreadFromRequest(harness.deps, {
         environment: {
           type: "host",
@@ -164,7 +161,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
             path: "/tmp/source-sequence-fork-project",
           },
         },
-        input: [],
+        input: forkInput,
         origin: "app",
         originKind: "fork",
         projectId: project.id,
@@ -185,6 +182,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       if (queuedStart.command.type !== "thread.start") {
         throw new Error("Expected a thread.start command");
       }
+      expect(queuedStart.command.input).toEqual(forkInput);
       expect(queuedStart.command.fork).toEqual({
         sourceProviderThreadId: "provider-earlier-source",
       });
@@ -536,13 +534,14 @@ describe("thread creation child-thread boundary validation", () => {
         expect(persistedFork?.originKind).toBe("fork");
         expect(persistedFork?.sourceThreadId).toBe(sourceThreadId);
         expect(persistedFork?.parentThreadId).toBeNull();
+        expect(persistedFork?.titleFallback).toBe("Forked anchor");
       },
     );
   });
 
-  it("settles an empty-input native fork to idle after cloning the provider session", async () => {
+  it("rejects an empty-input native fork", async () => {
     await withChildBoundaryHarness(
-      "empty-native-fork-idle",
+      "empty-native-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
@@ -550,42 +549,30 @@ describe("thread creation child-thread boundary validation", () => {
           providerThreadId: "provider-parent-session",
         });
 
-        const fork = await createThreadFromRequest(harness.deps, {
-          environment: {
-            type: "host",
-            hostId,
-            workspace: { type: "unmanaged", path },
-          },
-          input: [],
-          origin: "app",
-          originKind: "fork",
-          projectId,
-          providerId: "codex",
-          sourceThreadId,
-          startedOnBehalfOf: {
-            initiator: "agent",
-            senderThreadId: sourceThreadId,
-          },
-        });
-
-        const queuedStart = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === fork.id,
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: [],
+            origin: "app",
+            originKind: "fork",
+            projectId,
+            providerId: "codex",
+            sourceThreadId,
+            startedOnBehalfOf: {
+              initiator: "agent",
+              senderThreadId: sourceThreadId,
+            },
+          }),
         );
-        if (queuedStart.command.type !== "thread.start") {
-          throw new Error("Expected a thread.start command");
-        }
-        expect(queuedStart.command.input).toEqual([]);
-        expect(queuedStart.command.fork).toEqual({
-          sourceProviderThreadId: "provider-parent-session",
-        });
-
-        await reportQueuedCommandSuccess(harness, queuedStart, {
-          providerThreadId: "provider-fork-session",
-        });
-
-        expect(getThread(harness.db, fork.id)?.status).toBe("idle");
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "fork input must contain at least one entry",
+        );
       },
     );
   });
@@ -818,10 +805,8 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "fork-no-source-session",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
-        // Source has no turn/started ⇒ no provider session to clone. A fork is
-        // sent with empty input, so there is nothing to run a fresh turn with
-        // either. The create must fail rather than dispatch an empty,
-        // session-less start.
+        // Source has no turn/started ⇒ no provider session to clone. The create
+        // must fail rather than silently dispatch a fresh, history-less start.
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
             environment: {
@@ -829,7 +814,7 @@ describe("thread creation child-thread boundary validation", () => {
               hostId,
               workspace: { type: "unmanaged", path },
             },
-            input: [],
+            input: textInput("Fork without a source session"),
             origin: "app",
             originKind: "fork",
             projectId,
