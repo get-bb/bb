@@ -13,6 +13,7 @@ import type {
   ParcelWatcherError,
   ParcelWatcherEventBatch,
 } from "../src/parcel-watcher-backend.js";
+import { RESCAN_REQUIRED_MESSAGE } from "../src/watch-recovery.js";
 
 async function flush(times = 5): Promise<void> {
   for (let i = 0; i < times; i += 1) {
@@ -135,8 +136,8 @@ class FakeChild {
 function createHarness(options?: {
   pingIntervalMs?: number;
   pingTimeoutMs?: number;
-  maxRestartsPerWindow?: number;
-  restartWindowMs?: number;
+  baseRestartDelayMs?: number;
+  maxRestartDelayMs?: number;
   listEntries?: (dir: string) => Promise<string[]>;
 }) {
   const children: FakeChild[] = [];
@@ -149,8 +150,8 @@ function createHarness(options?: {
     },
     pingIntervalMs: options?.pingIntervalMs ?? 1_000,
     pingTimeoutMs: options?.pingTimeoutMs ?? 2_500,
-    maxRestartsPerWindow: options?.maxRestartsPerWindow ?? 3,
-    restartWindowMs: options?.restartWindowMs ?? 60_000,
+    baseRestartDelayMs: options?.baseRestartDelayMs ?? 1_000,
+    maxRestartDelayMs: options?.maxRestartDelayMs ?? 30_000,
   });
   const current = (): FakeChild => {
     const child = children.at(-1);
@@ -336,28 +337,91 @@ describe("createParcelWatcherProxy", () => {
     }
   });
 
-  it("gives up and surfaces an error after the restart budget is exhausted", async () => {
-    const { proxy, children } = createHarness({ maxRestartsPerWindow: 3 });
-    let lastError: Error | null = null;
-    await proxy.subscribe("/root", (error) => {
+  it("backs off a rapid respawn but never permanently gives up", async () => {
+    vi.useFakeTimers();
+    try {
+      const { proxy, children, current } = createHarness({
+        baseRestartDelayMs: 1_000,
+        maxRestartDelayMs: 8_000,
+        pingIntervalMs: 100_000, // keep pings out of this test
+      });
+      let terminalError: Error | null = null;
+      await proxy.subscribe("/root", (error) => {
+        if (error) {
+          terminalError = error;
+        }
+      });
+      await flush();
+      expect(children).toHaveLength(1);
+
+      // A one-off crash heals immediately (a single failure is not penalized).
+      current().exit();
+      await flush();
+      expect(children).toHaveLength(2);
+
+      // A second crash before the child proved healthy is BACKED OFF, not an
+      // immediate tight-loop respawn.
+      current().exit();
+      await flush();
+      expect(children).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(children).toHaveLength(3);
+
+      // The proxy keeps recovering — it never surfaces a permanent give-up error.
+      expect(terminalError).toBeNull();
+      proxy.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces a replay subscribe failure as recoverable, not terminal", async () => {
+    const { proxy, children } = createHarness();
+    const errors: string[] = [];
+    const pending = proxy.subscribe("/root", (error) => {
       if (error) {
-        lastError = error;
+        errors.push(error.message);
       }
     });
-    await flush();
-
-    // Crash repeatedly: 3 restarts are allowed, the 4th crash trips give-up.
-    for (let i = 0; i < 4; i += 1) {
-      children.at(-1)?.exit();
-      await flush();
+    // The child exists synchronously; make its first subscribe attempt reject
+    // (path transiently missing) before it readies and replays.
+    const firstChild = children[0];
+    if (firstChild) {
+      firstChild.parcel.failNextSubscribe = true;
     }
-    expect(lastError).toBeInstanceOf(Error);
-    expect((lastError as Error | null)?.message).toMatch(/restart budget/i);
-
-    const countAtGiveUp = children.length;
-    children.at(-1)?.exit();
+    await pending;
     await flush();
-    expect(children.length).toBe(countAtGiveUp);
+
+    // RootSubscription must see a RECOVERABLE rescan signal (so it retries via
+    // its existence-gated path), not an opaque terminal error.
+    expect(errors).toContain(RESCAN_REQUIRED_MESSAGE);
+    proxy.dispose();
+  });
+
+  it("does not double-subscribe a subscription added during the respawn window", async () => {
+    const { proxy, children, current } = createHarness();
+    await proxy.subscribe("/root", () => {});
+    await flush();
+    expect(children).toHaveLength(1);
+
+    // Crash; the replacement child is spawning but has not emitted 'ready' yet.
+    current().exit();
+    // Add another subscription inside that window.
+    await proxy.subscribe("/late", () => {});
+    await flush();
+
+    expect(children).toHaveLength(2);
+    // Exactly one live watch per dir on the new child — no orphaned duplicate.
+    expect(
+      current()
+        .parcel.activeDirs()
+        .filter((d) => d === "/late"),
+    ).toEqual(["/late"]);
+    expect(
+      current()
+        .parcel.activeDirs()
+        .filter((d) => d === "/root"),
+    ).toEqual(["/root"]);
     proxy.dispose();
   });
 });

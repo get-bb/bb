@@ -91,3 +91,20 @@ export function getParcelWatcherBackend(): ParcelWatcherBackend {
   }
   return inProcessBackend;
 }
+
+/**
+ * Dispose the installed backend (the daemon calls this during shutdown). For the
+ * subprocess backend this SIGKILLs the watcher child and clears its timers, so
+ * the daemon's event loop can drain and no child is orphaned.
+ */
+export function disposeParcelWatcherBackend(): void {
+  const backend = installedBackend;
+  installedBackend = undefined;
+  if (
+    backend !== undefined &&
+    "dispose" in backend &&
+    typeof backend.dispose === "function"
+  ) {
+    (backend as { dispose: () => void }).dispose();
+  }
+}

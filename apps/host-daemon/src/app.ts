@@ -46,7 +46,10 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
 } from "@bb/domain";
-import type { HostWatcher } from "@bb/host-watcher";
+import {
+  disposeParcelWatcherBackend,
+  type HostWatcher,
+} from "@bb/host-watcher";
 
 interface SessionState {
   value: string | null;
@@ -774,6 +777,9 @@ export async function createHostDaemonApp(
       hostDaemonHealthMonitor.stop();
       await localApi?.close();
       await watchManager.shutdown();
+      // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so
+      // the daemon's event loop can drain and the child is not orphaned.
+      disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
       await runtimeManager.shutdownAll();
       await eventSink.flush();

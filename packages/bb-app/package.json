@@ -38,6 +38,7 @@
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-acp-bridge.mjs",
     "host-daemon/dist/bb-claude-code-bridge.mjs",
+    "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-pi-bridge.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",

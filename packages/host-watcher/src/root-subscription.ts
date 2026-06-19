@@ -7,12 +7,7 @@ import {
   type ParcelWatcherSubscribeOptions,
 } from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
-
-// Parcel's FSEvents backend reports every dropped-events variant with this
-// phrase. Dropped events are recoverable: the OS kept the stream alive but
-// asked us to re-scan to catch up on what it could not deliver. We must rescan
-// rather than surface a watch error — see onDroppedEvents.
-const FSEVENTS_DROPPED_EVENTS_RESCAN_MESSAGE = "File system must be re-scanned";
+import { isRescanRequiredMessage } from "./watch-recovery.js";
 
 export type {
   ParcelWatcherEventBatch,
@@ -42,10 +37,6 @@ function toErrorMessage(error: unknown): string {
     return error.message;
   }
   return "Unknown watch error";
-}
-
-function isDroppedEventsRescanRequiredMessage(message: string): boolean {
-  return message.includes(FSEVENTS_DROPPED_EVENTS_RESCAN_MESSAGE);
 }
 
 /**
@@ -173,7 +164,7 @@ export class RootSubscription {
           }
           if (error) {
             const message = toErrorMessage(error);
-            if (isDroppedEventsRescanRequiredMessage(message)) {
+            if (isRescanRequiredMessage(message)) {
               recoverableFailureObserved = true;
               this.recoveryPending = true;
               this.args.onDroppedEvents();
