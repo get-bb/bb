@@ -19,6 +19,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CREATE_LOOP_PROMPT } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -47,6 +48,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
+  { kind: "loop", text: CREATE_LOOP_PROMPT },
 ];
 
 function createPromptBoxProps(
@@ -427,6 +429,16 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
+  it("inserts loop creation prompt as plain text", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Loop");
+
+    await waitFor(() => expect(latestValue(changes)).toBe(CREATE_LOOP_PROMPT));
+    expect(latestChange(changes)?.mentions).toEqual([]);
+  });
+
   it("does not duplicate command text immediately before the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Start /goal ");
 
@@ -541,6 +553,20 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Skills");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/"));
+    expect(latestChange(changes)?.mentions).toEqual([]);
+  });
+
+  it("replaces a just-selected goal action with loop at the cursor", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Goal");
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    await waitForPromptFocus();
+
+    await selectPromptAction("Loop");
+
+    await waitFor(() => expect(latestValue(changes)).toBe(CREATE_LOOP_PROMPT));
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 

@@ -13,6 +13,7 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
+import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -118,6 +119,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
+  { kind: "loop", text: CREATE_LOOP_PROMPT },
 ];
 
 function useControlledValue(initial: string) {

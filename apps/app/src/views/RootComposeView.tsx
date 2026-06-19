@@ -14,6 +14,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
@@ -964,7 +965,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     [selectedProviderComposerActions],
   );
   const providerPromptActionProps = useMemo(
-    () => ({ promptActions: providerPromptActions.promptActions }),
+    () => ({
+      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
+    }),
     [providerPromptActions.promptActions],
   );
   const reuseEnvironmentId =

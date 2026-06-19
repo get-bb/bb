@@ -58,6 +58,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Plan prompt action, todo prompt-stack card header",
+  Loading: "Loading03 thread row working spinner",
   Maximize2: "Enter zen mode (prompt expand), open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
@@ -71,6 +72,7 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
+  Repeat: "Loop prompt action",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

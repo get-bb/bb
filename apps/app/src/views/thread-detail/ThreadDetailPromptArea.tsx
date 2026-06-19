@@ -73,6 +73,7 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { queuedInputToDraft } from "./threadQueuedMessages";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import {
@@ -399,7 +400,9 @@ export function ThreadDetailPromptArea({
     [selectedProviderComposerActions],
   );
   const providerPromptActionProps = useMemo(
-    () => ({ promptActions: providerPromptActions.promptActions }),
+    () => ({
+      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
+    }),
     [providerPromptActions.promptActions],
   );
   const commandSuggestions = useCommandSuggestions({

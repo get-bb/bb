@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
@@ -13,6 +13,9 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 const childActivity = (
   overrides: Partial<CollapsedChildActivity> = {},
 ): CollapsedChildActivity => ({ ...NO_COLLAPSED_CHILD_ACTIVITY, ...overrides });
+
+const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
+const UNREAD_DONE_SETTLED_DOT_MS = 650;
 
 export default {
   title: "sidebar/Threads",
@@ -51,6 +54,31 @@ function StoryThreadRow({
   ...props
 }: StoryThreadRowProps) {
   return <ThreadRow {...props} hasComposerDraft={hasComposerDraft} />;
+}
+
+function UnreadDoneThreadRowCycle() {
+  const [cycleKey, setCycleKey] = useState(0);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => setCycleKey((current) => current + 1),
+      THREAD_SUCCESS_CHECK_DELAY_MS + UNREAD_DONE_SETTLED_DOT_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [cycleKey]);
+
+  return (
+    <StoryThreadRow
+      key={cycleKey}
+      projectId="proj_demo"
+      thread={makeThread({
+        lastReadAt: 50,
+        latestAttentionAt: 200,
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
 }
 
 const defaultOption: ThreadRowOptions = {
@@ -158,7 +186,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="busy"
-        hint="runtime is active - far-right reserved slot shows the subtle working spinner"
+        hint="runtime is active - far-right reserved slot shows the Loading03 working spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -197,18 +225,10 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="unread done"
-        hint="latestAttentionAt > lastReadAt and not busy - far-right reserved slot shows the success check before settling to the unread dot"
+        hint="cycles the unread-success states only: CircleCheck for 1200ms, then the settled done dot"
       >
         <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={makeThread({
-              lastReadAt: 50,
-              latestAttentionAt: 200,
-            })}
-            isActive={false}
-            options={defaultOption}
-          />
+          <UnreadDoneThreadRowCycle />
         </SidebarStage>
       </StoryRow>
       <StoryRow
@@ -392,7 +412,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — child working"
-        hint="trailing slot shows the subtle working spinner when a hidden child is working"
+        hint="trailing slot shows the Loading03 working spinner when a hidden child is working"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -446,7 +466,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="child, busy"
-        hint="far-right reserved slot shows the subtle working spinner"
+        hint="far-right reserved slot shows the Loading03 working spinner"
       >
         <SidebarStage>
           <StoryThreadRow

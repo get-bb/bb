@@ -3,7 +3,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CREATE_LOOP_PROMPT,
   PromptBoxActionsMenu,
+  withLoopPromptAction,
   type PromptBoxAction,
 } from "./PromptBoxActionsMenu";
 
@@ -21,6 +23,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "plan", trailingText: " " },
     text: "/plan ",
   },
+  { kind: "loop", text: CREATE_LOOP_PROMPT },
 ];
 
 async function openPromptActionsMenu() {
@@ -30,6 +33,13 @@ async function openPromptActionsMenu() {
 }
 
 describe("PromptBoxActionsMenu", () => {
+  it("appends the Loop action to provider actions", () => {
+    expect(withLoopPromptAction([])).toEqual([
+      { kind: "loop", text: CREATE_LOOP_PROMPT },
+    ]);
+    expect(withLoopPromptAction(promptActions)).toEqual(promptActions);
+  });
+
   it("does not render when no prompt actions are provided", () => {
     render(<PromptBoxActionsMenu onAction={() => {}} />);
 
@@ -38,7 +48,7 @@ describe("PromptBoxActionsMenu", () => {
     ).toBeNull();
   });
 
-  it("renders only Skills, Plan, and Goal rows in compact order", async () => {
+  it("renders Skills, Plan, Goal, and Loop rows in compact order", async () => {
     render(
       <PromptBoxActionsMenu actions={promptActions} onAction={() => {}} />,
     );
@@ -55,6 +65,7 @@ describe("PromptBoxActionsMenu", () => {
       "Skills",
       "Plan",
       "Goal",
+      "Loop",
     ]);
     expect(screen.queryByRole("menuitem", { name: "Apps" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Create App" })).toBeNull();
@@ -71,6 +82,19 @@ describe("PromptBoxActionsMenu", () => {
       kind: "plan",
       command: { trigger: "/", name: "plan", trailingText: " " },
       text: "/plan ",
+    });
+  });
+
+  it("fires the Loop action", async () => {
+    const onAction = vi.fn();
+    render(<PromptBoxActionsMenu actions={promptActions} onAction={onAction} />);
+
+    await openPromptActionsMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Loop" }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      kind: "loop",
+      text: CREATE_LOOP_PROMPT,
     });
   });
 });

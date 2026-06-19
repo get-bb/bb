@@ -45,6 +45,7 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
+  SIDEBAR_SUCCESS_STATUS_ICON_SIZE_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
@@ -173,7 +174,7 @@ function ThreadSuccessStatusGlyph({ label }: { label: string }) {
         name="CircleCheck"
         className={cn(
           SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
+          SIDEBAR_SUCCESS_STATUS_ICON_SIZE_CLASS,
         )}
         aria-label={label}
       />
@@ -227,7 +228,7 @@ export function ThreadStatusGlyph({
   if (isBusy) {
     return (
       <Icon
-        name="Spinner"
+        name="Loading"
         className={cn(
           "animate-spin",
           SIDEBAR_WORKING_STATUS_COLOR_CLASS,

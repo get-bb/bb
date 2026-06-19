@@ -21,6 +21,7 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
+import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomations,
@@ -35,10 +36,6 @@ import {
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
-
-/** Composer seed for "Create via chat": prefilled (not submitted) so the user
- * finishes the sentence and sends. */
-const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 
 interface AutomationOverviewEntry {
   automation: Automation;
@@ -382,7 +379,7 @@ export function AutomationsView() {
 
   const handleCreateAutomation = useCallback(() => {
     navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true, initialPrompt: CREATE_AUTOMATION_PROMPT },
+      state: { focusPrompt: true, initialPrompt: CREATE_LOOP_PROMPT },
     });
   }, [navigate]);
 

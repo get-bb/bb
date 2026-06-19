@@ -34,6 +34,7 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
   type QueuedMessageProcessingAction,
@@ -386,6 +387,10 @@ export function SideChatTabContent({
         threadCreationOptions.selectedProviderComposerActions ?? [],
       ),
     [threadCreationOptions.selectedProviderComposerActions],
+  );
+  const promptActions = useMemo(
+    () => withLoopPromptAction(providerPromptActions.promptActions),
+    [providerPromptActions.promptActions],
   );
   const commandSuggestions = useCommandSuggestions({
     projectId: sourceThread.projectId,
@@ -1245,7 +1250,7 @@ export function SideChatTabContent({
           permission={permissionConfig}
           readOnly
           typeahead={typeaheadConfig}
-          promptActions={providerPromptActions.promptActions}
+          promptActions={promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
         />

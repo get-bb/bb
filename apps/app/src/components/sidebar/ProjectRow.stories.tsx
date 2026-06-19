@@ -456,7 +456,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed parent — child needs input"
-        hint="trailing attention dot surfaces a hidden child blocked on the user"
+        hint="trailing grey question icon surfaces a hidden child blocked on the user"
       >
         {singleProject({
           initialCollapsedThreadIds: new Set([parentThread.id]),
@@ -472,7 +472,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed parent — needs input + working"
-        hint="one child blocked, another running: attention wins, trailing slot shows the attention dot"
+        hint="one child blocked, another running: input needed wins, trailing slot shows the grey question icon"
       >
         {singleProject({
           initialCollapsedThreadIds: new Set([parentThread.id]),
@@ -488,7 +488,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — child working"
-        hint="trailing slot shows the busy spinner when a hidden child is working"
+        hint="trailing slot shows the Loading03 working spinner when a hidden child is working"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_busy"]),
@@ -511,7 +511,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — unread child"
-        hint="surfaces like a regular unread thread — trailing primary dot"
+        hint="surfaces like a regular unread thread — success check before settling to the done dot"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_unread"]),
@@ -534,7 +534,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — unread error child"
-        hint="hidden child status=error and unread — worktree header shows the destructive unread dot"
+        hint="hidden child status=error and unread — worktree header shows the destructive failure icon"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_error"]),
