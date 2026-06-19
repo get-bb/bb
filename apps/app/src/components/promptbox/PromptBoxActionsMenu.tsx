@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button.js";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,7 +118,12 @@ export function PromptBoxActionsMenu({
           variant="ghost"
           title="Prompt actions"
           aria-label="Prompt actions"
-          className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+          className={cn(
+            COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+            // Outdent so the "+" glyph lines up with the placeholder/text
+            // (toolbar px-3.5 + button px-2 sits 6px right of the editor's px-4).
+            "-ml-1.5",
+          )}
         >
           <Icon name="Plus" className="size-4" />
         </Button>
