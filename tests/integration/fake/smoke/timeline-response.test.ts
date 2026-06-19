@@ -45,6 +45,7 @@ function makeTimelineResponse(
 ): ThreadTimelineResponse {
   return {
     rows,
+    activePromptMode: null,
     activeThinking: null,
     activeWorkflow: null,
     activeBackgroundCommands: [],
