@@ -30,6 +30,7 @@ import {
   decodeBridgeJsonRpcResponse,
   jsonRpcEnvelopeSchema,
 } from "../../shared/bridge-tool-calls.js";
+import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import {
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
@@ -201,7 +202,10 @@ async function loadAgentModelCatalog(
     execFile(
       listCommand.command,
       listCommand.args,
-      { timeout: MODEL_LIST_TIMEOUT_MS },
+      {
+        env: withoutBridgeRuntimeEnv(process.env),
+        timeout: MODEL_LIST_TIMEOUT_MS,
+      },
       (error, out, stderr) => {
         if (!error) {
           resolveExec(out);
@@ -681,7 +685,7 @@ async function startAgentSession(
     command: params.agent.command,
     args: launch.args,
     cwd: params.cwd,
-    env: { ...process.env, ...params.envVars },
+    env: { ...withoutBridgeRuntimeEnv(process.env), ...params.envVars },
     onNotification: (method, notificationParams) =>
       handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>

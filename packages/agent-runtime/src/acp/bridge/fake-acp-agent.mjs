@@ -119,6 +119,12 @@ async function handlePrompt(message) {
   } else if (text.includes("echo-argv")) {
     // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
+  } else if (text.includes("echo-electron-run-as-node")) {
+    notifyUpdate(
+      messageChunk(
+        `electron-run-as-node:${process.env.ELECTRON_RUN_AS_NODE ?? "missing"}`,
+      ),
+    );
   } else {
     notifyUpdate(messageChunk(`echo:${text}`));
   }

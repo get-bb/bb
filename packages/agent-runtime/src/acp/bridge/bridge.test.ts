@@ -8,7 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
@@ -176,6 +176,7 @@ afterEach(async () => {
   for (const providerThreadId of startedProviderThreadIds.splice(0)) {
     await stopThread(providerThreadId);
   }
+  vi.unstubAllEnvs();
   output.restore();
   rmSync(workspaceDir, { recursive: true, force: true });
 });
@@ -313,6 +314,21 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme-extra-high",
       ),
     ).toBe(true);
+  });
+
+  it("does not leak bridge-only Electron env to the spawned agent", async () => {
+    vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
+    const { providerThreadId } = await startThread();
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [
+        { type: "text", text: "echo-electron-run-as-node", mentions: [] },
+      ],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("electron-run-as-node:missing");
   });
 
   it("warns and launches the family id when a reasoning variant is missing", async () => {

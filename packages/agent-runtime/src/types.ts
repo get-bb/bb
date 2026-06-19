@@ -83,6 +83,12 @@ export interface AgentRuntimeOptions {
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
 
+  /** Optional executable used to run Node-based provider bridges. */
+  bridgeNodeExecutablePath?: string;
+
+  /** Optional env values needed by the executable used for Node-based bridges. */
+  bridgeNodeEnv?: Record<string, string>;
+
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
 

@@ -32,6 +32,8 @@ export interface ProviderAcceptedCommandTranslationArgs {
 export interface ProviderAdapterFactoryOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   bridgeBundleDir?: string;
+  bridgeNodeEnv?: Record<string, string>;
+  bridgeNodeExecutablePath?: string;
   turnIdPrefix?: string;
 }
 
@@ -219,7 +221,7 @@ export interface ProviderAdapter {
   id: string;
   displayName: string;
   capabilities: ProviderCapabilities;
-  process: { command: string; args: string[] };
+  process: { command: string; args: string[]; env?: Record<string, string> };
 
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   /**

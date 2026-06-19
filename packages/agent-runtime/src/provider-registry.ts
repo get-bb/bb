@@ -93,6 +93,12 @@ export function createProviderForId(
     ...(options?.bridgeBundleDir !== undefined
       ? { bridgeBundleDir: options.bridgeBundleDir }
       : {}),
+    ...(options?.bridgeNodeEnv !== undefined
+      ? { bridgeNodeEnv: options.bridgeNodeEnv }
+      : {}),
+    ...(options?.bridgeNodeExecutablePath !== undefined
+      ? { bridgeNodeExecutablePath: options.bridgeNodeExecutablePath }
+      : {}),
     ...(options?.turnIdPrefix !== undefined
       ? { turnIdPrefix: options.turnIdPrefix }
       : {}),

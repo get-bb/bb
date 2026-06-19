@@ -48,6 +48,38 @@ describe("provider registry", () => {
     expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
   });
 
+  it("passes the configured bridge node runtime to bundled providers", () => {
+    const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
+    const claudeProvider = createProviderForId("claude-code", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeNodeEnv,
+      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
+    });
+    const piProvider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeNodeEnv,
+      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
+    });
+    const acpProvider = createProviderForId("acp-cursor", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeNodeEnv,
+      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
+    });
+
+    expect(claudeProvider.process.command).toBe(
+      "/Applications/bb.app/Contents/MacOS/bb",
+    );
+    expect(claudeProvider.process.env).toEqual(bridgeNodeEnv);
+    expect(piProvider.process.command).toBe(
+      "/Applications/bb.app/Contents/MacOS/bb",
+    );
+    expect(piProvider.process.env).toEqual(bridgeNodeEnv);
+    expect(acpProvider.process.command).toBe(
+      "/Applications/bb.app/Contents/MacOS/bb",
+    );
+    expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
+  });
+
   it("passes the configured turn id prefix to bundled providers", () => {
     const claudeProvider = createProviderForId("claude-code", {
       additionalWorkspaceWriteRoots: [],

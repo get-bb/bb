@@ -652,6 +652,10 @@ function createPiModelContextWindowResolver(): PiModelContextWindowResolver {
 export interface CreatePiProviderAdapterOptions {
   /** Override the directory containing bundled bridge files. */
   bridgeBundleDir?: string;
+  /** Optional environment values needed by the Node runtime that launches the bridge. */
+  bridgeNodeEnv?: Record<string, string>;
+  /** Optional executable used to run the Node bridge process. */
+  bridgeNodeExecutablePath?: string;
   /** Override context-window resolution. Used by unit tests to avoid real catalogs. */
   resolveModelContextWindow?: PiModelContextWindowResolver;
   /** Prefix for bb-owned turn ids emitted by this adapter instance. */
@@ -1213,13 +1217,14 @@ export function createPiProviderAdapter(
     displayName: providerInfo.displayName,
     capabilities,
     process: {
-      command: "node",
+      command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
         bridgeBundleDir: opts?.bridgeBundleDir,
         bundleFileName: "bb-pi-bridge.mjs",
         importMetaUrl: import.meta.url,
         bridgeRelativePath: "bridge/bridge.js",
       }),
+      ...(opts?.bridgeNodeEnv !== undefined ? { env: opts.bridgeNodeEnv } : {}),
     },
 
     // -- Unified command builder -------------------------------------------

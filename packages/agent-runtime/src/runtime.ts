@@ -122,6 +122,13 @@ interface ResolveThreadStoragePathArgs {
   threadId: string;
 }
 
+function defaultBridgeNodeEnv(): Record<string, string> | undefined {
+  if (process.versions.electron === undefined) {
+    return undefined;
+  }
+  return { ELECTRON_RUN_AS_NODE: "1" };
+}
+
 // ---------------------------------------------------------------------------
 // Runtime implementation
 // ---------------------------------------------------------------------------
@@ -219,11 +226,15 @@ function createAgentRuntimeInternal(
   const threadOperationCounts = new Map<string, number>();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
+  const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
+    ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
+    bridgeNodeExecutablePath:
+      options.bridgeNodeExecutablePath ?? process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
       providerThreadId:

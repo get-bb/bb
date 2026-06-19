@@ -37,6 +37,7 @@ import {
   decodeToolCallResponsePayload,
   type BridgeToolCallRequest,
 } from "../../shared/bridge-tool-calls.js";
+import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
@@ -742,7 +743,7 @@ function buildSessionEnv(
   envOverrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
   const sessionEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...withoutBridgeRuntimeEnv(process.env),
     ...envOverrides,
     CLAUDE_CODE_ENTRYPOINT: "cli",
   };

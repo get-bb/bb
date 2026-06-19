@@ -995,13 +995,14 @@ export function createClaudeCodeProviderAdapter(
     displayName: providerInfo.displayName,
     capabilities,
     process: {
-      command: "node",
+      command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
         bridgeBundleDir: opts?.bridgeBundleDir,
         bundleFileName: "bb-claude-code-bridge.mjs",
         importMetaUrl: import.meta.url,
         bridgeRelativePath: "bridge/bridge.js",
       }),
+      ...(opts?.bridgeNodeEnv !== undefined ? { env: opts.bridgeNodeEnv } : {}),
     },
 
     // -- Unified command builder -------------------------------------------

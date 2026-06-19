@@ -25,6 +25,7 @@ import type { AgentRuntimeOptions } from "./types.js";
 import type { ProviderRuntimeEvent } from "./runtime-json-rpc.js";
 
 interface CreateProviderProcessManagerArgs {
+  adapterProcessEnv?: Record<string, string>;
   env?: Record<string, string>;
   onStderr?: NonNullable<AgentRuntimeOptions["onStderr"]>;
   onProcessExit: NonNullable<AgentRuntimeOptions["onProcessExit"]>;
@@ -64,7 +65,8 @@ describe("createAgentRuntime process lifecycle", () => {
     let nextRequestId = 1;
     return new RuntimeProviderProcessManager({
       additionalWorkspaceWriteRoots: [],
-      adapterFactory: () => createNoopInitializeAdapter(args.scriptPath),
+      adapterFactory: () =>
+        createNoopInitializeAdapter(args.scriptPath, args.adapterProcessEnv),
       bridgeBundleDir: undefined,
       captureThreadExitState: (threadId) => ({
         activeTurnId: null,
@@ -90,10 +92,17 @@ describe("createAgentRuntime process lifecycle", () => {
     });
   }
 
-  function createNoopInitializeAdapter(scriptPath: string): ProviderAdapter {
+  function createNoopInitializeAdapter(
+    scriptPath: string,
+    processEnv?: Record<string, string>,
+  ): ProviderAdapter {
     const adapter = createFakeAdapter(scriptPath);
     return {
       ...adapter,
+      process: {
+        ...adapter.process,
+        ...(processEnv !== undefined ? { env: processEnv } : {}),
+      },
       buildCommandPlan(command) {
         if (command.type === "initialize") {
           return { kind: "noop", reason: "initialized by process spawn" };
@@ -1056,6 +1065,84 @@ rl.on("line", (line) => {
       expect(stderrLines[0]).toBe(
         "missing|missing|missing|external-secret|thr_explicit",
       );
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+  it("launches runtime-managed node bridges with the current executable when node is absent from PATH", async () => {
+    vi.stubEnv("PATH", "");
+    const idleScript = join(tmpDir, "pathless-node-provider.cjs");
+    writeFileSync(idleScript, `setInterval(() => {}, 1000);`);
+    const adapterCommands: string[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        const adapter = createNoopInitializeAdapter(idleScript);
+        const command = options.bridgeNodeExecutablePath ?? "node";
+        adapterCommands.push(command);
+        return {
+          ...adapter,
+          process: {
+            ...adapter.process,
+            command,
+          },
+        };
+      },
+    });
+
+    try {
+      await runtime.ensureProvider({ providerId: "fake" });
+      expect(adapterCommands).toEqual([process.execPath]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("overlays adapter process env after inherited and runtime env", async () => {
+    vi.stubEnv("ELECTRON_RUN_AS_NODE", "0");
+    const envScript = join(tmpDir, "bridge-env-provider.cjs");
+    writeFileSync(
+      envScript,
+      `const values = [
+        process.env.ELECTRON_RUN_AS_NODE ?? "missing",
+        process.env.BRIDGE_ONLY ?? "missing",
+        process.env.BB_THREAD_ID ?? "missing"
+      ];
+      process.stderr.write(values.join("|") + "\\n");
+      setInterval(() => {}, 1000);`,
+    );
+    const stderrLines: string[] = [];
+    const manager = createProviderProcessManager({
+      adapterProcessEnv: {
+        BRIDGE_ONLY: "bridge",
+        ELECTRON_RUN_AS_NODE: "1",
+      },
+      env: {
+        BB_THREAD_ID: "thr_explicit",
+        ELECTRON_RUN_AS_NODE: "runtime",
+      },
+      onProcessExit: vi.fn(),
+      onStderr: (line) => {
+        stderrLines.push(line);
+      },
+      scriptPath: envScript,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+      await waitForRuntimeState({
+        label: "provider bridge env stderr",
+        predicate: () => stderrLines.length > 0,
+      });
+
+      expect(stderrLines[0]).toBe("1|bridge|thr_explicit");
     } finally {
       await manager.shutdown();
     }

@@ -113,6 +113,10 @@ export interface CreateAcpProviderAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   /** Override the directory containing bundled bridge files. */
   bridgeBundleDir?: string;
+  /** Optional environment values needed by the Node runtime that launches the bridge. */
+  bridgeNodeEnv?: Record<string, string>;
+  /** Optional executable used to run the Node bridge process. */
+  bridgeNodeExecutablePath?: string;
   /** Prefix for bb-owned turn ids emitted by this adapter instance. */
   turnIdPrefix?: string;
 }
@@ -1146,13 +1150,14 @@ export function createAcpProviderAdapter(
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
     process: {
-      command: "node",
+      command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
         bridgeBundleDir: opts.bridgeBundleDir,
         bundleFileName: "bb-acp-bridge.mjs",
         importMetaUrl: import.meta.url,
         bridgeRelativePath: "bridge/bridge.js",
       }),
+      ...(opts.bridgeNodeEnv !== undefined ? { env: opts.bridgeNodeEnv } : {}),
     },
 
     // -- Unified command builder -------------------------------------------
