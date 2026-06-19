@@ -30,15 +30,6 @@ import {
   TURN_TIMEOUT_MS,
 } from "./shared.js";
 
-const EXPECTED_TERMINAL_DYNAMIC_TOOL_NAMES = [
-  "bb_terminal_list",
-  "bb_terminal_output",
-  "bb_terminal_resize",
-  "bb_terminal_send",
-  "bb_terminal_start",
-  "bb_terminal_stop",
-];
-
 describe.sequential("fake provider smoke lifecycle integration", () => {
   it("creates a project and unmanaged thread, then provisions the workspace", () =>
     withHarness(async (harness) => {
@@ -187,12 +178,8 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
 
         expect(parentRuntimeCommand.commandType).toBe("thread/start");
         expect(childRuntimeCommand.commandType).toBe("thread/start");
-        expect(parentRuntimeCommand.dynamicToolNames).toEqual(
-          EXPECTED_TERMINAL_DYNAMIC_TOOL_NAMES,
-        );
-        expect(childRuntimeCommand.dynamicToolNames).toEqual(
-          EXPECTED_TERMINAL_DYNAMIC_TOOL_NAMES,
-        );
+        expect(parentRuntimeCommand.dynamicToolNames).toEqual([]);
+        expect(childRuntimeCommand.dynamicToolNames).toEqual([]);
         expect(parentRuntimeCommand.instructions).toContain(
           "If you need to orchestrate work across bb",
         );

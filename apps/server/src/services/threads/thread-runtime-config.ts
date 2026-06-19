@@ -24,7 +24,6 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
-import { buildTerminalDynamicTools } from "../terminals/terminal-tools.js";
 import { isSideChatThread } from "./side-chat-thread.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
@@ -131,7 +130,7 @@ export async function resolveThreadRuntimeCommandConfig(
     threadId: args.thread.id,
   });
   return {
-    dynamicTools: buildTerminalDynamicTools(),
+    dynamicTools: [],
     injectedSkillSources,
     instructionMode: "append",
     instructions: STANDARD_AGENT_INSTRUCTIONS,
