@@ -104,7 +104,7 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(SETTLED_PULL_REQUEST_STALE_MS);
   });
 
-  it("refetches stale pull request data on mount and window focus", async () => {
+  it("refetches stale pull request data on mount and always refetches on window focus", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     vi.mocked(api.getEnvironmentPullRequest).mockResolvedValue(
       pullRequestResponse(pullRequestFixture),
@@ -123,7 +123,7 @@ describe("useEnvironmentPullRequest", () => {
     expect(query?.options).toEqual(
       expect.objectContaining({
         refetchOnMount: true,
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: "always",
         staleTime: expect.any(Function),
       }),
     );

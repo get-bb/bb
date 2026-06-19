@@ -148,7 +148,7 @@ export function useEnvironmentPullRequest(
       ),
     enabled,
     refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: "always",
     staleTime: (query) =>
       getEnvironmentPullRequestStaleTime(query.state.data?.pullRequest),
   });
