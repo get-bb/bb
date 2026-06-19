@@ -79,10 +79,11 @@ thread env injection, daemon-backed output reads, and first-party agent tools.
 
 Recommended command surface:
 
-- canonical: `bb thread terminal ...`
-- convenience alias: `bb terminal ...`
-- defer literal `bb tmux ...` until BB has a deliberate tmux compatibility
-  table and behavior for unsupported tmux concepts.
+- v1 canonical surface: `bb thread terminal ...`
+- defer `bb terminal ...` until there is evidence the shorter top-level alias
+  is worth the extra command surface
+- defer literal `bb tmux ...` until BB has a deliberate tmux compatibility table
+  and behavior for unsupported tmux concepts.
 
 Mapping to tmux semantics:
 
@@ -92,8 +93,8 @@ Mapping to tmux semantics:
 - attach/detach, send input, resize, list, and kill map naturally
 
 This keeps the product thread-scoped while leaving room for future aliases like
-`bb tmux ls`, `bb tmux attach`, `bb tmux send-keys`, and `bb tmux kill-session`
-that translate to BB-native terminal APIs.
+`bb terminal ...`, `bb tmux ls`, `bb tmux attach`, `bb tmux send-keys`, and
+`bb tmux kill-session` that translate to BB-native terminal APIs.
 
 ## Architecture
 
@@ -505,13 +506,11 @@ Main files:
 
 - new `apps/cli/src/commands/thread/terminals.ts`
 - update `apps/cli/src/commands/thread/index.ts`
-- optional new `apps/cli/src/commands/terminal.ts` alias
-- update `apps/cli/src/index.ts` if adding top-level `bb terminal`
 - CLI tests under `apps/cli/src/__tests__/command-output`
 
 ### Recommended Commands
 
-Canonical:
+Canonical v1 commands:
 
 ```bash
 bb thread terminal list [threadId]
@@ -526,7 +525,7 @@ bb thread terminal wait <terminalId> [threadId] --contains <text> [--timeout <se
 bb thread terminal stop <terminalId> [threadId] [--if-clean] [--json]
 ```
 
-Convenience alias:
+Possible later convenience alias, not required for v1:
 
 ```bash
 bb terminal list [threadId]
@@ -669,14 +668,17 @@ Recommended v1 policy:
 - stop is allowed for same-thread agent-created sessions, and user-created
   sessions only if product wants agents to control them
 - start command and send input are denied in readonly mode
-- start command and send input in workspace-write/full require the same command
-  approval semantics as provider shell execution, or an explicit server-owned
-  terminal permission grant
+- start command and send input are allowed in full permission mode
+- start command and send input may be allowed in workspace-write only if the PTY
+  runs with the same workspace-write sandbox and command-approval semantics as
+  provider shell execution; otherwise deny them in workspace-write until that
+  enforcement exists
 - if audit becomes necessary, prefer appending a compact thread event for
   agent-created terminals before adding session metadata columns
 
-If command-approval reuse is too large for v1, ship CLI/user terminal support
-first and expose only read/list/stop tools to agents until approval is in place.
+If workspace-write PTY sandboxing or command-approval reuse is too large for v1,
+ship full-mode start/send first, ship CLI/user terminal support, and expose only
+read/list/stop tools to workspace-write agents until enforcement is in place.
 
 ### Tool Results
 
@@ -830,7 +832,6 @@ Implement:
 - `sdk.threads.terminals`
 - terminal websocket URL helper
 - `bb thread terminal ...`
-- `bb terminal ...` alias if accepted
 - CLI attach raw-mode implementation
 - CLI output/wait polling implementation
 
@@ -923,7 +924,7 @@ Manual smoke:
 
 ```bash
 eval "$(scripts/bb-dev-app env)"
-pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode workspace-write --title "Terminal smoke" --prompt "Start a terminal running a short loop, read one output chunk, then stop it." --json
+pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode full --title "Terminal smoke" --prompt "Start a terminal running a short loop, read one output chunk, then stop it." --json
 ```
 
 ### Phase 7: Docs And Compatibility Aliases
@@ -952,10 +953,9 @@ pnpm exec turbo run typecheck --filter=@bb/cli --filter=@bb/server
      survive client detach but not daemon restart.
 
 2. What is the canonical command group?
-   - Recommendation: document `bb thread terminal ...` as canonical and provide
-     `bb terminal ...` as a convenience alias.
-   - Avoid `bb tmux ...` until target syntax and unsupported pane/window
-     semantics are settled.
+   - Decision: `bb thread terminal ...` is the v1 command group.
+   - Defer `bb terminal ...` and `bb tmux ...` aliases until there is clear
+     demand and target syntax is settled.
 
 3. Should command-start terminals close immediately on command exit or stay open
    in a shell?
