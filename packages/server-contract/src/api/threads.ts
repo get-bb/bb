@@ -345,6 +345,54 @@ export type ReorderPinnedThreadRequest = z.infer<
   typeof reorderPinnedThreadRequestSchema
 >;
 
+/** Which root a secondary-panel file path is relative to. */
+export const panelFileSourceSchema = z.enum(["workspace", "thread-storage"]);
+export type PanelFileSource = z.infer<typeof panelFileSourceSchema>;
+
+/**
+ * Ephemeral server→client WebSocket message asking connected clients to open a
+ * file in the secondary panel of the given thread. Broadcast to every client;
+ * each opens it immediately if it is viewing the thread, otherwise when the
+ * thread is next viewed. Nothing is persisted. Strict schema guards the
+ * server's outgoing boundary (mirrors {@link terminalServerMessageSchema}).
+ */
+export const threadOpenFileSignalSchema = z
+  .object({
+    type: z.literal("thread-open-file"),
+    threadId: z.string().min(1),
+    source: panelFileSourceSchema,
+    path: z.string().min(1),
+    lineNumber: z.number().int().positive().nullable(),
+  })
+  .strict();
+export type ThreadOpenFileSignal = z.infer<typeof threadOpenFileSignalSchema>;
+
+/**
+ * Lenient counterpart for INBOUND parsing on clients (the web app), tolerant of
+ * a newer server. Output stays assignable to {@link ThreadOpenFileSignal}.
+ */
+export const threadOpenFileSignalLenientSchema = z.object({
+  type: z.literal("thread-open-file"),
+  threadId: z.string(),
+  source: panelFileSourceSchema,
+  path: z.string(),
+  lineNumber: z.number().int().positive().nullable(),
+});
+
+/** Request body for POST /threads/:id/open (threadId comes from the path). */
+export const threadOpenRequestSchema = z.object({
+  source: panelFileSourceSchema,
+  path: z.string().min(1),
+  lineNumber: z.number().int().positive().nullable(),
+});
+export type ThreadOpenRequest = z.infer<typeof threadOpenRequestSchema>;
+
+/** Response for POST /threads/:id/open: how many connected clients received it. */
+export const threadOpenResponseSchema = z.object({
+  delivered: z.number().int().nonnegative(),
+});
+export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
+
 export const threadComposerBootstrapResponseSchema = z.object({
   defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
   queuedMessages: threadQueuedMessageListResponseSchema,
