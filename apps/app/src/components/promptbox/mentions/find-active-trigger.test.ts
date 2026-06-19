@@ -50,22 +50,7 @@ describe("findActiveTrigger", () => {
     });
   });
 
-  it("detects a configured dollar command trigger with a skill query", () => {
-    expect(
-      findActiveTrigger(editorWithText("$openai-docs"), [
-        { char: "@", kind: "mention" },
-        { char: "$", kind: "command" },
-      ]),
-    ).toEqual({
-      char: "$",
-      kind: "command",
-      query: "openai-docs",
-      from: 0,
-      to: "$openai-docs".length,
-    });
-  });
-
-  it("does not treat dollar as active unless it is configured", () => {
+  it("does not treat dollar as an active command trigger", () => {
     expect(
       findActiveTrigger(editorWithText("$openai-docs"), [
         { char: "@", kind: "mention" },

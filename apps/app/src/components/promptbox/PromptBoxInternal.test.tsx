@@ -36,7 +36,7 @@ interface PromptChange {
 }
 
 const promptActions: readonly PromptBoxAction[] = [
-  { kind: "skills", text: "$" },
+  { kind: "skills", text: "/" },
   {
     kind: "plan",
     command: { trigger: "/", name: "plan", trailingText: " " },
@@ -84,7 +84,7 @@ function buildTypeaheadConfig({
       onQueryChange: () => {},
     },
     command: {
-      trigger: "$",
+      trigger: "/",
       suggestions: [],
       isLoading: false,
       isError: false,
@@ -312,7 +312,7 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await selectPromptAction("Skills");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    await waitFor(() => expect(latestValue(changes)).toBe("/"));
     await waitFor(() =>
       expect(document.activeElement).toBe(getPromptEditorElement()),
     );
@@ -320,7 +320,7 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("does not duplicate the skills trigger when it is already active", async () => {
-    const { changes } = renderPromptBox("$");
+    const { changes } = renderPromptBox("/");
 
     await selectPromptAction("Skills");
 
@@ -328,7 +328,7 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("replaces an active skills command token with plan mode", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Start $");
+    const { changes, promptBoxRef } = renderPromptBox("Start /");
 
     await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Plan");
@@ -352,7 +352,7 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("replaces an active partial skills command token with plan mode", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("Start $pl");
+    const { changes, promptBoxRef } = renderPromptBox("Start /pl");
 
     await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Plan");
@@ -460,7 +460,7 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Skills");
-    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    await waitFor(() => expect(latestValue(changes)).toBe("/"));
     await waitForPromptFocus();
 
     await selectPromptAction("Plan");
@@ -493,7 +493,7 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await selectPromptAction("Skills");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    await waitFor(() => expect(latestValue(changes)).toBe("/"));
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 

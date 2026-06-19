@@ -103,7 +103,7 @@ const PI_CAPABILITIES: ProviderCapabilities = {
 };
 
 const CODEX_COMPOSER_ACTIONS: ProviderComposerAction[] = [
-  { kind: "skills", trigger: "$" },
+  { kind: "skills", trigger: "/" },
   {
     kind: "plan",
     command: { trigger: "/", name: "plan", trailingText: " " },

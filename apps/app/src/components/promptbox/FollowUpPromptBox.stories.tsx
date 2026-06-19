@@ -83,7 +83,7 @@ const basePermission: ExecutionPermissionConfig = {
 };
 
 const promptActions: readonly PromptBoxAction[] = [
-  { kind: "skills", text: "$" },
+  { kind: "skills", text: "/" },
   {
     kind: "plan",
     command: { trigger: "/", name: "plan", trailingText: " " },

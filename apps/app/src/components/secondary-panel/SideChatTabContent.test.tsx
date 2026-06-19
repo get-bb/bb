@@ -245,7 +245,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     reasoningLevel: "medium",
     reasoningOptions: [],
     selectedModel: "gpt-5",
-    selectedProviderComposerActions: [{ kind: "skills", trigger: "$" }],
+    selectedProviderComposerActions: [{ kind: "skills", trigger: "/" }],
     selectedProviderDisplayName: "Codex",
     selectedProviderId: "codex",
     serviceTier: undefined,
@@ -268,7 +268,7 @@ vi.mock("@/hooks/usePromptMentions", () => ({
 }));
 
 vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: (args: { skillsTrigger?: "/" | "$" | null }) => {
+  useCommandSuggestions: (args: { skillsTrigger?: "/" | null }) => {
     mocks.commandSuggestionArgs.push(args);
     return {
       trigger: args.skillsTrigger ?? null,
@@ -546,11 +546,11 @@ describe("SideChatTabContent", () => {
     ).toEqual({
       projectId: "proj_parent",
       providerId: "codex",
-      skillsTrigger: "$",
+      skillsTrigger: "/",
       environmentId: null,
       query: null,
     });
-    expect(screen.getByTestId("command-trigger").textContent).toBe("$");
+    expect(screen.getByTestId("command-trigger").textContent).toBe("/");
 
     fireEvent.click(screen.getByRole("button", { name: "Mention query" }));
     expect(mocks.promptMentionSetQuery).toHaveBeenCalledWith("readme");
@@ -560,7 +560,7 @@ describe("SideChatTabContent", () => {
       expect(mocks.commandSuggestionArgs).toContainEqual({
         projectId: "proj_parent",
         providerId: "codex",
-        skillsTrigger: "$",
+        skillsTrigger: "/",
         environmentId: null,
         query: "review",
       }),

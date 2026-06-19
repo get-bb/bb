@@ -28,7 +28,7 @@ const noop = () => {};
 
 const mockExecution = makeExecutionControlsProps();
 const promptActions: readonly PromptBoxAction[] = [
-  { kind: "skills", text: "$" },
+  { kind: "skills", text: "/" },
   {
     kind: "plan",
     command: { trigger: "/", name: "plan", trailingText: " " },
@@ -1032,7 +1032,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="live skills"
-        hint="type $ then select a skill; argument hints stay out of the prompt text"
+        hint="type / then select a skill; argument hints stay out of the prompt text"
       >
         <WithLiveSkillsRow />
       </StoryRow>

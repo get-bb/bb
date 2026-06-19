@@ -30,7 +30,7 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
   readonly ProviderComposerAction[]
 > = {
   codex: [
-    { kind: "skills", trigger: "$" },
+    { kind: "skills", trigger: "/" },
     {
       kind: "plan",
       command: { trigger: "/", name: "plan", trailingText: " " },

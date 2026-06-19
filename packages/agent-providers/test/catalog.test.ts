@@ -23,7 +23,7 @@ describe("agent provider catalog", () => {
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
         composerActions: [
-          { kind: "skills", trigger: "$" },
+          { kind: "skills", trigger: "/" },
           {
             kind: "plan",
             command: { trigger: "/", name: "plan", trailingText: " " },
@@ -136,7 +136,7 @@ describe("agent provider catalog", () => {
         supportedPermissionModes: ["full", "workspace-write", "readonly"],
       },
       composerActions: [
-        { kind: "skills", trigger: "$" },
+        { kind: "skills", trigger: "/" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },

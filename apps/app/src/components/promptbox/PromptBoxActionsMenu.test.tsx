@@ -12,14 +12,14 @@ afterEach(cleanup);
 const promptActions: readonly PromptBoxAction[] = [
   {
     kind: "goal",
-    command: { trigger: "$", name: "goal", trailingText: " " },
-    text: "$goal ",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
   },
-  { kind: "skills", text: "$" },
+  { kind: "skills", text: "/" },
   {
     kind: "plan",
-    command: { trigger: "$", name: "plan", trailingText: " " },
-    text: "$plan ",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
   },
 ];
 
@@ -69,8 +69,8 @@ describe("PromptBoxActionsMenu", () => {
 
     expect(onAction).toHaveBeenCalledWith({
       kind: "plan",
-      command: { trigger: "$", name: "plan", trailingText: " " },
-      text: "$plan ",
+      command: { trigger: "/", name: "plan", trailingText: " " },
+      text: "/plan ",
     });
   });
 });

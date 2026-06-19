@@ -28,7 +28,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Global Provider",
         available: true,
         composerActions: [
-          { kind: "skills", trigger: "$" },
+          { kind: "skills", trigger: "/" },
           {
             kind: "plan",
             command: { trigger: "/", name: "plan", trailingText: " " },
@@ -161,7 +161,7 @@ describe("useThreadCreationOptions", () => {
       );
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
-        { kind: "skills", trigger: "$" },
+        { kind: "skills", trigger: "/" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
@@ -204,7 +204,7 @@ describe("useThreadCreationOptions", () => {
       );
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
-        { kind: "skills", trigger: "$" },
+        { kind: "skills", trigger: "/" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },

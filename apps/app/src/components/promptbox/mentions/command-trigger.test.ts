@@ -10,10 +10,6 @@ describe("commandTriggerForComposerActions", () => {
     expect(
       commandTriggerForComposerActions([{ kind: "skills", trigger: "/" }]),
     ).toBe("/");
-
-    expect(
-      commandTriggerForComposerActions([{ kind: "skills", trigger: "$" }]),
-    ).toBe("$");
   });
 
   it("returns null when the provider has no skills action", () => {
@@ -36,7 +32,7 @@ describe("buildProviderPromptActionProps", () => {
   it("maps skills and insertion composer actions into prompt action props", () => {
     expect(
       buildProviderPromptActionProps([
-        { kind: "skills", trigger: "$" },
+        { kind: "skills", trigger: "/" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
@@ -47,9 +43,9 @@ describe("buildProviderPromptActionProps", () => {
         },
       ]),
     ).toEqual({
-      skillsTrigger: "$",
+      skillsTrigger: "/",
       promptActions: [
-        { kind: "skills", text: "$" },
+        { kind: "skills", text: "/" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
