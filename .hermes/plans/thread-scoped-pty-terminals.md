@@ -58,9 +58,10 @@ Important gaps:
 - Terminal PTY env only adds `BB_TERMINAL_SESSION_ID`. It does not mirror the
   agent shell env (`BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`,
   `BB_THREAD_STORAGE`).
-- Output replay is daemon-memory-only. The server forwards chunks but does not
-  persist terminal output, so a CLI `output` or `wait` command has no bounded
-  read model today.
+- Output replay is daemon-memory-only and already supports browser refresh:
+  browser attach asks the daemon to replay scrollback. The missing piece is a
+  CLI/agent-facing read path that reuses that replay mechanism without requiring
+  the browser.
 - UI policy closes clean terminals when the right panel closes. That is correct
   for UI-created scratch shells but wrong for CLI or agent background sessions.
 - `/internal/session/tool-call` currently verifies daemon/thread ownership and
@@ -73,8 +74,8 @@ Use the existing BB terminal lifecycle as the base.
 Do not build `bb tmux` as the primary v1 command, and do not embed tmux as the
 first backend unless product explicitly requires survival across host-daemon
 process restarts. The existing node-pty manager already matches BB's server /
-daemon boundary and UI. Extend it with command start, persisted output, SDK/CLI
-control, thread env injection, and first-party agent tools.
+daemon boundary and UI. Extend it with command start, SDK/CLI control,
+thread env injection, daemon-backed output reads, and first-party agent tools.
 
 Recommended command surface:
 
@@ -101,18 +102,18 @@ that translate to BB-native terminal APIs.
 Server owns:
 
 - product policy and defaults
-- terminal metadata and persisted recent output
+- terminal metadata and terminal read policy
 - thread/environment/host authorization
 - public HTTP routes and websocket fanout
 - dynamic tool definitions and agent-facing terminal tool policy
-- UI-visible terminal status/source/title
+- UI-visible terminal status and title
 
 Host daemon owns:
 
 - local PTY creation and teardown
 - shell resolution
 - PTY process lifecycle
-- PTY input, resize, and output chunks
+- PTY input, resize, and output streaming
 - host-local workspace resolution through the existing runtime manager
 
 The daemon should keep returning raw PTY facts. The server should assemble BB
@@ -130,8 +131,9 @@ product behavior around them.
 6. Server marks the row `running`, broadcasts `terminals-changed`, and returns
    the session.
 7. Browser or CLI attaches over `/ws/threads/:threadId/terminals/:terminalId`.
-8. Daemon output flows to server, server persists bounded chunks, and server
-   broadcasts to terminal websocket clients.
+8. Daemon output flows to server and server broadcasts to terminal websocket
+   clients. For explicit output reads, server asks the daemon for bounded
+   scrollback through the same replay path used by browser refresh.
 9. Close can be initiated by UI, CLI, agent, lifecycle cleanup, daemon exit, or
    process exit. Server marks the row `exited` and notifies clients.
 
@@ -141,7 +143,9 @@ Define the v1 guarantee clearly:
 
 - terminal sessions survive browser and CLI detach/reattach while the host
   daemon and PTY process are alive
-- terminal metadata and recent output are persisted in the server database
+- terminal metadata is persisted in the server database
+- recent output is available from daemon memory while the daemon terminal
+  session is alive
 - a host-daemon process restart does not resurrect node-pty child processes in
   v1; sessions become disconnected/exited as they do today
 
@@ -152,102 +156,64 @@ Sawyer explicitly chooses it.
 
 ## Data Model
 
-### Extend `terminal_sessions`
+No new database columns are required for v1.
 
-Add a migration after the current latest migration, likely
-`packages/db/drizzle/0041_thread_terminal_sessions.sql`.
+The existing `terminal_sessions` row already has enough state for the core
+feature:
 
-Proposed new columns:
+- `threadId`, `environmentId`, `hostId`, and `daemonSessionId` for ownership and
+  routing
+- `title`, `initialCwd`, `cols`, and `rows` for display and attach sizing
+- `status`, `exitCode`, and `closeReason` for lifecycle
+- `lastUserInputAt` for the existing close-if-clean heuristic
 
-- `source text not null default 'ui'`
-  - enum: `ui`, `cli`, `agent`
-- `start_mode text not null default 'shell'`
-  - enum: `shell`, `command`
-- `start_command text`
-  - null for shell sessions
-  - exact command string for command sessions
-- `shell_path text`
-  - filled from daemon `terminal.opened.shell`
-- `auto_close_on_panel_hide integer not null default 1`
-  - `1` for legacy/UI scratch terminals
-  - `0` for CLI and agent sessions by default
-- `created_from_turn_id text`
-  - nullable, agent-created sessions only
-- `created_from_tool_call_id text`
-  - nullable, agent-created sessions only
+Avoid adding source/start/audit columns until a real caller requires them.
+Command sessions can use the existing `title` for display in v1; the exact
+command does not need to be queryable from session metadata to make spawn,
+attach, send, resize, stop, and output reads work.
 
-Update:
+### UI Auto-Close Without New Columns
 
-- `packages/db/src/schema.ts`
-- `packages/db/src/data/terminal-sessions.ts`
-- `packages/db/test/data/terminal-sessions.test.ts`
-- `packages/domain/src/terminal.ts`
-- `packages/domain/test/terminal.test.ts`
-- `packages/server-contract/src/api/terminals.ts`
-- `packages/server-contract/test/contract.test.ts`
+The existing UI auto-closes clean terminals when the right panel hides. Do not
+solve CLI/agent retention by adding `auto_close_on_panel_hide` in v1.
 
-Backcompat:
+Instead, make the UI close only terminals the current panel instance created as
+scratch terminals. Track UI-created terminal ids in local React state/ref inside
+`useThreadTerminalController`. Terminals discovered from the server list but not
+created by that controller are external sessions and should not be auto-closed
+on panel hide.
 
-- existing sessions migrate to `source='ui'`, `start_mode='shell'`,
-  `auto_close_on_panel_hide=1`
-- existing create requests with only `{ cols, rows }` continue to open a shell
+This keeps the policy local to the UI behavior that needs it and avoids storing
+presentation policy in the database.
 
-### Add `terminal_output_chunks`
+### Optional Later Output Persistence
 
-Persist recent terminal output on the server so CLI and agents can read output
-without a websocket replay.
+Do not add a `terminal_output_chunks` table for v1.
 
-Proposed table:
+The page refresh behavior proves that daemon scrollback is already enough to
+replay terminal output while the daemon terminal session is alive. For CLI and
+agent reads, reuse that daemon replay path through a server HTTP route.
 
-```sql
-CREATE TABLE terminal_output_chunks (
-  terminal_id text NOT NULL,
-  thread_id text NOT NULL,
-  seq integer NOT NULL,
-  data_base64 text NOT NULL,
-  byte_length integer NOT NULL,
-  created_at integer NOT NULL,
-  PRIMARY KEY (terminal_id, seq),
-  FOREIGN KEY (terminal_id) REFERENCES terminal_sessions(id) ON DELETE cascade,
-  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE cascade
-);
-CREATE INDEX terminal_output_chunks_thread_terminal_seq_idx
-  ON terminal_output_chunks(thread_id, terminal_id, seq);
-```
+Add a DB output table only if BB later needs one of these stronger guarantees:
 
-Add a DB helper file, for example
-`packages/db/src/data/terminal-output-chunks.ts`, with helpers to:
+- read terminal output after the daemon session exits
+- read terminal output after host-daemon restart
+- search/audit terminal output centrally
+- include terminal output in durable thread exports
 
-- insert one output chunk idempotently by `(terminalId, seq)`
-- list chunks after `sinceSeq`
-- list a bounded tail by chunk count and/or byte budget
-- prune old chunks per terminal
-
-Retention policy:
-
-- start with the daemon's existing scrollback budget: 4 MiB or 10,000 chunks per
-  terminal
-- prune after insert in the same write path
-- keep retention server-owned and explicit
+If needed later, use a separate append-only table, not a column on
+`terminal_sessions`.
 
 ## Contracts And API Shape
 
 ### Public Terminal Session Contract
 
-Extend `terminalSessionSchema` with explicit fields:
+Keep `terminalSessionSchema` unchanged for v1 unless implementation reveals a
+hard need for a new field.
 
-```ts
-source: "ui" | "cli" | "agent";
-startMode: "shell" | "command";
-startCommand: string | null;
-shellPath: string | null;
-autoCloseOnPanelHide: boolean;
-createdFromTurnId: string | null;
-createdFromToolCallId: string | null;
-```
-
-Keep all defaulting at the route/service boundary. Internal create code should
-receive a resolved terminal start request with explicit values.
+The existing session shape already tells clients which terminal to attach to,
+which thread/environment owns it, what title to display, and whether it is
+running. That is enough for the CLI/API/UI work.
 
 ### Create Request
 
@@ -258,7 +224,6 @@ Extend `createThreadTerminalRequestSchema`:
   cols: number;
   rows: number;
   title?: string;
-  source?: "ui" | "cli";
   start?: {
     mode: "shell";
   } | {
@@ -266,14 +231,11 @@ Extend `createThreadTerminalRequestSchema`:
     command: string;
   };
   attachBehavior?: "none" | "attach-after-open";
-  autoCloseOnPanelHide?: boolean;
 }
 ```
 
 Notes:
 
-- Public API should accept `ui` and `cli`; server-internal agent creation sets
-  `source='agent'`.
 - `attachBehavior` is optional sugar for clients. The server does not attach;
   it returns metadata and clients decide whether to open the websocket.
 - `command` is run by a shell inside a PTY, not by `execFile`.
@@ -318,7 +280,8 @@ terminalOutputResponse = {
 Rationale:
 
 - CLI `send` should not need to open a websocket.
-- CLI/agent `output` and `wait` need an HTTP read path.
+- CLI/agent `output` and `wait` need an HTTP read path. In v1 this route should
+  request daemon replay, not read a DB output table.
 - Browser attach can continue using the existing terminal websocket.
 
 ### Daemon Terminal Protocol
@@ -338,7 +301,6 @@ Extend `hostDaemonTerminalOpenMessageSchema` in
   workspaceContext: WorkspaceContext;
   cols: number;
   rows: number;
-  title?: string;
   start:
     | { mode: "shell" }
     | { mode: "command"; command: string };
@@ -357,8 +319,8 @@ Extend `terminal.opened`:
 }
 ```
 
-The opened message already has these fields except `shell` should be persisted
-as `shellPath`.
+The opened message already has these fields. Do not persist `shell` unless a
+diagnostic caller later needs it.
 
 Bump `HOST_DAEMON_PROTOCOL_VERSION` in
 `packages/host-daemon-contract/src/commands.ts`.
@@ -369,7 +331,7 @@ Main files:
 
 - `apps/server/src/routes/threads/terminals.ts`
 - `apps/server/src/services/terminals/terminal-session-lifecycle.ts`
-- new `apps/server/src/services/terminals/terminal-output.ts`
+- optional new `apps/server/src/services/terminals/terminal-output.ts`
 - new `apps/server/src/services/terminals/terminal-tools.ts`
 - `apps/server/src/ws/terminal-protocol.ts`
 - `apps/server/src/types.ts`
@@ -385,28 +347,34 @@ Update `TerminalSessionLifecycle.createThreadTerminal` to:
 4. require workspace command target
 5. resolve thread storage path with `requireThreadStoragePath`
 6. fill defaults:
-   - source defaults to `ui`
    - start defaults to `{ mode: "shell" }`
    - title defaults to `Terminal N` for shell or a shortened command for
      command sessions
-   - `autoCloseOnPanelHide` defaults to true only for `source='ui'` and shell
-     start
 7. create `terminal_sessions` row
 8. send daemon `terminal.open` with project/thread/env/thread storage context
 9. mark running on `terminal.opened`
 
-### Output Persistence
+### Output Reads
 
-In `handleDaemonTerminalMessage` for `terminal.output`:
+Use daemon scrollback for v1 output reads.
 
-1. validate terminal belongs to the daemon session if needed
-2. insert the chunk into `terminal_output_chunks`
-3. prune old chunks for that terminal
-4. forward to websocket clients
+The daemon already supports `terminal.attach` with `sinceSeq` and returns
+`terminal.replay` chunks. `readThreadTerminalOutput` should reuse that flow
+without a browser socket:
 
-Keep websocket forwarding order the same as today. If DB insertion fails, prefer
-failing visibly in logs while still forwarding live output, then evaluate
-whether to fail hard after tests.
+1. validate terminal ownership
+2. require a running session with `daemonSessionId`
+3. send `terminal.attach` with the requested `sinceSeq`
+4. wait for `terminal.replay`
+5. apply server-side response bounds (`tailBytes`, `limitChunks`) before
+   returning HTTP output
+
+This can be implemented by generalizing the existing pending attach machinery
+in `TerminalSessionLifecycle`: browser attach sends replay chunks to a socket;
+HTTP output attach resolves replay chunks to the route.
+
+If the session is exited/disconnected and no daemon owns scrollback, return a
+stable error such as `terminal_output_unavailable`.
 
 ### Input And Resize
 
@@ -431,7 +399,8 @@ Keep the current `closeThreadTerminal` shape:
 - `mode: "force"` always closes
 - `mode: "if-clean"` only closes when there has been no user input
 
-Adjust UI cleanup to also require `autoCloseOnPanelHide === true`.
+Adjust UI cleanup to only close terminals created by that UI controller as
+scratch terminals.
 
 ## Host Daemon Implementation
 
@@ -492,9 +461,8 @@ where possible.
 
 ### Scrollback
 
-Keep daemon in-memory scrollback for websocket attach. Server output persistence
-is for HTTP reads and reconnect-visible history. Do not remove daemon replay in
-v1.
+Keep daemon in-memory scrollback for websocket attach and for v1 HTTP output
+reads. Do not remove daemon replay in v1.
 
 ## SDK Implementation
 
@@ -637,12 +605,10 @@ Use the existing xterm rendering path. Do not add a second terminal UI.
 UI changes:
 
 - show CLI/agent-created terminal sessions as ordinary terminal tabs
-- preserve CLI/agent terminal tabs when the right panel closes by honoring
-  `autoCloseOnPanelHide`
-- optionally show subtle source/status in existing tab status label:
+- preserve CLI/agent terminal tabs when the right panel closes by only
+  auto-closing terminals created by the current UI controller
+- optionally show subtle status in existing tab status label:
   - `running`
-  - `agent`
-  - `cli`
   - `disconnected`
   - `exited`
 - for command sessions, default tab title should be a concise command label
@@ -706,8 +672,8 @@ Recommended v1 policy:
 - start command and send input in workspace-write/full require the same command
   approval semantics as provider shell execution, or an explicit server-owned
   terminal permission grant
-- record `createdFromTurnId` and `createdFromToolCallId` for agent-created
-  terminals
+- if audit becomes necessary, prefer appending a compact thread event for
+  agent-created terminals before adding session metadata columns
 
 If command-approval reuse is too large for v1, ship CLI/user terminal support
 first and expose only read/list/stop tools to agents until approval is in place.
@@ -767,52 +733,47 @@ Daemon-side validation:
 Agent-specific security:
 
 - dynamic tool start/send must respect permission mode
-- commands started by agents should be auditable via source and tool-call
-  columns
+- commands started by agents should be auditable through thread events if the
+  product needs that surface
 - agents should not silently take over user-created terminals unless explicitly
   allowed
 
 ## Migration And Backcompat
 
 - Existing UI terminal behavior must keep working with `{ cols, rows }`.
-- Existing rows migrate to UI shell sessions.
+- Existing rows require no migration.
 - Existing websocket clients continue to work because `terminalClientMessage`
   does not need to change for attach/input/resize.
 - New daemon message fields require a protocol version bump and coordinated
   server/daemon update.
-- If a terminal has no persisted output chunks, the output route returns an
-  empty chunk list with `nextSeq=0`; live websocket attach can still replay from
-  daemon memory.
+- If a terminal is no longer owned by a live daemon session, the output route
+  returns a stable unavailable error; live websocket attach can still replay
+  while daemon memory has the terminal session.
 - Windows remains unsupported for native terminals unless `node-pty` support is
   intentionally added later.
 
 ## Phased Rollout
 
-### Phase 1: Contracts And Persistence
+### Phase 1: Contracts
 
 Implement:
 
-- domain terminal enums/fields
 - server-contract terminal schemas/routes
 - host-daemon terminal message schema changes
-- DB migration for session metadata
-- DB table/helpers for terminal output chunks
 - SDK terminal area stubs if contract work is easiest to type through SDK
 
 Exit criteria:
 
 - contracts parse old and new terminal create requests
-- DB migration covers existing rows
-- output chunks can be inserted, tailed, and pruned
+- no terminal session migration is required for v1
+- output route contract is explicit about daemon-backed availability
 
 Validation:
 
 ```bash
-pnpm exec turbo run test --filter=@bb/domain -- terminal
 pnpm exec turbo run test --filter=@bb/server-contract -- terminals
 pnpm exec turbo run test --filter=@bb/host-daemon-contract -- terminal
-pnpm exec turbo run test --filter=@bb/db -- terminal
-pnpm exec turbo run typecheck --filter=@bb/domain --filter=@bb/server-contract --filter=@bb/host-daemon-contract --filter=@bb/db
+pnpm exec turbo run typecheck --filter=@bb/server-contract --filter=@bb/host-daemon-contract
 ```
 
 ### Phase 2: Server Lifecycle And Routes
@@ -822,8 +783,8 @@ Implement:
 - create defaults and metadata
 - command-start request handling
 - input/resize/output route handlers
-- output persistence on daemon output
-- close behavior with `autoCloseOnPanelHide`
+- output reads through daemon replay
+- UI close-if-clean behavior remains local to UI-created scratch terminals
 
 Exit criteria:
 
@@ -902,9 +863,9 @@ pnpm bb:dev thread terminal stop <terminal-id>
 
 Implement:
 
-- UI respects `autoCloseOnPanelHide`
 - CLI/agent sessions show as terminal tabs
-- source/command title display is understandable
+- command title display is understandable
+- UI auto-close applies only to scratch terminals created by that UI controller
 - disconnected/exited behavior remains stable
 
 Exit criteria:
@@ -939,7 +900,7 @@ Implement:
 - first-party dynamic terminal tool definitions
 - terminal tool dispatch in internal tool-call handling
 - permission enforcement
-- audit fields for agent-created sessions
+- optional compact thread events for agent-created sessions if audit is needed
 - bounded output/wait behavior
 
 Exit criteria:
@@ -1009,9 +970,10 @@ pnpm exec turbo run typecheck --filter=@bb/cli --filter=@bb/server
    - Recommendation: no by default. Allow list/output and agent-owned terminal
      control first.
 
-6. How large should persisted terminal output be?
-   - Recommendation: start with 4 MiB or 10,000 chunks per terminal, matching
-     daemon scrollback, and expose config only if needed.
+6. Do agents need output after daemon/session loss?
+   - Recommendation: no for v1. Reuse daemon scrollback while sessions are
+     live. Add a separate output table later only if durable output history is
+     required.
 
 7. Should `wait` be CLI-only polling or a server route?
    - Recommendation: CLI-only polling in v1. Add server-side wait only if
@@ -1026,8 +988,7 @@ pnpm exec turbo run typecheck --filter=@bb/cli --filter=@bb/server
 
 - Keep changes local to existing terminal modules where possible.
 - Do not introduce a generic process/session framework.
-- Do not load all terminal output chunks and filter in JavaScript; use targeted
-  `WHERE terminal_id = ? AND seq >= ?` queries.
-- Add indexes only for the new output read paths.
+- If a later phase adds persisted output, use a separate append-only table with
+  targeted queries; do not put output in `terminal_sessions`.
 - All validation and defaults should happen at server boundaries.
 - Use Turbo validation commands, not package scripts directly.
