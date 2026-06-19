@@ -66,6 +66,7 @@ import {
   exitTrailingBlockquoteBreak,
   insertParagraphBeforeBlockquote,
 } from "./editor/prompt-editor-blockquote";
+import { exitHeading } from "./editor/prompt-editor-heading";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -1713,6 +1714,17 @@ export function PromptBoxInternal({
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
       ) {
+        event.preventDefault();
+        return true;
+      }
+
+      const isHeadingExitKey =
+        event.key === "Enter" &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        (event.shiftKey || isZenMode || !canSubmitWithEnterKey);
+      if (isHeadingExitKey && currentEditor && exitHeading(currentEditor)) {
         event.preventDefault();
         return true;
       }
