@@ -57,15 +57,14 @@ For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
 `--environment <environment-id>` so it sees the same files.
 
-## Showing Files In The IDE
+## Finding Threads From Workspace Paths
 
-- When the user asks you to open, show, or pull up a file, use
-  `bb thread open <file>` so it opens in their IDE side panel (defaults to
-  `BB_THREAD_ID`; pass an explicit `<thread-id>` or `--self` to target a thread).
-- The path is workspace-relative by default; pass `--source thread-storage` for a
-  thread-storage file and `--line <n>` to jump to a line.
-- It opens for any connected client viewing the thread now, or when the user next
-  switches to that thread. `delivered: 0` means no bb app is connected.
+- Use `bb thread open <path>` to find the BB thread whose workspace contains a
+  path and print its thread URL.
+- The path is resolved relative to the current working directory unless it is
+  already absolute.
+- BB chooses the non-archived thread whose workspace path is the longest prefix
+  of the resolved path.
 
 ## Long-Running Commands
 
