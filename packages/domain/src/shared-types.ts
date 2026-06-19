@@ -221,6 +221,125 @@ export const promptInputSchema = z.discriminatedUnion("type", [
 ]);
 export type PromptInput = z.infer<typeof promptInputSchema>;
 
+export interface PromptCommandSelector {
+  trigger: PromptMentionCommandTrigger;
+  name: string;
+}
+
+type TextPromptInput = Extract<PromptInput, { type: "text" }>;
+
+interface PromptCommandRemovalRange {
+  start: number;
+  end: number;
+}
+
+function isSelectedPromptCommandMention(
+  mention: PromptTextMention,
+  selector: PromptCommandSelector,
+): boolean {
+  return (
+    mention.resource.kind === "command" &&
+    mention.resource.trigger === selector.trigger &&
+    mention.resource.name === selector.name
+  );
+}
+
+export function promptInputHasCommandMention(
+  input: readonly PromptInput[],
+  selector: PromptCommandSelector,
+): boolean {
+  return input.some(
+    (item) =>
+      item.type === "text" &&
+      item.mentions.some((mention) =>
+        isSelectedPromptCommandMention(mention, selector),
+      ),
+  );
+}
+
+function commandRemovalRanges(
+  input: TextPromptInput,
+  selector: PromptCommandSelector,
+): PromptCommandRemovalRange[] {
+  return input.mentions
+    .filter((mention) => isSelectedPromptCommandMention(mention, selector))
+    .map((mention) => ({
+      start: mention.start,
+      end:
+        input.text[mention.end] === " " && mention.end < input.text.length
+          ? mention.end + 1
+          : mention.end,
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function removedBefore(
+  ranges: readonly PromptCommandRemovalRange[],
+  position: number,
+): number {
+  let removed = 0;
+  for (const range of ranges) {
+    if (range.end <= position) {
+      removed += range.end - range.start;
+    }
+  }
+  return removed;
+}
+
+function isInsideRemovalRange(
+  ranges: readonly PromptCommandRemovalRange[],
+  mention: PromptTextMention,
+): boolean {
+  return ranges.some(
+    (range) => mention.start < range.end && mention.end > range.start,
+  );
+}
+
+function removeCommandMentionsFromTextInput(
+  input: TextPromptInput,
+  selector: PromptCommandSelector,
+): TextPromptInput {
+  const ranges = commandRemovalRanges(input, selector);
+  if (ranges.length === 0) {
+    return input;
+  }
+
+  let text = "";
+  let cursor = 0;
+  for (const range of ranges) {
+    text += input.text.slice(cursor, range.start);
+    cursor = range.end;
+  }
+  text += input.text.slice(cursor);
+
+  return {
+    ...input,
+    text,
+    mentions: input.mentions
+      .filter(
+        (mention) =>
+          !isSelectedPromptCommandMention(mention, selector) &&
+          !isInsideRemovalRange(ranges, mention),
+      )
+      .map((mention) => {
+        const start = mention.start - removedBefore(ranges, mention.start);
+        const end = mention.end - removedBefore(ranges, mention.end);
+        return { ...mention, start, end };
+      }),
+  };
+}
+
+export function removeCommandMentionsFromPromptInput(
+  input: readonly PromptInput[],
+  selector: PromptCommandSelector,
+): PromptInput[] {
+  return input.map((item) =>
+    item.type === "text"
+      ? removeCommandMentionsFromTextInput(item, selector)
+      : item,
+  );
+}
+
 export const threadExecutionSourceSchema = z.enum([
   "client/thread/start",
   "client/turn/requested",
@@ -288,6 +407,7 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
+  claudeCodePermissionMode: z.literal("plan").optional(),
   // Optional for legacy command compatibility; the server fills the current
   // app setting before dispatching new runtime work.
   claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema.optional(),

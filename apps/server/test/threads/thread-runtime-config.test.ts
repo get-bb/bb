@@ -486,6 +486,69 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("sets Claude Code native plan mode when the prompt starts from a plan command pill", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-claude-plan",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+      const input = [
+        {
+          type: "text" as const,
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command" as const,
+                trigger: "/" as const,
+                name: "plan",
+                source: "command" as const,
+                origin: "user" as const,
+                label: "plan",
+                argumentHint: null,
+              },
+            },
+          ],
+        },
+      ];
+
+      const command = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution: {
+          model: "claude-sonnet-4-6",
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        fork: null,
+        permissionEscalation: "ask",
+        input,
+        projectId: project.id,
+        providerId: "claude-code",
+        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+
+      expect(command.input).toEqual(input);
+      expect(command.options.claudeCodePermissionMode).toBe("plan");
+    });
+  });
+
   it("consumes the sticky thread execution override across turns without a request value", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

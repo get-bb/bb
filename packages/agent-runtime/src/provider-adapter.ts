@@ -102,6 +102,7 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
+  claudeCodePermissionMode?: "plan";
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   /**
    * Server-owned workflows policy. Filled explicitly at the server boundary

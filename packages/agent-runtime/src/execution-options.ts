@@ -47,6 +47,15 @@ export function assertProviderSupportsExecutionOptions(
       `Provider "${args.providerId}" does not support permission mode "${args.options.permissionMode}".`,
     );
   }
+
+  if (
+    args.options.claudeCodePermissionMode !== undefined &&
+    args.providerId !== "claude-code"
+  ) {
+    throw new Error(
+      `Provider "${args.providerId}" does not support Claude Code permission mode overrides.`,
+    );
+  }
 }
 
 export function sameExecutionSettings(
@@ -63,6 +72,7 @@ export function sameExecutionSettings(
     args.left.serviceTier === args.right.serviceTier &&
     args.left.reasoningLevel === args.right.reasoningLevel &&
     args.left.workflowsEnabled === args.right.workflowsEnabled &&
+    args.left.claudeCodePermissionMode === args.right.claudeCodePermissionMode &&
     leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
     leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
     args.left.permissionMode === args.right.permissionMode &&
@@ -78,6 +88,9 @@ export function toProviderExecutionContext(
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
+    ...(args.execOpts.claudeCodePermissionMode !== undefined
+      ? { claudeCodePermissionMode: args.execOpts.claudeCodePermissionMode }
+      : {}),
     claudeCodeMockCliTraffic:
       args.execOpts.claudeCodeMockCliTraffic ??
       DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,

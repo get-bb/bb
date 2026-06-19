@@ -14,6 +14,7 @@ import type {
   PendingInteractionApprovalSubject,
   PendingInteractionGrantedPermissionProfile,
   PendingInteractionUserQuestionQuestion,
+  PromptInput,
   ThreadEvent,
   ThreadEventItem,
   UserQuestionPendingInteractionPayload,
@@ -24,6 +25,7 @@ import {
   claudeTaskToolNameSchema,
   claudeTaskToolOutputSchema,
   jsonValueSchema,
+  removeCommandMentionsFromPromptInput,
   threadScope,
 } from "@bb/domain";
 import {
@@ -94,6 +96,7 @@ import {
   type ClaudeUserQuestionOutput,
   type ClaudeUserQuestionRequestParams,
   type ClaudePermissionRequestApprovalParams,
+  type ClaudePermissionMode,
   claudePermissionRequestApprovalParamsSchema,
   claudeUserQuestionRequestParamsSchema,
   toClaudePermissionMode,
@@ -776,6 +779,28 @@ function buildClaudeCodeConfig(
   return config ? { ...config } : undefined;
 }
 
+function resolveClaudeSessionPermissionMode(
+  options: ProviderExecutionContext,
+): ClaudePermissionMode {
+  return (
+    options.claudeCodePermissionMode ??
+    toClaudePermissionMode(resolveAdapterPermissionPolicy(options))
+  );
+}
+
+function stripClaudePlanCommandInput(
+  input: readonly PromptInput[],
+  options: ProviderExecutionContext,
+): PromptInput[] {
+  if (options.claudeCodePermissionMode !== "plan") {
+    return [...input];
+  }
+  return removeCommandMentionsFromPromptInput(input, {
+    trigger: "/",
+    name: "plan",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Adapter factory
 // ---------------------------------------------------------------------------
@@ -1065,7 +1090,9 @@ export function createClaudeCodeProviderAdapter(
               instructionMode: command.instructionMode,
               claudeCodeMockCliTraffic:
                 command.options.claudeCodeMockCliTraffic,
-              permissionMode: toClaudePermissionMode(permissionPolicy),
+              permissionMode: resolveClaudeSessionPermissionMode(
+                command.options,
+              ),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams
@@ -1129,7 +1156,9 @@ export function createClaudeCodeProviderAdapter(
               instructionMode: command.instructionMode,
               claudeCodeMockCliTraffic:
                 command.options.claudeCodeMockCliTraffic,
-              permissionMode: toClaudePermissionMode(permissionPolicy),
+              permissionMode: resolveClaudeSessionPermissionMode(
+                command.options,
+              ),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams
@@ -1165,7 +1194,7 @@ export function createClaudeCodeProviderAdapter(
             params: {
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
-              input: command.input,
+              input: stripClaudePlanCommandInput(command.input, command.options),
               ...(command.options?.model
                 ? { model: command.options.model }
                 : {}),
@@ -1179,7 +1208,7 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
               expectedTurnId: command.expectedTurnId,
-              input: command.input,
+              input: stripClaudePlanCommandInput(command.input, command.options),
             },
           };
         case "thread/fork": {
@@ -1223,7 +1252,9 @@ export function createClaudeCodeProviderAdapter(
               instructionMode: command.instructionMode,
               claudeCodeMockCliTraffic:
                 command.options.claudeCodeMockCliTraffic,
-              permissionMode: toClaudePermissionMode(permissionPolicy),
+              permissionMode: resolveClaudeSessionPermissionMode(
+                command.options,
+              ),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams

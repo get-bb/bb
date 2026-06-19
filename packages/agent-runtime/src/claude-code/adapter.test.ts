@@ -790,6 +790,65 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand uses native plan mode and strips the plan command pill", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const startCmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-plan",
+      input: [],
+      instructionMode: "append",
+      options: {
+        ...workspaceWriteProviderExecutionContext,
+        claudeCodePermissionMode: "plan",
+      },
+    });
+    const turnCmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_2222222298",
+      threadId: "bb-thread-plan",
+      providerThreadId: "claude-session-plan",
+      input: [
+        {
+          type: "text",
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "plan",
+                source: "command",
+                origin: "user",
+                label: "plan",
+                argumentHint: null,
+              },
+            },
+          ],
+        },
+      ],
+      options: {
+        ...workspaceWriteProviderExecutionContext,
+        claudeCodePermissionMode: "plan",
+      },
+    });
+
+    expect(startCmd?.params).toMatchObject({
+      permissionMode: "plan",
+    });
+    expect(turnCmd?.params).toMatchObject({
+      input: [
+        {
+          type: "text",
+          text: "inspect the failing test",
+          mentions: [],
+        },
+      ],
+    });
+  });
+
   it("buildCommand turn/steer includes expectedTurnId", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({

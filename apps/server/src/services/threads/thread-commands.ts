@@ -16,6 +16,7 @@ import {
   ClientTurnRequestId,
   EnvironmentStatus,
   WorkspaceProvisionType,
+  promptInputHasCommandMention,
 } from "@bb/domain";
 import type {
   HostDaemonCommand,
@@ -120,6 +121,7 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 interface RuntimeExecutionOptionsArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   execution: ResolvedThreadExecutionOptions;
+  input: PromptInput[];
   permissionEscalation: PermissionEscalation;
   providerId: string;
 }
@@ -179,10 +181,18 @@ function resolveClaudeCodeMockCliTrafficConfig(
 function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
 ): RuntimeThreadExecutionOptions {
+  const claudeCodePermissionMode: "plan" | undefined =
+    args.providerId === "claude-code" &&
+    promptInputHasCommandMention(args.input, { trigger: "/", name: "plan" })
+      ? "plan"
+      : undefined;
   const base = {
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
+    ...(claudeCodePermissionMode !== undefined
+      ? { claudeCodePermissionMode }
+      : {}),
     claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
     workflowsEnabled: resolveWorkflowsEnabledPolicy(args.providerId),
   };
@@ -240,6 +250,7 @@ export async function buildThreadStartCommand(
     options: toRuntimeExecutionOptions({
       ...args,
       claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
+      input: args.input,
     }),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
@@ -261,6 +272,7 @@ function buildPreparedTurnSubmitCommandPayload(
     options: toRuntimeExecutionOptions({
       ...args,
       claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
+      input: args.input,
       providerId: args.runtimeContext.providerId,
     }),
     target: args.target,
