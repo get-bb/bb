@@ -7,12 +7,13 @@ import type {
   PeerShareSendRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
-
-export const peerShareIdentityQueryKey = () =>
-  ["peer-share", "identity"] as const;
-export const peerSharePeersQueryKey = () => ["peer-share", "peers"] as const;
-export const peerShareIncomingQueryKey = () =>
-  ["peer-share", "incoming"] as const;
+import {
+  invalidatePeerShareIncomingCache,
+  peerShareIdentityQueryKey,
+  peerShareIncomingQueryKey,
+  peerSharePeersQueryKey,
+  seedPeerShareIdentityCache,
+} from "./cache-owners/peer-share-cache-owner";
 
 export function usePeerShareIdentity(options?: { enabled?: boolean }) {
   return useQuery<PeerShareIdentity>({
@@ -59,7 +60,7 @@ export function useUpdatePeerShareIdentity() {
     mutationFn: (update: PeerShareIdentityUpdate) =>
       api.updatePeerShareIdentity(update),
     onSuccess: (identity) => {
-      queryClient.setQueryData(peerShareIdentityQueryKey(), identity);
+      seedPeerShareIdentityCache(queryClient, identity);
     },
   });
 }
@@ -75,9 +76,7 @@ export function useAcceptPeerShare() {
   return useMutation({
     mutationFn: (id: string) => api.acceptPeerShare(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: peerShareIncomingQueryKey(),
-      });
+      invalidatePeerShareIncomingCache(queryClient);
     },
   });
 }
@@ -87,9 +86,7 @@ export function useDeclinePeerShare() {
   return useMutation({
     mutationFn: (id: string) => api.declinePeerShare(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: peerShareIncomingQueryKey(),
-      });
+      invalidatePeerShareIncomingCache(queryClient);
     },
   });
 }
