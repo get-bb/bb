@@ -15,6 +15,7 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@/lib/utils";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+import { Icon } from "@/components/ui/icon.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 
 /**
@@ -236,13 +237,35 @@ function renderDecoration(
     }
     case "status":
     case "summary-status": {
+      // A single row's error status renders as a bare error icon in place of
+      // the "(error)" tag (parentheses dropped); its duration, when present,
+      // stays as plain text. The denied/interrupted annotations and the
+      // rolled-up "(N errors)" summary keep their text tag. The icon inherits
+      // the muted decoration tone — these tool-call errors are non-actionable,
+      // so they blend in with their siblings rather than shouting in red.
+      // `title.plain` keeps the "(error)" text, so the tooltip and CLI/plain
+      // renderer are unchanged.
+      if (decoration.kind === "status" && decoration.status === "error") {
+        const durationText =
+          decoration.durationMs !== null
+            ? `${durationToCompactString(decoration.durationMs)} `
+            : "";
+        return (
+          <span
+            key={index}
+            className={cn(baseClass, "inline-flex items-center")}
+          >
+            {durationText}
+            <Icon
+              name="CircleX"
+              aria-label="error"
+              className="size-3.5 shrink-0"
+            />
+          </span>
+        );
+      }
       const text = formatTimelineDecorationText(decoration);
       if (text.length === 0) return null;
-      // Status decorations — a single row's "(error)" tag, a rolled-up
-      // summary's "(N errors)" count, and the denied/interrupted annotations —
-      // all render in the muted decoration tone. These tool-call errors are
-      // non-actionable for the user, so they blend in with their siblings
-      // rather than shouting in red.
       return (
         <span key={index} className={baseClass}>
           {text}
