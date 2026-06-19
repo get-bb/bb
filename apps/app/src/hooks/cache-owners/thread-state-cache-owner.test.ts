@@ -48,6 +48,7 @@ function makeThreadListEntry(
 ): ThreadListEntry {
   return {
     ...makeThreadWithRuntime(thread),
+    activity: { activeWorkflowCount: 0, activeBackgroundSubagentCount: 0 },
     pinSortKey: null,
     hasPendingInteraction: false,
     environmentHostId: "host-1",

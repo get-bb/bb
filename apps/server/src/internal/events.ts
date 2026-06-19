@@ -93,6 +93,42 @@ interface NotifyInsertedEventThreadsArgs {
   insertedInputIndexes: number[];
 }
 
+function parseStoredBackgroundTaskItemStatus(
+  data: string,
+): string | undefined {
+  const parsed: unknown = JSON.parse(data);
+  if (parsed === null || typeof parsed !== "object" || !("item" in parsed)) {
+    return undefined;
+  }
+  const item = parsed.item;
+  if (item === null || typeof item !== "object" || !("status" in item)) {
+    return undefined;
+  }
+  return typeof item.status === "string" ? item.status : undefined;
+}
+
+function eventInputChangesBackgroundActivity(
+  input: AppendDaemonEventInput,
+): boolean {
+  if (input.itemKind !== "backgroundTask") {
+    return false;
+  }
+  if (
+    input.type === "item/started" ||
+    input.type === "item/backgroundTask/completed"
+  ) {
+    return true;
+  }
+  if (input.type !== "item/backgroundTask/progress") {
+    return false;
+  }
+  try {
+    return parseStoredBackgroundTaskItemStatus(input.data) !== "pending";
+  } catch {
+    return false;
+  }
+}
+
 interface ShouldApplyEventEffectArgs {
   completedTurnKeyLookup: Set<string>;
   entry: HostDaemonEventEnvelope;
@@ -238,6 +274,7 @@ function notifyInsertedEventThreads(
   args: NotifyInsertedEventThreadsArgs,
 ): void {
   const eventTypesByThreadId = new Map<string, Set<ThreadEventType>>();
+  const backgroundActivityThreadIds = new Set<string>();
   for (const index of args.insertedInputIndexes) {
     const eventInput = args.eventInputs[index];
     if (eventInput) {
@@ -246,10 +283,16 @@ function notifyInsertedEventThreads(
         new Set<ThreadEventType>();
       eventTypes.add(eventInput.type);
       eventTypesByThreadId.set(eventInput.threadId, eventTypes);
+      if (eventInputChangesBackgroundActivity(eventInput)) {
+        backgroundActivityThreadIds.add(eventInput.threadId);
+      }
     }
   }
   for (const [threadId, eventTypes] of eventTypesByThreadId) {
     deps.hub.notifyThread(threadId, ["events-appended"], {
+      ...(backgroundActivityThreadIds.has(threadId)
+        ? { backgroundActivityChanged: true }
+        : {}),
       eventTypes: Array.from(eventTypes),
     });
   }

@@ -44,6 +44,12 @@ export const threadRuntimeStateSchema = z.object({
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
+export const threadActivityStateSchema = z.object({
+  activeWorkflowCount: z.number().int().nonnegative(),
+  activeBackgroundSubagentCount: z.number().int().nonnegative(),
+});
+export type ThreadActivityState = z.infer<typeof threadActivityStateSchema>;
+
 export const workspaceStateValues = [
   "clean",
   "untracked",
@@ -391,6 +397,7 @@ export const threadWithRuntimeSchema = threadSchema.extend({
 export type ThreadWithRuntime = z.infer<typeof threadWithRuntimeSchema>;
 
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
+  activity: threadActivityStateSchema,
   pinSortKey: z.string().nullable(),
   hasPendingInteraction: z.boolean(),
   environmentHostId: z.string().nullable(),

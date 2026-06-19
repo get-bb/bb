@@ -1130,6 +1130,16 @@ export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   threadId: string;
 }
 
+export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
+  threadIds: readonly string[];
+}
+
+export interface ActiveBackgroundTaskCountRow {
+  activeBackgroundSubagentCount: number;
+  activeWorkflowCount: number;
+  threadId: string;
+}
+
 /**
  * Latest thread-scoped lifecycle row per backgroundTask item, regardless of
  * sequence. Timeline windows backfill these for in-window items so a page
@@ -1177,6 +1187,73 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     )
     .orderBy(events.sequence)
     .all();
+}
+
+/**
+ * Counts open provider background tasks by thread, using each item's latest
+ * start/progress row. A task can report a terminal status in a progress row
+ * before the final completed event arrives, so active means the latest
+ * lifecycle snapshot still has item.status = "pending".
+ */
+export function listActiveBackgroundTaskCountsByThreadIds(
+  db: DbQueryConnection,
+  args: ListActiveBackgroundTaskCountsByThreadIdsArgs,
+): ActiveBackgroundTaskCountRow[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+
+  return db.all<ActiveBackgroundTaskCountRow>(sql`
+    WITH latest_background_task_activity AS (
+      SELECT
+        ${events.threadId} AS thread_id,
+        ${events.itemId} AS item_id,
+        MAX(${events.sequence}) AS sequence
+      FROM ${events}
+      WHERE ${inArray(events.threadId, [...args.threadIds])}
+        AND ${eq(events.itemKind, "backgroundTask")}
+        AND ${inArray(events.type, [startedType, progressType])}
+        AND ${isNotNull(events.itemId)}
+      GROUP BY ${events.threadId}, ${events.itemId}
+    ),
+    completed_background_task_activity AS (
+      SELECT DISTINCT
+        ${events.threadId} AS thread_id,
+        ${events.itemId} AS item_id
+      FROM ${events}
+      WHERE ${inArray(events.threadId, [...args.threadIds])}
+        AND ${eq(events.itemKind, "backgroundTask")}
+        AND ${eq(events.type, completedType)}
+        AND ${isNotNull(events.itemId)}
+    )
+    SELECT
+      active_event.thread_id AS threadId,
+      COALESCE(SUM(CASE
+        WHEN json_extract(active_event.data, '$.item.taskType') = 'local_workflow'
+        THEN 1 ELSE 0
+      END), 0) AS activeWorkflowCount,
+      COALESCE(SUM(CASE
+        WHEN json_extract(active_event.data, '$.item.taskType') = 'local_agent'
+        THEN 1 ELSE 0
+      END), 0) AS activeBackgroundSubagentCount
+    FROM latest_background_task_activity latest
+    JOIN events active_event
+      ON active_event.thread_id = latest.thread_id
+      AND active_event.sequence = latest.sequence
+    LEFT JOIN completed_background_task_activity completed
+      ON completed.thread_id = latest.thread_id
+      AND completed.item_id = latest.item_id
+    WHERE completed.item_id IS NULL
+      AND json_extract(active_event.data, '$.item.status') = 'pending'
+    GROUP BY active_event.thread_id
+    ORDER BY active_event.thread_id
+  `);
 }
 
 function listStoredTurnStartedKeysChunk(

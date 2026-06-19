@@ -229,6 +229,7 @@ export {
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   insertEvents,
+  listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
@@ -258,6 +259,7 @@ export {
 } from "./events.js";
 export type {
   AcceptedDaemonEvent,
+  ActiveBackgroundTaskCountRow,
   AppendDaemonEventInput,
   AppendDaemonEventsResult,
   AppendStoredThreadEventArgs,
@@ -269,6 +271,7 @@ export type {
   HasStoredTurnStartedArgs,
   InsertEventInput,
   InsertEventsResult,
+  ListActiveBackgroundTaskCountsByThreadIdsArgs,
   ListEventsOptions,
   ListTimelineSegmentAnchorsDescendingArgs,
   TimelineSegmentAnchorLookupArgs,

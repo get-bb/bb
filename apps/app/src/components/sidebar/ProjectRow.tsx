@@ -720,7 +720,14 @@ function EnvironmentThreadGroupHeader({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={childActivity.pending}
-              isBusy={childActivity.working}
+              isBusy={
+                childActivity.runtimeWorking || childActivity.backgroundWorking
+              }
+              isWorkflowActive={
+                !childActivity.runtimeWorking &&
+                !childActivity.backgroundWorking &&
+                childActivity.workflow
+              }
               showUnreadBadge={childActivity.unread}
               unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />

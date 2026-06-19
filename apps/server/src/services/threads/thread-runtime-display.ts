@@ -1,6 +1,7 @@
 import {
   getEnvironment,
   getLatestSessionForHost,
+  listActiveBackgroundTaskCountsByThreadIds,
   listLatestSessionsForHosts,
   type DbConnection,
   type HostDaemonSessionRow,
@@ -8,6 +9,7 @@ import {
 } from "@bb/db";
 import type {
   Thread,
+  ThreadActivityState,
   ThreadListEntry,
   ThreadRuntimeState,
   ThreadStatus,
@@ -49,6 +51,7 @@ interface ToThreadListEntryResponsesArgs {
 }
 
 interface ToThreadListEntryResponseFromLatestSessionArgs {
+  activity: ThreadActivityState;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
   thread: ThreadWithPendingInteractionState;
@@ -200,6 +203,11 @@ export function toThreadListEntryResponses(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadListEntryResponsesArgs,
 ): ThreadListEntry[] {
+  const threadActivityById = new Map(
+    listActiveBackgroundTaskCountsByThreadIds(deps.db, {
+      threadIds: args.threads.map((thread) => thread.id),
+    }).map((activity) => [activity.threadId, activity]),
+  );
   const activeHostIds = [
     ...new Set(
       args.threads.flatMap((thread) =>
@@ -217,6 +225,10 @@ export function toThreadListEntryResponses(
 
   return args.threads.map((thread) =>
     toThreadListEntryResponseFromLatestSession({
+      activity: threadActivityById.get(thread.id) ?? {
+        activeWorkflowCount: 0,
+        activeBackgroundSubagentCount: 0,
+      },
       latestSession:
         thread.environmentHostId === null
           ? null
@@ -233,6 +245,7 @@ function toThreadListEntryResponseFromLatestSession(
   const thread = toPublicThread(args.thread);
   return {
     ...thread,
+    activity: args.activity,
     pinSortKey: args.thread.pinSortKey,
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,

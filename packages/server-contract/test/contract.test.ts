@@ -754,6 +754,10 @@ describe("server-contract canonical schemas", () => {
             displayStatus: "idle",
             hostReconnectGraceExpiresAt: null,
           },
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundSubagentCount: 0,
+          },
           hasPendingInteraction: true,
           environmentHostId: "host_123",
           environmentName: null,

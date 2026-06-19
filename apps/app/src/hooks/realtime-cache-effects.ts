@@ -85,12 +85,17 @@ function mergeThreadChangeMetadata(
   next: ThreadChangeMetadata,
 ): ThreadChangeMetadata {
   const eventTypes = mergeEventTypes(current?.eventTypes, next.eventTypes);
+  const backgroundActivityChanged =
+    next.backgroundActivityChanged ?? current?.backgroundActivityChanged;
   const hasPendingInteraction =
     next.hasPendingInteraction ?? current?.hasPendingInteraction;
   const projectId = next.projectId ?? current?.projectId;
   const metadata: ThreadChangeMetadata = {};
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
+  }
+  if (backgroundActivityChanged !== undefined) {
+    metadata.backgroundActivityChanged = backgroundActivityChanged;
   }
   if (hasPendingInteraction !== undefined) {
     metadata.hasPendingInteraction = hasPendingInteraction;
@@ -137,6 +142,7 @@ function flushThreadInvalidations(
   for (const changeKind of state.globalChangeKinds) {
     executeRealtimeDirtyHandlers({
       context: {
+        backgroundActivityChanged: undefined,
         eventTypes: undefined,
         hasPendingInteraction: undefined,
         projectId: undefined,
@@ -152,6 +158,7 @@ function flushThreadInvalidations(
     for (const changeKind of changeKinds) {
       executeRealtimeDirtyHandlers({
         context: {
+          backgroundActivityChanged: metadata?.backgroundActivityChanged,
           hasPendingInteraction: metadata?.hasPendingInteraction,
           eventTypes: metadata?.eventTypes,
           projectId: metadata?.projectId,

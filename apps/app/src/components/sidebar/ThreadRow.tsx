@@ -30,7 +30,10 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveBackgroundActivity,
+  hasActiveWorkflowActivity,
   isBusyThread,
+  isRuntimeBusyThread,
   isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
@@ -147,6 +150,7 @@ function renderThreadRowContainer({
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
   isBusy: boolean;
+  isWorkflowActive: boolean;
   showUnreadBadge: boolean;
   unreadBadgeTone: SidebarUnreadDotTone;
 }
@@ -193,6 +197,7 @@ function ThreadSuccessStatusGlyph({ label }: { label: string }) {
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   isBusy,
+  isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
@@ -216,6 +221,19 @@ export function ThreadStatusGlyph({
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
         aria-label="Thread needs user input"
+      />
+    );
+  }
+
+  if (isWorkflowActive) {
+    return (
+      <Icon
+        name="Workflow"
+        className={cn(
+          "text-muted-foreground",
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Workflow running"
       />
     );
   }
@@ -248,13 +266,17 @@ function getThreadUnreadBadgeLabel({
   return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
 }
 
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
+
 function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
+  isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
-}: ThreadStatusGlyphProps) {
-  const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
+}: ThreadTrailingIndicatorProps) {
+  const showStatusGlyph =
+    hasPendingInteraction || isBusy || isWorkflowActive || showUnreadBadge;
 
   if (!showStatusGlyph) {
     return null;
@@ -270,6 +292,7 @@ function ThreadTrailingIndicator({
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
         isBusy={isBusy}
+        isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
         unreadBadgeTone={unreadBadgeTone}
       />
@@ -292,8 +315,20 @@ function ThreadRowComponent({
   );
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
+  const threadRuntimeBusy =
+    isRuntimeBusyThread(thread) && !hasPendingInteraction;
+  const threadWorkflowActive =
+    !threadRuntimeBusy &&
+    !hasPendingInteraction &&
+    hasActiveWorkflowActivity(thread);
+  const threadBackgroundBusy =
+    !threadRuntimeBusy &&
+    !threadWorkflowActive &&
+    !hasPendingInteraction &&
+    hasActiveBackgroundActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
-  const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
+  const showUnreadBadge =
+    !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
   const unreadBadgeTone: SidebarUnreadDotTone =
     showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
@@ -311,9 +346,18 @@ function ThreadRowComponent({
   const trailingHasPendingInteraction = hasHiddenChildren
     ? hasPendingInteraction || childActivity.pending
     : hasPendingInteraction;
-  const trailingIsBusy = hasHiddenChildren
-    ? threadIsBusy || childActivity.working
-    : threadIsBusy;
+  const trailingRuntimeBusy = hasHiddenChildren
+    ? threadRuntimeBusy || childActivity.runtimeWorking
+    : threadRuntimeBusy;
+  const trailingBackgroundBusy = hasHiddenChildren
+    ? threadBackgroundBusy || childActivity.backgroundWorking
+    : threadBackgroundBusy;
+  const trailingIsWorkflowActive = hasHiddenChildren
+    ? !trailingRuntimeBusy &&
+      !trailingBackgroundBusy &&
+      (threadWorkflowActive || childActivity.workflow)
+    : threadWorkflowActive;
+  const trailingIsBusy = trailingRuntimeBusy || trailingBackgroundBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
@@ -401,6 +445,7 @@ function ThreadRowComponent({
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
+              isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}
               unreadBadgeTone={trailingUnreadBadgeTone}
             />

@@ -167,6 +167,7 @@ export function realtimeSubscriptionTargetKey(
 
 export const threadChangeMetadataSchema = z
   .object({
+    backgroundActivityChanged: z.boolean().optional(),
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     hasPendingInteraction: z.boolean().optional(),
     projectId: z.string().optional(),
@@ -267,6 +268,7 @@ const knownThreadEventTypes: ReadonlySet<string> = new Set(
 );
 
 const threadChangeMetadataLenientSchema = z.object({
+  backgroundActivityChanged: z.boolean().optional(),
   eventTypes: z
     .array(z.string())
     .transform((values) =>

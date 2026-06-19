@@ -11,7 +11,12 @@ import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
-import { isBusyThread } from "@/lib/thread-activity";
+import {
+  hasActiveBackgroundActivity,
+  hasActiveWorkflowActivity,
+  isBusyThread,
+  isRuntimeBusyThread,
+} from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
@@ -117,6 +122,17 @@ function ThreadSearchResultRowComponent({
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
   const hasPendingInteraction = thread.hasPendingInteraction;
+  const threadRuntimeBusy =
+    isRuntimeBusyThread(thread) && !hasPendingInteraction;
+  const threadWorkflowActive =
+    !threadRuntimeBusy &&
+    !hasPendingInteraction &&
+    hasActiveWorkflowActivity(thread);
+  const threadBackgroundBusy =
+    !threadRuntimeBusy &&
+    !threadWorkflowActive &&
+    !hasPendingInteraction &&
+    hasActiveBackgroundActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const metadataParts = [
     thread.projectId !== PERSONAL_PROJECT_ID ? projectName : undefined,
@@ -194,7 +210,8 @@ function ThreadSearchResultRowComponent({
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
           <ThreadStatusGlyph
             hasPendingInteraction={hasPendingInteraction}
-            isBusy={threadIsBusy}
+            isBusy={threadRuntimeBusy || threadBackgroundBusy}
+            isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}
             unreadBadgeTone="default"
           />

@@ -31,6 +31,7 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
+  listActiveBackgroundTaskCountsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
@@ -2720,6 +2721,150 @@ describe("events", () => {
         itemIds: [],
       }),
     ).toEqual([]);
+  });
+
+  it("counts only active background workflow snapshots by thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    const taskData = (args: {
+      itemId: string;
+      itemStatus: string;
+      taskStatus: string;
+      taskType: string;
+    }) =>
+      JSON.stringify({
+        item: {
+          id: args.itemId,
+          type: "backgroundTask",
+          taskType: args.taskType,
+          description: "fixture background task",
+          status: args.itemStatus,
+          taskStatus: args.taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-terminal-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-terminal-progress",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-terminal-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-terminal-progress",
+          itemStatus: "completed",
+          taskStatus: "completed",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-completed",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-completed",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-completed",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-completed",
+          itemStatus: "completed",
+          taskStatus: "completed",
+          taskType: "local_workflow",
+        }),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        scope: turnScope("turn-2"),
+        type: "item/started",
+        itemId: "task:agent-active",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:agent-active",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_agent",
+        }),
+      },
+    ]);
+
+    const countsByThreadId = new Map(
+      listActiveBackgroundTaskCountsByThreadIds(db, {
+        threadIds: [thread.id, otherThread.id],
+      }).map((row) => [row.threadId, row]),
+    );
+
+    expect(countsByThreadId.get(thread.id)).toEqual({
+      threadId: thread.id,
+      activeWorkflowCount: 1,
+      activeBackgroundSubagentCount: 0,
+    });
+    expect(countsByThreadId.get(otherThread.id)).toEqual({
+      threadId: otherThread.id,
+      activeWorkflowCount: 0,
+      activeBackgroundSubagentCount: 1,
+    });
   });
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
