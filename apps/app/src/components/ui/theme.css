@@ -396,6 +396,24 @@
     var(--primary) 35%,
     transparent
   );
+  /* Prompt mention pills (light): a near-flat off-white chip with a quiet
+   * top-down surface step, soft border, and light shadow. The icon is a simple
+   * near-black outline glyph (near-white in dark mode). */
+  --pill-surface: linear-gradient(
+    to bottom,
+    oklch(0.97 0 0),
+    oklch(0.968 0 0)
+  );
+  --pill-surface-border: oklch(0.94 0 0);
+  --pill-foreground: oklch(0.28 0 0);
+  --pill-icon: oklch(0.2 0 0);
+  --pill-shadow: 0 1px 1px 0 oklch(0.2 0 0 / 0.02);
+  --pill-surface-selected: linear-gradient(
+    to bottom,
+    oklch(0.92 0 0),
+    oklch(0.912 0 0)
+  );
+  --pill-surface-selected-border: oklch(0.87 0 0);
   --sidebar: color-mix(in oklch, var(--ink) 2.2%, var(--canvas));
   --sidebar-foreground: var(--ink);
   --sidebar-accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
@@ -546,6 +564,24 @@
     var(--primary) 35%,
     transparent
   );
+  /* Prompt mention pills (dark): a raised graphite chip a few steps lighter than
+   * the canvas with a light label and a near-white icon glyph. Mirrors the light
+   * block's token set so the pill is fully theme-dependent. */
+  --pill-surface: linear-gradient(
+    to bottom,
+    oklch(0.275 0 0),
+    oklch(0.268 0 0)
+  );
+  --pill-surface-border: oklch(0.295 0 0);
+  --pill-foreground: oklch(0.86 0 0);
+  --pill-icon: oklch(0.88 0 0);
+  --pill-shadow: 0 1px 1px 0 oklch(0 0 0 / 0.08);
+  --pill-surface-selected: linear-gradient(
+    to bottom,
+    oklch(0.322 0 0),
+    oklch(0.31 0 0)
+  );
+  --pill-surface-selected-border: oklch(0.35 0 0);
   --sidebar: color-mix(in oklch, var(--ink) 4.3%, var(--canvas));
   --sidebar-foreground: var(--ink);
   --sidebar-accent: color-mix(in oklch, var(--ink) 12%, var(--canvas));

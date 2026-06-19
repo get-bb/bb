@@ -36,6 +36,14 @@ function PromptStage({ children }: { children: React.ReactNode }) {
   );
 }
 
+function NarrowPromptStage({ children }: { children: React.ReactNode }) {
+  return (
+    <div data-promptbox-shell="" className="w-[5.5rem] min-w-0">
+      {children}
+    </div>
+  );
+}
+
 const promptboxBannerFiles: WorkspaceFileStatus[] = [
   {
     path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
@@ -616,6 +624,44 @@ function Row({
   );
 }
 
+function NarrowPullRequestAndGitRow() {
+  const [expandedSection, setExpandedSection] =
+    useState<ThreadPromptContextBannerExpandedSection | null>(null);
+  return (
+    <NarrowPromptStage>
+      <ThreadPromptContextBanner
+        gitSection={{
+          changedFiles: committedSection,
+          mergeBase: null,
+          onPromptBannerFileClick: noop,
+        }}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={{
+          pullRequest: buildPullRequestFixture({
+            number: 260,
+            checks: {
+              state: "passing",
+              totalCount: 6,
+              passedCount: 6,
+              failedCount: 0,
+              pendingCount: 0,
+            },
+            attention: "ready_to_merge",
+          }),
+        }}
+        expandedSection={expandedSection}
+        onToggleSection={(next) =>
+          setExpandedSection((previous) => (previous === next ? null : next))
+        }
+      />
+    </NarrowPromptStage>
+  );
+}
+
 const archivedFixture: ThreadPromptArchivedSection = {
   archivedAt: 1_731_456_000_000,
   onUnarchive: noop,
@@ -767,6 +813,12 @@ export function Overview() {
         <Row pullRequest={pullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
+        label="pull request + committed (narrow)"
+        hint="stress case for compact banner icons below normal chat thread width"
+      >
+        <NarrowPullRequestAndGitRow />
+      </StoryRow>
+      <StoryRow
         label="uncommitted (collapsed)"
         hint="working tree has 5 modified/added files; chevron toggles WorkspaceChangesList"
       >
@@ -795,6 +847,19 @@ export function Overview() {
         hint="mergeBase=null hides the picker (no comparison to make)"
       >
         <Row section={uncommittedSection} mergeBase={null} />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function NarrowPullRequestAndGit() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="pull request + committed (narrow)"
+        hint="stress case for compact banner icons below normal chat thread width"
+      >
+        <NarrowPullRequestAndGitRow />
       </StoryRow>
     </StoryCard>
   );
