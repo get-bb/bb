@@ -47,6 +47,51 @@ describe("TimelineTitleView", () => {
     expect(status.classList.contains("opacity-75")).toBe(true);
   });
 
+  it("colors an emphasized (thread-failing) error status with the semantic red", () => {
+    renderTitle({
+      segments: [
+        {
+          text: "Provider rate limit reached",
+          em: true,
+          shimmer: false,
+          truncate: false,
+        },
+      ],
+      decorations: [
+        { kind: "status", status: "error", durationMs: null, emphasis: true },
+      ],
+      tone: "default",
+      action: null,
+      plain: "Provider rate limit reached (error)",
+    });
+
+    const status = screen.getByText("error");
+    expect(status.classList.contains("text-destructive-text")).toBe(true);
+    // tailwind-merge drops the muted tone in favor of the destructive color.
+    expect(status.classList.contains("text-subtle-foreground")).toBe(false);
+    // Still subtle: small mono + reduced opacity, not a loud banner.
+    expect(status.classList.contains("font-mono")).toBe(true);
+    expect(status.classList.contains("opacity-75")).toBe(true);
+  });
+
+  it("leaves a transient (non-emphasized) error status muted, not red", () => {
+    renderTitle({
+      segments: [
+        { text: "Read src/app.ts", em: true, shimmer: false, truncate: false },
+      ],
+      decorations: [
+        { kind: "status", status: "error", durationMs: null, emphasis: false },
+      ],
+      tone: "default",
+      action: null,
+      plain: "Read src/app.ts (error)",
+    });
+
+    const status = screen.getByText("error");
+    expect(status.classList.contains("text-subtle-foreground")).toBe(true);
+    expect(status.classList.contains("text-destructive-text")).toBe(false);
+  });
+
   it("renders summary status counts as subtle mono text without parentheses", () => {
     const { container } = renderTitle({
       segments: [

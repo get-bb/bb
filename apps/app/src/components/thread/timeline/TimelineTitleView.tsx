@@ -102,9 +102,18 @@ const STATUS_DECORATION_TEXT_CLASS = cn(
   STATUS_DECORATION_TONE_CLASS,
 );
 
-function renderStatusDecorationText(text: string): ReactNode {
+function renderStatusDecorationText(
+  text: string,
+  className?: string,
+): ReactNode {
   return (
-    <span className={cn(STATUS_DECORATION_TEXT_CLASS, "ml-px opacity-75")}>
+    <span
+      className={cn(
+        STATUS_DECORATION_TEXT_CLASS,
+        "ml-px opacity-75",
+        className,
+      )}
+    >
       {text}
     </span>
   );
@@ -267,7 +276,18 @@ function renderDecoration(
             )}
           >
             {durationText ? <span>{durationText}</span> : null}
-            {renderStatusDecorationText(decoration.status)}
+            {renderStatusDecorationText(
+              decoration.status,
+              // Only an emphasized error — one that is the row's primary signal,
+              // i.e. the error that actually fails the thread — carries a subtle
+              // semantic red. Transient work-row errors (a failed command, an
+              // errored fetch the agent recovers from) and denied/interrupted
+              // annotations stay muted. The container's opacity-75 + small mono
+              // keep even the red subtle rather than alarming.
+              decoration.status === "error" && decoration.emphasis
+                ? "text-destructive-text"
+                : undefined,
+            )}
           </span>
         );
       }
