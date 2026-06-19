@@ -33,7 +33,7 @@ interface TerminalStartOptions extends TerminalJsonOptions {
   title?: string;
 }
 
-interface TerminalAttachOptions {}
+interface TerminalAttachOptions extends TerminalJsonOptions {}
 
 interface TerminalSendOptions extends TerminalJsonOptions {
   enter?: boolean;
@@ -152,14 +152,31 @@ export function registerTerminalCommands(
   terminal
     .command("attach <terminalId> [threadId]")
     .description("Attach to a running terminal session")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (
           terminalId: string,
           threadId: string | undefined,
-          _opts: TerminalAttachOptions,
+          opts: TerminalAttachOptions,
         ) => {
           const resolved = requireThreadIdWithLabel(threadId);
+          if (opts.json) {
+            const sdk = createCliBbSdk(getUrl());
+            const result = await sdk.threads.terminals.list({
+              threadId: resolved.id,
+            });
+            const session = result.sessions.find(
+              (candidate) => candidate.id === terminalId,
+            );
+            if (session === undefined) {
+              throw new Error(
+                `Terminal ${terminalId} was not found in thread ${resolved.id}`,
+              );
+            }
+            outputJson(opts, session);
+            return;
+          }
           await attachTerminal({
             baseUrl: getUrl(),
             terminalId,
@@ -334,10 +351,16 @@ function resolveTerminalStart(args: {
   if (args.commandParts.length > 0) {
     return {
       threadId: args.threadId ?? "",
-      command: args.commandParts.join(" "),
+      command: args.commandParts.map(shellQuoteArg).join(" "),
     };
   }
   return { threadId: args.threadId ?? "", command: null };
+}
+
+function shellQuoteArg(value: string): string {
+  if (value.length === 0) return "''";
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function parsePositiveInteger(

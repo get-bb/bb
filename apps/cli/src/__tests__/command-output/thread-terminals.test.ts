@@ -73,6 +73,41 @@ describe("bb thread terminal command output", () => {
     );
   });
 
+  it("bb thread terminal start preserves positional command arguments", async () => {
+    const start = vi.fn(async () =>
+      makeTerminalSession({ title: "python server" }),
+    );
+    stubServerApi({ "v1.threads.:id.terminals.$post": start });
+
+    await runCommand(
+      [
+        "thread",
+        "terminal",
+        "start",
+        "thr-1",
+        "--",
+        "python3",
+        "-u",
+        "-c",
+        `print("hello world"); print('quoted')`,
+      ],
+      register,
+    );
+
+    expect(start).toHaveBeenCalledWith({
+      param: { id: "thr-1" },
+      json: {
+        cols: 80,
+        rows: 24,
+        title: undefined,
+        start: {
+          mode: "command",
+          command: `python3 -u -c 'print("hello world"); print('"'"'quoted'"'"')'`,
+        },
+      },
+    });
+  });
+
   it("bb thread terminal start --command defaults to BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thr-env");
     const start = vi.fn(async () =>
@@ -94,6 +129,23 @@ describe("bb thread terminal command output", () => {
         start: { mode: "command", command: "echo env" },
       },
     });
+  });
+
+  it("bb thread terminal attach --json prints the target session", async () => {
+    const list = vi.fn(async () => ({
+      sessions: [makeTerminalSession({ id: "term-attach" })],
+    }));
+    stubServerApi({ "v1.threads.:id.terminals.$get": list });
+
+    await runCommand(
+      ["thread", "terminal", "attach", "term-attach", "thr-1", "--json"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({ param: { id: "thr-1" } });
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log))[0] ?? "{}"),
+    ).toEqual(makeTerminalSession({ id: "term-attach" }));
   });
 
   it("bb thread terminal send forwards text input", async () => {
