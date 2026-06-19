@@ -217,6 +217,28 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
         },
       ]).text,
     ).toBe("1. a\n2. b");
+    expect(
+      serialize([
+        {
+          type: "orderedList",
+          attrs: { start: 3 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "c" }] },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "d" }] },
+              ],
+            },
+          ],
+        },
+      ]).text,
+    ).toBe("3. c\n4. d");
   });
 
   it("indents nested lists", () => {
@@ -337,6 +359,43 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
       },
     ]);
     expect(result.text).toBe("- first\n- ping @thr");
+    expect(result.mentions).toHaveLength(1);
+    expect(
+      result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),
+    ).toBe("@thr");
+  });
+
+  it("keeps a mention's offset correct inside an ordered list with a custom start", () => {
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_1",
+      projectId: "proj_1",
+      label: "@thr",
+    };
+    const result = serialize([
+      {
+        type: "orderedList",
+        attrs: { start: 10 },
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "ping " },
+                  {
+                    type: "mention",
+                    attrs: { resource, serializedText: "@thr" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(result.text).toBe("10. ping @thr");
     expect(result.mentions).toHaveLength(1);
     expect(
       result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),

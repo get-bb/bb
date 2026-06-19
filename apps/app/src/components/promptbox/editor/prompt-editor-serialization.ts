@@ -374,7 +374,10 @@ export function promptEditorValueFromDoc(
     ordered: boolean,
     depth: number,
   ) => {
-    let itemNumber = 1;
+    let itemNumber =
+      ordered && typeof listNode.attrs.start === "number"
+        ? listNode.attrs.start
+        : 1;
     for (let index = 0; index < listNode.childCount; index += 1) {
       const item = listNode.child(index);
       if (hasSerializedBlock) {
