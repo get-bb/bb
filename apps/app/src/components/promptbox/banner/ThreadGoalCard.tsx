@@ -52,6 +52,8 @@ export function ThreadGoalCard({
   if (!goal || goal.status !== "active") {
     return null;
   }
+  const objective = goal.objective.trim();
+  const hasObjective = objective.length > 0;
   return (
     <PromptStackCard
       ariaLabel="Goal"
@@ -73,9 +75,21 @@ export function ThreadGoalCard({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1 truncate text-left font-medium opacity-70">
-            Goal
-          </span>
+          {hasObjective ? (
+            <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+              <span className="shrink-0 text-muted-foreground">Goal:</span>
+              <span
+                className="min-w-0 truncate font-medium text-foreground opacity-70"
+                title={objective}
+              >
+                {objective}
+              </span>
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-left font-medium opacity-70">
+              Goal
+            </span>
+          )}
           <Icon
             name="ChevronDown"
             className={cn(
