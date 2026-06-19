@@ -1,5 +1,11 @@
-import parcelWatcher from "@parcel/watcher";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
+import {
+  getParcelWatcherBackend,
+  type ParcelAsyncSubscription,
+  type ParcelWatcherError,
+  type ParcelWatcherEventBatch,
+  type ParcelWatcherSubscribeOptions,
+} from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
 
 // Parcel's FSEvents backend reports every dropped-events variant with this
@@ -8,16 +14,10 @@ import { pathExists } from "./path-exists.js";
 // rather than surface a watch error — see onDroppedEvents.
 const FSEVENTS_DROPPED_EVENTS_RESCAN_MESSAGE = "File system must be re-scanned";
 
-type ParcelWatcherSubscribe = typeof parcelWatcher.subscribe;
-type ParcelWatcherCallback = Parameters<ParcelWatcherSubscribe>[1];
-type ParcelWatcherAsyncSubscription = Awaited<
-  ReturnType<ParcelWatcherSubscribe>
->;
-type ParcelWatcherError = Parameters<ParcelWatcherCallback>[0];
-
-export type ParcelWatcherEventBatch = Parameters<ParcelWatcherCallback>[1];
-export type ParcelWatcherSubscribeOptions =
-  Parameters<ParcelWatcherSubscribe>[2];
+export type {
+  ParcelWatcherEventBatch,
+  ParcelWatcherSubscribeOptions,
+} from "./parcel-watcher-backend.js";
 
 export interface RootSubscriptionArgs {
   rootPath: string;
@@ -57,7 +57,7 @@ function isDroppedEventsRescanRequiredMessage(message: string): boolean {
  */
 export class RootSubscription {
   private disposed = false;
-  private subscription: ParcelWatcherAsyncSubscription | null = null;
+  private subscription: ParcelAsyncSubscription | null = null;
   private retryAttempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private warned = false;
@@ -95,7 +95,7 @@ export class RootSubscription {
     }
   }
 
-  private stopSubscription(subscription: ParcelWatcherAsyncSubscription): void {
+  private stopSubscription(subscription: ParcelAsyncSubscription): void {
     const pendingStop = subscription
       .unsubscribe()
       .catch(() => {
@@ -165,7 +165,7 @@ export class RootSubscription {
     try {
       let recoverableFailureObserved = false;
       let terminalFailureObserved = false;
-      const subscription = await parcelWatcher.subscribe(
+      const subscription = await getParcelWatcherBackend().subscribe(
         this.args.rootPath,
         (error: ParcelWatcherError, events: ParcelWatcherEventBatch) => {
           if (this.disposed) {

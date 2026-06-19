@@ -70,4 +70,19 @@ export const bundleTargets = [
     label: "bb cli",
     outfile: resolve(packageRoot, "dist", "bb"),
   },
+  {
+    // Forked child that runs @parcel/watcher in isolation (BB_WATCHER_SUBPROCESS=1).
+    // Emitted next to the daemon bundle so fork-channel resolves it as a sibling.
+    banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "host-watcher",
+      "src",
+      "parcel-subprocess",
+      "parcel-child-entry.ts",
+    ),
+    label: "parcel watcher child",
+    outfile: resolve(packageRoot, "dist", "bb-parcel-watcher-child.mjs"),
+  },
 ];
