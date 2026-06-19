@@ -158,7 +158,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="busy"
-        hint="runtime is active — far-right reserved slot shows the busy spinner"
+        hint="runtime is active - far-right reserved slot shows the subtle working spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -177,7 +177,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="pending interaction"
-        hint="needs attention — far-right reserved slot shows the attention dot"
+        hint="needs user input - far-right reserved slot shows the grey question icon"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -197,7 +197,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="unread done"
-        hint="latestAttentionAt > lastReadAt and not busy — far-right reserved slot shows the unread dot"
+        hint="latestAttentionAt > lastReadAt and not busy - far-right reserved slot shows the success check before settling to the unread dot"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -213,7 +213,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="unread error"
-        hint="status=error and unread — far-right reserved slot shows the destructive unread dot"
+        hint="status=error and unread - far-right reserved slot shows the destructive failure icon"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -247,7 +247,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="draft + unread"
-        hint="draft indicator remains visible next to title; unread dot still owns the status slot"
+        hint="draft indicator remains visible next to title; unread status still owns the status slot"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -392,7 +392,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — child working"
-        hint="trailing slot shows the busy spinner when a hidden child is working"
+        hint="trailing slot shows the subtle working spinner when a hidden child is working"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -409,7 +409,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — child needs input"
-        hint="trailing slot shows the attention dot when a hidden child is blocked on the user"
+        hint="trailing slot shows the grey question icon when a hidden child is blocked on the user"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -426,7 +426,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — needs input + working"
-        hint="attention wins priority: the trailing slot shows the attention dot, not the spinner"
+        hint="input needed wins priority over working: the trailing slot shows the grey question icon, not the spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -446,7 +446,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="child, busy"
-        hint="far-right reserved slot shows the busy spinner"
+        hint="far-right reserved slot shows the subtle working spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -466,7 +466,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="child, pending"
-        hint="far-right reserved slot shows the attention dot"
+        hint="far-right reserved slot shows the grey question icon"
       >
         <SidebarStage>
           <StoryThreadRow

@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -18,7 +19,6 @@ import {
 } from "@/components/thread/ThreadActionsMenu";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -43,7 +43,9 @@ import {
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
-  SIDEBAR_UNREAD_DOT_CLASS_BY_TONE,
+  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+  SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
+  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
 } from "./sidebarRowClasses";
@@ -152,45 +154,86 @@ interface ThreadUnreadBadgeLabelArgs {
   tone: SidebarUnreadDotTone;
 }
 
+const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
+
+function ThreadSuccessStatusGlyph({ label }: { label: string }) {
+  const [showCheck, setShowCheck] = useState(true);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => setShowCheck(false),
+      THREAD_SUCCESS_CHECK_DELAY_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  if (showCheck) {
+    return (
+      <Icon
+        name="CircleCheck"
+        className={cn(
+          SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label={label}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
+      aria-label={label}
+      title={label}
+    />
+  );
+}
+
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
-  if (hasPendingInteraction) {
+  if (showUnreadBadge && unreadBadgeTone === "error") {
+    const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
     return (
-      <span
-        className={cn(
-          "rounded-full bg-attention",
-          COARSE_POINTER_DOT_SIZE_CLASS,
-        )}
-        aria-label="Pending interaction requires attention"
-        title="Pending interaction"
+      <Icon
+        name="CircleX"
+        className={cn("text-destructive", COARSE_POINTER_ICON_SIZE_CLASS)}
+        aria-label={label}
       />
     );
   }
 
-  if (isBusy) {
+  if (hasPendingInteraction) {
     return (
       <Icon
-        name="CircleDashed"
+        name="MessageQuestion"
         className={cn(
-          "animate-spin text-muted-foreground",
+          "text-muted-foreground/75",
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
-        aria-label="Thread working"
+        aria-label="Thread needs user input"
       />
     );
   }
 
   if (showUnreadBadge) {
     const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
+    return <ThreadSuccessStatusGlyph label={label} />;
+  }
+
+  if (isBusy) {
     return (
-      <span
-        className={SIDEBAR_UNREAD_DOT_CLASS_BY_TONE[unreadBadgeTone]}
-        aria-label={label}
-        title={label}
+      <Icon
+        name="Spinner"
+        className={cn(
+          "animate-spin",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Thread working"
       />
     );
   }
@@ -201,9 +244,7 @@ export function ThreadStatusGlyph({
 function getThreadUnreadBadgeLabel({
   tone,
 }: ThreadUnreadBadgeLabelArgs): string {
-  return tone === "error"
-    ? "Unread thread encountered an error"
-    : "Unread thread requires attention";
+  return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
 }
 
 function ThreadTrailingIndicator({
@@ -220,7 +261,10 @@ function ThreadTrailingIndicator({
 
   return (
     <span
-      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+      className={cn(
+        SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+        COARSE_POINTER_GLYPH_BOX_CLASS,
+      )}
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
