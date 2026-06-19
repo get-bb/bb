@@ -98,20 +98,14 @@ function decorationToneClass(tone: TimelineTitleTone): string {
 
 const STATUS_DECORATION_TONE_CLASS = "text-subtle-foreground";
 const STATUS_DECORATION_TEXT_CLASS = cn(
-  "font-mono text-xs leading-none",
+  "font-mono text-xs font-normal leading-none",
   STATUS_DECORATION_TONE_CLASS,
 );
 
 function renderStatusDecorationText(text: string): ReactNode {
   return (
-    <span
-      className={cn(
-        STATUS_DECORATION_TEXT_CLASS,
-        "-ml-0.5 inline-flex items-baseline gap-0.5",
-      )}
-    >
-      <span aria-hidden="true">·</span>
-      <span>{text}</span>
+    <span className={cn(STATUS_DECORATION_TEXT_CLASS, "ml-px opacity-75")}>
+      {text}
     </span>
   );
 }
@@ -292,10 +286,7 @@ function renderDecoration(
       const text = parts.join(", ");
       if (text.length === 0) return null;
       return (
-        <span
-          key={index}
-          className="shrink-0 whitespace-pre"
-        >
+        <span key={index} className="shrink-0 whitespace-pre">
           {renderStatusDecorationText(text)}
         </span>
       );
