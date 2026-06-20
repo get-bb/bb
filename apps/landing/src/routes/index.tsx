@@ -6,13 +6,15 @@ import {
   ArrowRight01Icon,
   AttachmentIcon,
   BubbleChatAddIcon,
+  CheckmarkCircle02Icon,
   Clock01Icon,
-  DashedLineCircleIcon,
   FolderGitTwoIcon,
   FolderIcon as HiFolderIcon,
   GitBranchIcon as HiGitBranchIcon,
   GitMergeIcon as HiGitMergeIcon,
   LaptopIcon as HiLaptopIcon,
+  Loading03Icon,
+  MessageQuestionIcon,
   Mic02Icon,
   MoreHorizontalIcon,
   PlusMinusSquare01Icon,
@@ -25,8 +27,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
 import bbIcon from "../assets/bb-icon.png";
@@ -231,6 +233,14 @@ const GearIcon = ({ className }: IconProps) => (
 const CheckIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Tick02Icon} className={className} />
 );
+// Sidebar thread-status glyphs, matching the real app's muted glyphs
+// (CheckmarkCircle02 for done, MessageQuestion for needs-input).
+const CircleCheckIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={CheckmarkCircle02Icon} className={className} />
+);
+const MessageQuestionGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
+);
 const BoltIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={ZapIcon} className={className} />
 );
@@ -253,7 +263,7 @@ const GitMergeIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={HiGitMergeIcon} className={className} />
 );
 const Spinner = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={DashedLineCircleIcon} className={className} />
+  <HugeiconsIcon icon={Loading03Icon} className={className} />
 );
 const Maximize2 = ({ className }: IconProps) => (
   <HugeiconsIcon icon={ArrowExpand01Icon} className={className} />
@@ -274,8 +284,11 @@ const FileDiffIcon = ({ className }: IconProps) => (
 type Status = "running" | "done" | "waiting";
 type Step =
   | { kind: "user"; text: string }
-  | { kind: "step"; text: string }
-  | { kind: "say"; text: ReactNode };
+  | { kind: "step"; text: ReactNode }
+  | { kind: "say"; text: ReactNode }
+  // A "spawn" step prints a tool line in the feed and, the first time it
+  // streams in, adds a nested child thread to the sidebar (like the real app).
+  | { kind: "spawn"; text: ReactNode; child: MockThread };
 type Ask = {
   question: string;
   options: { label: string; description: string }[];
@@ -289,9 +302,111 @@ type MockThread = {
   pr?: number;
   change: { files: number; add: number; del: number };
   transcript: Step[];
+  /** Endlessly-cycled work a running thread streams in after its transcript. */
+  stream?: Step[];
   /** A pending AskUserQuestion that replaces the prompt box (like the app). */
   ask?: Ask;
 };
+
+// The subagent the Sentry thread spawns mid-run. It lands as a nested child row
+// in the sidebar and, if opened, streams its own work like any running thread.
+const SENTRY_SUBAGENT: MockThread = {
+  id: "sentry-sub",
+  title: "Reproduce the null cart",
+  status: "running",
+  branch: "bb/triage-sentry-spike",
+  change: { files: 1, add: 14, del: 0 },
+  transcript: [
+    { kind: "user", text: "Reproduce the null cart in applyPromo." },
+    { kind: "step", text: "Read src/checkout/applyPromo.ts" },
+  ],
+  stream: [
+    { kind: "step", text: "Built an empty-cart fixture" },
+    {
+      kind: "say",
+      text: (
+        <>
+          An active promo on an empty <code>cart</code> throws. Reproduced.
+        </>
+      ),
+    },
+    { kind: "step", text: "Wrote a failing test" },
+    { kind: "say", text: "Handed the repro back to the parent thread." },
+    { kind: "step", text: "Re-checked the stack trace" },
+  ],
+};
+
+// Endless "work" each running thread streams in after its transcript. The pool
+// loops, so a glance at the hero always shows tool calls and messages arriving.
+const SENTRY_STREAM: Step[] = [
+  { kind: "step", text: "Ran 48 tests" },
+  {
+    kind: "say",
+    text: (
+      <>
+        All green. The null <code>cart</code> path is covered now.
+      </>
+    ),
+  },
+  {
+    kind: "spawn",
+    text: (
+      <>
+        Spawned a subagent: <strong>Reproduce the null cart</strong>
+      </>
+    ),
+    child: SENTRY_SUBAGENT,
+  },
+  { kind: "step", text: "Edited promo.test.ts" },
+  { kind: "say", text: "Added a case for an empty cart with an active promo." },
+  { kind: "step", text: "Checked Sentry for new events" },
+  { kind: "say", text: "No new occurrences in the last 10 minutes." },
+  { kind: "step", text: "Read applyPromo.ts" },
+  {
+    kind: "say",
+    text: (
+      <>
+        Tightening the type so <code>cart</code> can't be null at the call site.
+      </>
+    ),
+  },
+  { kind: "step", text: "Edited 2 files" },
+  { kind: "say", text: "Pushed the guard and a follow-up. Re-running the suite." },
+];
+
+const LIN482_STREAM: Step[] = [
+  { kind: "step", text: "Ran 12 tests" },
+  { kind: "say", text: "Debounce holds for 200ms. One call, asserted." },
+  {
+    kind: "step",
+    text: (
+      <>
+        Edited <code>SearchBar.tsx</code>
+      </>
+    ),
+  },
+  { kind: "say", text: "Cancelling the timer on unmount so there's no leak." },
+  { kind: "step", text: "Checked the other call sites" },
+  { kind: "say", text: "Two more inputs could reuse this. Noted it on LIN-482." },
+  { kind: "step", text: "Edited 1 file" },
+  { kind: "say", text: "Verifying the debounce once more." },
+];
+
+const CHIEF_STREAM: Step[] = [
+  { kind: "step", text: "Swept 4 active threads" },
+  { kind: "say", text: "Sentry triage is re-running tests; LIN-482 is verifying." },
+  { kind: "step", text: "Checked for blockers" },
+  {
+    kind: "say",
+    text: (
+      <>
+        One thread is waiting on you: <code>Refactor the timeline cache</code>.
+      </>
+    ),
+  },
+  { kind: "step", text: "Spawned 1 worker" },
+  { kind: "say", text: "Dispatched the changelog follow-up. Nothing else needs you." },
+];
 
 const HERO_THREADS: MockThread[] = [
   {
@@ -300,6 +415,7 @@ const HERO_THREADS: MockThread[] = [
     status: "running",
     branch: "bb/triage-sentry-spike",
     change: { files: 6, add: 124, del: 18 },
+    stream: SENTRY_STREAM,
     transcript: [
       { kind: "user", text: "Triage the Sentry spike on checkout." },
       { kind: "step", text: "Explored 4 files" },
@@ -307,7 +423,7 @@ const HERO_THREADS: MockThread[] = [
         kind: "say",
         text: (
           <>
-            The spike is one error — 92% of volume: a null <code>cart</code> in{" "}
+            The spike is one error. 92% of volume: a null <code>cart</code> in{" "}
             <code>applyPromo</code>.
           </>
         ),
@@ -360,7 +476,7 @@ const HERO_THREADS: MockThread[] = [
         text: "Refactor the timeline cache to drop the duplicate fetch.",
       },
       { kind: "step", text: "Explored 3 files" },
-      { kind: "say", text: "Found the duplicate fetch — two ways to fix it." },
+      { kind: "say", text: "Found the duplicate fetch. Two ways to fix it." },
     ],
     ask: {
       question: "How should I dedupe the timeline fetch?",
@@ -383,6 +499,7 @@ const HERO_THREADS: MockThread[] = [
     status: "running",
     branch: "bb/lin-482-debounce-search",
     change: { files: 2, add: 33, del: 5 },
+    stream: LIN482_STREAM,
     transcript: [
       { kind: "step", text: "Read LIN-482" },
       {
@@ -407,6 +524,7 @@ const CHIEF: MockThread = {
   status: "running",
   branch: "bb/chief",
   change: { files: 1, add: 12, del: 0 },
+  stream: CHIEF_STREAM,
   transcript: [
     { kind: "user", text: "Anything need me?" },
     { kind: "step", text: "Swept 4 active threads" },
@@ -414,7 +532,7 @@ const CHIEF: MockThread = {
       kind: "say",
       text: (
         <>
-          One thread is waiting on you — <code>Refactor the timeline cache</code>
+          One thread is waiting on you: <code>Refactor the timeline cache</code>
           . Sentry triage and LIN-482 are running; the nightly changelog merged.
         </>
       ),
@@ -431,9 +549,109 @@ function ThreadStatus({ status }: { status: Status }) {
   return (
     <span className="tstatus" aria-hidden>
       {status === "running" ? <Spinner className="trun" /> : null}
-      {status === "done" ? <CheckIcon className="tdone" /> : null}
-      {status === "waiting" ? <span className="twait" /> : null}
+      {status === "done" ? <CircleCheckIcon className="tdone" /> : null}
+      {status === "waiting" ? <MessageQuestionGlyph className="twait" /> : null}
     </span>
+  );
+}
+
+// Cadence + rolling-window size for a running thread's live feed. The window is
+// generously larger than what fits, so the oldest rows are dropped well above
+// the (clipped) top edge and never cause a visible jump.
+const STREAM_INTERVAL_MS = 1600;
+const STREAM_WINDOW = 16;
+
+type FeedItem = { id: string; step: Step; live: boolean };
+
+/** The conversation pane. A running thread streams tool calls and messages in
+ *  endlessly after its seed transcript; everything else renders statically.
+ *  The first time a `spawn` step streams in, it calls `onSpawn` so the sidebar
+ *  can add the nested child thread. Reduced-motion and no-JS render the seed. */
+function ThreadFeed({
+  thread,
+  onSpawn,
+}: {
+  thread: MockThread;
+  onSpawn: (parentId: string, child: MockThread) => void;
+}) {
+  const isLive = thread.status === "running" && (thread.stream?.length ?? 0) > 0;
+  const seedItems = useMemo<FeedItem[]>(
+    () =>
+      thread.transcript.map((step, i) => ({
+        id: `seed-${i}`,
+        step,
+        live: false,
+      })),
+    [thread.transcript],
+  );
+  // ThreadFeed is keyed by thread id, so switching threads remounts it and
+  // resets the stream — no in-effect reset needed.
+  const [items, setItems] = useState<FeedItem[]>(seedItems);
+
+  useEffect(() => {
+    if (!isLive) {
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const pool = thread.stream ?? [];
+    let cursor = 0;
+    let serial = 0;
+    const id = window.setInterval(() => {
+      const step = pool[cursor % pool.length];
+      cursor += 1;
+      serial += 1;
+      if (step.kind === "spawn") {
+        onSpawn(thread.id, step.child);
+      }
+      setItems((prev) => {
+        const next = [...prev, { id: `live-${serial}`, step, live: true }];
+        return next.length > STREAM_WINDOW
+          ? next.slice(next.length - STREAM_WINDOW)
+          : next;
+      });
+    }, STREAM_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [thread.id, isLive, thread.stream, onSpawn]);
+
+  return (
+    <div className={isLive ? "feed feed-live" : "feed"}>
+      {items.map(({ id, step, live }, index) => {
+        // Live rows ease in as they arrive; seed rows keep the construct cascade.
+        const style: CSSProperties = live
+          ? { animation: "c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both" }
+          : { animationDelay: `${0.66 + index * 0.09}s` };
+        if (step.kind === "user") {
+          return (
+            <div key={id} className="msg-user" style={style}>
+              {step.text}
+            </div>
+          );
+        }
+        if (step.kind === "step") {
+          return (
+            <div key={id} className="msg-step" style={style}>
+              <ChevronRight className="step-chev" />
+              {step.text}
+            </div>
+          );
+        }
+        if (step.kind === "spawn") {
+          return (
+            <div key={id} className="msg-step msg-spawn" style={style}>
+              <GitBranchIcon className="step-chev" />
+              {step.text}
+            </div>
+          );
+        }
+        return (
+          <div key={id} className="msg-say" style={style}>
+            {step.text}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -623,15 +841,33 @@ function HeroAppMock() {
   // Mobile sidebar drawer (mirrors the app's openMobile nav). Inert on desktop,
   // where the sidebar is always in-flow.
   const [navOpen, setNavOpen] = useState(false);
+  // Subagents a running thread spawns, keyed by parent id. They persist once
+  // spawned and render as nested child rows in the sidebar.
+  const [spawned, setSpawned] = useState<Record<string, MockThread[]>>({});
+  const spawnedChildren = useMemo(
+    () => Object.values(spawned).flat(),
+    [spawned],
+  );
   const thread =
-    [CHIEF, ...HERO_THREADS].find((candidate) => candidate.id === activeId) ??
-    HERO_THREADS[0];
+    [CHIEF, ...HERO_THREADS, ...spawnedChildren].find(
+      (candidate) => candidate.id === activeId,
+    ) ?? HERO_THREADS[0];
 
   const openThread = (id: string) => {
     setActiveId(id);
     setView("thread");
     setNavOpen(false);
   };
+
+  const handleSpawn = useCallback((parentId: string, child: MockThread) => {
+    setSpawned((prev) => {
+      const kids = prev[parentId] ?? [];
+      if (kids.some((existing) => existing.id === child.id)) {
+        return prev;
+      }
+      return { ...prev, [parentId]: [...kids, child] };
+    });
+  }, []);
 
   return (
     <section className="mockup-wrap">
@@ -734,6 +970,7 @@ function HeroAppMock() {
               {HERO_THREADS.map((candidate, index) => {
                 const isActive =
                   view === "thread" && candidate.id === activeId;
+                const kids = spawned[candidate.id] ?? [];
                 return (
                   <li
                     key={candidate.id}
@@ -748,6 +985,31 @@ function HeroAppMock() {
                       <span className="trow-title">{candidate.title}</span>
                       <ThreadStatus status={candidate.status} />
                     </button>
+                    {kids.length > 0 ? (
+                      <ul className="threads thread-kids">
+                        {kids.map((kid) => {
+                          const kidActive =
+                            view === "thread" && kid.id === activeId;
+                          return (
+                            <li key={kid.id} className="kid-li">
+                              <button
+                                type="button"
+                                className={
+                                  kidActive
+                                    ? "trow trow-kid active"
+                                    : "trow trow-kid"
+                                }
+                                aria-pressed={kidActive}
+                                onClick={() => openThread(kid.id)}
+                              >
+                                <span className="trow-title">{kid.title}</span>
+                                <ThreadStatus status={kid.status} />
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
                   </li>
                 );
               })}
@@ -759,31 +1021,11 @@ function HeroAppMock() {
 
           {view === "thread" ? (
             <div className="main">
-              <div className="feed">
-                {thread.transcript.map((s, index) => {
-                  const delay = { animationDelay: `${0.66 + index * 0.09}s` };
-                  if (s.kind === "user") {
-                    return (
-                      <div key={index} className="msg-user" style={delay}>
-                        {s.text}
-                      </div>
-                    );
-                  }
-                  if (s.kind === "step") {
-                    return (
-                      <div key={index} className="msg-step" style={delay}>
-                        <ChevronRight className="step-chev" />
-                        {s.text}
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={index} className="msg-say" style={delay}>
-                      {s.text}
-                    </div>
-                  );
-                })}
-              </div>
+              <ThreadFeed
+                key={thread.id}
+                thread={thread}
+                onSpawn={handleSpawn}
+              />
               {thread.ask ? (
                 <AskQuestion ask={thread.ask} />
               ) : (
@@ -808,13 +1050,11 @@ function HeroAppMock() {
 /* ── Band layout ──────────────────────────────────────────────────── */
 
 function Band({
-  kicker,
   title,
   flip,
   visual,
   children,
 }: {
-  kicker: string;
   title: string;
   flip?: boolean;
   visual: ReactNode;
@@ -824,7 +1064,6 @@ function Band({
     <section className={flip ? "band band-flip" : "band"} data-reveal>
       <div className="band-grid">
         <div className="band-copy">
-          <p className="kicker">{kicker}</p>
           <h2>{title}</h2>
           {children}
         </div>
@@ -899,7 +1138,7 @@ function AgentChat() {
           </div>
           <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
             <span className="tg-bubble">
-              On it — spawning a worker thread.
+              On it. Spawning a worker thread.
               <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
             </span>
           </div>
@@ -1080,7 +1319,10 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
-        <h1>The IDE for Loop Driven Development</h1>
+        <h1>
+          The First LDE<span className="lde-star">*</span>
+        </h1>
+        <p className="lde-expand">(Loop Development Environment)</p>
         <p className="sub">
           Orchestrate your coding agents. Drive it yourself, or let your agents
           and automations drive it for you.
@@ -1105,15 +1347,10 @@ function LandingPage() {
 
       <HeroAppMock />
 
-      <Band
-        kicker="# anything can drive it"
-        title="Anything can kick off work."
-        flip
-        visual={<AgentChat />}
-      >
+      <Band title="Anything can kick off work." flip visual={<AgentChat />}>
         <p>
-          The same CLI your agents use is open to any program you write — a
-          shell script, a cron job, or your own hermes or openclaw bot in
+          The same CLI your agents use is open to any program you write: a
+          shell script, a cron job, or your own Hermes Agent or OpenClaw bot in
           Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
           waiting in your sidebar when you are.
         </p>
@@ -1122,32 +1359,27 @@ function LandingPage() {
         </p>
       </Band>
 
-      <Band
-        kicker="# loops that run themselves"
-        title="Set it once. It runs without you."
-        visual={<AutomationRun />}
-      >
+      <Band title="It runs without you." visual={<AutomationRun />}>
         <p>
           Schedule an automation to run an agent or a script on cron. Point one
-          at your tracker and it kicks off a thread for every new issue — or run
+          at your tracker and it kicks off a thread for every new issue, or run
           nightly docs, changelogs, error triage. All on your machine, not
           someone else&rsquo;s cloud.
         </p>
       </Band>
 
       <Band
-        kicker="# mix and match"
-        title="Pick the right agent. Let them run each other."
+        title="The gang's all here"
         flip
         visual={<ProviderTree />}
       >
         <p>
           Claude Code, Codex, Cursor, and Pi all live in bb. Give a task to
-          whichever fits — and have one agent spawn and manage another, each in
+          whichever fits, and have one agent spawn and manage another, each in
           its own thread.
         </p>
         <p>
-          Each runs on your own subscription — the provider plan you already pay
+          Each runs on your own subscription: the provider plan you already pay
           for, billed by them, not bb.
         </p>
         <div className="providers">
@@ -1156,7 +1388,6 @@ function LandingPage() {
       </Band>
 
       <section className="statement" data-reveal>
-        <p className="kicker"># fully open source</p>
         <h2 className="sec-title">Fork it. Make it your own.</h2>
         <p>
           bb is MIT-licensed end to end. Fork the repo, customize the agents,

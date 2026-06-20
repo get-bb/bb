@@ -313,8 +313,19 @@ code,
   color: oklch(0.21 0 0);
 }
 
+.lde-star {
+  color: var(--accent);
+}
+
+.lde-expand {
+  margin: 9px auto 0;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: var(--subtle);
+}
+
 .hero .sub {
-  margin: 26px auto 0;
+  margin: 22px auto 0;
   color: var(--dim);
   max-width: 600px;
   font-size: 17.5px;
@@ -820,6 +831,43 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   text-overflow: ellipsis;
 }
 
+/* Nested children of a thread that spawned subagents. Mirrors the real app:
+   indented rows with a hairline running under the parent's title start. */
+.thread-kids {
+  position: relative;
+  margin-top: 2px;
+}
+
+.thread-kids::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 2px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.8;
+}
+
+.kid-li {
+  animation: kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.trow-kid {
+  padding-left: 26px;
+}
+
+@keyframes kid-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Fixed-width centered box so every status (spinner / check / dot) aligns,
    regardless of its own size. */
 .tstatus {
@@ -831,11 +879,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-shrink: 0;
 }
 
+/* Status glyphs mirror the real app: all muted gray, no green/orange.
+   Working/done sit back; the needs-input bubble is a touch more present. */
 .trun {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: var(--dim);
+  color: var(--subtle);
   animation: spin 0.9s linear infinite;
 }
 
@@ -849,15 +899,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: var(--ok);
+  color: var(--subtle);
 }
 
 .twait {
-  width: 8px;
-  height: 8px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--warn);
+  color: var(--dim);
 }
 
 /* main thread pane */
@@ -915,12 +964,29 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   max-width: 58ch;
 }
 
-.msg-say code {
+.msg-say code,
+.msg-step code {
   font-family: var(--font-mono);
   font-size: 12px;
   background: var(--surface-recessed);
   border-radius: 4px;
   padding: 1px 5px;
+}
+
+/* A running thread streams work in endlessly; anchor it to the bottom so the
+   newest rows stay visible and older ones clip past the top edge. */
+.feed-live {
+  justify-content: flex-end;
+}
+
+/* Tool line for a spawned subagent — its child appears nested in the sidebar. */
+.msg-spawn {
+  color: var(--dim);
+}
+
+.msg-spawn strong {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* AskUserQuestion tool — replaces the prompt box (recessed card in the
@@ -1410,13 +1476,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .band-flip .band-visual {
   order: 1;
-}
-
-.kicker {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--subtle);
-  margin-bottom: 16px;
 }
 
 .band h2 {
@@ -2304,7 +2363,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .mock.constructing .side > *,
   .mock.constructing .threads li,
   .mock.constructing .feed > *,
-  .mock.constructing .composer {
+  .mock.constructing .composer,
+  .kid-li {
     animation: none;
   }
 }
