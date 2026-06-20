@@ -2194,6 +2194,36 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 @media (max-width: 720px) {
+  /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
+     radial that can't fade within the narrow mobile hero, leaving a tinted
+     rectangle with hard side edges/corners. Re-size it relative to the hero
+     so the wash fades on all sides. */
+  .hero::before {
+    background: radial-gradient(
+      78% 55% at 50% 6%,
+      color-mix(in oklch, var(--ink) 4.5%, transparent),
+      transparent 70%
+    );
+  }
+
+  /* The desktop dot-grid mask is sized in fixed px for the wide hero; on the
+     narrow mobile hero those values stretch past the edges, leaving a hard
+     full-width band of dots instead of a fading patch. Use a relative-sized
+     ellipse (narrower than the hero) so the field fades on all sides as
+     ambient texture. -webkit- prefix included for iOS Safari. */
+  .hero::after {
+    -webkit-mask-image: radial-gradient(
+      85% 48% at 50% 26%,
+      rgb(0 0 0 / 60%),
+      transparent 80%
+    );
+    mask-image: radial-gradient(
+      85% 48% at 50% 26%,
+      rgb(0 0 0 / 60%),
+      transparent 80%
+    );
+  }
+
   /* Keep a fixed height (sidebar is an overlay drawer here, so it adds no
      in-flow height). A running thread streams rows in endlessly; without a
      bounded body the feed — and the whole card — would grow without limit. */
