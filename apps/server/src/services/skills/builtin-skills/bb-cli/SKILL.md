@@ -148,7 +148,7 @@ For review or fix pipelines, get the environment ID from
 - Commands:
   - `bb theme list` — built-in themes and which palette is active.
   - `bb theme set <id>` — switch to a built-in: `default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`.
+    `solarized`, `gruvbox`, `catppuccin`.
   - `bb theme set-custom --file <path.css>` — load a custom stylesheet and
     activate it. This is the only way to set custom CSS (Settings only switches
     between built-ins).

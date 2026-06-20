@@ -15,6 +15,7 @@ export const appThemeIdSchema = z.enum([
   "dracula",
   "solarized",
   "gruvbox",
+  "catppuccin",
   "custom",
 ]);
 export type AppThemeId = z.infer<typeof appThemeIdSchema>;
@@ -44,6 +45,11 @@ export const builtInThemes: readonly BuiltInThemeMeta[] = [
     description: "Balanced light and dark (Schoonover palette)",
   },
   { id: "gruvbox", name: "Gruvbox", description: "Warm retro earth tones" },
+  {
+    id: "catppuccin",
+    name: "Catppuccin",
+    description: "Soothing pastel — Latte light, Mocha dark",
+  },
 ];
 
 /** Built-in palette ids (everything except "custom"). */

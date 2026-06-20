@@ -230,7 +230,7 @@ and semantics:
 - `bb theme set-custom --file ./my-theme.css` — load and activate a custom
   stylesheet (the only way to set custom CSS).
 - `bb theme set <id>` — switch to a built-in (`default`, `nord`, `dracula`,
-  `solarized`, `gruvbox`).
+  `solarized`, `gruvbox`, `catppuccin`).
 - `bb theme show --css` — dump the active custom CSS; `bb theme list` shows the
   active palette; `bb theme reset` returns to `default`.
 

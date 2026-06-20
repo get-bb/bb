@@ -1,4 +1,5 @@
 import type { AppTheme, AppThemeId } from "@bb/domain";
+import { catppuccinThemeCss } from "./catppuccin";
 import { draculaThemeCss } from "./dracula";
 import { gruvboxThemeCss } from "./gruvbox";
 import { nordThemeCss } from "./nord";
@@ -18,6 +19,7 @@ const builtInThemeCss: Record<Exclude<AppThemeId, "custom">, string> = {
   dracula: draculaThemeCss,
   solarized: solarizedThemeCss,
   gruvbox: gruvboxThemeCss,
+  catppuccin: catppuccinThemeCss,
 };
 
 export function resolveAppThemeCss(appearance: AppTheme): string {
