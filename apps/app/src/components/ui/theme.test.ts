@@ -26,13 +26,14 @@ function modeBlock(scheme: "light" | "dark"): string {
 
 /**
  * token -> ink mix percentage, for tokens derived from the anchors. The base is
- * either the canvas (opaque steps) or `transparent` (translucent interactive/
- * overlay steps); over the canvas both resolve to the same step, so the mix
- * percentage is the comparable "contrast from canvas" either way.
+ * either the canvas (opaque steps, mixed in oklch) or `transparent` (translucent
+ * interactive/overlay steps, mixed in oklab — see the guard below); over the
+ * canvas both resolve to the same step, so the mix percentage is the comparable
+ * "contrast from canvas" either way.
  */
 function rampSteps(block: string): Map<string, number> {
   const re =
-    /--([a-z-]+):\s*color-mix\(in oklch, var\(--ink\) ([\d.]+)%, (?:var\(--canvas\)|transparent)\);/g;
+    /--([a-z-]+):\s*color-mix\(in okl(?:ch|ab), var\(--ink\) ([\d.]+)%, (?:var\(--canvas\)|transparent)\);/g;
   const steps = new Map<string, number>();
   for (const match of block.matchAll(re)) {
     steps.set(match[1], Number(match[2]));
@@ -196,6 +197,22 @@ describe("theme.css neutral ramp", () => {
     const light = [...rampSteps(modeBlock("light")).keys()].sort();
     const dark = [...rampSteps(modeBlock("dark")).keys()].sort();
     expect(light).toEqual(dark);
+  });
+
+  it("derives translucent (transparent-mixed) tokens in oklab, not oklch", () => {
+    // Mixing a color with `transparent` in a *polar* space (oklch) drops the
+    // result hue to `none`, which renders as hue 0 (red). The chroma survives,
+    // so any palette whose canvas/ink/primary isn't pure gray got a pink-tinted
+    // header (--surface-scrim), hover, and selection — the default palette only
+    // escaped because its anchors are chroma-0. Rectangular spaces (oklab) carry
+    // the hue through, so translucency must mix in oklab. Opaque color->canvas
+    // mixes can stay oklch. This guard keeps every future palette correct by
+    // construction, since palettes only set opaque anchors and never touch these
+    // derived tokens.
+    const offenders = [
+      ...css.matchAll(/color-mix\(\s*in oklch\b[^;]*?\btransparent\b/g),
+    ].map((match) => match[0].replace(/\s+/g, " "));
+    expect(offenders).toEqual([]);
   });
 });
 

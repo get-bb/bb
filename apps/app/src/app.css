@@ -37,7 +37,7 @@
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--foreground) 20%, transparent)
+    scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
       transparent;
   }
 
@@ -52,12 +52,12 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
     border-radius: 9999px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklch, var(--foreground) 40%, transparent);
+    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
   }
 
   /*

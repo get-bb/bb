@@ -348,8 +348,8 @@
    * reads consistently on canvas, cards, and recessed surfaces alike. Over the
    * canvas these match an opaque ink-over-canvas mix exactly; on elevated
    * surfaces they composite for real, visible contrast. */
-  --state-hover: color-mix(in oklch, var(--ink) 5.9%, transparent);
-  --state-active: color-mix(in oklch, var(--ink) 11.8%, transparent);
+  --state-hover: color-mix(in oklab, var(--ink) 5.9%, transparent);
+  --state-active: color-mix(in oklab, var(--ink) 11.8%, transparent);
   --destructive: oklch(0.45 0.19 25.8625);
   --destructive-foreground: oklch(1 0 0);
   /* Text-only destructive. Light is identical to --destructive (8.04:1); the
@@ -377,22 +377,22 @@
   --ring: var(--primary);
   /* Inset panel tints on the ink ramp: recessed a clear sunken step, raised a
    * faint lift, both translucent so they read on card or page alike. */
-  --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
-  --surface-raised: color-mix(in oklch, var(--ink) 2.5%, transparent);
-  --surface-scrim: color-mix(in oklch, var(--canvas) 92%, transparent);
+  --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
-    in oklch,
+    in oklab,
     var(--destructive) 6%,
     transparent
   );
   --surface-destructive-border: color-mix(
-    in oklch,
+    in oklab,
     var(--destructive) 25%,
     transparent
   );
-  --surface-selected: color-mix(in oklch, var(--primary) 16%, transparent);
+  --surface-selected: color-mix(in oklab, var(--primary) 16%, transparent);
   --surface-selected-border: color-mix(
-    in oklch,
+    in oklab,
     var(--primary) 35%,
     transparent
   );
@@ -520,8 +520,8 @@
   --file-accent: oklch(0.72 0.09 250);
   /* Interactive-state fills: translucent ink so the same hover/active step
    * reads consistently on canvas, cards, and recessed surfaces alike. */
-  --state-hover: color-mix(in oklch, var(--ink) 13.8%, transparent);
-  --state-active: color-mix(in oklch, var(--ink) 22.5%, transparent);
+  --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
+  --state-active: color-mix(in oklab, var(--ink) 22.5%, transparent);
   --destructive: oklch(0.56 0.19 22.1703);
   --destructive-foreground: oklch(1 0 0);
   /* Lighter/less-saturated than the fill so error TEXT clears AA (~4.8:1) on the
@@ -545,22 +545,22 @@
   --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
   --ring: var(--primary);
   /* Same model as light; ink is light here, so these lift the dark canvas. */
-  --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
-  --surface-raised: color-mix(in oklch, var(--ink) 2.5%, transparent);
-  --surface-scrim: color-mix(in oklch, var(--canvas) 92%, transparent);
+  --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
-    in oklch,
+    in oklab,
     var(--destructive) 8%,
     transparent
   );
   --surface-destructive-border: color-mix(
-    in oklch,
+    in oklab,
     var(--destructive) 30%,
     transparent
   );
-  --surface-selected: color-mix(in oklch, var(--primary) 12%, transparent);
+  --surface-selected: color-mix(in oklab, var(--primary) 12%, transparent);
   --surface-selected-border: color-mix(
-    in oklch,
+    in oklab,
     var(--primary) 35%,
     transparent
   );
