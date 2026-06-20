@@ -138,3 +138,33 @@ For review or fix pipelines, get the environment ID from
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
 - Run `bb guide automations` for the full command reference.
+
+## Theming
+
+- `bb theme` controls the **app-wide color palette** — a set of CSS-variable
+  overrides persisted server-side and applied live to every open window. This is
+  the *palette* only; light/dark *mode* is a separate per-client setting that the
+  palette layers on top of.
+- Commands:
+  - `bb theme list` — built-in themes and which palette is active.
+  - `bb theme set <id>` — switch to a built-in: `default`, `nord`, `dracula`,
+    `solarized`, `gruvbox`.
+  - `bb theme set-custom --file <path.css>` — load a custom stylesheet and
+    activate it. This is the only way to set custom CSS (Settings only switches
+    between built-ins).
+  - `bb theme show [--css]` — print the active palette; `--css` dumps the custom CSS.
+  - `bb theme reset` — back to `default`, clearing the custom stylesheet.
+
+### Authoring a theme
+
+To write a built-in theme or a custom stylesheet, **read `references/theming.md`
+(in this skill's directory) first.** It is the full design-token reference — what
+every CSS variable drives, which tokens to set vs. which auto-derive — plus the
+two-block light/dark structure, how to set colors and fonts, and a worked example.
+
+The short version: a custom theme is a plain CSS file that overrides CSS custom
+properties. Set the two anchors `--canvas`/`--ink` (most of the UI derives from
+them by mixing ink into canvas), the `--primary` accent, the secondary text tiers
+(`--muted-foreground` etc.), and the semantic colors (`--destructive`,
+`--success`, …). Ship one file with a `:root, .light` block and a `.dark` block,
+then load it with `bb theme set-custom --file <path.css>`.

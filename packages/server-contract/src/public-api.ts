@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import type {
+  AppTheme,
   Environment,
   Experiments,
   Host,
@@ -11,7 +12,7 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import { experimentsSchema } from "@bb/domain";
+import { appThemeSchema, experimentsSchema } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
@@ -837,6 +838,12 @@ export const publicApiRoutes = {
       method: "put",
       request: jsonRequest<EmptyInput, Experiments>(experimentsSchema),
       response: jsonResponse<Experiments>(),
+    }),
+    appearance: defineRoute({
+      path: "/settings/appearance",
+      method: "put",
+      request: jsonRequest<EmptyInput, AppTheme>(appThemeSchema),
+      response: jsonResponse<AppTheme>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",

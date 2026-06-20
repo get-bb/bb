@@ -295,6 +295,13 @@
       "when": 1781660000003,
       "tag": "0041_add_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1781917615702,
+      "tag": "0042_careful_iron_monger",
+      "breakpoints": true
     }
   ]
 }

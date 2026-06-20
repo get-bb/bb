@@ -152,6 +152,15 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// Single-row table (id = "current") holding the app-wide color palette: the
+// active built-in theme id (or "custom") plus the custom stylesheet text.
+export const appTheme = sqliteTable("app_theme", {
+  id: text("id").primaryKey(),
+  themeId: text("theme_id").notNull(),
+  customCss: text("custom_css"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const projectSources = sqliteTable(
   "project_sources",
   {

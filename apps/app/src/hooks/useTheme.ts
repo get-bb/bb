@@ -49,6 +49,15 @@ function syncThemeColorMeta(): void {
   meta.content = background;
 }
 
+/**
+ * Re-sync the PWA chrome color from the current page background. Exposed so the
+ * app palette (useAppTheme) can refresh it after a palette change that doesn't
+ * toggle light/dark mode.
+ */
+export function refreshThemeColorMeta(): void {
+  syncThemeColorMeta();
+}
+
 function getSystemTheme(): Theme {
   if (typeof window === "undefined") return "light";
   if (typeof window.matchMedia !== "function") return "light";

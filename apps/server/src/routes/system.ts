@@ -1,4 +1,9 @@
-import { getExperiments, setExperiments } from "@bb/db";
+import {
+  getAppTheme,
+  getExperiments,
+  setAppTheme,
+  setExperiments,
+} from "@bb/db";
 import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   publicApiRoutes,
@@ -24,6 +29,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   function buildSystemConfigResponse() {
     return {
       experiments: getExperiments(deps.db),
+      appearance: getAppTheme(deps.db),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
@@ -38,6 +44,14 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
+  });
+
+  put(routes.appearance, (context, payload) => {
+    setAppTheme(deps.db, payload);
+    // Broadcast like experiments: every window re-reads /system/config and
+    // re-applies the active palette.
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(getAppTheme(deps.db));
   });
 
   post(routes.reloadConfig, async (context) => {

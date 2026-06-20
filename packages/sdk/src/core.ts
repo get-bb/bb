@@ -8,6 +8,7 @@ import { createProvidersArea } from "./areas/providers.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea } from "./areas/status.js";
+import { createThemeArea } from "./areas/theme.js";
 import { createThreadsArea } from "./areas/threads.js";
 
 export interface CreateBbSdkArgs {
@@ -23,6 +24,7 @@ export interface BbSdk extends BbRealtime {
   projects: ReturnType<typeof createProjectsArea>;
   providers: ReturnType<typeof createProvidersArea>;
   status: ReturnType<typeof createStatusArea>;
+  theme: ReturnType<typeof createThemeArea>;
   threads: ReturnType<typeof createThreadsArea>;
 }
 
@@ -43,6 +45,7 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     projects: createProjectsArea(sdkContext),
     providers: createProvidersArea(sdkContext),
     status: createStatusArea(sdkContext),
+    theme: createThemeArea(sdkContext),
     threads: createThreadsArea(sdkContext),
   };
 }

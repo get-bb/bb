@@ -3,6 +3,7 @@
 // thread.ts re-exports its public names; starring it here would collide with
 // "./thread.js".
 export * from "./active-thinking.js";
+export * from "./app-theme.js";
 export * from "./automation.js";
 export * from "./background-task.js";
 export * from "./change-kinds.js";

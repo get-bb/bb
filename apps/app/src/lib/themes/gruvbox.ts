@@ -1,0 +1,76 @@
+/**
+ * Gruvbox palette (https://github.com/morhetz/gruvbox). Warm retro earth tones;
+ * light mode uses the "faded" accent set for contrast on the cream canvas, dark
+ * mode uses the "bright" set. See nord.ts for how the minimal override set
+ * cascades to the rest of the tokens.
+ */
+export const gruvboxThemeCss = `
+:root, .light {
+  --canvas: #fbf1c7;
+  --ink: #3c3836;
+  --primary: #076678;
+  --primary-foreground: #fbf1c7;
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --file-accent: #076678;
+  --destructive: #cc241d;
+  --destructive-text: #9d0006;
+  --warning: #d65d0e;
+  --warning-text: #af3a03;
+  --attention: #b57614;
+  --success: #79740e;
+  --diff-added: #79740e;
+  --diff-removed: #9d0006;
+  --pr-merged: #8f3f71;
+  --ansi-0: #3c3836;
+  --ansi-1: #cc241d;
+  --ansi-2: #98971a;
+  --ansi-3: #d79921;
+  --ansi-4: #458588;
+  --ansi-5: #b16286;
+  --ansi-6: #689d6a;
+  --ansi-7: #ebdbb2;
+  --ansi-8: #928374;
+  --ansi-9: #fb4934;
+  --ansi-10: #b8bb26;
+  --ansi-11: #fabd2f;
+  --ansi-12: #83a598;
+  --ansi-13: #d3869b;
+  --ansi-14: #8ec07c;
+  --ansi-15: #fbf1c7;
+  /* Readable text drawn on each ANSI background (black/white by contrast). */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #000000;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
+.dark {
+  --canvas: #282828;
+  --ink: #ebdbb2;
+  --primary: #83a598;
+  --primary-foreground: #282828;
+  --file-accent: #83a598;
+  --destructive: #fb4934;
+  --destructive-text: #fb4934;
+  --warning: #fe8019;
+  --warning-text: #fe8019;
+  --attention: #fabd2f;
+  --success: #b8bb26;
+  --diff-added: #b8bb26;
+  --diff-removed: #fb4934;
+  --pr-merged: #d3869b;
+}
+`;

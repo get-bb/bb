@@ -1,0 +1,76 @@
+/**
+ * Dracula palette (https://draculatheme.com). Dracula is dark-first; the light
+ * variant ("Alucard"-style) keeps the same hues at darker lightness so it stays
+ * legible on a pale canvas. See nord.ts for how the minimal override set
+ * cascades to the rest of the tokens.
+ */
+export const draculaThemeCss = `
+:root, .light {
+  --canvas: #f8f8f2;
+  --ink: #282a36;
+  --primary: #7d5bbe;
+  --primary-foreground: #ffffff;
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --file-accent: #1f6f8b;
+  --destructive: #c4314b;
+  --destructive-text: #b3243d;
+  --warning: #b8762e;
+  --warning-text: #8f5a22;
+  --attention: #9a7d00;
+  --success: #2c7a4b;
+  --diff-added: #2c7a4b;
+  --diff-removed: #c4314b;
+  --pr-merged: #7d5bbe;
+  --ansi-0: #21222c;
+  --ansi-1: #ff5555;
+  --ansi-2: #50fa7b;
+  --ansi-3: #f1fa8c;
+  --ansi-4: #bd93f9;
+  --ansi-5: #ff79c6;
+  --ansi-6: #8be9fd;
+  --ansi-7: #f8f8f2;
+  --ansi-8: #6272a4;
+  --ansi-9: #ff6e6e;
+  --ansi-10: #69ff94;
+  --ansi-11: #ffffa5;
+  --ansi-12: #d6acff;
+  --ansi-13: #ff92df;
+  --ansi-14: #a4ffff;
+  --ansi-15: #ffffff;
+  /* Readable text drawn on each ANSI background (black/white by contrast). */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #000000;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
+.dark {
+  --canvas: #282a36;
+  --ink: #f8f8f2;
+  --primary: #bd93f9;
+  --primary-foreground: #282a36;
+  --file-accent: #8be9fd;
+  --destructive: #ff5555;
+  --destructive-text: #ff7b7b;
+  --warning: #ffb86c;
+  --warning-text: #ffb86c;
+  --attention: #f1fa8c;
+  --success: #50fa7b;
+  --diff-added: #50fa7b;
+  --diff-removed: #ff5555;
+  --pr-merged: #bd93f9;
+}
+`;

@@ -23,16 +23,16 @@ export type GithubCheckStatus = "success" | "failure" | "pending";
 
 const PR_STATUS_COLOR: Record<PullRequestState, { textClassName: string }> = {
   open: {
-    textClassName: "text-[#238636]",
+    textClassName: "text-success",
   },
   closed: {
-    textClassName: "text-[#da3633]",
+    textClassName: "text-destructive",
   },
   merged: {
-    textClassName: "text-[#8957e5]",
+    textClassName: "text-pr-merged",
   },
   draft: {
-    textClassName: "text-[#656c76]",
+    textClassName: "text-muted-foreground",
   },
 };
 

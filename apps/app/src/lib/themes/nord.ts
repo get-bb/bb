@@ -1,0 +1,78 @@
+/**
+ * Nord palette (https://www.nordtheme.com). Overrides only the two anchors
+ * (--canvas/--ink), the accent, the secondary text tiers, the semantic colors,
+ * and the ANSI palette — every neutral surface (cards, borders, sidebar, hover,
+ * selection, ring) derives from the anchors and accent in theme.css, so it
+ * follows automatically. The ANSI block lives in the light selector and applies
+ * in both modes (terminal colors are mode-independent).
+ */
+export const nordThemeCss = `
+:root, .light {
+  --canvas: #eceff4;
+  --ink: #2e3440;
+  --primary: #5e81ac;
+  --primary-foreground: #eceff4;
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --file-accent: #5e81ac;
+  --destructive: #bf616a;
+  --destructive-text: #a1343d;
+  --warning: #d08770;
+  --warning-text: #99543a;
+  --attention: #ebcb8b;
+  --success: #6f9655;
+  --diff-added: #5e8a52;
+  --diff-removed: #bf616a;
+  --pr-merged: #9d7cb8;
+  --ansi-0: #3b4252;
+  --ansi-1: #bf616a;
+  --ansi-2: #a3be8c;
+  --ansi-3: #ebcb8b;
+  --ansi-4: #81a1c1;
+  --ansi-5: #b48ead;
+  --ansi-6: #88c0d0;
+  --ansi-7: #e5e9f0;
+  --ansi-8: #4c566a;
+  --ansi-9: #bf616a;
+  --ansi-10: #a3be8c;
+  --ansi-11: #ebcb8b;
+  --ansi-12: #81a1c1;
+  --ansi-13: #b48ead;
+  --ansi-14: #8fbcbb;
+  --ansi-15: #eceff4;
+  /* Readable text drawn on each ANSI background (black/white by contrast). */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #000000;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
+.dark {
+  --canvas: #2e3440;
+  --ink: #d8dee9;
+  --primary: #88c0d0;
+  --primary-foreground: #2e3440;
+  --file-accent: #88c0d0;
+  --destructive: #bf616a;
+  --destructive-text: #d6868d;
+  --warning: #d08770;
+  --warning-text: #e0a48f;
+  --attention: #ebcb8b;
+  --success: #a3be8c;
+  --diff-added: #a3be8c;
+  --diff-removed: #bf616a;
+  --pr-merged: #b48ead;
+}
+`;

@@ -6,6 +6,7 @@ import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
+import { useAppTheme } from "./hooks/useAppTheme";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
@@ -151,6 +152,8 @@ export function App() {
   // Keep the Electron window chrome (traffic lights, inactive title bar)
   // in sync with bb's resolved theme.
   useDesktopThemeSync();
+  // Apply the server-stored app palette (built-in or custom CSS) app-wide.
+  useAppTheme();
 
   return (
     <QuickCreateProjectProvider>

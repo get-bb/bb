@@ -20,6 +20,7 @@ import { Button } from "./button.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
 import { loadMermaid } from "./markdown-mermaid-loader.js";
+import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import type { Theme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
@@ -222,74 +223,99 @@ const MERMAID_WHEEL_MIN_ZOOM_FACTOR = 0.82;
 const MERMAID_WHEEL_MAX_ZOOM_FACTOR = 1.22;
 const MERMAID_DIAGRAM_CENTER_POINT: MermaidDiagramPoint = { x: 0, y: 0 };
 
-const MERMAID_LIGHT_PALETTE: MermaidThemePalette = {
-  actorBkg: "#f1f1f1",
-  actorBorder: "#dedede",
-  actorTextColor: "#333333",
-  background: "#f7f7f7",
-  clusterBkg: "#f9f9f9",
-  clusterBorder: "#dedede",
-  edgeLabelBackground: "#f1f1f1",
-  labelBoxBkgColor: "#f1f1f1",
-  labelBoxBorderColor: "#dedede",
-  labelTextColor: "#333333",
-  lineColor: "#4075aa",
-  loopTextColor: "#333333",
-  mainBkg: "#f1f1f1",
-  nodeBorder: "#cfcfcf",
-  noteBkgColor: "#f9f9f9",
-  noteBorderColor: "#cfcfcf",
-  noteTextColor: "#333333",
-  primaryBorderColor: "#cfcfcf",
-  primaryColor: "#f1f1f1",
-  primaryTextColor: "#333333",
-  secondaryBorderColor: "#dedede",
-  secondaryColor: "#f9f9f9",
-  secondaryTextColor: "#333333",
-  signalColor: "#4075aa",
-  signalTextColor: "#333333",
-  tertiaryBorderColor: "#cfcfcf",
-  tertiaryColor: "#edf4fb",
-  tertiaryTextColor: "#333333",
-  textColor: "#333333",
-};
+// Mermaid bakes concrete colors into the rendered SVG and does its own
+// lighten/darken math, so it can't consume `var(--token)` directly. Resolve the
+// app's theme tokens to concrete rgb() strings at render time — mirroring
+// buildTerminalTheme in ThreadTerminalView — so diagrams track the active
+// palette (built-in or custom), not just light/dark mode. Each mermaid slot maps
+// to the closest semantic token; the neutral fills/borders/text follow the
+// canvas/ink anchors and the line color follows the accent.
+const MERMAID_TOKEN = {
+  nodeFill: "--secondary",
+  altFill: "--muted",
+  tertiaryFill: "--accent",
+  border: "--border",
+  text: "--foreground",
+  line: "--primary",
+  background: "--background",
+} as const;
 
-const MERMAID_DARK_PALETTE: MermaidThemePalette = {
-  actorBkg: "#1f1f1f",
-  actorBorder: "#303030",
-  actorTextColor: "#c1c1c1",
-  background: "#151515",
-  clusterBkg: "#1a1a1a",
-  clusterBorder: "#303030",
-  edgeLabelBackground: "#151515",
-  labelBoxBkgColor: "#1f1f1f",
-  labelBoxBorderColor: "#303030",
-  labelTextColor: "#c1c1c1",
-  lineColor: "#79a9db",
-  loopTextColor: "#c1c1c1",
-  mainBkg: "#1f1f1f",
-  nodeBorder: "#3b3b3b",
-  noteBkgColor: "#1a1a1a",
-  noteBorderColor: "#3b3b3b",
-  noteTextColor: "#c1c1c1",
-  primaryBorderColor: "#3b3b3b",
-  primaryColor: "#1f1f1f",
-  primaryTextColor: "#c1c1c1",
-  secondaryBorderColor: "#303030",
-  secondaryColor: "#1a1a1a",
-  secondaryTextColor: "#c1c1c1",
-  signalColor: "#79a9db",
-  signalTextColor: "#c1c1c1",
-  tertiaryBorderColor: "#3b3b3b",
-  tertiaryColor: "#172334",
-  tertiaryTextColor: "#c1c1c1",
-  textColor: "#c1c1c1",
-};
+let srgbCanvasContext: CanvasRenderingContext2D | null | undefined;
 
-function getMermaidThemePalette(preferredTheme: Theme): MermaidThemePalette {
-  return preferredTheme === "dark"
-    ? MERMAID_DARK_PALETTE
-    : MERMAID_LIGHT_PALETTE;
+// Normalize any CSS color (including the oklch()/color-mix() values
+// getComputedStyle preserves) to an sRGB rgb()/rgba() string. Mermaid's color
+// math (khroma) only understands sRGB, so feeding it raw oklch() breaks shading.
+// fillStyle alone preserves the color space, so rasterize a pixel and read the
+// sRGB backing store back.
+function toSrgbColor(color: string): string {
+  if (srgbCanvasContext === undefined) {
+    srgbCanvasContext =
+      document.createElement("canvas").getContext("2d", {
+        willReadFrequently: true,
+      }) ?? null;
+  }
+  const ctx = srgbCanvasContext;
+  if (!ctx) return color;
+  ctx.clearRect(0, 0, 1, 1);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+  return a === 255
+    ? `rgb(${r}, ${g}, ${b})`
+    : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+}
+
+function resolveThemeColor(probe: HTMLElement, varName: string): string {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  // Assigning the (possibly color-mix/var) token to a real color property forces
+  // the browser to compute a concrete color. "currentColor" is a themed fallback
+  // if a token is ever missing.
+  probe.style.color = raw || "currentColor";
+  return toSrgbColor(getComputedStyle(probe).color);
+}
+
+function resolveMermaidThemePalette(): MermaidThemePalette {
+  const probe = document.createElement("span");
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.pointerEvents = "none";
+  document.body.appendChild(probe);
+  const get = (name: string) => resolveThemeColor(probe, name);
+  const palette: MermaidThemePalette = {
+    actorBkg: get(MERMAID_TOKEN.nodeFill),
+    actorBorder: get(MERMAID_TOKEN.border),
+    actorTextColor: get(MERMAID_TOKEN.text),
+    background: get(MERMAID_TOKEN.background),
+    clusterBkg: get(MERMAID_TOKEN.altFill),
+    clusterBorder: get(MERMAID_TOKEN.border),
+    edgeLabelBackground: get(MERMAID_TOKEN.background),
+    labelBoxBkgColor: get(MERMAID_TOKEN.nodeFill),
+    labelBoxBorderColor: get(MERMAID_TOKEN.border),
+    labelTextColor: get(MERMAID_TOKEN.text),
+    lineColor: get(MERMAID_TOKEN.line),
+    loopTextColor: get(MERMAID_TOKEN.text),
+    mainBkg: get(MERMAID_TOKEN.nodeFill),
+    nodeBorder: get(MERMAID_TOKEN.border),
+    noteBkgColor: get(MERMAID_TOKEN.altFill),
+    noteBorderColor: get(MERMAID_TOKEN.border),
+    noteTextColor: get(MERMAID_TOKEN.text),
+    primaryBorderColor: get(MERMAID_TOKEN.border),
+    primaryColor: get(MERMAID_TOKEN.nodeFill),
+    primaryTextColor: get(MERMAID_TOKEN.text),
+    secondaryBorderColor: get(MERMAID_TOKEN.border),
+    secondaryColor: get(MERMAID_TOKEN.altFill),
+    secondaryTextColor: get(MERMAID_TOKEN.text),
+    signalColor: get(MERMAID_TOKEN.line),
+    signalTextColor: get(MERMAID_TOKEN.text),
+    tertiaryBorderColor: get(MERMAID_TOKEN.border),
+    tertiaryColor: get(MERMAID_TOKEN.tertiaryFill),
+    tertiaryTextColor: get(MERMAID_TOKEN.text),
+    textColor: get(MERMAID_TOKEN.text),
+  };
+  probe.remove();
+  return palette;
 }
 
 function buildMermaidConfig(preferredTheme: Theme): MermaidConfig {
@@ -300,7 +326,7 @@ function buildMermaidConfig(preferredTheme: Theme): MermaidConfig {
     startOnLoad: false,
     suppressErrorRendering: true,
     theme: MERMAID_THEME,
-    themeVariables: getMermaidThemePalette(preferredTheme),
+    themeVariables: resolveMermaidThemePalette(),
   };
 }
 
@@ -952,6 +978,9 @@ export function MarkdownMermaidDiagram({
   const reactId = useId();
   const diagramElementRef = useRef<HTMLDivElement>(null);
   const renderId = useMemo(() => buildMermaidRenderId(reactId), [reactId]);
+  // Re-render the SVG (which has baked-in colors) when the app palette changes,
+  // not just on light/dark mode toggles.
+  const appThemeEpoch = useAppThemeEpoch();
   const [renderState, setRenderState] = useState<MermaidRenderState>({
     kind: "loading",
   });
@@ -993,7 +1022,7 @@ export function MarkdownMermaidDiagram({
     return () => {
       isCurrentRender = false;
     };
-  }, [preferredTheme, renderId, source]);
+  }, [preferredTheme, renderId, source, appThemeEpoch]);
 
   useEffect(() => {
     if (renderState.kind !== "rendered" || displayMode !== "preview") {

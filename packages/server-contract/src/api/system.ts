@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  appThemeSchema,
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
@@ -75,6 +76,8 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 export const systemConfigResponseSchema = z.object({
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
   experiments: experimentsSchema,
+  /** App-wide color palette (built-in id or custom CSS), persisted server-side. */
+  appearance: appThemeSchema,
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),

@@ -4,6 +4,7 @@ import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract";
 import { terminalServerMessageSchema } from "@bb/server-contract";
+import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
@@ -300,6 +301,9 @@ export function ThreadTerminalView({
   const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
   const preferredTheme = usePreferredTheme();
+  // The xterm canvas bakes its palette, so re-apply the theme on app-palette
+  // changes too, not just light/dark toggles.
+  const appThemeEpoch = useAppThemeEpoch();
   const openUrlByPreference = useOpenUrlByPreference();
   const handleOpenLinkByPreference =
     useCallback<MarkdownPreviewLinkHandler>(
@@ -535,7 +539,7 @@ export function ThreadTerminalView({
       return;
     }
     terminal.options.theme = buildTerminalTheme();
-  }, [preferredTheme]);
+  }, [preferredTheme, appThemeEpoch]);
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden bg-background p-2">

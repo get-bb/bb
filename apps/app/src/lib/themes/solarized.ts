@@ -1,0 +1,75 @@
+/**
+ * Solarized palette (Ethan Schoonover). Uses the canonical base3/base03 canvases
+ * with darkened accents in light mode so text/fills clear contrast on the warm
+ * paper background. See nord.ts for how the minimal override set cascades.
+ */
+export const solarizedThemeCss = `
+:root, .light {
+  --canvas: #fdf6e3;
+  --ink: #073642;
+  --primary: #268bd2;
+  --primary-foreground: #fdf6e3;
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --file-accent: #268bd2;
+  --destructive: #dc322f;
+  --destructive-text: #c12321;
+  --warning: #cb4b16;
+  --warning-text: #a53c12;
+  --attention: #b58900;
+  --success: #718c00;
+  --diff-added: #718c00;
+  --diff-removed: #dc322f;
+  --pr-merged: #6c71c4;
+  --ansi-0: #073642;
+  --ansi-1: #dc322f;
+  --ansi-2: #859900;
+  --ansi-3: #b58900;
+  --ansi-4: #268bd2;
+  --ansi-5: #d33682;
+  --ansi-6: #2aa198;
+  --ansi-7: #eee8d5;
+  --ansi-8: #586e75;
+  --ansi-9: #cb4b16;
+  --ansi-10: #93a1a1;
+  --ansi-11: #839496;
+  --ansi-12: #657b83;
+  --ansi-13: #6c71c4;
+  --ansi-14: #2aa198;
+  --ansi-15: #fdf6e3;
+  /* Readable text drawn on each ANSI background (black/white by contrast). */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #ffffff;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
+.dark {
+  --canvas: #002b36;
+  --ink: #93a1a1;
+  --primary: #268bd2;
+  --primary-foreground: #002b36;
+  --file-accent: #2aa198;
+  --destructive: #dc322f;
+  --destructive-text: #e8645f;
+  --warning: #cb4b16;
+  --warning-text: #e07a4e;
+  --attention: #b58900;
+  --success: #859900;
+  --diff-added: #859900;
+  --diff-removed: #dc322f;
+  --pr-merged: #6c71c4;
+}
+`;

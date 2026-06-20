@@ -379,7 +379,7 @@
    * faint lift, both translucent so they read on card or page alike. */
   --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
   --surface-raised: color-mix(in oklch, var(--ink) 2.5%, transparent);
-  --surface-scrim: color-mix(in oklch, oklch(1 0 0) 92%, transparent);
+  --surface-scrim: color-mix(in oklch, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklch,
     var(--destructive) 6%,
@@ -547,7 +547,7 @@
   /* Same model as light; ink is light here, so these lift the dark canvas. */
   --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
   --surface-raised: color-mix(in oklch, var(--ink) 2.5%, transparent);
-  --surface-scrim: color-mix(in oklch, oklch(0.195 0 0) 92%, transparent);
+  --surface-scrim: color-mix(in oklch, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklch,
     var(--destructive) 8%,
