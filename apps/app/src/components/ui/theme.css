@@ -485,6 +485,18 @@
   --ansi-bg-fg-13: #ffffff;
   --ansi-bg-fg-14: #ffffff;
   --ansi-bg-fg-15: #ffffff;
+  /* Diff renderer bridge — feed @pierre/diffs from the app theme tokens so the
+   * diff panel and file preview follow the active palette (built-in or custom
+   * CLI stylesheet) instead of the library's fixed black/white + green/red.
+   * The library reads these as var() inputs; line numbers, context tints,
+   * separators, and the +/- row fills all derive from bg/fg internally, so
+   * bridging these four is enough. The diff container sets `color-scheme` from
+   * its `themeType`, so the light branch (these `*-light` inputs) is selected
+   * whenever the app is in light mode. */
+  --diffs-light-bg: var(--background);
+  --diffs-light: var(--foreground);
+  --diffs-light-addition-color: var(--diff-added);
+  --diffs-light-deletion-color: var(--diff-removed);
 }
 
 .dark {
@@ -649,6 +661,14 @@
   --ansi-bg-fg-13: #000000;
   --ansi-bg-fg-14: #000000;
   --ansi-bg-fg-15: #000000;
+  /* Diff renderer bridge (dark branch). See the light block for rationale; the
+   * diff container selects these `*-dark` inputs whenever the app is in dark
+   * mode. Each input re-resolves `var(--…)` against the dark token values in
+   * this block, and against any palette that overrides those tokens. */
+  --diffs-dark-bg: var(--background);
+  --diffs-dark: var(--foreground);
+  --diffs-dark-addition-color: var(--diff-added);
+  --diffs-dark-deletion-color: var(--diff-removed);
 }
 
 @layer base {
