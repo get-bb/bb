@@ -2194,9 +2194,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 @media (max-width: 720px) {
+  /* Keep a fixed height (sidebar is an overlay drawer here, so it adds no
+     in-flow height). A running thread streams rows in endlessly; without a
+     bounded body the feed — and the whole card — would grow without limit. */
   .mock-body {
     flex-direction: column;
-    height: auto;
+  }
+
+  /* In this column layout .main is on the main axis, so it needs min-height:0
+     to stay within the fixed body instead of growing with the feed's content.
+     This lets .feed clip and anchor newest rows to the bottom (.feed-live). */
+  .main {
+    min-height: 0;
   }
 
   .diff-panel {
@@ -2274,11 +2283,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     padding: 0;
     background: color-mix(in oklch, var(--ink) 34%, transparent);
     cursor: pointer;
-  }
-
-  .feed {
-    overflow: visible;
-    min-height: 200px;
   }
 
   .ctx-branch {
