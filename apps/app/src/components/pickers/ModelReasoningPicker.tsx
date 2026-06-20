@@ -280,7 +280,12 @@ export function ModelReasoningPicker({
     hasSelectedModel &&
     !modelIsLoading &&
     !selectedModelLoadFailed &&
-    !isShowingModelError;
+    !isShowingModelError &&
+    // While previewing another provider's models, the reasoning options belong
+    // to the committed model, not the tab on screen — hide them so a level the
+    // previewed provider lacks (e.g. Cursor's "None") doesn't appear under it.
+    // The committed reasoning state is untouched; it returns on commit.
+    !isPreviewing;
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -529,9 +534,9 @@ export function ModelReasoningPicker({
           )}
         </div>
 
-        {/* Reasoning section — only shows for the committed model; previewing
-            other providers doesn't touch reasoning state, so the committed
-            model's reasoning options stay visible. */}
+        {/* Reasoning section — the committed model's reasoning options. Hidden
+            while previewing another provider (see showReasoningSection), since
+            they don't apply to the tab on screen. */}
         {showReasoningSection && reasoningOptions.length > 0 ? (
           <>
             <div className="border-t border-border" />
