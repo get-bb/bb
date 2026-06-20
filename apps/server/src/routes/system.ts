@@ -13,6 +13,7 @@ import {
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
 import { resolveSystemExecutionOptions } from "../services/system/execution-options.js";
+import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
@@ -51,6 +52,10 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
 
   get(routes.providers, (context) =>
     context.json(listBuiltInAgentProviderInfos()),
+  );
+
+  get(routes.usageLimits, async (context) =>
+    context.json(await getProviderUsageLimits(deps)),
   );
 
   get(routes.executionOptions, async (context, query) =>

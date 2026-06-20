@@ -26,6 +26,7 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { useUpdateExperiments } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
@@ -385,7 +386,8 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL = "Rich text formatting in the prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL =
+  "Rich text formatting in the prompt box";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -833,6 +835,8 @@ export function SettingsView() {
           onThemePreferenceChange={setPreferredTheme}
         />
 
+        <UsageLimitsSettingsSection />
+
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}
           fileTargetId={fileTargetId}
@@ -843,9 +847,7 @@ export function SettingsView() {
         />
 
         <ExperimentsSettingsSection
-          claudeCodeMockCliTrafficEnabled={
-            experiments.claudeCodeMockCliTraffic
-          }
+          claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
           desktopShellAvailable={desktopShellAvailable}
           disabled={
             systemConfigQuery.data === undefined ||

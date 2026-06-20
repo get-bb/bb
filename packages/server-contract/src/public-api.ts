@@ -12,6 +12,7 @@ import type {
   ThreadQueuedMessage,
 } from "@bb/domain";
 import { experimentsSchema } from "@bb/domain";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
   defineRoute,
@@ -856,6 +857,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemProviderInfo[]>(),
+    }),
+    usageLimits: defineRoute({
+      path: "/system/usage-limits",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ProviderUsageResponse>(),
     }),
     voiceTranscription: defineRoute({
       path: "/system/voice-transcription",

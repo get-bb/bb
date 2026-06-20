@@ -56,6 +56,7 @@ export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
+export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
 export const AUTOMATIONS_QUERY_KEY = "automations";
 export const AUTOMATION_DETAIL_QUERY_KEY = "automationDetail";
@@ -397,6 +398,9 @@ export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 export type LocalProviderCliStatusQueryKey = readonly [
   typeof LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY,
   number | null,
+];
+export type SystemUsageLimitsQueryKey = readonly [
+  typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -977,6 +981,10 @@ export function localProviderCliStatusQueryKey(
   daemonPort: number | null,
 ): LocalProviderCliStatusQueryKey {
   return [LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY, daemonPort];
+}
+
+export function systemUsageLimitsQueryKey(): SystemUsageLimitsQueryKey {
+  return [SYSTEM_USAGE_LIMITS_QUERY_KEY];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

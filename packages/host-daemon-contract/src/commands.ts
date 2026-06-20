@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 41 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 42 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -788,6 +788,55 @@ const hostRunScriptResultSchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// Provider usage limits (live read from the host's provider credentials)
+// ---------------------------------------------------------------------------
+
+/**
+ * One usage window for a provider subscription, e.g. the rolling 5h session
+ * limit or the weekly limit. `usedPercent` is normalized to 0-100 and
+ * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it).
+ */
+export const providerUsageWindowSchema = z.object({
+  label: z.string().min(1),
+  usedPercent: z.number().min(0).max(100),
+  resetsAt: z.string().min(1).nullable(),
+});
+export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
+
+/**
+ * Live usage snapshot for a single provider. Discriminated on `status` so the
+ * UI can render the windows, prompt the user to sign in, or surface an error
+ * without inventing placeholder numbers.
+ *
+ * - `ok` — usage was read; `windows` may be empty if the plan exposes none.
+ * - `unauthenticated` — no local credentials (the CLI is not logged in).
+ * - `expired` — credentials exist but the token expired; the CLI must refresh
+ *   it (we never refresh another tool's tokens here).
+ * - `error` — network/HTTP/parse failure; `message` is user-facing.
+ */
+export const providerUsageSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    planLabel: z.string().min(1).nullable(),
+    windows: z.array(providerUsageWindowSchema),
+  }),
+  z.object({ status: z.literal("unauthenticated") }),
+  z.object({ status: z.literal("expired") }),
+  z.object({ status: z.literal("error"), message: z.string().min(1) }),
+]);
+export type ProviderUsage = z.infer<typeof providerUsageSchema>;
+
+export const providerUsageResponseSchema = z.object({
+  codex: providerUsageSchema,
+  claudeCode: providerUsageSchema,
+});
+export type ProviderUsageResponse = z.infer<typeof providerUsageResponseSchema>;
+
+const providerUsageCommandSchema = z
+  .object({ type: z.literal("provider.usage") })
+  .strict();
+
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
 type HostDaemonFlushEventsBeforeResult = boolean | "when-initiated";
@@ -1044,6 +1093,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.list_models",
     schema: providerListModelsCommandSchema,
     resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.usage": defineHostDaemonCommandDescriptor({
+    type: "provider.usage",
+    schema: providerUsageCommandSchema,
+    resultSchema: providerUsageResponseSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

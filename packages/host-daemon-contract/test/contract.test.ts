@@ -226,6 +226,20 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
+  "provider.usage": {
+    codex: {
+      status: "ok",
+      planLabel: "Pro",
+      windows: [
+        {
+          label: "Current session",
+          usedPercent: 6,
+          resetsAt: "2026-06-20T05:28:16.000Z",
+        },
+      ],
+    },
+    claudeCode: { status: "unauthenticated" },
+  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -1895,7 +1909,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(41);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(42);
   });
 
   it("parses valid session open and event batch payloads", () => {

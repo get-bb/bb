@@ -5,6 +5,7 @@ import type {
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
 import { fetchProviderCliStatus } from "@/lib/api-host-daemon";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -12,6 +13,7 @@ import {
   localProviderCliStatusQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
+  systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg } from "./query-helpers";
@@ -97,5 +99,18 @@ export function useLocalProviderCliStatus({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     staleTime: Infinity,
+  });
+}
+
+const PROVIDER_USAGE_STALE_TIME_MS = 30_000;
+
+export function useSystemUsageLimits(options?: QueryOptions) {
+  return useQuery<ProviderUsageResponse>({
+    queryKey: systemUsageLimitsQueryKey(),
+    queryFn: ({ signal }) => api.getSystemUsageLimits(signal),
+    enabled: options?.enabled ?? true,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: PROVIDER_USAGE_STALE_TIME_MS,
   });
 }

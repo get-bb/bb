@@ -79,6 +79,7 @@ import type {
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
   buildFilePreview,
@@ -1606,6 +1607,14 @@ export async function getSystemConfig(
 ): Promise<SystemConfigResponse> {
   return request<SystemConfigResponse>(
     apiClient.system.config.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function getSystemUsageLimits(
+  signal?: AbortSignal,
+): Promise<ProviderUsageResponse> {
+  return request<ProviderUsageResponse>(
+    apiClient.system["usage-limits"].$get({}, requestOptions(signal)),
   );
 }
 

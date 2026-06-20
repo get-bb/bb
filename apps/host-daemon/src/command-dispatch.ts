@@ -31,6 +31,7 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
+import { getProviderUsage } from "./provider-usage.js";
 import {
   ensureThreadRuntime,
   startThread,
@@ -230,6 +231,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
     }),
+  "provider.usage": async () => getProviderUsage(),
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,
