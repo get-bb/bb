@@ -22,6 +22,7 @@ import type {
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { reconcileReasoningLevel } from "@bb/domain";
 import { useSystemExecutionOptions } from "./queries/system-queries";
 import {
@@ -52,15 +53,6 @@ export { formatModelLabel, resolvePermissionModeSelection };
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 
-const REASONING_LABELS: Record<ReasoningLevel, string> = {
-  none: "None",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra High",
-  ultracode: "Ultracode",
-  max: "Max",
-};
 
 const PERMISSION_MODE_OPTIONS: PickerOption<PermissionMode>[] = [
   {

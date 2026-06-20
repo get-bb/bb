@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
+import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -230,6 +231,32 @@ export function ModelReasoningPicker({
     previewQuery.data?.selectedOnlyModels,
     formatModelLabel,
   ]);
+  // While previewing, the reasoning levels belong to the previewed provider's
+  // default model (each provider exposes its own set), so the section reflects
+  // the tab on screen rather than the committed model.
+  const previewDefaultModel = useMemo(() => {
+    if (!isPreviewing) return undefined;
+    const models = previewQuery.data?.models;
+    if (!models || models.length === 0) return undefined;
+    return models.find((model) => model.isDefault) ?? models[0];
+  }, [isPreviewing, previewQuery.data?.models]);
+  const previewReasoningOptions = useMemo((): readonly PickerOption<ReasoningLevel>[] => {
+    if (!previewDefaultModel) return [];
+    const seen = new Set<ReasoningLevel>();
+    const options: PickerOption<ReasoningLevel>[] = [];
+    for (const effort of previewDefaultModel.supportedReasoningEfforts) {
+      if (seen.has(effort.reasoningEffort)) continue;
+      seen.add(effort.reasoningEffort);
+      options.push({
+        value: effort.reasoningEffort,
+        label: REASONING_LABELS[effort.reasoningEffort],
+      });
+    }
+    return options;
+  }, [previewDefaultModel]);
+  const activeReasoningOptions = isPreviewing
+    ? previewReasoningOptions
+    : reasoningOptions;
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -277,15 +304,11 @@ export function ModelReasoningPicker({
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
-    hasSelectedModel &&
-    !modelIsLoading &&
-    !selectedModelLoadFailed &&
     !isShowingModelError &&
-    // While previewing another provider's models, the reasoning options belong
-    // to the committed model, not the tab on screen — hide them so a level the
-    // previewed provider lacks (e.g. Cursor's "None") doesn't appear under it.
-    // The committed reasoning state is untouched; it returns on commit.
-    !isPreviewing;
+    activeReasoningOptions.length > 0 &&
+    (isPreviewing
+      ? hasActiveModelOptions && !activeModelIsLoading
+      : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -312,14 +335,27 @@ export function ModelReasoningPicker({
 
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
+      // While previewing, the listed levels are the previewed provider's, so
+      // picking one commits that provider's default model at the chosen level —
+      // symmetric with picking one of its models.
+      if (isPreviewing && previewDefaultModel) {
+        onSelectedProviderChange?.(previewProviderId!);
+        onModelChange(previewDefaultModel.model);
+      }
       onReasoningChange(level);
       // Match the standalone Reasoning OptionPicker's behaviour: picking a
-      // value commits and closes. Provider preview is also discarded since
-      // the user moved their attention to reasoning.
+      // value commits and closes.
       setOpen(false);
       setPreviewProviderId(null);
     },
-    [onReasoningChange],
+    [
+      isPreviewing,
+      previewDefaultModel,
+      previewProviderId,
+      onModelChange,
+      onReasoningChange,
+      onSelectedProviderChange,
+    ],
   );
 
   const TriggerIcon = hasSelectedModel ? ProviderIcon : undefined;
@@ -534,19 +570,19 @@ export function ModelReasoningPicker({
           )}
         </div>
 
-        {/* Reasoning section — the committed model's reasoning options. Hidden
-            while previewing another provider (see showReasoningSection), since
-            they don't apply to the tab on screen. */}
-        {showReasoningSection && reasoningOptions.length > 0 ? (
+        {/* Reasoning section — the committed model's levels, or (while
+            previewing) the previewed provider's default-model levels. Like the
+            model list, nothing is checked during preview until committed. */}
+        {showReasoningSection ? (
           <>
             <div className="border-t border-border" />
             <div className="px-1 pb-1 pt-0">
               <MenuSectionLabel>Reasoning</MenuSectionLabel>
-              {reasoningOptions.map((option) => (
+              {activeReasoningOptions.map((option) => (
                 <MenuRowButton
                   key={option.value}
                   label={option.label}
-                  selected={option.value === reasoningValue}
+                  selected={!isPreviewing && option.value === reasoningValue}
                   onClick={() => handleReasoningSelect(option.value)}
                 />
               ))}
