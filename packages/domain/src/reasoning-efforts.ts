@@ -1,6 +1,10 @@
 import type { ModelReasoningEffort } from "./provider-types.js";
 import type { ReasoningLevel } from "./shared-types.js";
 
+export const NONE_REASONING_EFFORT: ModelReasoningEffort = {
+  reasoningEffort: "none",
+  description: "No extended thinking",
+};
 export const LOW_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "low",
   description: "Low reasoning effort",
@@ -37,6 +41,7 @@ export const ALL_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
 
 const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
   {
+    none: NONE_REASONING_EFFORT,
     low: LOW_REASONING_EFFORT,
     medium: MEDIUM_REASONING_EFFORT,
     high: HIGH_REASONING_EFFORT,

@@ -667,6 +667,10 @@ function toCodexReasoningEffort(
       return "high";
     case "xhigh":
       return "xhigh";
+    case "none":
+      // "none" (thinking-off) is a Cursor-only level; Codex models never
+      // expose it, so model-switch reconciliation maps it away before here.
+      throw new Error("Codex does not support the none reasoning level.");
     case "ultracode":
       throw new Error("Codex does not support ultracode reasoning level.");
     case "max":

@@ -2,11 +2,14 @@ import { z } from "zod";
 
 /**
  * Order is load-bearing: `reasoningRank` (index) drives model-switch
- * reconciliation. "ultracode" sits between "xhigh" and "max" because its
- * underlying effort IS xhigh (plus standing workflow orchestration) — a model
- * without ultracode support should reconcile down to xhigh, not up to max.
+ * reconciliation. "none" (no extended thinking) sits at the bottom — only
+ * providers that expose a thinking-off variant list it (currently Cursor).
+ * "ultracode" sits between "xhigh" and "max" because its underlying effort IS
+ * xhigh (plus standing workflow orchestration) — a model without ultracode
+ * support should reconcile down to xhigh, not up to max.
  */
 export const reasoningLevelValues = [
+  "none",
   "low",
   "medium",
   "high",

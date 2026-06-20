@@ -59,7 +59,11 @@ const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
 function toSdkEffort(
   reasoningLevel: ReasoningLevel,
 ): Exclude<Options["effort"], undefined> {
-  return reasoningLevel === "ultracode" ? "xhigh" : reasoningLevel;
+  if (reasoningLevel === "ultracode") return "xhigh";
+  // "none" (thinking-off) is a Cursor-only level; Claude Code models never
+  // expose it, so this is a defensive floor that reconciliation never reaches.
+  if (reasoningLevel === "none") return "low";
+  return reasoningLevel;
 }
 
 function buildFlagSettings(

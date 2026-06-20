@@ -53,6 +53,7 @@ const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 
 const REASONING_LABELS: Record<ReasoningLevel, string> = {
+  none: "None",
   low: "Low",
   medium: "Medium",
   high: "High",
