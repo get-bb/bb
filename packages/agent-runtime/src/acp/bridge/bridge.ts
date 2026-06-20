@@ -291,7 +291,12 @@ async function resolveAgentLaunchArgs(
   }
   let resolved: string | undefined;
   let warning: string | undefined;
-  if (selection.reasoningLevel !== undefined) {
+  // Resolve whenever the selection narrows the raw id: an explicit reasoning
+  // effort, or Fast mode (which picks the model's `-fast` twin).
+  if (
+    selection.reasoningLevel !== undefined ||
+    selection.serviceTier === "fast"
+  ) {
     // Prefer the catalog cached by the last model/list (the picker the
     // selection came from) over re-running the list command per spawn.
     const key = JSON.stringify(selection.listCommand);
@@ -302,8 +307,9 @@ async function resolveAgentLaunchArgs(
     resolved = catalog?.resolveVariant({
       model: selection.model,
       reasoningLevel: selection.reasoningLevel,
+      serviceTier: selection.serviceTier,
     });
-    if (resolved === undefined) {
+    if (resolved === undefined && selection.reasoningLevel !== undefined) {
       warning = `Model "${selection.model}" has no ${selection.reasoningLevel} reasoning variant; launching it at its default effort.`;
     }
   }

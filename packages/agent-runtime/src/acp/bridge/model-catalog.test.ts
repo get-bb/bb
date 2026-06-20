@@ -56,12 +56,61 @@ describe("acp model catalog", () => {
     ).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
-  it("keeps -fast variants as their own family", () => {
+  it("folds -fast variants into the family as a service tier", () => {
     const catalog = catalogFromSample();
-    const fast = catalog.models.find((m) => m.id === "gpt-5.3-codex-fast");
+    // No standalone `-fast` family is offered in the picker anymore.
+    expect(catalog.models.some((m) => m.id.endsWith("-fast"))).toBe(false);
     expect(
-      fast?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["low", "medium"]);
+      catalog.models.find((m) => m.id === "gpt-5.3-codex-fast"),
+    ).toBeUndefined();
+    // The family's reasoning ladder comes from the non-fast members.
+    const codex = catalog.models.find((m) => m.id === "gpt-5.3-codex");
+    expect(
+      codex?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
+    // The fast tail is reachable through serviceTier instead of a new entry.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "low",
+        serviceTier: "fast",
+      }),
+    ).toBe("gpt-5.3-codex-low-fast");
+    // The default tier resolves to the normal id.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "low",
+        serviceTier: "default",
+      }),
+    ).toBe("gpt-5.3-codex-low");
+    // An effort with no fast twin falls back to the normal id under fast.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      }),
+    ).toBe("gpt-5.3-codex-high");
+  });
+
+  it("resolves fast at the default effort when no reasoning level is given", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "composer-2.5 - Composer 2.5",
+          "composer-2.5-fast - Composer 2.5 Fast",
+        ].join("\n"),
+      ),
+    );
+    // composer's `-fast` twin folds in — one family, fast id reachable as a tier.
+    expect(catalog?.models.map((m) => m.id)).toEqual(["composer-2.5"]);
+    expect(
+      catalog?.resolveVariant({ model: "composer-2.5", serviceTier: "fast" }),
+    ).toBe("composer-2.5-fast");
+    expect(catalog?.resolveVariant({ model: "composer-2.5" })).toBe(
+      "composer-2.5",
+    );
   });
 
   it("maps the extra-high spelling onto xhigh and resolves it back exactly", () => {
@@ -88,7 +137,7 @@ describe("acp model catalog", () => {
     ).toBe("gpt-5.1-codex-max-high");
   });
 
-  it("strips the default variant's effort word from the family name", () => {
+  it("strips the effort word and picker noise from the family name", () => {
     const catalog = buildAgentModelCatalog(
       parseAgentModelLines(
         [
@@ -98,14 +147,40 @@ describe("acp model catalog", () => {
         ].join("\n"),
       ),
     );
+    // 1M, the (NO ZDR) marker, and the default variant's effort word are gone;
+    // the load-bearing "Thinking" word stays.
     expect(catalog?.models.map((m) => m.displayName)).toEqual([
-      "Opus 4.8 1M",
-      "Fable 5 1M Thinking (NO ZDR)",
+      "Opus 4.8",
+      "Fable 5 Thinking",
     ]);
     // The raw variant names survive as per-effort descriptions.
     expect(
       catalog?.models[0]?.supportedReasoningEfforts.map((e) => e.description),
     ).toEqual(["Opus 4.8 1M Medium", "Opus 4.8 1M"]);
+  });
+
+  it("strips 1M, NO ZDR, and Cursor's default/current annotations", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "composer-2.5 - Composer 2.5 (current)",
+          "composer-2.5-fast - Composer 2.5 Fast (default)",
+          "gpt-5.5-medium - GPT-5.5 1M",
+          "claude-fable-5-high - Fable 5 1M (NO ZDR)",
+        ].join("\n"),
+      ),
+    );
+    expect(catalog?.models.map((m) => m.displayName)).toEqual([
+      "Composer 2.5",
+      "GPT-5.5",
+      "Fable 5",
+    ]);
+    // The family id stays the non-fast variant; fast is the opt-in tier.
+    expect(catalog?.models.map((m) => m.id)).toEqual([
+      "composer-2.5",
+      "gpt-5.5-medium",
+      "claude-fable-5-high",
+    ]);
   });
 
   it("orders reasoning efforts low → max regardless of listing order", () => {

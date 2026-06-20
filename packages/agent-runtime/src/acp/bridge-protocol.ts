@@ -12,6 +12,7 @@ import {
   permissionModeSchema,
   promptInputSchema,
   reasoningLevelSchema,
+  serviceTierSchema,
 } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -56,17 +57,19 @@ const acpBridgeModelListParamsSchema = z.object({
 });
 
 /**
- * Session-level model pin. The bridge resolves (model, reasoningLevel) to the
- * exact raw agent model id via the catalog parsed from `listCommand`, then
- * launches the agent with `<selectFlag> <resolved-id>` ahead of its args.
- * Absent when the thread has no model preference — the agent uses its own
- * default.
+ * Session-level model pin. The bridge resolves (model, reasoningLevel,
+ * serviceTier) to the exact raw agent model id via the catalog parsed from
+ * `listCommand`, then launches the agent with `<selectFlag> <resolved-id>`
+ * ahead of its args. `serviceTier` "fast" selects the model's `-fast` twin
+ * when it has one. Absent when the thread has no model preference — the agent
+ * uses its own default.
  */
 const acpBridgeModelSelectionSchema = z.object({
   listCommand: acpBridgeAgentCommandSchema,
   selectFlag: z.string().min(1),
   model: z.string().min(1),
   reasoningLevel: reasoningLevelSchema.optional(),
+  serviceTier: serviceTierSchema.optional(),
 });
 export type AcpBridgeModelSelection = z.infer<
   typeof acpBridgeModelSelectionSchema

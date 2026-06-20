@@ -1113,9 +1113,9 @@ export function createAcpProviderAdapter(
 
   /**
    * Session-level model pin for the bridge, which resolves (model,
-   * reasoningLevel) to the exact agent model variant via the list command's
-   * catalog. The synthetic "acp-default" id (persisted by threads started
-   * before the bridge listed real models) is never forwarded.
+   * reasoningLevel, serviceTier) to the exact agent model variant via the list
+   * command's catalog. The synthetic "acp-default" id (persisted by threads
+   * started before the bridge listed real models) is never forwarded.
    */
   function buildModelSelectionParam(
     options: ProviderExecutionContext,
@@ -1134,6 +1134,10 @@ export function createAcpProviderAdapter(
         model,
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
+          : {}),
+        // Only "fast" changes resolution; "default" is the catalog's normal id.
+        ...(options.serviceTier === "fast"
+          ? { serviceTier: options.serviceTier }
           : {}),
       },
     };

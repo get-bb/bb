@@ -48,8 +48,8 @@ export const ACP_AGENT_PROFILES: readonly AcpAgentProfile[] = [
         "claude-fable-5-thinking-medium",
         "claude-opus-4-8-thinking-medium",
         "gpt-5.5-medium",
-        // Cursor's own default composer is the fast variant.
-        "composer-2.5-fast",
+        // Composer is one family now; its `-fast` twin is the Fast-mode tier.
+        "composer-2.5",
       ],
     },
   },

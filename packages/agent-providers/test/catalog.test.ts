@@ -75,7 +75,7 @@ describe("agent provider catalog", () => {
         capabilities: {
           supportsArchive: false,
           supportsRename: false,
-          supportsServiceTier: false,
+          supportsServiceTier: true,
           supportsUserQuestion: false,
           supportsFork: false,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],

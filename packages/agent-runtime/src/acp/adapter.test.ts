@@ -250,6 +250,42 @@ describe("acp adapter model cli", () => {
     expect("reasoningLevel" in selection).toBe(false);
   });
 
+  it("forwards Fast mode as the model selection service tier", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "composer-2.5",
+        serviceTier: "fast",
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      params: {
+        modelSelection: { model: "composer-2.5", serviceTier: "fast" },
+      },
+    });
+  });
+
+  it("omits a default service tier from the model selection", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "composer-2.5",
+        serviceTier: "default",
+      },
+      instructionMode: "append",
+    });
+    const params = (plan as { params: Record<string, unknown> }).params;
+    const selection = params.modelSelection as Record<string, unknown>;
+    expect("serviceTier" in selection).toBe(false);
+  });
+
   it("never forwards the synthetic default model id", () => {
     const plan = createAdapter().buildCommandPlan({
       type: "thread/start",

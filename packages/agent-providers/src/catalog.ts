@@ -129,10 +129,13 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 // its own model selection, tool execution, and session naming, so BB-side
 // capabilities stay minimal. Permission modes are enforced cooperatively by
 // the ACP bridge (permission-request policy + client fs write policy).
+// Cursor exposes a `-fast` service tail per model; the bridge resolves it from
+// the serviceTier (the "Fast mode" toggle), so service tier is supported here
+// rather than fanning fast variants out as separate model-list entries.
 const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
   supportsRename: false,
-  supportsServiceTier: false,
+  supportsServiceTier: true,
   supportsUserQuestion: false,
   // ACP has no session-fork primitive; the adapter has no thread/fork handler,
   // so forks are blocked at the server boundary rather than failing at runtime.
