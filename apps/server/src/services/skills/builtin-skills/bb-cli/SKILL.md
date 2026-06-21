@@ -15,6 +15,11 @@ message agents, or inspect projects, providers, and environments.
 - Run `bb guide` for the system overview and `bb guide <chapter>` for full
   command reference.
 
+## Environment Setup Script
+
+- To make a repo work with bb worktrees, run `bb guide environments`. It
+  documents the repo-level `.bb-env-setup.sh` setup hook.
+
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another

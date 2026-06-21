@@ -27,10 +27,13 @@ Run `bb status` to see your current context (resolved project and thread IDs).
 
 All commands support --json for machine-readable output.
 
+To make a repo work with bb worktrees, run `bb guide environments`. It documents
+the repo-level `.bb-env-setup.sh` setup hook.
+
 Run `bb guide <chapter>` for command details:
 
   threads        Spawning, inspecting, messaging, and managing threads
-  environments   Environment operations, commits, and merges
+  environments   Environment setup hooks, operations, commits, and merges
   providers      Discovering providers and models
   projects       Project CRUD and sources
   automations    Scheduled agent and script automations
