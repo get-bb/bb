@@ -53,8 +53,11 @@ export function ThreadDetailHeader({
   const renderAsDrawer = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const rightPanelLabel = "Show right panel";
+  const rightPanelLabel = isSecondaryPanelOpen
+    ? "Hide right panel"
+    : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
+  const showRightPanelToggle = renderAsDrawer || !isSecondaryPanelOpen;
 
   const center = (
     <>
@@ -111,13 +114,14 @@ export function ThreadDetailHeader({
           {primaryAction.label}
         </Button>
       ) : null}
-      {isSecondaryPanelOpen ? null : (
+      {showRightPanelToggle ? (
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className={`${HEADER_ICON_BUTTON_CLASS} relative`}
           aria-label={rightPanelLabel}
+          aria-pressed={isSecondaryPanelOpen}
           title={rightPanelLabel}
           onClick={onToggleSecondaryPanel}
         >
@@ -131,7 +135,7 @@ export function ThreadDetailHeader({
             </span>
           ) : null}
         </Button>
-      )}
+      ) : null}
     </>
   );
 
