@@ -40,10 +40,12 @@ function createStoryFixedPanelTab(
 
 function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
   return {
-    id: `host-file-preview:${encodeURIComponent(filename)}`,
+    environmentId: "env_story",
+    id: `host-file-preview:${encodeURIComponent(filename)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
     kind: "host-file-preview",
     lineRange: null,
     path: filename,
+    threadId: "thr_story",
   };
 }
 

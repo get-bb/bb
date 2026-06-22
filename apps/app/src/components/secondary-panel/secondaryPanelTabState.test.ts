@@ -36,8 +36,12 @@ describe("secondaryPanelTabState", () => {
   it("opens, activates, and closes secondary panel tabs by canonical id", () => {
     const workspaceTab = makeWorkspaceTab("env-1");
     const hostTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/log.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/log.txt",
+      },
+      threadId: "thr-1",
     });
     const tabs = [
       createThreadInfoFixedPanelTab(),
@@ -45,8 +49,10 @@ describe("secondaryPanelTabState", () => {
       workspaceTab,
       hostTab,
       createThreadStorageFilePreviewFixedPanelTab({
+        environmentId: "env-1",
         isPinned: false,
         tab: { lineRange: null, path: "artifact.txt" },
+        threadId: "thr-1",
       }),
       createBrowserFixedPanelTab({ environmentId: "env-1", url: "" }),
       createNewTabFixedPanelTab(),
@@ -75,12 +81,20 @@ describe("secondaryPanelTabState", () => {
 
   it("activates the previous file tab when closing the last active file tab", () => {
     const firstTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/first.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/first.txt",
+      },
+      threadId: "thr-1",
     });
     const secondTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/second.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/second.txt",
+      },
+      threadId: "thr-1",
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
@@ -101,8 +115,12 @@ describe("secondaryPanelTabState", () => {
 
   it("clears active state when closing the only active file tab", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/only.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/only.txt",
+      },
+      threadId: "thr-1",
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
@@ -122,12 +140,20 @@ describe("secondaryPanelTabState", () => {
 
   it("keeps the active tab when closing an inactive file tab", () => {
     const activeTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/active.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/active.txt",
+      },
+      threadId: "thr-1",
     });
     const inactiveTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/tmp/inactive.txt",
+      environmentId: "env-1",
+      tab: {
+        lineRange: null,
+        path: "/tmp/inactive.txt",
+      },
+      threadId: "thr-1",
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {

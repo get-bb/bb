@@ -79,19 +79,23 @@ const workspaceFilePreviewFixedPanelTabSchema = z
   .strict();
 const hostFilePreviewFixedPanelTabSchema = z
   .object({
+    environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("host-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const threadStorageFilePreviewFixedPanelTabSchema = z
   .object({
+    environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     isPinned: z.boolean(),
     kind: z.literal("thread-storage-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const browserFixedPanelTabSchema = z
@@ -178,18 +182,22 @@ export interface WorkspaceFilePreviewFixedPanelTab {
 }
 
 export interface HostFilePreviewFixedPanelTab {
+  environmentId: string | null;
   id: string;
   kind: "host-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  threadId: string | null;
 }
 
 export interface ThreadStorageFilePreviewFixedPanelTab {
+  environmentId: string | null;
   id: string;
   isPinned: boolean;
   kind: "thread-storage-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  threadId: string | null;
 }
 
 /**
@@ -327,8 +335,16 @@ interface NormalizeFixedPanelTabGroupStateArgs {
 }
 
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
+  environmentId: string | null;
   isPinned: boolean;
   tab: ThreadStorageFileTabState;
+  threadId: string;
+}
+
+interface CreateHostFilePreviewFixedPanelTabArgs {
+  environmentId: string;
+  tab: HostFileTabState;
+  threadId: string;
 }
 
 interface CreateBrowserFixedPanelTabArgs {
@@ -362,6 +378,17 @@ interface BuildWorkspaceFilePreviewTabIdArgs {
   environmentId: string | null;
   path: string;
   projectId: string | null;
+}
+
+interface BuildHostFilePreviewTabIdArgs {
+  environmentId: string | null;
+  path: string;
+  threadId: string | null;
+}
+
+interface BuildThreadStorageFilePreviewTabIdArgs {
+  path: string;
+  threadId: string | null;
 }
 
 interface NormalizeFixedPanelTabGroupStateResult {
@@ -412,6 +439,36 @@ function buildWorkspaceFilePreviewTabId({
   });
 }
 
+function buildHostFilePreviewTabId({
+  environmentId,
+  path,
+  threadId,
+}: BuildHostFilePreviewTabIdArgs): string {
+  if (threadId === null || environmentId === null) {
+    return buildFixedPanelTabId({
+      environmentId: null,
+      kind: "host-file-preview",
+      path,
+    });
+  }
+  return buildFixedPanelTabId({
+    environmentId: `thread:${threadId}:environment:${environmentId}`,
+    kind: "host-file-preview",
+    path,
+  });
+}
+
+function buildThreadStorageFilePreviewTabId({
+  path,
+  threadId,
+}: BuildThreadStorageFilePreviewTabIdArgs): string {
+  return buildFixedPanelTabId({
+    environmentId: threadId === null ? null : `thread:${threadId}`,
+    kind: "thread-storage-file-preview",
+    path,
+  });
+}
+
 export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
   return {
     id: THREAD_INFO_TAB_ID,
@@ -447,35 +504,42 @@ export function createWorkspaceFilePreviewFixedPanelTab({
   };
 }
 
-export function createHostFilePreviewFixedPanelTab(
-  tab: HostFileTabState,
-): HostFilePreviewFixedPanelTab {
+export function createHostFilePreviewFixedPanelTab({
+  environmentId,
+  tab,
+  threadId,
+}: CreateHostFilePreviewFixedPanelTabArgs): HostFilePreviewFixedPanelTab {
   return {
-    id: buildFixedPanelTabId({
-      environmentId: null,
-      kind: "host-file-preview",
+    environmentId,
+    id: buildHostFilePreviewTabId({
+      environmentId,
       path: tab.path,
+      threadId,
     }),
     kind: "host-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    threadId,
   };
 }
 
 export function createThreadStorageFilePreviewFixedPanelTab({
+  environmentId,
   isPinned,
   tab,
+  threadId,
 }: CreateThreadStorageFilePreviewFixedPanelTabArgs): ThreadStorageFilePreviewFixedPanelTab {
   return {
-    id: buildFixedPanelTabId({
-      environmentId: null,
-      kind: "thread-storage-file-preview",
+    environmentId,
+    id: buildThreadStorageFilePreviewTabId({
       path: tab.path,
+      threadId,
     }),
     isPinned,
     kind: "thread-storage-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    threadId,
   };
 }
 
@@ -569,18 +633,17 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       return tab.id === id ? tab : { ...tab, id };
     }
     case "host-file-preview": {
-      const id = buildFixedPanelTabId({
-        environmentId: null,
-        kind: tab.kind,
+      const id = buildHostFilePreviewTabId({
+        environmentId: tab.environmentId,
         path: tab.path,
+        threadId: tab.threadId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
     case "thread-storage-file-preview": {
-      const id = buildFixedPanelTabId({
-        environmentId: null,
-        kind: tab.kind,
+      const id = buildThreadStorageFilePreviewTabId({
         path: tab.path,
+        threadId: tab.threadId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
@@ -874,11 +937,13 @@ export function areFixedPanelTabsEquivalent(
     case "host-file-preview":
       return (
         b.kind === "host-file-preview" &&
+        a.environmentId === b.environmentId &&
         areFilePreviewLineRangesEqual({
           a: a.lineRange,
           b: b.lineRange,
         }) &&
-        a.path === b.path
+        a.path === b.path &&
+        a.threadId === b.threadId
       );
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
@@ -893,12 +958,14 @@ export function areFixedPanelTabsEquivalent(
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&
+        a.environmentId === b.environmentId &&
         a.isPinned === b.isPinned &&
         areFilePreviewLineRangesEqual({
           a: a.lineRange,
           b: b.lineRange,
         }) &&
-        a.path === b.path
+        a.path === b.path &&
+        a.threadId === b.threadId
       );
     case "terminal":
       return b.kind === "terminal" && a.terminalId === b.terminalId;

@@ -53,6 +53,12 @@ interface BuildOrderedSecondaryPanelFileTabsArgs {
   resolvedEnvironmentId: string | null | undefined;
 }
 
+interface PruneStorageTabsArgs {
+  knownPaths: ReadonlySet<string>;
+  tabs: readonly FixedPanelTab[];
+  threadId: string | null | undefined;
+}
+
 export function isWorkspaceFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is WorkspaceFilePreviewFixedPanelTab {
@@ -363,12 +369,16 @@ export function removeWorkspaceTabsForOtherEnvironments(
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
 
-export function pruneStorageTabs(
-  tabs: readonly FixedPanelTab[],
-  knownPaths: ReadonlySet<string>,
-): readonly FixedPanelTab[] {
+export function pruneStorageTabs({
+  knownPaths,
+  tabs,
+  threadId,
+}: PruneStorageTabsArgs): readonly FixedPanelTab[] {
   const nextTabs = tabs.filter(
-    (tab) => !isStorageFilePreviewTab(tab) || knownPaths.has(tab.path),
+    (tab) =>
+      !isStorageFilePreviewTab(tab) ||
+      (tab.threadId !== null && tab.threadId !== threadId) ||
+      knownPaths.has(tab.path),
   );
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }

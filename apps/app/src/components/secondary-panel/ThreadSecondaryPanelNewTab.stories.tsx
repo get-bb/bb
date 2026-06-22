@@ -215,6 +215,7 @@ type NewTabStoryOutcome =
 
 function createStoryActiveTab(
   outcome: NewTabStoryOutcome | null,
+  currentThreadId: string,
 ): SecondaryFixedPanelTab {
   if (outcome === null) {
     return createNewTabFixedPanelTab();
@@ -249,11 +250,13 @@ function createStoryActiveTab(
   }
 
   return {
+    environmentId: ENVIRONMENT_ID,
     id: `thread-storage:${selection.path}`,
     isPinned: false,
     kind: "thread-storage-file-preview",
     lineRange: null,
     path: selection.path,
+    threadId: currentThreadId,
   };
 }
 
@@ -428,7 +431,7 @@ function NewTabPanelStory({
   const handleOpenNewTab = useCallback(() => {
     setOutcome(null);
   }, []);
-  const activeTab = createStoryActiveTab(outcome);
+  const activeTab = createStoryActiveTab(outcome, currentThreadId);
   const fileTabs = useMemo<SecondaryPanelFileTab[]>(() => {
     if (outcome === null) {
       return [NEW_TAB];

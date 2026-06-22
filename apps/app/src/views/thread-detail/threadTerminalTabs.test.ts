@@ -64,8 +64,12 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
       terminalId: "term_2",
     });
     const localFile = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/workspace/file.ts",
+      environmentId: "env_1",
+      tab: {
+        lineRange: null,
+        path: "/workspace/file.ts",
+      },
+      threadId: "thr_1",
     });
     const localTerminal1 = createTerminalFixedPanelTab({
       terminalId: "term_1",
@@ -81,7 +85,7 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
 
     expect(tabIds(tabs)).toEqual([
       "terminal:term_2:none",
-      "host-file-preview:%2Fworkspace%2Ffile.ts:none",
+      "host-file-preview:%2Fworkspace%2Ffile.ts:thread%3Athr_1%3Aenvironment%3Aenv_1",
       "terminal:term_1:none",
       "terminal:term_3:none",
     ]);
@@ -102,8 +106,12 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
   it("finds the active terminal id only for displayed terminal tabs", () => {
     const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
     const fileTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/workspace/file.ts",
+      environmentId: "env_1",
+      tab: {
+        lineRange: null,
+        path: "/workspace/file.ts",
+      },
+      threadId: "thr_1",
     });
 
     expect(
@@ -128,8 +136,12 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
 
   it("syncs missing server terminal sessions into fixed panel state", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
-      lineRange: null,
-      path: "/workspace/file.ts",
+      environmentId: "env_1",
+      tab: {
+        lineRange: null,
+        path: "/workspace/file.ts",
+      },
+      threadId: "thr_1",
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
@@ -147,7 +159,7 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
     });
 
     expect(tabIds(nextState.secondary.tabs)).toEqual([
-      "host-file-preview:%2Fworkspace%2Ffile.ts:none",
+      "host-file-preview:%2Fworkspace%2Ffile.ts:thread%3Athr_1%3Aenvironment%3Aenv_1",
       "terminal:term_1:none",
       "terminal:term_2:none",
     ]);
