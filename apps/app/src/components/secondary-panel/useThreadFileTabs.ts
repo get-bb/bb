@@ -673,10 +673,14 @@ export function useThreadFileTabs({
   return {
     activateTab,
     activeBrowserTab,
+    activeHostFileEnvironmentId: activeHostFileTab?.environmentId ?? null,
     activeHostFileLineRange: activeHostFileTab?.lineRange ?? null,
     activeHostFilePath: activeHostFileTab?.path ?? null,
+    activeHostFileThreadId: activeHostFileTab?.threadId ?? null,
+    activeStorageFileEnvironmentId: activeStorageFileTab?.environmentId ?? null,
     activeStorageFileLineRange: activeStorageFileTab?.lineRange ?? null,
     activeStorageFilePath: activeStorageFileTab?.path ?? null,
+    activeStorageFileThreadId: activeStorageFileTab?.threadId ?? null,
     activeWorkspaceFileLineRange: activeWorkspaceFileTab?.lineRange ?? null,
     activeWorkspaceFileEnvironmentId:
       activeWorkspaceFileTab?.environmentId ?? null,
