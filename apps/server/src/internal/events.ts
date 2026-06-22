@@ -347,6 +347,9 @@ async function applyEventEffects(
         ) {
           continue;
         }
+        if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
+          continue;
+        }
         applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.started" },
           threadId: entry.threadId,
@@ -587,6 +590,18 @@ function hasThreadStopBeforeTurnStarted(
       )
       .limit(1)
       .get() !== undefined
+  );
+}
+
+function hasThreadAlreadyStartedRun(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): boolean {
+  const thread = getThread(deps.db, threadId);
+  return (
+    thread?.status === "active" &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null
   );
 }
 

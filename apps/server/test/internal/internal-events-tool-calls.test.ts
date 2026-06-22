@@ -103,6 +103,53 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("does not log redundant run-start no-ops for already-active threads", async () => {
+    await withTestHarness(async (harness) => {
+      const info = vi.fn();
+      harness.deps.logger.info = info;
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "active",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              scope: turnScope("turn-1"),
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("active");
+      expect(
+        info.mock.calls.filter(
+          ([, message]) => message === "Thread lifecycle event not applied",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("logs inactive session details when daemon event posting uses a closed session", async () => {
     await withTestHarness(async (harness) => {
       const info = vi.fn();
