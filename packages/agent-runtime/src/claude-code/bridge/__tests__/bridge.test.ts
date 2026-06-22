@@ -138,6 +138,13 @@ interface StartBridgeThreadArgs {
   threadId: string;
 }
 
+interface ResumeBridgeThreadArgs {
+  bridge: BridgeJsonRpcTestHarness;
+  providerThreadId: string | null;
+  requestId: number;
+  threadId: string;
+}
+
 interface StopBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
   queries: ControlledClaudeQuery[];
@@ -433,6 +440,20 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
     threadId: args.threadId,
   });
   await args.bridge.waitForResponse(1);
+}
+
+function sendResumeThread(args: ResumeBridgeThreadArgs): void {
+  args.bridge.sendRequest(args.requestId, "thread/resume", {
+    workflowsEnabled: false,
+    claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+    baseInstructions: "test",
+    cwd: "/tmp/worktree",
+    instructionMode: "append",
+    permissionEscalation: "ask",
+    permissionMode: "default",
+    providerThreadId: args.providerThreadId,
+    threadId: args.threadId,
+  });
 }
 
 async function stopBridgeThread(args: StopBridgeThreadArgs): Promise<void> {
@@ -1789,6 +1810,254 @@ describe("bridge", () => {
       queries[0]?.finish();
       await bridge.waitForResponse(2);
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("returns an existing live same-provider thread/resume session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-idempotent";
+      const providerThreadId = "provider-thread-idempotent";
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      const firstResponse = await bridge.waitForResponse(1);
+
+      expect(getProviderThreadIdFromResult(firstResponse)).toBe(
+        providerThreadId,
+      );
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 2,
+        threadId,
+      });
+      const duplicateResponse = await bridge.waitForResponse(2);
+
+      expect(getProviderThreadIdFromResult(duplicateResponse)).toBe(
+        providerThreadId,
+      );
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(queries).toHaveLength(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+
+  it("replaces a live thread/resume session when the provider thread differs", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-different-provider";
+      const originalProviderThreadId = "provider-thread-original";
+      const replacementProviderThreadId = "provider-thread-replacement";
+      sendResumeThread({
+        bridge,
+        providerThreadId: originalProviderThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      sendResumeThread({
+        bridge,
+        providerThreadId: replacementProviderThreadId,
+        requestId: 2,
+        threadId,
+      });
+      const replacementResponse = await bridge.waitForResponse(2);
+
+      expect(getProviderThreadIdFromResult(replacementResponse)).toBe(
+        replacementProviderThreadId,
+      );
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: replacementProviderThreadId,
+      });
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("replaces a live thread/resume session when no provider thread is requested", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-no-provider";
+      sendResumeThread({
+        bridge,
+        providerThreadId: "provider-thread-original",
+        requestId: 1,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      sendResumeThread({
+        bridge,
+        providerThreadId: null,
+        requestId: 2,
+        threadId,
+      });
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { providerThreadId: null, threadId },
+      });
+
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).not.toHaveProperty("resume");
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("replaces a stream-ended same-provider thread/resume session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-stream-ended";
+      const providerThreadId = "provider-thread-stream-ended";
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      queries[0]?.finish();
+      await bridge.flushWork();
+
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 2,
+        threadId,
+      });
+      const replacementResponse = await bridge.waitForResponse(2);
+
+      expect(getProviderThreadIdFromResult(replacementResponse)).toBe(
+        providerThreadId,
+      );
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("waits for a closing same-provider thread/resume session before replacing it", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-closing";
+      const providerThreadId = "provider-thread-closing";
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "thread/stop", { threadId });
+      await bridge.flushWork();
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 3,
+        threadId,
+      });
+      await bridge.flushWork();
+
+      expect(bridge.hasResponse(3)).toBe(false);
+      expect(queries).toHaveLength(1);
+
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+      const resumeResponse = await bridge.waitForResponse(3);
+
+      expect(getProviderThreadIdFromResult(resumeResponse)).toBe(
+        providerThreadId,
+      );
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+
+      bridge.sendRequest(4, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(4);
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });

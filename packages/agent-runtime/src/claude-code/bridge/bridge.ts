@@ -1216,6 +1216,20 @@ async function handleThreadResume(
   const requestedProviderThreadId = params.providerThreadId ?? undefined;
 
   const existing = sessions.get(threadId);
+  if (
+    existing &&
+    requestedProviderThreadId &&
+    !existing.closing &&
+    !existing.streamEnded &&
+    existing.providerThreadId === requestedProviderThreadId
+  ) {
+    sendResult(id, {
+      threadId,
+      providerThreadId: requestedProviderThreadId,
+    });
+    return;
+  }
+
   if (existing) {
     await closeThreadSession({
       graceful: false,
