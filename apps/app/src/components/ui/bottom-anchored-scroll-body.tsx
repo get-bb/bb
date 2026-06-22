@@ -786,6 +786,27 @@ export function BottomAnchoredScrollBody({
     ],
   );
 
+  const flushScrollAnchorCapture = useCallback(
+    (source: string, scrollArea: HTMLElement) => {
+      const captureThrottle = scrollAnchorCaptureThrottleRef.current;
+      if (captureThrottle.trailingTimeout !== null) {
+        window.clearTimeout(captureThrottle.trailingTimeout);
+        captureThrottle.trailingTimeout = null;
+      }
+      writeScrollAnchor(source, scrollArea);
+    },
+    [writeScrollAnchor],
+  );
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    return () => {
+      flushScrollAnchorCapture("layout-cleanup", scrollArea);
+    };
+  }, [flushScrollAnchorCapture]);
+
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     const scrollContent = scrollContentRef.current;
@@ -822,12 +843,6 @@ export function BottomAnchoredScrollBody({
 
     queueBottomRestore();
 
-    // Capture the (stable) throttle-state object so the cleanup doesn't read a
-    // ref's `.current` directly (react-hooks/exhaustive-deps). The ref is never
-    // reassigned — only its `trailingTimeout` field mutates — so this still
-    // clears the live pending timeout at cleanup time.
-    const captureThrottle = scrollAnchorCaptureThrottleRef.current;
-
     return () => {
       resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScroll);
@@ -839,13 +854,6 @@ export function BottomAnchoredScrollBody({
       window.removeEventListener("pointercancel", endPointerScrollIntent);
       window.removeEventListener("keydown", markKeyboardScrollIntent);
       cancelQueuedRestore();
-      // Flush the final resting position before the key={threadId} teardown:
-      // a pending trailing capture would otherwise be dropped on unmount.
-      if (captureThrottle.trailingTimeout !== null) {
-        window.clearTimeout(captureThrottle.trailingTimeout);
-        captureThrottle.trailingTimeout = null;
-      }
-      writeScrollAnchor("unmount", scrollArea);
     };
   }, [
     cancelQueuedRestore,
@@ -858,7 +866,6 @@ export function BottomAnchoredScrollBody({
     markWheelScrollIntent,
     queueBottomRestore,
     startPointerScrollIntent,
-    writeScrollAnchor,
   ]);
 
   return (
