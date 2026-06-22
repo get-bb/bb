@@ -1288,30 +1288,102 @@ function AutomationRun() {
   );
 }
 
-/* ── Band 5 visual: one agent runs another ────────────────────────── */
+/* ── Band 5 visual: one agent spawns and manages a thread per provider ── */
 
-function ProviderTree() {
+// A bb sidebar mock: a parent Claude thread with three worker threads nested
+// beneath it on a connector rail, one per provider. Each worker's status flips
+// running → done; the parent manages until they all land, then ships. Mirrors
+// the run-receipt pill and reveal timing — the list replays each cycle.
+function SpawnRow({
+  icon,
+  name,
+  task,
+  status,
+  at,
+  doneAt,
+  parent,
+}: {
+  icon: ReactNode;
+  name: string;
+  task: string;
+  status: string;
+  at: number;
+  doneAt: number;
+  parent?: boolean;
+}) {
   return (
-    <div className="ptree" aria-label="One agent spawning workers on other providers">
-      <div className="pnode parent">
-        <ClaudeIcon className="pn-icon" />
-        <span className="pn-name">Claude Code</span>
-        <span className="pn-task">Ship the release</span>
+    <div
+      className={parent ? "sb-thread sb-parent" : "sb-thread"}
+      style={{ animationDelay: `${at}s` }}
+    >
+      <span className="sb-prov" aria-hidden>
+        {icon}
+      </span>
+      <span className="sb-body">
+        <span className="sb-name">{name}</span>
+        <span className="sb-task">{task}</span>
+      </span>
+      <span className="sb-stat" aria-hidden>
+        <span className="sb-run" style={{ animationDelay: `${doneAt}s` }}>
+          <span className="sb-dot" />
+          {status}
+        </span>
+        <span className="sb-done" style={{ animationDelay: `${doneAt}s` }}>
+          <CheckIcon className="sb-check" />
+          done
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function SpawnSidebar() {
+  const { cycle, leaving } = useCycle(5600, 500);
+  return (
+    <div
+      className="spawnbar"
+      aria-label="bb spawns and manages a worker thread for each provider"
+    >
+      <div className="sb-head">
+        <img src={bbIcon} alt="" className="sb-mark" />
+        <span className="sb-title">Threads</span>
+        <span className="sb-active">4 active</span>
       </div>
-      <div className="pbranch" aria-hidden>
-        <span />
-        <span />
-      </div>
-      <div className="pchildren">
-        <div className="pnode">
-          <OpenAiIcon className="pn-icon" />
-          <span className="pn-name">Codex</span>
-          <span className="pn-task">Port module to TS</span>
-        </div>
-        <div className="pnode">
-          <PiIcon className="pn-icon" />
-          <span className="pn-name">Pi</span>
-          <span className="pn-task">Write release notes</span>
+      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
+        <SpawnRow
+          parent
+          icon={<ClaudeIcon className="sb-ic" />}
+          name="Claude Code"
+          task="Ship the release"
+          status="managing"
+          at={0.1}
+          doneAt={4}
+        />
+        <div className="sb-kids">
+          <SpawnRow
+            icon={<OpenAiIcon className="sb-ic" />}
+            name="Codex"
+            task="Port module to TS"
+            status="running"
+            at={0.6}
+            doneAt={2.3}
+          />
+          <SpawnRow
+            icon={<CursorIcon className="sb-ic" />}
+            name="Cursor"
+            task="Refactor the auth flow"
+            status="running"
+            at={1}
+            doneAt={3}
+          />
+          <SpawnRow
+            icon={<PiIcon className="sb-ic" />}
+            name="Pi"
+            task="Write release notes"
+            status="running"
+            at={1.4}
+            doneAt={3.7}
+          />
         </div>
       </div>
     </div>
@@ -1391,7 +1463,7 @@ function LandingPage() {
       <Band
         title="The gang's all here"
         flip
-        visual={<ProviderTree />}
+        visual={<SpawnSidebar />}
       >
         <p>
           Claude Code, Codex, Cursor, and Pi all live in bb. Give a task to

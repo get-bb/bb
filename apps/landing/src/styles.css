@@ -2003,97 +2003,189 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* ── Provider tree (Band 5) ─────────────────────────────────────── */
+/* ── Spawn sidebar (Band 5): a worker thread per provider, nested ──── */
 
-.ptree {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.spawnbar {
   width: 100%;
-}
-
-.pnode {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
   background: var(--bg);
-  padding: 12px 16px;
-  text-align: center;
-  min-width: 150px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.pnode.parent {
-  border-color: color-mix(in oklch, var(--accent) 40%, var(--bg));
-  box-shadow: 0 1px 10px color-mix(in oklch, var(--accent) 12%, transparent);
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px 10px;
 }
 
-.pn-icon {
-  width: 20px;
-  height: 20px;
+.sb-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sb-title {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink);
 }
 
-.pn-name {
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.pn-task {
-  font-size: 12px;
+.sb-active {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--subtle);
 }
 
-.pbranch {
+.sb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-list.leaving {
+  animation: rc-leave 0.5s ease forwards;
+}
+
+.sb-thread {
   position: relative;
-  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  animation: rc-step 0.45s ease backwards;
+}
+
+.sb-parent {
+  background: var(--bg);
+  border-color: color-mix(in oklch, var(--accent) 32%, var(--bg));
+  box-shadow: 0 1px 10px color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.sb-prov {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
   height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
 }
 
-.pbranch::before {
-  content: "";
+.sb-parent .sb-prov {
+  background: var(--surface);
+}
+
+.sb-ic {
+  width: 15px;
+  height: 15px;
+  color: var(--ink);
+}
+
+.sb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sb-task {
+  font-size: 11.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* status: running → done flip, mirroring the run-receipt pill */
+.sb-stat {
+  position: relative;
+  flex-shrink: 0;
+  width: 70px;
+  height: 16px;
+}
+
+.sb-run,
+.sb-done {
   position: absolute;
+  right: 0;
   top: 0;
-  left: 50%;
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.pbranch::after {
+.sb-run {
+  color: var(--accent);
+  animation: rc-out 0.4s ease forwards;
+}
+
+.sb-done {
+  opacity: 0;
+  color: var(--ok);
+  animation: rc-in 0.4s ease forwards;
+}
+
+.sb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: rc-blink 1.1s ease-in-out infinite;
+}
+
+.sb-check {
+  width: 12px;
+  height: 12px;
+}
+
+/* nesting: workers sit under the parent on a connector rail */
+.sb-kids {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 24px;
+}
+
+.sb-kids::before {
   content: "";
   position: absolute;
-  top: 14px;
-  left: 25%;
-  right: 25%;
+  left: 11px;
+  top: -6px;
+  bottom: 23px;
+  width: 1px;
+  background: var(--border);
+}
+
+.sb-kids .sb-thread::before {
+  content: "";
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  width: 13px;
   height: 1px;
   background: var(--border);
-}
-
-.pbranch span {
-  position: absolute;
-  top: 14px;
-  height: 14px;
-  width: 1px;
-  background: var(--border);
-}
-
-.pbranch span:first-child {
-  left: 25%;
-}
-
-.pbranch span:last-child {
-  right: 25%;
-}
-
-.pchildren {
-  display: flex;
-  gap: 18px;
-  width: 100%;
-  justify-content: center;
 }
 
 /* ── Statement (Band 4) ─────────────────────────────────────────── */
@@ -2165,6 +2257,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .band {
     padding: 64px 0;
+  }
+
+  /* The stacked sidebar visual already shows every provider logo, so the
+     chip row under the copy is redundant on narrow screens. */
+  .band-copy .providers {
+    display: none;
   }
 }
 
@@ -2279,6 +2377,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .tg-stat-run,
   .tg-spin {
     animation: none;
+  }
+
+  .sb-thread,
+  .sb-run,
+  .sb-done,
+  .sb-dot {
+    animation: none;
+  }
+
+  /* Static settled sidebar when motion is reduced: every thread done. */
+  .sb-run {
+    opacity: 0;
+  }
+
+  .sb-done {
+    opacity: 1;
   }
 
   /* Static spawned thread when motion is reduced. */
