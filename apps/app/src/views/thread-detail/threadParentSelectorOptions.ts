@@ -8,6 +8,8 @@ export interface ParentSelectorOption {
 interface ThreadAssignmentState {
   id: string;
   parentThreadId: string | null;
+  originKind?: ThreadListEntry["originKind"];
+  childOrigin?: ThreadListEntry["childOrigin"];
 }
 
 interface CollectDescendantThreadIdsArgs {
@@ -25,7 +27,17 @@ export interface BuildParentSelectorOptionsArgs {
 export function isRootThread(
   thread: ThreadAssignmentState | undefined,
 ): boolean {
-  return thread !== undefined && thread.parentThreadId === null;
+  return (
+    thread !== undefined &&
+    thread.parentThreadId === null &&
+    !isSideChatThread(thread)
+  );
+}
+
+function isSideChatThread(
+  thread: Pick<ThreadAssignmentState, "originKind" | "childOrigin">,
+): boolean {
+  return (thread.originKind ?? thread.childOrigin) === "side-chat";
 }
 
 function collectDescendantThreadIds({
@@ -88,6 +100,9 @@ export function buildParentSelectorOptions({
     parentThreadDisplayName ?? "Parent thread",
   );
   for (const parentThread of parentThreads) {
+    if (isSideChatThread(parentThread)) {
+      continue;
+    }
     addOption(
       parentThread.id,
       parentThread.title?.trim() ? parentThread.title : "Parent thread",

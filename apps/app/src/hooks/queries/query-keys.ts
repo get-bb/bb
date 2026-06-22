@@ -67,6 +67,7 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   sourceThreadId?: string;
   originKind?: ThreadListFilters["originKind"];
+  excludeSideChats?: ThreadListFilters["excludeSideChats"];
   childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;

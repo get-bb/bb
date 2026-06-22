@@ -1213,5 +1213,13 @@ describe("thread originKind compatibility", () => {
     expect(all.map((thread) => thread.id).sort()).toEqual(
       [parent.id, fork.id, sideChat.id].sort(),
     );
+
+    const withoutSideChats = listThreads(db, {
+      projectId: project.id,
+      excludeSideChats: true,
+    });
+    expect(withoutSideChats.map((thread) => thread.id).sort()).toEqual(
+      [parent.id, fork.id].sort(),
+    );
   });
 });

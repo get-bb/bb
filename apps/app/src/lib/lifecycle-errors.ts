@@ -405,6 +405,12 @@ function describeParentThreadInvalid({
         title,
         body: "Thread nesting is limited to 4 levels.",
       });
+    case "side_chat":
+      return errorDescription({
+        operation,
+        title,
+        body: "Choose a parent thread that is not a side chat.",
+      });
     default:
       return assertNever(error.details.reason);
   }

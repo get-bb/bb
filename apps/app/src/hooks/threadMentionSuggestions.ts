@@ -55,7 +55,11 @@ function canSuggestThread(
   thread: Thread,
   args: BuildThreadMentionSuggestionsArgs,
 ): boolean {
-  return thread.id !== args.currentThreadId;
+  return thread.id !== args.currentThreadId && !isSideChatThread(thread);
+}
+
+function isSideChatThread(thread: Thread): boolean {
+  return (thread.originKind ?? thread.childOrigin) === "side-chat";
 }
 
 function shouldShowProjectName(

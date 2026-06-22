@@ -182,6 +182,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.childOrigin",
+      "threadListQuerySchema.excludeSideChats",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.offset",

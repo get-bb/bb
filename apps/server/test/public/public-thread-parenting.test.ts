@@ -4,6 +4,7 @@ import {
   apiErrorSchema,
   threadArchiveAllResponseSchema,
   threadChildSummaryResponseSchema,
+  threadListResponseSchema,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { waitForQueuedCommand } from "../helpers/commands.js";
@@ -95,6 +96,45 @@ describe("public thread parenting routes", () => {
       expect(response.status).toBe(200);
       const updatedThread = threadSchema.parse(await readJson(response));
       expect(updatedThread.parentThreadId).toBe(parentThread.id);
+    });
+  });
+
+  it("rejects assigning a side chat as a parent", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        originKind: "side-chat",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${childThread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parentThreadId: sideChatThread.id }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      const error = apiErrorSchema.parse(await readJson(response));
+      expect(error).toMatchObject({
+        code: "parent_thread_invalid",
+        details: {
+          reason: "side_chat",
+          subject: "parent",
+        },
+      });
     });
   });
 
@@ -241,6 +281,46 @@ describe("public thread parenting routes", () => {
       expect(archivedSideChat?.archivedAt).not.toBeNull();
       expect(archivedSideChat?.sourceThreadId).toBe(sourceThread.id);
       expect(archivedSideChat?.parentThreadId).toBeNull();
+    });
+  });
+
+  it("excludes side chats from thread list results when requested", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Source",
+      });
+      const forkThread = seedThread(harness.deps, {
+        originKind: "fork",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        title: "Fork",
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        originKind: "side-chat",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        title: "Side chat",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads?projectId=${project.id}&archived=false&excludeSideChats=true`,
+      );
+
+      expect(response.status).toBe(200);
+      const listedThreads = threadListResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(listedThreads.map((thread) => thread.id).sort()).toEqual(
+        [sourceThread.id, forkThread.id].sort(),
+      );
+      expect(listedThreads.map((thread) => thread.id)).not.toContain(
+        sideChatThread.id,
+      );
     });
   });
 });

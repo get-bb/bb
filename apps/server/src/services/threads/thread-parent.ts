@@ -24,7 +24,8 @@ export type ParentThread = Pick<
   | "id"
   | "parentThreadId"
   | "projectId"
->;
+> &
+  Partial<Pick<Thread, "originKind" | "childOrigin">>;
 
 export interface IsLiveParentThreadArgs {
   parentThread: ParentThread | null;
@@ -153,6 +154,12 @@ export function assertValidParentThread(
   }
   if (liveParentThread.deletedAt !== null) {
     throwParentThreadInvalid("deleted");
+  }
+  if (
+    (liveParentThread.originKind ?? liveParentThread.childOrigin) ===
+    "side-chat"
+  ) {
+    throwParentThreadInvalid("side_chat");
   }
 
   const parentDepth = resolveParentDepth(deps, {

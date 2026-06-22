@@ -203,6 +203,9 @@ import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
+const PARENT_THREAD_SELECTOR_FILTERS = {
+  excludeSideChats: true,
+} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
 const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY =
@@ -662,7 +665,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadQueryState.status === "ready" && isThreadRoot;
   const parentThreadSubsetQuery = useProjectThreadSubset({
     enabled: shouldLoadParentThreads,
-    filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
+    filters: PARENT_THREAD_SELECTOR_FILTERS,
     projectId,
   });
   const childThreadSubsetFilters = useMemo<ProjectThreadSubsetFilters>(() => {

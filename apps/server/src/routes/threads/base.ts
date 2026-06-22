@@ -201,6 +201,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
+      ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
       ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
       archived:
         query.archived === undefined ? undefined : query.archived === "true",

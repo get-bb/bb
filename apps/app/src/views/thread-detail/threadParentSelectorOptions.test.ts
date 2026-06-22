@@ -91,10 +91,37 @@ describe("thread parent selector options", () => {
     ]);
   });
 
+  it("excludes side chats from parent candidates", () => {
+    const options = buildParentSelectorOptions({
+      currentThreadId: "thr_child",
+      parentThreadDisplayName: null,
+      parentThreadId: null,
+      parentThreads: [
+        makeThread({ id: "thr_parent", title: "Parent" }),
+        makeThread({
+          id: "thr_side_chat",
+          originKind: "side-chat",
+          title: "Side chat",
+        }),
+        makeThread({
+          id: "thr_legacy_side_chat",
+          childOrigin: "side-chat",
+          title: "Legacy side chat",
+        }),
+      ],
+    });
+
+    expect(options).toEqual([
+      { value: "none", label: "None" },
+      { value: "thr_parent", label: "Parent" },
+    ]);
+  });
+
   it("only marks root threads as assignable", () => {
     expect(isRootThread(makeThread({ parentThreadId: null }))).toBe(true);
     expect(isRootThread(makeThread({ parentThreadId: "thr_parent" }))).toBe(
       false,
     );
+    expect(isRootThread(makeThread({ originKind: "side-chat" }))).toBe(false);
   });
 });

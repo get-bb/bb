@@ -126,6 +126,7 @@ export const parentThreadInvalidReasonSchema = z.enum([
   "self",
   "cycle",
   "too_deep",
+  "side_chat",
 ]);
 export type ParentThreadInvalidReason = z.infer<
   typeof parentThreadInvalidReasonSchema
