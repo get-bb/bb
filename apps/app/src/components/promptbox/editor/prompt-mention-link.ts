@@ -3,10 +3,9 @@ import type { PromptMentionResource } from "@bb/domain";
 
 /**
  * Resolves the click action for an inserted mention pill, or null when the
- * resource isn't openable in the current context (e.g. a workspace-file
- * mention in the new-thread composer, which has no environment yet, or a
- * directory mention with nothing to preview). Returning a handler is also the
- * signal that the pill should render as an interactive link.
+ * resource isn't openable in the current context (e.g. a directory mention
+ * with nothing to preview). Returning a handler is also the signal that the
+ * pill should render as an interactive link.
  */
 export type PromptMentionLinkResolver = (
   resource: PromptMentionResource,

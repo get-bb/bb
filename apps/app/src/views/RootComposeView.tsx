@@ -628,12 +628,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
-  const promptMentions = usePromptMentions(
-    isProjectless ? undefined : projectId,
-    {
-      environmentId: null,
-    },
-  );
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const prompt = promptDraft.text;
   const promptInput = useMemo(
@@ -1161,22 +1155,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [currentPromptDraft, projectId, promptDraft.setDraft, promptHistoryDrafts],
   );
-  // The new-thread composer has no environment yet, so only thread mentions are
-  // openable here (they navigate). File pills stay non-interactive.
-  const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
-    (resource) =>
-      resource.kind === "thread"
-        ? () =>
-            navigate(
-              getSurfaceAwareThreadRoutePath({
-                projectId: resource.projectId ?? projectId,
-                surface: props.surface,
-                threadId: resource.threadId,
-              }),
-            )
-        : null,
-    [navigate, projectId, props.surface],
-  );
   // Mirrors the @-mention plumbing: the composer feeds the text typed after the
   // command trigger into `commandQuery`, which drives command typeahead. In
   // projectless compose, the server resolves the personal project to user-home
@@ -1203,41 +1181,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     environmentId: reuseEnvironmentId,
     query: commandQuery,
   });
-  const typeaheadConfig = useMemo(
-    () => ({
-      mention: {
-        suggestions: promptMentions.suggestions,
-        isLoading: promptMentions.isLoading,
-        isError: promptMentions.isError,
-        onQueryChange: promptMentions.setQuery,
-        resolveLink: resolveMentionLink,
-      },
-      command: {
-        trigger: commandSuggestions.trigger,
-        suggestions: commandSuggestions.suggestions,
-        isLoading: commandSuggestions.isLoading,
-        isError: commandSuggestions.isError,
-        hasMore: commandSuggestions.hasMore,
-        isLoadingMore: commandSuggestions.isLoadingMore,
-        loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
-      },
-    }),
-    [
-      promptMentions.isError,
-      promptMentions.isLoading,
-      promptMentions.setQuery,
-      promptMentions.suggestions,
-      resolveMentionLink,
-      commandSuggestions.isError,
-      commandSuggestions.hasMore,
-      commandSuggestions.isLoading,
-      commandSuggestions.isLoadingMore,
-      commandSuggestions.loadMore,
-      commandSuggestions.suggestions,
-      commandSuggestions.trigger,
-    ],
-  );
   const rootPanelEnvironmentId = reuseEnvironmentId;
   const rootPanelThreadId = useMemo(() => {
     return resolveRootComposePanelThreadId({
@@ -1245,6 +1188,13 @@ export function RootComposeView(props: RootComposeViewProps) {
       reuseThreadOptions,
     });
   }, [rootPanelEnvironmentId, reuseThreadOptions]);
+  const promptMentions = usePromptMentions(
+    isProjectless ? undefined : projectId,
+    {
+      currentThreadId: rootPanelThreadId ?? undefined,
+      environmentId: rootPanelEnvironmentId,
+    },
+  );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -1470,6 +1420,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isOpen: isSecondaryPanelOpen,
     openCompactDrawer,
     openPanel: openSecondaryPanel,
+    openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeRootSecondaryPanel,
@@ -1486,6 +1437,90 @@ export function RootComposeView(props: RootComposeViewProps) {
     threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
+  // Click handler for inserted mention pills in the root composer: threads
+  // navigate, files open the root right-panel preview. Directories and commands
+  // stay display-only.
+  const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
+    (resource) => {
+      if (resource.kind === "thread") {
+        return () =>
+          navigate(
+            getSurfaceAwareThreadRoutePath({
+              projectId: resource.projectId ?? projectId,
+              surface: props.surface,
+              threadId: resource.threadId,
+            }),
+          );
+      }
+      if (resource.kind !== "path" || resource.entryKind !== "file") {
+        return null;
+      }
+      if (resource.source === "thread-storage") {
+        if (rootPanelThreadId === null) {
+          return null;
+        }
+        return () =>
+          openStorageFile({
+            lineRange: null,
+            path: resource.path,
+          });
+      }
+      if (isProjectless) {
+        return null;
+      }
+      return () =>
+        openWorkspaceFile({
+          lineRange: null,
+          path: resource.path,
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        });
+    },
+    [
+      isProjectless,
+      navigate,
+      openStorageFile,
+      openWorkspaceFile,
+      projectId,
+      props.surface,
+      rootPanelThreadId,
+    ],
+  );
+  const typeaheadConfig = useMemo(
+    () => ({
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        hasMore: commandSuggestions.hasMore,
+        isLoadingMore: commandSuggestions.isLoadingMore,
+        loadMore: commandSuggestions.loadMore,
+        onQueryChange: setCommandQuery,
+      },
+    }),
+    [
+      promptMentions.isError,
+      promptMentions.isLoading,
+      promptMentions.setQuery,
+      promptMentions.suggestions,
+      resolveMentionLink,
+      commandSuggestions.isError,
+      commandSuggestions.hasMore,
+      commandSuggestions.isLoading,
+      commandSuggestions.isLoadingMore,
+      commandSuggestions.loadMore,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
+    ],
+  );
   useEffect(() => {
     if (props.surface !== "page" || !isSecondaryPanelOpen) {
       return;
