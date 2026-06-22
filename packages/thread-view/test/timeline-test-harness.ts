@@ -70,6 +70,7 @@ export interface EventFactoryRowOptions {
 }
 
 interface ProviderTurnEventOptions extends EventFactoryRowOptions {
+  parentToolCallId?: string;
   providerThreadId?: string;
   turnId?: string;
 }
@@ -924,7 +925,12 @@ export function createTimelineEventFactory(
       return {
         ...base,
         type: "turn/started",
-        data: providerFields(args),
+        data: {
+          ...providerFields(args),
+          ...(args?.parentToolCallId
+            ? { parentToolCallId: args.parentToolCallId }
+            : {}),
+        },
       };
     },
     providerUserMessage(args) {

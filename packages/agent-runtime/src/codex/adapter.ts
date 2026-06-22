@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import {
+  getThreadEventScopeTurnId,
   jsonValueSchema,
   requireThreadEventScopeTurnId,
   turnScope,
@@ -750,6 +751,7 @@ function toCodexDynamicTools(
 // 2. The later normalized `item/completed` commandExecution consumes that
 //    stored state to repair the authoritative final output.
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
+const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
 const TOOL_OUTPUT_MARKER_LINE = "Output:";
 const TOOL_OUTPUT_METADATA_PREFIXES = [
   "Chunk ID:",
@@ -785,6 +787,111 @@ type CodexParsedCommandOutput =
 interface CodexRawCommandOutputState {
   capturedCommandOutputByCallId: Map<string, CodexCapturedCommandOutput>;
   shellToolCallIds: Set<string>;
+}
+
+interface CodexDelegationToolCall {
+  callId: string;
+  receiverThreadIds: string[];
+}
+
+interface CodexPendingDelegationTurnLink {
+  callId: string;
+  parentTurnId: string;
+}
+
+function collectStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  );
+}
+
+function getCodexDelegationToolCall(
+  event: ThreadEvent,
+): CodexDelegationToolCall | null {
+  if (
+    (event.type !== "item/started" && event.type !== "item/completed") ||
+    event.item.type !== "toolCall" ||
+    !CODEX_DELEGATION_TOOL_NAMES.has(event.item.tool)
+  ) {
+    return null;
+  }
+
+  return {
+    callId: event.item.id,
+    receiverThreadIds: collectStringArray(
+      event.item.arguments?.receiverThreadIds,
+    ),
+  };
+}
+
+function getCodexEventProviderThreadId(
+  event: ThreadEvent,
+): string | undefined {
+  if (
+    "providerThreadId" in event &&
+    typeof event.providerThreadId === "string" &&
+    event.providerThreadId.length > 0
+  ) {
+    return event.providerThreadId;
+  }
+  return undefined;
+}
+
+function getCodexEventParentToolCallId(
+  event: ThreadEvent,
+): string | undefined {
+  switch (event.type) {
+    case "item/started":
+    case "item/completed":
+      return event.item.parentToolCallId;
+    case "turn/started":
+    case "item/agentMessage/delta":
+    case "item/commandExecution/outputDelta":
+    case "item/fileChange/outputDelta":
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta":
+    case "item/plan/delta":
+    case "item/mcpToolCall/progress":
+    case "item/toolCall/progress":
+    case "provider/unhandled":
+      return event.parentToolCallId;
+    default:
+      return undefined;
+  }
+}
+
+function withCodexParentToolCallId(
+  event: ThreadEvent,
+  parentToolCallId: string,
+): ThreadEvent {
+  if (getCodexEventParentToolCallId(event)) {
+    return event;
+  }
+
+  switch (event.type) {
+    case "turn/started":
+    case "item/agentMessage/delta":
+    case "item/commandExecution/outputDelta":
+    case "item/fileChange/outputDelta":
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta":
+    case "item/plan/delta":
+    case "item/mcpToolCall/progress":
+    case "item/toolCall/progress":
+    case "provider/unhandled":
+      return { ...event, parentToolCallId };
+    case "item/started":
+    case "item/completed":
+      return {
+        ...event,
+        item: { ...event.item, parentToolCallId },
+      };
+    default:
+      return event;
+  }
 }
 
 function toCodexRawNotification(
@@ -935,6 +1042,16 @@ export function createCodexProviderAdapter(
     string,
     CodexRawCommandOutputState
   >();
+  const delegationParentToolCallIdsByProviderThreadId = new Map<
+    string,
+    string
+  >();
+  const delegationParentToolCallIdsByTurnId = new Map<string, string>();
+  const pendingDelegationTurnLinksByProviderThreadId = new Map<
+    string,
+    CodexPendingDelegationTurnLink[]
+  >();
+  const pendingDelegationCallIds = new Set<string>();
 
   function stageThreadGitWritableRoots(
     args: RecordThreadGitWritableRootsArgs,
@@ -1057,9 +1174,15 @@ export function createCodexProviderAdapter(
       return;
     }
     rawCommandOutputStateByProviderThreadId.delete(paramsResult.data.threadId);
+    clearCodexDelegationParentState(paramsResult.data.threadId);
     clearGitWritableRootsByProviderThreadId({
       providerThreadId: paramsResult.data.threadId,
     });
+  }
+
+  function clearCodexDelegationParentState(providerThreadId: string): void {
+    delegationParentToolCallIdsByProviderThreadId.delete(providerThreadId);
+    pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
   }
 
   function queueNativeTurnStartClientRequestId(args: {
@@ -1184,6 +1307,148 @@ export function createCodexProviderAdapter(
     }
 
     return [];
+  }
+
+  function enqueuePendingDelegationTurnLink(args: {
+    callId: string;
+    parentTurnId: string | undefined;
+    providerThreadId: string | undefined;
+  }): void {
+    if (!args.providerThreadId || !args.parentTurnId) {
+      return;
+    }
+    if (pendingDelegationCallIds.has(args.callId)) {
+      return;
+    }
+
+    const pendingLinks =
+      pendingDelegationTurnLinksByProviderThreadId.get(args.providerThreadId) ??
+      [];
+    pendingLinks.push({
+      callId: args.callId,
+      parentTurnId: args.parentTurnId,
+    });
+    pendingDelegationTurnLinksByProviderThreadId.set(
+      args.providerThreadId,
+      pendingLinks,
+    );
+    pendingDelegationCallIds.add(args.callId);
+  }
+
+  function consumePendingDelegationTurnLink(args: {
+    providerThreadId: string | undefined;
+    turnId: string;
+  }): string | undefined {
+    if (!args.providerThreadId) {
+      return undefined;
+    }
+    if (delegationParentToolCallIdsByTurnId.has(args.turnId)) {
+      return delegationParentToolCallIdsByTurnId.get(args.turnId);
+    }
+
+    const pendingLinks = pendingDelegationTurnLinksByProviderThreadId.get(
+      args.providerThreadId,
+    );
+    if (!pendingLinks || pendingLinks.length === 0) {
+      return undefined;
+    }
+
+    while (pendingLinks.length > 0) {
+      const pendingLink = pendingLinks.shift();
+      if (!pendingLink || pendingLink.parentTurnId === args.turnId) {
+        continue;
+      }
+      if (pendingLinks.length === 0) {
+        pendingDelegationTurnLinksByProviderThreadId.delete(
+          args.providerThreadId,
+        );
+      }
+      delegationParentToolCallIdsByTurnId.set(
+        args.turnId,
+        pendingLink.callId,
+      );
+      return pendingLink.callId;
+    }
+
+    pendingDelegationTurnLinksByProviderThreadId.delete(
+      args.providerThreadId,
+    );
+    return undefined;
+  }
+
+  function attachCodexDelegationParentLink(event: ThreadEvent): ThreadEvent {
+    const providerThreadId = getCodexEventProviderThreadId(event);
+    const turnId = getThreadEventScopeTurnId(event.scope);
+    let parentToolCallId =
+      getCodexEventParentToolCallId(event) ??
+      (turnId ? delegationParentToolCallIdsByTurnId.get(turnId) : undefined);
+
+    if (!parentToolCallId && event.type === "turn/started") {
+      const startedTurnId = requireThreadEventScopeTurnId({
+        type: event.type,
+        scope: event.scope,
+      });
+      parentToolCallId =
+        (providerThreadId
+          ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
+          : undefined) ??
+        consumePendingDelegationTurnLink({
+          providerThreadId,
+          turnId: startedTurnId,
+        });
+    }
+
+    if (!parentToolCallId && providerThreadId) {
+      parentToolCallId =
+        delegationParentToolCallIdsByProviderThreadId.get(providerThreadId);
+    }
+
+    if (event.type === "turn/started" && parentToolCallId) {
+      delegationParentToolCallIdsByTurnId.set(
+        requireThreadEventScopeTurnId({
+          type: event.type,
+          scope: event.scope,
+        }),
+        parentToolCallId,
+      );
+    }
+
+    return parentToolCallId
+      ? withCodexParentToolCallId(event, parentToolCallId)
+      : event;
+  }
+
+  function observeCodexDelegationToolCall(event: ThreadEvent): void {
+    const delegationToolCall = getCodexDelegationToolCall(event);
+    if (!delegationToolCall) {
+      return;
+    }
+
+    const providerThreadId = getCodexEventProviderThreadId(event);
+    for (const receiverThreadId of delegationToolCall.receiverThreadIds) {
+      delegationParentToolCallIdsByProviderThreadId.set(
+        receiverThreadId,
+        delegationToolCall.callId,
+      );
+    }
+
+    if (delegationToolCall.receiverThreadIds.length === 0) {
+      enqueuePendingDelegationTurnLink({
+        callId: delegationToolCall.callId,
+        parentTurnId: getThreadEventScopeTurnId(event.scope),
+        providerThreadId,
+      });
+    }
+  }
+
+  function attachCodexDelegationParentLinks(
+    events: ThreadEvent[],
+  ): ThreadEvent[] {
+    return events.map((event) => {
+      const parentLinkedEvent = attachCodexDelegationParentLink(event);
+      observeCodexDelegationToolCall(parentLinkedEvent);
+      return parentLinkedEvent;
+    });
   }
 
   function consumeCodexRawResponseItem(event: ProviderRuntimeEvent): boolean {
@@ -1549,8 +1814,10 @@ export function createCodexProviderAdapter(
       const translatedEvents = translateCodexEvent(event).flatMap(
         attachAcceptedUserMessageCorrelation,
       );
-      reconcileRawCommandOutputLifecycle(translatedEvents);
-      return applyRecoveredCommandOutput(translatedEvents);
+      const parentLinkedEvents =
+        attachCodexDelegationParentLinks(translatedEvents);
+      reconcileRawCommandOutputLifecycle(parentLinkedEvents);
+      return applyRecoveredCommandOutput(parentLinkedEvents);
     },
 
     translateAcceptedCommand({ command, providerThreadId }) {

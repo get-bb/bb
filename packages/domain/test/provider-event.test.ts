@@ -63,4 +63,18 @@ describe("provider event schema", () => {
       }),
     ).toThrow();
   });
+
+  it("allows provider turn starts to carry parent tool call ids", () => {
+    expect(
+      threadEventSchema.parse({
+        type: "turn/started",
+        threadId: "thr_child",
+        providerThreadId: "provider-thread-123",
+        parentToolCallId: "tool-call-123",
+        scope: turnScope("turn_child"),
+      }),
+    ).toMatchObject({
+      parentToolCallId: "tool-call-123",
+    });
+  });
 });

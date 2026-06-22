@@ -3453,6 +3453,167 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it.each(["spawnAgent", "resumeAgent"] as const)(
+    "stamps pending same-provider child turn events for %s",
+    (tool) => {
+      const adapter = createCodexProviderAdapter();
+
+      adapter.translateEvent(
+        codexEvent("turn/started", {
+          threadId: "root-provider-thread",
+          turn: codexTurn({
+            id: "parent-turn",
+            status: "inProgress",
+            error: null,
+          }),
+        }),
+      );
+      adapter.translateEvent(
+        codexEvent("item/started", {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          startedAtMs: 0,
+          item: {
+            type: "collabAgentToolCall",
+            id: "delegation-1",
+            tool,
+            status: "inProgress",
+            senderThreadId: "root-provider-thread",
+            receiverThreadIds: [],
+            prompt: "Inspect the repo",
+            model: null,
+            reasoningEffort: null,
+            agentsStates: {},
+          },
+        }),
+      );
+
+      expect(
+        adapter.translateEvent(
+          codexEvent("turn/started", {
+            threadId: "root-provider-thread",
+            turn: codexTurn({
+              id: "child-turn",
+              status: "inProgress",
+              error: null,
+            }),
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "turn/started",
+          parentToolCallId: "delegation-1",
+          scope: turnScope("child-turn"),
+        }),
+      );
+
+      expect(
+        adapter.translateEvent(
+          codexEvent("item/completed", {
+            threadId: "root-provider-thread",
+            turnId: "child-turn",
+            completedAtMs: 0,
+            item: {
+              type: "agentMessage",
+              id: "child-assistant-1",
+              text: "Child done.",
+              phase: null,
+              memoryCitation: null,
+            },
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({
+            type: "agentMessage",
+            id: "child-assistant-1",
+            parentToolCallId: "delegation-1",
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each(["spawnAgent", "resumeAgent"] as const)(
+    "stamps explicit receiver-thread child events under the %s call",
+    (tool) => {
+      const adapter = createCodexProviderAdapter();
+
+      adapter.translateEvent(
+        codexEvent("item/completed", {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          completedAtMs: 0,
+          item: {
+            type: "collabAgentToolCall",
+            id: "delegation-1",
+            tool,
+            status: "completed",
+            senderThreadId: "root-provider-thread",
+            receiverThreadIds: ["child-provider-thread"],
+            prompt: "Inspect the docs",
+            model: null,
+            reasoningEffort: null,
+            agentsStates: {
+              "child-provider-thread": {
+                status: "completed",
+                message: "done",
+              },
+            },
+          },
+        }),
+      );
+
+      expect(
+        adapter.translateEvent(
+          codexEvent("turn/started", {
+            threadId: "child-provider-thread",
+            turn: codexTurn({
+              id: "child-turn",
+              status: "inProgress",
+              error: null,
+            }),
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "turn/started",
+          parentToolCallId: "delegation-1",
+          providerThreadId: "child-provider-thread",
+          scope: turnScope("child-turn"),
+        }),
+      );
+
+      expect(
+        adapter.translateEvent(
+          codexEvent("item/completed", {
+            threadId: "child-provider-thread",
+            turnId: "child-turn",
+            completedAtMs: 0,
+            item: {
+              type: "agentMessage",
+              id: "child-assistant-1",
+              text: "Child done.",
+              phase: null,
+              memoryCitation: null,
+            },
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "item/completed",
+          providerThreadId: "child-provider-thread",
+          item: expect.objectContaining({
+            type: "agentMessage",
+            id: "child-assistant-1",
+            parentToolCallId: "delegation-1",
+          }),
+        }),
+      );
+    },
+  );
+
   it("translateEvent item/completed with search maps to webSearch", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(

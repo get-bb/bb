@@ -360,6 +360,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     type: z.literal("turn/started"),
     threadId: z.string(),
     providerThreadId: z.string(),
+    parentToolCallId: z.string().optional(),
   }),
   z.object({
     type: z.literal("turn/completed"),

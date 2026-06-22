@@ -76,10 +76,10 @@ export function getEventParentToolCallId(
     case "item/mcpToolCall/progress":
     case "item/toolCall/progress":
     case "provider/unhandled":
+    case "turn/started":
       return decoded.parentToolCallId;
     case "thread/started":
     case "thread/identity":
-    case "turn/started":
     case "turn/completed":
     case "turn/input/accepted":
     case "thread/name/updated":

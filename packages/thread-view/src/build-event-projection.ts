@@ -406,11 +406,18 @@ function buildFlatProjectionData(
         type: decoded.type,
         scope: decoded.scope,
       });
-      consumePendingDelegationTurnLink(
-        state,
-        eventProviderThreadId,
-        turnId,
-      );
+      if (explicitEventParentToolCallId) {
+        state.delegationParentToolCallIdsByTurnId.set(
+          turnId,
+          explicitEventParentToolCallId,
+        );
+      } else {
+        consumePendingDelegationTurnLink(
+          state,
+          eventProviderThreadId,
+          turnId,
+        );
+      }
       onTurnStarted(state, turnId);
     }
 
