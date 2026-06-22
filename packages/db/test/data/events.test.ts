@@ -1344,6 +1344,45 @@ describe("events", () => {
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
   });
 
+  it("ignores delegated child turn starts when reconstructing the active stored turn", () => {
+    const { db, thread } = setup();
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: turnScope("root_turn"),
+      providerThreadId: "provider_thr_1",
+      type: "turn/started",
+      data: {
+        providerThreadId: "provider_thr_1",
+      },
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: turnScope("child_turn"),
+      providerThreadId: "provider_thr_1",
+      type: "turn/started",
+      data: {
+        providerThreadId: "provider_thr_1",
+        parentToolCallId: "delegation-1",
+      },
+    });
+
+    expect(getActiveStoredTurnId(db, thread.id)).toBe("root_turn");
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: turnScope("root_turn"),
+      providerThreadId: "provider_thr_1",
+      type: "turn/completed",
+      data: {
+        providerThreadId: "provider_thr_1",
+        status: "completed",
+      },
+    });
+
+    expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
+  });
+
   it("appends stored thread events in one transaction with per-thread sequences", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
@@ -1540,6 +1579,52 @@ describe("events", () => {
         activeTurnId: null,
         latestProviderThreadId: null,
         threadId: noEventThread.id,
+      },
+    ]);
+  });
+
+  it("ignores delegated child turn starts for thread interruption active-turn lookup", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("root_turn"),
+        providerThreadId: "provider_thr_1",
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({
+          providerThreadId: "provider_thr_1",
+          turnId: "root_turn",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: turnScope("child_turn"),
+        providerThreadId: "provider_thr_1",
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({
+          providerThreadId: "provider_thr_1",
+          turnId: "child_turn",
+          parentToolCallId: "delegation-1",
+        }),
+      },
+    ]);
+
+    expect(
+      listThreadTurnInterruptionEventStates(db, {
+        threadIds: [thread.id],
+      }),
+    ).toEqual([
+      {
+        activeTurnId: "root_turn",
+        latestProviderThreadId: "provider_thr_1",
+        threadId: thread.id,
       },
     ]);
   });

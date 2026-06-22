@@ -72,6 +72,9 @@ export class RuntimeTurnState {
 
   observe(event: ThreadEvent): void {
     if (event.type === "turn/started") {
+      if (event.parentToolCallId) {
+        return;
+      }
       const turnId = requireThreadEventScopeTurnId({
         type: event.type,
         scope: event.scope,

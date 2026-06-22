@@ -4,11 +4,17 @@ import { turnScope } from "@bb/domain";
 import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 
-function turnStarted(turnId: string): ThreadEvent {
+function turnStarted(
+  turnId: string,
+  options: { parentToolCallId?: string } = {},
+): ThreadEvent {
   return {
     type: "turn/started",
     threadId: "t1",
     providerThreadId: "p1",
+    ...(options.parentToolCallId
+      ? { parentToolCallId: options.parentToolCallId }
+      : {}),
     scope: turnScope(turnId),
   };
 }
@@ -38,6 +44,27 @@ describe("RuntimeTurnState", () => {
     state.observe(turnCompleted("turn-1"));
     expect(state.getActiveTurnId("t1")).toBeNull();
     expect(state.getActiveThreadIds()).toEqual([]);
+  });
+
+  it("ignores delegated child turn starts for active foreground state", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const waiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 100,
+    });
+    state.observe(turnStarted("child-turn", { parentToolCallId: "tool-1" }));
+    vi.advanceTimersByTime(100);
+
+    await expect(waiter).resolves.toBeNull();
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(turnStarted("root-turn"));
+    state.observe(turnStarted("child-turn", { parentToolCallId: "tool-1" }));
+
+    expect(state.getActiveTurnId("t1")).toBe("root-turn");
+    expect(state.getActiveThreadIds()).toEqual(["t1"]);
   });
 
   it("resolves waitForActiveTurn immediately when a turn is active", async () => {

@@ -50,6 +50,8 @@ import {
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 
+const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
+
 export interface InsertEventInput {
   threadId: string;
   environmentId?: string | null;
@@ -1600,6 +1602,7 @@ export function getActiveStoredTurnId(
         eq(events.threadId, threadId),
         eq(events.type, "turn/started"),
         isNotNull(events.turnId),
+        isRootTurnStartedEventData,
       ),
     )
     .orderBy(desc(events.sequence))
@@ -1695,12 +1698,14 @@ export function listThreadTurnInterruptionEventStates(
         inArray(events.threadId, threadIds),
         eq(events.type, "turn/started"),
         isNotNull(events.turnId),
+        isRootTurnStartedEventData,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest
           WHERE latest.thread_id = ${events.threadId}
             AND latest.type = 'turn/started'
             AND latest.turn_id IS NOT NULL
+            AND COALESCE(json_extract(latest.data, '$.parentToolCallId'), '') = ''
         )`,
         sql`NOT EXISTS (
           SELECT 1
