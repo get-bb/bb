@@ -1,22 +1,34 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
+const mockPathPickerHost = vi.hoisted(() => ({
+  value: { hostId: null as string | null, hostName: null as string | null },
+}));
+
+const mockProjectActions = vi.hoisted(() => ({
+  requestRename: vi.fn(),
+  requestDelete: vi.fn(),
+  requestAddLocalPath: vi.fn(),
+}));
+
 vi.mock("@/hooks/useLocalPathPicker", () => ({
-  usePathPickerHost: () => ({ hostId: null, hostName: null }),
+  usePathPickerHost: () => mockPathPickerHost.value,
 }));
 
 vi.mock("./ProjectActionsProvider", () => ({
-  useProjectActions: () => ({
-    requestRename: vi.fn(),
-    requestDelete: vi.fn(),
-    requestAddLocalPath: vi.fn(),
-  }),
+  useProjectActions: () => mockProjectActions,
 }));
 
 function makeProject(): ProjectResponse {
@@ -39,6 +51,7 @@ describe("ProjectActionsMenu", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    mockPathPickerHost.value = { hostId: null, hostName: null };
   });
 
   it("does not bubble archived-thread selection to the project row", async () => {
@@ -66,5 +79,43 @@ describe("ProjectActionsMenu", () => {
     expect(screen.getByTestId("location").textContent).toBe(
       "/projects/proj_test/archived",
     );
+  });
+
+  it.each([
+    {
+      label: "Rename",
+      action: mockProjectActions.requestRename,
+      hostId: null,
+    },
+    {
+      label: "Add local path",
+      action: mockProjectActions.requestAddLocalPath,
+      hostId: "host_test",
+    },
+    {
+      label: "Remove",
+      action: mockProjectActions.requestDelete,
+      hostId: null,
+    },
+  ])("closes after selecting $label", async ({ label, action, hostId }) => {
+    mockPathPickerHost.value = { hostId, hostName: null };
+    const project = makeProject();
+
+    render(
+      <MemoryRouter>
+        <ProjectActionsMenu project={project} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+
+    expect(action).toHaveBeenCalledWith(project);
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    });
   });
 });

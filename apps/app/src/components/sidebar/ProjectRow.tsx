@@ -605,8 +605,7 @@ function EnvironmentThreadGroupHeaderActions({
           ) : null}
           {onRenameEnvironment ? (
             <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault();
+              onSelect={() => {
                 onRenameEnvironment();
               }}
             >

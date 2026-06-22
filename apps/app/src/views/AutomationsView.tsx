@@ -101,8 +101,6 @@ export interface AutomationRowMenuItem {
   key: "pause" | "resume" | "run" | "delete";
   label: string;
   destructive: boolean;
-  /** True when selecting should keep the menu open (the confirm dialog opens). */
-  preventClose: boolean;
   run: () => void;
 }
 
@@ -123,28 +121,24 @@ export function buildAutomationRowMenuItems(
           key: "pause",
           label: "Pause",
           destructive: false,
-          preventClose: false,
           run: () => actions.onPause(entry),
         }
       : {
           key: "resume",
           label: "Resume",
           destructive: false,
-          preventClose: false,
           run: () => actions.onResume(entry),
         },
     {
       key: "run",
       label: "Run now",
       destructive: false,
-      preventClose: false,
       run: () => actions.onRun(entry),
     },
     {
       key: "delete",
       label: "Delete",
       destructive: true,
-      preventClose: true,
       run: () => actions.onDelete(entry),
     },
   ];
@@ -163,10 +157,7 @@ function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
                 ? "text-destructive focus:text-destructive"
                 : undefined
             }
-            onSelect={(event) => {
-              if (item.preventClose) {
-                event.preventDefault();
-              }
+            onSelect={() => {
               item.run();
             }}
           >

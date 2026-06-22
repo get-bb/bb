@@ -57,8 +57,7 @@ export function ProjectSourceRow({
           {canEditLocalPath ? (
             <DropdownMenuItem
               disabled={isEditPending}
-              onSelect={(event) => {
-                event.preventDefault();
+              onSelect={() => {
                 onEditLocalPath(source);
               }}
             >
