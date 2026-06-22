@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -39,6 +40,7 @@ import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
   HostFilePreviewTabContent,
   ProjectFilePreviewTabContent,
@@ -168,11 +170,20 @@ import {
   resolveThreadLocalWorkspaceRootPath,
   resolveThreadWorkspacePreviewRootPath,
 } from "./thread-detail/threadWorkspaceOpenPath";
+import {
+  createDiffWorker,
+  getDiffWorkerPoolSize,
+} from "@/lib/diff-worker-pool";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
+  workerFactory: createDiffWorker,
+  poolSize: getDiffWorkerPoolSize(),
+};
+const FILE_PREVIEW_HIGHLIGHTER_OPTIONS = {};
 
 type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
@@ -580,7 +591,14 @@ export function RootComposeRoute() {
     return <LegacyProjectComposeRedirect projectId={projectId} />;
   }
 
-  return <RootComposeView surface="page" />;
+  return (
+    <WorkerPoolContextProvider
+      poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
+      highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
+    >
+      <RootComposeView surface="page" />
+    </WorkerPoolContextProvider>
+  );
 }
 
 export function RootComposeView(props: RootComposeViewProps) {
@@ -1329,10 +1347,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
   const {
     activeBrowserTab,
-    activeHostFileLineRange,
-    activeHostFilePath,
-    activeStorageFileLineRange,
-    activeStorageFilePath,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
@@ -1842,6 +1856,14 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeFixedSecondaryTab?.kind === "workspace-file-preview"
       ? activeFixedSecondaryTab
       : null;
+  const activeRootHostFileTab =
+    activeFixedSecondaryTab?.kind === "host-file-preview"
+      ? activeFixedSecondaryTab
+      : null;
+  const activeRootStorageFileTab =
+    activeFixedSecondaryTab?.kind === "thread-storage-file-preview"
+      ? activeFixedSecondaryTab
+      : null;
   const activeWorkspaceFileEnvironmentId =
     activeRootWorkspaceFileTab?.environmentId ?? null;
   const activeWorkspaceEnvironmentQuery = useEnvironment(
@@ -1939,24 +1961,18 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectSourcePreviewRootPath,
     ],
   );
-  const handleOpenHostFileInEditor = useMemo(() => {
-    if (!rootPanelEnvironmentIsLocal || !canOpenPreferredFileTarget) {
-      return undefined;
-    }
-    return (path: string) => {
-      void openPathInPreferredFileTarget({
-        lineNumber: getFilePreviewLineRangeStart({
-          lineRange: activeHostFileLineRange,
-        }),
-        path,
-      });
-    };
-  }, [
-    activeHostFileLineRange,
-    canOpenPreferredFileTarget,
-    openPathInPreferredFileTarget,
-    rootPanelEnvironmentIsLocal,
-  ]);
+  const activeRootHostFileLineNumber = getFilePreviewLineRangeStart({
+    lineRange: activeRootHostFileTab?.lineRange ?? null,
+  });
+  const handleOpenHostFileInEditor =
+    rootPanelEnvironmentIsLocal && canOpenPreferredFileTarget
+      ? (path: string) => {
+          void openPathInPreferredFileTarget({
+            lineNumber: activeRootHostFileLineNumber,
+            path,
+          });
+        }
+      : undefined;
   const activeWorkspaceFilePath = activeRootWorkspaceFileTab?.path ?? null;
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
@@ -1970,9 +1986,9 @@ export function RootComposeView(props: RootComposeViewProps) {
         rootPath: projectSourcePreviewRootPath,
       })
     : null;
-  const storageFileCopyPath = activeStorageFilePath
+  const storageFileCopyPath = activeRootStorageFileTab
     ? resolveAbsoluteFilePath({
-        path: activeStorageFilePath,
+        path: activeRootStorageFileTab.path,
         rootPath: rootThreadStorageRootPath,
       })
     : null;
@@ -2047,23 +2063,41 @@ export function RootComposeView(props: RootComposeViewProps) {
         onOpenInEditor={handleOpenProjectFileInEditor}
         projectId={activeWorkspaceFileProjectPreviewId}
       />
-    ) : activeHostFilePath && rootPanelThreadId ? (
-      <HostFilePreviewTabContent
-        activePath={activeHostFilePath}
-        copyPath={activeHostFilePath}
-        environmentId={rootPanelEnvironmentId}
-        lineRange={activeHostFileLineRange}
-        onOpenInEditor={handleOpenHostFileInEditor}
-        threadId={rootPanelThreadId}
-      />
-    ) : activeStorageFilePath && rootPanelThreadId ? (
-      <ThreadStorageFilePreviewTabContent
-        activePath={activeStorageFilePath}
-        copyPath={storageFileCopyPath}
-        lineRange={activeStorageFileLineRange}
-        onOpenInEditor={handleOpenStorageFileInEditor}
-        threadId={rootPanelThreadId}
-      />
+    ) : activeRootHostFileTab ? (
+      rootPanelThreadId ? (
+        <HostFilePreviewTabContent
+          activePath={activeRootHostFileTab.path}
+          copyPath={activeRootHostFileTab.path}
+          environmentId={rootPanelEnvironmentId}
+          lineRange={activeRootHostFileTab.lineRange}
+          onOpenInEditor={handleOpenHostFileInEditor}
+          threadId={rootPanelThreadId}
+        />
+      ) : (
+        <FilePreview
+          path={activeRootHostFileTab.path}
+          copyPath={activeRootHostFileTab.path}
+          onOpenInEditor={handleOpenHostFileInEditor}
+          state={{ kind: "loading" }}
+        />
+      )
+    ) : activeRootStorageFileTab ? (
+      rootPanelThreadId ? (
+        <ThreadStorageFilePreviewTabContent
+          activePath={activeRootStorageFileTab.path}
+          copyPath={storageFileCopyPath}
+          lineRange={activeRootStorageFileTab.lineRange}
+          onOpenInEditor={handleOpenStorageFileInEditor}
+          threadId={rootPanelThreadId}
+        />
+      ) : (
+        <FilePreview
+          path={activeRootStorageFileTab.path}
+          copyPath={storageFileCopyPath}
+          onOpenInEditor={handleOpenStorageFileInEditor}
+          state={{ kind: "loading" }}
+        />
+      )
     ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const rootPanelMetadataContent = useMemo(
