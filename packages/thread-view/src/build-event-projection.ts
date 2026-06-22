@@ -288,6 +288,20 @@ function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
   );
 }
 
+function getToolCallSenderThreadId(decoded: ThreadEvent): string | undefined {
+  if (
+    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
+    decoded.item.type !== "toolCall"
+  ) {
+    return undefined;
+  }
+
+  const senderThreadId = decoded.item.arguments?.senderThreadId;
+  return typeof senderThreadId === "string" && senderThreadId.length > 0
+    ? senderThreadId
+    : undefined;
+}
+
 function enqueuePendingDelegationTurnLink(
   state: ProjectionState,
   providerThreadId: string | undefined,
@@ -573,6 +587,7 @@ function buildFlatProjectionData(
     if (toolCallEvent) {
       const toolCallName = getToolCallName(decoded);
       const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
+      const toolCallSenderThreadId = getToolCallSenderThreadId(decoded);
       if (toolCallEvent.kind !== "output") {
         if (
           !toolCallEvent.call.parentToolCallId &&
@@ -610,6 +625,18 @@ function buildFlatProjectionData(
             );
           }
           for (const receiverThreadId of toolCallReceiverThreadIds) {
+            if (
+              receiverThreadId === eventProviderThreadId ||
+              receiverThreadId === toolCallSenderThreadId
+            ) {
+              enqueuePendingDelegationTurnLink(
+                state,
+                eventProviderThreadId,
+                eventTurnId,
+                toolCallEvent.call.callId,
+              );
+              continue;
+            }
             state.delegationParentToolCallIdsByProviderThreadId.set(
               receiverThreadId,
               toolCallEvent.call.callId,

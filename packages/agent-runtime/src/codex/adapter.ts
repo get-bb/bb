@@ -792,6 +792,7 @@ interface CodexRawCommandOutputState {
 interface CodexDelegationToolCall {
   callId: string;
   receiverThreadIds: string[];
+  senderThreadId?: string;
 }
 
 interface CodexPendingDelegationTurnLink {
@@ -824,6 +825,11 @@ function getCodexDelegationToolCall(
     receiverThreadIds: collectStringArray(
       event.item.arguments?.receiverThreadIds,
     ),
+    senderThreadId:
+      typeof event.item.arguments?.senderThreadId === "string" &&
+      event.item.arguments.senderThreadId.length > 0
+        ? event.item.arguments.senderThreadId
+        : undefined,
   };
 }
 
@@ -1426,6 +1432,17 @@ export function createCodexProviderAdapter(
 
     const providerThreadId = getCodexEventProviderThreadId(event);
     for (const receiverThreadId of delegationToolCall.receiverThreadIds) {
+      if (
+        receiverThreadId === providerThreadId ||
+        receiverThreadId === delegationToolCall.senderThreadId
+      ) {
+        enqueuePendingDelegationTurnLink({
+          callId: delegationToolCall.callId,
+          parentTurnId: getThreadEventScopeTurnId(event.scope),
+          providerThreadId,
+        });
+        continue;
+      }
       delegationParentToolCallIdsByProviderThreadId.set(
         receiverThreadId,
         delegationToolCall.callId,

@@ -1202,6 +1202,85 @@ describe("timeline CLI rendering snapshots", () => {
     });
   });
 
+  it("does not attach later human turns to Codex same-provider receiver delegations", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "parent-turn",
+    });
+    const parentToolCallId = "call_MV1jTrxEd9bsYdEXQo1PhVOs";
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: parentToolCallId,
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Run the child command",
+          senderThreadId: "root-provider",
+          receiverThreadIds: ["root-provider"],
+        },
+      }),
+      event.turnCompleted(),
+      event.turnStarted({
+        turnId: "child-turn",
+        parentToolCallId,
+      }),
+      event.commandStarted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+      }),
+      event.turnStarted({ turnId: "follow-up-turn" }),
+      event.assistantCompleted({
+        itemId: "follow-up-assistant",
+        turnId: "follow-up-turn",
+        text: "follow-up done",
+      }),
+      event.commandCompleted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+        aggregatedOutput: "CHILD_REAL_PROVIDER_DONE\n",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "follow-up-turn",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "work",
+          workKind: "command",
+          turnId: "child-turn",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "follow-up-turn"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "follow-up done",
+      turnId: "follow-up-turn",
+    });
+  });
+
   it("keeps streaming Codex same-provider child turns out of top-level rows", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",

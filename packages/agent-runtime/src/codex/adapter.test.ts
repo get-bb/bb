@@ -3535,6 +3535,172 @@ describe("codex provider adapter", () => {
     },
   );
 
+  it("does not inherit a same-provider delegation link onto a later human turn", () => {
+    const adapter = createCodexProviderAdapter();
+    const providerThreadId = "root-provider-thread";
+    const parentToolCallId = "call_MV1jTrxEd9bsYdEXQo1PhVOs";
+
+    adapter.translateEvent(
+      codexEvent("turn/started", {
+        threadId: providerThreadId,
+        turn: codexTurn({
+          id: "parent-turn",
+          status: "inProgress",
+          error: null,
+        }),
+      }),
+    );
+    adapter.translateEvent(
+      codexEvent("item/started", {
+        threadId: providerThreadId,
+        turnId: "parent-turn",
+        startedAtMs: 0,
+        item: {
+          type: "collabAgentToolCall",
+          id: parentToolCallId,
+          tool: "spawnAgent",
+          status: "inProgress",
+          senderThreadId: providerThreadId,
+          receiverThreadIds: [providerThreadId],
+          prompt: "Run the child command",
+          model: null,
+          reasoningEffort: null,
+          agentsStates: {},
+        },
+      }),
+    );
+    adapter.translateEvent(
+      codexEvent("turn/completed", {
+        threadId: providerThreadId,
+        turn: codexTurn({
+          id: "parent-turn",
+          status: "completed",
+          error: null,
+        }),
+      }),
+    );
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("turn/started", {
+          threadId: providerThreadId,
+          turn: codexTurn({
+            id: "child-turn",
+            status: "inProgress",
+            error: null,
+          }),
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        parentToolCallId,
+        scope: turnScope("child-turn"),
+      }),
+    );
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("item/started", {
+          threadId: providerThreadId,
+          turnId: "child-turn",
+          startedAtMs: 0,
+          item: {
+            type: "commandExecution",
+            id: "child-command",
+            command:
+              "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+            cwd: "/tmp",
+            processId: null,
+            source: "agent",
+            status: "inProgress",
+            commandActions: [],
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          },
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "commandExecution",
+          id: "child-command",
+          parentToolCallId,
+        }),
+      }),
+    );
+
+    const followUpTurnEvents = adapter.translateEvent(
+      codexEvent("turn/started", {
+        threadId: providerThreadId,
+        turn: codexTurn({
+          id: "follow-up-turn",
+          status: "inProgress",
+          error: null,
+        }),
+      }),
+    );
+    const followUpTurnStarted = followUpTurnEvents.find(
+      (event) => event.type === "turn/started",
+    );
+    expect(followUpTurnStarted).toEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("follow-up-turn"),
+      }),
+    );
+    expect(followUpTurnStarted).not.toHaveProperty("parentToolCallId");
+
+    const followUpAssistantEvents = adapter.translateEvent(
+      codexEvent("item/completed", {
+        threadId: providerThreadId,
+        turnId: "follow-up-turn",
+        completedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "follow-up-assistant",
+          text: "follow-up done",
+          phase: null,
+          memoryCitation: null,
+        },
+      }),
+    );
+    const followUpAssistant = followUpAssistantEvents.find(
+      (event) =>
+        event.type === "item/completed" &&
+        event.item.type === "agentMessage",
+    );
+    expect(followUpAssistant).toEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          id: "follow-up-assistant",
+        }),
+      }),
+    );
+    expect(followUpAssistant).not.toHaveProperty("item.parentToolCallId");
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("item/commandExecution/outputDelta", {
+          threadId: providerThreadId,
+          turnId: "child-turn",
+          itemId: "child-command",
+          delta: "CHILD_REAL_PROVIDER_DONE\n",
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        parentToolCallId,
+        scope: turnScope("child-turn"),
+      }),
+    );
+  });
+
   it.each(["spawnAgent", "resumeAgent"] as const)(
     "stamps explicit receiver-thread child events under the %s call",
     (tool) => {
