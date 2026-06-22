@@ -14,7 +14,7 @@ function createMonitorHarness(
   usage: HostDaemonResourceUsage,
   options: { inotifyInstanceWarnThreshold?: number } = {},
 ) {
-  const info = vi.fn();
+  const debug = vi.fn();
   const warn = vi.fn();
   const timer: CapturedTimer = {
     callback: () => undefined,
@@ -22,7 +22,7 @@ function createMonitorHarness(
     unrefed: false,
   };
   const monitor = startHostDaemonHealthMonitor({
-    logger: { info, warn },
+    logger: { debug, warn },
     getWatchCounts: () => ({ workspaceWatches: 3, threadStorageTargets: 5 }),
     readResourceUsage: () => usage,
     inotifyInstanceWarnThreshold: options.inotifyInstanceWarnThreshold,
@@ -38,12 +38,12 @@ function createMonitorHarness(
       };
     },
   });
-  return { info, warn, timer, monitor };
+  return { debug, warn, timer, monitor };
 }
 
 describe("startHostDaemonHealthMonitor", () => {
-  it("logs resource and watch metrics on each tick", () => {
-    const { info, timer } = createMonitorHarness({
+  it("debug-logs resource and watch metrics on each tick", () => {
+    const { debug, timer } = createMonitorHarness({
       rssBytes: 123,
       openFds: 42,
       inotifyInstances: 1,
@@ -52,7 +52,7 @@ describe("startHostDaemonHealthMonitor", () => {
 
     timer.callback();
 
-    expect(info).toHaveBeenCalledWith(
+    expect(debug).toHaveBeenCalledWith(
       {
         rssBytes: 123,
         openFds: 42,
@@ -96,7 +96,7 @@ describe("startHostDaemonHealthMonitor", () => {
     });
     unavailable.timer.callback();
     expect(unavailable.warn).not.toHaveBeenCalled();
-    expect(unavailable.info).toHaveBeenCalledTimes(1);
+    expect(unavailable.debug).toHaveBeenCalledTimes(1);
   });
 
   it("stops the interval timer on stop()", () => {

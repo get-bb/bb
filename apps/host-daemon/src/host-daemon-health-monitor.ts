@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { HostDaemonLogger } from "./logger.js";
 
 /**
- * Periodically logs host-daemon resource and watch metrics so a leak or wedge
+ * Periodically debug-logs host-daemon resource and watch metrics so a leak or wedge
  * is visible in the logs after the fact instead of needing a live post-mortem.
  *
  * The headline signal is the inotify instance count. `@parcel/watcher` shares a
@@ -39,7 +39,7 @@ export interface HostDaemonResourceUsage {
 }
 
 interface HostDaemonHealthMonitorOptions {
-  logger: Pick<HostDaemonLogger, "info" | "warn">;
+  logger: Pick<HostDaemonLogger, "debug" | "warn">;
   getWatchCounts: () => HostDaemonWatchCounts;
   readResourceUsage?: () => HostDaemonResourceUsage;
   setIntervalFn?: HostDaemonHealthMonitorIntervalFn;
@@ -120,7 +120,7 @@ export function startHostDaemonHealthMonitor(
       workspaceWatches: watchCounts.workspaceWatches,
       threadStorageTargets: watchCounts.threadStorageTargets,
     };
-    options.logger.info(fields, "Host daemon health");
+    options.logger.debug(fields, "Host daemon health");
     if (
       usage.inotifyInstances !== null &&
       usage.inotifyInstances > inotifyInstanceWarnThreshold
