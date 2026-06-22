@@ -717,21 +717,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 520px;
 }
 
-/* Header sidebar trigger (hamburger). Opens the drawer on mobile. */
+/* Sidebar-toggle glyph in the title bar — decorative window chrome. */
 .bar-menu {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 0;
-  background: none;
-  padding: 0;
   color: inherit;
-  cursor: pointer;
-}
-
-/* Drawer backdrop — only shown on mobile when the sidebar is open. */
-.nav-backdrop {
-  display: none;
 }
 
 /* sidebar */
@@ -2123,22 +2114,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin: 16px auto 0;
 }
 
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px 16px;
-  margin-top: 22px;
-  color: var(--subtle);
-  font-size: 13px;
-}
-
-.facts span:not(:first-child)::before {
-  content: "·";
-  margin-right: 16px;
-  color: var(--border);
-}
-
 /* ── Section titles, closer, footer ─────────────────────────────── */
 
 .sec-title {
@@ -2224,105 +2199,43 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     );
   }
 
-  /* Keep a fixed height (sidebar is an overlay drawer here, so it adds no
-     in-flow height). A running thread streams rows in endlessly; without a
-     bounded body the feed — and the whole card — would grow without limit. */
-  .mock-body {
-    flex-direction: column;
+  /* Mobile shows the desktop layout at a legible scale, anchored left, so only
+     its left portion is on screen — the rest bleeds off the right edge.
+     Full-bleed the card across the viewport: pull both edges out to cancel
+     .wrap's 28px side padding, then re-inset the card with padding-left so it
+     still lines up with the page content. overflow-x clips the card's right
+     bleed, but because the clip box now reaches the left screen edge too, the
+     card's drop shadow fades into the left gutter instead of being shaved off
+     at the card's own edge. overflow-y stays visible so the bottom shadow and
+     the scroll-in entrance still show. */
+  .mockup-wrap {
+    margin-left: -28px;
+    margin-right: -28px;
+    padding-left: 28px;
+    overflow-x: clip;
   }
 
-  /* In this column layout .main is on the main axis, so it needs min-height:0
-     to stay within the fixed body instead of growing with the feed's content.
-     This lets .feed clip and anchor newest rows to the bottom (.feed-live). */
-  .main {
-    min-height: 0;
+  /* The mock keeps its full desktop width and is shrunk with `zoom` (which
+     reflows, so the card occupies its scaled size and the page below flows
+     normally). JS sets `--mock-scale` so a fixed slice of the app
+     (`--mock-visible-width`) fills the available width. Both vars are defined
+     only here, so the mock is unscaled above this breakpoint; the fallback
+     scale covers the pre-hydration/no-JS paint. */
+  .mock {
+    --mock-desktop-width: 980px;
+    --mock-visible-width: 560px;
+    width: var(--mock-desktop-width);
+    zoom: var(--mock-scale, 0.62);
   }
 
-  .diff-panel {
-    display: none;
+  /* Left-align the centered statement on mobile so it reads like the bands
+     above it instead of centered multi-line text on a narrow screen. */
+  .statement {
+    text-align: left;
   }
 
-  /* Native mobile-app chrome: drop the desktop window furniture (traffic
-     lights, browser back/forward, editor/commit/panel toolbar) and present a
-     simple app header — menu · title · ⋯. */
-  .mock-bar {
-    height: 52px;
-  }
-
-  .bar-left {
-    width: auto;
-    border-right: none;
-    padding-right: 6px;
-  }
-
-  .mock-dots,
-  .bar-nav,
-  .bar-actions {
-    display: none;
-  }
-
-  .bar-ic {
-    width: 20px;
-    height: 20px;
-  }
-
-  .bar-main {
-    padding: 0 14px;
-  }
-
-  .bar-title {
-    flex: 1;
-    min-width: 0;
-    font-size: 15px;
-  }
-
-  .bar-kebab {
-    margin-left: auto;
-  }
-
-  /* The sidebar becomes a slide-in drawer (mirrors the app's mobile nav),
-     toggled by the header hamburger — not a tab strip. */
-  .side {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 30;
-    width: min(78%, 270px);
-    padding: 8px 8px 10px;
-    /* Collapsed: keep the card edge clean — the off-screen drawer must not cast
-       a border/shadow onto the left edge. Both appear only once expanded. */
-    border-right: none;
-    overflow-y: auto;
-    transform: translateX(-100%);
-    transition: transform 0.22s ease;
-  }
-
-  .side.nav-open {
-    transform: translateX(0);
-    border-right: 1px solid var(--border-soft);
-    box-shadow: 8px 0 28px -12px color-mix(in oklch, var(--ink) 45%, transparent);
-  }
-
-  .nav-backdrop {
-    display: block;
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    border: 0;
-    padding: 0;
-    background: color-mix(in oklch, var(--ink) 34%, transparent);
-    cursor: pointer;
-  }
-
-  .ctx-branch {
-    max-width: 150px;
-  }
-
-  /* Keep the run card compact under the CTA, not an oversized widget. */
-  .runcard {
-    max-width: 100%;
-    padding: 14px 16px 15px;
+  .statement .cta-row {
+    justify-content: flex-start;
   }
 }
 

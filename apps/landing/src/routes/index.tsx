@@ -181,6 +181,46 @@ function useConstructMock() {
   }, []);
 }
 
+/** Scale the desktop app mock for narrow viewports. Below the mobile breakpoint
+ *  the mock keeps its full desktop layout and is shrunk with `zoom` so a fixed
+ *  left slice of the app (`--mock-visible-width`) fills the available width; the
+ *  rest bleeds off the right edge, clipped by `.mockup-wrap`'s overflow. This
+ *  stays legible instead of shrinking the whole app to fit. `--mock-visible-width`
+ *  is defined only inside that breakpoint, so above it the variable is unset and
+ *  the mock renders unscaled at its natural width. */
+function useFitMock() {
+  useEffect(() => {
+    const mock = document.querySelector<HTMLElement>(".mock");
+    const wrap = mock?.parentElement;
+    if (!mock || !wrap) {
+      return;
+    }
+    const fit = () => {
+      const wrapStyle = getComputedStyle(wrap);
+      const visibleWidth = Number.parseFloat(
+        getComputedStyle(mock).getPropertyValue("--mock-visible-width"),
+      );
+      if (!visibleWidth) {
+        // Desktop layout (variable unset above the breakpoint): no scaling.
+        mock.style.removeProperty("--mock-scale");
+        return;
+      }
+      // The card is inset by the wrap's side padding (its left gutter holds the
+      // drop shadow), so its on-screen width is the content box — clientWidth
+      // minus the padding — not clientWidth itself.
+      const slice =
+        wrap.clientWidth -
+        Number.parseFloat(wrapStyle.paddingLeft) -
+        Number.parseFloat(wrapStyle.paddingRight);
+      mock.style.setProperty("--mock-scale", String(slice / visibleWidth));
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, []);
+}
+
 /* ── Shared bits ──────────────────────────────────────────────────── */
 
 function ProviderChips() {
@@ -838,9 +878,6 @@ function HeroAppMock() {
   const [activeId, setActiveId] = useState(HERO_THREADS[0].id);
   const [view, setView] = useState<"thread" | "new">("thread");
   const [diffOpen, setDiffOpen] = useState(false);
-  // Mobile sidebar drawer (mirrors the app's openMobile nav). Inert on desktop,
-  // where the sidebar is always in-flow.
-  const [navOpen, setNavOpen] = useState(false);
   // Subagents a running thread spawns, keyed by parent id. They persist once
   // spawned and render as nested child rows in the sidebar.
   const [spawned, setSpawned] = useState<Record<string, MockThread[]>>({});
@@ -856,7 +893,6 @@ function HeroAppMock() {
   const openThread = (id: string) => {
     setActiveId(id);
     setView("thread");
-    setNavOpen(false);
   };
 
   const handleSpawn = useCallback((parentId: string, child: MockThread) => {
@@ -883,15 +919,9 @@ function HeroAppMock() {
               <i />
               <i />
             </span>
-            <button
-              type="button"
-              className="bar-menu"
-              aria-label="Toggle sidebar"
-              aria-expanded={navOpen}
-              onClick={() => setNavOpen((open) => !open)}
-            >
+            <span className="bar-menu" aria-hidden>
               <PanelIcon className="ri bar-ic" />
-            </button>
+            </span>
             <span className="bar-nav" aria-hidden>
               <ChevronLeft className="ri" />
               <ChevronRight className="ri" />
@@ -925,25 +955,14 @@ function HeroAppMock() {
           </div>
         </div>
         <div className="mock-body">
-          {navOpen ? (
-            <button
-              type="button"
-              className="nav-backdrop"
-              aria-label="Close sidebar"
-              onClick={() => setNavOpen(false)}
-            />
-          ) : null}
-          <aside className={navOpen ? "side nav-open" : "side"}>
+          <aside className="side">
             <button
               type="button"
               className={
                 view === "new" ? "side-act active-act" : "side-act"
               }
               aria-pressed={view === "new"}
-              onClick={() => {
-                setView("new");
-                setNavOpen(false);
-              }}
+              onClick={() => setView("new")}
             >
               <NewThreadIcon className="sa-ic" />
               New thread
@@ -1304,6 +1323,7 @@ function ProviderTree() {
 function LandingPage() {
   useScrollReveal();
   useConstructMock();
+  useFitMock();
   return (
     <div className="wrap">
       <nav className="nav">
@@ -1394,11 +1414,6 @@ function LandingPage() {
           tools, and UI, and deploy your own build across your whole
           organization. It still runs local-first on your machines, on the
           provider subscriptions you already pay for.
-        </p>
-        <p className="facts">
-          <span>MIT licensed</span>
-          <span>Fork and customize</span>
-          <span>Self-host in your org</span>
         </p>
         <div className="cta-row">
           <GitHubLink placement="local" className="btn btn-ghost">
