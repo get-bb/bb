@@ -444,6 +444,56 @@ describe("public thread terminal routes", () => {
     );
   });
 
+  it("keeps a non-empty cwd for a host home terminal disconnected before open", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+
+    const responsePromise = Promise.resolve(
+      fixture.harness.app.request("/api/v1/terminals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          cols: 100,
+          rows: 30,
+          target: {
+            kind: "host_path",
+            hostId: fixture.host.id,
+            cwd: null,
+          },
+        }),
+      }),
+    );
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+
+    fixture.harness.deps.terminalSessions.handleDaemonSessionClosed({
+      sessionId: fixture.session.id,
+    });
+
+    const response = await responsePromise;
+    expect(response.status).toBe(502);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "host_disconnected",
+    });
+
+    const listResponse = await fixture.harness.app.request(
+      "/api/v1/terminals",
+    );
+    expect(listResponse.status).toBe(200);
+    const list = terminalListResponseSchema.parse(await readJson(listResponse));
+    expect(list.sessions).toEqual([
+      expect.objectContaining({
+        id: openMessage.terminalId,
+        environmentId: null,
+        initialCwd: "~",
+        status: "disconnected",
+        threadId: null,
+      }),
+    ]);
+  });
+
   it("attaches browser sockets to threadless terminal sessions", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);

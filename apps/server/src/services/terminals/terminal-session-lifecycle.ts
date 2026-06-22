@@ -68,6 +68,7 @@ const DEFAULT_TERMINAL_START: NonNullable<
 > = {
   mode: "shell",
 };
+const HOST_HOME_INITIAL_CWD = "~";
 
 type TerminalOpenedMessage = Extract<
   HostDaemonDaemonWsMessage,
@@ -739,7 +740,7 @@ export class TerminalSessionLifecycle {
           },
           environmentId: null,
           hostId: target.hostId,
-          initialCwd: target.cwd ?? "",
+          initialCwd: target.cwd ?? HOST_HOME_INITIAL_CWD,
         };
     }
   }
