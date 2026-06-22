@@ -41,7 +41,6 @@ function makeThreadEntry(args: ThreadEntryArgs): ThreadListEntry {
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "managed-worktree",
-    activity: { activeWorkflowCount: 0, activeBackgroundSubagentCount: 0 },
   };
 }
 
