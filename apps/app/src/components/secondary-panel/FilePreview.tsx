@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -134,6 +135,8 @@ interface FilePreviewCodeProps {
   lineOverflowMode: CodeOverflowMode;
   lineRange: FilePreviewLineRange | null;
 }
+
+type ReadyFilePreviewCodeFile = Pick<FilePreviewFile, "contents" | "name">;
 
 interface GetInitialFilePreviewViewModeArgs {
   lineRange: FilePreviewLineRange | null;
@@ -706,6 +709,10 @@ function FilePreviewCode({
 }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [readyFile, setReadyFile] =
+    useState<ReadyFilePreviewCodeFile | null>(null);
+  const isReadyForFile =
+    readyFile?.name === file.name && readyFile.contents === file.contents;
   const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
@@ -726,6 +733,55 @@ function FilePreviewCode({
     [lineRange],
   );
   const targetLineNumber = selectedLines?.start ?? null;
+
+  useLayoutEffect(() => {
+    if (isReadyForFile) {
+      return;
+    }
+
+    const currentContainer = containerRef.current;
+    if (!currentContainer) {
+      return;
+    }
+    const container: HTMLDivElement = currentContainer;
+
+    let animationFrame: number | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    const readyFileForEffect = {
+      contents: file.contents,
+      name: file.name,
+    };
+
+    function markReadyIfMeasured() {
+      if (container.getBoundingClientRect().width <= 0) {
+        return false;
+      }
+      setReadyFile(readyFileForEffect);
+      return true;
+    }
+
+    if (markReadyIfMeasured()) {
+      return;
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        if (markReadyIfMeasured()) {
+          resizeObserver?.disconnect();
+        }
+      });
+      resizeObserver.observe(container);
+    }
+
+    animationFrame = window.requestAnimationFrame(markReadyIfMeasured);
+
+    return () => {
+      resizeObserver?.disconnect();
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [file.contents, file.name, isReadyForFile]);
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
@@ -782,7 +838,9 @@ function FilePreviewCode({
       style={FILE_PREVIEW_VIEW_STYLE}
       data-file-preview-line-number={targetLineNumber ?? undefined}
     >
-      <PierreFile file={file} options={options} selectedLines={selectedLines} />
+      {isReadyForFile ? (
+        <PierreFile file={file} options={options} selectedLines={selectedLines} />
+      ) : null}
     </div>
   );
 }
