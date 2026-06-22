@@ -74,6 +74,10 @@ function isQuoteLine(line: string): boolean {
   return line === ">" || line.startsWith("> ");
 }
 
+function isBlankLine(line: string): boolean {
+  return line.length === 0;
+}
+
 function stripQuotePrefix(line: string): string {
   if (line.startsWith("> ")) return line.slice(2);
   if (line === ">") return "";
@@ -212,6 +216,13 @@ export function promptEditorContentFromValue(
     const groupStarts = lineGlobalStarts.slice(index, end);
     if (quote) {
       blocks.push(blockquoteFromLines(value, groupLines, groupStarts));
+      if (
+        isBlankLine(lines[end] ?? "") &&
+        end + 1 < lines.length &&
+        !isQuoteLine(lines[end + 1]!)
+      ) {
+        end += 1;
+      }
     } else {
       const spanStart = groupStarts[0]!;
       const lastLine = groupLines[groupLines.length - 1]!;
@@ -290,8 +301,17 @@ export function promptEditorValueFromDoc(
   doc: ProseMirrorNode,
 ): PromptEditorValue {
   let text = "";
-  let hasSerializedBlock = false;
+  let previousSerializedBlockWasBlockquote: boolean | null = null;
   const mentions: PromptTextMention[] = [];
+
+  const appendBlockBoundary = (blockIsBlockquote: boolean) => {
+    if (previousSerializedBlockWasBlockquote !== null) {
+      text += previousSerializedBlockWasBlockquote && !blockIsBlockquote
+        ? "\n\n"
+        : "\n";
+    }
+    previousSerializedBlockWasBlockquote = blockIsBlockquote;
+  };
 
   const appendInline = (node: ProseMirrorNode) => {
     if (node.type.name === "text") {
@@ -380,10 +400,11 @@ export function promptEditorValueFromDoc(
         : 1;
     for (let index = 0; index < listNode.childCount; index += 1) {
       const item = listNode.child(index);
-      if (hasSerializedBlock) {
+      if (depth === 0 && index === 0) {
+        appendBlockBoundary(false);
+      } else {
         text += "\n";
       }
-      hasSerializedBlock = true;
       const indent = "  ".repeat(depth);
       const marker = ordered ? `${itemNumber}. ` : "- ";
       text += `${indent}${marker}`;
@@ -414,19 +435,13 @@ export function promptEditorValueFromDoc(
     }
 
     if (node.type.name === "blockquote") {
-      if (hasSerializedBlock) {
-        text += "\n";
-      }
-      hasSerializedBlock = true;
+      appendBlockBoundary(true);
       appendBlockquote(node);
       return;
     }
 
     if (node.type.name === "heading") {
-      if (hasSerializedBlock) {
-        text += "\n";
-      }
-      hasSerializedBlock = true;
+      appendBlockBoundary(false);
       const level = typeof node.attrs.level === "number" ? node.attrs.level : 1;
       const clampedLevel = Math.min(Math.max(level, 1), 6);
       text += `${"#".repeat(clampedLevel)} `;
@@ -440,10 +455,7 @@ export function promptEditorValueFromDoc(
     }
 
     if (node.isBlock && node.type.name !== "doc") {
-      if (hasSerializedBlock) {
-        text += "\n";
-      }
-      hasSerializedBlock = true;
+      appendBlockBoundary(false);
       appendChildren(node);
       return;
     }

@@ -62,17 +62,23 @@ describe("prompt editor serialization round-trip", () => {
     expect(roundTrip(value)).toEqual(value);
   });
 
-  it("round-trips a quote followed by a reply", () => {
+  it("canonicalizes a quote followed by a reply with a separator blank", () => {
     const value: PromptEditorValue = { text: "> a\nmy reply", mentions: [] };
-    expect(roundTrip(value)).toEqual(value);
+    expect(roundTrip(value)).toEqual({
+      text: "> a\n\nmy reply",
+      mentions: [],
+    });
   });
 
-  it("round-trips two quotes each with a reply", () => {
+  it("canonicalizes two quotes each with a reply", () => {
     const value: PromptEditorValue = {
       text: "> q1\nr1\n> q2\nr2",
       mentions: [],
     };
-    expect(roundTrip(value)).toEqual(value);
+    expect(roundTrip(value)).toEqual({
+      text: "> q1\n\nr1\n> q2\n\nr2",
+      mentions: [],
+    });
   });
 
   it("round-trips a quote with an internal blank line", () => {
@@ -86,8 +92,8 @@ describe("prompt editor serialization round-trip", () => {
   });
 
   it("preserves a mention's offsets in a reply after a quote", () => {
-    // "> a\nhey @thread done" — the mention "@thread" sits in the reply line.
-    const prefix = "> a\nhey ";
+    // "> a\n\nhey @thread done" — the mention "@thread" sits in the reply line.
+    const prefix = "> a\n\nhey ";
     const mentionText = "@thread";
     const text = `${prefix}${mentionText} done`;
     const mention: PromptTextMention = {
@@ -295,6 +301,26 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
         },
       ]).text,
     ).toBe("# H\npara\n- i");
+  });
+
+  it("separates a blockquote from a following paragraph with a blank line", () => {
+    expect(
+      serialize([
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "quoted" }],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "reply" }],
+        },
+      ]).text,
+    ).toBe("> quoted\n\nreply");
   });
 
   it("keeps a mention's offset correct inside a heading", () => {

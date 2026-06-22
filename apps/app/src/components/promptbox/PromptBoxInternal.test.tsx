@@ -297,7 +297,7 @@ describe("PromptBoxInternal controlled value sync", () => {
     );
 
     expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\nreply",
+      "> selected text\n\nreply",
       [],
     );
   });

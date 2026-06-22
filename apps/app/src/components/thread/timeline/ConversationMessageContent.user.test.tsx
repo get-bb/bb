@@ -124,6 +124,16 @@ describe("ConversationMessageContent user message markdown", () => {
     expect(screen.getByText(/quoted context/u)).toBeTruthy();
   });
 
+  it("renders a legacy unprefixed line after a blockquote as a regular paragraph", () => {
+    const { container } = renderUserMessage({
+      text: "> hat would you like me to wo\nasdf",
+    });
+
+    const quote = container.querySelector("blockquote");
+    expect(quote?.textContent?.trim()).toBe("hat would you like me to wo");
+    expect(screen.getByText("asdf").closest("blockquote")).toBeNull();
+  });
+
   it("wraps the body in a message bubble", () => {
     const { container } = renderUserMessage({ text: "hello there" });
     const bubble = container.querySelector(".bg-surface-recessed");

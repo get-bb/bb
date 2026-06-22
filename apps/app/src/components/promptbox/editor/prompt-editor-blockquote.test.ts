@@ -67,7 +67,7 @@ describe("createExitTrailingBlockquoteBreakTransaction", () => {
       'doc(blockquote(paragraph("quote")), paragraph)',
     );
     expect(nextState.selection.from).toBe(10);
-    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("> quote\n");
+    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("> quote\n\n");
   });
 
   it("does not exit a blockquote before the first trailing hard break exists", () => {
