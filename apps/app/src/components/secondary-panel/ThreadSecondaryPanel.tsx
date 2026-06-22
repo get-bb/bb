@@ -13,7 +13,10 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
-import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -78,6 +81,7 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 // Stable empty TOC reference so the collapse-controls hook's derived atom and
 // the stats memo are not rebuilt every render while the diff is loading/absent.
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
@@ -456,8 +460,7 @@ export function ThreadSecondaryPanel({
               variant="ghost"
               size="icon"
               className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "shrink-0",
+                SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
                 usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               )}
               onClick={onClose}
