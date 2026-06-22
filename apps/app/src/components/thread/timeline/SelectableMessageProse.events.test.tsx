@@ -86,7 +86,7 @@ describe("SelectableMessageProse", () => {
     );
   });
 
-  it("includes the pointer release point when a pointer selection starts in the message", async () => {
+  it("includes the pointer release point and side when a pointer selection starts in the message", async () => {
     const onSelect = vi.fn();
     const { getByText } = render(
       <SelectableMessageProse onSelect={onSelect}>
@@ -101,13 +101,14 @@ describe("SelectableMessageProse", () => {
       text: "answer text",
     });
 
-    fireEvent.pointerDown(target);
+    fireEvent.pointerDown(target, { clientX: 12, clientY: 24 });
     fireEvent.pointerUp(document, { clientX: 42, clientY: 84 });
 
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({
           anchorPoint: { x: 42, y: 84 },
+          anchorSide: "bottom",
           text: "answer text",
         }),
       ),

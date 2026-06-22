@@ -56,9 +56,9 @@ function ActionButton({
 }
 
 /**
- * Floating horizontal menu shown above an agent-message text selection. Built
- * as a self-contained component driven by `selection` + callbacks; the
- * timeline controller that supplies them is wired separately.
+ * Floating horizontal menu shown near an agent-message text selection. Built as
+ * a self-contained component driven by `selection` + callbacks; the timeline
+ * controller that supplies them is wired separately.
  */
 export function TimelineSelectionMenu({
   selection,
@@ -120,6 +120,7 @@ export function TimelineSelectionMenu({
   const { anchorPoint, rect } = selection;
   const anchorLeft = anchorPoint?.x ?? rect.left + rect.width / 2;
   const anchorTop = anchorPoint?.y ?? rect.top;
+  const anchorSide = selection.anchorSide ?? "top";
 
   return (
     <Popover
@@ -129,8 +130,8 @@ export function TimelineSelectionMenu({
       }}
     >
       {/*
-        Zero-size anchor pinned to the pointer release point, falling back to the
-        selection rect.
+        Zero-size anchor pinned to the pointer release point and gesture side,
+        falling back to the selection rect.
       */}
       <PopoverAnchor asChild>
         <div
@@ -146,7 +147,7 @@ export function TimelineSelectionMenu({
         />
       </PopoverAnchor>
       <PopoverContent
-        side="top"
+        side={anchorSide}
         align="center"
         sideOffset={6}
         collisionBoundary={collisionBoundary}

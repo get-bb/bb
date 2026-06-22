@@ -60,6 +60,21 @@ describe("TimelineSelectionMenu", () => {
     expect(anchor.style.top).toBe("84px");
   });
 
+  it("uses the selected anchor side when positioning from a pointer release", () => {
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection({
+          anchorPoint: { x: 42, y: 84 },
+          anchorSide: "bottom",
+        })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('[data-side="bottom"]')).toBeTruthy();
+  });
+
   it("passes the selection branch point to side-chat replies", () => {
     const onReplyInSideChat = vi.fn();
     render(
