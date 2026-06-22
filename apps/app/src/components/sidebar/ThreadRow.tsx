@@ -32,7 +32,6 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
-  hasActiveBackgroundActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -365,11 +364,6 @@ function ThreadRowComponent({
     !threadRuntimeBusy &&
     !hasPendingInteraction &&
     hasActiveWorkflowActivity(thread);
-  const threadBackgroundBusy =
-    !threadRuntimeBusy &&
-    !threadWorkflowActive &&
-    !hasPendingInteraction &&
-    hasActiveBackgroundActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge =
     !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
@@ -393,15 +387,10 @@ function ThreadRowComponent({
   const trailingRuntimeBusy = hasHiddenChildren
     ? threadRuntimeBusy || childActivity.runtimeWorking
     : threadRuntimeBusy;
-  const trailingBackgroundBusy = hasHiddenChildren
-    ? threadBackgroundBusy || childActivity.backgroundWorking
-    : threadBackgroundBusy;
   const trailingIsWorkflowActive = hasHiddenChildren
-    ? !trailingRuntimeBusy &&
-      !trailingBackgroundBusy &&
-      (threadWorkflowActive || childActivity.workflow)
+    ? !trailingRuntimeBusy && (threadWorkflowActive || childActivity.workflow)
     : threadWorkflowActive;
-  const trailingIsBusy = trailingRuntimeBusy || trailingBackgroundBusy;
+  const trailingIsBusy = trailingRuntimeBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;

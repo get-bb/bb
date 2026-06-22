@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { threadScope, turnScope, type PromptInput } from "@bb/domain";
+import {
+  LOCAL_WORKFLOW_TASK_TYPE,
+  threadScope,
+  turnScope,
+  type PromptInput,
+} from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -2724,11 +2729,7 @@ describe("events", () => {
   });
 
   it("counts only active background workflow snapshots by thread", () => {
-    const { db, project, thread } = setup();
-    const otherThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
+    const { db, thread } = setup();
 
     const taskData = (args: {
       itemId: string;
@@ -2760,7 +2761,7 @@ describe("events", () => {
           itemId: "task:wf-active",
           itemStatus: "pending",
           taskStatus: "running",
-          taskType: "local_workflow",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
       {
@@ -2774,7 +2775,7 @@ describe("events", () => {
           itemId: "task:wf-active",
           itemStatus: "pending",
           taskStatus: "running",
-          taskType: "local_workflow",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
       {
@@ -2788,7 +2789,7 @@ describe("events", () => {
           itemId: "task:wf-terminal-progress",
           itemStatus: "pending",
           taskStatus: "running",
-          taskType: "local_workflow",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
       {
@@ -2802,7 +2803,7 @@ describe("events", () => {
           itemId: "task:wf-terminal-progress",
           itemStatus: "completed",
           taskStatus: "completed",
-          taskType: "local_workflow",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
       {
@@ -2816,7 +2817,7 @@ describe("events", () => {
           itemId: "task:wf-completed",
           itemStatus: "pending",
           taskStatus: "running",
-          taskType: "local_workflow",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
       {
@@ -2830,40 +2831,20 @@ describe("events", () => {
           itemId: "task:wf-completed",
           itemStatus: "completed",
           taskStatus: "completed",
-          taskType: "local_workflow",
-        }),
-      },
-      {
-        threadId: otherThread.id,
-        sequence: 1,
-        scope: turnScope("turn-2"),
-        type: "item/started",
-        itemId: "task:agent-active",
-        itemKind: "backgroundTask",
-        data: taskData({
-          itemId: "task:agent-active",
-          itemStatus: "pending",
-          taskStatus: "running",
-          taskType: "local_agent",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
         }),
       },
     ]);
 
     const countsByThreadId = new Map(
       listActiveBackgroundTaskCountsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id],
+        threadIds: [thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
     expect(countsByThreadId.get(thread.id)).toEqual({
       threadId: thread.id,
       activeWorkflowCount: 1,
-      activeBackgroundSubagentCount: 0,
-    });
-    expect(countsByThreadId.get(otherThread.id)).toEqual({
-      threadId: otherThread.id,
-      activeWorkflowCount: 0,
-      activeBackgroundSubagentCount: 1,
     });
   });
 

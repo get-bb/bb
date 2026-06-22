@@ -5,7 +5,6 @@ import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@/components/ui/icon.js";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
-  hasActiveBackgroundActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -89,17 +88,11 @@ function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
     !isRuntimeBusy &&
     hasActiveWorkflowActivity(thread) &&
     !thread.hasPendingInteraction;
-  const isBackgroundBusy =
-    !isRuntimeBusy &&
-    !isWorkflowActive &&
-    hasActiveBackgroundActivity(thread);
 
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={thread.hasPendingInteraction}
-      isBusy={
-        (isRuntimeBusy || isBackgroundBusy) && !thread.hasPendingInteraction
-      }
+      isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
       isWorkflowActive={isWorkflowActive}
       showUnreadBadge={
         !thread.hasPendingInteraction && !isBusy && isUnreadDoneThread(thread)

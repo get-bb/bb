@@ -31,7 +31,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 100,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0, activeBackgroundSubagentCount: 0 },
+    activity: { activeWorkflowCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,

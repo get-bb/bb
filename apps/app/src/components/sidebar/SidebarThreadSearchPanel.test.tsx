@@ -33,7 +33,7 @@ function createThreadListEntry({
   title: string;
 }): ThreadListEntry {
   return {
-    activity: { activeWorkflowCount: 0, activeBackgroundSubagentCount: 0 },
+    activity: { activeWorkflowCount: 0 },
     archivedAt: null,
     childOrigin: null,
     createdAt: 1000,

@@ -547,22 +547,4 @@ describe("claude-code background task translation", () => {
     });
   });
 
-  it("does not materialize non-shell, non-workflow task types (e.g. subagents)", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    const events = adapter.translateEvent(
-      {
-        type: "system",
-        subtype: "task_started",
-        task_id: "sub-1",
-        tool_use_id: "toolu_sub_1",
-        description: "background subagent",
-        task_type: "local_subagent",
-        subagent_type: "Explore",
-        uuid: "u-1",
-        session_id: "s-1",
-      },
-      { threadId: "bb-thread-1" },
-    );
-    expect(collectTaskEvents(events)).toHaveLength(0);
-  });
 });

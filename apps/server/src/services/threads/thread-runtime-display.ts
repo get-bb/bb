@@ -227,7 +227,6 @@ export function toThreadListEntryResponses(
     toThreadListEntryResponseFromLatestSession({
       activity: threadActivityById.get(thread.id) ?? {
         activeWorkflowCount: 0,
-        activeBackgroundSubagentCount: 0,
       },
       latestSession:
         thread.environmentHostId === null

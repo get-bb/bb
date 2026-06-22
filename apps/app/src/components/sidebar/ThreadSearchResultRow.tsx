@@ -12,7 +12,6 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
-  hasActiveBackgroundActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -128,11 +127,6 @@ function ThreadSearchResultRowComponent({
     !threadRuntimeBusy &&
     !hasPendingInteraction &&
     hasActiveWorkflowActivity(thread);
-  const threadBackgroundBusy =
-    !threadRuntimeBusy &&
-    !threadWorkflowActive &&
-    !hasPendingInteraction &&
-    hasActiveBackgroundActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const metadataParts = [
     thread.projectId !== PERSONAL_PROJECT_ID ? projectName : undefined,
@@ -210,7 +204,7 @@ function ThreadSearchResultRowComponent({
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
           <ThreadStatusGlyph
             hasPendingInteraction={hasPendingInteraction}
-            isBusy={threadRuntimeBusy || threadBackgroundBusy}
+            isBusy={threadRuntimeBusy}
             isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}
             unreadBadgeTone="default"

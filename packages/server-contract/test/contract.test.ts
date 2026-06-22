@@ -756,7 +756,6 @@ describe("server-contract canonical schemas", () => {
           },
           activity: {
             activeWorkflowCount: 0,
-            activeBackgroundSubagentCount: 0,
           },
           hasPendingInteraction: true,
           environmentHostId: "host_123",

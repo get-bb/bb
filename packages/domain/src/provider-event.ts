@@ -229,12 +229,12 @@ export const toolCallProgressEventSchema = z.object({
 });
 
 /**
- * A provider-managed background task (dynamic workflow, backgrounded shell,
- * background subagent). Dynamic workflows (taskType "local_workflow") and
- * backgrounded shell commands (taskType "local_bash") are materialized as
- * items; foreground subagents share the same provider event family but stay on
- * the delegation rendering path. The item id is derived from the provider task
- * id and stays stable across the started → progress* → completed lifecycle.
+ * A materialized provider background task. Dynamic workflows (taskType
+ * "local_workflow") and backgrounded shell commands (taskType "local_bash")
+ * become items; foreground subagents share the same provider event family but
+ * stay on the delegation rendering path. The item id is derived from the
+ * provider task id and stays stable across the started → progress* → completed
+ * lifecycle.
  */
 export const threadEventBackgroundTaskItemSchema = z.object({
   type: z.literal("backgroundTask"),

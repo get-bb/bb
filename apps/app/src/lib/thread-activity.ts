@@ -21,19 +21,10 @@ export function hasActiveWorkflowActivity(
   return thread.activity.activeWorkflowCount > 0;
 }
 
-export function hasActiveBackgroundActivity(
-  thread: ThreadActivityStateShape,
-): boolean {
-  return (
-    thread.activity.activeWorkflowCount > 0 ||
-    thread.activity.activeBackgroundSubagentCount > 0
-  );
-}
-
 export function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
-  return isRuntimeBusyThread(thread) || hasActiveBackgroundActivity(thread);
+  return isRuntimeBusyThread(thread) || hasActiveWorkflowActivity(thread);
 }
 
 /**
@@ -46,12 +37,10 @@ export function isBusyThread(
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
   pending: boolean;
-  /** At least one child is actively working, including background work. */
+  /** At least one child is actively working, including workflow work. */
   working: boolean;
   /** At least one child is actively running a foreground/runtime turn. */
   runtimeWorking: boolean;
-  /** At least one idle child has non-workflow background work running. */
-  backgroundWorking: boolean;
   /** At least one idle child has a provider workflow still running. */
   workflow: boolean;
   /**
@@ -68,7 +57,6 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
   runtimeWorking: false,
-  backgroundWorking: false,
   workflow: false,
   unread: false,
   unreadError: false,
@@ -85,7 +73,6 @@ export function getCollapsedChildActivity(
   let pending = false;
   let working = false;
   let runtimeWorking = false;
-  let backgroundWorking = false;
   let workflow = false;
   let unread = false;
   let unreadError = false;
@@ -101,9 +88,6 @@ export function getCollapsedChildActivity(
     } else if (hasActiveWorkflowActivity(thread)) {
       workflow = true;
       working = true;
-    } else if (hasActiveBackgroundActivity(thread)) {
-      backgroundWorking = true;
-      working = true;
     } else if (isUnreadDoneThread(thread)) {
       unread = true;
       if (thread.status === "error") {
@@ -115,7 +99,6 @@ export function getCollapsedChildActivity(
     pending,
     working,
     runtimeWorking,
-    backgroundWorking,
     workflow,
     unread,
     unreadError,
