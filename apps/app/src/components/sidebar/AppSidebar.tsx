@@ -37,10 +37,13 @@ import {
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   haveSameSidebarThreadSearchNavigationItems,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
+
+const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -321,6 +324,19 @@ export function AppSidebar({
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
                 </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
+                tooltip="Send feedback"
+                aria-label="Send feedback"
+                onClick={() => {
+                  closeOnMobile();
+                  openUrlInExternalBrowser(FEEDBACK_NEW_ISSUE_URL);
+                }}
+              >
+                <Icon name="ChatFeedback" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
