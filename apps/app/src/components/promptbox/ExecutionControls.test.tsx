@@ -74,4 +74,25 @@ describe("ExecutionControls", () => {
 
     expect(screen.queryByTitle("Claude Code")).not.toBeNull();
   });
+
+  it("maps disabled fast mode to the explicit default service tier", () => {
+    const onServiceTierChange = vi.fn();
+    renderExecutionControls({
+      ...makeExecutionControlsProps(),
+      serviceTier: {
+        value: "fast",
+        onChange: onServiceTierChange,
+        supported: true,
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Fast mode" }));
+
+    expect(onServiceTierChange).toHaveBeenCalledWith("default");
+  });
 });

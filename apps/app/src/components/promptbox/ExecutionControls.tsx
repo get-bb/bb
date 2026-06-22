@@ -106,7 +106,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           onReasoningChange={reasoning.onChange}
           fastModeEnabled={serviceTier?.value === "fast"}
           onFastModeChange={(enabled) =>
-            handleServiceTierChange(enabled ? "fast" : undefined)
+            handleServiceTierChange(enabled ? "fast" : "default")
           }
           showFastModeToggle={serviceTier?.supported ?? false}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
