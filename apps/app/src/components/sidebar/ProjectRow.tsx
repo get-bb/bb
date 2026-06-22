@@ -1264,17 +1264,9 @@ function ProjectRowComponent({
                 "select-none",
             )}
             title={project.name}
-            onClick={handleProjectRowToggle}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            <button
-              type="button"
-              aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
