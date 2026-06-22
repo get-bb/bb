@@ -36,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface FilePreviewFile {
+  cacheKey?: string;
   name: string;
   contents: string;
   lang?: SupportedLanguages;

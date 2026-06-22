@@ -4,9 +4,11 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FilePreview } from "./FilePreview";
+import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 
 interface MockPierreFileProps {
   file: {
+    cacheKey?: string;
     contents: string;
     name: string;
   };
@@ -26,6 +28,7 @@ const pierreMock = vi.hoisted(() => {
   }) => void;
 
   const state = {
+    lastFile: null as MockPierreFileProps["file"] | null,
     renderCount: 0,
     statsCallback: null as StatsCallback | null,
     unsubscribe: vi.fn(),
@@ -58,6 +61,7 @@ vi.mock("@pierre/diffs/react", async () => {
 
   return {
     File: ({ file }: MockPierreFileProps) => {
+      pierreMock.state.lastFile = file;
       pierreMock.state.renderCount += 1;
       return React.createElement(
         "pre",
@@ -74,6 +78,7 @@ vi.mock("@pierre/diffs/react", async () => {
 
 describe("FilePreview", () => {
   beforeEach(() => {
+    pierreMock.state.lastFile = null;
     pierreMock.state.renderCount = 0;
     pierreMock.state.statsCallback = null;
     pierreMock.state.unsubscribe.mockClear();
@@ -124,6 +129,42 @@ describe("FilePreview", () => {
       expect(
         Number(screen.getByTestId("pierre-file").dataset.renderCount),
       ).toBeGreaterThan(renderCountBeforeStatsChange);
+    });
+  });
+
+  it("passes cache keys for loaded text previews to Pierre", async () => {
+    const firstPreview = {
+      kind: "text" as const,
+      content: "export const first = true;",
+      mimeType: "application/typescript",
+      path: "apps/app/src/lib/thread-read-state.ts",
+      url: "/api/v1/preview/one",
+    };
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath={firstPreview.path}
+        filePreview={firstPreview}
+        isLoading={false}
+      />,
+    );
+
+    await waitFor(() => expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy());
+    const firstCacheKey = pierreMock.state.lastFile?.cacheKey;
+
+    view.rerender(
+      <SecondaryPanelFilePreview
+        activePath={firstPreview.path}
+        filePreview={{
+          ...firstPreview,
+          content: "export const second = true;",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy();
+      expect(pierreMock.state.lastFile?.cacheKey).not.toBe(firstCacheKey);
     });
   });
 });

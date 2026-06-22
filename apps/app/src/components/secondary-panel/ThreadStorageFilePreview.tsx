@@ -43,11 +43,36 @@ interface BuildTextPreviewFileArgs {
   filePreview: TextFilePreview;
 }
 
+function hashStringForPreviewCache(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildTextPreviewCacheKey({
+  activePath,
+  filePreview,
+}: BuildTextPreviewFileArgs): string {
+  return [
+    "file-preview",
+    filePreview.url,
+    filePreview.path,
+    filePreview.name ?? activePath,
+    filePreview.mimeType,
+    filePreview.content.length,
+    hashStringForPreviewCache(filePreview.content),
+  ].join(":");
+}
+
 function buildTextPreviewFile({
   activePath,
   filePreview,
 }: BuildTextPreviewFileArgs): FilePreviewFile {
   return {
+    cacheKey: buildTextPreviewCacheKey({ activePath, filePreview }),
     name: filePreview.name ?? activePath,
     contents: filePreview.content,
   };
