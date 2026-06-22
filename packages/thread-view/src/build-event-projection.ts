@@ -406,16 +406,20 @@ function buildFlatProjectionData(
         type: decoded.type,
         scope: decoded.scope,
       });
+      const pendingParentToolCallId = consumePendingDelegationTurnLink(
+        state,
+        eventProviderThreadId,
+        turnId,
+      );
       if (explicitEventParentToolCallId) {
         state.delegationParentToolCallIdsByTurnId.set(
           turnId,
           explicitEventParentToolCallId,
         );
-      } else {
-        consumePendingDelegationTurnLink(
-          state,
-          eventProviderThreadId,
+      } else if (pendingParentToolCallId) {
+        state.delegationParentToolCallIdsByTurnId.set(
           turnId,
+          pendingParentToolCallId,
         );
       }
       onTurnStarted(state, turnId);

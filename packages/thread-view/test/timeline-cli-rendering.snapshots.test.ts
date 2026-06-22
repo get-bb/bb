@@ -1319,6 +1319,78 @@ describe("timeline CLI rendering snapshots", () => {
     );
   });
 
+  it("drains pending same-provider links when child turns have explicit parent ids", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review the branch",
+          receiverThreadIds: [],
+        },
+      }),
+      event.turnStarted({
+        turnId: "child-turn-1",
+        parentToolCallId: "delegation-1",
+      }),
+      event.assistantCompleted({
+        itemId: "child-assistant-1",
+        turnId: "child-turn-1",
+        text: "Child done.",
+      }),
+      event.turnCompleted({ turnId: "child-turn-1" }),
+      event.turnCompleted(),
+      event.turnStarted({ turnId: "turn-2" }),
+      event.assistantCompleted({
+        itemId: "root-assistant-2",
+        turnId: "turn-2",
+        text: "Root follow-up is separate.",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "turn-2",
+    );
+
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Child done.",
+          turnId: "child-turn-1",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "turn-2"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "Root follow-up is separate.",
+      turnId: "turn-2",
+    });
+  });
+
   it("renders pending delegation children as flat rows even with mixed statuses", () => {
     // Regression: a pending delegation whose subagent stream contains a mix
     // of pending, errored, and completed messages must NOT synthesize a
