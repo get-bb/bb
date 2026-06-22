@@ -1333,8 +1333,10 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeHostFilePath,
     activeStorageFileLineRange,
     activeStorageFilePath,
+    activeWorkspaceFileEnvironmentId,
     activeWorkspaceFileLineRange,
     activeWorkspaceFilePath,
+    activeWorkspaceFileProjectId,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
     browserTabs,
@@ -1351,6 +1353,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     threadId:
       props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
     environmentId: rootPanelEnvironmentId,
+    preserveWorkspaceTabsAcrossContexts: true,
+    projectId: isProjectless ? null : projectId,
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
   });
@@ -1848,19 +1852,51 @@ export function RootComposeView(props: RootComposeViewProps) {
     terminalsById,
   ]);
   const { isLocalDaemonHost } = useHostDaemon();
+  const activeWorkspaceEnvironmentQuery = useEnvironment(
+    activeWorkspaceFileEnvironmentId,
+    {
+      enabled:
+        props.surface === "page" &&
+        activeWorkspaceFileEnvironmentId !== null &&
+        activeWorkspaceFileEnvironmentId !== rootPanelEnvironmentId,
+      staleTime: 5_000,
+    },
+  );
+  const activeWorkspaceEnvironment =
+    activeWorkspaceFileEnvironmentId === rootPanelEnvironmentId
+      ? rootPanelEnvironment
+      : activeWorkspaceEnvironmentQuery.data;
   const rootPanelEnvironmentIsLocal = rootPanelEnvironment
     ? isLocalDaemonHost(rootPanelEnvironment.hostId)
     : false;
+  const activeWorkspaceEnvironmentIsLocal = activeWorkspaceEnvironment
+    ? isLocalDaemonHost(activeWorkspaceEnvironment.hostId)
+    : false;
+  const activeWorkspaceFileProjectPreviewId =
+    activeWorkspaceFileProjectId ??
+    (activeWorkspaceFileEnvironmentId === null && !isProjectless
+      ? projectId
+      : null);
   const localWorkspaceRootPath = resolveThreadLocalWorkspaceRootPath({
-    environment: rootPanelEnvironment,
-    threadEnvironmentIsLocal: rootPanelEnvironmentIsLocal,
+    environment: activeWorkspaceEnvironment,
+    threadEnvironmentIsLocal: activeWorkspaceEnvironmentIsLocal,
   });
   const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
-    environment: rootPanelEnvironment,
+    environment: activeWorkspaceEnvironment,
   });
+  const activeProjectSources =
+    activeWorkspaceFileProjectPreviewId === null
+      ? []
+      : activeWorkspaceFileProjectPreviewId === projectId
+        ? projectSources
+        : (projects?.find(
+            (project) => project.id === activeWorkspaceFileProjectPreviewId,
+          )?.sources ?? []);
   const projectSourcePreviewRootPath =
-    rootPanelEnvironmentId === null && primaryHostId !== null
-      ? (findLocalPathProjectSourceForHost(projectSources, primaryHostId)
+    activeWorkspaceFileEnvironmentId === null &&
+    activeWorkspaceFileProjectPreviewId !== null &&
+    primaryHostId !== null
+      ? (findLocalPathProjectSourceForHost(activeProjectSources, primaryHostId)
           ?.path ?? null)
       : null;
   const {
@@ -1868,7 +1904,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     openPathInPreferredFileTarget,
   } = useLocalOpenTargets({
     enabled:
-      rootPanelEnvironmentIsLocal || projectSourcePreviewRootPath !== null,
+      activeWorkspaceEnvironmentIsLocal ||
+      rootPanelEnvironmentIsLocal ||
+      projectSourcePreviewRootPath !== null,
   });
   const handleOpenWorkspaceFileInEditor = useMemo(
     () =>
@@ -1996,24 +2034,25 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
         showFileSearch={!isProjectless}
       />
-    ) : activeWorkspaceFilePath && rootPanelEnvironmentId !== null ? (
+    ) : activeWorkspaceFilePath && activeWorkspaceFileEnvironmentId !== null ? (
       <WorkspaceFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={workspaceFileCopyPath}
-        environmentId={rootPanelEnvironmentId}
+        environmentId={activeWorkspaceFileEnvironmentId}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenWorkspaceFileInEditor}
         source={activeWorkspaceFileSource}
         statusLabel={activeWorkspaceFileStatusLabel}
         threadId={rootPanelThreadId}
       />
-    ) : activeWorkspaceFilePath && !isProjectless ? (
+    ) : activeWorkspaceFilePath &&
+      activeWorkspaceFileProjectPreviewId !== null ? (
       <ProjectFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={projectFileCopyPath}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
-        projectId={projectId}
+        projectId={activeWorkspaceFileProjectPreviewId}
       />
     ) : activeHostFilePath && rootPanelThreadId ? (
       <HostFilePreviewTabContent

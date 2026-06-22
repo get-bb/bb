@@ -242,6 +242,7 @@ function createStoryActiveTab(
       kind: "workspace-file-preview",
       lineRange: null,
       path: selection.path,
+      projectId: null,
       source: { kind: "working-tree" },
       statusLabel: null,
     };

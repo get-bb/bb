@@ -37,6 +37,7 @@ describe("fixed-panel-tabs-state", () => {
     const now = 1_000;
     const workspaceTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-1",
+      projectId: null,
       tab: {
         lineRange: {
           startLineNumber: 1,
@@ -73,6 +74,7 @@ describe("fixed-panel-tabs-state", () => {
     });
     const expectedWorkspaceTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-1",
+      projectId: null,
       tab: {
         lineRange: null,
         path: "src/index.ts",
@@ -131,6 +133,36 @@ describe("fixed-panel-tabs-state", () => {
         "bb.thread.fixedPanelTabsState-thr_old-0",
       ),
     ).toBe(true);
+  });
+});
+
+describe("workspace file preview fixed panel tabs", () => {
+  it("does not collide project-source preview tabs for the same path in different projects", () => {
+    const firstProjectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_first",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const secondProjectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_second",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+
+    expect(firstProjectTab.id).not.toBe(secondProjectTab.id);
+    expect(
+      areFixedPanelTabsEquivalent(firstProjectTab, secondProjectTab),
+    ).toBe(false);
   });
 });
 
@@ -228,4 +260,5 @@ describe("side-chat fixed panel tabs", () => {
     expect(areFixedPanelTabsEquivalent(pendingTab, pendingTab)).toBe(true);
     expect(areFixedPanelTabsEquivalent(pendingTab, createdTab)).toBe(false);
   });
+
 });

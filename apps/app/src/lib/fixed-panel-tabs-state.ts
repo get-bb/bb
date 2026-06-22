@@ -72,6 +72,7 @@ const workspaceFilePreviewFixedPanelTabSchema = z
     kind: z.literal("workspace-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    projectId: z.string().min(1).nullable().default(null),
     source: environmentFilePreviewSourceSchema,
     statusLabel: workspaceFilePreviewStatusLabelSchema,
   })
@@ -171,6 +172,7 @@ export interface WorkspaceFilePreviewFixedPanelTab {
   kind: "workspace-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  projectId: string | null;
   source: EnvironmentFilePreviewSource;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
 }
@@ -342,6 +344,7 @@ interface CreateSideChatFixedPanelTabArgs {
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
   environmentId: string | null;
+  projectId: string | null;
   tab: WorkspaceFileTabState;
 }
 
@@ -353,6 +356,12 @@ interface BuildFixedPanelTabIdArgs {
   environmentId: string | null;
   kind: FixedPanelTab["kind"];
   path: string;
+}
+
+interface BuildWorkspaceFilePreviewTabIdArgs {
+  environmentId: string | null;
+  path: string;
+  projectId: string | null;
 }
 
 interface NormalizeFixedPanelTabGroupStateResult {
@@ -391,6 +400,18 @@ export function buildFixedPanelTabId({
   ].join(":");
 }
 
+function buildWorkspaceFilePreviewTabId({
+  environmentId,
+  path,
+  projectId,
+}: BuildWorkspaceFilePreviewTabIdArgs): string {
+  return buildFixedPanelTabId({
+    environmentId: environmentId ?? (projectId ? `project:${projectId}` : null),
+    kind: "workspace-file-preview",
+    path,
+  });
+}
+
 export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
   return {
     id: THREAD_INFO_TAB_ID,
@@ -407,18 +428,20 @@ export function createGitDiffFixedPanelTab(): GitDiffFixedPanelTab {
 
 export function createWorkspaceFilePreviewFixedPanelTab({
   environmentId,
+  projectId,
   tab,
 }: CreateWorkspaceFilePreviewFixedPanelTabArgs): WorkspaceFilePreviewFixedPanelTab {
   return {
     environmentId,
-    id: buildFixedPanelTabId({
+    id: buildWorkspaceFilePreviewTabId({
       environmentId,
-      kind: "workspace-file-preview",
       path: tab.path,
+      projectId,
     }),
     kind: "workspace-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    projectId,
     source: tab.source,
     statusLabel: tab.statusLabel,
   };
@@ -538,10 +561,10 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
             id: GIT_DIFF_TAB_ID,
           };
     case "workspace-file-preview": {
-      const id = buildFixedPanelTabId({
+      const id = buildWorkspaceFilePreviewTabId({
         environmentId: tab.environmentId,
-        kind: tab.kind,
         path: tab.path,
+        projectId: tab.projectId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
@@ -844,6 +867,7 @@ export function areFixedPanelTabsEquivalent(
           b: b.lineRange,
         }) &&
         a.path === b.path &&
+        a.projectId === b.projectId &&
         areEnvironmentFilePreviewSourcesEqual(a.source, b.source) &&
         a.statusLabel === b.statusLabel
       );

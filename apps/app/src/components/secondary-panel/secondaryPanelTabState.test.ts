@@ -13,6 +13,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import {
   activateSecondaryPanelTabInState,
+  buildOrderedSecondaryPanelFileTabs,
   closeSecondaryPanelTabInState,
   openSecondaryPanelTabInState,
   replaceNewTabWithSecondaryPanelTabInState,
@@ -21,6 +22,7 @@ import {
 function makeWorkspaceTab(environmentId: string) {
   return createWorkspaceFilePreviewFixedPanelTab({
     environmentId,
+    projectId: null,
     tab: {
       lineRange: null,
       path: "src/index.ts",
@@ -153,6 +155,19 @@ describe("secondaryPanelTabState", () => {
 
     expect(firstTab.id).not.toBe(secondTab.id);
     expect(state.secondary.tabs).toHaveLength(2);
+  });
+
+  it("can keep workspace tabs visible outside the current environment", () => {
+    const firstTab = makeWorkspaceTab("env-1");
+    const secondTab = makeWorkspaceTab("env-2");
+
+    expect(
+      buildOrderedSecondaryPanelFileTabs({
+        includeWorkspaceTabsOutsideEnvironment: true,
+        resolvedEnvironmentId: "env-2",
+        tabs: [firstTab, secondTab],
+      }).map((tab) => tab.id),
+    ).toEqual([firstTab.id, secondTab.id]);
   });
 
   it("replaces the transient new tab when selecting another tab", () => {

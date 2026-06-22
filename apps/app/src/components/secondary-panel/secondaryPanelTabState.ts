@@ -48,6 +48,7 @@ interface GetActiveTabIdAfterCloseArgs {
 }
 
 interface BuildOrderedSecondaryPanelFileTabsArgs {
+  includeWorkspaceTabsOutsideEnvironment?: boolean;
   tabs: readonly FixedPanelTab[];
   resolvedEnvironmentId: string | null | undefined;
 }
@@ -382,6 +383,7 @@ export function getActiveTabIdAfterPrune(
 }
 
 export function buildOrderedSecondaryPanelFileTabs({
+  includeWorkspaceTabsOutsideEnvironment = false,
   tabs,
   resolvedEnvironmentId,
 }: BuildOrderedSecondaryPanelFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
@@ -390,8 +392,9 @@ export function buildOrderedSecondaryPanelFileTabs({
     switch (tab.kind) {
       case "workspace-file-preview":
         if (
-          resolvedEnvironmentId !== undefined &&
-          tab.environmentId === resolvedEnvironmentId
+          includeWorkspaceTabsOutsideEnvironment ||
+          (resolvedEnvironmentId !== undefined &&
+            tab.environmentId === resolvedEnvironmentId)
         ) {
           displayable.push(tab);
         }
