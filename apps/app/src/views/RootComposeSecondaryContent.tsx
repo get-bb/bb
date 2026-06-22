@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -8,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "jotai";
-import { Panel, PanelGroup } from "react-resizable-panels";
+import {
+  Panel,
+  PanelGroup,
+  type ImperativePanelGroupHandle,
+} from "react-resizable-panels";
 import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
@@ -54,6 +59,15 @@ export function RootComposeSecondaryContent({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
+  const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
+    null,
+  );
+  // Read inside the layout sync without making width changes re-trigger it,
+  // which would fight an in-progress resize drag.
+  const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
+  useEffect(() => {
+    persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
+  }, [persistedSecondaryWidthPercent]);
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
@@ -145,6 +159,23 @@ export function RootComposeSecondaryContent({
     () => renderBrowserDeck?.({ canShowNativeBrowserView }),
     [canShowNativeBrowserView, renderBrowserDeck],
   );
+  useLayoutEffect(() => {
+    const group = horizontalPanelGroupRef.current;
+    if (group === null || renderAsDrawer) {
+      return;
+    }
+
+    if (!isSecondaryPanelOpen) {
+      group.setLayout([CLOSED_MAIN_PANEL_SIZE_PERCENT, 0]);
+      return;
+    }
+
+    const secondaryWidth = persistedSecondaryWidthRef.current;
+    group.setLayout([
+      CLOSED_MAIN_PANEL_SIZE_PERCENT - secondaryWidth,
+      secondaryWidth,
+    ]);
+  }, [isSecondaryPanelOpen, renderAsDrawer]);
   const inlineSecondaryPanelContent = !renderAsDrawer ? (
     <ThreadSecondaryPanel
       {...threadSecondaryPanelProps}
@@ -170,6 +201,7 @@ export function RootComposeSecondaryContent({
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
       <div className="flex h-full w-full min-w-0">
         <PanelGroup
+          ref={horizontalPanelGroupRef}
           direction="horizontal"
           className="h-full min-w-0 flex-1"
           style={{ overflow: "clip" }}
