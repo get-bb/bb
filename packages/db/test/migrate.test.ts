@@ -453,6 +453,19 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
   return createdAt;
 }
 
+function readAppliedMigrationCreatedAts(db: DbConnection): number[] {
+  return db.$client
+    .prepare<[], MigrationCreatedAtRow>(
+      `
+        SELECT created_at AS createdAt
+        FROM __drizzle_migrations
+        ORDER BY created_at
+      `,
+    )
+    .all()
+    .map((row) => row.createdAt);
+}
+
 function replaceAppliedMigrationHash(
   args: ReplaceAppliedMigrationHashArgs,
 ): void {
@@ -2903,6 +2916,9 @@ describe("migrate", () => {
         terminalSessionColumns.find((column) => column.name === "thread_id")
           ?.notnull,
       ).toBe(0);
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
+        threadlessTerminalSessionsMigrationWhen,
+      );
 
       const hostDaemonSessionColumns = db.$client
         .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")

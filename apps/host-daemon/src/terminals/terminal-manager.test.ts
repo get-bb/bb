@@ -21,6 +21,7 @@ import {
 } from "./terminal-manager.js";
 
 const tempDirs: string[] = [];
+const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
 
 interface ResizeCall {
   cols: number;
@@ -247,6 +248,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
         mergeBase: makeWorkspaceMergeBase(),
       }),
     ),
+    getDefaultBranch: vi.fn(async () => "main"),
     getDiff: vi.fn(async () => ({
       diff: "",
       files: "",
@@ -275,6 +277,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       merged: true,
       targetBranch: "main",
     })),
+    runPullRequestAction: vi.fn(async () => undefined),
     destroy: vi.fn(async () => undefined),
   };
 }
@@ -374,6 +377,7 @@ async function openTerminal(
     },
     cols: 100,
     rows: 30,
+    start: DEFAULT_TERMINAL_START,
   });
   const spawned = harness.adapter.spawned[0];
   if (!spawned) {
@@ -471,6 +475,7 @@ describe("TerminalManager", () => {
       },
       cols: 80,
       rows: 24,
+      start: DEFAULT_TERMINAL_START,
     });
 
     expect(harness.adapter.spawned).toHaveLength(1);
@@ -505,6 +510,7 @@ describe("TerminalManager", () => {
       },
       cols: 80,
       rows: 24,
+      start: DEFAULT_TERMINAL_START,
     });
 
     expect(harness.adapter.spawned).toHaveLength(1);
@@ -548,6 +554,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -610,6 +617,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -668,6 +676,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -717,6 +726,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -735,6 +745,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
 
     shell.resolve("/bin/zsh");
@@ -789,6 +800,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
@@ -807,6 +819,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
 
     exitOnOpened = true;
@@ -867,6 +880,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
 
     expect(harness.adapter.spawned).toHaveLength(0);
@@ -1204,6 +1218,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
 
     expect(harness.adapter.spawned).toHaveLength(0);
@@ -1262,6 +1277,7 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await manager.handleMessage({
       type: "terminal.input",

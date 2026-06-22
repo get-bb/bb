@@ -925,13 +925,12 @@ export class TerminalSessionLifecycle {
       );
     }
 
-    const markedInput = markTerminalSessionUserInput(this.options.db, {
+    const markedInput = markTerminalSessionUserInputById(this.options.db, {
       terminalId: current.id,
-      threadId: args.threadId,
     });
     const session = markedInput ?? current;
     if (markedInput) {
-      this.notifyThreadTerminalsChanged(markedInput.threadId);
+      this.notifyTerminalSessionChanged(markedInput);
       this.options.hub.sendTerminalClientMessage(markedInput.id, {
         type: "session-updated",
         session: toTerminalSession(markedInput),
@@ -979,15 +978,14 @@ export class TerminalSessionLifecycle {
     const resized =
       current.cols === args.payload.cols && current.rows === args.payload.rows
         ? current
-        : updateTerminalSessionSize(this.options.db, {
+        : updateTerminalSessionSizeById(this.options.db, {
             cols: args.payload.cols,
             rows: args.payload.rows,
             terminalId: current.id,
-            threadId: args.threadId,
           });
     const session = resized ?? current;
     if (resized && resized !== current) {
-      this.notifyThreadTerminalsChanged(resized.threadId);
+      this.notifyTerminalSessionChanged(resized);
       this.options.hub.sendTerminalClientMessage(resized.id, {
         type: "session-updated",
         session: toTerminalSession(resized),

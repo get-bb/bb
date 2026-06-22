@@ -25,6 +25,8 @@ import {
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 
+const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
+
 interface Deferred<TValue> {
   promise: Promise<TValue>;
   resolve: (value: TValue | PromiseLike<TValue>) => void;
@@ -777,6 +779,7 @@ describe("environment command dispatch", () => {
       },
       cols: 100,
       rows: 30,
+      start: DEFAULT_TERMINAL_START,
     });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 

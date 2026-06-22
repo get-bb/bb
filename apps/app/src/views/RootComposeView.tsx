@@ -124,7 +124,7 @@ import {
   type WorkspaceFileTabState,
 } from "@/lib/file-preview";
 import {
-  resolveChatLinkOpenTarget,
+  resolveUrlOpenTarget,
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
@@ -1783,6 +1783,22 @@ export function RootComposeView(props: RootComposeViewProps) {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
+          case "side-chat":
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="SideChat"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
         }
       },
     );
@@ -1901,9 +1917,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     ({ href }) => {
       if (
         rootPanelThreadId === null ||
-        resolveChatLinkOpenTarget({
+        resolveUrlOpenTarget({
           desktopBrowserAvailable,
-          openInAppBrowser: openLinksInAppBrowser,
+          openLinksInAppBrowser,
           url: href,
         }) !== "in-app-browser"
       ) {

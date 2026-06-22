@@ -677,9 +677,15 @@ describe("public thread terminal routes", () => {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
     }
     expect(openMessage).toMatchObject({
-      projectId: fixture.thread.projectId,
+      threadId: fixture.thread.id,
       start: { mode: "command", command: "pnpm dev" },
-      threadStoragePath: expect.stringContaining(fixture.thread.id),
+      target: {
+        kind: "workspace",
+        environmentId: fixture.environment.id,
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+        },
+      },
     });
 
     acknowledgeTerminalOpen(fixture, openMessage);
