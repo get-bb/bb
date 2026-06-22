@@ -5,9 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { File as PierreFile } from "@pierre/diffs/react";
-import type { FileOptions } from "@pierre/diffs/react";
-import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
+import type { SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -22,7 +20,6 @@ import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
@@ -133,6 +130,14 @@ interface FilePreviewCodeProps {
   file: FilePreviewFile;
   lineOverflowMode: CodeOverflowMode;
   lineRange: FilePreviewLineRange | null;
+}
+
+interface FilePreviewCodeLineProps {
+  codeClassName: string;
+  isSelected: boolean;
+  line: string;
+  lineClassName: string;
+  lineNumber: number;
 }
 
 interface GetInitialFilePreviewViewModeArgs {
@@ -704,28 +709,23 @@ function FilePreviewCode({
   lineOverflowMode,
   lineRange,
 }: FilePreviewCodeProps) {
-  const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
-  const options = useMemo<FileOptions<undefined>>(
-    () => ({
-      themeType: preferredTheme,
-      overflow: lineOverflowMode,
-      disableFileHeader: true,
-      enableLineSelection: lineRange !== null,
-    }),
-    [lineOverflowMode, lineRange, preferredTheme],
+  const lines = useMemo(() => file.contents.split(/\r\n|\n|\r/), [
+    file.contents,
+  ]);
+  const selectedStartLineNumber = lineRange?.startLineNumber ?? null;
+  const selectedEndLineNumber = lineRange?.endLineNumber ?? null;
+  const targetLineNumber = selectedStartLineNumber;
+  const codeClassName = cn(
+    "px-3 py-0.5 font-mono text-xs leading-[18px] text-foreground",
+    lineOverflowMode === "wrap"
+      ? "min-w-0 flex-1 whitespace-pre-wrap break-words"
+      : "block min-w-max whitespace-pre",
   );
-  const selectedLines = useMemo<SelectedLineRange | null>(
-    () =>
-      lineRange === null
-        ? null
-        : {
-            start: lineRange.startLineNumber,
-            end: lineRange.endLineNumber,
-          },
-    [lineRange],
+  const lineClassName = cn(
+    "flex items-start",
+    lineOverflowMode === "wrap" ? "w-full min-w-0" : "min-w-max",
   );
-  const targetLineNumber = selectedLines?.start ?? null;
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
@@ -778,11 +778,61 @@ function FilePreviewCode({
   return (
     <div
       ref={containerRef}
-      className="min-h-0 flex-1"
+      className={cn(
+        "min-h-0 flex-1 bg-background font-mono text-xs leading-[18px]",
+        lineOverflowMode === "wrap" ? "overflow-x-hidden" : "overflow-x-auto",
+      )}
       style={FILE_PREVIEW_VIEW_STYLE}
       data-file-preview-line-number={targetLineNumber ?? undefined}
     >
-      <PierreFile file={file} options={options} selectedLines={selectedLines} />
+      <div className="py-4">
+        {lines.map((line, index) => {
+          const lineNumber = index + 1;
+          return (
+            <FilePreviewCodeLine
+              key={lineNumber}
+              isSelected={
+                selectedStartLineNumber !== null &&
+                selectedEndLineNumber !== null &&
+                lineNumber >= selectedStartLineNumber &&
+                lineNumber <= selectedEndLineNumber
+              }
+              line={line}
+              lineClassName={lineClassName}
+              lineNumber={lineNumber}
+              codeClassName={codeClassName}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FilePreviewCodeLine({
+  codeClassName,
+  isSelected,
+  line,
+  lineClassName,
+  lineNumber,
+}: FilePreviewCodeLineProps) {
+  return (
+    <div
+      className={cn(
+        lineClassName,
+        isSelected && "bg-accent/10",
+      )}
+      data-line={lineNumber}
+      data-line-index={lineNumber - 1}
+      data-selected-line={isSelected ? "single" : undefined}
+    >
+      <span
+        aria-hidden
+        className="sticky left-0 w-12 shrink-0 select-none border-r border-border bg-background px-3 py-0.5 text-right font-mono text-xs leading-[18px] text-muted-foreground"
+      >
+        {lineNumber}
+      </span>
+      <code className={codeClassName}>{line.length > 0 ? line : " "}</code>
     </div>
   );
 }
