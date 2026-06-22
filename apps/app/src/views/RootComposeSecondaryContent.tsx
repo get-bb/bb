@@ -1,0 +1,229 @@
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import { useAtomValue } from "jotai";
+import { Panel, PanelGroup } from "react-resizable-panels";
+import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
+import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { cn } from "@/lib/utils";
+
+const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
+const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
+const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
+
+type RootSecondaryPanelProps = Omit<
+  ComponentProps<typeof ThreadSecondaryPanel>,
+  | "browserDeck"
+  | "isConversationCollapsed"
+  | "onToggleConversationCollapse"
+  | "renderAsDrawer"
+  | "reserveLeftForDesktopTrafficLights"
+> & {
+  renderBrowserDeck?: (args: {
+    canShowNativeBrowserView: boolean;
+  }) => ReactNode;
+};
+
+interface RootComposeSecondaryContentProps {
+  children: ReactNode;
+  contentClassName?: string;
+  isSecondaryPanelOpen: boolean;
+  secondaryPanel: RootSecondaryPanelProps;
+}
+
+function noopToggleConversationCollapse(): void {}
+
+export function RootComposeSecondaryContent({
+  children,
+  contentClassName,
+  isSecondaryPanelOpen,
+  secondaryPanel,
+}: RootComposeSecondaryContentProps) {
+  const renderAsDrawer = useIsCompactViewport();
+  const persistedSecondaryWidthPercent = useAtomValue(
+    secondaryPanelWidthPercentAtom,
+  );
+  const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
+    useState(false);
+  const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
+  const compactDrawerContentSettleGenerationRef = useRef(0);
+  const compactDrawerContentSettleStateRef = useRef({
+    isSecondaryPanelOpen,
+    renderAsDrawer,
+  });
+
+  useLayoutEffect(() => {
+    compactDrawerContentSettleStateRef.current = {
+      isSecondaryPanelOpen,
+      renderAsDrawer,
+    };
+  }, [isSecondaryPanelOpen, renderAsDrawer]);
+
+  const cancelCompactDrawerContentSettleFrame = useCallback(() => {
+    compactDrawerContentSettleGenerationRef.current += 1;
+    if (compactDrawerContentSettleFrameRef.current === null) {
+      return;
+    }
+    window.cancelAnimationFrame(compactDrawerContentSettleFrameRef.current);
+    compactDrawerContentSettleFrameRef.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    cancelCompactDrawerContentSettleFrame();
+    setIsCompactDrawerContentSettled(false);
+  }, [
+    cancelCompactDrawerContentSettleFrame,
+    isSecondaryPanelOpen,
+    renderAsDrawer,
+  ]);
+
+  useLayoutEffect(
+    () => () => {
+      cancelCompactDrawerContentSettleFrame();
+    },
+    [cancelCompactDrawerContentSettleFrame],
+  );
+
+  const handleDrawerContentAnimationEnd = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        return;
+      }
+      const currentState = compactDrawerContentSettleStateRef.current;
+      if (!currentState.isSecondaryPanelOpen || !currentState.renderAsDrawer) {
+        return;
+      }
+
+      cancelCompactDrawerContentSettleFrame();
+      const requestGeneration = compactDrawerContentSettleGenerationRef.current;
+      compactDrawerContentSettleFrameRef.current = window.requestAnimationFrame(
+        () => {
+          compactDrawerContentSettleFrameRef.current = null;
+          const latestState = compactDrawerContentSettleStateRef.current;
+          if (
+            compactDrawerContentSettleGenerationRef.current !==
+              requestGeneration ||
+            !latestState.isSecondaryPanelOpen ||
+            !latestState.renderAsDrawer
+          ) {
+            return;
+          }
+
+          dispatchBrowserViewBoundsSync();
+
+          const stateAfterSync = compactDrawerContentSettleStateRef.current;
+          if (
+            compactDrawerContentSettleGenerationRef.current ===
+              requestGeneration &&
+            stateAfterSync.isSecondaryPanelOpen &&
+            stateAfterSync.renderAsDrawer
+          ) {
+            setIsCompactDrawerContentSettled(true);
+          }
+        },
+      );
+    },
+    [cancelCompactDrawerContentSettleFrame],
+  );
+
+  const canShowNativeBrowserView = renderAsDrawer
+    ? isSecondaryPanelOpen && isCompactDrawerContentSettled
+    : isSecondaryPanelOpen;
+  const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
+  const browserDeck = useMemo(
+    () => renderBrowserDeck?.({ canShowNativeBrowserView }),
+    [canShowNativeBrowserView, renderBrowserDeck],
+  );
+  const inlineSecondaryPanelContent = !renderAsDrawer ? (
+    <ThreadSecondaryPanel
+      {...threadSecondaryPanelProps}
+      browserDeck={browserDeck}
+      renderAsDrawer={false}
+      isConversationCollapsed={false}
+      onToggleConversationCollapse={noopToggleConversationCollapse}
+      reserveLeftForDesktopTrafficLights={false}
+    />
+  ) : null;
+  const drawerSecondaryPanelContent = renderAsDrawer ? (
+    <ThreadSecondaryPanel
+      {...threadSecondaryPanelProps}
+      browserDeck={browserDeck}
+      renderAsDrawer={true}
+      isConversationCollapsed={false}
+      onToggleConversationCollapse={noopToggleConversationCollapse}
+      reserveLeftForDesktopTrafficLights={false}
+    />
+  ) : null;
+
+  return (
+    <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
+      <div className="flex h-full w-full min-w-0">
+        <PanelGroup
+          direction="horizontal"
+          className="h-full min-w-0 flex-1"
+          style={{ overflow: "clip" }}
+        >
+          <Panel
+            id="root-compose-main-panel"
+            defaultSize={
+              isSecondaryPanelOpen && !renderAsDrawer
+                ? CLOSED_MAIN_PANEL_SIZE_PERCENT -
+                  persistedSecondaryWidthPercent
+                : CLOSED_MAIN_PANEL_SIZE_PERCENT
+            }
+            minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
+            order={1}
+            className={cn(
+              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              PANEL_COLLAPSE_TRANSITION_CLASS,
+            )}
+          >
+            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="@container/page min-h-0 flex-1 overflow-y-auto">
+                <div
+                  className={cn(
+                    "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+                    ROOT_COMPOSE_MAX_WIDTH_CLASS,
+                    contentClassName,
+                  )}
+                  style={PAGE_SHELL_CONTENT_STYLE}
+                >
+                  {children}
+                </div>
+              </div>
+            </div>
+          </Panel>
+          {inlineSecondaryPanelContent}
+        </PanelGroup>
+      </div>
+      {renderAsDrawer ? (
+        <ResponsiveDrawerShell
+          open={isSecondaryPanelOpen}
+          onOpenChange={(open) => {
+            if (!open) threadSecondaryPanelProps.onClose();
+          }}
+          srLabel="Right panel"
+          contentClassName="h-[92dvh] max-h-[92dvh]"
+          onContentAnimationEnd={handleDrawerContentAnimationEnd}
+          handleOnly
+          repositionInputs={false}
+        >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {drawerSecondaryPanelContent}
+          </div>
+        </ResponsiveDrawerShell>
+      ) : null}
+    </div>
+  );
+}

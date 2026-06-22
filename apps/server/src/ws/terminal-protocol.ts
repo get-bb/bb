@@ -16,14 +16,14 @@ interface TerminalSocket {
 interface TerminalSocketOpenArgs {
   socket: TerminalSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
 }
 
 interface TerminalSocketMessageArgs {
   raw: unknown;
   socket: TerminalSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
 }
 
 interface TerminalSocketCloseArgs {

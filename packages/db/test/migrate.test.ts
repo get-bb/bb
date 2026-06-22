@@ -73,7 +73,7 @@ interface MigratedThreadProvenanceRow {
 
 interface MigratedTerminalSessionRow {
   id: string;
-  threadId: string;
+  threadId: string | null;
   environmentId: string;
   hostId: string;
   daemonSessionId: string | null;
@@ -247,6 +247,7 @@ const cleanupModeDropMigrationWhen = 1781557300000;
 const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
+const threadlessTerminalSessionsMigrationWhen = 1781917615703;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -2891,11 +2892,17 @@ describe("migrate", () => {
 
       const terminalSessionColumns = db.$client
         .prepare<[], TableInfoRow>("PRAGMA table_info(terminal_sessions)")
-        .all()
-        .map((column) => column.name);
-      expect(terminalSessionColumns).not.toContain("current_cwd");
-      expect(terminalSessionColumns).not.toContain("last_connected_at");
-      expect(terminalSessionColumns).not.toContain("exited_at");
+        .all();
+      const terminalSessionColumnNames = terminalSessionColumns.map(
+        (column) => column.name,
+      );
+      expect(terminalSessionColumnNames).not.toContain("current_cwd");
+      expect(terminalSessionColumnNames).not.toContain("last_connected_at");
+      expect(terminalSessionColumnNames).not.toContain("exited_at");
+      expect(
+        terminalSessionColumns.find((column) => column.name === "thread_id")
+          ?.notnull,
+      ).toBe(0);
 
       const hostDaemonSessionColumns = db.$client
         .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
@@ -2980,6 +2987,9 @@ describe("migrate", () => {
 
       migrate(db);
 
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
+        eventLargeValuesRestoreMigrationWhen,
+      );
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
       expectEventLargeValuesInline(db, values);

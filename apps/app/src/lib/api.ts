@@ -32,7 +32,11 @@ import type {
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
+  EnvironmentTerminalListResponse,
+  TerminalListResponse,
   CreateThreadRequest,
+  CreateEnvironmentTerminalRequest,
+  CreateTerminalRequest,
   CreateThreadTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
@@ -69,8 +73,12 @@ import type {
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
   CloseThreadTerminalRequest,
+  CloseEnvironmentTerminalRequest,
+  CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
+  UpdateEnvironmentTerminalRequest,
+  UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
   UpdateThreadTerminalRequest,
@@ -1126,6 +1134,48 @@ export async function closeThreadTerminal(
   );
 }
 
+export async function listTerminals(
+  signal?: AbortSignal,
+): Promise<TerminalListResponse> {
+  return request<TerminalListResponse>(
+    apiClient.terminals.$get(undefined, requestOptions(signal)),
+  );
+}
+
+export async function createTerminal(
+  req: CreateTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.terminals.$post({
+      json: req,
+    }),
+  );
+}
+
+export async function renameTerminal(
+  terminalId: string,
+  req: UpdateTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.terminals[":terminalId"].$patch({
+      param: { terminalId },
+      json: req,
+    }),
+  );
+}
+
+export async function closeTerminal(
+  terminalId: string,
+  req: CloseTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.terminals[":terminalId"].close.$post({
+      param: { terminalId },
+      json: req,
+    }),
+  );
+}
+
 export async function sendThreadMessage(
   id: string,
   req: SendMessageRequest,
@@ -1320,6 +1370,56 @@ export async function updateEnvironment(
 ): Promise<Environment> {
   return request<Environment>(
     apiClient.environments[":id"].$patch({ param: { id }, json: req }),
+  );
+}
+
+export async function listEnvironmentTerminals(
+  id: string,
+  signal?: AbortSignal,
+): Promise<EnvironmentTerminalListResponse> {
+  return request<EnvironmentTerminalListResponse>(
+    apiClient.environments[":id"].terminals.$get(
+      { param: { id } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function createEnvironmentTerminal(
+  id: string,
+  req: CreateEnvironmentTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.environments[":id"].terminals.$post({
+      param: { id },
+      json: req,
+    }),
+  );
+}
+
+export async function renameEnvironmentTerminal(
+  id: string,
+  terminalId: string,
+  req: UpdateEnvironmentTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.environments[":id"].terminals[":terminalId"].$patch({
+      param: { id, terminalId },
+      json: req,
+    }),
+  );
+}
+
+export async function closeEnvironmentTerminal(
+  id: string,
+  terminalId: string,
+  req: CloseEnvironmentTerminalRequest,
+): Promise<TerminalSession> {
+  return request<TerminalSession>(
+    apiClient.environments[":id"].terminals[":terminalId"].close.$post({
+      param: { id, terminalId },
+      json: req,
+    }),
   );
 }
 

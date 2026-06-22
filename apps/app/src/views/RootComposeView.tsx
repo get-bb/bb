@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
+  type EnvironmentStatus,
+  isActiveTerminalSessionStatus,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
@@ -9,7 +18,10 @@ import {
   type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
-import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import type {
+  SidebarBootstrapResponse,
+  TerminalSession,
+} from "@bb/server-contract";
 import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
@@ -25,19 +37,42 @@ import {
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import {
+  ThreadStorageFilePreviewTabContent,
+  WorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
+import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
+import { EmptyStatePanel } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { Button } from "@/components/ui/button.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
+import {
+  useCloseTerminal,
+  useCloseEnvironmentTerminal,
+  useCreateTerminal,
+  useCreateEnvironmentTerminal,
+  useEnvironmentTerminals,
+  useTerminals,
+} from "@/hooks/queries/thread-terminal-queries";
 import {
   useProjectPromptHistory,
   useProjectSourceBranches,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
@@ -60,13 +95,40 @@ import {
   getThreadRoutePath,
   getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
+  isRoutePath,
   isProjectlessProjectId,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
+import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { getBrowserUrlHost } from "@/lib/browser-url";
+import {
+  getDesktopBrowserApi,
+  isDesktopBrowserAvailable,
+} from "@/lib/bb-desktop";
+import {
+  useFixedPanelTabsState,
+  useFixedPanelTabsStorageMaintenance,
+  useRemoveFixedRightTerminalTab,
+  useSetFixedRightTerminalActiveTerminal,
+  useTouchFixedPanelTabsState,
+  useUpdateFixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs";
+import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
+import type {
+  ThreadStorageFileTabState,
+  WorkspaceFileTabState,
+} from "@/lib/file-preview";
+import {
+  resolveChatLinkOpenTarget,
+  useOpenLinksInAppBrowserPreference,
+} from "@/lib/in-app-browser-link-preference";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
+import { RootComposeSecondaryContent } from "./RootComposeSecondaryContent";
 import {
   buildRootComposeBranchUiState,
   type RootComposeBranchEnvironmentMode,
@@ -74,11 +136,44 @@ import {
 import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import {
+  useThreadFileTabs,
+  type FileSearchSelection,
+} from "@/components/secondary-panel/useThreadFileTabs";
+import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
+import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
+import {
+  DEFAULT_TERMINAL_COLS,
+  DEFAULT_TERMINAL_ROWS,
+  terminalStatusLabel,
+} from "@/components/thread/terminal/useThreadTerminalController";
+import {
+  buildTerminalSyncedSecondaryFileTabs,
+  findActiveTerminalIdInSecondaryFileTabs,
+  syncTerminalTabsInFixedPanelState,
+} from "./thread-detail/threadTerminalTabs";
+import {
+  getActiveFixedSecondaryTab,
+  useSetThreadSecondaryPanelSelection,
+} from "./thread-detail/threadSecondaryPanelSelection";
+import { useThreadSecondaryPanelVisibility } from "./thread-detail/useThreadSecondaryPanelVisibility";
+import {
+  buildOpenInEditorHandler,
+  resolveThreadLocalWorkspaceRootPath,
+  resolveThreadWorkspacePreviewRootPath,
+} from "./thread-detail/threadWorkspaceOpenPath";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
-const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-2";
+const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
+const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
+const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
 type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
+type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
+type NullableSecondaryPanelChangeHandler = (
+  panel: ThreadSecondaryPanelTab | null,
+) => void;
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
@@ -110,6 +205,74 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
 interface ShouldNavigateAfterThreadCreateArgs {
   isForkDraft: boolean;
   navigateToThreadAfterCreate: boolean;
+}
+
+interface ResolveRootComposePanelThreadIdArgs {
+  environmentId: string | null;
+  reuseThreadOptions: readonly ReuseThreadOption[];
+}
+
+interface CanCreateRootComposeTerminalArgs {
+  terminalTarget: RootComposeTerminalTarget | null;
+  environmentStatus: EnvironmentStatus | undefined;
+}
+
+type RootComposeTerminalTarget =
+  | { kind: "environment"; environmentId: string }
+  | { kind: "host_path"; cwd: string | null; hostId: string };
+
+interface RootComposeRightPanelToggleProps {
+  activeTerminalCount: number;
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+interface RightPanelFileTabIconProps {
+  path: string;
+}
+
+function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
+  const visual = resolveRightPanelFileVisual({ path });
+  return (
+    <Icon
+      name={visual.iconName}
+      className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+      aria-hidden
+    />
+  );
+}
+
+function RootComposeRightPanelToggle({
+  activeTerminalCount,
+  isOpen,
+  onToggle,
+}: RootComposeRightPanelToggleProps) {
+  const renderAsDrawer = useIsCompactViewport();
+  const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
+  const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={`${HEADER_ICON_BUTTON_CLASS} relative`}
+      aria-label={rightPanelLabel}
+      aria-pressed={isOpen}
+      title={rightPanelLabel}
+      onClick={onToggle}
+    >
+      <Icon name={rightPanelIconName} />
+      {activeTerminalCount > 0 ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
+        >
+          {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
+        </span>
+      ) : null}
+    </Button>
+  );
 }
 
 // react-router's location.state is freeform unknown — narrow it here at the
@@ -325,6 +488,33 @@ export function buildMobileRecentThreads({
     threads.push(...project.threads);
   }
   return threads;
+}
+
+export function resolveRootComposePanelThreadId({
+  environmentId,
+  reuseThreadOptions,
+}: ResolveRootComposePanelThreadIdArgs): string | null {
+  if (environmentId === null) {
+    return null;
+  }
+
+  const reuseOption = reuseThreadOptions.find(
+    (option) => option.environmentId === environmentId,
+  );
+  return reuseOption?.threads[0]?.id ?? null;
+}
+
+export function canCreateRootComposeTerminal({
+  terminalTarget,
+  environmentStatus,
+}: CanCreateRootComposeTerminalArgs): boolean {
+  if (terminalTarget === null) {
+    return false;
+  }
+  if (terminalTarget.kind === "environment") {
+    return environmentStatus === "ready";
+  }
+  return true;
 }
 
 function LegacyProjectComposeRedirect({
@@ -1016,6 +1206,725 @@ export function RootComposeView(props: RootComposeViewProps) {
       commandSuggestions.trigger,
     ],
   );
+  const rootPanelEnvironmentId = reuseEnvironmentId;
+  const rootPanelThreadId = useMemo(() => {
+    return resolveRootComposePanelThreadId({
+      environmentId: rootPanelEnvironmentId,
+      reuseThreadOptions,
+    });
+  }, [rootPanelEnvironmentId, reuseThreadOptions]);
+  useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
+  const fixedPanelTabsState = useFixedPanelTabsState(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const isPersistedSecondaryPanelOpen =
+    props.surface === "page" && fixedPanelTabsState.secondary.isOpen;
+  const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
+    fixedPanelTabsState,
+  });
+  const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
+  const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const setRootSecondaryPanel = useSetThreadSecondaryPanelSelection(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const setRootSecondaryPanelForSurface =
+    useCallback<NullableSecondaryPanelChangeHandler>(
+      (panel) => {
+        if (props.surface !== "page") {
+          return;
+        }
+        setRootSecondaryPanel(panel);
+      },
+      [props.surface, setRootSecondaryPanel],
+    );
+  const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
+    enabled: props.surface === "page" && rootPanelEnvironmentId !== null,
+    staleTime: 5_000,
+  });
+  const rootPanelEnvironment = rootPanelEnvironmentQuery.data;
+  const rootPanelHostPathTerminalTarget =
+    useMemo<RootComposeTerminalTarget | null>(() => {
+      if (rootPanelEnvironmentId !== null) {
+        return null;
+      }
+      const selectedHostId =
+        parsedEnvironment?.type === "host"
+          ? parsedEnvironment.hostId
+          : primaryHostId;
+      if (selectedHostId === null) {
+        return null;
+      }
+      const source =
+        findLocalPathProjectSourceForHost(projectSources, selectedHostId) ??
+        projectSources.find((projectSource) => projectSource.isDefault) ??
+        null;
+      if (!source) {
+        return {
+          kind: "host_path",
+          hostId: selectedHostId,
+          cwd: null,
+        };
+      }
+      return {
+        kind: "host_path",
+        hostId: source.hostId,
+        cwd: source.path,
+      };
+    }, [
+      parsedEnvironment,
+      primaryHostId,
+      projectSources,
+      rootPanelEnvironmentId,
+    ]);
+  const rootPanelTerminalTarget = useMemo<RootComposeTerminalTarget | null>(
+    () =>
+      rootPanelEnvironmentId !== null
+        ? { kind: "environment", environmentId: rootPanelEnvironmentId }
+        : rootPanelHostPathTerminalTarget,
+    [rootPanelEnvironmentId, rootPanelHostPathTerminalTarget],
+  );
+  const {
+    threadStorageFiles: rootThreadStorageFiles,
+    threadStorageRootPath: rootThreadStorageRootPath,
+  } = useThreadStorageViewer({
+    activePath: null,
+    fileListEnabled: props.surface === "page" && rootPanelThreadId !== null,
+    filePreviewEnabled: false,
+    threadId: rootPanelThreadId ?? undefined,
+  });
+  const environmentTerminalsListQuery = useEnvironmentTerminals(
+    rootPanelEnvironmentId ?? "",
+    {
+      enabled:
+        props.surface === "page" &&
+        rootPanelTerminalTarget?.kind === "environment",
+    },
+  );
+  const globalTerminalsListQuery = useTerminals({
+    enabled:
+      props.surface === "page" &&
+      rootPanelTerminalTarget?.kind === "host_path",
+  });
+  const terminalSessions = useMemo(() => {
+    if (rootPanelTerminalTarget?.kind === "environment") {
+      return (
+        environmentTerminalsListQuery.data?.sessions ??
+        EMPTY_TERMINAL_SESSIONS
+      );
+    }
+    if (rootPanelTerminalTarget?.kind === "host_path") {
+      return (
+        globalTerminalsListQuery.data?.sessions.filter(
+          (session) =>
+            session.threadId === null &&
+            session.environmentId === null &&
+            session.hostId === rootPanelTerminalTarget.hostId &&
+            (rootPanelTerminalTarget.cwd === null ||
+              session.initialCwd === rootPanelTerminalTarget.cwd),
+        ) ?? EMPTY_TERMINAL_SESSIONS
+      );
+    }
+    return EMPTY_TERMINAL_SESSIONS;
+  }, [
+    environmentTerminalsListQuery.data?.sessions,
+    globalTerminalsListQuery.data?.sessions,
+    rootPanelTerminalTarget,
+  ]);
+  const terminalsListLoaded =
+    rootPanelTerminalTarget?.kind === "environment"
+      ? environmentTerminalsListQuery.data !== undefined
+      : rootPanelTerminalTarget?.kind === "host_path"
+        ? globalTerminalsListQuery.data !== undefined
+        : false;
+  const activeTerminalCount = useMemo(
+    () =>
+      terminalSessions.filter((session) =>
+        isActiveTerminalSessionStatus(session.status),
+      ).length,
+    [terminalSessions],
+  );
+  const terminalsById = useMemo(
+    () => new Map(terminalSessions.map((session) => [session.id, session])),
+    [terminalSessions],
+  );
+  const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const {
+    activeBrowserTab,
+    activeStorageFileLineRange,
+    activeStorageFilePath,
+    activeWorkspaceFileLineRange,
+    activeWorkspaceFilePath,
+    activeWorkspaceFileSource,
+    activeWorkspaceFileStatusLabel,
+    browserTabs,
+    clearActiveFileTabs,
+    activateTab,
+    closeTab,
+    isNewTabActive,
+    openTab,
+    orderedSecondaryFileTabs,
+    reorderFileTab,
+    selectFileSearchResult,
+    updateBrowserTab,
+  } = useThreadFileTabs({
+    threadId:
+      props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
+    environmentId: rootPanelEnvironmentId,
+    storageFiles: rootThreadStorageFiles?.files,
+    terminalSessions,
+  });
+  const syncedOrderedSecondaryFileTabs = useMemo(
+    () =>
+      buildTerminalSyncedSecondaryFileTabs({
+        orderedTabs: orderedSecondaryFileTabs,
+        terminalSessions,
+      }),
+    [orderedSecondaryFileTabs, terminalSessions],
+  );
+  useEffect(() => {
+    if (!terminalsListLoaded) {
+      return;
+    }
+    updateFixedPanelTabsState((state) =>
+      syncTerminalTabsInFixedPanelState({
+        state,
+        terminalSessions,
+      }),
+    );
+  }, [terminalSessions, terminalsListLoaded, updateFixedPanelTabsState]);
+  const canCreateRootTerminal = canCreateRootComposeTerminal({
+    terminalTarget: rootPanelTerminalTarget,
+    environmentStatus: rootPanelEnvironment?.status,
+  });
+  const openPersistedWorkspaceFile = useCallback(
+    (file: WorkspaceFileTabState) => {
+      openTab({ kind: "workspace-file-preview", tab: file });
+    },
+    [openTab],
+  );
+  const openPersistedStorageFile = useCallback(
+    (file: ThreadStorageFileTabState) => {
+      openTab({ kind: "thread-storage-file-preview", tab: file });
+    },
+    [openTab],
+  );
+  const closeRootSecondaryPanel = useCallback(() => {
+    setRootSecondaryPanelForSurface(null);
+  }, [setRootSecondaryPanelForSurface]);
+  const openRootSecondaryPanel =
+    useCallback<SecondaryPanelChangeHandler>(
+      (panel) => {
+        setRootSecondaryPanelForSurface(panel);
+      },
+      [setRootSecondaryPanelForSurface],
+    );
+  const toggleRootPersistedSecondaryPanel = useCallback(() => {
+    if (isPersistedSecondaryPanelOpen) {
+      closeRootSecondaryPanel();
+      return;
+    }
+    openTab({ kind: "new-tab" });
+  }, [closeRootSecondaryPanel, isPersistedSecondaryPanelOpen, openTab]);
+  const {
+    closePanel: closeSecondaryPanel,
+    isOpen: isSecondaryPanelOpen,
+    openCompactDrawer,
+    openPanel: openSecondaryPanel,
+    openWorkspaceFile,
+  } = useThreadSecondaryPanelVisibility({
+    closePersistedPanel: closeRootSecondaryPanel,
+    isCompactViewport: renderSecondaryPanelAsDrawer,
+    isPersistedOpen: isPersistedSecondaryPanelOpen,
+    openPersistedCommitDiff: () => undefined,
+    openPersistedDiffFile: () => undefined,
+    openPersistedDiffPanel: () => undefined,
+    openPersistedHostFile: () => undefined,
+    openPersistedPanel: openRootSecondaryPanel,
+    openPersistedStorageFile,
+    openPersistedWorkspaceFile,
+    surface: props.surface,
+    threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    togglePersistedPanel: toggleRootPersistedSecondaryPanel,
+  });
+  useEffect(() => {
+    if (props.surface !== "page" || !isSecondaryPanelOpen) {
+      return;
+    }
+    if (
+      activeFixedSecondaryTab !== null &&
+      activeFixedSecondaryTab.kind !== "thread-info" &&
+      activeFixedSecondaryTab.kind !== "git-diff"
+    ) {
+      return;
+    }
+    openTab({ kind: "new-tab" });
+  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab, props.surface]);
+  const openBrowserTab = useCallback(
+    (url?: string) => {
+      openTab({ kind: "browser", url: url ?? "" });
+    },
+    [openTab],
+  );
+  const openBrowserTabAndReveal = useCallback(
+    (url?: string) => {
+      if (rootPanelThreadId === null) {
+        return;
+      }
+      openBrowserTab(url);
+      openCompactDrawer();
+    },
+    [openBrowserTab, openCompactDrawer, rootPanelThreadId],
+  );
+  const handleOpenBrowser = useCallback(() => {
+    openBrowserTabAndReveal();
+  }, [openBrowserTabAndReveal]);
+  const browserTabIds = useMemo(
+    () => new Set(browserTabs.map((tab) => tab.id)),
+    [browserTabs],
+  );
+  useEffect(() => {
+    const browserApi = getDesktopBrowserApi();
+    if (browserApi === null) {
+      return;
+    }
+    if (browserApi.onScopedOpenTab) {
+      return browserApi.onScopedOpenTab(({ tabId, url }) => {
+        if (browserTabIds.has(tabId)) {
+          openBrowserTabAndReveal(url);
+        }
+      });
+    }
+    return browserApi.onOpenTab(({ url }) => {
+      if (isRoutePath({ path: url })) {
+        return;
+      }
+      openBrowserTabAndReveal(url);
+    });
+  }, [browserTabIds, openBrowserTabAndReveal]);
+  const renderBrowserDeck = useCallback(
+    ({
+      canShowNativeBrowserView,
+    }: {
+      canShowNativeBrowserView: boolean;
+    }) => {
+      if (rootPanelThreadId === null) {
+        return null;
+      }
+      return (
+        <BrowserTabDeck
+          browserTabs={browserTabs}
+          activeBrowserTabId={activeBrowserTab?.id ?? null}
+          environmentId={rootPanelEnvironmentId}
+          canShowNativeBrowserView={canShowNativeBrowserView}
+          threadId={rootPanelThreadId}
+          onUpdate={updateBrowserTab}
+        />
+      );
+    },
+    [
+      activeBrowserTab?.id,
+      browserTabs,
+      rootPanelEnvironmentId,
+      rootPanelThreadId,
+      updateBrowserTab,
+    ],
+  );
+  const handleSelectFileSearchResult = useCallback(
+    (selection: FileSearchSelection) => {
+      selectFileSearchResult(selection);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, selectFileSearchResult],
+  );
+  const handleActivateFileTab = useCallback(
+    (tabId: string) => {
+      activateTab(tabId);
+      openCompactDrawer();
+    },
+    [activateTab, openCompactDrawer],
+  );
+  const handleOpenNewTab = useCallback(() => {
+    openTab({ kind: "new-tab" });
+    openCompactDrawer();
+    setNewTabFocusRequest((current) => current + 1);
+  }, [openCompactDrawer, openTab]);
+  const handleToggleSecondaryPanel = useCallback(() => {
+    if (isSecondaryPanelOpen) {
+      closeSecondaryPanel();
+      return;
+    }
+    handleOpenNewTab();
+  }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
+  const handleSecondaryPanelChange =
+    useCallback<SecondaryPanelChangeHandler>(
+      (panel) => {
+        clearActiveFileTabs();
+        openSecondaryPanel(panel);
+      },
+      [clearActiveFileTabs, openSecondaryPanel],
+    );
+  const handleSecondaryPanelFocus = useCallback(() => {
+    touchFixedPanelTabsState();
+  }, [touchFixedPanelTabsState]);
+  const createEnvironmentTerminalMutation = useCreateEnvironmentTerminal();
+  const createHostPathTerminalMutation = useCreateTerminal();
+  const closeEnvironmentTerminalMutation = useCloseEnvironmentTerminal();
+  const closeHostPathTerminalMutation = useCloseTerminal();
+  const handleStartTerminal = useCallback(() => {
+    if (
+      !canCreateRootTerminal ||
+      rootPanelTerminalTarget === null ||
+      createEnvironmentTerminalMutation.isPending ||
+      createHostPathTerminalMutation.isPending
+    ) {
+      return;
+    }
+    const newTab = createNewTabFixedPanelTab();
+    const createTerminal =
+      rootPanelTerminalTarget.kind === "environment"
+        ? createEnvironmentTerminalMutation.mutateAsync({
+            environmentId: rootPanelTerminalTarget.environmentId,
+            cols: DEFAULT_TERMINAL_COLS,
+            rows: DEFAULT_TERMINAL_ROWS,
+          })
+        : createHostPathTerminalMutation.mutateAsync({
+            cols: DEFAULT_TERMINAL_COLS,
+            rows: DEFAULT_TERMINAL_ROWS,
+            target: rootPanelTerminalTarget,
+          });
+    void createTerminal
+      .then((session) => {
+        closeTab(newTab.id);
+        setActiveFixedTerminal(session.id);
+        openCompactDrawer();
+      })
+      .catch(() => undefined);
+  }, [
+    canCreateRootTerminal,
+    closeTab,
+    createEnvironmentTerminalMutation,
+    createHostPathTerminalMutation,
+    openCompactDrawer,
+    rootPanelTerminalTarget,
+    setActiveFixedTerminal,
+  ]);
+  const handleActivateTerminalTab = useCallback(
+    (terminalId: string) => {
+      setActiveFixedTerminal(terminalId);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, setActiveFixedTerminal],
+  );
+  const handleCloseTerminalTab = useCallback(
+    (terminalId: string) => {
+      if (rootPanelTerminalTarget === null) {
+        removeFixedTerminalTab(terminalId);
+        return;
+      }
+      const options = {
+        onSuccess: () => {
+          removeFixedTerminalTab(terminalId);
+        },
+      };
+      if (rootPanelTerminalTarget.kind === "environment") {
+        closeEnvironmentTerminalMutation.mutate(
+          {
+            mode: "force",
+            environmentId: rootPanelTerminalTarget.environmentId,
+            terminalId,
+          },
+          options,
+        );
+        return;
+      }
+      closeHostPathTerminalMutation.mutate(
+        { mode: "force", terminalId },
+        options,
+      );
+    },
+    [
+      closeEnvironmentTerminalMutation,
+      closeHostPathTerminalMutation,
+      removeFixedTerminalTab,
+      rootPanelTerminalTarget,
+    ],
+  );
+  const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
+    const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
+    const tabs = syncedOrderedSecondaryFileTabs.map(
+      (tab): SecondaryPanelFileTab => {
+        switch (tab.kind) {
+          case "browser": {
+            const browserLabel =
+              tab.title ??
+              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+            return {
+              id: tab.id,
+              filename: browserLabel.length > 0 ? browserLabel : "Browser",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Globe"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          }
+          case "terminal": {
+            const session = terminalsById.get(tab.terminalId);
+            return {
+              id: tab.id,
+              filename: session?.title ?? "Terminal",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Terminal"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel:
+                session === undefined || session.status === "running"
+                  ? null
+                  : terminalStatusLabel(session),
+              onSelect: () => handleActivateTerminalTab(tab.terminalId),
+              onClose: () => handleCloseTerminalTab(tab.terminalId),
+            };
+          }
+          case "workspace-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: tab.statusLabel,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "host-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "thread-storage-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              isPinned: tab.isPinned,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "new-tab":
+            return {
+              id: tab.id,
+              filename: "New tab",
+              isHidden: true,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="NewTab"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+        }
+      },
+    );
+    return tabs.length > 0 ? tabs : undefined;
+  }, [
+    activeFixedSecondaryTabId,
+    closeTab,
+    handleActivateFileTab,
+    handleActivateTerminalTab,
+    handleCloseTerminalTab,
+    syncedOrderedSecondaryFileTabs,
+    terminalsById,
+  ]);
+  const { isLocalDaemonHost } = useHostDaemon();
+  const rootPanelEnvironmentIsLocal = rootPanelEnvironment
+    ? isLocalDaemonHost(rootPanelEnvironment.hostId)
+    : false;
+  const localWorkspaceRootPath = resolveThreadLocalWorkspaceRootPath({
+    environment: rootPanelEnvironment,
+    threadEnvironmentIsLocal: rootPanelEnvironmentIsLocal,
+  });
+  const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
+    environment: rootPanelEnvironment,
+  });
+  const {
+    canOpenPreferredFileTarget,
+    openPathInPreferredFileTarget,
+  } = useLocalOpenTargets({
+    enabled: rootPanelEnvironmentIsLocal,
+  });
+  const handleOpenWorkspaceFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: localWorkspaceRootPath,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      localWorkspaceRootPath,
+      openPathInPreferredFileTarget,
+    ],
+  );
+  const handleOpenStorageFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: rootPanelEnvironmentIsLocal ? rootThreadStorageRootPath : null,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      openPathInPreferredFileTarget,
+      rootPanelEnvironmentIsLocal,
+      rootThreadStorageRootPath,
+    ],
+  );
+  const workspaceFileCopyPath = activeWorkspaceFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeWorkspaceFilePath,
+        rootPath: workspacePreviewRootPath,
+      })
+    : null;
+  const storageFileCopyPath = activeStorageFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeStorageFilePath,
+        rootPath: rootThreadStorageRootPath,
+      })
+    : null;
+  const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
+  const desktopBrowserAvailable = isDesktopBrowserAvailable();
+  const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => {
+      if (
+        rootPanelThreadId === null ||
+        resolveChatLinkOpenTarget({
+          desktopBrowserAvailable,
+          openInAppBrowser: openLinksInAppBrowser,
+          url: href,
+        }) !== "in-app-browser"
+      ) {
+        return false;
+      }
+      openBrowserTabAndReveal(href);
+      return true;
+    },
+    [
+      desktopBrowserAvailable,
+      openBrowserTabAndReveal,
+      openLinksInAppBrowser,
+      rootPanelThreadId,
+    ],
+  );
+  const activeTerminalId = findActiveTerminalIdInSecondaryFileTabs({
+    activeTabId: activeFixedSecondaryTabId,
+    tabs: syncedOrderedSecondaryFileTabs,
+  });
+  const fileTabContent: ReactNode =
+    activeTerminalId && rootPanelTerminalTarget ? (
+      <ThreadTerminalPanel
+        canCreateTerminal={canCreateRootTerminal}
+        onOpenLink={handleOpenPanelLink}
+        panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
+        target={rootPanelTerminalTarget}
+      />
+    ) : isNewTabActive ? (
+      <NewTabPage
+        projectId={isProjectless ? undefined : projectId}
+        environmentId={rootPanelEnvironmentId}
+        currentThreadId={rootPanelThreadId ?? ""}
+        focusRequest={newTabFocusRequest}
+        onSelect={handleSelectFileSearchResult}
+        onOpenBrowser={rootPanelThreadId ? handleOpenBrowser : undefined}
+        onStartTerminal={
+          canCreateRootTerminal ? handleStartTerminal : undefined
+        }
+        showFileSearch={!isProjectless}
+      />
+    ) : activeWorkspaceFilePath && rootPanelThreadId ? (
+      <WorkspaceFilePreviewTabContent
+        activePath={activeWorkspaceFilePath}
+        copyPath={workspaceFileCopyPath}
+        environmentId={rootPanelEnvironmentId}
+        lineRange={activeWorkspaceFileLineRange}
+        onOpenInEditor={handleOpenWorkspaceFileInEditor}
+        source={activeWorkspaceFileSource}
+        statusLabel={activeWorkspaceFileStatusLabel}
+        threadId={rootPanelThreadId}
+      />
+    ) : activeStorageFilePath && rootPanelThreadId ? (
+      <ThreadStorageFilePreviewTabContent
+        activePath={activeStorageFilePath}
+        copyPath={storageFileCopyPath}
+        lineRange={activeStorageFileLineRange}
+        onOpenInEditor={handleOpenStorageFileInEditor}
+        threadId={rootPanelThreadId}
+      />
+    ) : undefined;
+  const isBrowserTabActive = activeBrowserTab !== null;
+  const rootPanelMetadataContent = useMemo(
+    () => (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-1">
+        <EmptyStatePanel className="rounded-lg">
+          No thread details available.
+        </EmptyStatePanel>
+      </div>
+    ),
+    [],
+  );
+  const handleOpenFilePreview = useCallback(
+    (relativePath: string) => {
+      openWorkspaceFile({
+        lineRange: null,
+        path: relativePath,
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      });
+    },
+    [openWorkspaceFile],
+  );
+  const rootPanelToggle =
+    !isSecondaryPanelOpen ? (
+      <div className="fixed right-4 top-2 z-40">
+        <RootComposeRightPanelToggle
+          activeTerminalCount={activeTerminalCount}
+          isOpen={isSecondaryPanelOpen}
+          onToggle={handleToggleSecondaryPanel}
+        />
+      </div>
+    ) : null;
   const attachmentsConfig = useMemo(
     () => ({
       items: promptDraft.attachments,
@@ -1295,16 +2204,48 @@ export function RootComposeView(props: RootComposeViewProps) {
   }
 
   return (
-    <PageShell
-      contentClassName={ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS}
-    >
-      {promptBox}
-      <RootComposeMobileRecents
-        highlightedThreadId={lastCreatedThreadId}
-        projectNamesById={mobileRecentProjectNamesById}
-        showCreatingRow={createThread.isPending}
-        threads={mobileRecentThreads}
-      />
-    </PageShell>
+    <>
+      {rootPanelToggle}
+      <RootComposeSecondaryContent
+        contentClassName={ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS}
+        isSecondaryPanelOpen={isSecondaryPanelOpen}
+        secondaryPanel={{
+          activeTab: activeFixedSecondaryTab,
+          canUseGitUi: false,
+          environmentId: rootPanelEnvironmentId ?? undefined,
+          metadataContent: rootPanelMetadataContent,
+          workspaceRootPath:
+            rootPanelEnvironment?.path ??
+            (rootPanelTerminalTarget?.kind === "host_path"
+              ? (rootPanelTerminalTarget.cwd ?? undefined)
+              : undefined),
+          fileTabs,
+          fileTabContent,
+          renderBrowserDeck,
+          isBrowserTabActive,
+          isOpen: isSecondaryPanelOpen,
+          showConversationCollapseControl: false,
+          showGitDiffTab: false,
+          showInfoTab: false,
+          showNewTabButton: true,
+          onClose: closeSecondaryPanel,
+          onCollapse: closeSecondaryPanel,
+          onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+          onFileTabReorder: reorderFileTab,
+          onOpenNewTab: handleOpenNewTab,
+          onOpenFilePreview: handleOpenFilePreview,
+          onPanelFocus: handleSecondaryPanelFocus,
+          onPanelChange: handleSecondaryPanelChange,
+        }}
+      >
+        {promptBox}
+        <RootComposeMobileRecents
+          highlightedThreadId={lastCreatedThreadId}
+          projectNamesById={mobileRecentProjectNamesById}
+          showCreatingRow={createThread.isPending}
+          threads={mobileRecentThreads}
+        />
+      </RootComposeSecondaryContent>
+    </>
   );
 }

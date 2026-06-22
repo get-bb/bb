@@ -2029,7 +2029,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
       onOpenLink={handleOpenTimelineLink}
-      threadId={thread.id}
+      target={{ kind: "thread", threadId: thread.id }}
     />
   ) : isNewTabActive ? (
     <NewTabPage

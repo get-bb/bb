@@ -27,12 +27,14 @@ import {
 } from "@bb/hono-typed-routes";
 import type {
   EmptyInput,
+  PathEnvironmentAndTerminal,
   PathId,
   PathProjectAutomationId,
   PathProjectId,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathThreadAndTerminal,
+  PathTerminal,
 } from "./common.js";
 import type {
   Automation,
@@ -40,11 +42,15 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  CloseEnvironmentTerminalRequest,
+  CloseTerminalRequest,
   CreateAutomationRequest,
   RunAutomationRequest,
   UpdateAutomationRequest,
   CloseThreadTerminalRequest,
   CommandListResponse,
+  CreateEnvironmentTerminalRequest,
+  CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
@@ -68,6 +74,7 @@ import type {
   EnvironmentPullRequestResponse,
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
+  EnvironmentTerminalListResponse,
   ProjectAttachmentContentQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
@@ -97,6 +104,7 @@ import type {
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
+  TerminalListResponse,
   TerminalSession,
   TerminalInputRequest,
   TerminalOutputQuery,
@@ -131,6 +139,8 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
+  UpdateEnvironmentTerminalRequest,
+  UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
@@ -141,10 +151,14 @@ import type {
 } from "./api-types.js";
 import {
   automationRunListQuerySchema,
+  closeEnvironmentTerminalRequestSchema,
+  closeTerminalRequestSchema,
   createAutomationRequestSchema,
   runAutomationRequestSchema,
   updateAutomationRequestSchema,
   closeThreadTerminalRequestSchema,
+  createEnvironmentTerminalRequestSchema,
+  createTerminalRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
@@ -189,7 +203,9 @@ import {
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
+  updateEnvironmentTerminalRequestSchema,
   updateEnvironmentRequestSchema,
+  updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
@@ -357,6 +373,39 @@ export const publicApiRoutes = {
     }),
   },
 
+  terminals: {
+    list: defineRoute({
+      path: "/terminals",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<TerminalListResponse>(),
+    }),
+    create: defineRoute({
+      path: "/terminals",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateTerminalRequest>(
+        createTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>({ status: 201 }),
+    }),
+    update: defineRoute({
+      path: "/terminals/:terminalId",
+      method: "patch",
+      request: jsonRequest<PathTerminal, UpdateTerminalRequest>(
+        updateTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    close: defineRoute({
+      path: "/terminals/:terminalId/close",
+      method: "post",
+      request: jsonRequest<PathTerminal, CloseTerminalRequest>(
+        closeTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+  },
+
   environments: {
     get: defineRoute({
       path: "/environments/:id",
@@ -458,6 +507,38 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentArchiveThreadsResponse>(),
+    }),
+    terminals: defineRoute({
+      path: "/environments/:id/terminals",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<EnvironmentTerminalListResponse>(),
+    }),
+    createTerminal: defineRoute({
+      path: "/environments/:id/terminals",
+      method: "post",
+      request: jsonRequest<PathId, CreateEnvironmentTerminalRequest>(
+        createEnvironmentTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>({ status: 201 }),
+    }),
+    updateTerminal: defineRoute({
+      path: "/environments/:id/terminals/:terminalId",
+      method: "patch",
+      request: jsonRequest<
+        PathEnvironmentAndTerminal,
+        UpdateEnvironmentTerminalRequest
+      >(updateEnvironmentTerminalRequestSchema),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    closeTerminal: defineRoute({
+      path: "/environments/:id/terminals/:terminalId/close",
+      method: "post",
+      request: jsonRequest<
+        PathEnvironmentAndTerminal,
+        CloseEnvironmentTerminalRequest
+      >(closeEnvironmentTerminalRequestSchema),
+      response: jsonResponse<TerminalSession>(),
     }),
   },
 

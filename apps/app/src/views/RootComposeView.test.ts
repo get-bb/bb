@@ -11,8 +11,10 @@ import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import {
   buildMobileRecentThreads,
+  canCreateRootComposeTerminal,
   readInitialPromptFromLocationState,
   resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposePanelThreadId,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 
@@ -268,5 +270,87 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("host:host_1:local");
+  });
+});
+
+describe("resolveRootComposePanelThreadId", () => {
+  it("uses the most-recent thread from the selected reuse worktree", () => {
+    expect(
+      resolveRootComposePanelThreadId({
+        environmentId: "env_b",
+        reuseThreadOptions: [
+          {
+            environmentId: "env_a",
+            branchName: "main",
+            name: null,
+            threads: [{ id: "thr_a", title: "Thread A" }],
+          },
+          {
+            environmentId: "env_b",
+            branchName: "feature",
+            name: "Feature worktree",
+            threads: [
+              { id: "thr_b_recent", title: "Recent thread" },
+              { id: "thr_b_old", title: "Old thread" },
+            ],
+          },
+        ],
+      }),
+    ).toBe("thr_b_recent");
+  });
+
+  it("returns null without a selected reuse worktree", () => {
+    expect(
+      resolveRootComposePanelThreadId({
+        environmentId: null,
+        reuseThreadOptions: [
+          {
+            environmentId: "env_a",
+            branchName: "main",
+            name: null,
+            threads: [{ id: "thr_a", title: "Thread A" }],
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("canCreateRootComposeTerminal", () => {
+  it("allows ready environments and host paths", () => {
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+        environmentStatus: "ready",
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+        environmentStatus: "provisioning",
+      }),
+    ).toBe(false);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "host_path", hostId: "host_1", cwd: "/repo" },
+        environmentStatus: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "host_path", hostId: "host_1", cwd: null },
+        environmentStatus: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: null,
+        environmentStatus: "ready",
+      }),
+    ).toBe(false);
   });
 });

@@ -28,6 +28,7 @@ import {
   terminalClientMessageSchema,
   terminalOutputChunkSchema,
   terminalOutputResponseSchema,
+  terminalSessionSchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -491,6 +492,27 @@ describe("git branch name contract", () => {
 });
 
 describe("public terminal contracts", () => {
+  it("allows threadless terminal session responses", () => {
+    expect(
+      terminalSessionSchema.safeParse({
+        id: "term_1",
+        threadId: null,
+        environmentId: "env_1",
+        hostId: "host_1",
+        title: "Terminal 1",
+        initialCwd: "/tmp/workspace",
+        cols: 80,
+        rows: 24,
+        status: "running",
+        exitCode: null,
+        closeReason: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastUserInputAt: null,
+      }).success,
+    ).toBe(true);
+  });
+
   it("bounds terminal dimensions", () => {
     expect(
       createThreadTerminalRequestSchema.safeParse({

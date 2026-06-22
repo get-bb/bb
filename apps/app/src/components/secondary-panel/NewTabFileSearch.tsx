@@ -53,6 +53,7 @@ export interface NewTabFileSearchProps {
   idleActions: ReactNode;
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
+  showFileSearch?: boolean;
 }
 
 export type OpenBrowserHandler = () => void;
@@ -477,6 +478,7 @@ export function NewTabFileSearch({
   idleActions,
   initialQuery = "",
   onSelect,
+  showFileSearch = true,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
@@ -635,6 +637,10 @@ export function NewTabFileSearch({
   // least one option. Gate the combobox relationship on that so
   // `aria-controls`/`aria-activedescendant` never point at an absent element.
   const hasListbox = !isSearchDisabled && navigableEntries.length > 0;
+
+  if (!showFileSearch) {
+    return <div className="flex min-w-0 flex-col gap-3">{idleActions}</div>;
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-3">

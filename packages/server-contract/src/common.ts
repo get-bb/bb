@@ -19,3 +19,9 @@ export type PathThreadAndTerminal = {
 export type PathProjectAutomationId = {
   param: { id: string; automationId: string };
 };
+export type PathEnvironmentAndTerminal = {
+  param: { id: string; terminalId: string };
+};
+export type PathTerminal = {
+  param: { terminalId: string };
+};

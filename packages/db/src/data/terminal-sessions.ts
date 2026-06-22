@@ -15,14 +15,18 @@ export type TerminalSessionRow = typeof terminalSessions.$inferSelect;
 export interface CreateTerminalSessionInput {
   cols: number;
   daemonSessionId: string | null;
-  environmentId: string;
+  environmentId: string | null;
   hostId: string;
   initialCwd: string;
   now?: number;
   rows: number;
   status: TerminalSessionStatus;
-  threadId: string;
+  threadId: string | null;
   title: string;
+}
+
+export interface GetTerminalSessionArgs {
+  terminalId: string;
 }
 
 export interface GetTerminalSessionForThreadArgs {
@@ -30,10 +34,28 @@ export interface GetTerminalSessionForThreadArgs {
   threadId: string;
 }
 
+export interface GetThreadlessTerminalSessionForEnvironmentArgs {
+  environmentId: string;
+  terminalId: string;
+}
+
 export interface UpdateTerminalSessionTitleArgs {
   now?: number;
   terminalId: string;
   threadId: string;
+  title: string;
+}
+
+export interface UpdateTerminalSessionTitleByIdArgs {
+  now?: number;
+  terminalId: string;
+  title: string;
+}
+
+export interface UpdateThreadlessTerminalSessionTitleArgs {
+  environmentId: string;
+  now?: number;
+  terminalId: string;
   title: string;
 }
 
@@ -55,6 +77,21 @@ export interface UpdateTerminalSessionSizeArgs {
   threadId: string;
 }
 
+export interface UpdateTerminalSessionSizeByIdArgs {
+  cols: number;
+  now?: number;
+  rows: number;
+  terminalId: string;
+}
+
+export interface UpdateThreadlessTerminalSessionSizeArgs {
+  cols: number;
+  environmentId: string;
+  now?: number;
+  rows: number;
+  terminalId: string;
+}
+
 export interface MarkTerminalSessionExitedArgs {
   closeReason: TerminalSessionCloseReason;
   exitCode: number | null;
@@ -66,6 +103,17 @@ export interface MarkTerminalSessionUserInputArgs {
   now?: number;
   terminalId: string;
   threadId: string;
+}
+
+export interface MarkTerminalSessionUserInputByIdArgs {
+  now?: number;
+  terminalId: string;
+}
+
+export interface MarkThreadlessTerminalSessionUserInputArgs {
+  environmentId: string;
+  now?: number;
+  terminalId: string;
 }
 
 export interface MarkDaemonTerminalSessionExitedArgs {
@@ -165,6 +213,52 @@ export function listVisibleTerminalSessionsByThread(
     .all();
 }
 
+export function listVisibleTerminalSessions(
+  db: TerminalSessionReadConnection,
+): TerminalSessionRow[] {
+  return db
+    .select()
+    .from(terminalSessions)
+    .where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))
+    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
+    .all();
+}
+
+export function listThreadlessTerminalSessionsByEnvironment(
+  db: TerminalSessionReadConnection,
+  environmentId: string,
+): TerminalSessionRow[] {
+  return db
+    .select()
+    .from(terminalSessions)
+    .where(
+      and(
+        eq(terminalSessions.environmentId, environmentId),
+        isNull(terminalSessions.threadId),
+      ),
+    )
+    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
+    .all();
+}
+
+export function listVisibleThreadlessTerminalSessionsByEnvironment(
+  db: TerminalSessionReadConnection,
+  environmentId: string,
+): TerminalSessionRow[] {
+  return db
+    .select()
+    .from(terminalSessions)
+    .where(
+      and(
+        eq(terminalSessions.environmentId, environmentId),
+        isNull(terminalSessions.threadId),
+        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
+      ),
+    )
+    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
+    .all();
+}
+
 export function listTerminalSessionsByEnvironment(
   db: TerminalSessionReadConnection,
   environmentId: string,
@@ -175,6 +269,19 @@ export function listTerminalSessionsByEnvironment(
     .where(eq(terminalSessions.environmentId, environmentId))
     .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
     .all();
+}
+
+export function getTerminalSession(
+  db: TerminalSessionReadConnection,
+  args: GetTerminalSessionArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .select()
+      .from(terminalSessions)
+      .where(eq(terminalSessions.id, args.terminalId))
+      .get() ?? null
+  );
 }
 
 export function getTerminalSessionForThread(
@@ -189,6 +296,25 @@ export function getTerminalSessionForThread(
         and(
           eq(terminalSessions.id, args.terminalId),
           eq(terminalSessions.threadId, args.threadId),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
+export function getThreadlessTerminalSessionForEnvironment(
+  db: TerminalSessionReadConnection,
+  args: GetThreadlessTerminalSessionForEnvironmentArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .select()
+      .from(terminalSessions)
+      .where(
+        and(
+          eq(terminalSessions.id, args.terminalId),
+          eq(terminalSessions.environmentId, args.environmentId),
+          isNull(terminalSessions.threadId),
         ),
       )
       .get() ?? null
@@ -210,6 +336,46 @@ export function updateTerminalSessionTitle(
         and(
           eq(terminalSessions.id, args.terminalId),
           eq(terminalSessions.threadId, args.threadId),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function updateTerminalSessionTitleById(
+  db: TerminalSessionWriteConnection,
+  args: UpdateTerminalSessionTitleByIdArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        title: args.title,
+        updatedAt: args.now ?? Date.now(),
+      })
+      .where(eq(terminalSessions.id, args.terminalId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function updateThreadlessTerminalSessionTitle(
+  db: TerminalSessionWriteConnection,
+  args: UpdateThreadlessTerminalSessionTitleArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        title: args.title,
+        updatedAt: args.now ?? Date.now(),
+      })
+      .where(
+        and(
+          eq(terminalSessions.id, args.terminalId),
+          eq(terminalSessions.environmentId, args.environmentId),
+          isNull(terminalSessions.threadId),
         ),
       )
       .returning()
@@ -271,6 +437,48 @@ export function updateTerminalSessionSize(
   );
 }
 
+export function updateTerminalSessionSizeById(
+  db: TerminalSessionWriteConnection,
+  args: UpdateTerminalSessionSizeByIdArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        cols: args.cols,
+        rows: args.rows,
+        updatedAt: args.now ?? Date.now(),
+      })
+      .where(eq(terminalSessions.id, args.terminalId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function updateThreadlessTerminalSessionSize(
+  db: TerminalSessionWriteConnection,
+  args: UpdateThreadlessTerminalSessionSizeArgs,
+): TerminalSessionRow | null {
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        cols: args.cols,
+        rows: args.rows,
+        updatedAt: args.now ?? Date.now(),
+      })
+      .where(
+        and(
+          eq(terminalSessions.id, args.terminalId),
+          eq(terminalSessions.environmentId, args.environmentId),
+          isNull(terminalSessions.threadId),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
 export function markTerminalSessionUserInput(
   db: TerminalSessionWriteConnection,
   args: MarkTerminalSessionUserInputArgs,
@@ -287,6 +495,54 @@ export function markTerminalSessionUserInput(
         and(
           eq(terminalSessions.id, args.terminalId),
           eq(terminalSessions.threadId, args.threadId),
+          isNull(terminalSessions.lastUserInputAt),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function markTerminalSessionUserInputById(
+  db: TerminalSessionWriteConnection,
+  args: MarkTerminalSessionUserInputByIdArgs,
+): TerminalSessionRow | null {
+  const now = args.now ?? Date.now();
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        lastUserInputAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(terminalSessions.id, args.terminalId),
+          isNull(terminalSessions.lastUserInputAt),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function markThreadlessTerminalSessionUserInput(
+  db: TerminalSessionWriteConnection,
+  args: MarkThreadlessTerminalSessionUserInputArgs,
+): TerminalSessionRow | null {
+  const now = args.now ?? Date.now();
+  return (
+    db
+      .update(terminalSessions)
+      .set({
+        lastUserInputAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(terminalSessions.id, args.terminalId),
+          eq(terminalSessions.environmentId, args.environmentId),
+          isNull(terminalSessions.threadId),
           isNull(terminalSessions.lastUserInputAt),
         ),
       )

@@ -123,7 +123,6 @@ export function ThreadTerminalContent({
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}
-      threadId={controller.threadId}
     />
   );
 }

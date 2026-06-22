@@ -556,12 +556,12 @@ export const terminalSessions = sqliteTable(
   "terminal_sessions",
   {
     id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").references(() => threads.id, {
+      onDelete: "cascade",
+    }),
+    environmentId: text("environment_id").references(() => environments.id, {
+      onDelete: "cascade",
+    }),
     hostId: text("host_id")
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),

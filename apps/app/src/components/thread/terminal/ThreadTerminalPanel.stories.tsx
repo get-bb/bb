@@ -111,7 +111,6 @@ function makeController({
     showTerminalPlaceholders,
     shouldRetainActiveTerminalView,
     terminalBodyMessage,
-    threadId: THREAD_ID,
     visibleSessions,
   };
 }

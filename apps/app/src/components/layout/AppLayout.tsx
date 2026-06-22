@@ -417,7 +417,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);
   const animationFrameRef = useRef<number | null>(null);
-  const showHeader = !isThreadView;
+  const showHeader = !isThreadView && !isRootView;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const sidebarProviderStyle: SidebarProviderStyle = {

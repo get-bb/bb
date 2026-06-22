@@ -4,10 +4,14 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
+  getThreadlessTerminalSessionForEnvironment,
+  listThreadlessTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
   listVisibleTerminalSessionsByThread,
+  listVisibleThreadlessTerminalSessionsByEnvironment,
   markDaemonTerminalSessionsDisconnected,
   markEnvironmentTerminalSessionsExited,
+  markThreadlessTerminalSessionUserInput,
   markTerminalSessionUserInput,
   markTerminalSessionRunning,
   markThreadTerminalSessionsExited,
@@ -100,7 +104,77 @@ function createStartingTerminal(fixture: TerminalSessionFixture) {
   });
 }
 
+function createStartingThreadlessTerminal(fixture: TerminalSessionFixture) {
+  return createTerminalSession(fixture.db, {
+    cols: 80,
+    daemonSessionId: fixture.session.id,
+    environmentId: fixture.environment.id,
+    hostId: fixture.host.id,
+    initialCwd: "/tmp/workspace",
+    rows: 24,
+    status: "starting",
+    threadId: null,
+    title: "Terminal 1",
+  });
+}
+
 describe("terminal sessions", () => {
+  it("keeps threadless environment terminals out of thread terminal queries", () => {
+    const fixture = setup();
+    const threadTerminal = createStartingTerminal(fixture);
+    const threadlessTerminal = createStartingThreadlessTerminal(fixture);
+
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
+      expect.objectContaining({ id: threadTerminal.id }),
+    ]);
+    expect(
+      listThreadlessTerminalSessionsByEnvironment(
+        fixture.db,
+        fixture.environment.id,
+      ),
+    ).toEqual([expect.objectContaining({ id: threadlessTerminal.id })]);
+    expect(
+      getThreadlessTerminalSessionForEnvironment(fixture.db, {
+        environmentId: fixture.environment.id,
+        terminalId: threadTerminal.id,
+      }),
+    ).toBeNull();
+  });
+
+  it("marks a threadless terminal dirty on first user input only", () => {
+    const fixture = setup();
+    const terminal = createStartingThreadlessTerminal(fixture);
+
+    const firstInput = markThreadlessTerminalSessionUserInput(fixture.db, {
+      environmentId: fixture.environment.id,
+      terminalId: terminal.id,
+      now: 10,
+    });
+    const secondInput = markThreadlessTerminalSessionUserInput(fixture.db, {
+      environmentId: fixture.environment.id,
+      terminalId: terminal.id,
+      now: 20,
+    });
+
+    expect(firstInput).toMatchObject({
+      id: terminal.id,
+      lastUserInputAt: 10,
+      updatedAt: 10,
+    });
+    expect(secondInput).toBeNull();
+    expect(
+      listVisibleThreadlessTerminalSessionsByEnvironment(
+        fixture.db,
+        fixture.environment.id,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: terminal.id,
+        lastUserInputAt: 10,
+      }),
+    ]);
+  });
+
   it("marks only the expected starting daemon session running", () => {
     const fixture = setup();
     const terminal = createStartingTerminal(fixture);

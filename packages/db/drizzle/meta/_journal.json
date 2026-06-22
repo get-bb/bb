@@ -302,6 +302,13 @@
       "when": 1781917615702,
       "tag": "0042_careful_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1781917615703,
+      "tag": "0043_threadless_terminal_sessions",
+      "breakpoints": true
     }
   ]
 }
