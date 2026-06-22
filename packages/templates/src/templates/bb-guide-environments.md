@@ -49,6 +49,9 @@ Making your repo work with bb:
   exist in source_root and are missing in workspace_root, warn and continue on
   optional copy failures, then run dependency setup such as pnpm install.
 
+  For workspace files that customize agent instructions and skills
+  (.bb/AGENTS.md, .bb/skills/), run `bb guide agent-configuration`.
+
   bb environment show <id>                Show environment details (path, branch, status)
 
   bb environment update <id>              Update environment metadata

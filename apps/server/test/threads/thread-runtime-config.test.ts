@@ -50,6 +50,19 @@ async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
   return sourceRootPath;
 }
 
+interface WriteWorkspaceAgentInstructionsArgs {
+  content: string;
+  workspacePath: string;
+}
+
+async function writeWorkspaceAgentInstructions(
+  args: WriteWorkspaceAgentInstructionsArgs,
+): Promise<void> {
+  const bbDir = path.join(args.workspacePath, ".bb");
+  await mkdir(bbDir, { recursive: true });
+  await writeFile(path.join(bbDir, "AGENTS.md"), args.content, "utf8");
+}
+
 describe("thread runtime config", () => {
   it.each([
     {
@@ -747,6 +760,61 @@ describe("thread runtime config", () => {
         "bb_send_to_main_thread",
       );
       expect(runtimeConfig.instructions).not.toContain("Side chat handoff");
+    });
+  });
+
+  it("appends workspace .bb/AGENTS.md instructions to the standard agent instructions", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-runtime-agents-md";
+      seedHostSession(harness.deps, { id: hostId });
+      const workspacePath = path.join(
+        harness.config.dataDir,
+        "agents-md-workspace",
+      );
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      await writeWorkspaceAgentInstructions({
+        content:
+          "# Project Rules\n\nAlways run the smoke test before pushing.\n",
+        workspacePath,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread,
+          environment: {
+            hostId: environment.hostId,
+            id: environment.id,
+            path: environment.path,
+            status: environment.status,
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+        },
+      );
+
+      expect(runtimeConfig.instructionMode).toBe("append");
+      expect(runtimeConfig.instructions).toContain(
+        "You are working inside bb, an agentic IDE",
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "The following workspace instructions come from .bb/AGENTS.md:",
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "Always run the smoke test before pushing.",
+      );
     });
   });
 });

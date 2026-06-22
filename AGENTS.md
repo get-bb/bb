@@ -27,6 +27,13 @@
 - If the server needs host-local data, the daemon should return raw data and the server should assemble product behavior.
 - Do not move responsibility across the server/daemon boundary unless the current change requires it.
 
+## CLI, Guide, And Skill
+
+- When you add or change a `bb` CLI command, flag, or a user-facing configuration knob (env var, `.bb/` workspace file, settings field), update its discoverable surfaces in the same change.
+- Update the in-CLI guide templates under `packages/templates/src/templates/bb-guide-*.md`, then regenerate with `node packages/templates/scripts/generate-templates.mjs` (the `@bb/templates` typecheck/test tasks also run it).
+- Update the bb-cli skill at `apps/server/src/services/skills/builtin-skills/bb-cli/SKILL.md`. Configuration knobs also belong in `docs/configuration.md`.
+- Match the existing chapter/section style; keep entries concise and accurate against the implementation.
+
 ## Data Access
 
 - Do not load all rows and filter in JavaScript when a targeted query with `WHERE` or `JOIN` is possible.

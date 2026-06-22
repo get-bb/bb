@@ -20,6 +20,17 @@ message agents, or inspect projects, providers, and environments.
 - To make a repo work with bb worktrees, run `bb guide environments`. It
   documents the repo-level `.bb-env-setup.sh` setup hook.
 
+## Workspace Agent Instructions
+
+- Add a `.bb/AGENTS.md` file at a workspace root to inject repo-specific
+  instructions into every thread that runs there. bb appends the file contents
+  to the thread system prompt for all providers, on start and resume; edits
+  apply on the next turn.
+- Only the plural `AGENTS.md` is read, only from the workspace-root `.bb/`
+  directory (no parent-directory walk); an empty file is ignored. Track it with
+  git so fresh managed worktrees include it. Run `bb guide agent-configuration`
+  for details (it also covers project `.bb/skills/`).
+
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another

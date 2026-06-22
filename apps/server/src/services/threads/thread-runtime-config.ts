@@ -24,6 +24,10 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
+import {
+  WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
+  readWorkspaceAgentInstructions,
+} from "./workspace-agent-instructions.js";
 import { isSideChatThread } from "./side-chat-thread.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
@@ -125,6 +129,17 @@ export async function resolveThreadRuntimeCommandConfig(
     dataDir: deps.config.dataDir,
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
   });
+  const workspaceAgentInstructions = readWorkspaceAgentInstructions(
+    deps.logger,
+    workspacePath,
+  );
+  const instructions = workspaceAgentInstructions
+    ? [
+        STANDARD_AGENT_INSTRUCTIONS,
+        `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
+        workspaceAgentInstructions,
+      ].join("\n\n")
+    : STANDARD_AGENT_INSTRUCTIONS;
   const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,
@@ -133,7 +148,7 @@ export async function resolveThreadRuntimeCommandConfig(
     dynamicTools: [],
     injectedSkillSources,
     instructionMode: "append",
-    instructions: STANDARD_AGENT_INSTRUCTIONS,
+    instructions,
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
     threadStoragePath,

@@ -75,6 +75,26 @@ provider env keys only when opting into a non-Codex provider route.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon.
 
+## Workspace Agent Instructions
+
+bb reads per-workspace agent instructions from a project's `.bb/` directory and
+appends them to every thread's system prompt, alongside the `.bb/skills/`
+convention. Create `.bb/AGENTS.md` at the workspace root:
+
+```
+<workspace>/.bb/AGENTS.md
+```
+
+The file contents are appended to bb's standard agent instructions for every
+provider-backed thread (start and resume), so the guidance applies regardless of
+which provider runs. An empty or whitespace-only file is treated as absent.
+
+No agent loads `.bb/AGENTS.md` natively — provider-native instruction files
+(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) live at the
+workspace root and are never read from the `.bb/` subdirectory. bb reads
+`.bb/AGENTS.md` itself and injects it, so use it for guidance you want every bb
+thread to receive regardless of provider.
+
 ## Startup Flags
 
 Use launcher flags for per-run startup details:
