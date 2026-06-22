@@ -2,6 +2,8 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -152,6 +154,7 @@ interface ThreadStatusGlyphProps {
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
+  successAnimationKey?: number | null;
   unreadBadgeTone: SidebarUnreadDotTone;
 }
 
@@ -161,16 +164,28 @@ interface ThreadUnreadBadgeLabelArgs {
 
 const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 
-function ThreadSuccessStatusGlyph({ label }: { label: string }) {
-  const [showCheck, setShowCheck] = useState(true);
+function ThreadSuccessStatusGlyph({
+  animate,
+  label,
+}: {
+  animate: boolean;
+  label: string;
+}) {
+  const [showCheck, setShowCheck] = useState(animate);
 
   useEffect(() => {
+    if (!animate) {
+      setShowCheck(false);
+      return;
+    }
+
+    setShowCheck(true);
     const timeoutId = window.setTimeout(
       () => setShowCheck(false),
       THREAD_SUCCESS_CHECK_DELAY_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, []);
+  }, [animate]);
 
   if (showCheck) {
     return (
@@ -199,6 +214,7 @@ export function ThreadStatusGlyph({
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
+  successAnimationKey = null,
   unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
   if (showUnreadBadge && unreadBadgeTone === "error") {
@@ -229,10 +245,7 @@ export function ThreadStatusGlyph({
     return (
       <Icon
         name="Workflow"
-        className={cn(
-          "text-muted-foreground",
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
+        className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
         aria-label="Workflow running"
       />
     );
@@ -240,7 +253,13 @@ export function ThreadStatusGlyph({
 
   if (showUnreadBadge) {
     const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
-    return <ThreadSuccessStatusGlyph label={label} />;
+    return (
+      <ThreadSuccessStatusGlyph
+        key={successAnimationKey ?? "settled"}
+        animate={successAnimationKey !== null}
+        label={label}
+      />
+    );
   }
 
   if (isBusy) {
@@ -268,11 +287,35 @@ function getThreadUnreadBadgeLabel({
 
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
+function useUnreadSuccessAnimationKey(
+  showUnreadSuccess: boolean,
+): number | null {
+  const previousShowUnreadSuccessRef = useRef(showUnreadSuccess);
+  const [animationKey, setAnimationKey] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const previousShowUnreadSuccess = previousShowUnreadSuccessRef.current;
+    previousShowUnreadSuccessRef.current = showUnreadSuccess;
+
+    if (showUnreadSuccess && !previousShowUnreadSuccess) {
+      setAnimationKey((current) => (current ?? 0) + 1);
+      return;
+    }
+
+    if (!showUnreadSuccess && animationKey !== null) {
+      setAnimationKey(null);
+    }
+  }, [animationKey, showUnreadSuccess]);
+
+  return showUnreadSuccess ? animationKey : null;
+}
+
 function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
+  successAnimationKey,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
@@ -294,6 +337,7 @@ function ThreadTrailingIndicator({
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
+        successAnimationKey={successAnimationKey}
         unreadBadgeTone={unreadBadgeTone}
       />
     </span>
@@ -363,6 +407,9 @@ function ThreadRowComponent({
     : showUnreadBadge;
   const trailingUnreadBadgeTone: SidebarUnreadDotTone =
     hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
+  const unreadSuccessAnimationKey = useUnreadSuccessAnimationKey(
+    trailingShowUnreadBadge && trailingUnreadBadgeTone === "default",
+  );
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
@@ -447,6 +494,7 @@ function ThreadRowComponent({
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}
+              successAnimationKey={unreadSuccessAnimationKey}
               unreadBadgeTone={trailingUnreadBadgeTone}
             />
           </span>

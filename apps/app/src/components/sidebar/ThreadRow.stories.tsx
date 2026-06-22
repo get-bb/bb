@@ -1,4 +1,9 @@
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
@@ -16,6 +21,7 @@ const childActivity = (
 
 const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 const UNREAD_DONE_SETTLED_DOT_MS = 650;
+const UNREAD_DONE_WORKING_MS = 650;
 
 export default {
   title: "sidebar/Threads",
@@ -57,24 +63,37 @@ function StoryThreadRow({
 }
 
 function UnreadDoneThreadRowCycle() {
-  const [cycleKey, setCycleKey] = useState(0);
+  const [isUnreadDone, setIsUnreadDone] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(
-      () => setCycleKey((current) => current + 1),
-      THREAD_SUCCESS_CHECK_DELAY_MS + UNREAD_DONE_SETTLED_DOT_MS,
+      () => setIsUnreadDone((current) => !current),
+      isUnreadDone
+        ? THREAD_SUCCESS_CHECK_DELAY_MS + UNREAD_DONE_SETTLED_DOT_MS
+        : UNREAD_DONE_WORKING_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, [cycleKey]);
+  }, [isUnreadDone]);
 
   return (
     <StoryThreadRow
-      key={cycleKey}
       projectId="proj_demo"
-      thread={makeThread({
-        lastReadAt: 50,
-        latestAttentionAt: 200,
-      })}
+      thread={
+        isUnreadDone
+          ? makeThread({
+              lastReadAt: 50,
+              latestAttentionAt: 200,
+            })
+          : makeThread({
+              status: "active",
+              lastReadAt: 200,
+              latestAttentionAt: 200,
+              runtime: {
+                displayStatus: "active",
+                hostReconnectGraceExpiresAt: null,
+              },
+            })
+      }
       isActive={false}
       options={defaultOption}
     />
@@ -225,7 +244,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="unread done"
-        hint="cycles the unread-success states only: CircleCheck for 1200ms, then the settled done dot"
+        hint="live completion transition: working spinner, CircleCheck for 1200ms, then the settled done dot"
       >
         <SidebarStage>
           <UnreadDoneThreadRowCycle />

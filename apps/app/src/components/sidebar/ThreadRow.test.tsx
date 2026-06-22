@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
@@ -57,6 +57,28 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
   isCompact: false,
 };
 
+function ThreadRowTestHarness({
+  isActive = false,
+  options = DEFAULT_OPTIONS,
+  thread,
+}: {
+  isActive?: boolean;
+  options?: ThreadRowOptions;
+  thread: ThreadListEntry;
+}) {
+  return (
+    <MemoryRouter>
+      <ThreadRow
+        projectId={thread.projectId}
+        thread={thread}
+        isActive={isActive}
+        hasComposerDraft={false}
+        options={options}
+      />
+    </MemoryRouter>
+  );
+}
+
 function renderThreadRow({
   isActive = false,
   options = DEFAULT_OPTIONS,
@@ -66,17 +88,25 @@ function renderThreadRow({
   options?: ThreadRowOptions;
   thread?: ThreadListEntry;
 }) {
-  render(
-    <MemoryRouter>
-      <ThreadRow
-        projectId={thread.projectId}
-        thread={thread}
-        isActive={isActive}
-        hasComposerDraft={false}
-        options={options}
-      />
-    </MemoryRouter>,
+  const result = render(
+    <ThreadRowTestHarness
+      isActive={isActive}
+      options={options}
+      thread={thread}
+    />,
   );
+  return {
+    ...result,
+    rerenderThreadRow(nextThread: ThreadListEntry) {
+      result.rerender(
+        <ThreadRowTestHarness
+          isActive={isActive}
+          options={options}
+          thread={nextThread}
+        />,
+      );
+    },
+  };
 }
 
 afterEach(cleanup);
@@ -109,5 +139,59 @@ describe("ThreadRow", () => {
 
     expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
+  });
+
+  it("renders an already-unread successful thread as a settled dot on initial load", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        status: "idle",
+        lastReadAt: 1_000,
+        latestAttentionAt: 2_000,
+      }),
+    });
+
+    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+  });
+
+  it("shows the success checkmark when a mounted row becomes unread after finishing", async () => {
+    vi.useFakeTimers();
+    try {
+      const thread = createThread({
+        status: "active",
+        lastReadAt: 1_000,
+        latestAttentionAt: 1_000,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      });
+      const { container, rerenderThreadRow } = renderThreadRow({ thread });
+
+      expect(screen.getByLabelText("Thread working")).not.toBeNull();
+
+      rerenderThreadRow({
+        ...thread,
+        status: "idle",
+        latestAttentionAt: 2_000,
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+      });
+
+      expect(
+        container.querySelector('[data-icon="CircleCheck"]'),
+      ).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_200);
+      });
+
+      expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+      expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

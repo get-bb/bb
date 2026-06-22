@@ -29,6 +29,7 @@ const noop = () => {};
 
 const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 const ANIMATION_SETTLED_MS = 650;
+const ANIMATION_WORKING_MS = 650;
 const ANIMATION_SUCCESS_MS =
   THREAD_SUCCESS_CHECK_DELAY_MS + ANIMATION_SETTLED_MS;
 
@@ -357,19 +358,24 @@ function ParentRollupPreview({ combo }: { combo: readonly RollupSignal[] }) {
 }
 
 function AnimatedUnreadDoneThreadRow() {
-  const [cycleKey, setCycleKey] = useState(0);
-  const thread = makeSignalThread("unreadDone", "thr_animation_success");
+  const [isUnreadDone, setIsUnreadDone] = useState(false);
+  const thread = isUnreadDone
+    ? makeSignalThread("unreadDone", "thr_animation_success")
+    : makeSignalThread("working", "thr_animation_success");
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setCycleKey((current) => current + 1);
-    }, ANIMATION_SUCCESS_MS);
+    const timeoutId = window.setTimeout(
+      () => {
+        setIsUnreadDone((current) => !current);
+      },
+      isUnreadDone ? ANIMATION_SUCCESS_MS : ANIMATION_WORKING_MS,
+    );
     return () => window.clearTimeout(timeoutId);
-  }, [cycleKey]);
+  }, [isUnreadDone]);
 
   return (
     <ThreadRowStage>
-      <StoryThreadRow key={cycleKey} thread={thread} />
+      <StoryThreadRow thread={thread} />
     </ThreadRowStage>
   );
 }
@@ -379,7 +385,7 @@ export function ProductionStates() {
     <StoryCard labelWidth="210px">
       <StoryRow
         label="leaf rows"
-        hint="Real ThreadRow states: idle, working, input needed, unread success, failed. Unread success shows a check before settling to a dot."
+        hint="Real ThreadRow states: idle, working, input needed, unread success, failed. Existing unread success shows the settled dot."
       >
         <ThreadRowStage>
           <StoryThreadRow thread={statusThreads.idle} />
@@ -454,7 +460,7 @@ export function UnreadDoneAnimation() {
     <StoryCard labelWidth="210px">
       <StoryRow
         label="unread success -> done"
-        hint="Loops only the done states: 1200ms CircleCheck, then 650ms settled dot."
+        hint="Loops through a live completion transition: working, 1200ms CircleCheck, then settled dot."
       >
         <AnimatedUnreadDoneThreadRow />
       </StoryRow>
