@@ -61,7 +61,7 @@ function WorkflowAgentStateIcon({
       return (
         <Icon
           name="Square"
-          className={cn(className, "fill-current text-muted-foreground/30")}
+          className={cn(className, "text-muted-foreground")}
           aria-hidden="true"
         />
       );
