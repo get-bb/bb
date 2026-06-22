@@ -1333,12 +1333,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeHostFilePath,
     activeStorageFileLineRange,
     activeStorageFilePath,
-    activeWorkspaceFileEnvironmentId,
-    activeWorkspaceFileLineRange,
-    activeWorkspaceFilePath,
-    activeWorkspaceFileProjectId,
-    activeWorkspaceFileSource,
-    activeWorkspaceFileStatusLabel,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
@@ -1728,7 +1722,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
-  const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
+  const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
       (tab): SecondaryPanelFileTab => {
@@ -1842,16 +1836,14 @@ export function RootComposeView(props: RootComposeViewProps) {
       },
     );
     return tabs.length > 0 ? tabs : undefined;
-  }, [
-    activeFixedSecondaryTabId,
-    closeTab,
-    handleActivateFileTab,
-    handleActivateTerminalTab,
-    handleCloseTerminalTab,
-    syncedOrderedSecondaryFileTabs,
-    terminalsById,
-  ]);
+  })();
   const { isLocalDaemonHost } = useHostDaemon();
+  const activeRootWorkspaceFileTab =
+    activeFixedSecondaryTab?.kind === "workspace-file-preview"
+      ? activeFixedSecondaryTab
+      : null;
+  const activeWorkspaceFileEnvironmentId =
+    activeRootWorkspaceFileTab?.environmentId ?? null;
   const activeWorkspaceEnvironmentQuery = useEnvironment(
     activeWorkspaceFileEnvironmentId,
     {
@@ -1873,10 +1865,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     ? isLocalDaemonHost(activeWorkspaceEnvironment.hostId)
     : false;
   const activeWorkspaceFileProjectPreviewId =
-    activeWorkspaceFileProjectId ??
-    (activeWorkspaceFileEnvironmentId === null && !isProjectless
-      ? projectId
-      : null);
+    activeRootWorkspaceFileTab?.environmentId === null
+      ? (activeRootWorkspaceFileTab.projectId ?? projectId)
+      : null;
   const localWorkspaceRootPath = resolveThreadLocalWorkspaceRootPath({
     environment: activeWorkspaceEnvironment,
     threadEnvironmentIsLocal: activeWorkspaceEnvironmentIsLocal,
@@ -1966,6 +1957,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     openPathInPreferredFileTarget,
     rootPanelEnvironmentIsLocal,
   ]);
+  const activeWorkspaceFilePath = activeRootWorkspaceFileTab?.path ?? null;
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,
@@ -2034,23 +2026,24 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
         showFileSearch={!isProjectless}
       />
-    ) : activeWorkspaceFilePath && activeWorkspaceFileEnvironmentId !== null ? (
+    ) : activeRootWorkspaceFileTab &&
+      activeWorkspaceFileEnvironmentId !== null ? (
       <WorkspaceFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
+        activePath={activeRootWorkspaceFileTab.path}
         copyPath={workspaceFileCopyPath}
         environmentId={activeWorkspaceFileEnvironmentId}
-        lineRange={activeWorkspaceFileLineRange}
+        lineRange={activeRootWorkspaceFileTab.lineRange}
         onOpenInEditor={handleOpenWorkspaceFileInEditor}
-        source={activeWorkspaceFileSource}
-        statusLabel={activeWorkspaceFileStatusLabel}
+        source={activeRootWorkspaceFileTab.source}
+        statusLabel={activeRootWorkspaceFileTab.statusLabel}
         threadId={rootPanelThreadId}
       />
-    ) : activeWorkspaceFilePath &&
+    ) : activeRootWorkspaceFileTab &&
       activeWorkspaceFileProjectPreviewId !== null ? (
       <ProjectFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
+        activePath={activeRootWorkspaceFileTab.path}
         copyPath={projectFileCopyPath}
-        lineRange={activeWorkspaceFileLineRange}
+        lineRange={activeRootWorkspaceFileTab.lineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
         projectId={activeWorkspaceFileProjectPreviewId}
       />

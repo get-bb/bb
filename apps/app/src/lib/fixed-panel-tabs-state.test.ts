@@ -137,6 +137,36 @@ describe("fixed-panel-tabs-state", () => {
 });
 
 describe("workspace file preview fixed panel tabs", () => {
+  it("round-trips an active project-source preview tab", () => {
+    const projectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_app",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: projectTab.id,
+        isOpen: true,
+        tabs: [projectTab],
+      },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.activeTabId).toBe(projectTab.id);
+    expect(parsed.secondary.tabs).toEqual([projectTab]);
+  });
+
   it("does not collide project-source preview tabs for the same path in different projects", () => {
     const firstProjectTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: null,
