@@ -6,10 +6,12 @@ import {
 import type {
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
+  TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import {
+  buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   readInitialPromptFromLocationState,
@@ -96,6 +98,28 @@ function makeProject(args: MakeProjectArgs): ProjectWithThreadsResponse {
     defaultExecutionOptions: null,
     createdAt: 1,
     updatedAt: 1,
+  };
+}
+
+function makeTerminalSession(
+  overrides: Partial<TerminalSession>,
+): TerminalSession {
+  return {
+    id: "term_1",
+    threadId: null,
+    environmentId: null,
+    hostId: "host_1",
+    title: "Terminal",
+    initialCwd: "/repo",
+    cols: 100,
+    rows: 30,
+    status: "running",
+    exitCode: null,
+    closeReason: null,
+    createdAt: 1,
+    updatedAt: 1,
+    lastUserInputAt: null,
+    ...overrides,
   };
 }
 
@@ -270,6 +294,53 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("host:host_1:local");
+  });
+});
+
+describe("buildRootComposeTerminalSessions", () => {
+  it("keeps host-path terminal sessions unresolved until the global list loads", () => {
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: undefined,
+        globalTerminalSessions: undefined,
+        terminalTarget: {
+          kind: "host_path",
+          hostId: "host_1",
+          cwd: "/repo",
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("filters loaded host-path terminal sessions by root target", () => {
+    const matching = makeTerminalSession({
+      id: "term_matching",
+      hostId: "host_1",
+      initialCwd: "/repo",
+    });
+    const otherHost = makeTerminalSession({
+      id: "term_other_host",
+      hostId: "host_2",
+      initialCwd: "/repo",
+    });
+    const threadTerminal = makeTerminalSession({
+      id: "term_thread",
+      threadId: "thr_1",
+      hostId: "host_1",
+      initialCwd: "/repo",
+    });
+
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: undefined,
+        globalTerminalSessions: [matching, otherHost, threadTerminal],
+        terminalTarget: {
+          kind: "host_path",
+          hostId: "host_1",
+          cwd: "/repo",
+        },
+      }),
+    ).toEqual([matching]);
   });
 });
 

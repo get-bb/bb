@@ -221,6 +221,12 @@ type RootComposeTerminalTarget =
   | { kind: "environment"; environmentId: string }
   | { kind: "host_path"; cwd: string | null; hostId: string };
 
+interface BuildRootComposeTerminalSessionsArgs {
+  environmentTerminalSessions: readonly TerminalSession[] | undefined;
+  globalTerminalSessions: readonly TerminalSession[] | undefined;
+  terminalTarget: RootComposeTerminalTarget | null;
+}
+
 interface RootComposeRightPanelToggleProps {
   activeTerminalCount: number;
   isOpen: boolean;
@@ -515,6 +521,27 @@ export function canCreateRootComposeTerminal({
     return environmentStatus === "ready";
   }
   return true;
+}
+
+export function buildRootComposeTerminalSessions({
+  environmentTerminalSessions,
+  globalTerminalSessions,
+  terminalTarget,
+}: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
+  if (terminalTarget?.kind === "environment") {
+    return environmentTerminalSessions;
+  }
+  if (terminalTarget?.kind === "host_path") {
+    return globalTerminalSessions?.filter(
+      (session) =>
+        session.threadId === null &&
+        session.environmentId === null &&
+        session.hostId === terminalTarget.hostId &&
+        (terminalTarget.cwd === null ||
+          session.initialCwd === terminalTarget.cwd),
+    );
+  }
+  return undefined;
 }
 
 function LegacyProjectComposeRedirect({
@@ -1317,37 +1344,22 @@ export function RootComposeView(props: RootComposeViewProps) {
       props.surface === "page" &&
       rootPanelTerminalTarget?.kind === "host_path",
   });
-  const terminalSessions = useMemo(() => {
-    if (rootPanelTerminalTarget?.kind === "environment") {
-      return (
-        environmentTerminalsListQuery.data?.sessions ??
-        EMPTY_TERMINAL_SESSIONS
-      );
-    }
-    if (rootPanelTerminalTarget?.kind === "host_path") {
-      return (
-        globalTerminalsListQuery.data?.sessions.filter(
-          (session) =>
-            session.threadId === null &&
-            session.environmentId === null &&
-            session.hostId === rootPanelTerminalTarget.hostId &&
-            (rootPanelTerminalTarget.cwd === null ||
-              session.initialCwd === rootPanelTerminalTarget.cwd),
-        ) ?? EMPTY_TERMINAL_SESSIONS
-      );
-    }
-    return EMPTY_TERMINAL_SESSIONS;
-  }, [
-    environmentTerminalsListQuery.data?.sessions,
-    globalTerminalsListQuery.data?.sessions,
-    rootPanelTerminalTarget,
-  ]);
-  const terminalsListLoaded =
-    rootPanelTerminalTarget?.kind === "environment"
-      ? environmentTerminalsListQuery.data !== undefined
-      : rootPanelTerminalTarget?.kind === "host_path"
-        ? globalTerminalsListQuery.data !== undefined
-        : false;
+  const loadedTerminalSessions = useMemo(
+    () =>
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
+        globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
+        terminalTarget: rootPanelTerminalTarget,
+      }),
+    [
+      environmentTerminalsListQuery.data?.sessions,
+      globalTerminalsListQuery.data?.sessions,
+      rootPanelTerminalTarget,
+    ],
+  );
+  const terminalSessions =
+    loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const terminalsListLoaded = loadedTerminalSessions !== undefined;
   const activeTerminalCount = useMemo(
     () =>
       terminalSessions.filter((session) =>
@@ -1383,15 +1395,17 @@ export function RootComposeView(props: RootComposeViewProps) {
       props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
     environmentId: rootPanelEnvironmentId,
     storageFiles: rootThreadStorageFiles?.files,
-    terminalSessions,
+    terminalSessions: loadedTerminalSessions,
   });
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
-      buildTerminalSyncedSecondaryFileTabs({
-        orderedTabs: orderedSecondaryFileTabs,
-        terminalSessions,
-      }),
-    [orderedSecondaryFileTabs, terminalSessions],
+      loadedTerminalSessions === undefined
+        ? orderedSecondaryFileTabs
+        : buildTerminalSyncedSecondaryFileTabs({
+            orderedTabs: orderedSecondaryFileTabs,
+            terminalSessions: loadedTerminalSessions,
+          }),
+    [loadedTerminalSessions, orderedSecondaryFileTabs],
   );
   useEffect(() => {
     if (!terminalsListLoaded) {
