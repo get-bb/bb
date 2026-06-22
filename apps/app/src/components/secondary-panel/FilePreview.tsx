@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { File as PierreFile } from "@pierre/diffs/react";
+import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
@@ -706,6 +706,9 @@ function FilePreviewCode({
 }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const workerPool = useWorkerPool();
+  const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
+  const [, rerenderAfterWorkerPoolChange] = useState(0);
   const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
@@ -726,6 +729,29 @@ function FilePreviewCode({
     [lineRange],
   );
   const targetLineNumber = selectedLines?.start ?? null;
+
+  useEffect(() => {
+    if (!workerPool) {
+      return;
+    }
+
+    lastWorkerPoolStatsKeyRef.current = null;
+    return workerPool.subscribeToStatChanges((stats) => {
+      const statsKey = [
+        stats.managerState,
+        stats.workersFailed,
+        stats.busyWorkers,
+        stats.queuedTasks,
+        stats.activeTasks,
+        stats.fileCacheSize,
+      ].join(":");
+      if (lastWorkerPoolStatsKeyRef.current === statsKey) {
+        return;
+      }
+      lastWorkerPoolStatsKeyRef.current = statsKey;
+      rerenderAfterWorkerPoolChange((version) => version + 1);
+    });
+  }, [file.contents, file.name, workerPool]);
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
