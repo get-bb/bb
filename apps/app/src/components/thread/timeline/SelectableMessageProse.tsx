@@ -1,8 +1,14 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
+interface SelectionAnchorPoint {
+  x: number;
+  y: number;
+}
+
 export interface MessageProseSelection {
   text: string;
   rect: DOMRect;
+  anchorPoint?: SelectionAnchorPoint;
   sourceSeqEnd?: number;
 }
 
@@ -91,8 +97,40 @@ function isSelectionBoundarySpillWithinNode(
   );
 }
 
+function toMessageProseSelection({
+  anchorPoint,
+  rect,
+  text,
+}: {
+  anchorPoint: SelectionAnchorPoint | null;
+  rect: DOMRect | null;
+  text: string;
+}): MessageProseSelection | null {
+  if (text.length === 0 || rect === null) return null;
+  const selection: MessageProseSelection = { text, rect };
+  if (anchorPoint !== null) {
+    selection.anchorPoint = anchorPoint;
+  }
+  return selection;
+}
+
+function anchorPointFromMouseEvent(
+  event: Pick<MouseEvent, "clientX" | "clientY">,
+): SelectionAnchorPoint | null {
+  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+    return null;
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
+function isEventTargetWithinNode(event: Event, node: HTMLElement | null): boolean {
+  if (node === null || !(event.target instanceof Node)) return false;
+  return node.contains(event.target);
+}
+
 function readSelectionWithinNode(
   node: HTMLElement | null,
+  anchorPoint: SelectionAnchorPoint | null,
 ): MessageProseSelection | null {
   if (node === null || typeof window === "undefined") return null;
 
@@ -109,13 +147,13 @@ function readSelectionWithinNode(
   if (accepted) {
     const text = selection.toString().trim();
     const rect = firstClientRect(range);
-    return text.length > 0 && rect !== null ? { text, rect } : null;
+    return toMessageProseSelection({ anchorPoint, rect, text });
   }
 
   const text = selection.toString().trim();
   if (isSelectionBoundarySpillWithinNode(node, range, text)) {
     const rect = firstClientRect(range);
-    return text.length > 0 && rect !== null ? { text, rect } : null;
+    return toMessageProseSelection({ anchorPoint, rect, text });
   }
 
   return null;
@@ -145,10 +183,15 @@ export function SelectableMessageProse({
     // N messages don't thrash a shared controller.
     let hadSelection = false;
     let pointerIsDown = false;
+    let pointerStartedInNode = false;
+    let pendingReportAnchorPoint: SelectionAnchorPoint | null = null;
+    let lastPointerReleaseAnchorPoint: SelectionAnchorPoint | null = null;
     let multiClickTimer: number | null = null;
     const report = () => {
       frame = null;
-      const next = readSelectionWithinNode(nodeRef.current);
+      const anchorPoint = pendingReportAnchorPoint;
+      pendingReportAnchorPoint = null;
+      const next = readSelectionWithinNode(nodeRef.current, anchorPoint);
       if (next === null && !hadSelection) return;
       hadSelection = next !== null;
       onSelectRef.current?.(next);
@@ -167,17 +210,27 @@ export function SelectableMessageProse({
       if (frame !== null) return;
       frame = window.requestAnimationFrame(report);
     };
-    const scheduleFresh = () => {
-      cancelMultiClickTimer();
-      cancelFrame();
+    const scheduleWithAnchorPoint = (
+      anchorPoint: SelectionAnchorPoint | null,
+    ) => {
+      if (anchorPoint !== null) {
+        pendingReportAnchorPoint = anchorPoint;
+      }
       schedule();
     };
-    const scheduleAfterMultiClickDelay = () => {
+    const scheduleFresh = (anchorPoint: SelectionAnchorPoint | null = null) => {
+      cancelMultiClickTimer();
+      cancelFrame();
+      scheduleWithAnchorPoint(anchorPoint);
+    };
+    const scheduleAfterMultiClickDelay = (
+      anchorPoint: SelectionAnchorPoint | null = null,
+    ) => {
       cancelFrame();
       cancelMultiClickTimer();
       multiClickTimer = window.setTimeout(() => {
         multiClickTimer = null;
-        schedule();
+        scheduleWithAnchorPoint(anchorPoint);
       }, MULTI_CLICK_SELECTION_REPORT_DELAY_MS);
     };
     const handleSelectionChange = () => {
@@ -189,36 +242,52 @@ export function SelectableMessageProse({
       }
       schedule();
     };
-    const handlePointerDown = () => {
+    const handlePointerDown = (event: PointerEvent) => {
       cancelMultiClickTimer();
       cancelFrame();
+      pendingReportAnchorPoint = null;
+      pointerStartedInNode = isEventTargetWithinNode(event, nodeRef.current);
       pointerIsDown = true;
     };
-    const handlePointerEnd = () => {
+    const handlePointerRelease = (event: PointerEvent | MouseEvent) => {
+      const anchorPoint = pointerStartedInNode
+        ? anchorPointFromMouseEvent(event)
+        : null;
+      if (anchorPoint !== null) {
+        lastPointerReleaseAnchorPoint = anchorPoint;
+      }
       pointerIsDown = false;
+      pointerStartedInNode = false;
+      scheduleWithAnchorPoint(anchorPoint);
+    };
+    const handlePointerCancel = () => {
+      pointerIsDown = false;
+      pointerStartedInNode = false;
       schedule();
     };
     const handleMultiClick = (event: MouseEvent) => {
       if (event.detail < 2) {
         return;
       }
+      const anchorPoint =
+        anchorPointFromMouseEvent(event) ?? lastPointerReleaseAnchorPoint;
       if (event.detail === 2) {
-        scheduleAfterMultiClickDelay();
+        scheduleAfterMultiClickDelay(anchorPoint);
         return;
       }
       // Multi-click selection can be finalized after pointerup. Replace any
       // stale pointerup read with one explicitly tied to the completed click.
-      scheduleFresh();
+      scheduleFresh(anchorPoint);
     };
     const handleDoubleClick = () => {
-      scheduleAfterMultiClickDelay();
+      scheduleAfterMultiClickDelay(lastPointerReleaseAnchorPoint);
     };
     const node = nodeRef.current;
 
     document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("pointerup", handlePointerEnd);
-    document.addEventListener("pointercancel", handlePointerEnd);
-    document.addEventListener("mouseup", handlePointerEnd);
+    document.addEventListener("pointerup", handlePointerRelease);
+    document.addEventListener("pointercancel", handlePointerCancel);
+    document.addEventListener("mouseup", handlePointerRelease);
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keyup", schedule);
     node?.addEventListener("click", handleMultiClick);
@@ -227,9 +296,9 @@ export function SelectableMessageProse({
       if (frame !== null) window.cancelAnimationFrame(frame);
       cancelMultiClickTimer();
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("pointerup", handlePointerEnd);
-      document.removeEventListener("pointercancel", handlePointerEnd);
-      document.removeEventListener("mouseup", handlePointerEnd);
+      document.removeEventListener("pointerup", handlePointerRelease);
+      document.removeEventListener("pointercancel", handlePointerCancel);
+      document.removeEventListener("mouseup", handlePointerRelease);
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keyup", schedule);
       node?.removeEventListener("click", handleMultiClick);

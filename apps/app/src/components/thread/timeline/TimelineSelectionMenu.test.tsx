@@ -7,11 +7,14 @@ import type { MessageProseSelection } from "./SelectableMessageProse";
 
 afterEach(cleanup);
 
-function makeSelection(): MessageProseSelection {
+function makeSelection(
+  overrides: Partial<MessageProseSelection> = {},
+): MessageProseSelection {
   return {
     text: "selected text",
     rect: new DOMRect(10, 10, 100, 20),
     sourceSeqEnd: 12,
+    ...overrides,
   };
 }
 
@@ -37,6 +40,24 @@ describe("TimelineSelectionMenu", () => {
     );
 
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("anchors to the pointer release point when one is available", () => {
+    const { container } = render(
+      <TimelineSelectionMenu
+        selection={makeSelection({ anchorPoint: { x: 42, y: 84 } })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const anchor = container.querySelector('[aria-hidden="true"]');
+    expect(anchor).toBeInstanceOf(HTMLElement);
+    if (!(anchor instanceof HTMLElement)) {
+      throw new Error("Expected selection menu anchor to render");
+    }
+    expect(anchor.style.left).toBe("42px");
+    expect(anchor.style.top).toBe("84px");
   });
 
   it("passes the selection branch point to side-chat replies", () => {

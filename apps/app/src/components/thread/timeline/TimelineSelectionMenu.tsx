@@ -117,7 +117,9 @@ export function TimelineSelectionMenu({
   ];
   if (actions.length === 0) return null;
 
-  const { rect } = selection;
+  const { anchorPoint, rect } = selection;
+  const anchorLeft = anchorPoint?.x ?? rect.left + rect.width / 2;
+  const anchorTop = anchorPoint?.y ?? rect.top;
 
   return (
     <Popover
@@ -126,15 +128,18 @@ export function TimelineSelectionMenu({
         if (!next) onDismiss();
       }}
     >
-      {/* Zero-size anchor pinned to the selection rect (viewport coords). */}
+      {/*
+        Zero-size anchor pinned to the pointer release point, falling back to the
+        selection rect.
+      */}
       <PopoverAnchor asChild>
         <div
           ref={anchorRef}
           aria-hidden="true"
           style={{
             position: "fixed",
-            left: rect.left + rect.width / 2,
-            top: rect.top,
+            left: anchorLeft,
+            top: anchorTop,
             width: 0,
             height: 0,
           }}

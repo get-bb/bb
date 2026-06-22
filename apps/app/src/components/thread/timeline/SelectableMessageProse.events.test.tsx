@@ -86,6 +86,34 @@ describe("SelectableMessageProse", () => {
     );
   });
 
+  it("includes the pointer release point when a pointer selection starts in the message", async () => {
+    const onSelect = vi.fn();
+    const { getByText } = render(
+      <SelectableMessageProse onSelect={onSelect}>
+        Selectable answer text
+      </SelectableMessageProse>,
+    );
+    const target = getByText("Selectable answer text");
+    const textNode = target.firstChild;
+    expect(textNode).not.toBeNull();
+    mockWindowSelection({
+      node: textNode!,
+      text: "answer text",
+    });
+
+    fireEvent.pointerDown(target);
+    fireEvent.pointerUp(document, { clientX: 42, clientY: 84 });
+
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          anchorPoint: { x: 42, y: 84 },
+          text: "answer text",
+        }),
+      ),
+    );
+  });
+
   it("reports a selection that updates after pointer release", async () => {
     const onSelect = vi.fn();
     const { getByText } = render(
