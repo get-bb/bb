@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppThemeId } from "@bb/domain";
+import type { BuiltInThemeId } from "@bb/domain";
 import { builtInThemes } from "@bb/domain";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,7 @@ const STORY_THEME_STYLE_ID = "story-git-diff-theme";
 
 /** Inject the selected palette's CSS globally (the same string the app applies
  *  at runtime) so the `.light` / `.dark` panes below pick up its tokens. */
-function usePaletteCss(themeId: AppThemeId) {
+function usePaletteCss(themeId: BuiltInThemeId) {
   useEffect(() => {
     let el = document.getElementById(
       STORY_THEME_STYLE_ID,
@@ -121,7 +121,7 @@ function ModePane({ mode }: { mode: "light" | "dark" }) {
 }
 
 export function ThemedDiffPanel() {
-  const [themeId, setThemeId] = useState<AppThemeId>("catppuccin");
+  const [themeId, setThemeId] = useState<BuiltInThemeId>("catppuccin");
   usePaletteCss(themeId);
 
   return (

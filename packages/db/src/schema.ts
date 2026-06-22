@@ -153,11 +153,11 @@ export const systemExperiments = sqliteTable("system_experiments", {
 });
 
 // Single-row table (id = "current") holding the app-wide color palette: the
-// active built-in theme id (or "custom") plus the custom stylesheet text.
+// active palette id — a built-in theme id, or a custom theme name whose CSS
+// lives on disk under `<data-dir>/theme/<name>/theme.css`.
 export const appTheme = sqliteTable("app_theme", {
   id: text("id").primaryKey(),
   themeId: text("theme_id").notNull(),
-  customCss: text("custom_css"),
   updatedAt: integer("updated_at").notNull(),
 });
 

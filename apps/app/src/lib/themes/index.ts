@@ -1,4 +1,4 @@
-import type { AppTheme, AppThemeId } from "@bb/domain";
+import { isBuiltInThemeId, type AppTheme, type BuiltInThemeId } from "@bb/domain";
 import { catppuccinThemeCss } from "./catppuccin";
 import { draculaThemeCss } from "./dracula";
 import { gruvboxThemeCss } from "./gruvbox";
@@ -10,10 +10,10 @@ export const APP_THEME_CSS_STORAGE_KEY = "bb.appThemeCss";
 
 /**
  * CSS overrides per built-in palette. "default" is empty so the base theme.css
- * tokens show through. The "custom" palette is supplied at runtime (server),
- * not from this registry.
+ * tokens show through. Custom palettes are supplied at runtime (the server reads
+ * their CSS from disk), not from this registry.
  */
-const builtInThemeCss: Record<Exclude<AppThemeId, "custom">, string> = {
+const builtInThemeCss: Record<BuiltInThemeId, string> = {
   default: "",
   nord: nordThemeCss,
   dracula: draculaThemeCss,
@@ -23,8 +23,10 @@ const builtInThemeCss: Record<Exclude<AppThemeId, "custom">, string> = {
 };
 
 export function resolveAppThemeCss(appearance: AppTheme): string {
-  if (appearance.themeId === "custom") return appearance.customCss ?? "";
-  return builtInThemeCss[appearance.themeId] ?? "";
+  if (isBuiltInThemeId(appearance.themeId)) {
+    return builtInThemeCss[appearance.themeId];
+  }
+  return appearance.customCss ?? "";
 }
 
 function getOrCreateStyleElement(): HTMLStyleElement | null {

@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { hc } from "hono/client";
 import type {
   AppTheme,
+  AppThemeSelection,
   Environment,
   Experiments,
   Host,
@@ -12,7 +13,7 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import { appThemeSchema, experimentsSchema } from "@bb/domain";
+import { appThemeSelectionSchema, experimentsSchema } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
@@ -99,6 +100,7 @@ import type {
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
   TerminalListResponse,
+  ThemeCatalogResponse,
   TerminalSession,
   TerminalInputRequest,
   TerminalListQuery,
@@ -859,8 +861,16 @@ export const publicApiRoutes = {
     appearance: defineRoute({
       path: "/settings/appearance",
       method: "put",
-      request: jsonRequest<EmptyInput, AppTheme>(appThemeSchema),
+      request: jsonRequest<EmptyInput, AppThemeSelection>(
+        appThemeSelectionSchema,
+      ),
       response: jsonResponse<AppTheme>(),
+    }),
+    themes: defineRoute({
+      path: "/settings/themes",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ThemeCatalogResponse>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",

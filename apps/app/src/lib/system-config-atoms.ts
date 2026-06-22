@@ -14,6 +14,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     popoutChatHotkey: "Alt+Space",
   },
   appearance: { themeId: "default", customCss: null },
+  customThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

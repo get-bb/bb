@@ -1652,9 +1652,9 @@ export async function updateExperiments(
   );
 }
 
-export async function updateAppearance(appearance: AppTheme): Promise<AppTheme> {
+export async function updateAppearance(themeId: string): Promise<AppTheme> {
   return request<AppTheme>(
-    apiClient.settings.appearance.$put({ json: appearance }),
+    apiClient.settings.appearance.$put({ json: { themeId } }),
   );
 }
 

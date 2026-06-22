@@ -170,26 +170,38 @@ For review or fix pipelines, get the environment ID from
   overrides persisted server-side and applied live to every open window. This is
   the _palette_ only; light/dark _mode_ is a separate per-client setting that the
   palette layers on top of.
+- **Custom themes live on disk** under the app data dir, one folder per theme:
+  `<bb-data-dir>/theme/<name>/theme.css` (the packaged app uses `~/.bb/theme/…`).
+  The folder name *is* the theme id. This mirrors how user skills live under
+  `<bb-data-dir>/skills/<name>/`.
 - Commands:
-  - `bb theme list` — built-in themes and which palette is active.
-  - `bb theme set <id>` — switch to a built-in: `default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`, `catppuccin`.
-  - `bb theme set-custom --file <path.css>` — load a custom stylesheet and
-    activate it. This is the only way to set custom CSS (Settings only switches
-    between built-ins).
-  - `bb theme show [--css]` — print the active palette; `--css` dumps the custom CSS.
-  - `bb theme reset` — back to `default`, clearing the custom stylesheet.
+  - `bb theme list` — built-in and custom themes and which palette is active.
+  - `bb theme dir` — print the absolute custom-theme directory (where to create
+    `<name>/theme.css`). Use this instead of guessing the path.
+  - `bb theme set <id>` — activate a built-in (`default`, `nord`, `dracula`,
+    `solarized`, `gruvbox`, `catppuccin`) or a custom theme by its folder name.
+  - `bb theme show [--css]` — print the active palette; `--css` dumps the active
+    theme's CSS.
+  - `bb theme reset` — back to `default`.
 
-### Authoring a theme
+### Creating or editing a custom theme
 
-To write a built-in theme or a custom stylesheet, **read `references/theming.md`
-(in this skill's directory) first.** It is the full design-token reference — what
-every CSS variable drives, which tokens to set vs. which auto-derive — plus the
-two-block light/dark structure, how to set colors and fonts, and a worked example.
+This is the BB habit: custom app-theme work belongs in
+`<bb-data-dir>/theme/<name>/theme.css` — never a stray `.css` file elsewhere.
+
+1. Find the directory: `bb theme dir` (e.g. `~/.bb/theme`).
+2. Write the stylesheet to `<that-dir>/<name>/theme.css` (create the folder). Use
+   a short, lowercase, hyphenated `<name>` (it must not collide with a built-in
+   id). To edit an existing theme, change its `theme.css` in place.
+3. Activate it: `bb theme set <name>`. Changes apply live to every open window.
+
+To author the stylesheet, **read `references/theming.md` (in this skill's
+directory) first.** It is the full design-token reference — what every CSS
+variable drives, which tokens to set vs. which auto-derive — plus the two-block
+light/dark structure, how to set colors and fonts, and a worked example.
 
 The short version: a custom theme is a plain CSS file that overrides CSS custom
 properties. Set the two anchors `--canvas`/`--ink` (most of the UI derives from
 them by mixing ink into canvas), the `--primary` accent, the secondary text tiers
 (`--muted-foreground` etc.), and the semantic colors (`--destructive`,
-`--success`, …). Ship one file with a `:root, .light` block and a `.dark` block,
-then load it with `bb theme set-custom --file <path.css>`.
+`--success`, …). Ship one file with a `:root, .light` block and a `.dark` block.

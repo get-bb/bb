@@ -1,28 +1,22 @@
-import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
-  BUILTIN_THEME_IDS,
   builtInThemes,
   defaultAppTheme,
+  isBuiltInThemeId,
   type AppTheme,
-  type AppThemeId,
 } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
-
-interface ThemeSetCustomCommandOptions extends JsonOutputOptions {
-  file: string;
-}
 
 interface ThemeShowCommandOptions extends JsonOutputOptions {
   css?: boolean;
 }
 
 function describeActive(theme: AppTheme): string {
-  if (theme.themeId === "custom") {
+  if (!isBuiltInThemeId(theme.themeId)) {
     const bytes = theme.customCss?.length ?? 0;
-    return `Custom stylesheet (${bytes} bytes)`;
+    return `Custom theme '${theme.themeId}' (${bytes} bytes)`;
   }
   const meta = builtInThemes.find((entry) => entry.id === theme.themeId);
   return meta ? `${meta.name} (${meta.id})` : theme.themeId;
@@ -38,72 +32,70 @@ export function registerThemeCommands(
 
   theme
     .command("list")
-    .description("List built-in themes and the active palette")
+    .description("List built-in and custom themes and the active palette")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: JsonOutputOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const active = await sdk.theme.get();
+        const catalog = await sdk.theme.catalog();
         if (
           outputJson(opts, {
-            active,
+            active: catalog.active,
             builtInThemes,
-            customLoaded: active.customCss !== null,
+            custom: catalog.custom,
+            dir: catalog.dir,
           })
         ) {
           return;
         }
+        const active = catalog.active.themeId;
         console.log("");
+        console.log("Built-in:");
         for (const entry of builtInThemes) {
-          const marker = active.themeId === entry.id ? "*" : " ";
-          console.log(`${marker} ${entry.id.padEnd(10)} ${entry.description}`);
+          const marker = active === entry.id ? "*" : " ";
+          console.log(`${marker} ${entry.id.padEnd(12)} ${entry.description}`);
         }
-        const customMarker = active.themeId === "custom" ? "*" : " ";
-        const customState =
-          active.customCss !== null ? "loaded" : "not set — use set-custom";
-        console.log(`${customMarker} ${"custom".padEnd(10)} ${customState}`);
         console.log("");
-        console.log(`Active: ${describeActive(active)}`);
+        console.log(`Custom (${catalog.dir}):`);
+        if (catalog.custom.length === 0) {
+          console.log(`  (none — create <name>/theme.css under that directory)`);
+        } else {
+          for (const name of catalog.custom) {
+            const marker = active === name ? "*" : " ";
+            console.log(`${marker} ${name}`);
+          }
+        }
+        console.log("");
+        console.log(`Active: ${describeActive(catalog.active)}`);
       }),
     );
 
   theme
     .command("set <id>")
-    .description(`Switch to a built-in theme (${BUILTIN_THEME_IDS.join(", ")})`)
+    .description(
+      "Switch to a built-in theme or a custom theme by name " +
+        "(a directory under the theme dir with a theme.css)",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
-        if (!(BUILTIN_THEME_IDS as readonly string[]).includes(id)) {
-          throw new Error(
-            `Unknown theme '${id}'. Expected one of: ${BUILTIN_THEME_IDS.join(", ")}.`,
-          );
-        }
         const sdk = createCliBbSdk(getUrl());
-        // Preserve any previously loaded custom CSS so it can be re-selected.
-        const current = await sdk.theme.get();
-        const updated = await sdk.theme.set({
-          themeId: id as AppThemeId,
-          customCss: current.customCss,
-        });
+        const updated = await sdk.theme.set(id);
         if (outputJson(opts, updated)) return;
         console.log(`Theme set to ${describeActive(updated)}`);
       }),
     );
 
   theme
-    .command("set-custom")
-    .description("Load a custom stylesheet from a file and activate it")
-    .requiredOption("--file <path>", "Path to a CSS file")
+    .command("dir")
+    .description("Print the directory where custom themes live")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (opts: ThemeSetCustomCommandOptions) => {
-        const customCss = await readFile(opts.file, "utf8");
+      action(async (opts: JsonOutputOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const updated = await sdk.theme.set({ themeId: "custom", customCss });
-        if (outputJson(opts, updated)) return;
-        console.log(
-          `Custom stylesheet loaded (${customCss.length} bytes) and activated`,
-        );
+        const catalog = await sdk.theme.catalog();
+        if (outputJson(opts, { dir: catalog.dir })) return;
+        console.log(catalog.dir);
       }),
     );
 
@@ -118,11 +110,11 @@ export function registerThemeCommands(
         const active = await sdk.theme.get();
         if (outputJson(opts, active)) return;
         if (opts.css) {
-          if (active.themeId === "custom" && active.customCss !== null) {
+          if (active.customCss !== null) {
             console.log(active.customCss);
           } else {
             console.log(
-              "// Built-in theme CSS is bundled in the app, not stored server-side.",
+              "// Built-in theme CSS is bundled in the app, not stored on disk.",
             );
           }
           return;
@@ -133,12 +125,12 @@ export function registerThemeCommands(
 
   theme
     .command("reset")
-    .description("Reset to the Default theme and clear any custom stylesheet")
+    .description("Reset to the Default theme")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: JsonOutputOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const updated = await sdk.theme.set(defaultAppTheme);
+        const updated = await sdk.theme.set(defaultAppTheme.themeId);
         if (outputJson(opts, updated)) return;
         console.log(`Theme reset to ${describeActive(updated)}`);
       }),

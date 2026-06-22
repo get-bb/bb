@@ -6,22 +6,23 @@ import { z } from "zod";
  * custom-property overrides applied app-wide, persisted server-side so the CLI
  * and Settings can both set it and every open window stays in sync.
  *
- * `themeId` is either a built-in palette or "custom"; built-in CSS lives in the
- * frontend registry, so only the active id and the custom CSS text are stored.
+ * A palette is either a built-in id (CSS bundled in the frontend registry) or a
+ * custom theme discovered on disk under `<data-dir>/theme/<name>/theme.css`. For
+ * a custom palette `themeId` is the theme's directory name and the resolved CSS
+ * is read from that file by the server.
  */
-export const appThemeIdSchema = z.enum([
+export const builtInThemeIdSchema = z.enum([
   "default",
   "nord",
   "dracula",
   "solarized",
   "gruvbox",
   "catppuccin",
-  "custom",
 ]);
-export type AppThemeId = z.infer<typeof appThemeIdSchema>;
+export type BuiltInThemeId = z.infer<typeof builtInThemeIdSchema>;
 
 export interface BuiltInThemeMeta {
-  id: Exclude<AppThemeId, "custom">;
+  id: BuiltInThemeId;
   name: string;
   description: string;
 }
@@ -52,23 +53,58 @@ export const builtInThemes: readonly BuiltInThemeMeta[] = [
   },
 ];
 
-/** Built-in palette ids (everything except "custom"). */
-export const BUILTIN_THEME_IDS = builtInThemes.map((theme) => theme.id);
+/** Built-in palette ids. */
+export const BUILTIN_THEME_IDS = builtInThemeIdSchema.options;
+
+/** Whether an id refers to a bundled built-in palette (vs. a custom theme). */
+export function isBuiltInThemeId(id: string): id is BuiltInThemeId {
+  return (BUILTIN_THEME_IDS as readonly string[]).includes(id);
+}
+
+/**
+ * Custom theme name = the directory under `<data-dir>/theme/`. Constrained to a
+ * single safe path segment (no separators or `..`) so it can be used directly as
+ * a filesystem path and a stable id; built-in ids are not allowed (they're
+ * reserved and would shadow the custom theme).
+ */
+export const customThemeNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+    "Custom theme names may use letters, digits, '.', '_', and '-' and cannot start with '.'",
+  )
+  .refine((name) => name !== "." && name !== "..", "Invalid custom theme name")
+  .refine(
+    (name) => !isBuiltInThemeId(name),
+    "Custom theme name collides with a built-in palette id",
+  );
 
 /** Max size of a user-supplied custom stylesheet; keeps the persisted and
  * broadcast config payload bounded. */
 export const CUSTOM_THEME_CSS_MAX_LENGTH = 256_000;
 
-export const appThemeSchema = z
-  .object({
-    themeId: appThemeIdSchema,
-    /** Raw CSS for the "custom" palette; null for built-ins. */
-    customCss: z.string().max(CUSTOM_THEME_CSS_MAX_LENGTH).nullable(),
-  })
-  .refine((value) => value.themeId !== "custom" || value.customCss !== null, {
-    message: 'customCss is required when themeId is "custom"',
-    path: ["customCss"],
-  });
+/**
+ * The active palette as resolved by the server: a palette id (built-in or
+ * custom theme name) plus the resolved custom CSS (null for built-ins, the
+ * `theme.css` contents for a custom theme).
+ */
+export const appThemeSchema = z.object({
+  themeId: z.string().min(1),
+  /** Resolved CSS for a custom palette; null for built-ins. */
+  customCss: z.string().max(CUSTOM_THEME_CSS_MAX_LENGTH).nullable(),
+});
 export type AppTheme = z.infer<typeof appThemeSchema>;
+
+/**
+ * The palette selection a client sends when switching themes: just the id. The
+ * server validates it (built-in id or an existing custom theme) and resolves the
+ * CSS from disk for custom themes.
+ */
+export const appThemeSelectionSchema = z.object({
+  themeId: z.string().min(1),
+});
+export type AppThemeSelection = z.infer<typeof appThemeSelectionSchema>;
 
 export const defaultAppTheme: AppTheme = { themeId: "default", customCss: null };

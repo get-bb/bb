@@ -76,13 +76,32 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 export const systemConfigResponseSchema = z.object({
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
   experiments: experimentsSchema,
-  /** App-wide color palette (built-in id or custom CSS), persisted server-side. */
+  /** Active app-wide palette (built-in id or custom theme), resolved server-side. */
   appearance: appThemeSchema,
+  /**
+   * Names of custom themes discovered under `<data-dir>/theme/<name>/theme.css`,
+   * so the Settings picker can offer them alongside the built-ins.
+   */
+  customThemes: z.array(z.string()),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),
 });
 export type SystemConfigResponse = z.infer<typeof systemConfigResponseSchema>;
+
+/**
+ * Theme catalog: the on-disk custom-theme directory plus the discovered custom
+ * themes and the active palette. Drives `bb theme list` / `bb theme dir`.
+ */
+export const themeCatalogResponseSchema = z.object({
+  /** Absolute path of the custom-theme root: `<data-dir>/theme`. */
+  dir: z.string(),
+  /** Discovered custom theme names (each has a `theme.css`). */
+  custom: z.array(z.string()),
+  /** The active palette, resolved server-side. */
+  active: appThemeSchema,
+});
+export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
 export const systemVersionResponseSchema = z.object({
   /** Version of the running bb-app package, read from package.json. */

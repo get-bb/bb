@@ -5,7 +5,6 @@ import {
   defaultExperiments,
   isValidElectronAccelerator,
   type AppTheme,
-  type AppThemeId,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -122,10 +121,11 @@ export interface FaviconColorSettingsControlProps {
 export interface GeneralSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
+  customThemes: readonly string[];
   desktopBrowserAvailable: boolean;
   faviconColor: FaviconColorPreference;
   navigateToThreadAfterCreate: boolean;
-  onAppearanceThemeChange: (themeId: AppThemeId) => void;
+  onAppearanceThemeChange: (themeId: string) => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
@@ -139,7 +139,6 @@ export interface GeneralSettingsSectionProps {
 }
 
 function appPaletteLabel(appearance: AppTheme): string {
-  if (appearance.themeId === "custom") return "Custom";
   const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
   return meta?.name ?? appearance.themeId;
 }
@@ -480,6 +479,7 @@ export function RichTextEditingSettingsControl({
 export function GeneralSettingsSection({
   appearance,
   appearanceDisabled,
+  customThemes,
   desktopBrowserAvailable,
   faviconColor,
   navigateToThreadAfterCreate,
@@ -537,7 +537,7 @@ export function GeneralSettingsSection({
 
         <SettingsWithControl
           label="Palette"
-          description="Applies to the whole app. Load a custom stylesheet with the bb theme CLI."
+          description="Applies to the whole app. Add a custom theme by creating .bb/theme/<name>/theme.css, then pick it here or with the bb theme CLI."
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -572,22 +572,22 @@ export function GeneralSettingsSection({
                   />
                 </DropdownMenuItem>
               ))}
-              {appearance.customCss !== null ? (
+              {customThemes.map((name) => (
                 <DropdownMenuItem
-                  key="custom"
-                  onSelect={() => onAppearanceThemeChange("custom")}
+                  key={`custom:${name}`}
+                  onSelect={() => onAppearanceThemeChange(name)}
                 >
-                  Custom
+                  {name}
                   <Icon
                     name="Check"
                     className={cn(
                       "ml-auto",
-                      appearance.themeId !== "custom" && "opacity-0",
+                      appearance.themeId !== name && "opacity-0",
                       COARSE_POINTER_ICON_SIZE_CLASS,
                     )}
                   />
                 </DropdownMenuItem>
-              ) : null}
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </SettingsWithControl>
@@ -906,6 +906,7 @@ export function SettingsView() {
             systemConfigQuery.data === undefined ||
             updateAppearanceMutation.isPending
           }
+          customThemes={systemConfigQuery.data?.customThemes ?? []}
           desktopBrowserAvailable={desktopBrowserAvailable}
           faviconColor={faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
@@ -914,10 +915,7 @@ export function SettingsView() {
           richTextEditing={richTextEditing}
           themePreference={themePreference}
           onAppearanceThemeChange={(themeId) =>
-            updateAppearanceMutation.mutate({
-              themeId,
-              customCss: appearance.customCss,
-            })
+            updateAppearanceMutation.mutate(themeId)
           }
           onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}

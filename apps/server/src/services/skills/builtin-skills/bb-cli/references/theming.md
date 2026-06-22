@@ -10,6 +10,7 @@ that handles both modes.
 
 ## Contents
 
+- [Where themes live](#where-themes-live)
 - [Model](#model)
 - [Stylesheet structure](#stylesheet-structure)
 - [What to set (quick start)](#what-to-set-quick-start)
@@ -17,6 +18,15 @@ that handles both modes.
 - [Changing fonts](#changing-fonts)
 - [Worked example](#worked-example)
 - [Applying a theme](#applying-a-theme)
+
+## Where themes live
+
+A custom theme is a folder under the app data dir:
+`<bb-data-dir>/theme/<name>/theme.css` (the packaged app uses `~/.bb/theme/…`).
+The folder name is the theme id. Run `bb theme dir` to print the exact directory
+rather than guessing it. Always put custom app-theme CSS here — not in a stray
+`.css` file elsewhere in a repo. To edit a theme, change its `theme.css` in place
+and re-run `bb theme set <name>` (or just re-select it) to re-apply.
 
 ## Model
 
@@ -227,11 +237,17 @@ and semantics:
 
 ## Applying a theme
 
-- `bb theme set-custom --file ./my-theme.css` — load and activate a custom
-  stylesheet (the only way to set custom CSS).
+1. `bb theme dir` — print the custom-theme directory (e.g. `~/.bb/theme`).
+2. Write your stylesheet to `<that-dir>/<name>/theme.css` (create the folder;
+   `<name>` is the theme id — lowercase/hyphenated, not a built-in id).
+3. `bb theme set <name>` — activate it. To edit later, change the file in place
+   and re-run `bb theme set <name>`.
+
+Other commands:
+
 - `bb theme set <id>` — switch to a built-in (`default`, `nord`, `dracula`,
-  `solarized`, `gruvbox`, `catppuccin`).
-- `bb theme show --css` — dump the active custom CSS; `bb theme list` shows the
-  active palette; `bb theme reset` returns to `default`.
+  `solarized`, `gruvbox`, `catppuccin`) or a custom theme by folder name.
+- `bb theme show --css` — dump the active theme's CSS; `bb theme list` shows the
+  active palette and all discovered themes; `bb theme reset` returns to `default`.
 
 Changes apply live to every open window — no reload needed.

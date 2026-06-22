@@ -1,9 +1,10 @@
 import {
-  getAppTheme,
   getExperiments,
-  setAppTheme,
+  getStoredThemeId,
   setExperiments,
+  setStoredThemeId,
 } from "@bb/db";
+import { customThemeNameSchema, isBuiltInThemeId } from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -21,6 +22,13 @@ import {
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
+import {
+  listCustomThemeNames,
+  readCustomThemeCss,
+  resolveAppTheme,
+  resolveCustomThemeCssPath,
+  resolveThemeRootPath,
+} from "../services/system/custom-themes.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
@@ -28,10 +36,13 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   });
   const routes = publicApiRoutes.system;
 
+  const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
   function buildSystemConfigResponse() {
     return {
       experiments: getExperiments(deps.db),
-      appearance: getAppTheme(deps.db),
+      appearance: resolveAppTheme(themeRoot, getStoredThemeId(deps.db)),
+      customThemes: listCustomThemeNames(themeRoot),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
@@ -49,12 +60,37 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   });
 
   put(routes.appearance, (context, payload) => {
-    setAppTheme(deps.db, payload);
+    const { themeId } = payload;
+    if (!isBuiltInThemeId(themeId)) {
+      if (!customThemeNameSchema.safeParse(themeId).success) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          `Invalid theme id '${themeId}'.`,
+        );
+      }
+      if (readCustomThemeCss(themeRoot, themeId) === null) {
+        throw new ApiError(
+          404,
+          "theme_not_found",
+          `Custom theme '${themeId}' not found. Create ${resolveCustomThemeCssPath(themeRoot, themeId)} first.`,
+        );
+      }
+    }
+    setStoredThemeId(deps.db, themeId);
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(getAppTheme(deps.db));
+    return context.json(resolveAppTheme(themeRoot, themeId));
   });
+
+  get(routes.themes, (context) =>
+    context.json({
+      dir: themeRoot,
+      custom: listCustomThemeNames(themeRoot),
+      active: resolveAppTheme(themeRoot, getStoredThemeId(deps.db)),
+    }),
+  );
 
   post(routes.reloadConfig, async (context) => {
     try {
