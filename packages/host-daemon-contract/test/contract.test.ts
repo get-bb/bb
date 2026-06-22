@@ -2499,12 +2499,13 @@ describe("host-daemon session schemas", () => {
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",
-        projectId: "proj_123",
-        environmentId: "env_123",
-        threadStoragePath: "/tmp/thread-storage/thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
+        target: {
+          kind: "workspace",
+          environmentId: "env_123",
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+            workspaceProvisionType: "unmanaged",
+          },
         },
         cols: TERMINAL_COLS_MAX,
         rows: TERMINAL_ROWS_MAX,
