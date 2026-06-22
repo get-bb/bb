@@ -599,6 +599,190 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("returns active background task state when the task started outside the latest window", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const requestData = (requestId: number, text: string) => ({
+        direction: "outbound" as const,
+        requestId: encodeClientTurnRequestIdNumber({ value: requestId }),
+        input: [{ type: "text" as const, text }],
+        target: { kind: "new-turn" as const },
+        execution: {
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full" as const,
+          serviceTier: "default",
+          source: "client/turn/requested" as const,
+        },
+        initiator: "user" as const,
+        senderThreadId: null,
+        request: {
+          method: "turn/start" as const,
+          params: {},
+        },
+        source: "tell" as const,
+      });
+      const taskData = (args: {
+        itemId: string;
+        taskType: string;
+        description: string;
+      }) => ({
+        item: {
+          type: "backgroundTask" as const,
+          id: args.itemId,
+          taskType: args.taskType,
+          description: args.description,
+          status: "pending" as const,
+          taskStatus: "running" as const,
+          skipTranscript: false,
+          ...(args.taskType === "local_workflow"
+            ? { workflowName: "fixture-mini" }
+            : {}),
+        },
+      });
+      const providerThreadId = "provider-thread-1";
+      const seedClientRequest = (
+        sequence: number,
+        requestId: number,
+        text: string,
+      ) => {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          sequence,
+          type: "client/turn/requested",
+          scope: threadScope(),
+          data: requestData(requestId, text),
+        });
+      };
+      const seedCompletedMessageTurn = (args: {
+        requestId: number;
+        requestSequence: number;
+        text: string;
+        turnId: string;
+      }) => {
+        seedClientRequest(args.requestSequence, args.requestId, args.text);
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          sequence: args.requestSequence + 1,
+          type: "turn/started",
+          scope: turnScope(args.turnId),
+          data: {},
+        });
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          sequence: args.requestSequence + 2,
+          type: "item/completed",
+          scope: turnScope(args.turnId),
+          data: {
+            item: {
+              type: "agentMessage",
+              id: `${args.turnId}-assistant`,
+              text: `${args.text} done.`,
+            },
+          },
+        });
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          sequence: args.requestSequence + 3,
+          type: "turn/completed",
+          scope: turnScope(args.turnId),
+          data: { status: "completed" },
+        });
+      };
+      const activeTasks = [
+        {
+          itemId: "task:wf-open",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+        },
+        {
+          itemId: "task:cmd-open",
+          taskType: "local_bash",
+          description: "sleep 30",
+        },
+      ] as const;
+
+      seedClientRequest(1, 101, "Start background work");
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+        data: {},
+      });
+      for (const [index, task] of activeTasks.entries()) {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          sequence: 3 + index,
+          type: "item/started",
+          scope: turnScope("turn-1"),
+          data: taskData(task),
+        });
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          sequence: 5 + index,
+          type: "item/backgroundTask/progress",
+          scope: threadScope(),
+          data: taskData(task),
+        });
+      }
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        sequence: 7,
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        data: { status: "completed" },
+      });
+      seedCompletedMessageTurn({
+        requestId: 202,
+        requestSequence: 10,
+        text: "Middle turn",
+        turnId: "turn-2",
+      });
+      seedCompletedMessageTurn({
+        requestId: 303,
+        requestSequence: 20,
+        text: "Latest turn",
+        turnId: "turn-3",
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline?segmentLimit=1`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+
+      expect(timeline.activeWorkflow).toMatchObject({
+        itemId: "task:wf-open",
+        status: "pending",
+        taskStatus: "running",
+      });
+      expect(timeline.activeBackgroundCommands).toHaveLength(1);
+      expect(timeline.activeBackgroundCommands[0]).toMatchObject({
+        itemId: "task:cmd-open",
+        status: "pending",
+        taskStatus: "running",
+      });
+    });
+  });
+
   it("hydrates turn-summary details when the range overlaps another turn", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

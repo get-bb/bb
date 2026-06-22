@@ -45,6 +45,7 @@ import {
   pruneTokenUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
+  listLatestOpenBackgroundTaskStateRowsForThread,
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
@@ -2726,6 +2727,203 @@ describe("events", () => {
         itemIds: [],
       }),
     ).toEqual([]);
+  });
+
+  it("returns latest non-terminal open backgroundTask state rows for a thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    const taskData = (args: {
+      itemId: string;
+      itemStatus: "pending" | "completed";
+      taskStatus: "running" | "completed";
+      taskType: string;
+    }) =>
+      JSON.stringify({
+        item: {
+          id: args.itemId,
+          type: "backgroundTask",
+          taskType: args.taskType,
+          description: "fixture background task",
+          status: args.itemStatus,
+          taskStatus: args.taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-start-only",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-start-only",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-progress",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-progress",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-terminal-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-terminal-progress",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-terminal-progress",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-terminal-progress",
+          itemStatus: "completed",
+          taskStatus: "completed",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-completed",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-completed",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-completed",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-completed",
+          itemStatus: "completed",
+          taskStatus: "completed",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:cmd-open",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:cmd-open",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_bash",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 9,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:cmd-open",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:cmd-open",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: "local_bash",
+        }),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:other-thread",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:other-thread",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+    ]);
+
+    const rows = listLatestOpenBackgroundTaskStateRowsForThread(db, {
+      threadId: thread.id,
+    });
+
+    expect(
+      rows.map((row) => ({
+        itemId: row.itemId,
+        sequence: row.sequence,
+        type: row.type,
+      })),
+    ).toEqual([
+      {
+        itemId: "task:wf-start-only",
+        sequence: 1,
+        type: "item/started",
+      },
+      {
+        itemId: "task:wf-progress",
+        sequence: 3,
+        type: "item/backgroundTask/progress",
+      },
+      {
+        itemId: "task:cmd-open",
+        sequence: 9,
+        type: "item/backgroundTask/progress",
+      },
+    ]);
   });
 
   it("counts only active background workflow snapshots by thread", () => {

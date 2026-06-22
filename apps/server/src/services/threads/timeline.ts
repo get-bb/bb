@@ -21,6 +21,7 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsInRange,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
@@ -540,6 +541,20 @@ function ensureTimelineWindowBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
+function ensureLatestTimelineOpenBackgroundTaskStateRows(
+  db: DbConnection,
+  args: TimelineWindowRowsArgs,
+): StoredEventRow[] {
+  const stateRows = listLatestOpenBackgroundTaskStateRowsForThread(db, {
+    threadId: args.threadId,
+  });
+  if (stateRows.length === 0) {
+    return [...args.rows];
+  }
+
+  return mergeStoredEventRowsById([...args.rows, ...stateRows]);
+}
+
 interface ResolveTimelineSegmentWindowArgs {
   page: ThreadTimelinePageRequest;
   threadId: string;
@@ -636,18 +651,26 @@ function selectStandardTimelineEventRows(
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
-  const selectedRows = ensureTimelineWindowBackgroundTaskStateRows(db, {
-    threadId: thread.id,
-    rows: ensureTimelineWindowTurnStartedRows(db, {
+  const selectedRowsWithInWindowTaskState =
+    ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
-      rows: listStoredTimelineWindowEventRows(db, {
-        beforeSequence,
-        excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-        sequenceStart,
+      rows: ensureTimelineWindowTurnStartedRows(db, {
         threadId: thread.id,
+        rows: listStoredTimelineWindowEventRows(db, {
+          beforeSequence,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          sequenceStart,
+          threadId: thread.id,
+        }),
       }),
-    }),
-  });
+    });
+  const selectedRows =
+    page.kind === "latest"
+      ? ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
+          threadId: thread.id,
+          rows: selectedRowsWithInWindowTaskState,
+        })
+      : selectedRowsWithInWindowTaskState;
   const selectedRowsWithContext =
     page.kind === "older"
       ? splitFutureSteerAcceptedContextRows({

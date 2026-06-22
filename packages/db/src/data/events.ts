@@ -1131,6 +1131,10 @@ export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   threadId: string;
 }
 
+export interface ListLatestOpenBackgroundTaskStateRowsForThreadArgs {
+  threadId: string;
+}
+
 export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
   threadIds: readonly string[];
 }
@@ -1183,6 +1187,58 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
             )
             .groupBy(latest.itemId),
         ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+/**
+ * Latest non-terminal lifecycle row per open backgroundTask item in a thread.
+ * Open tasks can outlive the latest timeline window; these rows let latest-page
+ * projections surface active workflow/background-command state even when the
+ * spawning turn and progress row are outside the selected event window.
+ */
+export function listLatestOpenBackgroundTaskStateRowsForThread(
+  db: DbConnection,
+  args: ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
+): StoredEventRow[] {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const completed = alias(events, "completed_background_task_state");
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.itemKind, "backgroundTask"),
+        inArray(events.type, [startedType, progressType]),
+        isNotNull(events.itemId),
+        sql`json_extract(${events.data}, '$.item.status') = 'pending'`,
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(completed)
+            .where(
+              and(
+                eq(completed.threadId, events.threadId),
+                eq(completed.itemId, events.itemId),
+                eq(completed.type, completedType),
+              ),
+            ),
+        ),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_id = ${events.itemId}
+            AND latest.type IN (${startedType}, ${progressType})
+        )`,
       ),
     )
     .orderBy(events.sequence)

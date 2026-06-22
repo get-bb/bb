@@ -79,18 +79,26 @@ export function ThreadTimelinePanelContent({
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
   const isProvisioningDisplayStatus =
     displayStatus === "provisioning" || displayStatus === "starting";
+  const hasActiveBackgroundWork =
+    resolvedTimeline.activeWorkflow !== null ||
+    resolvedTimeline.activeBackgroundCommands.length > 0;
+  const backgroundOnlyIndicatorLabel =
+    displayStatus === "idle" && hasActiveBackgroundWork
+      ? "Background work running"
+      : undefined;
   const ongoingIndicatorLabel =
     displayStatus === "host-reconnecting"
       ? "Waiting for reconnection"
       : isProvisioningDisplayStatus
         ? provisioningLabel
-        : undefined;
+        : backgroundOnlyIndicatorLabel;
   const showOngoingIndicator =
     threadQuery.data?.status !== "stopping" &&
     (isProvisioningDisplayStatus ||
       (!resolvedTimeline.timelineLoading &&
         (isTurnSubmitting ||
-          isRunningThreadRuntimeDisplayStatus(displayStatus))));
+          isRunningThreadRuntimeDisplayStatus(displayStatus) ||
+          backgroundOnlyIndicatorLabel !== undefined)));
   const timelineRows = resolvedTimeline.timelineRows;
   const isChildThreadMissing =
     threadQuery.error instanceof HttpError && threadQuery.error.status === 404;
