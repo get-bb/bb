@@ -36,7 +36,6 @@ function makeThreadEntry(args: ThreadEntryArgs): ThreadListEntry {
     hasPendingInteraction: false,
     activity: {
       activeWorkflowCount: 0,
-      activeBackgroundSubagentCount: 0,
     },
     environmentHostId: args.environmentId ? "host-test-001" : null,
     environmentName: null,
