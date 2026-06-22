@@ -134,6 +134,11 @@ export interface UpdateEnvironmentMetadataInput {
   name?: string | null;
 }
 
+export interface RecordEnvironmentCurrentBranchInput {
+  branchName: string | null;
+  defaultBranch?: string | null;
+}
+
 export interface ListRetiredLoadedEnvironmentIdsOnHostArgs {
   environmentIds: readonly string[];
   hostId: string;
@@ -239,6 +244,20 @@ export function updateEnvironmentMetadata(
   input: UpdateEnvironmentMetadataInput,
 ) {
   return updateEnvironmentMetadataRecord(db, notifier, id, input);
+}
+
+export function recordEnvironmentCurrentBranch(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  input: RecordEnvironmentCurrentBranchInput,
+) {
+  return updateEnvironmentMetadataRecord(db, notifier, id, {
+    branchName: input.branchName,
+    ...(input.defaultBranch !== undefined
+      ? { defaultBranch: input.defaultBranch }
+      : {}),
+  });
 }
 
 export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { updateEnvironmentMetadata } from "@bb/db";
+import { recordEnvironmentCurrentBranch } from "@bb/db/internal-environment-lifecycle";
 import {
   type GitBranchRefClassification,
   resolveEnvironmentWorkspaceDisplayKind,
@@ -270,6 +271,10 @@ function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
   return requireWorkspaceCommandTarget(environment);
 }
 
+function normalizeObservedDefaultBranch(defaultBranch: string): string | null {
+  return defaultBranch.length > 0 ? defaultBranch : null;
+}
+
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   const { get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -342,6 +347,12 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         failure: result.failure,
       });
     }
+    recordEnvironmentCurrentBranch(deps.db, deps.hub, environment.id, {
+      branchName: result.workspaceStatus.branch.currentBranch,
+      defaultBranch: normalizeObservedDefaultBranch(
+        result.workspaceStatus.branch.defaultBranch,
+      ),
+    });
     return context.json({
       outcome: "available",
       workspace: result.workspaceStatus,

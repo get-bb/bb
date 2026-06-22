@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getEnvironment } from "@bb/db";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -12,6 +13,130 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
+  it("records the daemon-observed current branch after workspace status", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-current-branch",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        branchName: "bb/stale",
+        defaultBranch: "main",
+        path: "/tmp/current-branch-env",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const statusPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/status`,
+      );
+      const statusCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.status" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, statusCommand, {
+        outcome: "available",
+        workspaceStatus: {
+          workingTree: {
+            insertions: 0,
+            deletions: 0,
+            files: [],
+            hasUncommittedChanges: false,
+            state: "clean",
+          },
+          branch: {
+            currentBranch: "feature/current",
+            defaultBranch: "trunk",
+          },
+          checkout: {
+            kind: "branch",
+            branchName: "feature/current",
+            headSha: null,
+          },
+          mergeBase: null,
+        },
+      });
+
+      const response = await statusPromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        outcome: "available",
+        workspace: {
+          branch: {
+            currentBranch: "feature/current",
+            defaultBranch: "trunk",
+          },
+        },
+      });
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        branchName: "feature/current",
+        defaultBranch: "trunk",
+      });
+    });
+  });
+
+  it("clears the stored branch after detached workspace status", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-detached-branch",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        branchName: "bb/stale",
+        defaultBranch: "main",
+        path: "/tmp/detached-branch-env",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const statusPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/status`,
+      );
+      const statusCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.status" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, statusCommand, {
+        outcome: "available",
+        workspaceStatus: {
+          workingTree: {
+            insertions: 0,
+            deletions: 0,
+            files: [],
+            hasUncommittedChanges: false,
+            state: "clean",
+          },
+          branch: {
+            currentBranch: null,
+            defaultBranch: "main",
+          },
+          checkout: {
+            kind: "detached",
+            headSha: "0123456789abcdef0123456789abcdef01234567",
+          },
+          mergeBase: null,
+        },
+      });
+
+      const response = await statusPromise;
+      expect(response.status).toBe(200);
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        branchName: null,
+        defaultBranch: "main",
+      });
+    });
+  });
+
   it("renames an environment through the public update route", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

@@ -6,6 +6,7 @@ import type { DbNotifier } from "../../src/notifier.js";
 import {
   createEnvironment,
   listRetiredLoadedEnvironmentIdsOnHost,
+  recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
@@ -143,6 +144,69 @@ describe("environments", () => {
       status: "provisioning",
       isGitRepo: true,
       branchName: "bb/test",
+      defaultBranch: "main",
+    });
+    expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
+      "metadata-changed",
+    ]);
+  });
+
+  it("records the current branch observed for an environment", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      branchName: "bb/old",
+      defaultBranch: "main",
+      status: "ready",
+    });
+    const notifier = createNotifierSpy();
+
+    const updated = recordEnvironmentCurrentBranch(
+      db,
+      notifier,
+      environment.id,
+      {
+        branchName: "feature/current",
+        defaultBranch: "trunk",
+      },
+    );
+
+    expect(updated).toMatchObject({
+      branchName: "feature/current",
+      defaultBranch: "trunk",
+      baseBranch: null,
+      mergeBaseBranch: null,
+    });
+    expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
+      "metadata-changed",
+    ]);
+  });
+
+  it("clears the current branch when a detached checkout is observed", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      branchName: "bb/old",
+      defaultBranch: "main",
+      status: "ready",
+    });
+    const notifier = createNotifierSpy();
+
+    const updated = recordEnvironmentCurrentBranch(
+      db,
+      notifier,
+      environment.id,
+      {
+        branchName: null,
+      },
+    );
+
+    expect(updated).toMatchObject({
+      branchName: null,
       defaultBranch: "main",
     });
     expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
