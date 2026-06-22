@@ -7,10 +7,12 @@ import type {
   WorkspacePathListResponse,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
+import type { FilePreview } from "@/lib/api";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   projectCommandsQueryKey,
   projectCommandsPagesQueryKey,
+  projectFilePreviewQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
@@ -183,6 +185,32 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
     retry: false,
     refetchOnWindowFocus: false,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useProjectFilePreview(
+  projectId: string | undefined,
+  path: string | null,
+  options?: QueryOptions,
+) {
+  const enabled =
+    (options?.enabled ?? true) && Boolean(projectId) && Boolean(path);
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
+
+  return useQuery<FilePreview>({
+    queryKey: projectFilePreviewQueryKey(projectId, path),
+    queryFn: ({ signal }) =>
+      api.getProjectFilePreview({
+        projectId: requireProjectId(projectId, "useProjectFilePreview"),
+        path: requireEnabledQueryArg({
+          value: path,
+          hookName: "useProjectFilePreview",
+          argName: "path",
+        }),
+        signal,
+      }),
+    enabled,
+    refetchOnWindowFocus: false,
   });
 }
 

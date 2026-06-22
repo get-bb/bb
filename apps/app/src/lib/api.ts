@@ -98,6 +98,7 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
+  buildProjectFileContentUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -123,6 +124,12 @@ interface GetEnvironmentFilePreviewArgs {
   id: string;
   path: string;
   source: EnvironmentFilePreviewSource;
+  signal?: AbortSignal;
+}
+
+interface GetProjectFilePreviewArgs {
+  projectId: string;
+  path: string;
   signal?: AbortSignal;
 }
 
@@ -456,6 +463,21 @@ export async function getEnvironmentFilePreview({
     path,
     url: buildEnvironmentDiffFilePreviewUrl(response, contentBytes, mimeType),
   });
+}
+
+export async function getProjectFilePreview({
+  projectId,
+  path,
+  signal,
+}: GetProjectFilePreviewArgs): Promise<FilePreview> {
+  return loadFilePreview(
+    {
+      name: path.split("/").at(-1),
+      path,
+      url: buildProjectFileContentUrl(projectId, path),
+    },
+    signal,
+  );
 }
 
 async function postMultipart<T>(

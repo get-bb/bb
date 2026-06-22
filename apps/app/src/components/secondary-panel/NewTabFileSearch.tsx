@@ -53,6 +53,7 @@ export interface NewTabFileSearchProps {
   idleActions: ReactNode;
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
+  recentItemsThreadId?: string | null;
   showFileSearch?: boolean;
 }
 
@@ -478,6 +479,7 @@ export function NewTabFileSearch({
   idleActions,
   initialQuery = "",
   onSelect,
+  recentItemsThreadId,
   showFileSearch = true,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -488,9 +490,13 @@ export function NewTabFileSearch({
   // Captured once on mount: the launcher is transient, so a static "now" keeps
   // every relative timestamp consistent within a single open without ticking.
   const [nowMs] = useState(() => Date.now());
-  const recentItems = useThreadRecentItems(
-    currentThreadId.length > 0 ? currentThreadId : null,
-  );
+  const defaultRecentItemsThreadId =
+    currentThreadId.length > 0 ? currentThreadId : null;
+  const recentItemsStorageThreadId =
+    recentItemsThreadId === undefined
+      ? defaultRecentItemsThreadId
+      : recentItemsThreadId;
+  const recentItems = useThreadRecentItems(recentItemsStorageThreadId);
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
   const { suggestions, isLoading, fileSearchError, isDebouncing, isUnavailable } =

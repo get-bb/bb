@@ -8,6 +8,7 @@ import {
   useEnvironmentDiffFiles,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
+import { useProjectFilePreview } from "@/hooks/queries/project-queries";
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
@@ -63,7 +64,15 @@ export interface WorkspaceFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
-  threadId: string;
+  threadId?: string | null;
+}
+
+export interface ProjectFilePreviewTabContentProps {
+  activePath: string;
+  copyPath?: string | null;
+  lineRange: FilePreviewLineRange | null;
+  onOpenInEditor?: (path: string) => void;
+  projectId: string;
 }
 
 export interface HostFilePreviewTabContentProps {
@@ -313,7 +322,7 @@ export function WorkspaceFilePreviewTabContent({
       error={workspaceFilePreviewError}
       filePreview={workspaceFilePreview}
       htmlPreviewUrl={
-        source?.kind === "working-tree"
+        threadId && source?.kind === "working-tree"
           ? buildThreadWorktreeRawContentUrl(threadId, activePath)
           : null
       }
@@ -322,6 +331,33 @@ export function WorkspaceFilePreviewTabContent({
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       statusLabel={statusLabel}
+    />
+  );
+}
+
+export function ProjectFilePreviewTabContent({
+  activePath,
+  copyPath = null,
+  lineRange,
+  onOpenInEditor,
+  projectId,
+}: ProjectFilePreviewTabContentProps) {
+  const {
+    data: projectFilePreview,
+    error: projectFilePreviewError,
+    isLoading: isProjectFilePreviewLoading,
+  } = useProjectFilePreview(projectId, activePath);
+
+  return (
+    <SecondaryPanelFilePreview
+      activePath={activePath}
+      copyPath={copyPath}
+      error={projectFilePreviewError}
+      filePreview={projectFilePreview}
+      isLoading={isProjectFilePreviewLoading}
+      lineRange={lineRange}
+      onOpenInEditor={onOpenInEditor}
+      statusLabel={null}
     />
   );
 }

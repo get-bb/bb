@@ -33,6 +33,7 @@ export function NewTabPage({
   onStartSideChat,
   onStartTerminal,
   projectId,
+  recentItemsThreadId,
   showFileSearch,
 }: NewTabPageProps) {
   return (
@@ -51,6 +52,7 @@ export function NewTabPage({
         }
         initialQuery={initialQuery}
         onSelect={onSelect}
+        recentItemsThreadId={recentItemsThreadId}
         showFileSearch={showFileSearch}
       />
     </div>

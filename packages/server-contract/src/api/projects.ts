@@ -103,6 +103,13 @@ export const projectPathsQuerySchema = projectFilesQuerySchema.extend({
 });
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 
+export const projectFileContentQuerySchema = z.object({
+  path: z.string().min(1),
+});
+export type ProjectFileContentQuery = z.infer<
+  typeof projectFileContentQuerySchema
+>;
+
 export const projectBranchesQuerySchema = branchListQuerySchema.extend({
   hostId: z.string().min(1),
   selectedBranch: gitBranchNameSchema.optional(),

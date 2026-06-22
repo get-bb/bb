@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   countProjectSources,
   createProject,
@@ -46,6 +47,10 @@ import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/th
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
+  createDaemonFileContentResponse,
+  remapDaemonFileRouteError,
+} from "../services/hosts/daemon-file-response.js";
+import {
   parseBoundedPositiveOptionalInteger,
   parseOptionalInteger,
 } from "../services/lib/validation.js";
@@ -68,6 +73,7 @@ import {
   parseBranchListLimit,
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
+import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import {
   assertPrimaryHostId,
   requirePrimaryHostId,
@@ -531,6 +537,28 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       },
     });
     return context.json({ files: result.files, truncated: result.truncated });
+  });
+
+  get(routes.fileContent, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
+    const filePath = parseSafeRelativeRoutePath(query.path);
+
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: path.join(target.path, filePath.relativePath),
+          rootPath: target.path,
+        },
+      });
+      return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
   });
 
   get(routes.paths, async (context, query) => {

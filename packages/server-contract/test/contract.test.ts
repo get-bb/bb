@@ -1326,6 +1326,12 @@ describe("server-contract clients", () => {
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/paths");
     expect(
+      publicClient.projects[":id"].files.content.$url({
+        param: { id: "proj_123" },
+        query: { path: "src/app.ts" },
+      }).pathname,
+    ).toBe("/api/v1/projects/proj_123/files/content");
+    expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {

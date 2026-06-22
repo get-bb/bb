@@ -81,6 +81,7 @@ import type {
   ProjectBranchesResponse,
   ProjectCommandsQuery,
   ProjectDefaultExecutionOptionsQuery,
+  ProjectFileContentQuery,
   ProjectFilesQuery,
   ProjectListQuery,
   ProjectPathsQuery,
@@ -176,6 +177,7 @@ import {
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
+  projectFileContentQuerySchema,
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
@@ -317,6 +319,14 @@ export const publicApiRoutes = {
         projectFilesQuerySchema,
       ),
       response: jsonResponse<WorkspaceFileListResponse>(),
+    }),
+    fileContent: defineRoute({
+      path: "/projects/:id/files/content",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectFileContentQuery>(
+        projectFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
     }),
     paths: defineRoute({
       path: "/projects/:id/paths",
