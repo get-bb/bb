@@ -49,7 +49,7 @@ export function StoryCard({
   if (columns && columns.length > 0) {
     const style: CSSProperties = {
       "--story-label-width": labelWidth ?? "210px",
-      gridTemplateColumns: `var(--story-label-width) repeat(${columns.length}, minmax(0, 1fr))`,
+      gridTemplateColumns: `var(--story-label-width) repeat(${columns.length}, minmax(max-content, 1fr))`,
     } as CSSProperties;
     return (
       <StoryCardContext.Provider value={{ inGrid: true, valueAlign }}>
