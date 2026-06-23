@@ -7,8 +7,34 @@ export default {
   title: "promptbox/banner/Goal Card",
 };
 
-function Stage({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+type StageSize = "desktop" | "mobile";
+
+function Stage({
+  children,
+  size,
+}: {
+  children: React.ReactNode;
+  size: StageSize;
+}) {
+  return (
+    <div
+      data-promptbox-shell=""
+      className={
+        size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+function ResponsiveStage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
+      <Stage size="desktop">{children}</Stage>
+      <Stage size="mobile">{children}</Stage>
+    </div>
+  );
 }
 
 const activeGoal: ThreadTimelineGoal = {
@@ -71,25 +97,25 @@ export function Overview() {
         label="prompt stack"
         hint="goal card above the composer; click to expand"
       >
-        <Stage>
+        <ResponsiveStage>
           <div className="flex flex-col gap-2">
             <ToggleableGoalCard goal={activeGoal} />
             <FauxComposer />
           </div>
-        </Stage>
+        </ResponsiveStage>
       </StoryRow>
       <StoryRow
         label="expanded"
         hint="full objective with token budget and elapsed time"
       >
-        <Stage>
+        <ResponsiveStage>
           <ToggleableGoalCard goal={activeGoal} initiallyExpanded />
-        </Stage>
+        </ResponsiveStage>
       </StoryRow>
       <StoryRow label="no token budget" hint="unbounded goal usage summary">
-        <Stage>
+        <ResponsiveStage>
           <ToggleableGoalCard goal={unboundedGoal} initiallyExpanded />
-        </Stage>
+        </ResponsiveStage>
       </StoryRow>
     </StoryCard>
   );

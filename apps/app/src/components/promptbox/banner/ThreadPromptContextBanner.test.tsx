@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -98,12 +99,55 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Environment is no longer available");
+    expect(markup).toContain("Environment is unavailable");
     expect(markup).toContain("This thread can&#x27;t run any more work.");
     expect(markup).toContain('role="status"');
     expect(markup).not.toContain("<button");
     expect(markup).not.toContain("Provision");
   });
+
+  it.each([
+    {
+      label: "archived",
+      archivedSection: { archivedAt: 1_731_456_000_000 },
+      environmentGoneSection: null,
+      expectedLabel: "Thread is archived",
+    },
+    {
+      label: "environment gone",
+      archivedSection: null,
+      environmentGoneSection: { status: "destroyed" as const },
+      expectedLabel: "Environment is unavailable",
+    },
+  ])(
+    "keeps the $label read-only status label visible in compact mode",
+    ({ archivedSection, environmentGoneSection, expectedLabel }) => {
+      const markup = renderToStaticMarkup(
+        <MemoryRouter>
+          <ThreadPromptContextBanner
+            gitSection={null}
+            gitSectionPending={false}
+            archivedSection={archivedSection}
+            environmentGoneSection={environmentGoneSection}
+            parentThreadSection={{
+              parentThreadTitle: "Parent thread",
+              href: "/threads/thr_parent",
+              relationship: "parent",
+            }}
+            childThreadsSection={null}
+            pullRequestSection={null}
+            expandedSection={null}
+            onToggleSection={noop}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(markup).toContain(expectedLabel);
+      expect(markup).not.toContain(
+        `data-promptbox-hide-compact="">${expectedLabel}`,
+      );
+    },
+  );
 
   it("labels a standalone pull request without non-actionable attention text", () => {
     const markup = renderToStaticMarkup(
@@ -149,6 +193,8 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("Squash merge");
     expect(markup).not.toContain('data-icon="GitMerge"');
+    expect(markup).not.toContain("data-promptbox-hide-compact");
+    expect(markup).toContain("data-promptbox-hide-tiny");
   });
 
   it("does not label standalone pending checks", () => {
@@ -260,6 +306,59 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("· Ready to merge");
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain("1 file");
+    expect(markup).not.toContain('data-promptbox-hide-compact="">Uncommitted');
+    expect(markup).not.toContain('data-promptbox-compact-label="">1 file');
+  });
+
+  it("does not force fixed minimum widths on compact segments", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={{
+            parentThreadTitle: "Parent thread",
+            href: "/threads/thr_parent",
+            relationship: "parent",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={{ pullRequest: pullRequestFixture }}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).not.toContain("min-w-12");
+    expect(markup).not.toContain("min-w-11");
+  });
+
+  it("compacts the git status label when more than two segments are visible", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={{
+            parentThreadTitle: "Parent thread",
+            href: "/threads/thr_parent",
+            relationship: "parent",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={{ pullRequest: pullRequestFixture }}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain("Uncommitted");
+    expect(markup).toContain('data-promptbox-hide-compact="">Uncommitted');
+    expect(markup).toContain('data-promptbox-compact-label="">1 file');
   });
 
   it("keeps the pull request action visible beside other context segments", () => {

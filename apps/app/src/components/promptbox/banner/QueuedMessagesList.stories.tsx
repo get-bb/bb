@@ -13,14 +13,33 @@ export default {
 
 const noop = () => {};
 
+type StageSize = "desktop" | "mobile";
+
 interface PromptStageProps {
   children: ReactNode;
+  size: StageSize;
 }
 
-// Production max width matches PageShell's footer cap (760px). Without it the
-// queued list stretches the full row width, which doesn't reflect prod.
-function PromptStage({ children }: PromptStageProps) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+function PromptStage({ children, size }: PromptStageProps) {
+  return (
+    <div
+      data-promptbox-shell=""
+      className={
+        size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+function ResponsivePromptStage({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
+      <PromptStage size="desktop">{children}</PromptStage>
+      <PromptStage size="mobile">{children}</PromptStage>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -201,62 +220,62 @@ export function Blockquotes() {
         label="mixed: quoted + plain"
         hint="quoted and plain rows both render as one truncated line"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={mixedMessages} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="plain messages (no quotes)"
         hint="single-line preview, leading icon centered — for comparison"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={multipleMessages} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="quote + reply"
         hint="a single `> ` block above the typed reply"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteSingle} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="multi-line quote"
         hint="every quoted line is prefixed and styled as one blockquote"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteMultiline} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="two quote→reply blocks"
         hint="stacked quote/reply sections in one queued message"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteTwoBlocks} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow label="quote only" hint="quoted selection with no reply yet">
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteOnly} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="long quote (truncated)"
         hint="single-line preview fades at the right edge"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteTruncated} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="quote + attachment"
         hint="attachment count still shows under the quoted block"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteWithAttachment} />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
     </StoryCard>
   );
@@ -293,7 +312,7 @@ export function Overview() {
   return (
     <StoryCard>
       <StoryRow label="single message" hint="one queued message">
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={oneMessage}
             sendDisabled={false}
@@ -305,18 +324,18 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow label="multiple messages" hint="drag the row icon to reorder">
-        <PromptStage>
+        <ResponsivePromptStage>
           <ReorderableQueuedMessagesList />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="overflowing queue"
         hint="height-capped list shows top/bottom fades while scrolling"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={manyMessages}
             sendDisabled={false}
@@ -328,13 +347,13 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="with attachments"
         hint="attachment counts shown alongside text"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={withAttachments}
             sendDisabled={false}
@@ -346,13 +365,13 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="long message"
         hint="single line fades at the right edge; title attribute carries full text"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={longMessage}
             sendDisabled={false}
@@ -364,13 +383,13 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="processing one"
         hint="middle row is being sent immediately; its actions disable"
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={multipleMessages}
             sendDisabled={false}
@@ -382,13 +401,13 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="send disabled"
         hint='runtime busy — cannot "Send now" but edit/delete still work'
       >
-        <PromptStage>
+        <ResponsivePromptStage>
           <QueuedMessagesList
             queuedMessages={multipleMessages}
             sendDisabled
@@ -400,7 +419,7 @@ export function Overview() {
             onEdit={noop}
             onDelete={noop}
           />
-        </PromptStage>
+        </ResponsivePromptStage>
       </StoryRow>
     </StoryCard>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   ThreadPullRequest,
   WorkspaceFileStatus,
@@ -25,20 +25,25 @@ export default {
 
 const noop = () => {};
 
-// Production max width matches PageShell's footer cap (760px). The promptbox
-// shell attribute enables the same container-query compaction used in the
-// follow-up composer as the story viewport narrows.
-function PromptStage({ children }: { children: React.ReactNode }) {
-  return (
-    <div data-promptbox-shell="" className="w-full min-w-0 max-w-[760px]">
-      {children}
-    </div>
-  );
-}
+type PromptStageSize = "desktop" | "mobile";
 
-function NarrowPromptStage({ children }: { children: React.ReactNode }) {
+// The shell attribute enables the same container-query compaction used in the
+// follow-up composer. Story rows render both breakpoints together: desktop
+// grows into the remaining row width, while mobile stays fixed.
+function PromptStage({
+  children,
+  size,
+}: {
+  children: ReactNode;
+  size: PromptStageSize;
+}) {
   return (
-    <div data-promptbox-shell="" className="w-[5.5rem] min-w-0">
+    <div
+      data-promptbox-shell=""
+      className={
+        size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"
+      }
+    >
       {children}
     </div>
   );
@@ -568,7 +573,7 @@ interface RowConfig {
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
-function Row({
+function ContextBannerPreview({
   section,
   mergeBase = featureBranchMergeBase,
   archived = null,
@@ -578,13 +583,14 @@ function Row({
   pullRequest = null,
   pullRequestActions = false,
   initiallyExpandedSection = null,
-}: RowConfig) {
+  size,
+}: RowConfig & { size: PromptStageSize }) {
   const [expandedSection, setExpandedSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(
       initiallyExpandedSection,
     );
   return (
-    <PromptStage>
+    <PromptStage size={size}>
       <ThreadPromptContextBanner
         gitSection={
           section
@@ -624,41 +630,12 @@ function Row({
   );
 }
 
-function NarrowPullRequestAndGitRow() {
-  const [expandedSection, setExpandedSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(null);
+function Row(props: RowConfig) {
   return (
-    <NarrowPromptStage>
-      <ThreadPromptContextBanner
-        gitSection={{
-          changedFiles: committedSection,
-          mergeBase: null,
-          onPromptBannerFileClick: noop,
-        }}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{
-          pullRequest: buildPullRequestFixture({
-            number: 260,
-            checks: {
-              state: "passing",
-              totalCount: 6,
-              passedCount: 6,
-              failedCount: 0,
-              pendingCount: 0,
-            },
-            attention: "ready_to_merge",
-          }),
-        }}
-        expandedSection={expandedSection}
-        onToggleSection={(next) =>
-          setExpandedSection((previous) => (previous === next ? null : next))
-        }
-      />
-    </NarrowPromptStage>
+    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
+      <ContextBannerPreview {...props} size="desktop" />
+      <ContextBannerPreview {...props} size="mobile" />
+    </div>
   );
 }
 
@@ -813,12 +790,6 @@ export function Overview() {
         <Row pullRequest={pullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
-        label="pull request + committed (narrow)"
-        hint="stress case for compact banner icons below normal chat thread width"
-      >
-        <NarrowPullRequestAndGitRow />
-      </StoryRow>
-      <StoryRow
         label="uncommitted (collapsed)"
         hint="working tree has 5 modified/added files; chevron toggles WorkspaceChangesList"
       >
@@ -847,19 +818,6 @@ export function Overview() {
         hint="mergeBase=null hides the picker (no comparison to make)"
       >
         <Row section={uncommittedSection} mergeBase={null} />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function NarrowPullRequestAndGit() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="pull request + committed (narrow)"
-        hint="stress case for compact banner icons below normal chat thread width"
-      >
-        <NarrowPullRequestAndGitRow />
       </StoryRow>
     </StoryCard>
   );

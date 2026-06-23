@@ -13,8 +13,34 @@ export default {
   title: "promptbox/banner/Workflow Card",
 };
 
-function Stage({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+type StageSize = "desktop" | "mobile";
+
+function Stage({
+  children,
+  size,
+}: {
+  children: React.ReactNode;
+  size: StageSize;
+}) {
+  return (
+    <div
+      data-promptbox-shell=""
+      className={
+        size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+function ResponsiveStage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
+      <Stage size="desktop">{children}</Stage>
+      <Stage size="mobile">{children}</Stage>
+    </div>
+  );
 }
 
 // Mirrors the mockup: a six-agent Investigate phase (all done) plus a
@@ -204,56 +230,18 @@ function ToggleableCard({
   );
 }
 
-export function Overview() {
+function CollapsedWorkflowPreview() {
   const [collapsed, setCollapsed] = useState(false);
   return (
-    <StoryCard>
-      <StoryRow
-        label="prompt stack"
-        hint="floats above the composer while the workflow runs (click to toggle)"
-      >
-        <Stage>
-          <div className="flex flex-col gap-2">
-            <ToggleableCard workflow={runningWorkflow} />
-            <FauxComposer />
-          </div>
-        </Stage>
-      </StoryRow>
-      <StoryRow
-        label="collapsed"
-        hint="single-line glance: name, agent count, live time"
-      >
-        <Stage>
-          <ThreadWorkflowCard
-            workflow={runningWorkflow}
-            isExpanded={collapsed}
-            onToggle={() => setCollapsed((value) => !value)}
-          />
-        </Stage>
-      </StoryRow>
-    </StoryCard>
+    <ThreadWorkflowCard
+      workflow={runningWorkflow}
+      isExpanded={collapsed}
+      onToggle={() => setCollapsed((value) => !value)}
+    />
   );
 }
 
-export function ManyPhases() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="40 phases"
-        hint="caps at a max height and scrolls; each phase is its own toggle and only the active phase is expanded by default"
-      >
-        <Stage>
-          <div className="flex flex-col gap-2">
-            <ToggleableCard workflow={manyPhasesWorkflow} />
-            <FauxComposer />
-          </div>
-        </Stage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function AutoAdvance() {
+function AutoAdvancePreview() {
   const [activePhase, setActivePhase] = useState(3);
   const [expanded, setExpanded] = useState(true);
   const workflow = useMemo(
@@ -266,33 +254,87 @@ export function AutoAdvance() {
         description: "Audit the entire repository across forty phases",
         startedAt: Date.now() - 1_472_000,
         workflow: buildManyPhasesSnapshot(40, activePhase),
-        usage: { totalTokens: 4_210_000, toolUses: 1_284, durationMs: 1_472_000 },
+        usage: {
+          totalTokens: 4_210_000,
+          toolUses: 1_284,
+          durationMs: 1_472_000,
+        },
       }),
     [activePhase],
   );
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setActivePhase((p) => Math.min(40, p + 1))}
+        className="self-start rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-state-hover"
+      >
+        Advance to phase {Math.min(40, activePhase + 1)}
+      </button>
+      <ThreadWorkflowCard
+        workflow={workflow}
+        isExpanded={expanded}
+        onToggle={() => setExpanded((value) => !value)}
+      />
+      <FauxComposer />
+    </div>
+  );
+}
+
+export function Overview() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="prompt stack"
+        hint="floats above the composer while the workflow runs (click to toggle)"
+      >
+        <ResponsiveStage>
+          <div className="flex flex-col gap-2">
+            <ToggleableCard workflow={runningWorkflow} />
+            <FauxComposer />
+          </div>
+        </ResponsiveStage>
+      </StoryRow>
+      <StoryRow
+        label="collapsed"
+        hint="single-line glance: name, agent count, live time"
+      >
+        <ResponsiveStage>
+          <CollapsedWorkflowPreview />
+        </ResponsiveStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ManyPhases() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="40 phases"
+        hint="caps at a max height and scrolls; each phase is its own toggle and only the active phase is expanded by default"
+      >
+        <ResponsiveStage>
+          <div className="flex flex-col gap-2">
+            <ToggleableCard workflow={manyPhasesWorkflow} />
+            <FauxComposer />
+          </div>
+        </ResponsiveStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function AutoAdvance() {
   return (
     <StoryCard>
       <StoryRow
         label="auto-advance"
         hint="advancing the run moves the open phase forward and scrolls it into view; phases you toggle yourself stay as you left them"
       >
-        <Stage>
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setActivePhase((p) => Math.min(40, p + 1))}
-              className="self-start rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-state-hover"
-            >
-              Advance to phase {Math.min(40, activePhase + 1)}
-            </button>
-            <ThreadWorkflowCard
-              workflow={workflow}
-              isExpanded={expanded}
-              onToggle={() => setExpanded((value) => !value)}
-            />
-            <FauxComposer />
-          </div>
-        </Stage>
+        <ResponsiveStage>
+          <AutoAdvancePreview />
+        </ResponsiveStage>
       </StoryRow>
     </StoryCard>
   );

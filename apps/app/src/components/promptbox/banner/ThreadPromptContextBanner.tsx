@@ -182,9 +182,9 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 };
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
-const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is no longer available";
+const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
 const ENVIRONMENT_GONE_ARIA_LABEL =
-  "Environment is no longer available. This thread can't run any more work.";
+  "Environment is unavailable. This thread can't run any more work.";
 
 // Stable ids for aria-controls / aria-labelledby pairing between each
 // section's toggle button and its expanded body region.
@@ -203,8 +203,7 @@ const SECTION_IDS = {
   },
 } as const;
 
-const SEGMENT_COMPACT_ICON_FOOTPRINT_CLASS = "min-w-12 overflow-hidden";
-const PULL_REQUEST_COMPACT_ICON_FOOTPRINT_CLASS = "min-w-11 overflow-hidden";
+const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
 
 function ChildThreadIcon({ className }: { className?: string }) {
   return (
@@ -222,6 +221,7 @@ interface SectionToggleButtonProps {
   ariaLabel?: string;
   icon: ReactNode;
   label: ReactNode;
+  compactLabel?: ReactNode;
   hideLabelInCompact?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
@@ -233,6 +233,7 @@ function SectionToggleButton({
   ariaLabel,
   icon,
   label,
+  compactLabel,
   hideLabelInCompact = true,
   isExpanded,
   onToggle,
@@ -247,7 +248,7 @@ function SectionToggleButton({
       onClick={onToggle}
       className={cn(
         "flex items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
-        SEGMENT_COMPACT_ICON_FOOTPRINT_CLASS,
+        SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
@@ -263,6 +264,13 @@ function SectionToggleButton({
           data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
         >
           {label}
+        </span>
+      ) : null}
+      {hideLabelInCompact &&
+      compactLabel !== null &&
+      compactLabel !== undefined ? (
+        <span className="min-w-0 truncate" data-promptbox-compact-label="">
+          {compactLabel}
         </span>
       ) : null}
       <Icon
@@ -377,7 +385,7 @@ function BannerActionSlot({ children }: { children: ReactNode }) {
   return (
     <div
       className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-      data-promptbox-hide-compact=""
+      data-promptbox-hide-tiny=""
     >
       {children}
     </div>
@@ -525,7 +533,7 @@ function PullRequestBannerLink({
       aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
       className={cn(
         "flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        PULL_REQUEST_COMPACT_ICON_FOOTPRINT_CLASS,
+        SEGMENT_SHRINK_CLASS,
       )}
     >
       <PullRequestStatusPill pullRequest={pullRequest} />
@@ -638,7 +646,6 @@ function ReadOnlyContextBanner({
           />
           <span
             className="min-w-0 truncate"
-            data-promptbox-hide-compact={hasMultipleSegments ? "" : undefined}
             aria-hidden="true"
           >
             {statusLabel}
@@ -795,6 +802,8 @@ export function ThreadPromptContextBanner({
     showParentThread && !showGit && !showChildThreads && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
+  const showPullRequestLabel =
+    hasSingleVisibleSegment || isPullRequestAndGitOnly;
   const pullRequestActions = pullRequestSection?.actions;
   const pullRequestAction =
     pullRequest && pullRequestActions ? (
@@ -891,7 +900,7 @@ export function ThreadPromptContextBanner({
           <PullRequestBannerLink
             pullRequest={pullRequest}
             hideLabelInCompact={!hasSingleVisibleSegment}
-            showLabel={hasSingleVisibleSegment || isPullRequestAndGitOnly}
+            showLabel={showPullRequestLabel}
             showStateLabel={hasSingleVisibleSegment}
           />
         ) : null}
@@ -907,7 +916,8 @@ export function ThreadPromptContextBanner({
               />
             }
             label={gitSummary}
-            hideLabelInCompact={!hasSingleVisibleSegment}
+            compactLabel={gitTally ? renderChangeSummary(gitTally) : null}
+            hideLabelInCompact={visibleSegmentCount > 2}
             ariaLabel={`Changed files: ${gitSummaryPrefix}, ${gitSummaryText}`}
             isExpanded={isGitExpanded}
             onToggle={() => onToggleSection("git")}
