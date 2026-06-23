@@ -60,6 +60,7 @@ import {
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
+import { findKnownAcpAgentForProviderId } from "../../services/system/known-acp-agents.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
 import {
@@ -80,6 +81,10 @@ function resolveThreadProviderDisplayName(
   );
   if (customAcpAgent) {
     return customAcpAgent.displayName;
+  }
+  const knownAcpAgent = findKnownAcpAgentForProviderId(providerId);
+  if (knownAcpAgent) {
+    return knownAcpAgent.displayName;
   }
   return isAgentProviderId(providerId)
     ? getBuiltInAgentProviderInfo(providerId).displayName

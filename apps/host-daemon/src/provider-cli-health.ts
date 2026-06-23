@@ -84,6 +84,29 @@ interface GetProviderCliStatusArgs {
   nodePlatform?: NodeJS.Platform;
 }
 
+export interface KnownAcpAgentExecutableQuery {
+  id: string;
+  executableName: string;
+}
+
+export interface KnownAcpAgentExecutableStatus {
+  id: string;
+  executableName: string;
+  installed: boolean;
+  executablePath: string | null;
+}
+
+interface InspectExecutableInstallStatusArgs {
+  executableName: string;
+  runner: ProviderCliCommandRunner;
+}
+
+interface GetKnownAcpAgentsStatusArgs {
+  agents: readonly KnownAcpAgentExecutableQuery[];
+  env?: NodeJS.ProcessEnv;
+  runner?: ProviderCliCommandRunner;
+}
+
 export interface SpawnProviderCliInstallProcessArgs {
   command: string;
   args: string[];
@@ -432,6 +455,22 @@ function resolveProviderCliInstallSource({
     : "external";
 }
 
+function resolveExecutableInstallStatus(
+  whichResult: ProviderCliCommandResult,
+  versionResult: ProviderCliCommandResult,
+): {
+  installed: boolean;
+  executablePath: string | null;
+} {
+  const executablePath = isSuccessfulCommand(whichResult)
+    ? firstOutputLine(whichResult.stdout)
+    : null;
+  return {
+    executablePath,
+    installed: executablePath !== null || isSuccessfulCommand(versionResult),
+  };
+}
+
 function buildInstallAction({
   definition,
   installed,
@@ -623,11 +662,10 @@ export async function inspectProviderCli({
         }),
   ]);
 
-  const executablePath = isSuccessfulCommand(whichResult)
-    ? firstOutputLine(whichResult.stdout)
-    : null;
-  const installed =
-    executablePath !== null || isSuccessfulCommand(versionResult);
+  const { executablePath, installed } = resolveExecutableInstallStatus(
+    whichResult,
+    versionResult,
+  );
   const currentVersion = isSuccessfulCommand(versionResult)
     ? extractVersion(`${versionResult.stdout}\n${versionResult.stderr}`)
     : null;
@@ -702,6 +740,54 @@ export async function getProviderCliStatus(
   ]);
 
   return { codex, claudeCode, cursor };
+}
+
+export async function inspectExecutableInstallStatus({
+  executableName,
+  runner,
+}: InspectExecutableInstallStatusArgs): Promise<{
+  installed: boolean;
+  executablePath: string | null;
+}> {
+  const [whichResult, versionResult] = await Promise.all([
+    runner.run({
+      command: "which",
+      args: [executableName],
+      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
+    }),
+    runner.run({
+      command: executableName,
+      args: ["--version"],
+      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
+    }),
+  ]);
+
+  return resolveExecutableInstallStatus(whichResult, versionResult);
+}
+
+export async function getKnownAcpAgentsStatus({
+  agents,
+  env,
+  runner = createSpawnProviderCliCommandRunner(env),
+}: GetKnownAcpAgentsStatusArgs): Promise<{
+  agents: KnownAcpAgentExecutableStatus[];
+}> {
+  return {
+    agents: await Promise.all(
+      agents.map(async (agent) => {
+        const status = await inspectExecutableInstallStatus({
+          executableName: agent.executableName,
+          runner,
+        });
+        return {
+          id: agent.id,
+          executableName: agent.executableName,
+          installed: status.installed,
+          executablePath: status.executablePath,
+        };
+      }),
+    ),
+  };
 }
 
 function providerCliPtyShellCommand(

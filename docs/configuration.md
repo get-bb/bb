@@ -77,10 +77,18 @@ bundled `bb` CLI or a standalone host daemon.
 
 ## Custom ACP Agents
 
+Known ACP agents can appear automatically when their CLI is installed on the
+host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
+be launched as `opencode acp`.
+
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
 manual-file workflow used for custom models. After editing the file, run
 `npx bb-app config refresh` to apply it to a running local server, or restart bb.
+Use `customAcpAgents` for arbitrary ACP agents, or to override the launch
+command for a known provider id such as `acp-opencode`. To override
+`acp-opencode`, set `"id": "opencode"`; bb derives the provider id by adding
+the `acp-` prefix.
 
 Example:
 
@@ -110,7 +118,8 @@ Example:
 prefixing it with `acp-`, so the example appears as `acp-my-agent` in
 `bb provider list`, `bb provider models acp-my-agent`, and provider pickers.
 The derived id must not collide with a built-in provider such as `acp-cursor` or
-with another custom ACP agent.
+with another custom ACP agent. It may match a known ACP agent provider id, in
+which case the custom config wins.
 
 `command` is the executable name or path. bb runs it directly with the `args`
 array; it is not a shell command line. `env` adds environment variables for the
@@ -121,6 +130,13 @@ models, `selectFlag` is the flag bb passes when launching with a selected model,
 and `primaryModels` marks preferred models in the picker. ACP agents that
 advertise models over the protocol are auto-discovered without `modelCli`; keep
 `modelCli` for CLI-style agents such as Cursor.
+
+For ACP-native agents, bb also uses a protocol `thought_level` config option
+when the selected model advertises one. The selected reasoning level is applied
+with `session/set_config_option` before the first prompt. Models without that
+option keep agent-managed reasoning. Cursor is intentionally separate: it
+encodes reasoning in model ids discovered through `modelCli`, not in an ACP
+`thought_level` option.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not

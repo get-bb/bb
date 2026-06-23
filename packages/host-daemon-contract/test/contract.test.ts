@@ -241,6 +241,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
+  "known_acp_agents.status": {
+    agents: [
+      {
+        id: "acp-opencode",
+        executableName: "opencode",
+        installed: true,
+        executablePath: "/opt/homebrew/bin/opencode",
+      },
+    ],
+  },
   "provider.usage": {
     codex: {
       status: "ok",
@@ -976,6 +986,16 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-opencode", executableName: "opencode" }],
+      }),
+    ).toMatchObject({
+      type: "known_acp_agents.status",
+      agents: [{ id: "acp-opencode", executableName: "opencode" }],
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
@@ -1101,6 +1121,10 @@ describe("host-daemon command schemas", () => {
         dotfiles: "deny",
       },
       { type: "provider.list_models", providerId: "codex" },
+      {
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-opencode", executableName: "opencode" }],
+      },
       {
         type: "workspace.status",
         environmentId: "env_123",
@@ -2043,7 +2067,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(43);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(44);
   });
 
   it("parses valid session open and event batch payloads", () => {

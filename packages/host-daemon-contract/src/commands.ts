@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 43 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 44 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -439,6 +439,20 @@ const providerListModelsCommandSchema = z.object({
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
 });
 
+const knownAcpAgentExecutableQuerySchema = z
+  .object({
+    id: z.string().min(1),
+    executableName: z.string().min(1),
+  })
+  .strict();
+
+const knownAcpAgentsStatusCommandSchema = z
+  .object({
+    type: z.literal("known_acp_agents.status"),
+    agents: z.array(knownAcpAgentExecutableQuerySchema),
+  })
+  .strict();
+
 const provisionInitiatorSchema = z
   .object({
     /** Thread that initiated provisioning. Used to stream progress events. */
@@ -775,6 +789,21 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
+
+const knownAcpAgentExecutableStatusSchema = z
+  .object({
+    id: z.string().min(1),
+    executableName: z.string().min(1),
+    installed: z.boolean(),
+    executablePath: z.string().min(1).nullable(),
+  })
+  .strict();
+
+const knownAcpAgentsStatusResultSchema = z
+  .object({
+    agents: z.array(knownAcpAgentExecutableStatusSchema),
+  })
+  .strict();
 
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
@@ -1120,6 +1149,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.list_models",
     schema: providerListModelsCommandSchema,
     resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "known_acp_agents.status": defineHostDaemonCommandDescriptor({
+    type: "known_acp_agents.status",
+    schema: knownAcpAgentsStatusCommandSchema,
+    resultSchema: knownAcpAgentsStatusResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

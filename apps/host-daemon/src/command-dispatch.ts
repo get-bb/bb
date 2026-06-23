@@ -32,6 +32,7 @@ import {
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
 import { getProviderUsage } from "./provider-usage.js";
+import { getKnownAcpAgentsStatus } from "./provider-cli-health.js";
 import {
   ensureThreadRuntime,
   startThread,
@@ -234,6 +235,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
     }),
+  "known_acp_agents.status": async (command) =>
+    getKnownAcpAgentsStatus({ agents: command.agents }),
   "provider.usage": async () => getProviderUsage(),
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({

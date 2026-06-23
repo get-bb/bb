@@ -48,6 +48,7 @@ import {
   type ExistingThreadExecutionInputRequest,
 } from "./thread-execution-plan.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
+import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
 
 export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -159,6 +160,20 @@ interface DispatchArchivedThreadProviderArchiveCommandArgs {
   threadId: string;
 }
 
+interface AcpLaunchSpecAgent {
+  id?: string;
+  displayName: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd?: string;
+  modelCli?: {
+    listArgs: string[];
+    selectFlag?: string;
+    primaryModels: string[];
+  };
+}
+
 function providerSupportsThreadRename(providerId: string): boolean {
   if (!isAgentProviderId(providerId)) {
     return true;
@@ -176,10 +191,10 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
 }
 
 export function buildAcpLaunchSpec(
-  agent: CustomAcpAgent,
+  agent: AcpLaunchSpecAgent,
 ): HostDaemonAcpLaunchSpec {
   const modelCli =
-    "modelCli" in agent && agent.modelCli.listArgs.length > 0
+    agent.modelCli !== undefined && agent.modelCli.listArgs.length > 0
       ? agent.modelCli
       : undefined;
   return {
@@ -219,7 +234,11 @@ function buildAcpLaunchSpecForProviderId(
     deps.config.customAcpAgents,
     providerId,
   );
-  return agent ? buildAcpLaunchSpec(agent) : undefined;
+  if (agent) {
+    return buildAcpLaunchSpec(agent);
+  }
+  const knownAgent = findKnownAcpAgentForProviderId(providerId);
+  return knownAgent ? buildAcpLaunchSpec(knownAgent) : undefined;
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(

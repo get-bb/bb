@@ -2288,6 +2288,10 @@ describe("public thread data routes", () => {
       expect(
         providerResponder.requests.map((request) => request.command),
       ).toEqual([
+        {
+          type: "known_acp_agents.status",
+          agents: [{ id: "acp-opencode", executableName: "opencode" }],
+        },
         { type: "provider.list_models", providerId: "codex" },
       ]);
     });

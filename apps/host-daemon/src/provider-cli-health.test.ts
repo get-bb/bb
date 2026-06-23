@@ -1,6 +1,7 @@
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import {
+  getKnownAcpAgentsStatus,
   getProviderCliStatus,
   inspectProviderCli,
   ProviderCliInstallInProgressError,
@@ -525,6 +526,43 @@ describe("provider CLI health", () => {
     );
     expect(runner.commandLines()).toContain("which agent");
     expect(runner.commandLines()).not.toContain("npm view cursor version");
+  });
+
+  it("reports known ACP agent executables with the shared resolution logic", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess("which", ["opencode"], "/opt/homebrew/bin/opencode\n");
+    runner.setSuccess("opencode", ["--version"], "opencode 1.0.0\n");
+    runner.setExit("which", ["missing-acp"], 1, "missing-acp not found");
+    runner.setSpawnError(
+      "missing-acp",
+      ["--version"],
+      "spawn missing-acp ENOENT",
+    );
+
+    const status = await getKnownAcpAgentsStatus({
+      runner,
+      agents: [
+        { id: "acp-opencode", executableName: "opencode" },
+        { id: "acp-missing", executableName: "missing-acp" },
+      ],
+    });
+
+    expect(status).toEqual({
+      agents: [
+        {
+          id: "acp-opencode",
+          executableName: "opencode",
+          installed: true,
+          executablePath: "/opt/homebrew/bin/opencode",
+        },
+        {
+          id: "acp-missing",
+          executableName: "missing-acp",
+          installed: false,
+          executablePath: null,
+        },
+      ],
+    });
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {

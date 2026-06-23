@@ -305,6 +305,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
+    onlineRpcResponseSuccessSchemaFor("known_acp_agents.status"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),

@@ -66,8 +66,8 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     return context.json({ ok: true });
   });
 
-  get(routes.providers, (context) =>
-    context.json(listSystemProviderInfos(deps.config.customAcpAgents)),
+  get(routes.providers, async (context) =>
+    context.json(await listSystemProviderInfos(deps)),
   );
 
   get(routes.usageLimits, async (context) =>

@@ -24,6 +24,12 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { buildAcpLaunchSpec } from "../threads/thread-commands.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
+import {
+  buildKnownAcpProviderInfo,
+  findKnownAcpAgentForProviderId,
+  listKnownAcpAgentExecutableQueries,
+  type KnownAcpAgent,
+} from "./known-acp-agents.js";
 
 export interface SystemExecutionOptionsRequest {
   environmentId?: string;
@@ -53,6 +59,17 @@ type AppendCustomModelsResult = Pick<
   "models" | "selectedOnlyModels"
 >;
 
+interface ListSystemProviderInfosRequest {
+  environmentId?: string;
+  hostId?: string;
+}
+
+interface ListSystemProviderInfosResult {
+  hostId: string | null;
+  hostLookupError: ApiError | null;
+  providers: ProviderInfo[];
+}
+
 function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   return buildAcpProviderInfo({
     id: formatCustomAcpAgentProviderId(agent.id),
@@ -60,13 +77,125 @@ function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   });
 }
 
-export function listSystemProviderInfos(
+function listConfiguredSystemProviderInfos(
   customAcpAgents: CustomAcpAgent[],
+  installedKnownAcpAgents: readonly KnownAcpAgent[],
 ): ProviderInfo[] {
-  return [
+  const providers = [
     ...listBuiltInAgentProviderInfos(),
     ...customAcpAgents.map(buildCustomAcpProviderInfo),
   ];
+  const seenProviderIds = new Set(providers.map((provider) => provider.id));
+  for (const agent of installedKnownAcpAgents) {
+    if (seenProviderIds.has(agent.id)) {
+      continue;
+    }
+    seenProviderIds.add(agent.id);
+    providers.push(buildKnownAcpProviderInfo(agent));
+  }
+  return providers;
+}
+
+function canOmitKnownAcpAgentsForError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError && (error.status === 502 || error.status === 504)
+  );
+}
+
+async function listInstalledKnownAcpAgents(
+  deps: AppDeps,
+  hostId: string,
+): Promise<KnownAcpAgent[]> {
+  const customProviderIds = new Set(
+    deps.config.customAcpAgents.map((agent) =>
+      formatCustomAcpAgentProviderId(agent.id),
+    ),
+  );
+  const knownAgents = listKnownAcpAgentExecutableQueries().filter(
+    (agent) => !customProviderIds.has(agent.id),
+  );
+  if (knownAgents.length === 0) {
+    return [];
+  }
+
+  try {
+    const status = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "known_acp_agents.status",
+        agents: knownAgents,
+      },
+    });
+    const installedAgentIds = new Set(
+      status.agents.filter((agent) => agent.installed).map((agent) => agent.id),
+    );
+    return knownAgents
+      .map((query) => findKnownAcpAgentForProviderId(query.id))
+      .filter(
+        (agent): agent is KnownAcpAgent =>
+          agent !== undefined && installedAgentIds.has(agent.id),
+      );
+  } catch (error) {
+    if (!canOmitKnownAcpAgentsForError(error)) {
+      throw error;
+    }
+    deps.logger.warn(
+      {
+        err: error,
+        hostId,
+      },
+      "Failed to resolve known ACP agent status",
+    );
+    return [];
+  }
+}
+
+async function listSystemProviderInfosForHost(
+  deps: AppDeps,
+  hostId: string,
+): Promise<ProviderInfo[]> {
+  return listConfiguredSystemProviderInfos(
+    deps.config.customAcpAgents,
+    await listInstalledKnownAcpAgents(deps, hostId),
+  );
+}
+
+async function resolveSystemProviderInfos(
+  deps: AppDeps,
+  query: ListSystemProviderInfosRequest = {},
+): Promise<ListSystemProviderInfosResult> {
+  try {
+    const hostId = resolveSystemLookupHostId(deps, query);
+    return {
+      hostId,
+      hostLookupError: null,
+      providers: await listSystemProviderInfosForHost(deps, hostId),
+    };
+  } catch (error) {
+    if (!canOmitKnownAcpAgentsForError(error)) {
+      throw error;
+    }
+    deps.logger.warn(
+      { err: error },
+      "Failed to resolve host for known ACP agent status",
+    );
+    return {
+      hostId: null,
+      hostLookupError: error,
+      providers: listConfiguredSystemProviderInfos(
+        deps.config.customAcpAgents,
+        [],
+      ),
+    };
+  }
+}
+
+export async function listSystemProviderInfos(
+  deps: AppDeps,
+  query: ListSystemProviderInfosRequest = {},
+): Promise<ProviderInfo[]> {
+  return (await resolveSystemProviderInfos(deps, query)).providers;
 }
 
 function findCustomAcpAgentForProviderId(
@@ -152,8 +281,8 @@ export async function resolveSystemExecutionOptions(
   deps: AppDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  const hostId = resolveSystemLookupHostId(deps, query);
-  const providers = listSystemProviderInfos(deps.config.customAcpAgents);
+  const { hostId, hostLookupError, providers } =
+    await resolveSystemProviderInfos(deps, query);
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;
@@ -168,23 +297,53 @@ export async function resolveSystemExecutionOptions(
     };
   }
 
+  if (hostId === null) {
+    const { models, selectedOnlyModels } = appendCustomModels({
+      customModels: deps.config.customModels,
+      models: [],
+      providerId: modelsProvider.id,
+      selectedOnlyModels: [],
+    });
+    return {
+      providers,
+      models,
+      selectedOnlyModels,
+      modelLoadError:
+        hostLookupError === null
+          ? null
+          : buildModelLoadError({
+              error: hostLookupError,
+              provider: modelsProvider,
+            }),
+    };
+  }
+
   const customAcpAgent = findCustomAcpAgentForProviderId(
     deps.config.customAcpAgents,
     modelsProvider.id,
   );
+  const knownAcpAgent =
+    customAcpAgent === undefined
+      ? findKnownAcpAgentForProviderId(modelsProvider.id)
+      : undefined;
   let modelResult: ModelListResult;
   try {
-    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(deps, {
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "provider.list_models",
-        providerId: modelsProvider.id,
-        ...(customAcpAgent !== undefined
-          ? { acpLaunchSpec: buildAcpLaunchSpec(customAcpAgent) }
-          : {}),
+    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
+      deps,
+      {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "provider.list_models",
+          providerId: modelsProvider.id,
+          ...(customAcpAgent !== undefined
+            ? { acpLaunchSpec: buildAcpLaunchSpec(customAcpAgent) }
+            : knownAcpAgent !== undefined
+              ? { acpLaunchSpec: buildAcpLaunchSpec(knownAcpAgent) }
+              : {}),
+        },
       },
-    });
+    );
     modelResult = {
       models,
       selectedOnlyModels,

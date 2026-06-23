@@ -177,11 +177,76 @@ describe("thread runtime config", () => {
           },
         );
         expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(
-          expectedSpec,
-        );
+        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
       },
     );
+  });
+
+  it("attaches known ACP launch specs to thread start and turn submit commands", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-known-acp",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/known-acp",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-opencode",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-opencode",
+        threadId: thread.id,
+      });
+      const execution = {
+        model: "opencode/default",
+        permissionMode: "workspace-write",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      } as const;
+      const expectedSpec = {
+        displayName: "opencode",
+        command: "opencode",
+        args: ["acp"],
+        env: {},
+      };
+
+      const startCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
+        projectId: project.id,
+        providerId: "acp-opencode",
+        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+      expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+
+      const submitCommand = await prepareTurnSubmitCommandPayload(
+        harness.deps,
+        {
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("continue"),
+          target: { mode: "start" },
+          thread,
+        },
+      );
+      expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+      expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+    });
   });
 
   it.each([

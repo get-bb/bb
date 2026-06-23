@@ -44,11 +44,15 @@ message agents, or inspect projects, providers, and environments.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
+- Known ACP agents can appear automatically when their CLI is installed on the
+  host; for example `opencode` on PATH appears as provider `acp-opencode`.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
-  id `acp-<id>`. This list has no set/unset CLI surface, so edit the JSON and
-  run `bb-app config refresh` or restart bb. The configured command is local
-  code execution and only works with a co-located daemon.
+  id `acp-<id>`. Custom config wins if it uses the same provider id as a known
+  ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
+  has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
+  or restart bb. The configured command is local code execution and only works
+  with a co-located daemon.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files
@@ -164,7 +168,7 @@ For review or fix pipelines, get the environment ID from
 
 - `bb theme` controls the **app-wide color palette** — a set of CSS-variable
   overrides persisted server-side and applied live to every open window. This is
-  the *palette* only; light/dark *mode* is a separate per-client setting that the
+  the _palette_ only; light/dark _mode_ is a separate per-client setting that the
   palette layers on top of.
 - Commands:
   - `bb theme list` — built-in themes and which palette is active.
