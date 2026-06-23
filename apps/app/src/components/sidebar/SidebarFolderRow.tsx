@@ -27,6 +27,7 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import {
+  SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
@@ -187,6 +188,7 @@ function SidebarFolderRowComponent({
             SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
           }
           className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
             "relative z-10 inline-flex shrink-0 items-center",
             SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
           )}
