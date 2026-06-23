@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAcpProviderInfo,
+  getAcpProviderServerCapabilities,
+  getAgentProviderServerCapabilities,
   getBuiltInAgentProviderInfo,
   getBuiltInAgentProviderServerCapabilities,
   isAcpAgentProviderId,
+  isAcpProviderId,
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
@@ -91,6 +95,43 @@ describe("agent provider catalog", () => {
     expect(isAcpAgentProviderId("codex")).toBe(false);
     expect(isAcpAgentProviderId("claude-code")).toBe(false);
     expect(isAcpAgentProviderId("pi")).toBe(false);
+
+    expect(isAcpProviderId("acp-cursor")).toBe(true);
+    expect(isAcpProviderId("acp-my-agent")).toBe(true);
+    expect(isAcpProviderId("codex")).toBe(false);
+  });
+
+  it("synthesizes dynamic ACP provider metadata with shared ACP policy", () => {
+    expect(
+      buildAcpProviderInfo({
+        id: "acp-my-agent",
+        displayName: "My Agent",
+      }),
+    ).toEqual({
+      id: "acp-my-agent",
+      displayName: "My Agent",
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: false,
+        supportsServiceTier: true,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      },
+      composerActions: [],
+      available: true,
+    });
+
+    expect(getAcpProviderServerCapabilities("acp-my-agent")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+    });
+    expect(getAgentProviderServerCapabilities("acp-my-agent")).toEqual(
+      getAcpProviderServerCapabilities("acp-my-agent"),
+    );
+    expect(getAgentProviderServerCapabilities("not-a-provider")).toBeNull();
   });
 
   it("declares the backend-only server capability facts per provider", () => {
@@ -153,6 +194,15 @@ describe("agent provider catalog", () => {
         },
       ],
     });
+  });
+
+  it("keeps built-in accessors built-in-only", () => {
+    expect(() =>
+      getBuiltInAgentProviderInfo("acp-my-agent" as never),
+    ).toThrow(/Unsupported agent provider/u);
+    expect(() =>
+      getBuiltInAgentProviderServerCapabilities("acp-my-agent" as never),
+    ).toThrow(/Unsupported agent provider/u);
   });
 
   it("exposes pi default model declarations", () => {

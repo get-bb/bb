@@ -17,9 +17,10 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
  * appended event bumps `maxSeq`, producing a new key and a cold rebuild. The
  * key MUST also include every other input the projection depends on:
  * `thread.status` (interrupt flips earlier rows), `environmentId` (workspace
- * root relativizes file paths), and the row-shape request flags. Event pruning
- * (`pruneResolvedItemDeltas`, background-task progress) is output-preserving and
- * never lowers `maxSeq`, so it cannot stale a cached entry.
+ * root relativizes file paths), provider display name (labels dynamic-provider
+ * diagnostic rows), and the row-shape request flags. Event pruning
+ * (`pruneResolvedItemDeltas`, background-task progress) is output-preserving
+ * and never lowers `maxSeq`, so it cannot stale a cached entry.
  *
  * Entries with many rows are not cached: an expanded active turn (the streaming
  * case) produces hundreds of rows AND a `maxSeq` that changes on every event,
@@ -89,6 +90,7 @@ export interface ThreadTimelineCacheKeyArgs {
   maxSeq: number;
   status: ThreadStatus;
   environmentId: string | null;
+  providerDisplayName?: string;
   page: ThreadTimelinePageRequest;
   includeNestedRows: boolean;
   summaryOnly: boolean;
@@ -113,6 +115,7 @@ export function buildThreadTimelineParamsKey(
     args.threadId,
     args.status,
     args.environmentId ?? "-",
+    args.providerDisplayName ?? "-",
     pageKeyPart(args.page),
     args.includeNestedRows ? "1" : "0",
     args.summaryOnly ? "1" : "0",

@@ -31,11 +31,20 @@
 
 import { reasoningLevelValues } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type { AcpConfigOption } from "../wire.js";
 
 export interface RawAgentModel {
   id: string;
   displayName: string;
 }
+
+const ACP_NATIVE_REASONING_EFFORTS: AvailableModel["supportedReasoningEfforts"] =
+  [
+    {
+      reasoningEffort: "medium",
+      description: "Reasoning effort is managed by the connected ACP agent.",
+    },
+  ];
 
 interface AgentModelVariant extends RawAgentModel {
   /** Raw effort token's level (medium when absent), before the none collapse. */
@@ -94,6 +103,44 @@ export function parseAgentModelLines(stdout: string): RawAgentModel[] {
     models.push({ id, displayName });
   }
   return models;
+}
+
+export function findAcpModelConfigOption(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): AcpConfigOption | undefined {
+  const options = configOptions ?? [];
+  return (
+    options.find((option) => option.category === "model") ??
+    options.find((option) => option.id === "model")
+  );
+}
+
+export function buildModelCatalogFromConfigOptions(
+  modelOption: AcpConfigOption | undefined,
+): AvailableModel[] {
+  const options = modelOption?.options ?? [];
+  if (options.length === 0) {
+    return [];
+  }
+  const currentValue = modelOption?.currentValue;
+  const models = options.map((option, index): AvailableModel => {
+    const isDefault =
+      currentValue !== undefined ? option.value === currentValue : index === 0;
+    return {
+      id: option.value,
+      model: option.value,
+      displayName: option.name,
+      description: "",
+      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      defaultReasoningEffort: "medium",
+      isDefault,
+    };
+  });
+  return models.some((model) => model.isDefault)
+    ? models
+    : models.map((model, index) =>
+        index === 0 ? { ...model, isDefault: true } : model,
+      );
 }
 
 function splitVariant(id: string): {

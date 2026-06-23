@@ -1,5 +1,6 @@
 import {
   createAgentRuntime,
+  fingerprintAcpLaunchSpec,
   type AgentRuntime,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
@@ -7,6 +8,7 @@ import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
+  HostDaemonAcpLaunchSpec,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   WorkspaceContext,
@@ -40,7 +42,10 @@ export interface CommandDispatchOptions {
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
-  listModels?: (args: { providerId: string }) => Promise<{
+  listModels?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
@@ -84,8 +89,8 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
-const CURSOR_AUTH_REQUIRED_PATTERN =
-  /Cursor agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN)/is;
+const ACP_AUTH_REQUIRED_PATTERN =
+  /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 
@@ -96,13 +101,17 @@ export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
 }
 
 export async function defaultListModels(
-  args: { providerId: string },
+  args: { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const runtimeKey = options.bridgeBundleDir ?? "";
+  const runtimeKey =
+    `${options.bridgeBundleDir ?? ""}` +
+    (args.acpLaunchSpec !== undefined
+      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
+      : "");
   let runtime = defaultModelListRuntimes.get(runtimeKey);
   if (!runtime) {
     runtime = createAgentRuntime({
@@ -146,7 +155,7 @@ export function getErrorCode(error: unknown): string {
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
   }
-  if (isMessageOnlyCursorAuthRequiredError(error)) {
+  if (isMessageOnlyAcpAuthRequiredError(error)) {
     return "auth_required";
   }
   return "command_failed";
@@ -177,9 +186,9 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
   );
 }
 
-function isMessageOnlyCursorAuthRequiredError(error: unknown): boolean {
+function isMessageOnlyAcpAuthRequiredError(error: unknown): boolean {
   return (
-    error instanceof Error && CURSOR_AUTH_REQUIRED_PATTERN.test(error.message)
+    error instanceof Error && ACP_AUTH_REQUIRED_PATTERN.test(error.message)
   );
 }
 

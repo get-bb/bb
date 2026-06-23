@@ -227,6 +227,7 @@ async function startIntegrationServer(
     appVersion: "0.0.0-dev",
     automationsAllowScriptRuns: true,
     builtinSkillsRootPath,
+    customAcpAgents: [],
     customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,

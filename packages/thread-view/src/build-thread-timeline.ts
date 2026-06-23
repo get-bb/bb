@@ -76,6 +76,11 @@ interface ThreadTimelineFromEventsBaseOptions {
    * encoded in command pills on the accepted request.
    */
   providerId?: string;
+  /**
+   * Display name for the current provider, supplied by the server for dynamic
+   * providers that are not in thread-view's static provider table.
+   */
+  providerDisplayName?: string;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -120,6 +125,7 @@ export interface ThreadTimelineSourceSeqRange {
 
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
+  providerDisplayName?: string;
   threadStatus: Thread["status"];
   /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
   threadName: string;
@@ -1111,6 +1117,7 @@ export function buildThreadTimelineFromEvents(
     includeDebugRawEvents: args.options.includeDebugRawEvents,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
+    providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
@@ -1174,6 +1181,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     includeDebugRawEvents: false,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
+    providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: "full",

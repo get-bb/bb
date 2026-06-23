@@ -3,8 +3,15 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
-import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
-import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
+import {
+  buildAcpProviderInfo,
+  listBuiltInAgentProviderInfos,
+} from "@bb/agent-providers";
+import {
+  formatCustomAcpAgentProviderId,
+  type CustomAcpAgent,
+  type CustomProviderModel,
+} from "@bb/config/bb-app-managed-config";
 import {
   reasoningEffortsForLevels,
   type AvailableModel,
@@ -14,6 +21,7 @@ import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { buildAcpLaunchSpec } from "../threads/thread-commands.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 
@@ -44,6 +52,31 @@ type AppendCustomModelsResult = Pick<
   SystemExecutionOptionsResponse,
   "models" | "selectedOnlyModels"
 >;
+
+function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
+  return buildAcpProviderInfo({
+    id: formatCustomAcpAgentProviderId(agent.id),
+    displayName: agent.displayName,
+  });
+}
+
+export function listSystemProviderInfos(
+  customAcpAgents: CustomAcpAgent[],
+): ProviderInfo[] {
+  return [
+    ...listBuiltInAgentProviderInfos(),
+    ...customAcpAgents.map(buildCustomAcpProviderInfo),
+  ];
+}
+
+function findCustomAcpAgentForProviderId(
+  customAcpAgents: CustomAcpAgent[],
+  providerId: string,
+): CustomAcpAgent | undefined {
+  return customAcpAgents.find(
+    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
+  );
+}
 
 function buildCustomModel(customModel: CustomProviderModel): AvailableModel {
   return {
@@ -120,7 +153,7 @@ export async function resolveSystemExecutionOptions(
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
   const hostId = resolveSystemLookupHostId(deps, query);
-  const providers = listBuiltInAgentProviderInfos();
+  const providers = listSystemProviderInfos(deps.config.customAcpAgents);
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;
@@ -135,6 +168,10 @@ export async function resolveSystemExecutionOptions(
     };
   }
 
+  const customAcpAgent = findCustomAcpAgentForProviderId(
+    deps.config.customAcpAgents,
+    modelsProvider.id,
+  );
   let modelResult: ModelListResult;
   try {
     const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(deps, {
@@ -143,6 +180,9 @@ export async function resolveSystemExecutionOptions(
       command: {
         type: "provider.list_models",
         providerId: modelsProvider.id,
+        ...(customAcpAgent !== undefined
+          ? { acpLaunchSpec: buildAcpLaunchSpec(customAcpAgent) }
+          : {}),
       },
     });
     modelResult = {

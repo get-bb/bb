@@ -26,6 +26,7 @@ let workspaceDir: string;
 let nextThreadSerial = 0;
 const startedProviderThreadIds: string[] = [];
 let nextRequestId = 1;
+const realSetTimeout = setTimeout;
 
 function requestId(): number {
   nextRequestId += 1;
@@ -56,6 +57,16 @@ async function waitFor<T>(
   }
 }
 
+async function waitForFileWithRealTimer(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (existsSync(path)) {
+      return;
+    }
+    await new Promise((resolveTick) => realSetTimeout(resolveTick, 20));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
 function findResponse(id: number): BridgeJsonRpcOutputMessage | undefined {
   return output.messages.find((message) => message.id === id);
 }
@@ -76,12 +87,14 @@ interface StartThreadArgs {
   envVars?: Record<string, string>;
   instructions?: string;
   agent?: { command: string; args: string[] };
-  modelSelection?: {
-    listCommand: { command: string; args: string[] };
-    selectFlag: string;
-    model: string;
-    reasoningLevel?: string;
-  };
+  modelSelection?:
+    | {
+        listCommand: { command: string; args: string[] };
+        selectFlag: string;
+        model: string;
+        reasoningLevel?: string;
+      }
+    | { modelId: string };
 }
 
 async function startThread(args?: StartThreadArgs): Promise<{
@@ -93,7 +106,10 @@ async function startThread(args?: StartThreadArgs): Promise<{
   const id = sendRequest("thread/start", {
     threadId: bbThreadId,
     cwd: workspaceDir,
-    agent: args?.agent ?? { command: process.execPath, args: [FAKE_AGENT_PATH] },
+    agent: args?.agent ?? {
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+    },
     ...(args?.modelSelection ? { modelSelection: args.modelSelection } : {}),
     permissionMode: args?.permissionMode ?? "full",
     permissionEscalation:
@@ -233,6 +249,102 @@ describe("acp bridge", () => {
     });
   });
 
+  it("uses the CLI model list before ACP-native session discovery when both are present", async () => {
+    const modelListId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: ["-e", 'console.log("cli-model - CLI Model")'],
+      },
+      agent: {
+        command: "/nonexistent/acp-session-discovery-agent",
+        args: [],
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [{ id: "cli-model", displayName: "CLI Model", isDefault: true }],
+      selectedOnlyModels: [],
+    });
+  });
+
+  it("discovers ACP-native models from mixed session/new configOptions when no list command is present", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          model: "fake/default",
+          displayName: "Fake Default",
+          isDefault: true,
+        },
+        {
+          id: "fake/strong",
+          model: "fake/strong",
+          displayName: "Fake Strong",
+          isDefault: false,
+        },
+      ],
+      selectedOnlyModels: [],
+    });
+  });
+
+  it("times out hung ACP-native discovery, kills the child, and falls back to the synthetic model", async () => {
+    const signalFile = join(workspaceDir, "discovery-agent-signal.txt");
+    const readyFile = join(workspaceDir, "discovery-agent-ready.txt");
+    let modelListId: number;
+
+    vi.useFakeTimers();
+    try {
+      modelListId = sendRequest("model/list", {
+        agent: {
+          command: process.execPath,
+          args: [FAKE_AGENT_PATH],
+          envVars: {
+            FAKE_ACP_HANG_INITIALIZE: "1",
+            FAKE_ACP_READY_FILE: readyFile,
+            FAKE_ACP_SIGNAL_FILE: signalFile,
+          },
+        },
+        primaryModels: [],
+      });
+      await waitForFileWithRealTimer(readyFile);
+      await vi.advanceTimersByTimeAsync(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect((await waitForResponse(modelListId!)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
+      selectedOnlyModels: [],
+    });
+    await waitFor(
+      () => (existsSync(signalFile) ? true : undefined),
+      "discovery agent termination",
+      5_000,
+    );
+  });
+
+  it("falls back to the synthetic model when ACP-native session discovery has no model option", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
+      selectedOnlyModels: [],
+    });
+  });
+
   it("fails model/list with a clear error when the list command is missing", async () => {
     const failingId = sendRequest("model/list", {
       listCommand: {
@@ -247,7 +359,7 @@ describe("acp bridge", () => {
     );
   });
 
-  it("fails model/list when the list command reports Cursor auth is required", async () => {
+  it("fails model/list when the list command reports ACP auth is required", async () => {
     const authId = sendRequest("model/list", {
       listCommand: {
         command: process.execPath,
@@ -263,9 +375,7 @@ describe("acp bridge", () => {
     });
 
     const response = await waitForResponse(authId);
-    expect(response.error?.message).toBe(
-      "Cursor agent is not authenticated.",
-    );
+    expect(response.error?.message).toBe("ACP agent is not authenticated.");
   });
 
   it("falls back to the synthetic model when the list command prints no models", async () => {
@@ -291,7 +401,9 @@ describe("acp bridge", () => {
         'console.log("pinme-low - Pin Me Low\\npinme - Pin Me\\npinme-extra-high - Pin Me Extra High")',
       ],
     };
-    await waitForResponse(sendRequest("model/list", { listCommand, primaryModels: [] }));
+    await waitForResponse(
+      sendRequest("model/list", { listCommand, primaryModels: [] }),
+    );
 
     // The fake agent runs via its shebang so the bridge's leading
     // `--model <id>` lands in the agent's argv instead of node's.
@@ -316,6 +428,21 @@ describe("acp bridge", () => {
     ).toBe(true);
   });
 
+  it("selects ACP-native models with session/set_model before the first prompt", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      modelSelection: { modelId: "fake/strong" },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
   it("does not leak bridge-only Electron env to the spawned agent", async () => {
     vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
     const { providerThreadId } = await startThread();
@@ -337,7 +464,9 @@ describe("acp bridge", () => {
       command: process.execPath,
       args: ["-e", 'console.log("solo-2 - Solo Two")'],
     };
-    await waitForResponse(sendRequest("model/list", { listCommand, primaryModels: [] }));
+    await waitForResponse(
+      sendRequest("model/list", { listCommand, primaryModels: [] }),
+    );
 
     const { providerThreadId } = await startThread({
       agent: { command: FAKE_AGENT_PATH, args: [] },

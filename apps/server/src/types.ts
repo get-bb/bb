@@ -1,4 +1,7 @@
-import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
+import type {
+  CustomAcpAgent,
+  CustomProviderModel,
+} from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -24,6 +27,7 @@ export interface ServerRuntimeConfig {
    */
   automationsAllowScriptRuns: boolean;
   builtinSkillsRootPath: string;
+  customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
   dataDir: string;
   featureFlags: FeatureFlags;

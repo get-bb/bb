@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { fakeProviderScriptPath } from "./test/index.js";
@@ -49,6 +50,12 @@ interface WriteArchiveProviderScriptArgs {
 const missingProviderThreadId = "t-missing";
 const missingProviderThreadIdError =
   /No provider thread id available for t-missing/;
+const acpLaunchSpec: HostDaemonAcpLaunchSpec = {
+  displayName: "Custom ACP",
+  command: "custom-agent",
+  args: ["serve"],
+  env: { CUSTOM_AGENT_TOKEN: "token" },
+};
 
 function createContractRuntime(args: CreateContractRuntimeArgs): AgentRuntime {
   return createAgentRuntimeWithAdapters({
@@ -231,6 +238,104 @@ describe("createAgentRuntime command contracts", () => {
         "/repo/.git/worktrees/bb13",
         "/repo/.git/objects",
       ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("passes acp launch specs to adapter construction for model list, start, and resume", async () => {
+    const captured: Array<HostDaemonAcpLaunchSpec | undefined> = [];
+    const createRuntime = () =>
+      createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: (_providerId, options) => {
+          captured.push(options.acpLaunchSpec);
+          return createFakeAdapter(scriptPath);
+        },
+      });
+
+    const listRuntime = createRuntime();
+    await listRuntime.listModels({
+      providerId: "acp-custom",
+      acpLaunchSpec,
+    });
+    await listRuntime.shutdown();
+
+    const startRuntime = createRuntime();
+    await startRuntime.startThread({
+      acpLaunchSpec,
+      environmentId: "env-1",
+      threadId: "t-start",
+      projectId: "p1",
+      providerId: "acp-custom",
+      options: fullRuntimeOptions,
+    });
+    await startRuntime.shutdown();
+
+    const resumeRuntime = createRuntime();
+    await resumeRuntime.resumeThread({
+      acpLaunchSpec,
+      environmentId: "env-1",
+      threadId: "t-resume",
+      projectId: "p1",
+      providerThreadId: "provider-resume",
+      providerId: "acp-custom",
+      options: fullRuntimeOptions,
+    });
+    await resumeRuntime.shutdown();
+
+    expect(captured).toEqual([acpLaunchSpec, acpLaunchSpec, acpLaunchSpec]);
+  });
+
+  it("uses a new provider process cache entry when the acp launch spec changes", async () => {
+    const seenModelListMarkers: string[] = [];
+    const adapterConstructions: string[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        const marker = options.acpLaunchSpec?.env.CACHE_MARKER ?? "missing";
+        adapterConstructions.push(marker);
+        const base = createFakeAdapter(scriptPath);
+        return {
+          ...base,
+          buildCommandPlan(command: Parameters<typeof base.buildCommandPlan>[0]) {
+            if (command.type === "model/list") {
+              seenModelListMarkers.push(marker);
+            }
+            return base.buildCommandPlan(command);
+          },
+        };
+      },
+    });
+
+    try {
+      await runtime.listModels({
+        providerId: "acp-custom",
+        acpLaunchSpec: {
+          ...acpLaunchSpec,
+          env: { CACHE_MARKER: "first" },
+        },
+      });
+      await runtime.listModels({
+        providerId: "acp-custom",
+        acpLaunchSpec: {
+          ...acpLaunchSpec,
+          env: { CACHE_MARKER: "second" },
+        },
+      });
+
+      expect(adapterConstructions).toEqual(["first", "second"]);
+      expect(seenModelListMarkers).toEqual(["first", "second"]);
     } finally {
       await runtime.shutdown();
     }

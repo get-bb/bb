@@ -205,11 +205,106 @@ export const acpInitializeResultSchema = z
   .passthrough();
 export type AcpInitializeResult = z.infer<typeof acpInitializeResultSchema>;
 
+export const acpConfigOptionSelectOptionSchema = z
+  .object({
+    value: z.string(),
+    name: z.string(),
+  })
+  .passthrough();
+export type AcpConfigOptionSelectOption = z.infer<
+  typeof acpConfigOptionSelectOptionSchema
+>;
+
+export const acpConfigOptionSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    category: z.string().optional(),
+    type: z.string(),
+    currentValue: z.string().optional(),
+    options: z.array(acpConfigOptionSelectOptionSchema).optional(),
+  })
+  .passthrough();
+export type AcpConfigOption = z.infer<typeof acpConfigOptionSchema>;
+
+const acpLooseConfigOptionSchema = z
+  .object({
+    id: z.string().optional(),
+    name: z.unknown().optional(),
+    category: z.string().optional(),
+    type: z.unknown().optional(),
+    currentValue: z.unknown().optional(),
+    options: z.unknown().optional(),
+  })
+  .passthrough();
+
+function parseAcpConfigOptions(
+  options: unknown[] | undefined,
+  ctx: z.RefinementCtx,
+): AcpConfigOption[] | undefined {
+  if (options === undefined) {
+    return undefined;
+  }
+  const parsedOptions: AcpConfigOption[] = [];
+  for (const option of options) {
+    const loose = acpLooseConfigOptionSchema.safeParse(option);
+    if (!loose.success) {
+      continue;
+    }
+    const isModelOption =
+      loose.data.category === "model" || loose.data.id === "model";
+    if (isModelOption) {
+      const strict = acpConfigOptionSchema.safeParse(option);
+      if (strict.success) {
+        parsedOptions.push(strict.data);
+        continue;
+      }
+      ctx.addIssue({
+        code: "custom",
+        message: `Invalid ACP model config option: ${strict.error.message}`,
+      });
+      continue;
+    }
+    if (loose.data.id === undefined) {
+      continue;
+    }
+    parsedOptions.push({
+      id: loose.data.id,
+      ...(typeof loose.data.name === "string"
+        ? { name: loose.data.name }
+        : {}),
+      ...(loose.data.category !== undefined
+        ? { category: loose.data.category }
+        : {}),
+      type: typeof loose.data.type === "string" ? loose.data.type : "",
+      ...(typeof loose.data.currentValue === "string"
+        ? { currentValue: loose.data.currentValue }
+        : {}),
+      ...(Array.isArray(loose.data.options)
+        ? {
+            options: loose.data.options.flatMap((selectOption) => {
+              const parsed = acpConfigOptionSelectOptionSchema.safeParse(
+                selectOption,
+              );
+              return parsed.success ? [parsed.data] : [];
+            }),
+          }
+        : {}),
+    });
+  }
+  return parsedOptions;
+}
+
 export const acpSessionNewResultSchema = z
   .object({
     sessionId: z.string(),
+    configOptions: z
+      .array(z.unknown())
+      .optional()
+      .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
   })
   .passthrough();
+export type AcpSessionNewResult = z.infer<typeof acpSessionNewResultSchema>;
 
 export const acpStopReasonSchema = z.enum([
   "end_turn",

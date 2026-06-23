@@ -4,7 +4,6 @@ import {
   setAppTheme,
   setExperiments,
 } from "@bb/db";
-import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -17,7 +16,10 @@ import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
-import { resolveSystemExecutionOptions } from "../services/system/execution-options.js";
+import {
+  listSystemProviderInfos,
+  resolveSystemExecutionOptions,
+} from "../services/system/execution-options.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
@@ -65,7 +67,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   });
 
   get(routes.providers, (context) =>
-    context.json(listBuiltInAgentProviderInfos()),
+    context.json(listSystemProviderInfos(deps.config.customAcpAgents)),
   );
 
   get(routes.usageLimits, async (context) =>

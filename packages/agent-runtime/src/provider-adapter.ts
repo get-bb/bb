@@ -18,6 +18,7 @@ import type {
   ProviderRuntimeEvent,
 } from "./runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 export interface ProviderTranslationContext {
   threadId?: string;
@@ -31,6 +32,7 @@ export interface ProviderAcceptedCommandTranslationArgs {
 
 export interface ProviderAdapterFactoryOptions {
   additionalWorkspaceWriteRoots: readonly string[];
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;

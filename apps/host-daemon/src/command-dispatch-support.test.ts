@@ -3,6 +3,7 @@ import type {
   AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createAgentRuntimeMock = vi.hoisted(() =>
@@ -96,10 +97,10 @@ describe("command dispatch support", () => {
     createAgentRuntimeMock.mockReset();
   });
 
-  it("classifies Cursor model-list authentication errors", () => {
+  it("classifies ACP model-list authentication errors", () => {
     expect(
       getErrorCode(
-        new Error("Cursor agent is not authenticated."),
+        new Error("ACP agent is not authenticated."),
       ),
     ).toBe("auth_required");
     expect(
@@ -149,5 +150,90 @@ describe("command dispatch support", () => {
 
     await shutdownDefaultListModelsRuntimes();
     expect(shutdowns).toEqual(["runtime"]);
+  });
+
+  it("forwards acp launch specs to the default model-list runtime", async () => {
+    const launchSpec: HostDaemonAcpLaunchSpec = {
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: ["serve"],
+      env: {},
+    };
+    const listModels = vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
+      models: [],
+      selectedOnlyModels: [],
+    });
+    createAgentRuntimeMock.mockReturnValue(
+      makeRuntime({
+        listModels,
+        shutdown: async () => {},
+      }),
+    );
+
+    await defaultListModels({
+      providerId: "acp-custom",
+      acpLaunchSpec: launchSpec,
+    });
+
+    expect(listModels).toHaveBeenCalledWith({
+      providerId: "acp-custom",
+      acpLaunchSpec: launchSpec,
+    });
+  });
+
+  it("creates a new default model-list runtime when the acp launch spec changes", async () => {
+    const firstSpec: HostDaemonAcpLaunchSpec = {
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: ["serve"],
+      env: { CACHE_MARKER: "first" },
+    };
+    const secondSpec: HostDaemonAcpLaunchSpec = {
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: ["serve"],
+      env: { CACHE_MARKER: "second" },
+    };
+    const shutdowns: string[] = [];
+    createAgentRuntimeMock
+      .mockReturnValueOnce(
+        makeRuntime({
+          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
+            models: [makeModel({ id: "first" })],
+            selectedOnlyModels: [],
+          }),
+          shutdown: async () => {
+            shutdowns.push("first");
+          },
+        }),
+      )
+      .mockReturnValueOnce(
+        makeRuntime({
+          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
+            models: [makeModel({ id: "second" })],
+            selectedOnlyModels: [],
+          }),
+          shutdown: async () => {
+            shutdowns.push("second");
+          },
+        }),
+      );
+
+    await expect(
+      defaultListModels({
+        providerId: "acp-custom",
+        acpLaunchSpec: firstSpec,
+      }),
+    ).resolves.toMatchObject({ models: [{ id: "first" }] });
+    await expect(
+      defaultListModels({
+        providerId: "acp-custom",
+        acpLaunchSpec: secondSpec,
+      }),
+    ).resolves.toMatchObject({ models: [{ id: "second" }] });
+
+    expect(createAgentRuntimeMock).toHaveBeenCalledTimes(2);
+    await shutdownDefaultListModelsRuntimes();
+    expect(shutdowns).toEqual(["first", "second"]);
   });
 });

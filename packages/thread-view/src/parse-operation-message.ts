@@ -30,7 +30,7 @@ import type {
 
 type ParseOperationMessageOptions = Pick<
   BuildEventProjectionMessagesOptions,
-  "includeProviderUnhandledOperations" | "threadName"
+  "includeProviderUnhandledOperations" | "providerDisplayName" | "threadName"
 >;
 
 /**
@@ -53,7 +53,10 @@ type UserQuestionLifecycleEvent = Extract<
   { type: "system/userQuestion/lifecycle" }
 >;
 
-function providerDisplayName(providerId: string): string {
+function providerDisplayName(
+  providerId: string,
+  projectedDisplayName: string | undefined,
+): string {
   switch (providerId) {
     case "claude-code":
       return "Claude Code";
@@ -64,7 +67,7 @@ function providerDisplayName(providerId: string): string {
     case "acp-cursor":
       return "Cursor";
     default:
-      return providerId;
+      return projectedDisplayName?.trim() || providerId;
   }
 }
 
@@ -439,7 +442,10 @@ export function parseOperationMessage(
 
     return op(decoded, meta, "provider-unhandled", {
       opType: "provider-unhandled",
-      title: `Unhandled ${providerDisplayName(decoded.providerId)} event`,
+      title: `Unhandled ${providerDisplayName(
+        decoded.providerId,
+        options?.providerDisplayName,
+      )} event`,
       detail: buildProviderUnhandledDetail(decoded),
       status: "completed",
     });

@@ -17,6 +17,7 @@ import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 interface CountingLogger {
   logger: ServerLogger;
+  warnings(): Array<{ fields: Record<string, unknown>; message: string }>;
   warningCount(): number;
 }
 
@@ -29,19 +30,30 @@ function createTestLogger(): ServerLogger {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function createCountingLogger(): CountingLogger {
-  let warnings = 0;
+  const warnings: Array<{ fields: Record<string, unknown>; message: string }> =
+    [];
   return {
     logger: {
       debug(): void {},
       error(): void {},
       info(): void {},
-      warn(): void {
-        warnings += 1;
+      warn(...args: unknown[]): void {
+        const fields = isRecord(args[0]) ? args[0] : {};
+        const message =
+          typeof args[1] === "string" ? args[1] : String(args[0] ?? "");
+        warnings.push({ fields, message });
       },
     },
-    warningCount(): number {
+    warnings(): Array<{ fields: Record<string, unknown>; message: string }> {
       return warnings;
+    },
+    warningCount(): number {
+      return warnings.length;
     },
   };
 }
@@ -52,6 +64,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     appVersion: "0.0.0-test",
     automationsAllowScriptRuns: true,
     builtinSkillsRootPath: "/tmp/bb-test/builtin-skills",
+    customAcpAgents: [],
     customModels: [],
     dataDir: "/tmp/bb-test",
     featureFlags: defaultFeatureFlags,
@@ -152,6 +165,68 @@ describe("bb-app managed config", () => {
     ]);
   });
 
+  it("applies custom ACP agents over the ambient runtime config", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        customAcpAgents: [
+          {
+            id: "my-agent",
+            displayName: "My Agent",
+            command: "my-agent",
+            args: ["acp"],
+            env: { MY_AGENT_HOME: "/tmp/my-agent" },
+          },
+        ],
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.customAcpAgents).toEqual([
+      {
+        id: "my-agent",
+        displayName: "My Agent",
+        command: "my-agent",
+        args: ["acp"],
+        env: { MY_AGENT_HOME: "/tmp/my-agent" },
+      },
+    ]);
+  });
+
+  it("restores base custom ACP agents when the key is removed", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        customAcpAgents: [
+          {
+            id: "my-agent",
+            displayName: "My Agent",
+            command: "my-agent",
+            args: [],
+            env: {},
+          },
+        ],
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {},
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.customAcpAgents).toEqual([]);
+  });
+
   it("restores base custom models when the key is removed", () => {
     const baseConfig = createRuntimeConfig();
     const targetConfig = createRuntimeConfig();
@@ -219,6 +294,69 @@ describe("bb-app managed config", () => {
 
       await reloader.reload({ notify: true });
       expect(config.openAiApiKey).toBe("live-openai-key");
+      expect(
+        socket.messages.some((message) => message.includes("config-changed")),
+      ).toBe(true);
+    } finally {
+      hub.unregisterClient(socket);
+      rmSync(dataDir, { force: true, recursive: true });
+    }
+  });
+
+  it("reloads mixed valid and invalid custom ACP agents with per-entry warnings and notification", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
+    const socket = createMockHubSocket();
+    const config = {
+      ...createRuntimeConfig(),
+      dataDir,
+    };
+    const hub = new NotificationHub();
+    const logger = createCountingLogger();
+    hub.subscribe(socket, { kind: "system" });
+
+    const reloader = await createBbAppManagedConfigReloader({
+      config,
+      hub,
+      logger: logger.logger,
+    });
+
+    try {
+      writeFileSync(
+        formatBbAppConfigPath(dataDir),
+        `${JSON.stringify({
+          customAcpAgents: [
+            {
+              id: "valid-agent",
+              displayName: "Valid Agent",
+              command: "valid-agent",
+            },
+            {
+              id: "bad agent",
+              displayName: "Bad Agent",
+              command: "bad-agent",
+            },
+          ],
+        })}\n`,
+        "utf8",
+      );
+
+      await reloader.reload({ notify: true });
+
+      expect(config.customAcpAgents).toEqual([
+        {
+          id: "valid-agent",
+          displayName: "Valid Agent",
+          command: "valid-agent",
+          args: [],
+          env: {},
+        },
+      ]);
+      expect(logger.warnings()).toEqual([
+        expect.objectContaining({
+          fields: expect.objectContaining({ index: 1 }),
+          message: "Ignoring invalid custom ACP agent config entry",
+        }),
+      ]);
       expect(
         socket.messages.some((message) => message.includes("config-changed")),
       ).toBe(true);

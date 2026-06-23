@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bbAppManagedConfigSchema } from "../src/bb-app-managed-config.js";
+import {
+  bbAppManagedConfigSchema,
+  formatCustomAcpAgentProviderId,
+  parseBbAppManagedConfig,
+} from "../src/bb-app-managed-config.js";
 
 describe("bbAppManagedConfigSchema", () => {
   it("parses custom models with a known provider", () => {
@@ -42,5 +46,122 @@ describe("bbAppManagedConfigSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("parses custom ACP agents, applies local defaults, and drops empty modelCli", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          modelCli: {},
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents).toEqual([
+      {
+        id: "my-agent",
+        displayName: "My Agent",
+        command: "my-agent",
+        args: [],
+        env: {},
+      },
+    ]);
+    expect(formatCustomAcpAgentProviderId("my-agent")).toBe("acp-my-agent");
+  });
+
+  it("keeps non-empty custom ACP modelCli config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          modelCli: {
+            listArgs: ["models"],
+            selectFlag: "--model",
+            primaryModels: ["model-a"],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      modelCli: {
+        listArgs: ["models"],
+        selectFlag: "--model",
+        primaryModels: ["model-a"],
+      },
+    });
+  });
+
+  it("rejects custom ACP agents with invalid ids, missing commands, collisions, and duplicates", () => {
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          { id: "Bad-Agent", displayName: "Bad", command: "bad" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [{ id: "missing-command", displayName: "Missing" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          { id: "cursor", displayName: "Cursor Collision", command: "agent" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          { id: "one", displayName: "One", command: "one" },
+          { id: "one", displayName: "Duplicate", command: "duplicate" },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("drops invalid custom ACP agent entries with warnings at the config boundary", () => {
+    const warnings: Record<string, unknown>[] = [];
+    const parsed = parseBbAppManagedConfig(
+      {
+        customAcpAgents: [
+          { id: "good", displayName: "Good", command: "good" },
+          { id: "bad id", displayName: "Bad", command: "bad" },
+          { id: "good", displayName: "Duplicate", command: "duplicate" },
+          { id: "cursor", displayName: "Cursor Collision", command: "agent" },
+        ],
+      },
+      {
+        logger: {
+          warn(fields): void {
+            warnings.push(fields);
+          },
+        },
+      },
+    );
+
+    expect(parsed.customAcpAgents).toEqual([
+      {
+        id: "good",
+        displayName: "Good",
+        command: "good",
+        args: [],
+        env: {},
+      },
+    ]);
+    expect(warnings).toHaveLength(3);
+    expect(warnings.map((warning) => warning.index)).toEqual([1, 2, 3]);
   });
 });

@@ -19,11 +19,16 @@ const ACP_AGENT_PROVIDER_ID_VALUES = [
   "acp-cursor",
 ] as const satisfies readonly AgentProviderId[];
 export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDER_ID_VALUES)[number];
+const ACP_PROVIDER_ID_PREFIX = "acp-";
 
 export function isAcpAgentProviderId(
   value: string,
 ): value is AcpAgentProviderId {
   return (ACP_AGENT_PROVIDER_ID_VALUES as readonly string[]).includes(value);
+}
+
+export function isAcpProviderId(value: string): boolean {
+  return value.startsWith(ACP_PROVIDER_ID_PREFIX);
 }
 
 /**
@@ -71,6 +76,11 @@ export interface BuiltInAgentProviderInfo extends ProviderInfo {
 export interface BuiltInAgentProviderCatalogEntry {
   info: BuiltInAgentProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
+}
+
+export interface BuildAcpProviderInfoArgs {
+  displayName: string;
+  id: string;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
@@ -296,6 +306,42 @@ function cloneBuiltInAgentProviderInfo(
     displayName: info.displayName,
     id: info.id,
   };
+}
+
+export function buildAcpProviderInfo(
+  args: BuildAcpProviderInfoArgs,
+): ProviderInfo {
+  if (!isAcpProviderId(args.id)) {
+    throw new Error(`ACP provider id "${args.id}" must start with "acp-".`);
+  }
+  return {
+    available: true,
+    capabilities: cloneCapabilities(ACP_CAPABILITIES),
+    composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
+    displayName: args.displayName,
+    id: args.id,
+  };
+}
+
+export function getAcpProviderServerCapabilities(
+  providerId: string,
+): ProviderServerCapabilities {
+  if (!isAcpProviderId(providerId)) {
+    throw new Error(`ACP provider id "${providerId}" must start with "acp-".`);
+  }
+  return ACP_SERVER_CAPABILITIES;
+}
+
+export function getAgentProviderServerCapabilities(
+  providerId: string,
+): ProviderServerCapabilities | null {
+  if (isAgentProviderId(providerId)) {
+    return getBuiltInAgentProviderServerCapabilities(providerId);
+  }
+  if (isAcpProviderId(providerId)) {
+    return getAcpProviderServerCapabilities(providerId);
+  }
+  return null;
 }
 
 export function isAgentProviderId(value: string): value is AgentProviderId {

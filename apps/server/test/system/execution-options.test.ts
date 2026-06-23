@@ -222,12 +222,97 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
+  it("includes custom ACP agents and sends their launch spec when loading models", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "example-agent",
+            displayName: "Example Agent",
+            command: "example-agent",
+            args: ["acp", "--stdio"],
+            env: { EXAMPLE_TOKEN: "test-token" },
+            cwd: "/tmp/example-agent",
+            modelCli: {
+              listArgs: ["models", "--json"],
+              selectFlag: "--model",
+              primaryModels: ["example/default"],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-custom-acp",
+        });
+        const catalogModel = availableModelFixture({
+          model: "example/default",
+        });
+        const responder = registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          modelsByProviderId: {
+            "acp-example-agent": {
+              models: [catalogModel],
+              selectedOnlyModels: [],
+            },
+          },
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "acp-example-agent",
+        });
+
+        expect(response.providers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "acp-example-agent",
+              displayName: "Example Agent",
+              available: true,
+              composerActions: [],
+              capabilities: expect.objectContaining({
+                supportsFork: false,
+                supportsServiceTier: true,
+                supportedPermissionModes: [
+                  "full",
+                  "workspace-write",
+                  "readonly",
+                ],
+              }),
+            }),
+          ]),
+        );
+        expect(response.models).toEqual([catalogModel]);
+        expect(response.selectedOnlyModels).toEqual([]);
+        expect(response.modelLoadError).toBeNull();
+        expect(responder.requests).toHaveLength(1);
+        expect(responder.requests[0].command).toEqual({
+          type: "provider.list_models",
+          providerId: "acp-example-agent",
+          acpLaunchSpec: {
+            displayName: "Example Agent",
+            command: "example-agent",
+            args: ["acp", "--stdio"],
+            env: { EXAMPLE_TOKEN: "test-token" },
+            cwd: "/tmp/example-agent",
+            modelCli: {
+              listArgs: ["models", "--json"],
+              selectFlag: "--model",
+              primaryModels: ["example/default"],
+            },
+          },
+        });
+      },
+    );
+  });
+
   it("surfaces provider auth-required model load failures", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-execution-options-auth-required",
       });
-      registerProviderHostRpcResponder(harness, {
+      const responder = registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         modelErrorsByProviderId: {
@@ -247,8 +332,69 @@ describe("resolveSystemExecutionOptions", () => {
         providerId: "acp-cursor",
         code: "auth_required",
       });
+      expect(responder.requests).toHaveLength(1);
+      expect(responder.requests[0].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-cursor",
+      });
       expect(response.models).toEqual([]);
       expect(response.selectedOnlyModels).toEqual([]);
     });
   });
+
+  it.each([
+    ["missing executable", "missing_executable", "missing_executable"],
+    ["auth required", "auth_required", "auth_required"],
+    ["launch failure", "command_failed", "failed"],
+  ] as const)(
+    "surfaces dynamic ACP model-load %s errors with the custom provider identity",
+    async (_name, hostErrorCode, expectedCode) => {
+      await withTestHarness(
+        {
+          customAcpAgents: [
+            {
+              id: "broken-agent",
+              displayName: "Broken Agent",
+              command: "broken-agent",
+              args: [],
+              env: {},
+            },
+          ],
+        },
+        async (harness) => {
+          const { host, session } = seedHostSession(harness.deps, {
+            id: `host-execution-options-${hostErrorCode}`,
+          });
+          registerProviderHostRpcResponder(harness, {
+            hostId: host.id,
+            sessionId: session.id,
+            modelErrorsByProviderId: {
+              "acp-broken-agent": {
+                errorCode: hostErrorCode,
+                errorMessage: "model list failed",
+              },
+            },
+          });
+
+          const response = await resolveSystemExecutionOptions(harness.deps, {
+            hostId: host.id,
+            providerId: "acp-broken-agent",
+          });
+
+          expect(response.modelLoadError).toEqual({
+            providerId: "acp-broken-agent",
+            code: expectedCode,
+          });
+          expect(response.providers).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                id: "acp-broken-agent",
+                displayName: "Broken Agent",
+              }),
+            ]),
+          );
+        },
+      );
+    },
+  );
 });

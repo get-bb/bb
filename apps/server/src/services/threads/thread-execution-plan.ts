@@ -1,5 +1,7 @@
 import {
+  buildAcpProviderInfo,
   getBuiltInAgentProviderInfo,
+  isAcpProviderId,
   isAgentProviderId,
 } from "@bb/agent-providers";
 import { getProjectExecutionDefaults, getThread } from "@bb/db";
@@ -165,11 +167,19 @@ function validateProviderPermissionMode(
   providerId: string | undefined,
   permissionMode: PermissionMode,
 ): void {
-  if (!providerId || !isAgentProviderId(providerId)) {
+  if (!providerId) {
     return;
   }
 
-  const provider = getBuiltInAgentProviderInfo(providerId);
+  const provider = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({ id: providerId, displayName: providerId })
+      : null;
+  if (!provider) {
+    return;
+  }
+
   if (provider.capabilities.supportedPermissionModes.includes(permissionMode)) {
     return;
   }

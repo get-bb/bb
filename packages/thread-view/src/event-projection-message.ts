@@ -427,4 +427,9 @@ export interface BuildEventProjectionMessagesOptions {
    * has no name; the title builders fall back to a bare verb.
    */
   threadName: string;
+  /**
+   * Server-provided display name for the provider that owns this projection.
+   * Dynamic providers may not be known to this package's static fallback table.
+   */
+  providerDisplayName?: string;
 }

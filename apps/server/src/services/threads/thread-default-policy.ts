@@ -1,6 +1,8 @@
 import {
+  buildAcpProviderInfo,
+  getAgentProviderServerCapabilities,
   getBuiltInAgentProviderInfo,
-  getBuiltInAgentProviderServerCapabilities,
+  isAcpProviderId,
   isAgentProviderId,
 } from "@bb/agent-providers";
 import type {
@@ -29,11 +31,9 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
  * the CLI.
  */
 export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return false;
-  }
-  return getBuiltInAgentProviderServerCapabilities(providerId)
-    .supportsWorkflows;
+  return (
+    getAgentProviderServerCapabilities(providerId)?.supportsWorkflows ?? false
+  );
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "full";
 const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
@@ -136,12 +136,24 @@ function isManagedChildThread(args: IsManagedChildThreadArgs): boolean {
 function resolveSupportedPermissionMode(
   args: ResolveSupportedPermissionModeArgs,
 ): PermissionMode {
-  if (!args.providerId || !isAgentProviderId(args.providerId)) {
+  if (!args.providerId) {
     return args.preferredPermissionMode;
   }
 
-  const supportedPermissionModes = getBuiltInAgentProviderInfo(args.providerId)
-    .capabilities.supportedPermissionModes;
+  const provider = isAgentProviderId(args.providerId)
+    ? getBuiltInAgentProviderInfo(args.providerId)
+    : isAcpProviderId(args.providerId)
+      ? buildAcpProviderInfo({
+          id: args.providerId,
+          displayName: args.providerId,
+        })
+      : null;
+  if (!provider) {
+    return args.preferredPermissionMode;
+  }
+
+  const supportedPermissionModes =
+    provider.capabilities.supportedPermissionModes;
   if (supportedPermissionModes.includes(args.preferredPermissionMode)) {
     return args.preferredPermissionMode;
   }

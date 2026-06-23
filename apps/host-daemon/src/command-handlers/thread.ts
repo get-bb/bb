@@ -56,6 +56,11 @@ async function resumeThreadRuntimeIfMissing(
     );
   }
   await entry.runtime.resumeThread({
+    ...(command.resumeContext.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
+      : command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -98,6 +103,9 @@ export async function startThread(
       workspaceContext: command.workspaceContext,
     });
     const result = await entry.runtime.startThread({
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,

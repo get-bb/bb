@@ -15,7 +15,11 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
-import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
+import {
+  buildAcpLaunchSpec,
+  buildThreadStartCommand,
+  prepareTurnSubmitCommandPayload,
+} from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -64,6 +68,122 @@ async function writeWorkspaceAgentInstructions(
 }
 
 describe("thread runtime config", () => {
+  it("omits empty custom ACP modelCli from launch specs", () => {
+    expect(
+      buildAcpLaunchSpec({
+        id: "custom",
+        displayName: "Custom ACP",
+        command: "custom-agent",
+        args: [],
+        env: {},
+        modelCli: {
+          listArgs: [],
+          selectFlag: "--model",
+          primaryModels: ["model-a"],
+        },
+      }),
+    ).toEqual({
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: [],
+      env: {},
+    });
+  });
+
+  it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "custom",
+            displayName: "Custom ACP",
+            command: "custom-agent",
+            args: ["serve"],
+            env: { CUSTOM_AGENT_TOKEN: "token" },
+            cwd: "/agent-home",
+            modelCli: {
+              listArgs: ["models", "list"],
+              selectFlag: "--model",
+              primaryModels: ["model-a"],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-runtime-custom-acp",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/custom-acp",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "acp-custom",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-custom",
+          threadId: thread.id,
+        });
+        const execution = {
+          model: "model-a",
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        } as const;
+        const expectedSpec = {
+          displayName: "Custom ACP",
+          command: "custom-agent",
+          args: ["serve"],
+          env: { CUSTOM_AGENT_TOKEN: "token" },
+          cwd: "/agent-home",
+          modelCli: {
+            listArgs: ["models", "list"],
+            selectFlag: "--model",
+            primaryModels: ["model-a"],
+          },
+        };
+
+        const startCommand = await buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId: "acp-custom",
+          requestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+
+        const submitCommand = await prepareTurnSubmitCommandPayload(
+          harness.deps,
+          {
+            environment,
+            execution,
+            permissionEscalation: "ask",
+            input: textInput("continue"),
+            target: { mode: "start" },
+            thread,
+          },
+        );
+        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(
+          expectedSpec,
+        );
+      },
+    );
+  });
+
   it.each([
     {
       childProviderId: "codex",

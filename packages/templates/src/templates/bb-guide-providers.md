@@ -15,3 +15,7 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
 Use these before spawning threads if you are unsure which provider or model to use.
 When provider and model are omitted from bb thread spawn, the project's remembered
 defaults apply.
+
+Custom ACP agents are configured in the app data-dir config.json under
+customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
+and run bb-app config refresh; there is no set/unset CLI surface for this list.

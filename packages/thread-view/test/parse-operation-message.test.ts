@@ -72,6 +72,41 @@ function ownershipTitle(
 }
 
 describe("parseOperationMessage operation titles", () => {
+  describe("provider-unhandled", () => {
+    it("uses the projected provider display name for dynamic providers", () => {
+      const row = factory().providerUnhandled({
+        providerId: "acp-my-agent",
+      });
+      const { event, meta } = decodeThreadEventRow(row);
+      const message = parseOperationMessage(event, meta, {
+        includeProviderUnhandledOperations: true,
+        providerDisplayName: "My Agent",
+        threadName: THREAD_NAME,
+      });
+
+      expect(message).toMatchObject({
+        kind: "operation",
+        title: "Unhandled My Agent event",
+      });
+    });
+
+    it("falls back to the provider id when no display name is projected", () => {
+      const row = factory().providerUnhandled({
+        providerId: "acp-my-agent",
+      });
+      const { event, meta } = decodeThreadEventRow(row);
+      const message = parseOperationMessage(event, meta, {
+        includeProviderUnhandledOperations: true,
+        threadName: THREAD_NAME,
+      });
+
+      expect(message).toMatchObject({
+        kind: "operation",
+        title: "Unhandled acp-my-agent event",
+      });
+    });
+  });
+
   describe("thread-provisioning", () => {
     it("keeps self-scoped lifecycle titles free of the current thread name", () => {
       expect(provisioningTitle("active", THREAD_NAME)).toBe(

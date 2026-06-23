@@ -1,4 +1,5 @@
 export { createAgentRuntime } from "./runtime.js";
+export { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 export {
   createProviderForId,
   listAvailableProviderInfos as listAvailableProviders,

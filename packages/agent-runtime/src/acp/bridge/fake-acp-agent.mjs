@@ -9,17 +9,37 @@
  *
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
+ * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  */
 
 import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
 
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
+const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
+const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const sessionId = `fake-sess-${process.pid}`;
+const fakeModels = [
+  { value: "fake/default", name: "Fake Default" },
+  { value: "fake/strong", name: "Fake Strong" },
+];
 
 let activePromptId = null;
 let nextAgentRequestId = 1000;
+let selectedModel = "fake/default";
 const pendingClientRequests = new Map();
+
+process.on("SIGTERM", () => {
+  if (process.env.FAKE_ACP_SIGNAL_FILE) {
+    writeFileSync(process.env.FAKE_ACP_SIGNAL_FILE, "SIGTERM\n");
+  }
+  process.exit(0);
+});
+
+if (process.env.FAKE_ACP_READY_FILE) {
+  writeFileSync(process.env.FAKE_ACP_READY_FILE, "ready\n");
+}
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\n");
@@ -119,6 +139,8 @@ async function handlePrompt(message) {
   } else if (text.includes("echo-argv")) {
     // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
+  } else if (text.includes("echo-selected-model")) {
+    notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
   } else if (text.includes("echo-electron-run-as-node")) {
     notifyUpdate(
       messageChunk(
@@ -142,6 +164,9 @@ async function handlePrompt(message) {
 async function handleMessage(message) {
   switch (message.method) {
     case "initialize":
+      if (hangInitialize) {
+        return;
+      }
       send({
         jsonrpc: "2.0",
         id: message.id,
@@ -155,7 +180,35 @@ async function handleMessage(message) {
       });
       return;
     case "session/new":
-      send({ jsonrpc: "2.0", id: message.id, result: { sessionId } });
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          sessionId,
+          ...(modelConfig
+            ? {
+                configOptions: [
+                  {
+                    id: "mode",
+                    name: "Mode",
+                    category: "mode",
+                    type: "select",
+                    currentValue: true,
+                    options: [{ value: "build", name: "Build" }],
+                  },
+                  {
+                    id: "model",
+                    name: "Model",
+                    category: "model",
+                    type: "select",
+                    currentValue: "fake/default",
+                    options: fakeModels,
+                  },
+                ],
+              }
+            : {}),
+        },
+      });
       return;
     case "session/load":
       if (loadSession) {
@@ -168,6 +221,24 @@ async function handleMessage(message) {
         });
       }
       return;
+    case "session/set_model": {
+      const modelId = message.params?.modelId;
+      if (
+        !modelConfig ||
+        typeof modelId !== "string" ||
+        !fakeModels.some((model) => model.value === modelId)
+      ) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32602, message: `model not found: ${modelId}` },
+        });
+        return;
+      }
+      selectedModel = modelId;
+      send({ jsonrpc: "2.0", id: message.id, result: {} });
+      return;
+    }
     case "session/prompt":
       await handlePrompt(message);
       return;

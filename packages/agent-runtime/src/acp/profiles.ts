@@ -1,4 +1,5 @@
 import type { AcpAgentProviderId } from "@bb/agent-providers";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 /**
  * CLI model surface of the agent's launch binary: how to discover models and
@@ -9,7 +10,7 @@ export interface AcpAgentModelCli {
   /** Args (on the agent binary) that print one `id - Display Name` line per model. */
   listArgs: string[];
   /** Global flag inserted before the agent args to pin a model at launch. */
-  selectFlag: string;
+  selectFlag?: string;
   /**
    * Family ids (each family's default-variant raw id) shown in the picker by
    * default; every other family lands in the collapsed "more models" pool.
@@ -25,13 +26,20 @@ export interface AcpAgentModelCli {
  * agent's stdio.
  */
 export interface AcpAgentProfile {
-  providerId: AcpAgentProviderId;
+  providerId: string;
   displayName: string;
   agentCommand: { command: string; args: string[] };
+  env?: Record<string, string>;
+  cwd?: string;
+  modelCli?: AcpAgentModelCli;
+}
+
+interface BuiltInAcpAgentProfile extends AcpAgentProfile {
+  providerId: AcpAgentProviderId;
   modelCli: AcpAgentModelCli;
 }
 
-export const ACP_AGENT_PROFILES: readonly AcpAgentProfile[] = [
+export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
   {
     providerId: "acp-cursor",
     displayName: "Cursor",
@@ -65,4 +73,32 @@ export function getAcpAgentProfile(
     throw new Error(`Unknown ACP agent profile "${providerId}".`);
   }
   return profile;
+}
+
+export function acpProfileFromLaunchSpec(
+  spec: HostDaemonAcpLaunchSpec,
+  providerId: string,
+): AcpAgentProfile {
+  const modelCli =
+    spec.modelCli !== undefined && spec.modelCli.listArgs.length > 0
+      ? spec.modelCli
+      : undefined;
+  return {
+    providerId,
+    displayName: spec.displayName,
+    agentCommand: { command: spec.command, args: [...spec.args] },
+    ...(Object.keys(spec.env).length > 0 ? { env: { ...spec.env } } : {}),
+    ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
+    ...(modelCli !== undefined
+      ? {
+          modelCli: {
+            listArgs: [...modelCli.listArgs],
+            primaryModels: [...modelCli.primaryModels],
+            ...(modelCli.selectFlag !== undefined
+              ? { selectFlag: modelCli.selectFlag }
+              : {}),
+          },
+        }
+      : {}),
+  };
 }

@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
@@ -74,6 +75,7 @@ export interface RuntimeProviderProcessManagerArgs {
 }
 
 export interface EnsureRuntimeProviderArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   processKey: string;
   providerId: string;
 }
@@ -154,7 +156,7 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
-      const adapter = this.getAdapter(args.providerId);
+      const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
       const providerProcess = this.spawnProvider({
         adapter,
         processKey: args.processKey,
@@ -294,9 +296,13 @@ export class RuntimeProviderProcessManager {
     await Promise.all(shutdownPromises);
   }
 
-  private getAdapter(providerId: string): ProviderAdapter {
+  private getAdapter(
+    providerId: string,
+    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
+  ): ProviderAdapter {
     const adapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
+      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined
         ? { bridgeNodeEnv: this.args.bridgeNodeEnv }

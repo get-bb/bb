@@ -71,6 +71,7 @@ describe("resolveWorkflowsEnabledPolicy", () => {
     expect(resolveWorkflowsEnabledPolicy("claude-code")).toBe(true);
     expect(resolveWorkflowsEnabledPolicy("codex")).toBe(false);
     expect(resolveWorkflowsEnabledPolicy("pi")).toBe(false);
+    expect(resolveWorkflowsEnabledPolicy("acp-my-agent")).toBe(false);
   });
 });
 

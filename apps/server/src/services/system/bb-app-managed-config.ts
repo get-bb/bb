@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import {
-  bbAppManagedConfigSchema,
   bbAppManagedEnvFileSchema,
   formatBbAppConfigPath,
   formatBbAppEnvPath,
+  parseBbAppManagedConfig,
   type BbAppManagedConfig,
   type BbAppManagedEnvConfig,
   type BbAppManagedEnvFile,
@@ -25,6 +25,7 @@ export interface ApplyBbAppManagedConfigArgs {
 
 export interface ReadBbAppManagedConfigArgs {
   configPath: string;
+  logger?: ServerLogger;
 }
 
 export interface ReadBbAppManagedEnvArgs {
@@ -100,6 +101,8 @@ export function applyBbAppManagedConfig(
   const managedEnv = args.managedEnvFile.env ?? {};
 
   // providerId validity is enforced by customProviderModelSchema at parse time.
+  args.targetConfig.customAcpAgents =
+    args.managedConfig.customAcpAgents ?? args.baseConfig.customAcpAgents;
   args.targetConfig.customModels =
     args.managedConfig.customModels ?? args.baseConfig.customModels;
   args.targetConfig.inferenceModel =
@@ -126,7 +129,9 @@ export async function readBbAppManagedConfig(
 ): Promise<BbAppManagedConfig> {
   try {
     const rawConfig = await readFile(args.configPath, "utf8");
-    return bbAppManagedConfigSchema.parse(JSON.parse(rawConfig));
+    return parseBbAppManagedConfig(JSON.parse(rawConfig), {
+      logger: args.logger,
+    });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return {};
@@ -161,7 +166,10 @@ export async function createBbAppManagedConfigReloader(
   async function reload(
     reloadArgs: ReloadBbAppManagedConfigArgs,
   ): Promise<void> {
-    const managedConfig = await readBbAppManagedConfig({ configPath });
+    const managedConfig = await readBbAppManagedConfig({
+      configPath,
+      logger: args.logger,
+    });
     const managedEnvFile = await readBbAppManagedEnv({ envPath });
     const nextConfig = cloneRuntimeConfig(args.config);
     applyBbAppManagedConfig({

@@ -17,10 +17,11 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
-  bbAppManagedConfigSchema,
   bbAppManagedEnvFileSchema,
   formatBbAppConfigPath,
   formatBbAppEnvPath,
+  formatCustomAcpAgentProviderId,
+  parseBbAppManagedConfig,
   type BbAppManagedConfig,
   type BbAppManagedConfigKey,
   type BbAppManagedConfigValues,
@@ -92,6 +93,9 @@ export type ManagedConfigValues = BbAppManagedConfigValues;
 export type ManagedEnvConfig = BbAppManagedEnvConfig;
 export type ManagedEnvFile = BbAppManagedEnvFile;
 export type ManagedConfig = BbAppManagedConfig;
+type ManagedConfigForWrite = Omit<ManagedConfig, "customAcpAgents"> & {
+  customAcpAgents?: unknown[];
+};
 
 export interface HostEnrollKeyRequestBody {
   hostId?: string;
@@ -411,12 +415,12 @@ interface ResolveManagedConfigArgs {
 }
 
 interface WriteManagedConfigArgs {
-  config: ManagedConfig;
+  config: ManagedConfigForWrite;
   dataDir: string;
 }
 
 interface WriteManagedConfigFileArgs {
-  config: ManagedConfig;
+  config: ManagedConfigForWrite;
   dataDir: string;
 }
 
@@ -725,7 +729,59 @@ async function readManagedConfig(
       formatBbAppConfigPath(args.dataDir),
       "utf8",
     );
-    return bbAppManagedConfigSchema.parse(JSON.parse(rawConfig));
+    return parseBbAppManagedConfig(JSON.parse(rawConfig), {
+      logger: launcherConfigWarningLogger,
+    });
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `Invalid bb-app config JSON at ${formatBbAppConfigPath(args.dataDir)}`,
+      );
+    }
+    if (error instanceof z.ZodError) {
+      throw new Error(
+        `Invalid bb-app config at ${formatBbAppConfigPath(args.dataDir)}: ${error.message}`,
+      );
+    }
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const launcherConfigWarningLogger = {
+  warn(fields: Record<string, unknown>, message: string): void {
+    process.stderr.write(`${message}: ${JSON.stringify(fields)}\n`);
+  },
+};
+
+async function readManagedConfigForWrite(
+  args: ResolveManagedConfigArgs,
+): Promise<ManagedConfigForWrite> {
+  try {
+    const rawConfig = await readFile(
+      formatBbAppConfigPath(args.dataDir),
+      "utf8",
+    );
+    const parsedJson: unknown = JSON.parse(rawConfig);
+    const parsedConfig = parseBbAppManagedConfig(parsedJson, {
+      logger: launcherConfigWarningLogger,
+    });
+    if (
+      isJsonObject(parsedJson) &&
+      Array.isArray(parsedJson.customAcpAgents)
+    ) {
+      return {
+        ...parsedConfig,
+        customAcpAgents: parsedJson.customAcpAgents,
+      };
+    }
+    return parsedConfig;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(
@@ -778,10 +834,10 @@ function createManagedConfigValuePatch(
 }
 
 function mergeManagedConfig(
-  currentConfig: ManagedConfig,
-  patchConfig: ManagedConfig,
-): ManagedConfig {
-  const nextConfig: ManagedConfig = {
+  currentConfig: ManagedConfigForWrite,
+  patchConfig: ManagedConfigForWrite,
+): ManagedConfigForWrite {
+  const nextConfig: ManagedConfigForWrite = {
     ...currentConfig,
   };
 
@@ -799,12 +855,17 @@ function mergeManagedConfig(
   if (patchConfig.customModels !== undefined) {
     nextConfig.customModels = patchConfig.customModels;
   }
+  if (patchConfig.customAcpAgents !== undefined) {
+    nextConfig.customAcpAgents = patchConfig.customAcpAgents;
+  }
 
   return nextConfig;
 }
 
-function pruneManagedConfig(config: ManagedConfig): ManagedConfig {
-  const nextConfig: ManagedConfig = {};
+function pruneManagedConfig(
+  config: ManagedConfigForWrite,
+): ManagedConfigForWrite {
+  const nextConfig: ManagedConfigForWrite = {};
   if (config.serverUrl !== undefined) {
     nextConfig.serverUrl = config.serverUrl;
   }
@@ -813,6 +874,12 @@ function pruneManagedConfig(config: ManagedConfig): ManagedConfig {
   }
   if (config.customModels !== undefined && config.customModels.length > 0) {
     nextConfig.customModels = config.customModels;
+  }
+  if (
+    config.customAcpAgents !== undefined &&
+    config.customAcpAgents.length > 0
+  ) {
+    nextConfig.customAcpAgents = config.customAcpAgents;
   }
   return nextConfig;
 }
@@ -867,7 +934,7 @@ async function writeManagedConfigFile(
   }
 }
 
-function validateManagedConfigForWrite(config: ManagedConfig): void {
+function validateManagedConfigForWrite(config: ManagedConfigForWrite): void {
   if (config.serverUrl !== undefined) {
     validateOptionalUrl("BB_SERVER_URL", config.serverUrl);
   }
@@ -890,7 +957,9 @@ function validateManagedConfigForWrite(config: ManagedConfig): void {
 }
 
 async function writeManagedConfig(args: WriteManagedConfigArgs): Promise<void> {
-  const existingConfig = await readManagedConfig({ dataDir: args.dataDir });
+  const existingConfig = await readManagedConfigForWrite({
+    dataDir: args.dataDir,
+  });
   await writeManagedConfigFile({
     config: mergeManagedConfig(existingConfig, args.config),
     dataDir: args.dataDir,
@@ -1163,10 +1232,10 @@ function createManagedConfigPatch(
 }
 
 function unsetManagedConfigKey(
-  config: ManagedConfig,
+  config: ManagedConfigForWrite,
   key: ManagedConfigKey,
-): ManagedConfig {
-  const nextConfig: ManagedConfig = {
+): ManagedConfigForWrite {
+  const nextConfig: ManagedConfigForWrite = {
     ...config,
   };
   if (key === "BB_SERVER_URL" || key === "serverUrl") {
@@ -1231,6 +1300,13 @@ function formatManagedConfig(config: ManagedConfig): string {
   for (const [index, customModel] of (config.customModels ?? []).entries()) {
     lines.push(
       `customModels[${index}]=${customModel.providerId}:${customModel.model}`,
+    );
+  }
+  for (const [index, customAgent] of (
+    config.customAcpAgents ?? []
+  ).entries()) {
+    lines.push(
+      `customAcpAgents[${index}]=${formatCustomAcpAgentProviderId(customAgent.id)}:${customAgent.command}`,
     );
   }
   return lines.length > 0 ? `${lines.join("\n")}\n` : "No bb-app config set.\n";
@@ -1327,7 +1403,9 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
       throw new Error("Usage: bb-app config unset <key>");
     }
     const key = resolveManagedConfigKey(commandArgs[1]);
-    const currentConfig = await readManagedConfig({ dataDir: args.dataDir });
+    const currentConfig = await readManagedConfigForWrite({
+      dataDir: args.dataDir,
+    });
     await writeManagedConfigFile({
       config: unsetManagedConfigKey(currentConfig, key),
       dataDir: args.dataDir,

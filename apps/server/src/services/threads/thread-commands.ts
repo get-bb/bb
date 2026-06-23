@@ -5,6 +5,10 @@ import {
   isAgentProviderId,
 } from "@bb/agent-providers";
 import {
+  formatCustomAcpAgentProviderId,
+  type CustomAcpAgent,
+} from "@bb/config/bb-app-managed-config";
+import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
@@ -20,6 +24,7 @@ import {
 } from "@bb/domain";
 import type {
   HostDaemonCommand,
+  HostDaemonAcpLaunchSpec,
   TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
@@ -88,6 +93,7 @@ export interface ThreadStartCommandArgs {
 
 interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
+  deps: Pick<AppDeps, "config">;
   environmentId: string;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
@@ -169,6 +175,53 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
 }
 
+export function buildAcpLaunchSpec(
+  agent: CustomAcpAgent,
+): HostDaemonAcpLaunchSpec {
+  const modelCli =
+    "modelCli" in agent && agent.modelCli.listArgs.length > 0
+      ? agent.modelCli
+      : undefined;
+  return {
+    displayName: agent.displayName,
+    command: agent.command,
+    args: agent.args,
+    env: agent.env,
+    ...(agent.cwd !== undefined ? { cwd: agent.cwd } : {}),
+    ...(modelCli !== undefined
+      ? {
+          modelCli: {
+            listArgs: modelCli.listArgs,
+            primaryModels: modelCli.primaryModels,
+            ...(modelCli.selectFlag !== undefined
+              ? { selectFlag: modelCli.selectFlag }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function findCustomAcpAgentForProviderId(
+  customAcpAgents: CustomAcpAgent[],
+  providerId: string,
+): CustomAcpAgent | undefined {
+  return customAcpAgents.find(
+    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
+  );
+}
+
+function buildAcpLaunchSpecForProviderId(
+  deps: Pick<AppDeps, "config">,
+  providerId: string,
+): HostDaemonAcpLaunchSpec | undefined {
+  const agent = findCustomAcpAgentForProviderId(
+    deps.config.customAcpAgents,
+    providerId,
+  );
+  return agent ? buildAcpLaunchSpec(agent) : undefined;
+}
+
 function resolveClaudeCodeMockCliTrafficConfig(
   deps: Pick<AppDeps, "db">,
 ): ClaudeCodeMockCliTrafficConfig {
@@ -235,6 +288,7 @@ export async function buildThreadStartCommand(
     thread: args.thread,
     environment: args.environment,
   });
+  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -245,6 +299,7 @@ export async function buildThreadStartCommand(
     }),
     projectId: args.projectId,
     providerId: args.providerId,
+    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     requestId: args.requestId,
     input: args.input,
     options: toRuntimeExecutionOptions({
@@ -264,10 +319,15 @@ export async function buildThreadStartCommand(
 function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
 ): PreparedTurnSubmitCommandPayload {
+  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(
+    args.deps,
+    args.runtimeContext.providerId,
+  );
   return {
     type: "turn.submit",
     environmentId: args.environmentId,
     threadId: args.threadId,
+    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     input: args.input,
     options: toRuntimeExecutionOptions({
       ...args,
@@ -283,6 +343,7 @@ function buildPreparedTurnSubmitCommandPayload(
       }),
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
+      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
@@ -315,6 +376,7 @@ export async function prepareTurnSubmitCommandPayload(
   });
   return buildPreparedTurnSubmitCommandPayload({
     claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
+    deps,
     environmentId: args.environment.id,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,

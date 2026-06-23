@@ -8,6 +8,20 @@ import {
   createProviderForId,
   listAvailableProviderInfos,
 } from "./provider-registry.js";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+
+const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
+  displayName: "Custom ACP",
+  command: "custom-agent",
+  args: ["serve"],
+  env: { CUSTOM_AGENT_TOKEN: "token" },
+  cwd: "/agent-home",
+  modelCli: {
+    listArgs: ["models", "list"],
+    selectFlag: "--model",
+    primaryModels: ["model-a"],
+  },
+};
 
 describe("provider registry", () => {
   it("creates codex provider with expected process config", () => {
@@ -171,6 +185,116 @@ describe("provider registry", () => {
       },
     });
   });
+
+  it("creates a dynamic acp provider from a launch spec", () => {
+    const provider = createProviderForId("acp-custom", {
+      additionalWorkspaceWriteRoots: ["/extra-root"],
+      acpLaunchSpec: dynamicAcpLaunchSpec,
+    });
+
+    expect(provider.id).toBe("acp-custom");
+    expect(provider.displayName).toBe("Custom ACP");
+    const modelListPlan = provider.buildCommandPlan({ type: "model/list" });
+    expect(modelListPlan).toMatchObject({
+      kind: "request",
+      method: "model/list",
+      params: {
+        listCommand: {
+          command: "custom-agent",
+          args: ["models", "list"],
+          cwd: "/agent-home",
+          envVars: { CUSTOM_AGENT_TOKEN: "token" },
+        },
+        primaryModels: ["model-a"],
+      },
+    });
+
+    const startPlan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+        envVars: { BB_THREAD_ID: "thread-1" },
+      },
+      instructionMode: "append",
+    });
+    expect(startPlan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        cwd: "/agent-home",
+        agent: { command: "custom-agent", args: ["serve"] },
+        envVars: {
+          CUSTOM_AGENT_TOKEN: "token",
+          BB_THREAD_ID: "thread-1",
+        },
+        workspaceWriteRoots: ["/agent-home", "/extra-root"],
+      },
+    });
+  });
+
+  it.each<[string, HostDaemonAcpLaunchSpec["modelCli"]]>([
+    ["no model cli", undefined],
+    [
+      "empty model cli",
+      { listArgs: [], selectFlag: "--model", primaryModels: ["model-a"] },
+    ],
+  ])(
+    "uses ACP-native discovery and selection when a launch spec has %s",
+    (_name, modelCli) => {
+      const provider = createProviderForId("acp-custom", {
+        additionalWorkspaceWriteRoots: [],
+        acpLaunchSpec: {
+          displayName: "Custom ACP",
+          command: "custom-agent",
+          args: ["serve"],
+          env: {},
+          ...(modelCli !== undefined ? { modelCli } : {}),
+        },
+      });
+
+      const modelListPlan = provider.buildCommandPlan({ type: "model/list" });
+      expect(modelListPlan).toEqual({
+        kind: "request",
+        method: "model/list",
+        params: {
+          agent: { command: "custom-agent", args: ["serve"] },
+          primaryModels: [],
+        },
+      });
+
+      const params =
+        modelListPlan.kind === "request" ? modelListPlan.params : {};
+      expect(params).not.toHaveProperty("listCommand");
+
+      const startPlan = provider.buildCommandPlan({
+        type: "thread/start",
+        threadId: "thread-1",
+        cwd: "/workspace",
+        options: {
+          claudeCodeMockCliTraffic:
+            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+          model: "requested-model",
+        },
+        instructionMode: "append",
+      });
+      expect(startPlan).toMatchObject({
+        kind: "request",
+        method: "thread/start",
+        params: {
+          agent: { command: "custom-agent", args: ["serve"] },
+          modelSelection: { modelId: "requested-model" },
+        },
+      });
+    },
+  );
 
   it("rejects unsupported adapters", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(

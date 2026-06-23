@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonCommand,
+} from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
@@ -34,6 +37,15 @@ type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 
 function textPromptInput(text: string): TextPromptInput {
   return { type: "text", text, mentions: [] };
+}
+
+function customAcpLaunchSpec(): HostDaemonAcpLaunchSpec {
+  return {
+    displayName: "Custom ACP",
+    command: "custom-agent",
+    args: ["serve"],
+    env: { CUSTOM_AGENT_TOKEN: "token" },
+  };
 }
 
 function nextClientRequestId(): ClientTurnRequestId {
@@ -1489,12 +1501,14 @@ describe("thread command dispatch", () => {
 
   it("lazily resumes a missing thread runtime before turn.submit", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-lazy" });
+    const acpLaunchSpec = customAcpLaunchSpec();
 
     const result = await dispatchCommand(
       {
         type: "turn.submit",
         environmentId: "env-lazy",
         threadId: "thread-1",
+        acpLaunchSpec,
         requestId: nextClientRequestId(),
         input: [textPromptInput("hello")],
         options: {
@@ -1512,6 +1526,7 @@ describe("thread command dispatch", () => {
           },
           projectId: "project-1",
           providerId: "fake",
+          acpLaunchSpec,
           providerThreadId: "provider-1",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
@@ -1532,6 +1547,7 @@ describe("thread command dispatch", () => {
       }),
     ]);
     expect(harness.runtimeState.resumedEnvironmentId).toBe("env-lazy");
+    expect(harness.runtimeState.resumedAcpLaunchSpec).toBe(acpLaunchSpec);
     expect(harness.runtimeState.resumedProviderThreadId).toBe("provider-1");
     expect(harness.runtimeState.ranTurnText).toBe("hello");
   });
@@ -1624,41 +1640,53 @@ describe("thread command dispatch", () => {
 
   it("covers provider.list_models", async () => {
     const harness = createHarness();
+    const acpLaunchSpec = customAcpLaunchSpec();
+    let capturedListModelsArgs:
+      | { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec }
+      | undefined;
 
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.list_models",
         providerId: "fake",
+        acpLaunchSpec,
       },
       {
         ...harness.dispatchOptions(),
-        listModels: async () => ({
-          models: [
-            {
-              id: "model-1",
-              model: "model-1",
-              displayName: "Model 1",
-              description: "Test model",
-              supportedReasoningEfforts: [],
-              defaultReasoningEffort: "medium",
-              isDefault: true,
-            },
-          ],
-          selectedOnlyModels: [
-            {
-              id: "model-1-legacy",
-              model: "model-1-legacy",
-              displayName: "Model 1 (Legacy)",
-              description: "Retired model retained for existing selections",
-              supportedReasoningEfforts: [],
-              defaultReasoningEffort: "medium",
-              isDefault: false,
-            },
-          ],
-        }),
+        listModels: async (args) => {
+          capturedListModelsArgs = args;
+          return {
+            models: [
+              {
+                id: "model-1",
+                model: "model-1",
+                displayName: "Model 1",
+                description: "Test model",
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: "medium",
+                isDefault: true,
+              },
+            ],
+            selectedOnlyModels: [
+              {
+                id: "model-1-legacy",
+                model: "model-1-legacy",
+                displayName: "Model 1 (Legacy)",
+                description: "Retired model retained for existing selections",
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: "medium",
+                isDefault: false,
+              },
+            ],
+          };
+        },
       },
     );
 
+    expect(capturedListModelsArgs).toEqual({
+      providerId: "fake",
+      acpLaunchSpec,
+    });
     expect(result).toEqual({
       models: [
         {
@@ -1688,6 +1716,7 @@ describe("thread command dispatch", () => {
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });
+    const acpLaunchSpec = customAcpLaunchSpec();
     const threadInstructions = [
       "You are a thread in a project inside bb.",
       "Prefer concise user updates.",
@@ -1707,6 +1736,7 @@ describe("thread command dispatch", () => {
         },
         projectId: "project-1",
         providerId: "fake",
+        acpLaunchSpec,
         requestId: nextClientRequestId(),
         input: [textPromptInput("hello")],
         options: {
@@ -1744,6 +1774,7 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.startedDynamicTools).toEqual([
       expect.objectContaining({ name: "notify_user" }),
     ]);
+    expect(harness.runtimeState.startedAcpLaunchSpec).toBe(acpLaunchSpec);
     expect(harness.runtimeState.startedInstructions).toBe(threadInstructions);
   });
 

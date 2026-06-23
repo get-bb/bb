@@ -48,6 +48,7 @@ import {
 } from "../bridge-protocol.js";
 import {
   ACP_PROTOCOL_VERSION,
+  type AcpConfigOption,
   acpInitializeResultSchema,
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
@@ -66,6 +67,8 @@ import {
 } from "./agent-connection.js";
 import {
   buildAgentModelCatalog,
+  buildModelCatalogFromConfigOptions,
+  findAcpModelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
   type AgentModelCatalog,
@@ -183,10 +186,14 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
-  "Cursor agent is not authenticated.";
+  "ACP agent is not authenticated.";
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
+let cachedSessionDiscoveredModels: {
+  key: string;
+  models: AvailableModel[];
+} | null = null;
 
 /**
  * Run the agent's model list command and build the variant catalog, cached
@@ -203,7 +210,11 @@ async function loadAgentModelCatalog(
       listCommand.command,
       listCommand.args,
       {
-        env: withoutBridgeRuntimeEnv(process.env),
+        ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
+        env: {
+          ...withoutBridgeRuntimeEnv(process.env),
+          ...(listCommand.envVars ?? {}),
+        },
         timeout: MODEL_LIST_TIMEOUT_MS,
       },
       (error, out, stderr) => {
@@ -241,6 +252,84 @@ async function loadAgentModelCatalog(
   return catalog;
 }
 
+async function loadSessionDiscoveredModels(
+  agent: AcpBridgeAgentCommand,
+): Promise<AvailableModel[] | null> {
+  const key = JSON.stringify(agent);
+  if (cachedSessionDiscoveredModels?.key === key) {
+    return cachedSessionDiscoveredModels.models;
+  }
+
+  const connection = createAcpAgentConnection({
+    command: agent.command,
+    args: agent.args,
+    cwd: agent.cwd ?? process.cwd(),
+    env: { ...withoutBridgeRuntimeEnv(process.env), ...(agent.envVars ?? {}) },
+    onNotification: () => {},
+    onRequest: (_method, _params, responder) => {
+      responder.error(-32601, "ACP model discovery does not support requests");
+    },
+    onExit: () => {},
+  });
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      connection.kill();
+      reject(
+        new Error(
+          `ACP-native model discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, MODEL_LIST_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      (async () => {
+        await connection.request({
+          method: "initialize",
+          params: {
+            protocolVersion: ACP_PROTOCOL_VERSION,
+            clientInfo: { name: "bb", version: "1.0.0" },
+            clientCapabilities: {
+              fs: { readTextFile: false, writeTextFile: false },
+              terminal: false,
+            },
+          },
+          resultSchema: acpInitializeResultSchema,
+        });
+        const newSession = await connection.request({
+          method: "session/new",
+          params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
+          resultSchema: acpSessionNewResultSchema,
+        });
+        const models = buildModelCatalogFromConfigOptions(
+          findAcpModelConfigOption(newSession.configOptions),
+        );
+        if (models.length === 0) {
+          return null;
+        }
+        cachedSessionDiscoveredModels = { key, models };
+        return models;
+      })(),
+      timeoutReached,
+    ]);
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: ACP-native model discovery for "${agent.command}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    return null;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    connection.kill();
+  }
+}
+
 function isMissingExecutableError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -275,7 +364,10 @@ function isAuthRequiredModelListError(
     text.includes("Authentication required") &&
     (text.includes("agent login") ||
       text.includes("CURSOR_API_KEY") ||
-      text.includes("CURSOR_AUTH_TOKEN"))
+      text.includes("CURSOR_AUTH_TOKEN") ||
+      text.includes("auth token") ||
+      text.includes("api key") ||
+      text.includes("login"))
   );
 }
 
@@ -290,7 +382,7 @@ async function resolveAgentLaunchArgs(
   params: AcpBridgeThreadStartParams,
 ): Promise<{ args: string[]; warning: string | undefined }> {
   const selection = params.modelSelection;
-  if (!selection) {
+  if (!selection || !("selectFlag" in selection)) {
     return { args: [...params.agent.args], warning: undefined };
   }
   let resolved: string | undefined;
@@ -325,6 +417,27 @@ async function resolveAgentLaunchArgs(
     ],
     warning,
   };
+}
+
+async function selectAcpNativeModel(args: {
+  connection: AcpAgentConnection;
+  sessionId: string;
+  configOptions: readonly AcpConfigOption[] | undefined;
+  modelSelection: AcpBridgeThreadStartParams["modelSelection"];
+}): Promise<void> {
+  const selection = args.modelSelection;
+  if (!selection || !("modelId" in selection)) {
+    return;
+  }
+  const modelOption = findAcpModelConfigOption(args.configOptions);
+  if (!modelOption || modelOption.currentValue === selection.modelId) {
+    return;
+  }
+  await args.connection.request({
+    method: "session/set_model",
+    params: { sessionId: args.sessionId, modelId: selection.modelId },
+    resultSchema: z.unknown(),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -779,6 +892,12 @@ async function startAgentSession(
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
+      await selectAcpNativeModel({
+        connection,
+        sessionId,
+        configOptions: newSession.configOptions,
+        modelSelection: params.modelSelection,
+      });
       if (request.kind === "resume") {
         sendNotification(ACP_WARNING_METHOD, {
           threadId: bbThreadId,
@@ -964,17 +1083,28 @@ async function handleRequest(
       const catalog = request.params.listCommand
         ? await loadAgentModelCatalog(request.params.listCommand)
         : null;
-      if (!catalog) {
+      if (catalog) {
+        sendResult(
+          request.id,
+          splitPrimaryModels(catalog.models, request.params.primaryModels),
+        );
+        return;
+      }
+      const sessionDiscoveredModels =
+        request.params.listCommand === undefined && request.params.agent
+          ? await loadSessionDiscoveredModels(request.params.agent)
+          : null;
+      if (sessionDiscoveredModels) {
         sendResult(request.id, {
-          models: [ACP_DEFAULT_MODEL],
+          models: sessionDiscoveredModels,
           selectedOnlyModels: [],
         });
         return;
       }
-      sendResult(
-        request.id,
-        splitPrimaryModels(catalog.models, request.params.primaryModels),
-      );
+      sendResult(request.id, {
+        models: [ACP_DEFAULT_MODEL],
+        selectedOnlyModels: [],
+      });
       return;
     }
 

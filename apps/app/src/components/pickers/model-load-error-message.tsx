@@ -47,7 +47,7 @@ export function formatModelLoadErrorText({
   }
 
   if (error.code === "auth_required") {
-    return `Could not load models for ${providerLabel}. Cursor agent is not authenticated.`;
+    return `Could not load models for ${providerLabel}. Authentication is required.`;
   }
 
   return `Could not load models for ${providerLabel}.`;
@@ -87,8 +87,7 @@ export function ModelLoadErrorMessage({
   if (error.code === "auth_required") {
     return (
       <>
-        Could not load models for {providerLabel}. Cursor agent is not
-        authenticated.
+        Could not load models for {providerLabel}. Authentication is required.
       </>
     );
   }

@@ -728,6 +728,107 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("preserves customAcpAgents across managed config writes", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-acp-"));
+    const customAcpAgents = [
+      {
+        id: "my-agent",
+        displayName: "My Agent",
+        command: "my-agent",
+        args: ["acp"],
+        env: { MY_AGENT_HOME: "/tmp/my-agent" },
+      },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({ customAcpAgents })}\n`,
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
+      customAcpAgents,
+    });
+  });
+
+  it("preserves invalid customAcpAgents across managed config set writes", async () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "bb-app-config-invalid-custom-acp-set-"),
+    );
+    const customAcpAgents = [
+      {
+        id: "bad agent",
+        displayName: "Bad Agent",
+        command: "bad-agent",
+      },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({ customAcpAgents })}\n`,
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
+      customAcpAgents,
+    });
+  });
+
+  it("preserves invalid customAcpAgents across managed config unset writes", async () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "bb-app-config-invalid-custom-acp-unset-"),
+    );
+    const customAcpAgents = [
+      {
+        id: "bad agent",
+        displayName: "Bad Agent",
+        command: "bad-agent",
+      },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({
+        config: { BB_APP_URL: "https://bb.example.test" },
+        customAcpAgents,
+      })}\n`,
+      "utf8",
+    );
+
+    await runBbApp(["--data-dir", dataDir, "config", "unset", "BB_APP_URL"]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      customAcpAgents,
+    });
+  });
+
   it("keeps secrets out of the config command", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-secret-config-"));
 

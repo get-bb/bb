@@ -7,12 +7,16 @@
 
 import {
   getBuiltInAgentProviderInfo,
+  isAcpProviderId,
   isAgentProviderId,
   listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
 import { createAcpProviderAdapter } from "./acp/adapter.js";
-import { ACP_AGENT_PROFILES } from "./acp/profiles.js";
+import {
+  acpProfileFromLaunchSpec,
+  ACP_AGENT_PROFILES,
+} from "./acp/profiles.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import { createPiProviderAdapter } from "./pi/adapter.js";
@@ -72,6 +76,19 @@ export function createProviderForId(
   providerId: string,
   options?: ProviderAdapterFactoryOptions,
 ): ProviderAdapter {
+  if (!isAgentProviderId(providerId) && options?.acpLaunchSpec) {
+    if (!isAcpProviderId(providerId)) {
+      throw new Error(
+        `ACP launch spec supplied for non-ACP provider "${providerId}".`,
+      );
+    }
+    const adapterOptions = toProviderAdapterFactoryOptions(options);
+    return createAcpProviderAdapter({
+      ...adapterOptions,
+      profile: acpProfileFromLaunchSpec(options.acpLaunchSpec, providerId),
+    });
+  }
+
   if (!isAgentProviderId(providerId)) {
     const allIds = builtInProviders.map((provider) => provider.info.id);
     throw new Error(
@@ -88,8 +105,19 @@ export function createProviderForId(
     );
   }
 
-  const adapterOptions: ProviderAdapterFactoryOptions = {
+  const adapterOptions = toProviderAdapterFactoryOptions(options);
+
+  return descriptor.createAdapter(adapterOptions);
+}
+
+function toProviderAdapterFactoryOptions(
+  options?: ProviderAdapterFactoryOptions,
+): ProviderAdapterFactoryOptions {
+  return {
     additionalWorkspaceWriteRoots: options?.additionalWorkspaceWriteRoots ?? [],
+    ...(options?.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: options.acpLaunchSpec }
+      : {}),
     ...(options?.bridgeBundleDir !== undefined
       ? { bridgeBundleDir: options.bridgeBundleDir }
       : {}),
@@ -103,8 +131,6 @@ export function createProviderForId(
       ? { turnIdPrefix: options.turnIdPrefix }
       : {}),
   };
-
-  return descriptor.createAdapter(adapterOptions);
 }
 
 /**

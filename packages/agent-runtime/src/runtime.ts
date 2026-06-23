@@ -9,6 +9,7 @@ import type {
   ProviderErrorCategory,
   ThreadEvent,
 } from "@bb/domain";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   AdapterCommand,
   ProviderAdapterFactory,
@@ -61,6 +62,7 @@ import {
   resolveThreadIdentityResult,
   threadIdentityResultSchema,
 } from "./thread-identity.js";
+import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
   instructions: string | undefined;
@@ -93,6 +95,7 @@ interface FindReapableIdleProviderSessionArgs {
 }
 
 interface ResolveProviderProcessKeyArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerId: string;
   threadId?: string;
 }
@@ -278,10 +281,14 @@ function createAgentRuntimeInternal(
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
-    if (args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined) {
-      return args.providerId;
+    const baseKey =
+      args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined
+        ? args.providerId
+        : `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+    if (args.acpLaunchSpec === undefined) {
+      return baseKey;
     }
-    return `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+    return `${baseKey}#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`;
   }
 
   function requireProviderProcess(
@@ -963,13 +970,15 @@ function createAgentRuntimeInternal(
   // -------------------------------------------------------------------------
 
   const runtime: AgentRuntime = {
-    async ensureProvider({ providerId, forThreadId }) {
+    async ensureProvider({ providerId, forThreadId, acpLaunchSpec }) {
       await providerProcesses.ensureProvider({
         processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           providerId,
           ...(forThreadId !== undefined ? { threadId: forThreadId } : {}),
         }),
         providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       });
     },
 
@@ -978,6 +987,7 @@ function createAgentRuntimeInternal(
       threadId,
       projectId,
       providerId,
+      acpLaunchSpec,
       clientRequestId,
       input,
       options: execOpts,
@@ -992,10 +1002,15 @@ function createAgentRuntimeInternal(
         threadId,
         work: async () => {
           const processKey = resolveProviderProcessKey({
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             providerId,
             threadId,
           });
-          await runtime.ensureProvider({ providerId, forThreadId: threadId });
+          await runtime.ensureProvider({
+            providerId,
+            forThreadId: threadId,
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          });
 
           const proc = requireProviderProcess({ processKey, providerId });
           const providerSkillRoots = skillRootsForProvider(providerId);
@@ -1125,6 +1140,7 @@ function createAgentRuntimeInternal(
       projectId,
       providerThreadId,
       providerId,
+      acpLaunchSpec,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1135,10 +1151,15 @@ function createAgentRuntimeInternal(
         threadId,
         work: async () => {
           const processKey = resolveProviderProcessKey({
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             providerId,
             threadId,
           });
-          await runtime.ensureProvider({ providerId, forThreadId: threadId });
+          await runtime.ensureProvider({
+            providerId,
+            forThreadId: threadId,
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          });
 
           const proc = requireProviderProcess({ processKey, providerId });
           const providerSkillRoots = skillRootsForProvider(providerId);
@@ -1492,10 +1513,16 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async listModels({ providerId }) {
-      await runtime.ensureProvider({ providerId });
+    async listModels({ providerId, acpLaunchSpec }) {
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+      });
       const proc = requireProviderProcess({
-        processKey: resolveProviderProcessKey({ providerId }),
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          providerId,
+        }),
         providerId,
       });
       const command = requireProviderRequestPlan({

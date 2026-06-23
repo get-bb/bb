@@ -126,6 +126,7 @@ export async function createTestAppHarness(
     appVersion: "0.0.0-test",
     automationsAllowScriptRuns: true,
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
+    customAcpAgents: [],
     customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,

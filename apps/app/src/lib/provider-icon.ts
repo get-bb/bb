@@ -1,17 +1,24 @@
 import {
   getBuiltInAgentProviderInfo,
+  isAcpProviderId,
   isAgentProviderId,
 } from "@bb/agent-providers";
 import type { ComponentType } from "react";
+import { createElement } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
+import { Icon } from "@/components/ui/icon";
 
 interface ProviderIconInfo {
   icon: ComponentType<{ className?: string }>;
   ariaLabel: string;
 }
+
+const GenericAcpIcon: ComponentType<{ className?: string }> = ({
+  className,
+}) => createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
 /**
  * Maps closed_internal provider IDs to their brand icon components.
@@ -20,6 +27,13 @@ interface ProviderIconInfo {
 export function getProviderIconInfo(
   providerId: string,
 ): ProviderIconInfo | undefined {
+  if (!isAgentProviderId(providerId) && isAcpProviderId(providerId)) {
+    return {
+      icon: GenericAcpIcon,
+      ariaLabel: "ACP provider",
+    };
+  }
+
   const providerInfo = isAgentProviderId(providerId)
     ? getBuiltInAgentProviderInfo(providerId)
     : null;

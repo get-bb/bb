@@ -105,10 +105,12 @@ interface BuildThreadTimelineOptions {
    * consumers that only need tail state (e.g. `bb status` / `bb thread show`).
    */
   summaryOnly?: boolean;
+  providerDisplayName?: string;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
   isDevelopment: boolean;
+  providerDisplayName?: string;
 }
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
@@ -846,6 +848,7 @@ function buildThreadTimelineInternal(
     includeDebugRawEvents: false,
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
+    providerDisplayName: options.providerDisplayName,
     threadStatus: thread.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
@@ -1043,6 +1046,7 @@ export function buildTimelineTurnSummaryDetails(
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: sourceRange.sourceSeqStart,
+      providerDisplayName: options.providerDisplayName,
       threadStatus: thread.status,
       threadName: thread.title ?? thread.titleFallback ?? "",
       workspaceRoot: resolveThreadWorkspaceRoot(db, thread),

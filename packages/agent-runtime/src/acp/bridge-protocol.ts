@@ -29,6 +29,8 @@ import {
 export const acpBridgeAgentCommandSchema = z.object({
   command: z.string().min(1),
   args: z.array(z.string()),
+  cwd: z.string().min(1).optional(),
+  envVars: z.record(z.string(), z.string()).optional(),
 });
 export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
 
@@ -49,6 +51,12 @@ const acpBridgeModelListParamsSchema = z.object({
    */
   listCommand: acpBridgeAgentCommandSchema.optional(),
   /**
+   * ACP-native model discovery command. Used only when `listCommand` is
+   * absent: the bridge starts a throwaway session and reads the model select
+   * from the `session/new` result's `configOptions`.
+   */
+  agent: acpBridgeAgentCommandSchema.optional(),
+  /**
    * Family ids served in the picker's default list; the rest become
    * selected-only "more models". No matches (or an empty list) serves
    * everything as primary.
@@ -57,20 +65,27 @@ const acpBridgeModelListParamsSchema = z.object({
 });
 
 /**
- * Session-level model pin. The bridge resolves (model, reasoningLevel,
- * serviceTier) to the exact raw agent model id via the catalog parsed from
- * `listCommand`, then launches the agent with `<selectFlag> <resolved-id>`
- * ahead of its args. `serviceTier` "fast" selects the model's `-fast` twin
- * when it has one. Absent when the thread has no model preference — the agent
- * uses its own default.
+ * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
+ * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
+ * ACP-native agents receive `{ modelId }` after `session/new` via
+ * `session/set_model`. Absent when the thread has no model preference.
  */
-const acpBridgeModelSelectionSchema = z.object({
+const acpBridgeCliModelSelectionSchema = z.object({
   listCommand: acpBridgeAgentCommandSchema,
   selectFlag: z.string().min(1),
   model: z.string().min(1),
   reasoningLevel: reasoningLevelSchema.optional(),
   serviceTier: serviceTierSchema.optional(),
 });
+
+const acpBridgeNativeModelSelectionSchema = z.object({
+  modelId: z.string().min(1),
+});
+
+const acpBridgeModelSelectionSchema = z.union([
+  acpBridgeCliModelSelectionSchema,
+  acpBridgeNativeModelSelectionSchema,
+]);
 export type AcpBridgeModelSelection = z.infer<
   typeof acpBridgeModelSelectionSchema
 >;
