@@ -5,7 +5,10 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { withParentToolCallId } from "../shared/adapter-utils.js";
+import {
+  toOptionalRecord,
+  withParentToolCallId,
+} from "../shared/adapter-utils.js";
 import type { AcceptedUserMessageState } from "../shared/accepted-user-messages.js";
 import type {
   EnsureProviderTurnStartedArgs,
@@ -29,6 +32,7 @@ import {
   claudeSystemMessageSchema,
   claudeUserMessageSchema,
   type ClaudeApiRetryMessage,
+  type ClaudeAssistantMessage,
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
   type ClaudeToolUseResult,
@@ -144,6 +148,22 @@ const claudeResultFallbackErrorDetails: Record<string, string> = {
     "Claude Code exhausted structured output retries.",
   error_max_turns: "Claude Code reached the maximum number of turns.",
 };
+
+const CLAUDE_SYNTHETIC_MODEL = "<synthetic>";
+const CLAUDE_NO_RESPONSE_REQUESTED_TEXT = "No response requested.";
+
+function isClaudeNoResponseRequestedSyntheticMessage(
+  message: ClaudeAssistantMessage,
+): boolean {
+  const nestedMessage = toOptionalRecord(message.message);
+  return (
+    nestedMessage?.model === CLAUDE_SYNTHETIC_MODEL &&
+    nestedMessage.role === "assistant" &&
+    nestedMessage.stop_reason === "stop_sequence" &&
+    nestedMessage.stop_sequence === "" &&
+    extractAssistantText(message) === CLAUDE_NO_RESPONSE_REQUESTED_TEXT
+  );
+}
 
 function buildClaudeProviderErrorEvent(
   args: BuildClaudeProviderErrorEventArgs,
@@ -404,6 +424,29 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      if (isClaudeNoResponseRequestedSyntheticMessage(message)) {
+        const turnId =
+          state.currentTurnId ??
+          (state.pendingAcceptedUserMessages.length > 0
+            ? args.ensureTurnStarted({
+                events,
+                state,
+                threadId,
+              })
+            : undefined);
+        if (!turnId) {
+          return [];
+        }
+        events.push({
+          type: "turn/completed",
+          threadId,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          status: "completed",
+        });
+        args.turnState.finishTurn({ state, threadId: stateKey });
+        return events;
+      }
       const turnId = args.ensureTurnStarted({
         events,
         state,

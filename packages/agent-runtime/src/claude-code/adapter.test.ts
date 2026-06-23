@@ -1892,6 +1892,124 @@ describe("claude-code provider adapter", () => {
     );
   });
 
+  it("translateEvent completes a pending turn for Claude synthetic no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.translateAcceptedCommand({
+        command: {
+          type: "turn/start",
+          threadId: "bb-thread-1",
+          providerThreadId: "claude-session-1",
+          clientRequestId: "creq_23456789af",
+          input: [promptTextInput({ text: "please do this" })],
+          options: fullProviderExecutionContext,
+        },
+      }),
+    ).toEqual([]);
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "No response requested." }],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+      },
+      {
+        type: "turn/input/accepted",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        clientRequestId: "creq_23456789af",
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "No response requested.",
+        }),
+      }),
+    );
+  });
+
+  it("translateEvent completes an open turn for Claude synthetic no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    adapter.translateEvent(
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Starting" },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "No response requested." }],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
+  });
+
   it("translateEvent keeps assistant message ids distinct within one turn", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
