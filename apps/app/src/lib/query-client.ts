@@ -1,4 +1,5 @@
 import {
+  focusManager,
   MutationCache,
   QueryClient,
   type QueryClientConfig,
@@ -7,15 +8,75 @@ import {
   getMutationErrorMeta,
   showMutationErrorToast,
 } from "./mutation-errors";
+import { cancelActiveQueryFetchesForBrowserSuspend } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
 
 export interface CreateAppQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
   showMutationErrorToasts?: boolean;
 }
 
+export interface AppQueryClientBrowserEventCleanup {
+  cleanup: () => void;
+}
+
+let appFocusEventsInstalled = false;
+
+function installAppFocusEvents(): void {
+  if (appFocusEventsInstalled) {
+    return;
+  }
+  appFocusEventsInstalled = true;
+
+  focusManager.setEventListener((handleFocus) => {
+    if (typeof window === "undefined" || !window.addEventListener) {
+      return;
+    }
+
+    const listener = () => handleFocus();
+    window.addEventListener("visibilitychange", listener, false);
+    window.addEventListener("pageshow", listener, false);
+
+    return () => {
+      window.removeEventListener("visibilitychange", listener);
+      window.removeEventListener("pageshow", listener);
+    };
+  });
+}
+
+export function installAppQueryClientBrowserEvents(
+  queryClient: QueryClient,
+): AppQueryClientBrowserEventCleanup {
+  installAppFocusEvents();
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return { cleanup: () => {} };
+  }
+
+  const handlePageHide = () => {
+    cancelActiveQueryFetchesForBrowserSuspend(queryClient);
+  };
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      cancelActiveQueryFetchesForBrowserSuspend(queryClient);
+    }
+  };
+
+  window.addEventListener("pagehide", handlePageHide, false);
+  document.addEventListener("visibilitychange", handleVisibilityChange, false);
+
+  return {
+    cleanup: () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    },
+  };
+}
+
 export function createAppQueryClient(
   options: CreateAppQueryClientOptions = {},
 ): QueryClient {
+  installAppFocusEvents();
+
   const defaultOptions = options.defaultOptions;
   const showMutationErrorToasts = options.showMutationErrorToasts ?? true;
 

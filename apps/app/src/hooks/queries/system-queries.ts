@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { toRecord } from "@bb/core-ui";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
@@ -28,6 +29,34 @@ interface QueryOptions {
   enabled?: boolean;
 }
 
+const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
+const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
+
+function isAbortLikeError(error: unknown): boolean {
+  return toRecord(error)?.name === "AbortError";
+}
+
+function shouldRetrySystemExecutionOptions(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (failureCount >= SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT) {
+    return false;
+  }
+
+  if (isAbortLikeError(error)) {
+    return false;
+  }
+
+  if (error instanceof api.HttpError) {
+    return (
+      error.status === 408 || error.status === 429 || error.status >= 500
+    );
+  }
+
+  return true;
+}
+
 export function useSystemExecutionOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
@@ -46,6 +75,8 @@ export function useSystemExecutionOptions(
       }),
     enabled,
     staleTime: 60_000,
+    retry: shouldRetrySystemExecutionOptions,
+    retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
   });
 }
 

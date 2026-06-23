@@ -6,12 +6,16 @@ import { App } from "./App";
 import { AppToaster } from "./components/AppToaster";
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { initializeFavicon } from "./lib/favicon-color-preference";
-import { createAppQueryClient } from "./lib/query-client";
+import {
+  createAppQueryClient,
+  installAppQueryClientBrowserEvents,
+} from "./lib/query-client";
 import { takeOverPanelResizeCursor } from "./lib/resizeCursor";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import "./app.css";
 
 const queryClient = createAppQueryClient();
+installAppQueryClientBrowserEvents(queryClient);
 
 initializePreferredTheme();
 // Apply the palette cached from the last load before React renders, so a
