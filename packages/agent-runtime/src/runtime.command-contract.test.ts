@@ -290,7 +290,9 @@ describe("createAgentRuntime command contracts", () => {
     await resumeRuntime.shutdown();
 
     expect(captured).toEqual([acpLaunchSpec, acpLaunchSpec, acpLaunchSpec]);
-  });
+    // Spawns the fake ACP agent three times (model list now adds a discovery
+    // session), so allow extra headroom over the 5s default on slower CI.
+  }, 30000);
 
   it("uses a new provider process cache entry when the acp launch spec changes", async () => {
     const seenModelListMarkers: string[] = [];
@@ -339,7 +341,7 @@ describe("createAgentRuntime command contracts", () => {
     } finally {
       await runtime.shutdown();
     }
-  });
+  }, 30000);
 
   it("prefixes provider rename titles and normalizes provider title events", async () => {
     const events = new Array<ThreadEvent>();
