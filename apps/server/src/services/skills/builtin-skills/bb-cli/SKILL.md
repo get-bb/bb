@@ -34,8 +34,8 @@ message agents, or inspect projects, providers, and environments.
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
-  thread. Inside a thread, pass the current project explicitly with
-  `--project "$BB_PROJECT_ID"` when appropriate.
+  thread. Pass the intended project explicitly; the CLI does not infer it from
+  context variables.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
@@ -75,8 +75,8 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread show <thread-id>` for status, parent, environment, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
 - Use `bb thread log <thread-id>` to inspect the conversation.
-- Use `bb thread output <thread-id>` to read the latest final output. Inside a
-  thread, omitting `<thread-id>` reads `BB_THREAD_ID`.
+- Use `bb thread output <thread-id>` to read the latest final output, or
+  `bb thread output --self` for the current thread.
 
 For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
@@ -100,14 +100,14 @@ For review or fix pipelines, get the environment ID from
   The terminal is a real PTY scoped to the thread's environment and appears in
   the bb UI as a terminal tab.
 - Start a server with
-  `bb thread terminal start "$BB_THREAD_ID" --title "pnpm dev" --command "pnpm dev"`.
-- Use `bb thread terminal wait <terminal-id> "$BB_THREAD_ID" --contains "Local:" --timeout 120`
+  `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`
   to wait for readiness from new output. Pass `--from-start` only when matching
   existing scrollback is intentional.
-- Use `bb thread terminal output <terminal-id> "$BB_THREAD_ID" --json` to read
+- Use `bb thread terminal output <terminal-id> <thread-id> --json` to read
   bounded output, then continue with `--since-seq <nextSeq>` when polling.
-- Use `bb thread terminal send <terminal-id> "$BB_THREAD_ID" --text "..." --enter`
-  for interactive input, and `bb thread terminal stop <terminal-id> "$BB_THREAD_ID"`
+- Use `bb thread terminal send <terminal-id> <thread-id> --text "..." --enter`
+  for interactive input, and `bb thread terminal stop <terminal-id> <thread-id>`
   when the process is no longer needed.
 
 ## Failures And Interruptions
@@ -138,9 +138,9 @@ For review or fix pipelines, get the environment ID from
   server policy — fall back to an `agent` automation if script creation is
   rejected.
 - Create an agent automation with
-  `bb automation create --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+  `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
 - Create a script automation with
-  `bb automation create --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
+  `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
 - Script automations run with the bb environment injected — `BB_SERVER_URL`,
@@ -154,8 +154,7 @@ For review or fix pipelines, get the environment ID from
   on failed runs (see `--output <run-id>`).
 - Cron accepts standard 5-field expressions, including step values like
   `*/5 * * * *` (minimum granularity is 5 minutes).
-- The project defaults to `BB_PROJECT_ID`, then the personal project, so
-  `--project` is never required.
+- Pass `--project <id>` explicitly for every automation command.
 - Use `bb automation list`, `bb automation show <id>`, and
   `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
   run's captured stdout.

@@ -14,9 +14,9 @@ type CreateAutomationExecution = CreateAutomationRequest["execution"];
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import {
+  requireProjectId,
+  resolveContextThreadId,
   resolveExplicitIdFlag,
-  resolveProjectId,
-  resolveThreadId,
 } from "../context-env.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
@@ -98,7 +98,7 @@ const SCRIPT_INTERPRETERS = ["bash", "sh", "node", "python3"] as const;
 type ScriptInterpreter = (typeof SCRIPT_INTERPRETERS)[number];
 
 function resolveAutomationProjectId(flagValue?: string): string {
-  return resolveProjectId(flagValue) ?? PERSONAL_PROJECT_ID;
+  return requireProjectId(flagValue);
 }
 
 /**
@@ -110,7 +110,7 @@ function resolveCreateAttribution(): {
   origin: "agent" | "human";
   createdByThreadId?: string;
 } {
-  const threadId = resolveThreadId();
+  const threadId = resolveContextThreadId();
   if (threadId) {
     return { origin: "agent", createdByThreadId: threadId };
   }
@@ -282,9 +282,9 @@ export function registerAutomationCommands(
   automation
     .command("list")
     .description("List automations for a project")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -307,9 +307,9 @@ export function registerAutomationCommands(
     .requiredOption("--name <name>", "Automation name")
     .requiredOption("--cron <expr>", "5-field cron expression")
     .requiredOption("--timezone <tz>", "IANA timezone, e.g. America/New_York")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option(
       "--environment <id-or-path>",
@@ -373,9 +373,9 @@ export function registerAutomationCommands(
   automation
     .command("show <automationId>")
     .description("Show automation details")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -393,9 +393,9 @@ export function registerAutomationCommands(
   automation
     .command("update <automationId>")
     .description("Update an automation's configuration")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--name <name>", "Set the automation name")
     .option("--cron <expr>", "Set the cron expression (requires --timezone)")
@@ -423,9 +423,9 @@ export function registerAutomationCommands(
   automation
     .command("pause <automationId>")
     .description("Pause an automation")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -443,9 +443,9 @@ export function registerAutomationCommands(
   automation
     .command("resume <automationId>")
     .description("Resume a paused automation")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -466,9 +466,9 @@ export function registerAutomationCommands(
   automation
     .command("run <automationId>")
     .description("Run an automation now (manual trigger)")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--idempotency-key <key>", "Dedup key for replayable run-now")
     .option("--json", "Print machine-readable JSON output")
@@ -496,9 +496,9 @@ export function registerAutomationCommands(
   automation
     .command("runs <automationId>")
     .description("List recent runs for an automation")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--limit <count>", "Maximum number of runs to return")
     .option("--output <runId>", "Print captured stdout for a script run")
@@ -543,9 +543,9 @@ export function registerAutomationCommands(
   automation
     .command("delete <automationId>")
     .description("Delete an automation and its run history")
-    .option(
+    .requiredOption(
       "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID, then the personal project)",
+      "Project ID",
     )
     .option("--yes", "Skip confirmation prompt")
     .option("--json", "Print machine-readable JSON output")

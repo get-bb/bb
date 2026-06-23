@@ -79,7 +79,7 @@ export function registerTerminalCommands(
     .description("Manage terminal sessions scoped to a thread");
 
   terminal
-    .command("list [threadId]")
+    .command("list <threadId>")
     .description("List terminal sessions for a thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -98,7 +98,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("start [threadId] [command...]")
+    .command("start <threadId> [command...]")
     .description("Start a thread-scoped terminal session")
     .allowUnknownOption(true)
     .option("--title <title>", "Terminal title")
@@ -150,7 +150,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("attach <terminalId> [threadId]")
+    .command("attach <terminalId> <threadId>")
     .description("Attach to a running terminal session")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -187,7 +187,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("send <terminalId> [threadId]")
+    .command("send <terminalId> <threadId>")
     .description("Send input to a terminal session")
     .option("--text <text>", "Text to send")
     .option("--stdin", "Read bytes from stdin")
@@ -215,7 +215,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("resize <terminalId> [threadId]")
+    .command("resize <terminalId> <threadId>")
     .description("Resize a terminal session")
     .requiredOption("--cols <n>", "Terminal columns")
     .requiredOption("--rows <n>", "Terminal rows")
@@ -244,7 +244,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("output <terminalId> [threadId]")
+    .command("output <terminalId> <threadId>")
     .description("Print terminal output from daemon scrollback")
     .option("--since-seq <n>", "Only output chunks from this sequence")
     .option("--tail-bytes <n>", "Bound output to the latest N bytes")
@@ -271,7 +271,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("wait <terminalId> [threadId]")
+    .command("wait <terminalId> <threadId>")
     .description("Wait for terminal output or exit")
     .option("--contains <text>", "Wait until output contains text")
     .option(
@@ -305,7 +305,7 @@ export function registerTerminalCommands(
     );
 
   terminal
-    .command("stop <terminalId> [threadId]")
+    .command("stop <terminalId> <threadId>")
     .description("Stop a terminal session")
     .option("--if-clean", "Only stop if no user input was sent")
     .option("--json", "Print machine-readable JSON output")

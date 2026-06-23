@@ -47,14 +47,22 @@ export function resolveServerUrl(
 export function resolveProjectId(flagValue?: string): string | undefined {
   const fromFlag = trimToUndefined(flagValue);
   if (fromFlag) return validateId(fromFlag, "--project flag");
-  const fromEnv = trimToUndefined(process.env.BB_PROJECT_ID);
-  if (fromEnv) return validateId(fromEnv, "BB_PROJECT_ID");
   return undefined;
 }
 
 export function resolveThreadId(flagValue?: string): string | undefined {
   const fromFlag = trimToUndefined(flagValue);
   if (fromFlag) return validateId(fromFlag, "--thread flag");
+  return undefined;
+}
+
+export function resolveContextProjectId(): string | undefined {
+  const fromEnv = trimToUndefined(process.env.BB_PROJECT_ID);
+  if (fromEnv) return validateId(fromEnv, "BB_PROJECT_ID");
+  return undefined;
+}
+
+export function resolveContextThreadId(): string | undefined {
   const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
   if (fromEnv) return validateId(fromEnv, "BB_THREAD_ID");
   return undefined;
@@ -71,17 +79,13 @@ export function resolveExplicitIdFlag(
 export function requireProjectId(flagValue?: string): string {
   const projectId = resolveProjectId(flagValue);
   if (projectId) return projectId;
-  throw new Error(
-    "Missing project context. Pass a project ID (for example --project <id>) or set BB_PROJECT_ID.",
-  );
+  throw new Error("Missing project ID. Pass --project <id>.");
 }
 
 export function requireThreadId(flagValue?: string): string {
   const threadId = resolveThreadId(flagValue);
   if (threadId) return threadId;
-  throw new Error(
-    "Missing thread context. Pass <threadId> or set BB_THREAD_ID.",
-  );
+  throw new Error("Missing thread ID. Pass <threadId>.");
 }
 
 export interface ResolvedId {
@@ -105,9 +109,6 @@ export function resolveProjectIdWithLabel(
   const fromFlag = trimToUndefined(flagValue);
   if (fromFlag)
     return { id: validateId(fromFlag, "--project flag"), source: "arg" };
-  const fromEnv = trimToUndefined(process.env.BB_PROJECT_ID);
-  if (fromEnv)
-    return { id: validateId(fromEnv, "BB_PROJECT_ID"), source: "env" };
   return undefined;
 }
 
@@ -119,9 +120,7 @@ export function resolveProjectIdWithLabel(
 export function requireProjectIdWithLabel(flagValue?: string): ResolvedId {
   const resolved = resolveProjectIdWithLabel(flagValue);
   if (resolved) return resolved;
-  throw new Error(
-    "Missing project context. Pass a project ID (for example --project <id>) or set BB_PROJECT_ID.",
-  );
+  throw new Error("Missing project ID. Pass --project <id>.");
 }
 
 /**
@@ -133,12 +132,7 @@ export function requireThreadIdWithLabel(positionalId?: string): ResolvedId {
   const fromArg = trimToUndefined(positionalId);
   if (fromArg)
     return { id: validateId(fromArg, "<threadId> argument"), source: "arg" };
-  const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
-  if (fromEnv)
-    return { id: validateId(fromEnv, "BB_THREAD_ID"), source: "env" };
-  throw new Error(
-    "Missing thread context. Pass <threadId> or set BB_THREAD_ID.",
-  );
+  throw new Error("Missing thread ID. Pass <threadId>.");
 }
 
 /**
@@ -146,8 +140,7 @@ export function requireThreadIdWithLabel(positionalId?: string): ResolvedId {
  *
  * - Positional `<id>` and `--self` are mutually exclusive.
  * - `--self` resolves from BB_THREAD_ID.
- * - If neither is provided, the command still falls back to BB_THREAD_ID and
- *   can print a context label for that implicit resolution.
+ * - If neither is provided, error with guidance.
  */
 export function requireThreadIdWithLabelOrSelf(
   positionalId: string | undefined,
@@ -163,19 +156,13 @@ export function requireThreadIdWithLabelOrSelf(
     };
   }
   if (opts.self) {
-    const envThreadId = resolveThreadId();
+    const envThreadId = resolveContextThreadId();
     if (!envThreadId) {
       throw new Error("--self requires BB_THREAD_ID to be set.");
     }
     return { id: envThreadId, source: "self" };
   }
-  const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
-  if (fromEnv) {
-    return { id: validateId(fromEnv, "BB_THREAD_ID"), source: "env" };
-  }
-  throw new Error(
-    "Missing thread context. Pass <threadId>, use --self, or set BB_THREAD_ID.",
-  );
+  throw new Error("Missing thread ID. Pass <threadId> or use --self.");
 }
 
 /**
@@ -193,7 +180,7 @@ export function requireThreadIdOrSelf(
     throw new Error("Cannot combine a thread ID argument with --self.");
   }
   if (opts.self) {
-    const envThreadId = resolveThreadId();
+    const envThreadId = resolveContextThreadId();
     if (!envThreadId) {
       throw new Error("--self requires BB_THREAD_ID to be set.");
     }
@@ -217,8 +204,8 @@ export function resolveContextSnapshot(
   context: CliRuntimeContext = createCliRuntimeContext(),
 ): ContextSnapshot {
   return {
-    projectId: resolveProjectId(),
-    threadId: resolveThreadId(),
+    projectId: resolveContextProjectId(),
+    threadId: resolveContextThreadId(),
     serverUrl: context.cliConfig.BB_SERVER_URL,
   };
 }

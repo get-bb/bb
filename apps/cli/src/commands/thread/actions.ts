@@ -13,7 +13,10 @@ import {
   prependErrorContext,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { resolveExplicitIdFlag, resolveThreadId } from "../../context-env.js";
+import {
+  resolveContextThreadId,
+  resolveExplicitIdFlag,
+} from "../../context-env.js";
 import {
   parsePermissionMode,
   parseServiceTier,
@@ -363,7 +366,7 @@ async function postThreadMessage(
 }
 
 function resolveSenderThreadId(targetThreadId: string): string | undefined {
-  const senderThreadId = resolveThreadId();
+  const senderThreadId = resolveContextThreadId();
   if (!senderThreadId || senderThreadId === targetThreadId) {
     return undefined;
   }

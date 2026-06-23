@@ -36,9 +36,9 @@ export function registerWaitCommand(
   getUrl: () => string,
 ): void {
   parent
-    .command("wait [id]")
+    .command("wait <id>")
     .description(
-      "Wait for a thread status or event (defaults to BB_THREAD_ID and --status idle)",
+      "Wait for a thread status or event (defaults to --status idle)",
     )
     .option("--status <status>", "Wait until the thread reaches this status")
     .option(

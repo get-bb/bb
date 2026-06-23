@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectLogLines,
   collectLogPayloads,
+  getHelpOutput,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -35,6 +36,24 @@ describe("bb thread terminal command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
+
+  function captureCommanderErrors() {
+    return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  }
+
+  it("documents required thread IDs in terminal help", async () => {
+    const help = await getHelpOutput(["thread", "terminal"], register);
+
+    expect(help).toContain("list [options] <threadId>");
+    expect(help).toContain("start [options] <threadId> [command...]");
+    expect(help).toContain("attach [options] <terminalId> <threadId>");
+    expect(help).toContain("send [options] <terminalId> <threadId>");
+    expect(help).toContain("resize [options] <terminalId> <threadId>");
+    expect(help).toContain("output [options] <terminalId> <threadId>");
+    expect(help).toContain("wait [options] <terminalId> <threadId>");
+    expect(help).toContain("stop [options] <terminalId> <threadId>");
+    expect(help).not.toContain("[threadId]");
+  });
 
   it("bb thread terminal list prints sessions for a thread", async () => {
     const list = vi.fn(async () => ({
@@ -108,27 +127,25 @@ describe("bb thread terminal command output", () => {
     });
   });
 
-  it("bb thread terminal start --command defaults to BB_THREAD_ID", async () => {
+  it("bb thread terminal start --command requires a thread id", async () => {
     vi.stubEnv("BB_THREAD_ID", "thr-env");
     const start = vi.fn(async () =>
       makeTerminalSession({ threadId: "thr-env", title: "echo env" }),
     );
+    const stderrWrite = captureCommanderErrors();
     stubServerApi({ "v1.terminals.$post": start });
 
-    await runCommand(
-      ["thread", "terminal", "start", "--command", "echo env"],
-      register,
-    );
+    await expect(
+      runCommand(
+        ["thread", "terminal", "start", "--command", "echo env"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
 
-    expect(start).toHaveBeenCalledWith({
-      json: {
-        cols: 80,
-        rows: 24,
-        title: undefined,
-        start: { mode: "command", command: "echo env" },
-        target: { kind: "thread", threadId: "thr-env" },
-      },
-    });
+    expect(start).not.toHaveBeenCalled();
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining("error: missing required argument 'threadId'"),
+    );
   });
 
   it("bb thread terminal attach --json prints the target session", async () => {

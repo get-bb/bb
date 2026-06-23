@@ -58,7 +58,10 @@ describe("bb thread interactions command output", () => {
       "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
     });
 
-    await runCommand(["thread", "interactions", "show", "int-show"], register);
+    await runCommand(
+      ["thread", "interactions", "show", "int-show", "--self"],
+      register,
+    );
 
     expect(getInteraction).toHaveBeenCalledWith({
       param: {
@@ -66,9 +69,7 @@ describe("bb thread interactions command output", () => {
         interactionId: "int-show",
       },
     });
-    expect(collectLogLines(vi.mocked(console.error))).toEqual([
-      "Thread thread-show-interaction (from BB_THREAD_ID)",
-    ]);
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines.slice(0, 4)).toEqual([
       "Interaction: int-show",
@@ -111,7 +112,7 @@ describe("bb thread interactions command output", () => {
     });
 
     await runCommand(
-      ["thread", "interactions", "show", "int-question"],
+      ["thread", "interactions", "show", "int-question", "--self"],
       register,
     );
 
@@ -419,7 +420,7 @@ describe("bb thread interactions command output", () => {
     });
 
     await runCommand(
-      ["thread", "interactions", "show", "int-show-resolving"],
+      ["thread", "interactions", "show", "int-show-resolving", "--self"],
       register,
     );
 

@@ -58,6 +58,10 @@ describe("bb automation command output", () => {
   const register: CommandRegistrar = (program) =>
     registerAutomationCommands(program, () => "http://server");
 
+  function captureCommanderErrors() {
+    return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  }
+
   it("create maps agent flags to a schedule + agent execution request", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const created = makeAutomation({ id: "auto-created", projectId: "proj-1" });
@@ -283,8 +287,43 @@ describe("bb automation command output", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("create defaults the project to the personal project", async () => {
+  it("create requires an explicit --project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
+    const post = vi.fn();
+    const stderrWrite = captureCommanderErrors();
+    stubServerApi({ "v1.projects.:id.automations.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "automation",
+          "create",
+          "--name",
+          "Personal task",
+          "--cron",
+          "0 9 * * 1-5",
+          "--timezone",
+          "America/New_York",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+          "--prompt",
+          "Do the thing.",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "error: required option '--project <id>' not specified",
+      ),
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("create uses the personal workspace when the personal project is explicit", async () => {
     const created = makeAutomation({ id: "auto-personal" });
     const post = vi.fn(async () => created);
     stubServerApi({ "v1.projects.:id.automations.$post": post });
@@ -293,6 +332,8 @@ describe("bb automation command output", () => {
       [
         "automation",
         "create",
+        "--project",
+        domain.PERSONAL_PROJECT_ID,
         "--name",
         "Personal task",
         "--cron",
@@ -322,7 +363,10 @@ describe("bb automation command output", () => {
     const get = vi.fn(async () => automations);
     stubServerApi({ "v1.projects.:id.automations.$get": get });
 
-    await runCommand(["automation", "list", "--json"], register);
+    await runCommand(
+      ["automation", "list", "--project", "proj-1", "--json"],
+      register,
+    );
 
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
@@ -355,7 +399,7 @@ describe("bb automation command output", () => {
     });
 
     await runCommand(
-      ["automation", "run", "auto-1", "--json"],
+      ["automation", "run", "auto-1", "--project", "proj-1", "--json"],
       register,
     );
 
@@ -376,7 +420,10 @@ describe("bb automation command output", () => {
     });
     readlineMocks.question.mockResolvedValueOnce("n");
 
-    await runCommand(["automation", "delete", "auto-1"], register);
+    await runCommand(
+      ["automation", "delete", "auto-1", "--project", "proj-1"],
+      register,
+    );
 
     expect(readlineMocks.question).toHaveBeenCalledTimes(1);
     expect(del).not.toHaveBeenCalled();
@@ -390,7 +437,10 @@ describe("bb automation command output", () => {
       "v1.projects.:id.automations.:automationId.$delete": del,
     });
 
-    await runCommand(["automation", "delete", "auto-1", "--yes"], register);
+    await runCommand(
+      ["automation", "delete", "auto-1", "--project", "proj-1", "--yes"],
+      register,
+    );
 
     expect(readlineMocks.question).not.toHaveBeenCalled();
     expect(del).toHaveBeenCalledWith({

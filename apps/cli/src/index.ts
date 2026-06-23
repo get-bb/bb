@@ -45,7 +45,7 @@ Current context:
 Quick start:
   bb status
   bb project list
-  bb thread show
+  bb thread show <id>
   bb thread spawn --project <id> --provider codex --prompt "..."
 `;
 });

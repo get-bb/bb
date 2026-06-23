@@ -4,6 +4,8 @@ import {
   requireProjectId,
   requireThreadId,
   requireThreadIdWithLabelOrSelf,
+  resolveContextProjectId,
+  resolveContextThreadId,
   resolveContextSnapshot,
   resolveExplicitIdFlag,
   resolveProjectId,
@@ -23,26 +25,27 @@ describe("context-env", () => {
 
   it("requires project and thread context when missing", () => {
     expect(() => requireProjectId(undefined)).toThrow(
-      "Missing project context. Pass a project ID (for example --project <id>) or set BB_PROJECT_ID.",
+      "Missing project ID. Pass --project <id>.",
     );
     expect(() => requireThreadId(undefined)).toThrow(
-      "Missing thread context. Pass <threadId> or set BB_THREAD_ID.",
+      "Missing thread ID. Pass <threadId>.",
     );
   });
 
-  it("reads BB_PROJECT_ID and BB_THREAD_ID defaults", () => {
+  it("does not use BB_PROJECT_ID and BB_THREAD_ID as explicit ID defaults", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     vi.stubEnv("BB_THREAD_ID", "thread-env");
 
-    expect(resolveProjectId(undefined)).toBe("proj-env");
-    expect(resolveThreadId(undefined)).toBe("thread-env");
+    expect(resolveProjectId(undefined)).toBeUndefined();
+    expect(resolveThreadId(undefined)).toBeUndefined();
   });
 
-  it("prefers the explicit project flag over BB_PROJECT_ID", () => {
+  it("resolves explicit project and thread flags", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
+    vi.stubEnv("BB_THREAD_ID", "thread-env");
 
-    expect(resolveProjectId(undefined)).toBe("proj-env");
     expect(resolveProjectId("proj-flag")).toBe("proj-flag");
+    expect(resolveThreadId("thread-flag")).toBe("thread-flag");
   });
 
   it("normalizes empty values as undefined", () => {
@@ -89,6 +92,8 @@ describe("context-env", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-1");
 
+    expect(resolveContextProjectId()).toBe("proj-1");
+    expect(resolveContextThreadId()).toBe("thread-1");
     const snapshot = resolveContextSnapshot();
     expect(snapshot.projectId).toBe("proj-1");
     expect(snapshot.threadId).toBe("thread-1");

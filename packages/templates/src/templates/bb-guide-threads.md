@@ -38,7 +38,7 @@ Listing:
 
 Inspecting:
 
-  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)
+  bb thread show [id]                      Show thread details
     --self                                 Target current thread
     --work-status                          Include git working-tree status
     --git-diff                             Include git diff
@@ -53,10 +53,10 @@ Inspecting:
     --limit <count>                        Limit entries
     --after-seq <seq>                      Paginate after sequence number
 
-  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)
+  bb thread output [id]                    Get the final output of a thread
     --self                                 Target current thread
 
-  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)
+  bb thread wait <id>                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
     --timeout <seconds>                    Timeout
@@ -77,30 +77,30 @@ Thread terminals:
   are real PTY sessions scoped to the thread's environment, and they appear in the
   bb UI as terminal tabs.
 
-  bb thread terminal start [id] --command "pnpm dev"
+  bb thread terminal start <id> --command "pnpm dev"
     --title <title>                        Display title
     --cols <n>                             Initial terminal columns
     --rows <n>                             Initial terminal rows
     --attach                               Attach interactively after starting
     --json                                 Print the created terminal session
 
-  bb thread terminal list [id]             List running terminals for a thread
+  bb thread terminal list <id>             List running terminals for a thread
 
-  bb thread terminal attach <terminal-id> [id]
+  bb thread terminal attach <terminal-id> <id>
                                             Attach interactively; Ctrl-B d detaches
 
-  bb thread terminal send <terminal-id> [id]
+  bb thread terminal send <terminal-id> <id>
     --text <text>                          Text to send
     --stdin                                Read text from stdin
     --enter                                Append a newline
 
-  bb thread terminal output <terminal-id> [id]
+  bb thread terminal output <terminal-id> <id>
     --since-seq <n>                        Read output chunks from a sequence
     --tail-bytes <n>                       Bound output to latest N bytes
     --limit-chunks <n>                     Bound output to latest N chunks
     --json                                 Print chunks, nextSeq, and truncated
 
-  bb thread terminal wait <terminal-id> [id]
+  bb thread terminal wait <terminal-id> <id>
     --contains <text>                      Wait for new output containing text
     --regex <pattern>                      Wait for new output matching regex
     --exit                                 Wait until the terminal exits
@@ -108,15 +108,15 @@ Thread terminals:
     --timeout <seconds>                    Timeout
     --poll-interval <ms>                   Polling interval
 
-  bb thread terminal resize <terminal-id> [id] --cols <n> --rows <n>
-  bb thread terminal stop <terminal-id> [id]
+  bb thread terminal resize <terminal-id> <id> --cols <n> --rows <n>
+  bb thread terminal stop <terminal-id> <id>
 
-  Inside a thread, the thread ID defaults from BB_THREAD_ID when omitted.
+  Terminal commands require an explicit thread ID.
 
   For a dev server, prefer:
 
-    bb thread terminal start "$BB_THREAD_ID" --title "pnpm dev" --command "pnpm dev"
-    bb thread terminal wait <terminal-id> "$BB_THREAD_ID" --contains "Local:" --timeout 120
+    bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"
+    bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120
 
   Do not run long-lived servers as one-off foreground commands when the user will
   need to inspect logs, refresh the page, or stop the process later.
@@ -150,6 +150,6 @@ Lifecycle:
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
 
-Read-only commands infer the thread from BB_THREAD_ID.
+Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.
-Terminal commands infer the thread from BB_THREAD_ID when omitted.
+Terminal commands require an explicit thread ID.

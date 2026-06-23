@@ -123,7 +123,7 @@ export function registerShowCommand(
 ): void {
   parent
     .command("show [id]")
-    .description("Show thread details (defaults to BB_THREAD_ID)")
+    .description("Show thread details")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .option("--work-status", "Include work status (git state) in output")
@@ -345,7 +345,7 @@ export function registerShowCommand(
 
   parent
     .command("log [id]")
-    .description("Show thread event log (defaults to BB_THREAD_ID)")
+    .description("Show thread event log")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--json",
@@ -403,7 +403,7 @@ export function registerShowCommand(
 
   parent
     .command("output [id]")
-    .description("Get the final output of a thread (defaults to BB_THREAD_ID)")
+    .description("Get the final output of a thread")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(

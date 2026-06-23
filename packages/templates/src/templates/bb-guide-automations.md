@@ -12,9 +12,9 @@ An automation is a scheduled task. When due it runs in one of two modes:
   agent    Spawn a thread that runs a configured prompt (uses tokens).
   script   Run a stored command and capture stdout/exit (no agent, no tokens).
 
-The project defaults to BB_PROJECT_ID, then the personal project, so --project is
-never required. Inside a thread, automations are stamped origin "agent" and record
-the creating thread automatically.
+Pass --project explicitly for every automation command. Inside a thread,
+automations are stamped origin "agent" and record the creating thread
+automatically.
 
 Choosing a mode:
 
@@ -39,7 +39,7 @@ Choosing a mode:
     [ "$pct" -ge 90 ] && echo "Disk at ${pct}% on $(hostname)"
     SH
     # 2. schedule it
-    bb automation create --name "Disk watch" \
+    bb automation create --project <project-id> --name "Disk watch" \
       --cron "*/15 * * * *" --timezone "America/New_York" \
       --script-file /tmp/disk-watch.sh
 
@@ -52,12 +52,12 @@ Every command supports --json for machine-readable output.
 
 Creating:
 
-  bb automation create --name "..." --cron "..." --timezone "..." [mode flags]
+  bb automation create --project <id> --name "..." --cron "..." --timezone "..." [mode flags]
 
     --name <name>                  Automation name (required)
     --cron <expr>                  5-field cron expression, steps OK e.g. */5 * * * * (required)
     --timezone <tz>                IANA timezone, e.g. America/New_York (required)
-    --project <id>                 Project (defaults to BB_PROJECT_ID, then personal)
+    --project <id>                 Project (required)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment <kind>       Create a new environment (worktree)
     --base-branch <branch>         Base branch for new managed environments
@@ -107,26 +107,32 @@ Cron format:
 
 Listing and inspecting:
 
-  bb automation list                       List automations for a project
-    --project <id>                         Project filter
+  bb automation list --project <id>        List automations for a project
 
-  bb automation show <automationId>        Show automation details
-  bb automation runs <automationId>        List recent runs
+  bb automation show <automationId> --project <id>
+                                            Show automation details
+  bb automation runs <automationId> --project <id>
+                                            List recent runs
     --limit <count>                        Maximum runs to return
     --output <runId>                       Print a script run's captured stdout
 
 Managing:
 
-  bb automation update <automationId>      Update configuration
+  bb automation update <automationId> --project <id>
+                                            Update configuration
     --name <name>                          Set the name
     --cron <expr>                          Set the cron (requires --timezone)
     --timezone <tz>                        Set the timezone (requires --cron)
     --auto-archive                         Enable auto-archive
 
-  bb automation pause <automationId>       Pause (disable, clear next run)
-  bb automation resume <automationId>      Resume (enable, recompute next run)
-  bb automation run <automationId>         Run now (manual trigger)
+  bb automation pause <automationId> --project <id>
+                                            Pause (disable, clear next run)
+  bb automation resume <automationId> --project <id>
+                                            Resume (enable, recompute next run)
+  bb automation run <automationId> --project <id>
+                                            Run now (manual trigger)
     --idempotency-key <key>                Dedup key for replayable run-now
 
-  bb automation delete <automationId>      Delete permanently (cascades run history)
+  bb automation delete <automationId> --project <id>
+                                            Delete permanently (cascades run history)
     --yes                                  Skip confirmation

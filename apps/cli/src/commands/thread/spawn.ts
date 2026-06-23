@@ -5,7 +5,7 @@ import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
   resolveExplicitIdFlag,
-  resolveThreadId,
+  resolveContextThreadId,
 } from "../../context-env.js";
 import { resolveLocalHostId } from "../../daemon.js";
 import {
@@ -70,7 +70,7 @@ function resolveSpawnParentThreadId(args: {
     throw new Error("Cannot combine --parent-thread with --parent-self.");
   }
   if (args.parentSelf) {
-    const selfThreadId = resolveThreadId();
+    const selfThreadId = resolveContextThreadId();
     if (!selfThreadId) {
       throw new Error("--parent-self requires BB_THREAD_ID to be set.");
     }
@@ -252,7 +252,7 @@ export function registerSpawnCommand(
         console.log(`Thread spawned: ${thread.id}`);
         if (
           thread.parentThreadId &&
-          thread.parentThreadId === resolveThreadId()
+          thread.parentThreadId === resolveContextThreadId()
         ) {
           console.log("You will be notified when this thread is done.");
         }
