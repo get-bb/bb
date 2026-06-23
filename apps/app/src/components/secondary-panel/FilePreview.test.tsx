@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FilePreview } from "./FilePreview";
@@ -72,6 +78,10 @@ const pierreMock = vi.hoisted(() => {
   };
 });
 
+const clipboardMock = vi.hoisted(() => ({
+  copyToClipboardWithToast: vi.fn(async () => true),
+}));
+
 vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
 
@@ -97,6 +107,14 @@ vi.mock("@pierre/diffs/react", async () => {
   };
 });
 
+vi.mock("@/lib/clipboard", () => clipboardMock);
+
+async function openFilePreviewActionsMenu() {
+  const trigger = screen.getByRole("button", { name: "File preview actions" });
+  fireEvent.pointerDown(trigger, { button: 0 });
+  return screen.findByRole("menuitem", { name: "Copy raw file" });
+}
+
 describe("FilePreview", () => {
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
@@ -108,6 +126,7 @@ describe("FilePreview", () => {
     pierreMock.state.unsubscribe.mockClear();
     pierreMock.workerPool.subscribeToStatChanges.mockClear();
     pierreMock.workerPool.getFileResultCache.mockClear();
+    clipboardMock.copyToClipboardWithToast.mockClear();
   });
 
   afterEach(() => {
@@ -226,6 +245,142 @@ describe("FilePreview", () => {
         firstInstanceId + 1,
       );
     });
+  });
+
+  it("renders a compact file preview actions menu in the header", async () => {
+    render(
+      <FilePreview
+        path="apps/app/src/lib/thread-read-state.ts"
+        state={{
+          kind: "ready",
+          file: {
+            name: "thread-read-state.ts",
+            contents: "export const marker = true;",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: false,
+        }}
+      />,
+    );
+
+    const actionsButton = screen.getByRole("button", {
+      name: "File preview actions",
+    });
+
+    expect(actionsButton.className).toContain("h-5");
+    expect(actionsButton.className).toContain("w-5");
+    expect(actionsButton.className).toContain("[&_svg]:size-3");
+
+    await openFilePreviewActionsMenu();
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "Wrap" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("menuitem", { name: "Copy raw file" }),
+    ).not.toBeNull();
+  });
+
+  it("lets source previews grow to content height so the sticky header stays bounded by the full file", () => {
+    const view = render(
+      <FilePreview
+        path="apps/app/src/lib/thread-read-state.ts"
+        state={{
+          kind: "ready",
+          file: {
+            name: "thread-read-state.ts",
+            contents: "export const marker = true;",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: false,
+        }}
+      />,
+    );
+
+    const previewRoot = view.container.firstElementChild;
+    expect(previewRoot?.classList.contains("min-h-full")).toBe(true);
+    expect(previewRoot?.classList.contains("h-full")).toBe(false);
+    expect(
+      screen
+        .getByTestId("pierre-file")
+        .parentElement?.classList.contains("flex-auto"),
+    ).toBe(true);
+  });
+
+  it("toggles source line wrap from the file preview actions menu", async () => {
+    render(
+      <FilePreview
+        path="apps/app/src/lib/thread-read-state.ts"
+        state={{
+          kind: "ready",
+          file: {
+            name: "thread-read-state.ts",
+            contents: "export const marker = true;",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: false,
+        }}
+      />,
+    );
+
+    await openFilePreviewActionsMenu();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Wrap" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("menuitemcheckbox", { name: "Wrap" }),
+      ).toBeNull();
+    });
+
+    await openFilePreviewActionsMenu();
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "Wrap" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("copies loaded raw file contents from the file preview actions menu", async () => {
+    render(
+      <FilePreview
+        path="docs/right-panel/README.md"
+        state={{
+          kind: "ready",
+          file: {
+            name: "README.md",
+            contents: "# Preview\n\nRaw markdown.",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: true,
+        }}
+      />,
+    );
+
+    await openFilePreviewActionsMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy raw file" }));
+
+    await waitFor(() => {
+      expect(clipboardMock.copyToClipboardWithToast).toHaveBeenCalledWith(
+        "# Preview\n\nRaw markdown.",
+        {
+          errorMessage: "Failed to copy",
+          successMessage: null,
+        },
+      );
+    });
+  });
+
+  it("does not show the file preview actions menu for non-text previews", () => {
+    render(
+      <FilePreview
+        path="docs/screenshots/right-panel.png"
+        state={{ kind: "image", url: "/preview/right-panel.png" }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "File preview actions" }),
+    ).toBeNull();
   });
 
   it("passes cache keys for loaded text previews to Pierre", async () => {
