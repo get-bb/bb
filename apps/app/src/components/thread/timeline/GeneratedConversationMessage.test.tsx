@@ -66,6 +66,7 @@ function renderChildCompleted() {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 const TWO_LINE_BODY = "first report line\nsecond report line";
@@ -110,8 +111,27 @@ function renderChildCompletedBody(
 const AGENT_BODY = "# notes\nedited path:src/app.ts here";
 const AGENT_PATH_TOKEN = "path:src/app.ts";
 const AGENT_PATH_START = AGENT_BODY.indexOf(AGENT_PATH_TOKEN);
+const OVERFLOWING_ONE_LINE_AGENT_BODY =
+  "TEST RESULT refines the diagnosis — RULE OUT eviction. A fire-and-forget direct POST with no wait parameter and no client-held stream should still render the complete report after expansion.";
 
-function renderAgentMessage() {
+function renderAgentMessage(text = AGENT_BODY) {
+  const mentions =
+    text === AGENT_BODY
+      ? [
+          {
+            start: AGENT_PATH_START,
+            end: AGENT_PATH_START + AGENT_PATH_TOKEN.length,
+            resource: {
+              kind: "path" as const,
+              source: "workspace" as const,
+              entryKind: "file" as const,
+              path: "src/app.ts",
+              label: "src/app.ts",
+            },
+          },
+        ]
+      : [];
+
   return render(
     <MemoryRouter>
       <RouteNavigationProvider>
@@ -126,25 +146,24 @@ function renderAgentMessage() {
           systemMessageKind="unlabeled"
           systemMessageSubject={null}
           attachments={null}
-          mentions={[
-            {
-              start: AGENT_PATH_START,
-              end: AGENT_PATH_START + AGENT_PATH_TOKEN.length,
-              resource: {
-                kind: "path",
-                source: "workspace",
-                entryKind: "file",
-                path: "src/app.ts",
-                label: "src/app.ts",
-              },
-            },
-          ]}
-          text={AGENT_BODY}
+          mentions={mentions}
+          text={text}
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
         />
       </RouteNavigationProvider>
     </MemoryRouter>,
+  );
+}
+
+function mockInnerPreviewTextOverflow(text: string): void {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(20);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(20);
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+    function scrollWidth(this: HTMLElement) {
+      return this.tagName === "SPAN" && this.textContent === text ? 240 : 100;
+    },
   );
 }
 
@@ -177,6 +196,22 @@ describe("GeneratedConversationMessage markdown body", () => {
     // The offset-based `path` mention is preserved (would regress to plain text
     // under the markdown path, which only understands `@thread:<id>` tokens).
     expect(screen.getByText("src/app.ts")).toBeTruthy();
+  });
+
+  it("expands a one-line agent message when its preview text overflows", () => {
+    mockInnerPreviewTextOverflow(OVERFLOWING_ONE_LINE_AGENT_BODY);
+    const { container } = renderAgentMessage(OVERFLOWING_ONE_LINE_AGENT_BODY);
+
+    const toggle = screen.getByRole("button", { name: /Message from Worker/u });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("...")).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("p.whitespace-pre-wrap")?.textContent).toBe(
+      OVERFLOWING_ONE_LINE_AGENT_BODY,
+    );
   });
 });
 

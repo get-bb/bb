@@ -345,7 +345,6 @@ function systemMessageIsTitleOnly(
 // inline so the row stays one truncated line while still showing inline
 // formatting (bold, code, links) and @thread pills.
 const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
-  "min-w-0 truncate",
   "[&_p]:!m-0 [&_p]:inline",
   "[&_ul]:!m-0 [&_ol]:!m-0 [&_ul]:!pl-0 [&_ol]:!pl-0 [&_li]:!m-0 [&_li]:inline",
   "[&_h1]:!m-0 [&_h2]:!m-0 [&_h3]:!m-0 [&_h4]:!m-0",
@@ -426,7 +425,13 @@ export const GeneratedConversationMessage = memo(
     const collapsedPreviewLine = messageText.split(/\r\n|\r|\n/u, 1)[0] ?? "";
     const hasAdditionalBodyLines =
       collapsedPreviewLine.length < messageText.length;
-    const collapsedPreviewTextRef = useRef<HTMLDivElement>(null);
+    const collapsedPreviewTextRef = useRef<HTMLElement | null>(null);
+    const setCollapsedPreviewTextRef = useCallback(
+      (element: HTMLElement | null) => {
+        collapsedPreviewTextRef.current = element;
+      },
+      [],
+    );
     const collapsedPreviewOverflowMeasurement = useOverflowMeasurement({
       elementRef: collapsedPreviewTextRef,
       enabled: !titleOnly && messageText.length > 0,
@@ -437,6 +442,8 @@ export const GeneratedConversationMessage = memo(
       (hasExpandedOnlyContent ||
         hasAdditionalBodyLines ||
         collapsedPreviewOverflowMeasurement === "overflowing");
+    const showManualContinuation =
+      expandable && collapsedPreviewOverflowMeasurement !== "overflowing";
     const collapsedPreviewBody = clipMentionTextToVisibleRange({
       mentions: messageMentions,
       rangeStart: 0,
@@ -446,31 +453,33 @@ export const GeneratedConversationMessage = memo(
       <div
         className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
       >
-        <div
-          ref={collapsedPreviewTextRef}
-          className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground"
-        >
+        <div className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground">
           {sourceKind === "system" ? (
             // Render the collapsed first line as markdown too (inline
             // formatting + @thread pills), clamped to a single line, so a
             // not-yet-expanded system message shows formatted text rather than
             // raw markdown. Block nodes are flattened to inline via
             // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
-            <MarkdownPreview
-              content={collapsedPreviewLine}
-              linkRouting={linkRouting}
-              threadMentions={
-                resolveSegmentLinkHref
-                  ? {
-                      mentions: collapsedPreviewBody.mentions,
-                      resolveLinkHref: resolveSegmentLinkHref,
-                    }
-                  : undefined
-              }
-              className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
-            />
+            <div
+              ref={setCollapsedPreviewTextRef}
+              className="min-w-0 truncate"
+            >
+              <MarkdownPreview
+                content={collapsedPreviewLine}
+                linkRouting={linkRouting}
+                threadMentions={
+                  resolveSegmentLinkHref
+                    ? {
+                        mentions: collapsedPreviewBody.mentions,
+                        resolveLinkHref: resolveSegmentLinkHref,
+                      }
+                    : undefined
+                }
+                className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
+              />
+            </div>
           ) : (
-            <span className="min-w-0 truncate">
+            <span ref={setCollapsedPreviewTextRef} className="min-w-0 truncate">
               {renderMentionTextSegments({
                 mentions: collapsedPreviewBody.mentions,
                 resolveMentionLink,
@@ -478,7 +487,7 @@ export const GeneratedConversationMessage = memo(
               })}
             </span>
           )}
-          {expandable ? (
+          {showManualContinuation ? (
             <span className="shrink-0 text-muted-foreground">...</span>
           ) : null}
         </div>

@@ -229,6 +229,35 @@ export function Overview() {
   );
 }
 
+export function ClippedAgentMessage() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="agent message"
+        hint="long single-line handoff from another thread; expand to read the full text"
+      >
+        <div className="w-full max-w-[560px]">
+          <ConversationMessageContent
+            role="user"
+            initiator="agent"
+            childOrigin={null}
+            senderThreadId="thr_host_hermes"
+            senderThreadTitle="Host Hermes on Flue"
+            senderChildOrigin={null}
+            resolveSegmentLinkHref={resolveThreadLink}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text="TEST RESULT refines the diagnosis — RULE OUT eviction. A fire-and-forget direct POST with no wait parameter and no client-held stream should still render the complete report after expansion, including the exact follow-up checks the other agent already ran."
+            attachments={null}
+            mentions={[]}
+            projectId="proj_demo"
+            turnRequest={acceptedMessage}
+          />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
 
 // Markdown bodies, rendered EXPANDED so the formatting is visible without a
 // click. System-message bodies (sourceKind "system") render through
