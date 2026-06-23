@@ -732,17 +732,17 @@ export function SidebarGroupOptionsMenu({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel="Sidebar grouping options"
+        ariaLabel="Sidebar organize options"
         iconName="Layers"
-        tooltip="Group by"
+        tooltip="Organize by"
       />
       <DropdownMenuContent
         align="end"
-        mobileTitle="Group by"
+        mobileTitle="Organize by"
         className="min-w-0"
       >
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Group by
+          Organize by
         </DropdownMenuLabel>
         <SidebarGroupMenuOption
           label="Project"
