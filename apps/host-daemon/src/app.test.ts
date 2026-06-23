@@ -23,6 +23,7 @@ import type {
   RuntimeManagerReapIdleProviderSessionsArgs,
   RuntimeManagerReapIdleProviderSessionsResult,
 } from "./runtime-manager.js";
+import type { FetchFn } from "./server-client.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
 
@@ -33,7 +34,7 @@ interface RecordedFetchRequest {
 }
 
 interface FetchRecorder {
-  fetchFn: typeof fetch;
+  fetchFn: FetchFn;
   requests: RecordedFetchRequest[];
 }
 
@@ -127,7 +128,7 @@ function createFetchRecorder(
   const requests: RecordedFetchRequest[] = [];
   let eventPostCount = 0;
   let sessionOpenCount = 0;
-  const fetchFn: typeof fetch = async (input, init) => {
+  const fetchFn: FetchFn = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
       body: readFetchBody(init),

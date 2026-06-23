@@ -132,7 +132,10 @@ function toRetryControlError(error: ServerResponseError): Error {
   return error.retryable ? error : new AbortError(error);
 }
 
-type FetchFn = typeof fetch;
+// The client only ever calls fetchFn(url, init); it never uses fetch.preconnect.
+// Typing the dependency as fetch's call signature (not `typeof fetch`) keeps it
+// precise and lets plain function / vi.fn mocks satisfy it.
+export type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 
 interface CreateServerClientOptions {
   serverUrl: string;

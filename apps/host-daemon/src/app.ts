@@ -27,7 +27,11 @@ import {
   TerminalManager,
   type TerminalManagerOptions,
 } from "./terminals/terminal-manager.js";
-import { createServerClient, ServerResponseError } from "./server-client.js";
+import {
+  createServerClient,
+  ServerResponseError,
+  type FetchFn,
+} from "./server-client.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
@@ -109,7 +113,7 @@ export interface CreateHostDaemonAppOptions {
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   pickFolder?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
+  fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
 }
 

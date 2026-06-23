@@ -1,7 +1,11 @@
 import { AbortError } from "p-retry";
 import { describe, expect, it, vi } from "vitest";
 import type { PendingInteractionCreate } from "@bb/domain";
-import { createServerClient, ServerResponseError } from "./server-client.js";
+import {
+  createServerClient,
+  ServerResponseError,
+  type FetchFn,
+} from "./server-client.js";
 
 function createLogger() {
   return {
@@ -37,7 +41,7 @@ function createInteractiveRequest(): PendingInteractionCreate {
 
 describe("createServerClient", () => {
   it("refuses to fetch project attachments over insecure non-loopback HTTP", async () => {
-    const fetchFn = vi.fn<typeof fetch>();
+    const fetchFn = vi.fn<FetchFn>();
     const client = createServerClient({
       fetchFn,
       getSessionId: () => "session-1",
@@ -58,7 +62,7 @@ describe("createServerClient", () => {
   });
 
   it("refuses to fetch project attachments when the server URL is malformed", async () => {
-    const fetchFn = vi.fn<typeof fetch>();
+    const fetchFn = vi.fn<FetchFn>();
     const client = createServerClient({
       fetchFn,
       getSessionId: () => "session-1",
@@ -79,7 +83,7 @@ describe("createServerClient", () => {
   });
 
   it("fetches project attachment bytes over HTTPS", async () => {
-    const fetchFn = vi.fn<typeof fetch>(async (input) => {
+    const fetchFn = vi.fn<FetchFn>(async (input) => {
       const url = new URL(String(input));
       expect(url.pathname).toBe("/internal/session/project-attachment-content");
       expect(url.searchParams.get("sessionId")).toBe("session-1");
@@ -116,7 +120,7 @@ describe("createServerClient", () => {
   });
 
   it("rejects project attachment responses with unexpected byte length", async () => {
-    const fetchFn = vi.fn<typeof fetch>(
+    const fetchFn = vi.fn<FetchFn>(
       async () =>
         new Response("too-large", {
           status: 200,
@@ -142,7 +146,7 @@ describe("createServerClient", () => {
   });
 
   it("fetches project attachment bytes over loopback HTTP", async () => {
-    const fetchFn = vi.fn<typeof fetch>(async (input) => {
+    const fetchFn = vi.fn<FetchFn>(async (input) => {
       const url = new URL(String(input));
       expect(url.pathname).toBe("/internal/session/project-attachment-content");
       return new Response("loopback-body", {
@@ -171,7 +175,7 @@ describe("createServerClient", () => {
   });
 
   it("returns accepted event mappings when posting events", async () => {
-    const fetchFn = vi.fn<typeof fetch>(async (input) => {
+    const fetchFn = vi.fn<FetchFn>(async (input) => {
       expect(String(input)).toContain("/internal/session/events");
       return new Response(
         JSON.stringify({
@@ -227,7 +231,7 @@ describe("createServerClient", () => {
 
   it("retries retryable interactive request registration responses after the attempt hook", async () => {
     let calls = 0;
-    const fetchFn = vi.fn<typeof fetch>(async () => {
+    const fetchFn = vi.fn<FetchFn>(async () => {
       calls += 1;
       if (calls === 1) {
         return new Response(
@@ -290,7 +294,7 @@ describe("createServerClient", () => {
   });
 
   it("does not retry non-retryable 503 interactive request registration responses", async () => {
-    const fetchFn = vi.fn<typeof fetch>(
+    const fetchFn = vi.fn<FetchFn>(
       async () =>
         new Response(
           JSON.stringify({
