@@ -58,6 +58,7 @@ interface BuildThreadNodeArgs {
   childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
   compareThreads: ThreadComparator;
   depth: number;
+  groupEnvironmentThreads: boolean;
   thread: ThreadListEntry;
   visitedThreadIds: Set<string>;
 }
@@ -185,7 +186,13 @@ function buildEnvironmentItem(
 function buildSortedItems(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
+  groupEnvironmentThreads: boolean,
 ): ProjectThreadItem[] {
+  if (!groupEnvironmentThreads) {
+    nodes.sort((left, right) => compareThreads(left.thread, right.thread));
+    return nodes.map(buildThreadItem);
+  }
+
   const { environmentThreadGroups, looseNodes } =
     bucketWorktreeEnvironmentGroups(nodes, compareThreads);
   const items = [
@@ -203,6 +210,7 @@ function buildThreadNode({
   childrenByParentId,
   compareThreads,
   depth,
+  groupEnvironmentThreads,
   thread,
   visitedThreadIds,
 }: BuildThreadNodeArgs): ProjectThreadNode {
@@ -221,13 +229,18 @@ function buildThreadNode({
         childrenByParentId,
         compareThreads,
         depth: depth + 1,
+        groupEnvironmentThreads,
         thread: childThread,
         visitedThreadIds,
       }),
     );
   }
 
-  const children = buildSortedItems(childNodes, compareThreads);
+  const children = buildSortedItems(
+    childNodes,
+    compareThreads,
+    groupEnvironmentThreads,
+  );
   return {
     thread,
     children,
@@ -250,7 +263,15 @@ export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
 ): ProjectThreadItem[] {
-  const projectThreads = allProjectThreads.filter(isSidebarProjectThread);
+  return buildThreadTreeItems(allProjectThreads, compareThreads, true);
+}
+
+function buildThreadTreeItems(
+  allThreads: readonly ThreadListEntry[],
+  compareThreads: ThreadComparator,
+  groupEnvironmentThreads: boolean,
+): ProjectThreadItem[] {
+  const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
   const childrenByParentId = new Map<string, ThreadListEntry[]>();
 
@@ -279,6 +300,7 @@ export function buildProjectThreadGroups(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        groupEnvironmentThreads,
         thread,
         visitedThreadIds,
       }),
@@ -296,39 +318,24 @@ export function buildProjectThreadGroups(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        groupEnvironmentThreads,
         thread,
         visitedThreadIds,
       }),
     );
   }
 
-  return buildSortedItems(rootNodes, compareThreads);
+  return buildSortedItems(rootNodes, compareThreads, groupEnvironmentThreads);
 }
 
-// Flat ordering for the chronological "All Threads" bucket: one top-level row
-// per thread, globally ordered by the chosen comparator. Unlike
-// buildProjectThreadGroups this intentionally drops parent/child nesting and
-// worktree grouping so every thread is visible (none hidden behind a collapsed
-// parent) and the sort is global rather than per-sibling. Side chats are
-// excluded to match buildProjectThreadGroups.
+// Chronological "All Threads" bucket: parent/child links still form a tree,
+// but worktree grouping stays off so Group by None does not add synthetic group
+// rows. Side chats are excluded to match buildProjectThreadGroups.
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
 ): ProjectThreadItem[] {
-  return allThreads
-    .filter(isSidebarProjectThread)
-    .sort(compareThreads)
-    .map(
-      (thread): ProjectThreadItem => ({
-        kind: "thread",
-        node: {
-          thread,
-          children: [],
-          depth: 0,
-          stats: buildStatsForHiddenThreads([]),
-        },
-      }),
-    );
+  return buildThreadTreeItems(allThreads, compareThreads, false);
 }
 
 export function isSidebarProjectThread(

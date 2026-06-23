@@ -384,7 +384,7 @@ describe("buildProjectThreadGroups", () => {
   });
 
   describe("buildChronologicalThreadList", () => {
-    it("flattens parent/child threads into globally sorted top-level rows", () => {
+    it("nests parent/child threads under globally sorted roots", () => {
       const items = buildChronologicalThreadList(
         [
           createThread({ id: "parent", createdAt: 10, latestAttentionAt: 10 }),
@@ -399,9 +399,42 @@ describe("buildProjectThreadGroups", () => {
         compareByCreatedAtDescending,
       );
 
-      // No nesting: the child is its own top-level row, ordered globally by
-      // createdAt desc rather than nested under its parent.
-      expect(summarizeItems(items)).toEqual(["child", "other", "parent"]);
+      expect(summarizeItems(items)).toEqual([
+        "other",
+        { id: "parent", children: ["child"] },
+      ]);
+    });
+
+    it("keeps worktree siblings as thread rows", () => {
+      const items = buildChronologicalThreadList(
+        [
+          createThread({ id: "parent", createdAt: 100 }),
+          createThread({
+            id: "worktree-a",
+            parentThreadId: "parent",
+            environmentId: "env_shared",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+            createdAt: 10,
+            latestAttentionAt: 100,
+          }),
+          createThread({
+            id: "worktree-b",
+            parentThreadId: "parent",
+            environmentId: "env_shared",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+            createdAt: 20,
+            latestAttentionAt: 200,
+          }),
+        ],
+        compareByCreatedAtDescending,
+      );
+
+      expect(summarizeItems(items)).toEqual([
+        {
+          id: "parent",
+          children: ["worktree-b", "worktree-a"],
+        },
+      ]);
     });
 
     it("excludes side chats", () => {
