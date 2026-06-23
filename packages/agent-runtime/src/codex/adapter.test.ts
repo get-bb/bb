@@ -3561,11 +3561,35 @@ describe("codex provider adapter", () => {
           tool: "spawnAgent",
           status: "inProgress",
           senderThreadId: providerThreadId,
-          receiverThreadIds: [providerThreadId],
+          receiverThreadIds: [],
           prompt: "Run the child command",
           model: null,
           reasoningEffort: null,
           agentsStates: {},
+        },
+      }),
+    );
+    adapter.translateEvent(
+      codexEvent("item/completed", {
+        threadId: providerThreadId,
+        turnId: "parent-turn",
+        completedAtMs: 0,
+        item: {
+          type: "collabAgentToolCall",
+          id: parentToolCallId,
+          tool: "spawnAgent",
+          status: "completed",
+          senderThreadId: providerThreadId,
+          receiverThreadIds: ["child-provider-thread"],
+          prompt: "Run the child command",
+          model: "gpt-5.5",
+          reasoningEffort: "medium",
+          agentsStates: {
+            "child-provider-thread": {
+              status: "pendingInit",
+              message: null,
+            },
+          },
         },
       }),
     );
@@ -3631,6 +3655,15 @@ describe("codex provider adapter", () => {
         }),
       }),
     );
+
+    prepareTurnStart(adapter, {
+      type: "turn/start",
+      threadId: "thread-1",
+      providerThreadId,
+      clientRequestId: "creq_followup",
+      input: [promptTextInput({ text: "follow-up" })],
+      options: fullProviderExecutionContext,
+    });
 
     const followUpTurnEvents = adapter.translateEvent(
       codexEvent("turn/started", {
