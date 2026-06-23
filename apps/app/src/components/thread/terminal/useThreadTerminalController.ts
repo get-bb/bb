@@ -188,9 +188,18 @@ export function useThreadTerminalController({
       enabled: isRightPanelOpen && terminalTargetKind === "environment",
     },
   );
-  const globalTerminalsQuery = useTerminals({
-    enabled: isRightPanelOpen && terminalTargetKind === "host_path",
-  });
+  const globalTerminalsQuery = useTerminals(
+    target.kind === "host_path"
+      ? {
+          kind: "host_path",
+          hostId: target.hostId,
+          ...(target.cwd === null ? {} : { cwd: target.cwd }),
+        }
+      : null,
+    {
+      enabled: isRightPanelOpen && terminalTargetKind === "host_path",
+    },
+  );
   const terminalsQuery =
     terminalTargetKind === "thread"
       ? threadTerminalsQuery

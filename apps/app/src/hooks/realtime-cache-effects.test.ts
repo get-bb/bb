@@ -24,7 +24,7 @@ import {
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadSearchQueryKey,
-  threadTerminalsQueryKey,
+  terminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
@@ -76,7 +76,10 @@ function createRealtimeEffectsTestContext() {
   const effects = createRealtimeCacheEffects({ queryClient });
   const firstProjectHistoryKey = projectPromptHistoryQueryKey("project-1");
   const secondProjectHistoryKey = projectPromptHistoryQueryKey("project-2");
-  const terminalKey = threadTerminalsQueryKey("thr_1");
+  const terminalKey = terminalsQueryKey({
+    kind: "thread",
+    threadId: "thr_1",
+  });
 
   queryClient.setQueryData(firstProjectHistoryKey, []);
   queryClient.setQueryData(secondProjectHistoryKey, []);

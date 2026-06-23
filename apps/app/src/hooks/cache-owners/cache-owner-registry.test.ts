@@ -144,7 +144,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allThreadStorageFilesQueryKeyPrefix",
     "allThreadStoragePathsQueryKeyPrefix",
     "allThreadQueryKeyPrefix",
-    "allThreadTerminalsQueryKeyPrefix",
+    "allTerminalsQueryKeyPrefix",
     "environmentDiffFilesQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
     "environmentPullRequestQueryKey",
@@ -158,7 +158,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
     "threadStoragePathsForThreadQueryKeyPrefix",
-    "threadTerminalsQueryKey",
+    "terminalsQueryKey",
     "threadsQueryKey",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
@@ -192,9 +192,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/system-config-cache-owner.ts": ["systemConfigQueryKey"],
   "hooks/cache-owners/terminal-cache-owner.ts": [
-    "environmentTerminalsQueryKey",
+    "allTerminalsQueryKeyPrefix",
+    "TerminalQueryScope",
     "terminalsQueryKey",
-    "threadTerminalsQueryKey",
   ],
   "hooks/cache-owners/thread-archive-cache.ts": [
     "threadQueryKey",

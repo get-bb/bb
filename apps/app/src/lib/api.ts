@@ -32,12 +32,9 @@ import type {
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
-  EnvironmentTerminalListResponse,
   TerminalListResponse,
   CreateThreadRequest,
-  CreateEnvironmentTerminalRequest,
   CreateTerminalRequest,
-  CreateThreadTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
   PromptHistoryResponse,
@@ -67,21 +64,17 @@ import type {
   ProjectBranchesQuery,
   ThreadStorageFilesQuery,
   ThreadStoragePathsQuery,
+  TerminalListQuery,
   TerminalSession,
-  ThreadTerminalListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
-  CloseThreadTerminalRequest,
-  CloseEnvironmentTerminalRequest,
   CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
-  UpdateEnvironmentTerminalRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
-  UpdateThreadTerminalRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
   ThreadStorageFileListResponse,
@@ -1106,61 +1099,12 @@ export async function updateThread(
   );
 }
 
-export async function listThreadTerminals(
-  id: string,
-  signal?: AbortSignal,
-): Promise<ThreadTerminalListResponse> {
-  return request<ThreadTerminalListResponse>(
-    apiClient.threads[":id"].terminals.$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function createThreadTerminal(
-  id: string,
-  req: CreateThreadTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.threads[":id"].terminals.$post({
-      param: { id },
-      json: req,
-    }),
-  );
-}
-
-export async function renameThreadTerminal(
-  id: string,
-  terminalId: string,
-  req: UpdateThreadTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.threads[":id"].terminals[":terminalId"].$patch({
-      param: { id, terminalId },
-      json: req,
-    }),
-  );
-}
-
-export async function closeThreadTerminal(
-  id: string,
-  terminalId: string,
-  req: CloseThreadTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.threads[":id"].terminals[":terminalId"].close.$post({
-      param: { id, terminalId },
-      json: req,
-    }),
-  );
-}
-
 export async function listTerminals(
+  query: TerminalListQuery,
   signal?: AbortSignal,
 ): Promise<TerminalListResponse> {
   return request<TerminalListResponse>(
-    apiClient.terminals.$get(undefined, requestOptions(signal)),
+    apiClient.terminals.$get({ query }, requestOptions(signal)),
   );
 }
 
@@ -1392,56 +1336,6 @@ export async function updateEnvironment(
 ): Promise<Environment> {
   return request<Environment>(
     apiClient.environments[":id"].$patch({ param: { id }, json: req }),
-  );
-}
-
-export async function listEnvironmentTerminals(
-  id: string,
-  signal?: AbortSignal,
-): Promise<EnvironmentTerminalListResponse> {
-  return request<EnvironmentTerminalListResponse>(
-    apiClient.environments[":id"].terminals.$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function createEnvironmentTerminal(
-  id: string,
-  req: CreateEnvironmentTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.environments[":id"].terminals.$post({
-      param: { id },
-      json: req,
-    }),
-  );
-}
-
-export async function renameEnvironmentTerminal(
-  id: string,
-  terminalId: string,
-  req: UpdateEnvironmentTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.environments[":id"].terminals[":terminalId"].$patch({
-      param: { id, terminalId },
-      json: req,
-    }),
-  );
-}
-
-export async function closeEnvironmentTerminal(
-  id: string,
-  terminalId: string,
-  req: CloseEnvironmentTerminalRequest,
-): Promise<TerminalSession> {
-  return request<TerminalSession>(
-    apiClient.environments[":id"].terminals[":terminalId"].close.$post({
-      param: { id, terminalId },
-      json: req,
-    }),
   );
 }
 

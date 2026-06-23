@@ -11,10 +11,7 @@ import {
   openUrlInExternalBrowser,
   useOpenUrlByPreference,
 } from "@/lib/url-open-routing";
-import {
-  buildTerminalWebSocketUrl,
-  buildThreadlessTerminalWebSocketUrl,
-} from "./terminal-websocket-url";
+import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -411,12 +408,7 @@ export function ThreadTerminalView({
       }
 
       socket = new WebSocket(
-        session.threadId === null
-          ? buildThreadlessTerminalWebSocketUrl({ terminalId: session.id })
-          : buildTerminalWebSocketUrl({
-              terminalId: session.id,
-              threadId: session.threadId,
-            }),
+        buildTerminalWebSocketUrl({ terminalId: session.id }),
       );
       const activeSocket = socket;
       const activeTerminal = terminal;

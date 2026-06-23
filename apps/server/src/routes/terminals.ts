@@ -13,8 +13,8 @@ export function registerTerminalRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.terminals;
 
-  get(routes.list, (context) => {
-    const sessions = deps.terminalSessions.listTerminals();
+  get(routes.list, (context, query) => {
+    const sessions = deps.terminalSessions.listTerminals({ query });
     return context.json({ sessions });
   });
 
@@ -37,5 +37,29 @@ export function registerTerminalRoutes(app: Hono, deps: AppDeps): void {
       terminalId: context.req.param("terminalId"),
     });
     return context.json(session);
+  });
+
+  post(routes.input, (context, payload) => {
+    const session = deps.terminalSessions.sendTerminalInput({
+      payload,
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session);
+  });
+
+  post(routes.resize, (context, payload) => {
+    const session = deps.terminalSessions.resizeTerminal({
+      payload,
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session);
+  });
+
+  get(routes.output, async (context, query) => {
+    const output = await deps.terminalSessions.readTerminalOutput({
+      query,
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(output);
   });
 }

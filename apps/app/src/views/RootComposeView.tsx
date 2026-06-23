@@ -1340,11 +1340,22 @@ export function RootComposeView(props: RootComposeViewProps) {
         rootPanelTerminalTarget?.kind === "environment",
     },
   );
-  const globalTerminalsListQuery = useTerminals({
-    enabled:
-      props.surface === "page" &&
-      rootPanelTerminalTarget?.kind === "host_path",
-  });
+  const globalTerminalsListQuery = useTerminals(
+    rootPanelTerminalTarget?.kind === "host_path"
+      ? {
+          kind: "host_path",
+          hostId: rootPanelTerminalTarget.hostId,
+          ...(rootPanelTerminalTarget.cwd === null
+            ? {}
+            : { cwd: rootPanelTerminalTarget.cwd }),
+        }
+      : null,
+    {
+      enabled:
+        props.surface === "page" &&
+        rootPanelTerminalTarget?.kind === "host_path",
+    },
+  );
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({

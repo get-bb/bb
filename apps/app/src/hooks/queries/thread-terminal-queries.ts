@@ -1,32 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  CloseEnvironmentTerminalRequest,
   CloseTerminalRequest,
-  CloseThreadTerminalRequest,
-  CreateEnvironmentTerminalRequest,
   CreateTerminalRequest,
-  CreateThreadTerminalRequest,
-  EnvironmentTerminalListResponse,
+  TerminalListQuery,
   TerminalListResponse,
   TerminalSession,
-  ThreadTerminalListResponse,
-  UpdateEnvironmentTerminalRequest,
   UpdateTerminalRequest,
-  UpdateThreadTerminalRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
-  applyEnvironmentTerminalSessionClose,
-  applyEnvironmentTerminalSessionUpsert,
   applyTerminalSessionClose,
   applyTerminalSessionUpsert,
-  applyThreadTerminalSessionClose,
-  applyThreadTerminalSessionUpsert,
 } from "../cache-owners/terminal-cache-owner";
 import {
-  environmentTerminalsQueryKey,
   terminalsQueryKey,
-  threadTerminalsQueryKey,
+  type TerminalQueryScope,
 } from "./query-keys";
 import { requireEnabledQueryArg } from "./query-helpers";
 
@@ -34,36 +22,30 @@ interface QueryOptions {
   enabled?: boolean;
 }
 
+type ScopedCreateTerminalRequest = Omit<CreateTerminalRequest, "target">;
+
 interface CreateThreadTerminalMutationRequest
-  extends CreateThreadTerminalRequest {
+  extends ScopedCreateTerminalRequest {
   threadId: string;
 }
 
 interface CreateEnvironmentTerminalMutationRequest
-  extends CreateEnvironmentTerminalRequest {
+  extends ScopedCreateTerminalRequest {
   environmentId: string;
-}
-
-interface RenameThreadTerminalMutationRequest
-  extends UpdateThreadTerminalRequest {
-  terminalId: string;
-  threadId: string;
 }
 
 interface RenameTerminalMutationRequest extends UpdateTerminalRequest {
   terminalId: string;
 }
 
-interface RenameEnvironmentTerminalMutationRequest
-  extends UpdateEnvironmentTerminalRequest {
-  environmentId: string;
-  terminalId: string;
+interface RenameThreadTerminalMutationRequest
+  extends RenameTerminalMutationRequest {
+  threadId: string;
 }
 
-interface CloseThreadTerminalMutationRequest {
-  mode: CloseThreadTerminalRequest["mode"];
-  terminalId: string;
-  threadId: string;
+interface RenameEnvironmentTerminalMutationRequest
+  extends RenameTerminalMutationRequest {
+  environmentId: string;
 }
 
 interface CloseTerminalMutationRequest {
@@ -71,72 +53,70 @@ interface CloseTerminalMutationRequest {
   terminalId: string;
 }
 
-interface CloseEnvironmentTerminalMutationRequest {
+interface CloseThreadTerminalMutationRequest
+  extends CloseTerminalMutationRequest {
+  threadId: string;
+}
+
+interface CloseEnvironmentTerminalMutationRequest
+  extends CloseTerminalMutationRequest {
   environmentId: string;
-  mode: CloseEnvironmentTerminalRequest["mode"];
-  terminalId: string;
+}
+
+function terminalListQueryForScope(
+  scope: TerminalQueryScope,
+): TerminalListQuery {
+  switch (scope.kind) {
+    case "thread":
+      return { threadId: scope.threadId };
+    case "environment":
+      return { environmentId: scope.environmentId };
+    case "host_path":
+      return scope.cwd === undefined
+        ? { hostId: scope.hostId }
+        : { cwd: scope.cwd, hostId: scope.hostId };
+  }
+}
+
+export function useTerminals(
+  scope: TerminalQueryScope | null | undefined,
+  options?: QueryOptions,
+) {
+  return useQuery<TerminalListResponse>({
+    queryKey: terminalsQueryKey(
+      scope ?? { kind: "host_path", hostId: "__disabled__" },
+    ),
+    queryFn: ({ signal }) =>
+      api.listTerminals(
+        terminalListQueryForScope(
+          requireEnabledQueryArg({
+            value: scope,
+            hookName: "useTerminals",
+            argName: "terminal scope",
+          }),
+        ),
+        signal,
+      ),
+    enabled: (options?.enabled ?? true) && scope !== null && scope !== undefined,
+    refetchOnWindowFocus: false,
+  });
 }
 
 export function useThreadTerminals(id: string, options?: QueryOptions) {
-  return useQuery<ThreadTerminalListResponse>({
-    queryKey: threadTerminalsQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.listThreadTerminals(
-        requireEnabledQueryArg({
-          value: id,
-          hookName: "useThreadTerminals",
-          argName: "thread id",
-        }),
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnWindowFocus: false,
-  });
+  return useTerminals(
+    id ? { kind: "thread", threadId: id } : null,
+    options,
+  );
 }
 
 export function useEnvironmentTerminals(
   id: string,
   options?: QueryOptions,
 ) {
-  return useQuery<EnvironmentTerminalListResponse>({
-    queryKey: environmentTerminalsQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.listEnvironmentTerminals(
-        requireEnabledQueryArg({
-          value: id,
-          hookName: "useEnvironmentTerminals",
-          argName: "environment id",
-        }),
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnWindowFocus: false,
-  });
-}
-
-export function useTerminals(options?: QueryOptions) {
-  return useQuery<TerminalListResponse>({
-    queryKey: terminalsQueryKey(),
-    queryFn: ({ signal }) => api.listTerminals(signal),
-    enabled: options?.enabled ?? true,
-    refetchOnWindowFocus: false,
-  });
-}
-
-export function useCreateThreadTerminal() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to start terminal.",
-      lifecycleOperation: "open_terminal",
-    },
-    mutationFn: ({ threadId, ...request }: CreateThreadTerminalMutationRequest) =>
-      api.createThreadTerminal(threadId, request),
-    onSuccess: (session: TerminalSession) => {
-      applyThreadTerminalSessionUpsert({ queryClient, session });
-    },
-  });
+  return useTerminals(
+    id ? { kind: "environment", environmentId: id } : null,
+    options,
+  );
 }
 
 export function useCreateTerminal() {
@@ -154,42 +134,55 @@ export function useCreateTerminal() {
   });
 }
 
-export function useCreateEnvironmentTerminal() {
-  const queryClient = useQueryClient();
+export function useCreateThreadTerminal() {
+  const createTerminal = useCreateTerminal();
 
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to start terminal.",
-      lifecycleOperation: "open_terminal",
-    },
-    mutationFn: ({
+  return {
+    ...createTerminal,
+    mutate: (
+      { threadId, ...request }: CreateThreadTerminalMutationRequest,
+      options?: Parameters<typeof createTerminal.mutate>[1],
+    ) =>
+      createTerminal.mutate(
+        {
+          ...request,
+          target: { kind: "thread", threadId },
+        },
+        options,
+      ),
+    mutateAsync: ({ threadId, ...request }: CreateThreadTerminalMutationRequest) =>
+      createTerminal.mutateAsync({
+        ...request,
+        target: { kind: "thread", threadId },
+      }),
+  };
+}
+
+export function useCreateEnvironmentTerminal() {
+  const createTerminal = useCreateTerminal();
+
+  return {
+    ...createTerminal,
+    mutate: (
+      { environmentId, ...request }: CreateEnvironmentTerminalMutationRequest,
+      options?: Parameters<typeof createTerminal.mutate>[1],
+    ) =>
+      createTerminal.mutate(
+        {
+          ...request,
+          target: { kind: "environment", environmentId },
+        },
+        options,
+      ),
+    mutateAsync: ({
       environmentId,
       ...request
     }: CreateEnvironmentTerminalMutationRequest) =>
-      api.createEnvironmentTerminal(environmentId, request),
-    onSuccess: (session: TerminalSession) => {
-      applyEnvironmentTerminalSessionUpsert({ queryClient, session });
-    },
-  });
-}
-
-export function useRenameThreadTerminal() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to rename terminal.",
-    },
-    mutationFn: ({
-      terminalId,
-      threadId,
-      ...request
-    }: RenameThreadTerminalMutationRequest) =>
-      api.renameThreadTerminal(threadId, terminalId, request),
-    onSuccess: (session: TerminalSession) => {
-      applyThreadTerminalSessionUpsert({ queryClient, session });
-    },
-  });
+      createTerminal.mutateAsync({
+        ...request,
+        target: { kind: "environment", environmentId },
+      }),
+  };
 }
 
 export function useRenameTerminal() {
@@ -207,46 +200,41 @@ export function useRenameTerminal() {
   });
 }
 
-export function useRenameEnvironmentTerminal() {
-  const queryClient = useQueryClient();
+export function useRenameThreadTerminal() {
+  const renameTerminal = useRenameTerminal();
 
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to rename terminal.",
-    },
-    mutationFn: ({
-      environmentId,
-      terminalId,
+  return {
+    ...renameTerminal,
+    mutate: (
+      { threadId: _threadId, ...request }: RenameThreadTerminalMutationRequest,
+      options?: Parameters<typeof renameTerminal.mutate>[1],
+    ) => renameTerminal.mutate(request, options),
+    mutateAsync: ({
+      threadId: _threadId,
       ...request
-    }: RenameEnvironmentTerminalMutationRequest) =>
-      api.renameEnvironmentTerminal(environmentId, terminalId, request),
-    onSuccess: (session: TerminalSession) => {
-      applyEnvironmentTerminalSessionUpsert({ queryClient, session });
-    },
-  });
+    }: RenameThreadTerminalMutationRequest) =>
+      renameTerminal.mutateAsync(request),
+  };
 }
 
-export function useCloseThreadTerminal() {
-  const queryClient = useQueryClient();
+export function useRenameEnvironmentTerminal() {
+  const renameTerminal = useRenameTerminal();
 
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to close terminal.",
-    },
-    mutationFn: ({
-      mode,
-      terminalId,
-      threadId,
-    }: CloseThreadTerminalMutationRequest) =>
-      api.closeThreadTerminal(threadId, terminalId, { mode, reason: "user" }),
-    onSuccess: (session: TerminalSession, variables) => {
-      applyThreadTerminalSessionClose({
-        queryClient,
-        session,
-        terminalId: variables.terminalId,
-      });
-    },
-  });
+  return {
+    ...renameTerminal,
+    mutate: (
+      {
+        environmentId: _environmentId,
+        ...request
+      }: RenameEnvironmentTerminalMutationRequest,
+      options?: Parameters<typeof renameTerminal.mutate>[1],
+    ) => renameTerminal.mutate(request, options),
+    mutateAsync: ({
+      environmentId: _environmentId,
+      ...request
+    }: RenameEnvironmentTerminalMutationRequest) =>
+      renameTerminal.mutateAsync(request),
+  };
 }
 
 export function useCloseTerminal() {
@@ -268,28 +256,39 @@ export function useCloseTerminal() {
   });
 }
 
-export function useCloseEnvironmentTerminal() {
-  const queryClient = useQueryClient();
+export function useCloseThreadTerminal() {
+  const closeTerminal = useCloseTerminal();
 
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to close terminal.",
-    },
-    mutationFn: ({
-      environmentId,
-      mode,
-      terminalId,
+  return {
+    ...closeTerminal,
+    mutate: (
+      { threadId: _threadId, ...request }: CloseThreadTerminalMutationRequest,
+      options?: Parameters<typeof closeTerminal.mutate>[1],
+    ) => closeTerminal.mutate(request, options),
+    mutateAsync: ({
+      threadId: _threadId,
+      ...request
+    }: CloseThreadTerminalMutationRequest) =>
+      closeTerminal.mutateAsync(request),
+  };
+}
+
+export function useCloseEnvironmentTerminal() {
+  const closeTerminal = useCloseTerminal();
+
+  return {
+    ...closeTerminal,
+    mutate: (
+      {
+        environmentId: _environmentId,
+        ...request
+      }: CloseEnvironmentTerminalMutationRequest,
+      options?: Parameters<typeof closeTerminal.mutate>[1],
+    ) => closeTerminal.mutate(request, options),
+    mutateAsync: ({
+      environmentId: _environmentId,
+      ...request
     }: CloseEnvironmentTerminalMutationRequest) =>
-      api.closeEnvironmentTerminal(environmentId, terminalId, {
-        mode,
-        reason: "user",
-      }),
-    onSuccess: (session: TerminalSession, variables) => {
-      applyEnvironmentTerminalSessionClose({
-        queryClient,
-        session,
-        terminalId: variables.terminalId,
-      });
-    },
-  });
+      closeTerminal.mutateAsync(request),
+  };
 }

@@ -3,8 +3,8 @@ import {
   type PendingInteractionResolution,
 } from "@bb/domain";
 import type {
-  CloseThreadTerminalRequest,
-  CreateThreadTerminalRequest,
+  CloseTerminalRequest,
+  CreateTerminalRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
   PanelFileSource,
@@ -17,7 +17,7 @@ import type {
   ThreadGetQuery,
   ThreadListQuery,
   ThreadTimelineQuery,
-  UpdateThreadTerminalRequest,
+  UpdateTerminalRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
@@ -75,31 +75,31 @@ export type ThreadDeleteResult = PublicApiOutput<"/threads/:id", "$delete">;
 export type ThreadSendResult = PublicApiOutput<"/threads/:id/send", "$post">;
 export type ThreadStopResult = PublicApiOutput<"/threads/:id/stop", "$post">;
 export type ThreadTerminalCloseResult = PublicApiOutput<
-  "/threads/:id/terminals/:terminalId/close",
+  "/terminals/:terminalId/close",
   "$post"
 >;
 export type ThreadTerminalCreateResult = PublicApiOutput<
-  "/threads/:id/terminals",
+  "/terminals",
   "$post"
 >;
 export type ThreadTerminalInputResult = PublicApiOutput<
-  "/threads/:id/terminals/:terminalId/input",
+  "/terminals/:terminalId/input",
   "$post"
 >;
 export type ThreadTerminalListResult = PublicApiOutput<
-  "/threads/:id/terminals",
+  "/terminals",
   "$get"
 >;
 export type ThreadTerminalOutputResult = PublicApiOutput<
-  "/threads/:id/terminals/:terminalId/output",
+  "/terminals/:terminalId/output",
   "$get"
 >;
 export type ThreadTerminalResizeResult = PublicApiOutput<
-  "/threads/:id/terminals/:terminalId/resize",
+  "/terminals/:terminalId/resize",
   "$post"
 >;
 export type ThreadTerminalUpdateResult = PublicApiOutput<
-  "/threads/:id/terminals/:terminalId",
+  "/terminals/:terminalId",
   "$patch"
 >;
 export type ThreadUnarchiveResult = PublicApiOutput<
@@ -156,7 +156,8 @@ export interface ThreadTerminalListArgs {
   threadId: string;
 }
 
-export interface ThreadTerminalCreateArgs extends CreateThreadTerminalRequest {
+export interface ThreadTerminalCreateArgs
+  extends Omit<CreateTerminalRequest, "target"> {
   threadId: string;
 }
 
@@ -166,10 +167,10 @@ export interface ThreadTerminalTargetArgs {
 }
 
 export interface ThreadTerminalUpdateArgs
-  extends ThreadTerminalTargetArgs, UpdateThreadTerminalRequest {}
+  extends ThreadTerminalTargetArgs, UpdateTerminalRequest {}
 
 export interface ThreadTerminalCloseArgs
-  extends ThreadTerminalTargetArgs, CloseThreadTerminalRequest {}
+  extends ThreadTerminalTargetArgs, CloseTerminalRequest {}
 
 export interface ThreadTerminalInputArgs
   extends ThreadTerminalTargetArgs, TerminalInputRequest {}
@@ -383,60 +384,60 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   const terminals: ThreadTerminalsArea = {
     async close(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals[":terminalId"].close.$post({
-          param: { id: input.threadId, terminalId: input.terminalId },
+        transport.api.v1.terminals[":terminalId"].close.$post({
+          param: { terminalId: input.terminalId },
           json: { mode: input.mode, reason: input.reason },
         }),
       );
     },
     async create(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals.$post({
-          param: { id: input.threadId },
+        transport.api.v1.terminals.$post({
           json: {
             cols: input.cols,
             rows: input.rows,
             title: input.title,
             start: input.start,
+            target: { kind: "thread", threadId: input.threadId },
           },
         }),
       );
     },
     async input(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals[":terminalId"].input.$post({
-          param: { id: input.threadId, terminalId: input.terminalId },
+        transport.api.v1.terminals[":terminalId"].input.$post({
+          param: { terminalId: input.terminalId },
           json: { dataBase64: input.dataBase64 },
         }),
       );
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals.$get({
-          param: { id: input.threadId },
+        transport.api.v1.terminals.$get({
+          query: { threadId: input.threadId },
         }),
       );
     },
     async output(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals[":terminalId"].output.$get({
-          param: { id: input.threadId, terminalId: input.terminalId },
+        transport.api.v1.terminals[":terminalId"].output.$get({
+          param: { terminalId: input.terminalId },
           query: terminalOutputQuery(input),
         }),
       );
     },
     async resize(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals[":terminalId"].resize.$post({
-          param: { id: input.threadId, terminalId: input.terminalId },
+        transport.api.v1.terminals[":terminalId"].resize.$post({
+          param: { terminalId: input.terminalId },
           json: { cols: input.cols, rows: input.rows },
         }),
       );
     },
     async update(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].terminals[":terminalId"].$patch({
-          param: { id: input.threadId, terminalId: input.terminalId },
+        transport.api.v1.terminals[":terminalId"].$patch({
+          param: { terminalId: input.terminalId },
           json: { title: input.title },
         }),
       );

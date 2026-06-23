@@ -69,7 +69,7 @@ import {
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
-  allThreadTerminalsQueryKeyPrefix,
+  allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentPullRequestQueryKey,
@@ -80,7 +80,7 @@ import {
   systemProvidersQueryKey,
   threadQueryKey,
   threadSearchQueryKeyPrefix,
-  threadTerminalsQueryKey,
+  terminalsQueryKey,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
@@ -630,8 +630,8 @@ function dirtyThreadTerminalQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return threadId
-    ? [threadTerminalsQueryKey(threadId)]
-    : [allThreadTerminalsQueryKeyPrefix()];
+    ? [terminalsQueryKey({ kind: "thread", threadId })]
+    : [allTerminalsQueryKeyPrefix()];
 }
 
 function dirtyThreadStorageQueriesForThread({

@@ -12,7 +12,7 @@ import {
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
-  createThreadTerminalRequestSchema,
+  createTerminalRequestSchema,
   createQueuedMessageRequestSchema,
   createProjectSourceRequestSchema,
   createPublicApiClient,
@@ -515,15 +515,17 @@ describe("public terminal contracts", () => {
 
   it("bounds terminal dimensions", () => {
     expect(
-      createThreadTerminalRequestSchema.safeParse({
+      createTerminalRequestSchema.safeParse({
         cols: TERMINAL_COLS_MAX,
         rows: TERMINAL_ROWS_MAX,
+        target: { kind: "thread", threadId: "thr_1" },
       }).success,
     ).toBe(true);
     expect(
-      createThreadTerminalRequestSchema.safeParse({
+      createTerminalRequestSchema.safeParse({
         cols: TERMINAL_COLS_MAX + 1,
         rows: TERMINAL_ROWS_MAX,
+        target: { kind: "thread", threadId: "thr_1" },
       }).success,
     ).toBe(false);
     expect(

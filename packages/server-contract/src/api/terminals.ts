@@ -30,17 +30,43 @@ export const terminalListResponseSchema = z.object({
 });
 export type TerminalListResponse = z.infer<typeof terminalListResponseSchema>;
 
-export const threadTerminalListResponseSchema = terminalListResponseSchema;
-export type ThreadTerminalListResponse = z.infer<
-  typeof threadTerminalListResponseSchema
->;
-
-export const environmentTerminalListResponseSchema = terminalListResponseSchema;
-export type EnvironmentTerminalListResponse = z.infer<
-  typeof environmentTerminalListResponseSchema
->;
+export const terminalListQuerySchema = z
+  .object({
+    cwd: z.string().trim().min(1).optional(),
+    environmentId: z.string().min(1).optional(),
+    hostId: z.string().min(1).optional(),
+    threadId: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((query, context) => {
+    const scopeCount = [
+      query.threadId !== undefined,
+      query.environmentId !== undefined,
+      query.hostId !== undefined,
+    ].filter(Boolean).length;
+    if (scopeCount !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Exactly one terminal scope must be provided: threadId, environmentId, or hostId",
+      });
+    }
+    if (query.cwd !== undefined && query.hostId === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "cwd can only be provided with hostId",
+      });
+    }
+  });
+export type TerminalListQuery = z.infer<typeof terminalListQuerySchema>;
 
 export const terminalCreateTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("thread"),
+      threadId: z.string().min(1),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("environment"),
@@ -61,16 +87,6 @@ export const createTerminalRequestSchema = z
   .object({
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
-    target: terminalCreateTargetSchema,
-  })
-  .strict();
-export type CreateTerminalRequest = z.infer<typeof createTerminalRequestSchema>;
-
-export const createScopedTerminalRequestSchema = z
-  .object({
-    cols: terminalColsSchema,
-    rows: terminalRowsSchema,
-    title: z.string().trim().min(1).max(200).optional(),
     start: z
       .discriminatedUnion("mode", [
         z
@@ -86,20 +102,11 @@ export const createScopedTerminalRequestSchema = z
           .strict(),
       ])
       .optional(),
+    target: terminalCreateTargetSchema,
+    title: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
-
-export const createThreadTerminalRequestSchema =
-  createScopedTerminalRequestSchema;
-export type CreateThreadTerminalRequest = z.infer<
-  typeof createThreadTerminalRequestSchema
->;
-
-export const createEnvironmentTerminalRequestSchema =
-  createScopedTerminalRequestSchema;
-export type CreateEnvironmentTerminalRequest = z.infer<
-  typeof createEnvironmentTerminalRequestSchema
->;
+export type CreateTerminalRequest = z.infer<typeof createTerminalRequestSchema>;
 
 export const closeTerminalRequestSchema = z
   .object({
@@ -109,34 +116,12 @@ export const closeTerminalRequestSchema = z
   .strict();
 export type CloseTerminalRequest = z.infer<typeof closeTerminalRequestSchema>;
 
-export const closeThreadTerminalRequestSchema = closeTerminalRequestSchema;
-export type CloseThreadTerminalRequest = z.infer<
-  typeof closeThreadTerminalRequestSchema
->;
-
-export const closeEnvironmentTerminalRequestSchema =
-  closeTerminalRequestSchema;
-export type CloseEnvironmentTerminalRequest = z.infer<
-  typeof closeEnvironmentTerminalRequestSchema
->;
-
 export const updateTerminalRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
   })
   .strict();
 export type UpdateTerminalRequest = z.infer<typeof updateTerminalRequestSchema>;
-
-export const updateThreadTerminalRequestSchema = updateTerminalRequestSchema;
-export type UpdateThreadTerminalRequest = z.infer<
-  typeof updateThreadTerminalRequestSchema
->;
-
-export const updateEnvironmentTerminalRequestSchema =
-  updateTerminalRequestSchema;
-export type UpdateEnvironmentTerminalRequest = z.infer<
-  typeof updateEnvironmentTerminalRequestSchema
->;
 
 export const terminalOutputChunkSchema = z
   .object({

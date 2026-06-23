@@ -3,7 +3,6 @@ import {
   createTerminalSession,
   getTerminalSession,
   getTerminalSessionForThread,
-  getThreadlessTerminalSessionForEnvironment,
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
   listThreadlessTerminalSessionsByEnvironment,
@@ -19,9 +18,7 @@ import {
   markTerminalSessionUserInputById,
   markThreadTerminalSessionsExited,
   updateTerminalSessionSizeById,
-  updateTerminalSessionTitle,
   updateTerminalSessionTitleById,
-  updateThreadlessTerminalSessionTitle,
   type TerminalSessionRow,
 } from "@bb/db";
 import type { TerminalSessionCloseReason } from "@bb/domain";
@@ -30,23 +27,18 @@ import type {
   HostDaemonServerWsMessage,
 } from "@bb/host-daemon-contract";
 import type {
-  CloseEnvironmentTerminalRequest,
   CloseTerminalRequest,
-  CloseThreadTerminalRequest,
-  CreateEnvironmentTerminalRequest,
   CreateTerminalRequest,
-  CreateThreadTerminalRequest,
   TerminalClientMessage,
   TerminalInputRequest,
   TerminalCreateTarget,
+  TerminalListQuery,
   TerminalOutputChunk,
   TerminalOutputQuery,
   TerminalOutputResponse,
   TerminalResizeRequest,
   TerminalSession,
-  UpdateEnvironmentTerminalRequest,
   UpdateTerminalRequest,
-  UpdateThreadTerminalRequest,
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, ServerLogger } from "../../types.js";
@@ -64,7 +56,7 @@ import { requireWorkspaceCommandTarget } from "../environments/workspace-command
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_START: NonNullable<
-  CreateThreadTerminalRequest["start"]
+  CreateTerminalRequest["start"]
 > = {
   mode: "shell",
 };
@@ -206,6 +198,10 @@ type TerminalDaemonOpenTarget = Extract<
   HostDaemonServerWsMessage,
   { type: "terminal.open" }
 >["target"];
+type TerminalLaunchTarget = Exclude<
+  TerminalCreateTarget,
+  { kind: "thread" }
+>;
 
 interface ResolvedTerminalLaunchTarget {
   daemonTarget: TerminalDaemonOpenTarget;
@@ -232,22 +228,19 @@ interface HandleBrowserTerminalMessageArgs {
   threadId: string | null;
 }
 
-interface SendThreadTerminalInputArgs {
+interface SendTerminalInputArgs {
   payload: TerminalInputRequest;
   terminalId: string;
-  threadId: string;
 }
 
-interface ResizeThreadTerminalArgs {
+interface ResizeTerminalArgs {
   payload: TerminalResizeRequest;
   terminalId: string;
-  threadId: string;
 }
 
-interface ReadThreadTerminalOutputArgs {
+interface ReadTerminalOutputArgs {
   query: TerminalOutputQuery;
   terminalId: string;
-  threadId: string;
 }
 
 interface GetRunningBrowserTerminalArgs {
@@ -304,9 +297,8 @@ interface TerminalSessionLifecycleOptions {
   openTimeoutMs?: number;
 }
 
-interface CreateThreadTerminalArgs {
-  payload: CreateThreadTerminalRequest;
-  threadId: string;
+interface ListTerminalsArgs {
+  query: TerminalListQuery;
 }
 
 interface CreateTerminalArgs {
@@ -316,26 +308,15 @@ interface CreateTerminalArgs {
 interface TerminalCreatePayload {
   cols: number;
   rows: number;
-  start?: NonNullable<CreateThreadTerminalRequest["start"]>;
+  start?: NonNullable<CreateTerminalRequest["start"]>;
   title?: string;
 }
 
 interface CreateTerminalForTargetArgs {
   payload: TerminalCreatePayload;
-  target: TerminalCreateTarget;
+  target: TerminalLaunchTarget;
   threadId: string | null;
   title: string;
-}
-
-interface CreateEnvironmentTerminalArgs {
-  environmentId: string;
-  payload: CreateEnvironmentTerminalRequest;
-}
-
-interface RenameThreadTerminalArgs {
-  payload: UpdateThreadTerminalRequest;
-  terminalId: string;
-  threadId: string;
 }
 
 interface RenameTerminalArgs {
@@ -343,26 +324,8 @@ interface RenameTerminalArgs {
   terminalId: string;
 }
 
-interface RenameEnvironmentTerminalArgs {
-  environmentId: string;
-  payload: UpdateEnvironmentTerminalRequest;
-  terminalId: string;
-}
-
-interface CloseThreadTerminalArgs {
-  payload: CloseThreadTerminalRequest;
-  terminalId: string;
-  threadId: string;
-}
-
 interface CloseTerminalArgs {
   payload: CloseTerminalRequest;
-  terminalId: string;
-}
-
-interface CloseEnvironmentTerminalArgs {
-  environmentId: string;
-  payload: CloseEnvironmentTerminalRequest;
   terminalId: string;
 }
 
@@ -416,7 +379,7 @@ function titleFromCommand(command: string): string {
 }
 
 function initialTitleForTerminal(
-  payload: CreateThreadTerminalRequest,
+  payload: TerminalCreatePayload,
   existingSessionCount: number,
 ): string {
   if (payload.title !== undefined) {
@@ -528,69 +491,84 @@ export class TerminalSessionLifecycle {
       options.openTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
   }
 
-  listThreadTerminals(threadId: string): TerminalSession[] {
-    requirePublicThread(this.options.db, threadId);
-    return listVisibleTerminalSessionsByThread(this.options.db, threadId).map(
-      toTerminalSession,
-    );
-  }
-
-  listEnvironmentTerminals(environmentId: string): TerminalSession[] {
-    requireEnvironment(this.options.db, environmentId);
-    return listVisibleThreadlessTerminalSessionsByEnvironment(
-      this.options.db,
-      environmentId,
-    ).map(toTerminalSession);
-  }
-
-  listTerminals(): TerminalSession[] {
-    return listVisibleTerminalSessions(this.options.db).map(toTerminalSession);
+  listTerminals(args: ListTerminalsArgs): TerminalSession[] {
+    const { query } = args;
+    if (query.threadId !== undefined) {
+      requirePublicThread(this.options.db, query.threadId);
+      return listVisibleTerminalSessionsByThread(
+        this.options.db,
+        query.threadId,
+      ).map(toTerminalSession);
+    }
+    if (query.environmentId !== undefined) {
+      requireEnvironment(this.options.db, query.environmentId);
+      return listVisibleThreadlessTerminalSessionsByEnvironment(
+        this.options.db,
+        query.environmentId,
+      ).map(toTerminalSession);
+    }
+    const hostId = query.hostId;
+    if (hostId === undefined) {
+      return [];
+    }
+    return listVisibleTerminalSessions(this.options.db)
+      .filter(
+        (session) =>
+          session.threadId === null &&
+          session.environmentId === null &&
+          session.hostId === hostId &&
+          (query.cwd === undefined || session.initialCwd === query.cwd),
+      )
+      .map(toTerminalSession);
   }
 
   async createTerminal(args: CreateTerminalArgs): Promise<TerminalSession> {
-    const existingSessions = listVisibleTerminalSessions(this.options.db);
+    const { target } = args.payload;
+    const existingSessionCount = this.countExistingSessionsForTarget(target);
+    const launchTarget =
+      target.kind === "thread"
+        ? this.resolveThreadTerminalCreateTarget(target.threadId)
+        : target;
     return this.createTerminalForTarget({
       payload: args.payload,
-      target: args.payload.target,
-      threadId: null,
-      title: `Terminal ${existingSessions.length + 1}`,
+      target: launchTarget,
+      threadId: target.kind === "thread" ? target.threadId : null,
+      title: initialTitleForTerminal(args.payload, existingSessionCount),
     });
   }
 
-  async createThreadTerminal(
-    args: CreateThreadTerminalArgs,
-  ): Promise<TerminalSession> {
-    const thread = requirePublicThread(this.options.db, args.threadId);
+  private countExistingSessionsForTarget(target: TerminalCreateTarget): number {
+    switch (target.kind) {
+      case "thread": {
+        const thread = requirePublicThread(this.options.db, target.threadId);
+        return listTerminalSessionsByThread(this.options.db, thread.id).length;
+      }
+      case "environment":
+        return listThreadlessTerminalSessionsByEnvironment(
+          this.options.db,
+          target.environmentId,
+        ).length;
+      case "host_path":
+        return listVisibleTerminalSessions(this.options.db).filter(
+          (session) =>
+            session.threadId === null &&
+            session.environmentId === null &&
+            session.hostId === target.hostId &&
+            (target.cwd === null || session.initialCwd === target.cwd),
+        ).length;
+    }
+  }
+
+  private resolveThreadTerminalCreateTarget(
+    threadId: string,
+  ): TerminalLaunchTarget {
+    const thread = requirePublicThread(this.options.db, threadId);
     if (!thread.environmentId) {
       throwThreadEnvironmentUnavailable(
         threadEnvironmentUnavailableDetails("never_attached", null),
       );
     }
-    const existingSessions = listTerminalSessionsByThread(
-      this.options.db,
-      thread.id,
-    );
-    return this.createTerminalForTarget({
-      payload: args.payload,
-      target: { kind: "environment", environmentId: thread.environmentId },
-      threadId: thread.id,
-      title: initialTitleForTerminal(args.payload, existingSessions.length),
-    });
-  }
-
-  async createEnvironmentTerminal(
-    args: CreateEnvironmentTerminalArgs,
-  ): Promise<TerminalSession> {
-    const existingSessions = listThreadlessTerminalSessionsByEnvironment(
-      this.options.db,
-      args.environmentId,
-    );
-    return this.createTerminalForTarget({
-      payload: args.payload,
-      target: { kind: "environment", environmentId: args.environmentId },
-      threadId: null,
-      title: initialTitleForTerminal(args.payload, existingSessions.length),
-    });
+    return { kind: "environment", environmentId: thread.environmentId };
   }
 
   private async createTerminalForTarget(
@@ -712,7 +690,7 @@ export class TerminalSessionLifecycle {
   }
 
   private resolveTerminalLaunchTarget(
-    target: TerminalCreateTarget,
+    target: TerminalLaunchTarget,
   ): ResolvedTerminalLaunchTarget {
     switch (target.kind) {
       case "environment": {
@@ -745,29 +723,6 @@ export class TerminalSessionLifecycle {
     }
   }
 
-  renameThreadTerminal(args: RenameThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const renamed = updateTerminalSessionTitle(this.options.db, {
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-      title: args.payload.title,
-    });
-    if (!renamed) {
-      throw new ApiError(
-        404,
-        "terminal_not_found",
-        "Terminal session not found",
-      );
-    }
-    this.notifyTerminalSessionChanged(renamed);
-    const session = toTerminalSession(renamed);
-    this.options.hub.sendTerminalClientMessage(renamed.id, {
-      type: "session-updated",
-      session,
-    });
-    return session;
-  }
-
   renameTerminal(args: RenameTerminalArgs): TerminalSession {
     const renamed = updateTerminalSessionTitleById(this.options.db, {
       terminalId: args.terminalId,
@@ -789,75 +744,10 @@ export class TerminalSessionLifecycle {
     return session;
   }
 
-  renameEnvironmentTerminal(
-    args: RenameEnvironmentTerminalArgs,
-  ): TerminalSession {
-    requireEnvironment(this.options.db, args.environmentId);
-    const renamed = updateThreadlessTerminalSessionTitle(this.options.db, {
-      environmentId: args.environmentId,
-      terminalId: args.terminalId,
-      title: args.payload.title,
-    });
-    if (!renamed) {
-      throw new ApiError(
-        404,
-        "terminal_not_found",
-        "Terminal session not found",
-      );
-    }
-    const session = toTerminalSession(renamed);
-    this.options.hub.sendTerminalClientMessage(renamed.id, {
-      type: "session-updated",
-      session,
-    });
-    return session;
-  }
-
-  closeThreadTerminal(args: CloseThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-    });
-    if (!current) {
-      throw new ApiError(
-        404,
-        "terminal_not_found",
-        "Terminal session not found",
-      );
-    }
-    return this.closeTerminalSession({
-      current,
-      payload: args.payload,
-    });
-  }
-
   closeTerminal(args: CloseTerminalArgs): TerminalSession {
     const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
     });
-    if (!current) {
-      throw new ApiError(
-        404,
-        "terminal_not_found",
-        "Terminal session not found",
-      );
-    }
-    return this.closeTerminalSession({
-      current,
-      payload: args.payload,
-    });
-  }
-
-  closeEnvironmentTerminal(args: CloseEnvironmentTerminalArgs): TerminalSession {
-    requireEnvironment(this.options.db, args.environmentId);
-    const current = getThreadlessTerminalSessionForEnvironment(
-      this.options.db,
-      {
-        environmentId: args.environmentId,
-        terminalId: args.terminalId,
-      },
-    );
     if (!current) {
       throw new ApiError(
         404,
@@ -904,11 +794,9 @@ export class TerminalSessionLifecycle {
     return terminalSession;
   }
 
-  sendThreadTerminalInput(args: SendThreadTerminalInputArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+  sendTerminalInput(args: SendTerminalInputArgs): TerminalSession {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -954,11 +842,9 @@ export class TerminalSessionLifecycle {
     return toTerminalSession(session);
   }
 
-  resizeThreadTerminal(args: ResizeThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+  resizeTerminal(args: ResizeTerminalArgs): TerminalSession {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -1010,13 +896,11 @@ export class TerminalSessionLifecycle {
     return toTerminalSession(session);
   }
 
-  async readThreadTerminalOutput(
-    args: ReadThreadTerminalOutputArgs,
+  async readTerminalOutput(
+    args: ReadTerminalOutputArgs,
   ): Promise<TerminalOutputResponse> {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(

@@ -2,25 +2,11 @@ import { buildDevWebSocketUrl } from "@/lib/dev-websocket-url";
 
 interface BuildTerminalWebSocketUrlArgs {
   terminalId: string;
-  threadId: string;
-}
-
-interface BuildThreadlessTerminalWebSocketUrlArgs {
-  terminalId: string;
 }
 
 function buildTerminalWebSocketPath({
   terminalId,
-  threadId,
 }: BuildTerminalWebSocketUrlArgs): string {
-  return `/ws/threads/${encodeURIComponent(threadId)}/terminals/${encodeURIComponent(
-    terminalId,
-  )}`;
-}
-
-function buildThreadlessTerminalWebSocketPath({
-  terminalId,
-}: BuildThreadlessTerminalWebSocketUrlArgs): string {
   return `/ws/terminals/${encodeURIComponent(terminalId)}`;
 }
 
@@ -38,10 +24,4 @@ export function buildTerminalWebSocketUrl(
   args: BuildTerminalWebSocketUrlArgs,
 ): string {
   return buildWebSocketUrl(buildTerminalWebSocketPath(args));
-}
-
-export function buildThreadlessTerminalWebSocketUrl(
-  args: BuildThreadlessTerminalWebSocketUrlArgs,
-): string {
-  return buildWebSocketUrl(buildThreadlessTerminalWebSocketPath(args));
 }

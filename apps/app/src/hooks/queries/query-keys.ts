@@ -33,8 +33,6 @@ export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
   "threadPendingInteractions";
 export const TERMINALS_QUERY_KEY = "terminals";
-export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
-export const ENVIRONMENT_TERMINALS_QUERY_KEY = "environmentTerminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 export const PROJECT_COMMANDS_PAGES_QUERY_KEY = "projectCommandsPages";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
@@ -207,17 +205,14 @@ export type ThreadPendingInteractionsQueryKey = readonly [
   typeof THREAD_PENDING_INTERACTIONS_QUERY_KEY,
   string,
 ];
-export type AllThreadTerminalsQueryKeyPrefix = readonly [
-  typeof THREAD_TERMINALS_QUERY_KEY,
-];
-export type TerminalsQueryKey = readonly [typeof TERMINALS_QUERY_KEY];
-export type ThreadTerminalsQueryKey = readonly [
-  typeof THREAD_TERMINALS_QUERY_KEY,
-  string,
-];
-export type EnvironmentTerminalsQueryKey = readonly [
-  typeof ENVIRONMENT_TERMINALS_QUERY_KEY,
-  string,
+export type TerminalQueryScope =
+  | { kind: "thread"; threadId: string }
+  | { kind: "environment"; environmentId: string }
+  | { kind: "host_path"; cwd?: string; hostId: string };
+export type AllTerminalsQueryKeyPrefix = readonly [typeof TERMINALS_QUERY_KEY];
+export type TerminalsQueryKey = readonly [
+  typeof TERMINALS_QUERY_KEY,
+  TerminalQueryScope,
 ];
 export type ProjectCommandsQueryKey = readonly [
   typeof PROJECT_COMMANDS_QUERY_KEY,
@@ -679,24 +674,14 @@ export function allThreadPendingInteractionsQueryKeyPrefix(): ThreadPendingInter
   return [THREAD_PENDING_INTERACTIONS_QUERY_KEY];
 }
 
-export function threadTerminalsQueryKey(
-  threadId: string,
-): ThreadTerminalsQueryKey {
-  return [THREAD_TERMINALS_QUERY_KEY, threadId];
+export function terminalsQueryKey(
+  scope: TerminalQueryScope,
+): TerminalsQueryKey {
+  return [TERMINALS_QUERY_KEY, scope];
 }
 
-export function terminalsQueryKey(): TerminalsQueryKey {
+export function allTerminalsQueryKeyPrefix(): AllTerminalsQueryKeyPrefix {
   return [TERMINALS_QUERY_KEY];
-}
-
-export function environmentTerminalsQueryKey(
-  environmentId: string,
-): EnvironmentTerminalsQueryKey {
-  return [ENVIRONMENT_TERMINALS_QUERY_KEY, environmentId];
-}
-
-export function allThreadTerminalsQueryKeyPrefix(): AllThreadTerminalsQueryKeyPrefix {
-  return [THREAD_TERMINALS_QUERY_KEY];
 }
 
 export function projectCommandsQueryKey(
