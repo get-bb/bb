@@ -1,4 +1,5 @@
 import {
+  AppleIcon,
   ArrowDown01Icon,
   ArrowExpand01Icon,
   ArrowLeft01Icon,
@@ -76,7 +77,10 @@ function GitHubLink({ placement, className, children }: CtaLinkProps) {
   );
 }
 
-function InstallCommand({ placement }: { placement: CtaPlacement }) {
+// The browser install path, rendered as an outline button whose body is the
+// run command. Clicking anywhere copies it (there's no hosted URL to open —
+// the command starts bb locally and opens it in the browser).
+function RunCommandButton({ placement }: { placement: CtaPlacement }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     // Track and show feedback first; the clipboard write can reject (no user
@@ -90,16 +94,52 @@ function InstallCommand({ placement }: { placement: CtaPlacement }) {
     navigator.clipboard.writeText(CLI_COMMAND).catch(() => {});
   };
   return (
-    <div className="install mono">
-      <span className="dollar">$</span>
-      <span>{CLI_COMMAND}</span>
-      <button
-        type="button"
-        className={copied ? "copied" : undefined}
-        onClick={copy}
+    <button
+      type="button"
+      className={
+        copied
+          ? "btn btn-ghost btn-install cmd-btn copied"
+          : "btn btn-ghost btn-install cmd-btn"
+      }
+      onClick={copy}
+      aria-label={`Copy browser install command: ${CLI_COMMAND}`}
+    >
+      <span className="cmd-dollar">$</span>
+      <span className="cmd-text">{CLI_COMMAND}</span>
+      <span className="cmd-copy">Copy</span>
+      {/* Toast floats above the button (absolute) so confirming the copy never
+          reflows the centered CTA row — the label stays a fixed width. */}
+      <span
+        className={copied ? "cmd-toast show" : "cmd-toast"}
+        aria-hidden="true"
       >
-        {copied ? "✓ Copied" : "Copy"}
-      </button>
+        Copied to clipboard
+      </span>
+    </button>
+  );
+}
+
+function InstallOptions({ placement }: { placement: CtaPlacement }) {
+  return (
+    <div className="install-options">
+      <div className="install-actions">
+        <span className="install-choice">
+          <DownloadLink
+            placement={placement}
+            className="btn btn-primary btn-install"
+          >
+            <HugeiconsIcon icon={AppleIcon} className="btn-ic" />
+            Download for macOS
+          </DownloadLink>
+          <span className="install-note">One-click, no terminal</span>
+        </span>
+        <span className="install-choice">
+          <RunCommandButton placement={placement} />
+          <span className="install-note">
+            Windows, Linux &amp; remote machines
+          </span>
+        </span>
+      </div>
     </div>
   );
 }
@@ -1420,16 +1460,7 @@ function LandingPage() {
           and automations drive it for you.
         </p>
 
-        <div className="cta-row">
-          <DownloadLink placement="hero" className="btn btn-primary">
-            Download for macOS
-          </DownloadLink>
-          <GitHubLink placement="hero" className="btn btn-ghost">
-            Star on GitHub
-          </GitHubLink>
-        </div>
-
-        <InstallCommand placement="hero" />
+        <InstallOptions placement="hero" />
 
         <div className="providers">
           <span className="label">Works with</span>
@@ -1497,10 +1528,8 @@ function LandingPage() {
       <section className="closer" data-reveal>
         <h2 className="sec-title">Start your first loop.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
-        <div className="cta-row">
-          <DownloadLink placement="closer" className="btn btn-primary">
-            Download for macOS
-          </DownloadLink>
+        <InstallOptions placement="closer" />
+        <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
           </GitHubLink>
