@@ -1,7 +1,14 @@
 import { capitalize } from "@bb/thread-view";
 import { useId, useState, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
@@ -11,11 +18,15 @@ export interface ThreadRenameDialogTarget {
   currentTitle: string;
 }
 
+export interface ThreadRenameDialogPayload {
+  title: string;
+}
+
 interface ThreadRenameDialogProps {
   target: ThreadRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
 }
 
 export function ThreadRenameDialog({
@@ -45,7 +56,7 @@ export function ThreadRenameDialog({
 export interface ThreadRenameDialogContentProps {
   target: ThreadRenameDialogTarget;
   pending: boolean;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -69,7 +80,7 @@ export function ThreadRenameDialogContent({
     const trimmedTitle = validate(nextTitle);
     if (trimmedTitle === null) return;
 
-    onRename(target.id, trimmedTitle);
+    onRename(target.id, { title: trimmedTitle });
   };
 
   return (

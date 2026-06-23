@@ -20,7 +20,7 @@ export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;
   disabled: boolean;
   listeners: DraggableSyntheticListeners;
-  setActivatorNodeRef: (element: HTMLDivElement | null) => void;
+  setActivatorNodeRef: (element: HTMLElement | null) => void;
 }
 
 export interface UseSidebarSortableArgs {
@@ -64,6 +64,7 @@ export function useSidebarSortable({
       // unless we lift it above them while dragging.
       position: isDragging ? "relative" : undefined,
       zIndex: isDragging ? 20 : undefined,
+      opacity: isDragging ? 0.8 : undefined,
     }),
     [isDragging, transform, transition],
   );

@@ -267,6 +267,9 @@ describe("thread search data", () => {
       expect(assistantResults.active.results[0]?.matches[0]).toMatchObject({
         sourceKind: "assistant_message",
         text: "assistantwriterneedle",
+        // Message matches carry their event sequence so the UI can deep-link to
+        // the matched message in the conversation.
+        sourceSeq: expect.any(Number),
       });
 
       const archivedResults = searchThreadsWithPendingInteractionState(db, {
@@ -386,6 +389,8 @@ describe("thread search data", () => {
       expect(results.active.results[0]?.matches[0]).toMatchObject({
         text: "café planning",
         highlightRanges: [{ start: 0, end: 4 }],
+        // Title matches have no message to anchor a deep-link to.
+        sourceSeq: null,
       });
     } finally {
       closeConnection(db);

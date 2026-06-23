@@ -9,8 +9,18 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+
+// ThreadTimelineRows reads route state for the search deep-link scroll, so it
+// must render inside a Router. Production and Ladle always provide one; these
+// isolated unit renders wrap the tree in a MemoryRouter.
+const toMarkup = (ui: ReactElement) =>
+  renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
+const renderWithRouter = (ui: ReactElement) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
@@ -40,7 +50,7 @@ afterEach(() => {
 
 describe("ThreadTimelineRows actions", () => {
   it("renders send-to-main on assistant rows when the timeline supplies a handler", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -58,7 +68,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("hides assistant message actions inside completed turn summaries", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         initialExpanded={new Set(["turn_completed"])}
         timelineRows={[
@@ -86,7 +96,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("keeps assistant message actions visible inside pending turn rows", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         initialExpanded={new Set(["turn_pending"])}
         timelineRows={[
@@ -161,7 +171,7 @@ describe("ThreadTimelineRows actions", () => {
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 
-    render(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({

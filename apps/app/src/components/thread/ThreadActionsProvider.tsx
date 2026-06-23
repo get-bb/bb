@@ -30,6 +30,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadRenameDialog,
+  type ThreadRenameDialogPayload,
   type ThreadRenameDialogTarget,
 } from "@/components/dialogs/ThreadRenameDialog";
 import {
@@ -39,10 +40,7 @@ import {
 import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
-import {
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi, getDesktopPopoutApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -151,9 +149,9 @@ export function ThreadActionsProvider({
   );
 
   const submitRename = useCallback(
-    (threadId: string, title: string) => {
+    (threadId: string, payload: ThreadRenameDialogPayload) => {
       updateMutate(
-        { id: threadId, title },
+        { id: threadId, ...payload },
         {
           onSuccess: () => {
             closeRenameDialog();
@@ -366,7 +364,9 @@ export function ThreadActionsProvider({
 
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const desktopPopout = getDesktopPopoutApi();
-  const sendToPopout = useMemo<ThreadActionsContextValue["sendToPopout"]>(() => {
+  const sendToPopout = useMemo<
+    ThreadActionsContextValue["sendToPopout"]
+  >(() => {
     if (!experiments.popoutChat || desktopPopout === null) {
       return null;
     }

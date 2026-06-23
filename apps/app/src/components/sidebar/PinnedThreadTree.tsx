@@ -44,8 +44,10 @@ interface SortablePinnedRootItemProps {
   selectedThreadId?: string;
 }
 
-interface PinnedRootItemProps
-  extends Omit<SortablePinnedRootItemProps, "disabled"> {
+interface PinnedRootItemProps extends Omit<
+  SortablePinnedRootItemProps,
+  "disabled"
+> {
   consumeClickSuppression?: () => boolean;
 }
 

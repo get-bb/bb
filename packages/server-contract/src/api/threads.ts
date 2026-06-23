@@ -233,6 +233,9 @@ export const threadSearchMatchSchema = z
     sourceKind: threadSearchSourceKindSchema,
     text: z.string(),
     highlightRanges: z.array(threadSearchHighlightRangeSchema),
+    // Event sequence of the message this match came from, so the UI can deep-link
+    // to it in the conversation. Null for title/title_fallback matches.
+    sourceSeq: z.number().int().nonnegative().nullable(),
   })
   .strict();
 export type ThreadSearchMatch = z.infer<typeof threadSearchMatchSchema>;

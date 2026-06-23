@@ -32,7 +32,6 @@ interface SidebarThreadSearchPanelProps {
 
 interface ThreadSearchRenderableRow {
   id: string;
-  isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
   thread: ThreadListEntry;
 }
@@ -52,6 +51,23 @@ interface ThreadSearchMessageProps {
 
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
+const TITLE_MATCH_KINDS = new Set<ThreadSearchMatch["sourceKind"]>([
+  "title",
+  "title_fallback",
+]);
+
+// The message (non-title) match drives the deep-link target. Mirrors the row's
+// snippet selection so clicking a result lands on the message shown in the row.
+function getMessageMatchSeq(
+  matches: readonly ThreadSearchMatch[],
+): number | null {
+  for (const match of matches) {
+    if (!TITLE_MATCH_KINDS.has(match.sourceKind) && match.sourceSeq !== null) {
+      return match.sourceSeq;
+    }
+  }
+  return null;
+}
 
 function toNavigationItem(
   row: ThreadSearchRenderableRow,
@@ -61,6 +77,7 @@ function toNavigationItem(
     optionId: getSidebarThreadSearchOptionId(row.id),
     projectId: row.thread.projectId,
     threadId: row.thread.id,
+    messageSeq: getMessageMatchSeq(row.matches),
   };
 }
 
@@ -121,7 +138,7 @@ function renderSectionRows({
         )}
       >
         <span className="min-w-0 truncate">{section.label}</span>
-        {section.total > section.rows.length ? (
+        {section.id !== "archived" && section.total > section.rows.length ? (
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {section.rows.length}/{section.total}
           </span>
@@ -136,7 +153,6 @@ function renderSectionRows({
               key={row.id}
               id={item.optionId}
               isActive={activeIndex === index}
-              isArchivedGroup={row.isArchivedGroup}
               matches={row.matches}
               projectName={projectNamesById.get(row.thread.projectId)}
               thread={row.thread}
@@ -171,14 +187,13 @@ export function SidebarThreadSearchPanel({
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) => ({
           id: `recent:${thread.id}`,
-          isArchivedGroup: false,
           matches: EMPTY_MATCHES,
           thread,
         }));
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Recent",
           rows,
           total: rows.length,
         },
@@ -189,7 +204,7 @@ export function SidebarThreadSearchPanel({
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Threads",
           rows: [],
           total: 0,
         },
@@ -205,21 +220,19 @@ export function SidebarThreadSearchPanel({
     const activeRows =
       threadSearch.data?.active.results.map((result) => ({
         id: `active:${result.thread.id}`,
-        isArchivedGroup: false,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     const archivedRows =
       threadSearch.data?.archived.results.map((result) => ({
         id: `archived:${result.thread.id}`,
-        isArchivedGroup: true,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     return [
       {
         id: "active",
-        label: "Active",
+        label: "Threads",
         rows: activeRows,
         total: threadSearch.data?.active.total ?? 0,
       },

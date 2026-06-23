@@ -6,6 +6,7 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { AppToaster } from "../src/components/AppToaster";
+import { TooltipProvider } from "../src/components/ui/tooltip";
 import { setPreferredTheme } from "../src/hooks/useTheme";
 import {
   createDiffWorker,
@@ -65,10 +66,12 @@ export const Provider: GlobalProvider = ({ globalState, children }) => {
             }}
             highlighterOptions={{}}
           >
-            <div className="min-h-screen text-foreground">
-              {children}
-              <AppToaster position="bottom-right" />
-            </div>
+            <TooltipProvider delayDuration={300} disableHoverableContent>
+              <div className="min-h-screen text-foreground">
+                {children}
+                <AppToaster position="bottom-right" />
+              </div>
+            </TooltipProvider>
           </WorkerPoolContextProvider>
         </QueryClientProvider>
       </JotaiProvider>

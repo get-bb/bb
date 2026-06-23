@@ -54,7 +54,7 @@ async function renderOpenMenu(thread: Thread) {
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-  await screen.findByRole("menuitem", { name: /Mark as / });
+  await screen.findByRole("menuitem", { name: /Mark / });
   expect(onOpenChange).toHaveBeenLastCalledWith(true);
   return onOpenChange;
 }
@@ -72,12 +72,12 @@ describe("ThreadActionsMenu", () => {
 
   it.each([
     {
-      label: "Mark as read",
+      label: "Mark read",
       thread: makeThread(),
       action: mockActions.toggleRead,
     },
     {
-      label: "Mark as unread",
+      label: "Mark unread",
       thread: makeThread({ lastReadAt: 100, latestAttentionAt: 50 }),
       action: mockActions.toggleRead,
     },

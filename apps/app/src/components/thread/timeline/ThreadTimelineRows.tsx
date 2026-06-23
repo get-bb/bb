@@ -83,6 +83,7 @@ import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { useScrollToSearchedMessage } from "./useScrollToSearchedMessage.js";
 import {
   joinSignatureParts,
   timelineRowRenderSignature,
@@ -1319,7 +1320,9 @@ function leadingIconForWorkRow(
       return "UserRoundPlus";
     case "workflow":
       // Backgrounded shell commands reuse the workflow row but read as commands.
-      return isBackgroundCommandTaskType(row.taskType) ? "Terminal" : "ListTodo";
+      return isBackgroundCommandTaskType(row.taskType)
+        ? "Terminal"
+        : "ListTodo";
     case "approval":
       return "Lock";
     case "question":
@@ -1696,6 +1699,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
   );
+  useScrollToSearchedMessage(rows);
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
   );

@@ -319,3 +319,25 @@
     transform: scale(1) rotate(90deg);
   }
 }
+
+/* Briefly highlight a conversation message that a sidebar search result
+ * deep-links to, then fade back to transparent. */
+@keyframes bb-search-flash {
+  from {
+    background-color: color-mix(in oklch, var(--ring) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.bb-search-flash {
+  border-radius: var(--radius-lg, 0.5rem);
+  animation: bb-search-flash 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-search-flash {
+    animation: none;
+  }
+}

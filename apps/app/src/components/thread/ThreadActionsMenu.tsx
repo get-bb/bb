@@ -117,6 +117,7 @@ function ThreadActionsMenuItems({
 
   return (
     <>
+      {/* Quick status toggles. */}
       <ThreadActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}
@@ -124,7 +125,7 @@ function ThreadActionsMenuItems({
           toggleRead(thread);
         }}
       >
-        {isRead ? "Mark as unread" : "Mark as read"}
+        {isRead ? "Mark unread" : "Mark read"}
       </ThreadActionMenuItem>
       <ThreadActionMenuItem
         surface={surface}

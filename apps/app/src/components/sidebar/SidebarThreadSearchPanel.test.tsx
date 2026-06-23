@@ -173,6 +173,7 @@ describe("SidebarThreadSearchPanel", () => {
           optionId,
           projectId: "proj_search",
           threadId: "thr_current",
+          messageSeq: null,
         },
       ]),
     );

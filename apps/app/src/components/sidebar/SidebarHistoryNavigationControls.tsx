@@ -42,7 +42,6 @@ function SidebarHistoryNavButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      title={label}
     >
       <Icon name={icon} aria-hidden />
     </Button>
