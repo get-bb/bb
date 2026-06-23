@@ -10,14 +10,23 @@
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
+ * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
+ *                            → advertise per-model effort configOptions
+ * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
+ *                            → fail session/set_config_option for model values
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
+ * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
+ *                              count model-discovery spawns in cache/TTL tests)
  */
 
 import { createInterface } from "node:readline";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
+const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const setConfigModelError =
+  process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
@@ -28,7 +37,12 @@ const fakeModels = [
 let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
+let selectedEffort = "none";
 const pendingClientRequests = new Map();
+
+const effortsByModel = new Map([
+  ["fake/strong", ["none", "low", "medium", "high", "xhigh"]],
+]);
 
 process.on("SIGTERM", () => {
   if (process.env.FAKE_ACP_SIGNAL_FILE) {
@@ -39,6 +53,10 @@ process.on("SIGTERM", () => {
 
 if (process.env.FAKE_ACP_READY_FILE) {
   writeFileSync(process.env.FAKE_ACP_READY_FILE, "ready\n");
+}
+
+if (process.env.FAKE_ACP_LAUNCH_LOG) {
+  appendFileSync(process.env.FAKE_ACP_LAUNCH_LOG, `launch ${process.pid}\n`);
 }
 
 function send(message) {
@@ -58,6 +76,54 @@ function messageChunk(text) {
     sessionUpdate: "agent_message_chunk",
     content: { type: "text", text },
   };
+}
+
+function effortOptionForModel(model) {
+  const efforts = thoughtLevelConfig ? effortsByModel.get(model) : undefined;
+  if (!efforts) {
+    return undefined;
+  }
+  if (!efforts.includes(selectedEffort)) {
+    selectedEffort = efforts[0];
+  }
+  return {
+    id: "effort",
+    name: "Effort",
+    category: "thought_level",
+    type: "select",
+    currentValue: selectedEffort,
+    options: efforts.map((value) => ({ value })),
+  };
+}
+
+function configOptions() {
+  if (!modelConfig) {
+    return undefined;
+  }
+  return [
+    {
+      id: "mode",
+      name: "Mode",
+      category: "mode",
+      type: "select",
+      currentValue: true,
+      options: [{ value: "build", name: "Build" }],
+    },
+    {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: selectedModel,
+      options: fakeModels,
+    },
+    effortOptionForModel(selectedModel),
+  ].filter(Boolean);
+}
+
+function configState() {
+  const options = configOptions();
+  return options === undefined ? {} : { configOptions: options };
 }
 
 function requestClient(method, params) {
@@ -141,6 +207,8 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
   } else if (text.includes("echo-selected-model")) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
+  } else if (text.includes("echo-selected-effort")) {
+    notifyUpdate(messageChunk(`selected-effort:${selectedEffort}`));
   } else if (text.includes("echo-electron-run-as-node")) {
     notifyUpdate(
       messageChunk(
@@ -185,34 +253,13 @@ async function handleMessage(message) {
         id: message.id,
         result: {
           sessionId,
-          ...(modelConfig
-            ? {
-                configOptions: [
-                  {
-                    id: "mode",
-                    name: "Mode",
-                    category: "mode",
-                    type: "select",
-                    currentValue: true,
-                    options: [{ value: "build", name: "Build" }],
-                  },
-                  {
-                    id: "model",
-                    name: "Model",
-                    category: "model",
-                    type: "select",
-                    currentValue: "fake/default",
-                    options: fakeModels,
-                  },
-                ],
-              }
-            : {}),
+          ...configState(),
         },
       });
       return;
     case "session/load":
       if (loadSession) {
-        send({ jsonrpc: "2.0", id: message.id, result: null });
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
       } else {
         send({
           jsonrpc: "2.0",
@@ -236,7 +283,60 @@ async function handleMessage(message) {
         return;
       }
       selectedModel = modelId;
-      send({ jsonrpc: "2.0", id: message.id, result: {} });
+      send({ jsonrpc: "2.0", id: message.id, result: configState() });
+      return;
+    }
+    case "session/set_config_option": {
+      const configId = message.params?.configId;
+      const value = message.params?.value;
+      if (configId === "model") {
+        if (setConfigModelError) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32603, message: "model config probe failed" },
+          });
+          return;
+        }
+        if (
+          !modelConfig ||
+          typeof value !== "string" ||
+          !fakeModels.some((model) => model.value === value)
+        ) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `model not found: ${value}` },
+          });
+          return;
+        }
+        selectedModel = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "effort") {
+        const efforts = effortsByModel.get(selectedModel);
+        if (
+          !thoughtLevelConfig ||
+          typeof value !== "string" ||
+          !efforts?.includes(value)
+        ) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `effort not found: ${value}` },
+          });
+          return;
+        }
+        selectedEffort = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32602, message: `Unknown config ${configId}` },
+      });
       return;
     }
     case "session/prompt":

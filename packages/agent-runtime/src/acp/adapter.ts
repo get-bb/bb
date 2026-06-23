@@ -2,13 +2,10 @@
  * ACP provider adapter.
  *
  * Maps between bb's ProviderAdapter contract and the generic ACP bridge
- * process; the adapter binds a profile's agent command (Cursor) into each
- * bridge session. The agent owns tool execution. Models and reasoning ride
- * the profile's CLI model surface (`modelCli`): the bridge groups the listed
- * ids into families with reasoning-effort variants, and the session's
- * (model, reasoningLevel) selection is pinned via the agent's launch flag —
- * applied per session, so a mid-thread change takes effect on the next
- * session spawn, not the next turn.
+ * process; the adapter binds a profile's agent command into each bridge
+ * session. The agent owns tool execution. CLI-style agents such as Cursor keep
+ * reasoning in model-id variants selected at launch. ACP-native agents can
+ * instead expose model and thought-level config options over the protocol.
  */
 
 import {
@@ -1174,11 +1171,21 @@ export function createAcpProviderAdapter(
       return {};
     }
     if (!listCommand) {
-      return { modelSelection: { modelId: model } };
+      return {
+        modelSelection: {
+          modelId: model,
+          ...(options.reasoningLevel !== undefined
+            ? { reasoningLevel: options.reasoningLevel }
+            : {}),
+        },
+      };
     }
     if (!profile.modelCli?.selectFlag) {
       return {};
     }
+    // Cursor encodes reasoning in the selected model id and has no ACP
+    // `thought_level` option; keep that CLI variant path separate from native
+    // ACP config-option reasoning.
     return {
       modelSelection: {
         listCommand,

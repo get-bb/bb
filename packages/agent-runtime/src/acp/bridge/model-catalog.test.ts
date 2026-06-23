@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAgentModelCatalog,
+  buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
+  acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
+  findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
 } from "./model-catalog.js";
@@ -335,23 +338,44 @@ describe("acp configOptions model catalog", () => {
   });
 
   it("maps model configOptions values, names, and currentValue into picker models", () => {
-    const models = buildModelCatalogFromConfigOptions({
-      id: "model",
-      name: "Model",
-      category: "model",
-      type: "select",
-      currentValue: "opencode/deepseek-v4-flash-free",
-      options: [
-        {
-          value: "opencode/big-pickle",
-          name: "OpenCode Zen/Big Pickle",
-        },
-        {
-          value: "opencode/deepseek-v4-flash-free",
-          name: "OpenCode Zen/DeepSeek V4 Flash Free",
-        },
+    const reasoningByModel = new Map([
+      [
+        "opencode/deepseek-v4-flash-free",
+        buildAcpNativeReasoningSupport({
+          id: "effort",
+          category: "thought_level",
+          type: "select",
+          currentValue: "high",
+          options: [
+            { value: "none" },
+            { value: "low" },
+            { value: "medium" },
+            { value: "high" },
+            { value: "xhigh" },
+          ],
+        }),
       ],
-    });
+    ]);
+    const models = buildModelCatalogFromConfigOptions(
+      {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: "opencode/deepseek-v4-flash-free",
+        options: [
+          {
+            value: "opencode/big-pickle",
+            name: "OpenCode Zen/Big Pickle",
+          },
+          {
+            value: "opencode/deepseek-v4-flash-free",
+            name: "OpenCode Zen/DeepSeek V4 Flash Free",
+          },
+        ],
+      },
+      reasoningByModel,
+    );
 
     expect(models).toMatchObject([
       {
@@ -366,9 +390,36 @@ describe("acp configOptions model catalog", () => {
         model: "opencode/deepseek-v4-flash-free",
         displayName: "OpenCode Zen/DeepSeek V4 Flash Free",
         isDefault: true,
-        defaultReasoningEffort: "medium",
+        defaultReasoningEffort: "high",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "none" },
+          { reasoningEffort: "low" },
+          { reasoningEffort: "medium" },
+          { reasoningEffort: "high" },
+          { reasoningEffort: "xhigh" },
+        ],
       },
     ]);
+  });
+
+  it("finds and maps ACP thought_level config options", () => {
+    const thoughtLevel = {
+      id: "effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "medium",
+      options: [{ value: "low" }, { value: "medium" }, { value: "xhigh" }],
+    };
+    expect(findAcpThoughtLevelConfigOption([thoughtLevel])).toBe(thoughtLevel);
+    const support = buildAcpNativeReasoningSupport(thoughtLevel);
+    expect(support.defaultReasoningEffort).toBe("medium");
+    expect(
+      support.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "xhigh"]);
+    expect(acpNativeReasoningLevelToValue("max", thoughtLevel)).toBe("xhigh");
+    expect(
+      acpNativeReasoningLevelToValue("high", thoughtLevel),
+    ).toBeUndefined();
   });
 
   it("falls back to the first model when currentValue is absent or stale", () => {

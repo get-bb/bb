@@ -68,7 +68,9 @@ const acpBridgeModelListParamsSchema = z.object({
  * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
  * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
  * ACP-native agents receive `{ modelId }` after `session/new` via
- * `session/set_model`. Absent when the thread has no model preference.
+ * `session/set_model`; if they expose a `thought_level` config option, the
+ * bridge applies `reasoningLevel` via `session/set_config_option`. Absent when
+ * the thread has no model preference.
  */
 const acpBridgeCliModelSelectionSchema = z.object({
   listCommand: acpBridgeAgentCommandSchema,
@@ -80,6 +82,7 @@ const acpBridgeCliModelSelectionSchema = z.object({
 
 const acpBridgeNativeModelSelectionSchema = z.object({
   modelId: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema.optional(),
 });
 
 const acpBridgeModelSelectionSchema = z.union([

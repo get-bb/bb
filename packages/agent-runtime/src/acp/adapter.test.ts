@@ -259,7 +259,7 @@ describe("acp adapter model cli", () => {
     });
   });
 
-  it("forwards ACP-native model selections by modelId when there is no model CLI", () => {
+  it("forwards ACP-native model and reasoning selections when there is no model CLI", () => {
     const adapter = createAcpProviderAdapter({
       profile: {
         providerId: "acp-custom",
@@ -284,7 +284,7 @@ describe("acp adapter model cli", () => {
     expect(plan).toMatchObject({
       params: {
         agent: { command: "custom-acp", args: ["serve"] },
-        modelSelection: { modelId: "custom/strong" },
+        modelSelection: { modelId: "custom/strong", reasoningLevel: "high" },
       },
     });
   });

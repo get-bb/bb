@@ -94,7 +94,7 @@ interface StartThreadArgs {
         model: string;
         reasoningLevel?: string;
       }
-    | { modelId: string };
+    | { modelId: string; reasoningLevel?: string };
 }
 
 async function startThread(args?: StartThreadArgs): Promise<{
@@ -268,12 +268,15 @@ describe("acp bridge", () => {
     });
   });
 
-  it("discovers ACP-native models from mixed session/new configOptions when no list command is present", async () => {
+  it("discovers ACP-native models and per-model reasoning from session configOptions", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
         command: process.execPath,
         args: [FAKE_AGENT_PATH],
-        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        },
       },
       primaryModels: [],
     });
@@ -285,12 +288,59 @@ describe("acp bridge", () => {
           model: "fake/default",
           displayName: "Fake Default",
           isDefault: true,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
         {
           id: "fake/strong",
           model: "fake/strong",
           displayName: "Fake Strong",
           isDefault: false,
+          defaultReasoningEffort: "none",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "none" },
+            { reasoningEffort: "low" },
+            { reasoningEffort: "medium" },
+            { reasoningEffort: "high" },
+            { reasoningEffort: "xhigh" },
+          ],
+        },
+      ],
+      selectedOnlyModels: [],
+    });
+  });
+
+  it("keeps ACP-native discovered models when per-model reasoning discovery errors", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+          FAKE_ACP_SET_CONFIG_MODEL_ERROR: "1",
+        },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          model: "fake/default",
+          displayName: "Fake Default",
+          isDefault: true,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        },
+        {
+          id: "fake/strong",
+          model: "fake/strong",
+          displayName: "Fake Strong",
+          isDefault: false,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
       ],
       selectedOnlyModels: [],
@@ -331,6 +381,53 @@ describe("acp bridge", () => {
       "discovery agent termination",
       5_000,
     );
+  });
+
+  it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
+    const launchLog = join(workspaceDir, "discovery-launches.txt");
+    const agent = {
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_LAUNCH_LOG: launchLog },
+    };
+    const launchCount = () =>
+      existsSync(launchLog)
+        ? readFileSync(launchLog, "utf8").trim().split("\n").filter(Boolean)
+            .length
+        : 0;
+    const listModels = async () =>
+      (
+        await waitForResponse(
+          sendRequest("model/list", { agent, primaryModels: [] }),
+        )
+      ).result;
+
+    // Fake only Date so real timers/I/O still drive the subprocess discovery
+    // and the wait helpers; we advance the clock to cross the discovery TTL.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_000_000);
+      await listModels();
+      expect(launchCount()).toBe(1);
+
+      // Within the 60s TTL: served from cache, no new discovery spawn.
+      vi.setSystemTime(1_030_000);
+      await listModels();
+      expect(launchCount()).toBe(1);
+
+      // Past the TTL: re-discovers, spawning the agent again.
+      vi.setSystemTime(1_061_000);
+      const refreshed = await listModels();
+      expect(launchCount()).toBe(2);
+      expect(refreshed).toMatchObject({
+        models: [
+          { id: "fake/default", isDefault: true },
+          { id: "fake/strong", isDefault: false },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("falls back to the synthetic model when ACP-native session discovery has no model option", async () => {
@@ -391,7 +488,7 @@ describe("acp bridge", () => {
     });
   });
 
-  it("launches the agent with the resolved model variant", async () => {
+  it("keeps CLI reasoning on the resolved model variant instead of ACP config", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
     // Seed the bridge's catalog cache the way a picker would.
     const listCommand = {
@@ -441,6 +538,49 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
+  it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+      },
+      modelSelection: { modelId: "fake/strong", reasoningLevel: "max" },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-effort:xhigh");
+  });
+
+  it("keeps ACP-native models without thought_level at the single managed level", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      },
+      primaryModels: [],
+    });
+
+    const response = await waitForResponse(modelListId);
+    const models = (
+      response.result as {
+        models: {
+          id: string;
+          supportedReasoningEfforts: { reasoningEffort: string }[];
+        }[];
+      }
+    ).models;
+    expect(
+      models.find((model) => model.id === "fake/strong")
+        ?.supportedReasoningEfforts,
+    ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
   });
 
   it("does not leak bridge-only Electron env to the spawned agent", async () => {
@@ -766,6 +906,47 @@ describe("acp bridge", () => {
     });
     expect(notifications("acp/warning")).toHaveLength(0);
     startedProviderThreadIds.push(first.providerThreadId);
+  });
+
+  it("re-applies ACP-native reasoning after session/load resume", async () => {
+    const first = await startThread({
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+      },
+    });
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      providerThreadId: first.providerThreadId,
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      modelSelection: { modelId: "fake/strong", reasoningLevel: "high" },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+      },
+    });
+    const response = await waitForResponse(resumeId);
+    expect(response.result).toEqual({
+      providerThreadId: first.providerThreadId,
+    });
+    startedProviderThreadIds.push(first.providerThreadId);
+
+    sendRequest("turn/start", {
+      threadId: first.providerThreadId,
+      input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-effort:high");
   });
 
   it("falls back to a fresh session with a warning when load is unsupported", async () => {

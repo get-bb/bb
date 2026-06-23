@@ -208,7 +208,7 @@ export type AcpInitializeResult = z.infer<typeof acpInitializeResultSchema>;
 export const acpConfigOptionSelectOptionSchema = z
   .object({
     value: z.string(),
-    name: z.string(),
+    name: z.string().optional(),
   })
   .passthrough();
 export type AcpConfigOptionSelectOption = z.infer<
@@ -270,9 +270,7 @@ function parseAcpConfigOptions(
     }
     parsedOptions.push({
       id: loose.data.id,
-      ...(typeof loose.data.name === "string"
-        ? { name: loose.data.name }
-        : {}),
+      ...(typeof loose.data.name === "string" ? { name: loose.data.name } : {}),
       ...(loose.data.category !== undefined
         ? { category: loose.data.category }
         : {}),
@@ -283,9 +281,8 @@ function parseAcpConfigOptions(
       ...(Array.isArray(loose.data.options)
         ? {
             options: loose.data.options.flatMap((selectOption) => {
-              const parsed = acpConfigOptionSelectOptionSchema.safeParse(
-                selectOption,
-              );
+              const parsed =
+                acpConfigOptionSelectOptionSchema.safeParse(selectOption);
               return parsed.success ? [parsed.data] : [];
             }),
           }
@@ -305,6 +302,16 @@ export const acpSessionNewResultSchema = z
   })
   .passthrough();
 export type AcpSessionNewResult = z.infer<typeof acpSessionNewResultSchema>;
+
+export const acpConfigStateResultSchema = z
+  .object({
+    configOptions: z
+      .array(z.unknown())
+      .optional()
+      .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
+  })
+  .passthrough();
+export type AcpConfigStateResult = z.infer<typeof acpConfigStateResultSchema>;
 
 export const acpStopReasonSchema = z.enum([
   "end_turn",
