@@ -60,7 +60,7 @@ export function Overview() {
                 size="icon"
                 aria-label="Sidebar display options"
               >
-                <Icon name="Layers" />
+                <Icon name="AlignLeft" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
