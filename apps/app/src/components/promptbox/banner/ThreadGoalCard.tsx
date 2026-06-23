@@ -60,7 +60,7 @@ export function ThreadGoalCard({
       className="overflow-hidden"
       style={{ minHeight: GOAL_CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1">
+      <div className="flex items-center">
         <button
           type="button"
           id={TOGGLE_ID}
@@ -68,7 +68,7 @@ export function ThreadGoalCard({
           aria-controls={BODY_ID}
           aria-label="Goal"
           onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+          className="flex w-full min-w-0 items-center gap-1.5 rounded px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
           <Icon
             name="Target"

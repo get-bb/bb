@@ -55,7 +55,7 @@ export function WorkspaceOpenTargetIcon({
   return (
     <img
       alt=""
-      className={cn(className, "shrink-0 rounded-[3px]")}
+      className={cn(className, "shrink-0 rounded-sm")}
       draggable={false}
       src={WORKSPACE_OPEN_TARGET_ICONS[targetId]}
     />

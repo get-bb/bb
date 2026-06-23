@@ -2,7 +2,7 @@ import { type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const BASE_CHROME =
-  "rounded-md border border-border bg-surface-recessed";
+  "rounded-lg border border-border bg-surface-recessed shadow-sm";
 
 export interface PromptStackCardProps {
   children: ReactNode;
@@ -47,7 +47,11 @@ export function PromptStackCard({
     );
   }
   return (
-    <div className={cn(BASE_CHROME, className)} style={style} tabIndex={tabIndex}>
+    <div
+      className={cn(BASE_CHROME, className)}
+      style={style}
+      tabIndex={tabIndex}
+    >
       {children}
     </div>
   );

@@ -2,23 +2,25 @@ import type { ComponentType, ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { cn } from "@/lib/utils";
 
 export const OPTION_BASE_CLASS_NAME =
   "h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight";
-// `data-[state=open]:hover:bg-transparent` overrides the ghost button variant's
-// compound selector that otherwise paints bg-state-active when the trigger is
-// hovered while the menu is open. Hidden in production by `modal=true` (the
-// overlay blocks the hover), but visible whenever a picker is used non-modally
-// — fixing it on the shared constant keeps every OPTION-styled trigger correct
-// regardless of modal mode.
+// Inline picker triggers keep flat resting chrome (no border/background/shadow
+// so they sit inline with surrounding text) but use the ghost button variant's
+// natural state backgrounds — bg-state-hover on hover and bg-state-active while
+// the menu is open — so they read as interactive affordances.
 export const OPTION_INTERACTIVE_CLASS_NAME =
-  "border-none bg-transparent shadow-none hover:bg-transparent data-[state=open]:bg-transparent data-[state=open]:hover:bg-transparent";
-export const OPTION_CONTENT_CLASS_NAME =
-  "flex min-w-0 items-center gap-1.5";
-export const OPTION_TRIGGER_CONTENT_CLASS_NAME =
-  "contents";
+  "border-none bg-transparent shadow-none";
+export const OPTION_CONTENT_CLASS_NAME = "flex min-w-0 items-center gap-1.5";
+export const OPTION_TRIGGER_CONTENT_CLASS_NAME = "contents";
 export const OPTION_MUTED_CLASS_NAME =
   "text-muted-foreground hover:text-foreground";
 const OPTION_WARNING_TEXT_CLASS_NAME = "text-warning-text";
@@ -114,7 +116,8 @@ export function OptionDisplay({
       )}
     >
       <span className={OPTION_CONTENT_CLASS_NAME}>
-        {leading ?? (BrandIcon ? <BrandIcon className="size-4 shrink-0" /> : null)}
+        {leading ??
+          (BrandIcon ? <BrandIcon className="size-4 shrink-0" /> : null)}
         <span className="sr-only">{label}: </span>
         <span className="min-w-0 truncate" data-promptbox-full-label="">
           {value}
@@ -156,7 +159,8 @@ export function OptionPicker<T extends string>({
     : selectedOption?.tone;
   const selectedIsWarning = selectedTone === "warning";
   const SelectedIcon = selectedOption?.icon;
-  const selectedLabel = displayOverride?.label ?? selectedOption?.label ?? value;
+  const selectedLabel =
+    displayOverride?.label ?? selectedOption?.label ?? value;
   const selectedCompactLabel =
     displayOverride?.compactLabel ?? selectedOption?.compactLabel;
   const selectedDescription =
@@ -165,7 +169,7 @@ export function OptionPicker<T extends string>({
     ? displayOverride.title
     : selectedDescription
       ? `${label}: ${selectedLabel} - ${selectedDescription}`
-    : `${label}: ${selectedLabel}`;
+      : `${label}: ${selectedLabel}`;
 
   // The trigger renders identically whether interactive or disabled — the only
   // difference is the `disabled` button state — so the disabled read-only
@@ -192,18 +196,13 @@ export function OptionPicker<T extends string>({
       )}
     >
       <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-        {SelectedIcon ? (
-          <SelectedIcon className="size-3.5 shrink-0" />
-        ) : null}
+        {SelectedIcon ? <SelectedIcon className="size-3.5 shrink-0" /> : null}
         {selectedCompactLabel ? (
           <>
             <span className="min-w-0 truncate" data-promptbox-full-label="">
               {selectedLabel}
             </span>
-            <span
-              className="min-w-0 truncate"
-              data-promptbox-compact-label=""
-            >
+            <span className="min-w-0 truncate" data-promptbox-compact-label="">
               {selectedCompactLabel}
             </span>
           </>
@@ -266,7 +265,8 @@ export function OptionPicker<T extends string>({
                   ) : null}
                 </span>
               </span>
-              <Icon name="Check"
+              <Icon
+                name="Check"
                 className={cn(
                   COARSE_POINTER_ICON_SIZE_CLASS,
                   option.value === value ? "opacity-100" : "opacity-0",

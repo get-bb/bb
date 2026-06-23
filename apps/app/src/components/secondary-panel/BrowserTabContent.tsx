@@ -310,7 +310,7 @@ function BrowserChrome({
 function BrowserUnavailable() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground">
+      <span className="flex size-11 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground">
         <Icon name="Globe" className="size-6" aria-hidden />
       </span>
       <div className="text-sm font-medium text-foreground">
@@ -344,7 +344,7 @@ function BrowserPageLoadError({
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
       <div className="flex w-full max-w-sm flex-col items-center gap-3">
-        <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface-recessed text-muted-foreground">
+        <span className="flex size-11 items-center justify-center rounded-lg border border-border bg-surface-recessed text-muted-foreground">
           <Icon name="Globe" className="size-6" aria-hidden />
         </span>
         <div>

@@ -1,6 +1,9 @@
 import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
-import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
+import type {
+  PromptMentionCommandTrigger,
+  PromptTextMention,
+} from "@bb/domain";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -750,9 +753,7 @@ function findPromptActionTextSuffix(
   return (
     actions.find(
       (action) =>
-        !action.command &&
-        action.text.length > 0 &&
-        text.endsWith(action.text),
+        !action.command && action.text.length > 0 && text.endsWith(action.text),
     ) ?? null
   );
 }
@@ -834,10 +835,12 @@ function getPromptActionInsertionRange({
     return { from: selection.from, to: selection.to };
   }
 
-  const previousPromptActionRange = getPromptActionRangeImmediatelyBeforeCursor({
-    editor,
-    actions,
-  });
+  const previousPromptActionRange = getPromptActionRangeImmediatelyBeforeCursor(
+    {
+      editor,
+      actions,
+    },
+  );
   if (previousPromptActionRange !== null) {
     return previousPromptActionRange;
   }
@@ -1195,111 +1198,114 @@ export function PromptBoxInternal({
     [richTextEditing],
   );
 
-  const editor = useEditor({
-    extensions: editorExtensions,
-    content: promptEditorContentFromValue({
-      text: value,
-      mentions: mentionRanges,
-    }),
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        "aria-label": placeholder,
-        "data-placeholder": placeholder,
-        ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
-        autocomplete: "off",
-        class: cn(
-          "min-h-full whitespace-pre-wrap break-words outline-none",
-          "placeholder:select-none placeholder:text-subtle-foreground",
-        ),
-        enterkeyhint: editorEnterKeyHint,
-        ...(id ? { id } : {}),
-        role: "textbox",
-      },
-      handleDOMEvents: {
-        auxclick: (_view, event) => {
-          return suppressPromptEditorAnchorActivation(event);
-        },
-        blur: () => {
-          triggerKeyRef.current = "";
-          if (dismissedTriggerRef.current) {
-            dismissedTriggerRef.current = {
-              ...dismissedTriggerRef.current,
-              hasLeftRange: true,
-            };
-          }
-          setActiveTrigger(null);
-          onMentionQueryChange(null);
-          onCommandQueryChange(null);
-          return false;
-        },
-        click: (_view, event) => {
-          return suppressPromptEditorAnchorActivation(event);
-        },
-      },
-      handleClick: () => {
-        const currentEditor = editorRef.current;
-        if (!currentEditor) return false;
-        syncTriggerStateRef.current(currentEditor);
-        return false;
-      },
-      handleKeyDown: (_view, event) => {
-        return handleEditorKeyDownRef.current(event);
-      },
-      handlePaste: (_view, event) => {
-        const attachFiles = onAttachFilesRef.current;
-        const clipboardItems = Array.from(event.clipboardData?.items ?? []);
-        const pastedFiles = clipboardItems
-          .filter((item) => item.kind === "file")
-          .map((item) => item.getAsFile())
-          .filter((file): file is File => file !== null);
-
-        if (attachFiles && pastedFiles.length > 0) {
-          event.preventDefault();
-          void attachFiles(pastedFiles);
-          return true;
-        }
-
-        const pastedValue = promptEditorValueFromClipboardPaste(
-          event.clipboardData ?? null,
-          promptActions,
-        );
-        if (pastedValue === null) return false;
-
-        event.preventDefault();
-        if (pastedValue.text.length === 0) return true;
-
-        editorRef.current
-          ?.chain()
-          .focus()
-          .insertContent(promptEditorInlineContentFromValue(pastedValue))
-          .run();
-        return true;
-      },
-    },
-    onCreate({ editor: createdEditor }) {
-      editorRef.current = createdEditor;
-      editorValueKeyRef.current = promptEditorValueKey({
+  const editor = useEditor(
+    {
+      extensions: editorExtensions,
+      content: promptEditorContentFromValue({
         text: value,
         mentions: mentionRanges,
-      });
+      }),
+      immediatelyRender: false,
+      editorProps: {
+        attributes: {
+          "aria-label": placeholder,
+          "data-placeholder": placeholder,
+          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
+          autocomplete: "off",
+          class: cn(
+            "min-h-full whitespace-pre-wrap break-words outline-none",
+            "placeholder:select-none placeholder:text-subtle-foreground",
+          ),
+          enterkeyhint: editorEnterKeyHint,
+          ...(id ? { id } : {}),
+          role: "textbox",
+        },
+        handleDOMEvents: {
+          auxclick: (_view, event) => {
+            return suppressPromptEditorAnchorActivation(event);
+          },
+          blur: () => {
+            triggerKeyRef.current = "";
+            if (dismissedTriggerRef.current) {
+              dismissedTriggerRef.current = {
+                ...dismissedTriggerRef.current,
+                hasLeftRange: true,
+              };
+            }
+            setActiveTrigger(null);
+            onMentionQueryChange(null);
+            onCommandQueryChange(null);
+            return false;
+          },
+          click: (_view, event) => {
+            return suppressPromptEditorAnchorActivation(event);
+          },
+        },
+        handleClick: () => {
+          const currentEditor = editorRef.current;
+          if (!currentEditor) return false;
+          syncTriggerStateRef.current(currentEditor);
+          return false;
+        },
+        handleKeyDown: (_view, event) => {
+          return handleEditorKeyDownRef.current(event);
+        },
+        handlePaste: (_view, event) => {
+          const attachFiles = onAttachFilesRef.current;
+          const clipboardItems = Array.from(event.clipboardData?.items ?? []);
+          const pastedFiles = clipboardItems
+            .filter((item) => item.kind === "file")
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => file !== null);
+
+          if (attachFiles && pastedFiles.length > 0) {
+            event.preventDefault();
+            void attachFiles(pastedFiles);
+            return true;
+          }
+
+          const pastedValue = promptEditorValueFromClipboardPaste(
+            event.clipboardData ?? null,
+            promptActions,
+          );
+          if (pastedValue === null) return false;
+
+          event.preventDefault();
+          if (pastedValue.text.length === 0) return true;
+
+          editorRef.current
+            ?.chain()
+            .focus()
+            .insertContent(promptEditorInlineContentFromValue(pastedValue))
+            .run();
+          return true;
+        },
+      },
+      onCreate({ editor: createdEditor }) {
+        editorRef.current = createdEditor;
+        editorValueKeyRef.current = promptEditorValueKey({
+          text: value,
+          mentions: mentionRanges,
+        });
+      },
+      onSelectionUpdate({ editor: updatedEditor }) {
+        syncTriggerStateRef.current(updatedEditor);
+        scheduleRevealEditorSelection();
+      },
+      onUpdate({ editor: updatedEditor }) {
+        if (skipEditorChangeRef.current) return;
+        const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
+        editorValueKeyRef.current = promptEditorValueKey(nextValue);
+        onChangeRef.current(nextValue.text, nextValue.mentions);
+        syncTriggerStateRef.current(updatedEditor);
+        scheduleRevealEditorSelection();
+      },
+      // Rebuild the editor when the rich-text preference toggles so the schema
+      // and input rules switch. The editor is otherwise created once; its
+      // handlers route through refs (above) to stay current without rebuilding.
     },
-    onSelectionUpdate({ editor: updatedEditor }) {
-      syncTriggerStateRef.current(updatedEditor);
-      scheduleRevealEditorSelection();
-    },
-    onUpdate({ editor: updatedEditor }) {
-      if (skipEditorChangeRef.current) return;
-      const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
-      editorValueKeyRef.current = promptEditorValueKey(nextValue);
-      onChangeRef.current(nextValue.text, nextValue.mentions);
-      syncTriggerStateRef.current(updatedEditor);
-      scheduleRevealEditorSelection();
-    },
-    // Rebuild the editor when the rich-text preference toggles so the schema
-    // and input rules switch. The editor is otherwise created once; its
-    // handlers route through refs (above) to stay current without rebuilding.
-  }, [richTextEditing]);
+    [richTextEditing],
+  );
 
   useEffect(() => {
     editorRef.current = editor;
@@ -2274,7 +2280,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-lg border border-border bg-background pb-2 shadow-lift",
+        "relative w-full rounded-xl border border-border bg-background pb-2 shadow-lift",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.

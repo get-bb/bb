@@ -41,7 +41,9 @@ function CommandSummary({
       {/* Verb + description truncate as one unit so the trailing controls
           ("+N more", chevron, duration) never get pushed off a narrow banner. */}
       <span className="min-w-0 truncate" title={row.description}>
-        <span className="text-muted-foreground">Running background command: </span>
+        <span className="text-muted-foreground">
+          Running background command:{" "}
+        </span>
         <span className="font-medium text-foreground opacity-70">
           {row.description}
         </span>
@@ -87,7 +89,7 @@ export function ThreadBackgroundCommandsCard({
       className="overflow-hidden"
       style={{ minHeight: CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1">
+      <div className="flex items-center">
         {hasMore ? (
           <button
             type="button"
@@ -96,7 +98,7 @@ export function ThreadBackgroundCommandsCard({
             aria-controls={BODY_ID}
             aria-label={`Background commands: ${primary.description}`}
             onClick={onToggle}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+            className="flex w-full min-w-0 items-center gap-1.5 rounded px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
           >
             <Icon
               name="Terminal"
@@ -118,7 +120,7 @@ export function ThreadBackgroundCommandsCard({
           </button>
         ) : (
           <div
-            className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-0.5 text-xs text-foreground"
+            className="flex w-full min-w-0 items-center gap-1.5 px-3 py-1.5 text-xs text-foreground"
             aria-label={`Background command: ${primary.description}`}
           >
             <Icon
@@ -148,8 +150,8 @@ export function ThreadBackgroundCommandsCard({
               {others.map((row) => (
                 <div
                   key={row.id}
-                  // px-3 (not px-2) so the icon lines up under the header icon,
-                  // which is offset by the toggle button's own px-1 padding.
+                  // px-3 matches the full-width header row's padding so the
+                  // icon lines up under the header icon.
                   className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
                 >
                   <Icon
