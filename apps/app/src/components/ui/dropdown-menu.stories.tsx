@@ -1,14 +1,10 @@
 import { type ReactNode } from "react";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { Button } from "./button.js";
@@ -19,58 +15,121 @@ export default {
   title: "ui/Dropdown menu",
 };
 
-// Radix portals the menu and positions it against the trigger, so each story
-// gets a tall stage with the trigger near the top and room below for the open
-// menu. `defaultOpen` renders it open on mount; `modal={false}` keeps Ladle
-// interactive (no focus trap / scroll lock).
+// Each story mirrors a real sidebar menu. Radix portals the content and anchors
+// it to the trigger, so the stage leaves room below. `defaultOpen` renders it
+// open; `modal={false}` keeps Ladle interactive.
 function MenuStage({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[340px] justify-center pt-4">{children}</div>
+    <div className="flex min-h-[300px] justify-center pt-4">{children}</div>
   );
 }
 
-// The menu opened, exercising every item type so the chrome (rounded-md border +
-// shadow-md popover) and the item states read at a glance.
+// Single-select option with a trailing check — mirrors the sidebar's
+// SidebarOrganizeMenuOption (the check keeps its slot when unselected so the
+// labels stay aligned).
+function CheckOption({
+  label,
+  selected,
+}: {
+  label: string;
+  selected: boolean;
+}) {
+  return (
+    <DropdownMenuItem className="flex items-center justify-between gap-3">
+      <span className="truncate text-xs">{label}</span>
+      <Icon name="Check" className={selected ? "opacity-100" : "opacity-0"} />
+    </DropdownMenuItem>
+  );
+}
+
+// The sidebar display menu (the Layers button on the Projects / Threads section
+// headers): global Group-by mode + chronological Sort, single-select with a
+// trailing check on the active option.
 export function Overview() {
   return (
     <StoryCard>
       <StoryRow
-        label="open menu"
-        hint="rounded-md border + shadow-md popover; label / item / shortcut / checkbox / radio / destructive"
+        label="sidebar display"
+        hint="Group by + Sort by — single-select options with a trailing check"
       >
         <MenuStage>
           <DropdownMenu defaultOpen modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                Actions
-                <Icon name="ChevronDown" />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Sidebar display options"
+              >
+                <Icon name="Layers" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Thread</DropdownMenuLabel>
-              <DropdownMenuItem>
-                Rename
-                <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem>Duplicate</DropdownMenuItem>
-              <DropdownMenuItem disabled>Move to project</DropdownMenuItem>
-              <DropdownMenuCheckboxItem checked>
-                Show archived
-              </DropdownMenuCheckboxItem>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Group by</DropdownMenuLabel>
+              <CheckOption label="Project" selected />
+              <CheckOption label="None" selected={false} />
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value="recent">
-                <DropdownMenuRadioItem value="recent">
-                  Most recent
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="alpha">
-                  Alphabetical
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive focus:text-destructive">
-                Delete
+              <CheckOption label="Updated at" selected />
+              <CheckOption label="Created at" selected={false} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </MenuStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+// The folder row's ··· menu in the cross-project Folders view.
+export function FolderActions() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="folder actions"
+        hint="row ··· menu — items with icons, a separator, and a destructive Remove"
+      >
+        <MenuStage>
+          <DropdownMenu defaultOpen modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Folder actions">
+                <Icon name="MoreHorizontal" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem>
+                <Icon name="Archive" />
+                View archive
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <Icon name="Edit" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive focus:text-destructive">
+                <Icon name="Trash2" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </MenuStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+// The Threads section's ··· menu.
+export function ThreadsActions() {
+  return (
+    <StoryCard>
+      <StoryRow label="threads actions" hint="section ··· menu">
+        <MenuStage>
+          <DropdownMenu defaultOpen modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Threads actions">
+                <Icon name="MoreHorizontal" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuItem>Archived threads</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </MenuStage>
