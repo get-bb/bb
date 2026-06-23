@@ -239,6 +239,17 @@
     }
   }
 
+  /* Sparse sidebar (exactly one open project/folder container): render the row
+     actions inline instead of revealing them on hover. Toggled by ProjectList. */
+  [data-sidebar-actions-inline="true"] .bb-sidebar-hover-actions {
+    pointer-events: auto;
+    opacity: 1;
+  }
+
+  [data-sidebar-actions-inline="true"] .bb-sidebar-hover-actions-fade {
+    opacity: 0;
+  }
+
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier="label"] {
     --bb-sidebar-sticky-tier-top: var(--bb-sidebar-sticky-label-top);
     --bb-sidebar-sticky-tier-height: var(--bb-sidebar-sticky-label-height);

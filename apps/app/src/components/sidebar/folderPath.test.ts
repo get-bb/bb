@@ -1,10 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFolderKey,
+  countVisibleExpandedFolders,
   folderAncestorKeys,
   normalizeFolderPath,
   splitFolderPath,
 } from "./folderPath";
+
+describe("countVisibleExpandedFolders", () => {
+  const c = "c";
+  const paths = ["Work", "Work/Q3", "Personal"];
+
+  it("counts every folder when none are collapsed", () => {
+    expect(countVisibleExpandedFolders(paths, c, new Set())).toBe(3);
+  });
+
+  it("excludes a collapsed folder and its hidden descendants", () => {
+    // Work is closed; Work/Q3 is hidden behind it; only Personal stays open.
+    const collapsed = new Set([buildFolderKey(c, ["Work"])]);
+    expect(countVisibleExpandedFolders(paths, c, collapsed)).toBe(1);
+  });
+
+  it("counts a visible parent but not its own collapsed child", () => {
+    // Work is open (counts), Work/Q3 is closed (does not), Personal is open.
+    const collapsed = new Set([buildFolderKey(c, ["Work", "Q3"])]);
+    expect(countVisibleExpandedFolders(paths, c, collapsed)).toBe(2);
+  });
+
+  it("returns 0 when there are no folders", () => {
+    expect(countVisibleExpandedFolders([], c, new Set())).toBe(0);
+  });
+});
 
 describe("splitFolderPath", () => {
   it("splits on '/', trims segments, and drops empties", () => {

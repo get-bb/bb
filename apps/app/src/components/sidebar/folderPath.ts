@@ -58,3 +58,26 @@ export function buildFolderKey(
 ): string {
   return `${containerId}::${path.join("/")}`;
 }
+
+// How many folder rows are currently both visible and open — i.e. the folder is
+// not collapsed AND none of its ancestors are collapsed (so its row renders).
+// Drives the "show row actions inline when the sidebar is sparse" rule.
+export function countVisibleExpandedFolders(
+  folderPaths: readonly string[],
+  containerId: string,
+  collapsedFolderKeys: ReadonlySet<string>,
+): number {
+  let count = 0;
+  for (const folderPath of folderPaths) {
+    const keyChain = folderAncestorKeys(containerId, folderPath);
+    if (keyChain.length === 0) {
+      continue;
+    }
+    // keyChain is [self-and-ancestors]; the row is a visible, open container
+    // only when every link in that chain is expanded.
+    if (keyChain.every((key) => !collapsedFolderKeys.has(key))) {
+      count += 1;
+    }
+  }
+  return count;
+}
