@@ -1,3 +1,4 @@
+PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_terminal_sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`thread_id` text,
@@ -20,49 +21,11 @@ CREATE TABLE `__new_terminal_sessions` (
 	FOREIGN KEY (`daemon_session_id`) REFERENCES `host_daemon_sessions`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-INSERT INTO `__new_terminal_sessions` (
-	`id`,
-	`thread_id`,
-	`environment_id`,
-	`host_id`,
-	`daemon_session_id`,
-	`title`,
-	`initial_cwd`,
-	`cols`,
-	`rows`,
-	`status`,
-	`exit_code`,
-	`close_reason`,
-	`created_at`,
-	`updated_at`,
-	`last_user_input_at`
-)
-SELECT
-	`id`,
-	`thread_id`,
-	`environment_id`,
-	`host_id`,
-	`daemon_session_id`,
-	`title`,
-	`initial_cwd`,
-	`cols`,
-	`rows`,
-	`status`,
-	`exit_code`,
-	`close_reason`,
-	`created_at`,
-	`updated_at`,
-	`last_user_input_at`
-FROM `terminal_sessions`;
---> statement-breakpoint
-DROP TABLE `terminal_sessions`;
---> statement-breakpoint
-ALTER TABLE `__new_terminal_sessions` RENAME TO `terminal_sessions`;
---> statement-breakpoint
-CREATE INDEX `terminal_sessions_thread_status_updated_idx` ON `terminal_sessions` (`thread_id`,`status`,`updated_at`);
---> statement-breakpoint
-CREATE INDEX `terminal_sessions_environment_status_idx` ON `terminal_sessions` (`environment_id`,`status`);
---> statement-breakpoint
-CREATE INDEX `terminal_sessions_host_status_idx` ON `terminal_sessions` (`host_id`,`status`);
---> statement-breakpoint
+INSERT INTO `__new_terminal_sessions`("id", "thread_id", "environment_id", "host_id", "daemon_session_id", "title", "initial_cwd", "cols", "rows", "status", "exit_code", "close_reason", "created_at", "updated_at", "last_user_input_at") SELECT "id", "thread_id", "environment_id", "host_id", "daemon_session_id", "title", "initial_cwd", "cols", "rows", "status", "exit_code", "close_reason", "created_at", "updated_at", "last_user_input_at" FROM `terminal_sessions`;--> statement-breakpoint
+DROP TABLE `terminal_sessions`;--> statement-breakpoint
+ALTER TABLE `__new_terminal_sessions` RENAME TO `terminal_sessions`;--> statement-breakpoint
+PRAGMA foreign_keys=ON;--> statement-breakpoint
+CREATE INDEX `terminal_sessions_thread_status_updated_idx` ON `terminal_sessions` (`thread_id`,`status`,`updated_at`);--> statement-breakpoint
+CREATE INDEX `terminal_sessions_environment_status_idx` ON `terminal_sessions` (`environment_id`,`status`);--> statement-breakpoint
+CREATE INDEX `terminal_sessions_host_status_idx` ON `terminal_sessions` (`host_id`,`status`);--> statement-breakpoint
 CREATE INDEX `terminal_sessions_daemon_session_idx` ON `terminal_sessions` (`daemon_session_id`);
