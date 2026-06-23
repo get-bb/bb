@@ -57,6 +57,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     status: "idle",
     title: null,
     titleFallback: "Fallback fork title",
+    folderPath: null,
     updatedAt: 1,
   };
   return { ...base, ...overrides };

@@ -20,7 +20,9 @@ import type {
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
+  CreateThreadFolderRequest,
   CreateQueuedMessageRequest,
+  DeleteThreadFolderRequest,
   DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
   EnvironmentActionRequest,
@@ -53,6 +55,8 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadFolderMutationResponse,
+  ThreadFolderResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -73,6 +77,7 @@ import type {
   CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
+  UpdateThreadFolderRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
@@ -506,6 +511,30 @@ export async function createProject(
   return request<ProjectResponse>(apiClient.projects.$post({ json: req }));
 }
 
+export async function createThreadFolder(
+  req: CreateThreadFolderRequest,
+): Promise<ThreadFolderResponse> {
+  return request<ThreadFolderResponse>(
+    apiClient["thread-folders"].$post({ json: req }),
+  );
+}
+
+export async function updateThreadFolder(
+  req: UpdateThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$patch({ json: req }),
+  );
+}
+
+export async function deleteThreadFolder(
+  req: DeleteThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$delete({ json: req }),
+  );
+}
+
 export async function updateProject(
   id: string,
   req: UpdateProjectRequest,
@@ -854,6 +883,10 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
+  /** Restrict to threads filed directly under this folder path. */
+  folderPath?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;
@@ -891,6 +924,8 @@ export async function listThreads(
           ...(filters.sourceThreadId
             ? { sourceThreadId: filters.sourceThreadId }
             : {}),
+          ...(filters.folderPath ? { folderPath: filters.folderPath } : {}),
+          ...(filters.unfiled ? { unfiled: toBooleanQueryValue(true) } : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),

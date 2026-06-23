@@ -387,6 +387,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     { enabled: isAutomationDetailView },
   );
   const automationName = automationDetail?.name ?? "Automation";
+  // Folder-scoped archived list (`/archived?folder=<path>`); drives the
+  // breadcrumb's folder segment.
+  const archivedFolderPath = isArchivedView
+    ? new URLSearchParams(location.search).get("folder")
+    : null;
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -465,6 +470,9 @@ export function AppLayout({ children }: AppLayoutProps) {
               subtitle: undefined,
               breadcrumbs: [
                 { label: "Threads", to: getRootComposeRoutePath() },
+                ...(archivedFolderPath
+                  ? [{ label: archivedFolderPath }]
+                  : []),
                 { label: "Archived" },
               ],
             }
@@ -507,7 +515,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {
-        return "Threads · Archived";
+        return archivedFolderPath
+          ? `${archivedFolderPath} · Archived`
+          : "Threads · Archived";
       }
       return `${projectLabel ?? projectId} · Archived`;
     }

@@ -67,6 +67,11 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 
+// Header rows whose caret (not the row body) is the click target: project and
+// folder rows. Text color only — no row-level hover highlight.
+export const SIDEBAR_ROW_STATIC_STATE_CLASS =
+  "text-sidebar-foreground/85 dark:text-sidebar-foreground";
+
 export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
   "bg-sidebar-border text-sidebar-foreground";
 

@@ -165,6 +165,7 @@ export function createThreadRecord(
     providerId: args.request.providerId,
     title: args.request.title ?? null,
     titleFallback: args.request.titleFallback,
+    folderPath: args.request.folderPath ?? null,
     parentThreadId: args.request.parentThreadId ?? null,
     sourceThreadId: args.request.sourceThreadId ?? null,
     originKind: args.request.originKind ?? args.request.childOrigin,

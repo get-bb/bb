@@ -76,9 +76,18 @@ interface AddDescendantThreadIdsArgs {
 function collectRootNodes(
   items: readonly ProjectThreadItem[],
 ): ProjectThreadNode[] {
-  return items.flatMap((item) =>
-    item.kind === "thread" ? [item.node] : item.group.nodes,
-  );
+  return items.flatMap((item) => {
+    switch (item.kind) {
+      case "thread":
+        return [item.node];
+      case "environment":
+        return item.group.nodes;
+      case "folder":
+        // Pinned flattens before folding, so folders never reach here; recurse
+        // to keep the function total.
+        return collectRootNodes(item.group.items);
+    }
+  });
 }
 
 export function buildPinnedSidebarState({
@@ -115,9 +124,11 @@ export function buildPinnedSidebarState({
   const effectivePinnedThreads = threads.filter((thread) =>
     effectivePinnedThreadIds.has(thread.id),
   );
-  const rootItems = buildProjectThreadGroups(effectivePinnedThreads);
-  const rootNodes = collectRootNodes(rootItems);
-  rootNodes.sort((left, right) => comparePinnedRoots(left.thread, right.thread));
+  const projectItems = buildProjectThreadGroups(effectivePinnedThreads);
+  const rootNodes = collectRootNodes(projectItems);
+  rootNodes.sort((left, right) =>
+    comparePinnedRoots(left.thread, right.thread),
+  );
 
   return {
     effectivePinnedThreadIds,

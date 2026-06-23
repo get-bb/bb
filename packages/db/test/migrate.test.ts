@@ -204,10 +204,12 @@ function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
-  // tables (added by 0039/0041) and app_theme (added by 0042).
+  // tables (added by 0039/0041), app_theme (added by 0042), and the thread
+  // folder schema (folder_path column + thread_folders table).
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  dropThreadFolderSchema(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -382,6 +384,24 @@ function dropPost0023Tables(db: DbConnection): void {
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
+
+  dropThreadFolderSchema(db);
+}
+
+/**
+ * Folder schema lands in migration 0046 (folder_path column + thread_folders
+ * table). Replay scenarios that rewind the ledger past it must drop the schema
+ * too, or migrate() re-runs the ADD/CREATE against a DB that already has them.
+ */
+function dropThreadFolderSchema(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
+  const hasFolderPath = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all()
+    .some((row) => row.name === "folder_path");
+  if (hasFolderPath) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_path").run();
+  }
 }
 
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {
@@ -505,6 +525,7 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   restoreEnvironmentCleanupModeColumn(db);
   restoreEnvironmentCleanupRequestedAtColumn(db);
   restoreThreadStopRequestedAtColumn(db);
+  dropThreadFolderSchema(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `

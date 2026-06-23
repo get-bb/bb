@@ -23,6 +23,7 @@ function makeThreadWithRuntime(
     providerId: "codex",
     title: null,
     titleFallback: null,
+    folderPath: null,
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,
@@ -63,6 +64,7 @@ function makeSidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
   return {
+    folders: [],
     projects: [
       {
         id: "project-1",

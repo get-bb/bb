@@ -244,6 +244,7 @@ function makeThread(
     stopRequestedAt: null,
     title: null,
     titleFallback: "Test thread",
+    folderPath: null,
     updatedAt: 0,
   } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }

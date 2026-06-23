@@ -61,6 +61,8 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
 }
 
 export type ThreadRowOptions =
@@ -76,8 +78,6 @@ export type ThreadRowOptions =
       // (deeper than the sticky cap, or not a sticky parent role).
       stickyLevel?: number;
       onToggleCollapsed: (threadId: string) => void;
-      consumeClickSuppression?: ConsumeDragClickSuppression;
-      dragBindings?: SidebarSortableDragBindings;
     });
 
 interface ThreadRowProps {
@@ -87,6 +87,14 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
+  // Visible row text. Inside a folder this is the leaf ("Planning"); otherwise
+  // it is the full title (default). The folder path is hidden visually but kept
+  // in `accessibleTitle`.
+  displayTitle?: string;
+  // Accessible name + hover tooltip. Inside a folder this is the full path
+  // ("Work › Q3 › Planning") so two same-leaf threads stay distinguishable;
+  // otherwise it defaults to the full title.
+  accessibleTitle?: string;
 }
 
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
@@ -142,7 +150,14 @@ function renderThreadRowContainer({
   }
 
   return (
-    <div className={className} style={style} onClickCapture={onClickCapture}>
+    <div
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+      {...dragBindings?.attributes}
+      {...(dragBindings?.listeners ?? {})}
+      onClickCapture={onClickCapture}
+    >
       {children}
     </div>
   );
@@ -350,6 +365,8 @@ function ThreadRowComponent({
   hasComposerDraft,
   onProjectSelect,
   options,
+  displayTitle,
+  accessibleTitle,
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
@@ -370,6 +387,9 @@ function ThreadRowComponent({
   const unreadBadgeTone: SidebarUnreadDotTone =
     showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
+  // Inside a folder the row shows the leaf but keeps the full path for a11y.
+  const visibleTitle = displayTitle ?? threadTitle;
+  const labelTitle = accessibleTitle ?? threadTitle;
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
@@ -400,10 +420,10 @@ function ThreadRowComponent({
     trailingShowUnreadBadge && trailingUnreadBadgeTone === "default",
   );
   const linkLabel = hasComposerDraft
-    ? `Open ${threadTitle} (unsubmitted draft)`
-    : `Open ${threadTitle}`;
+    ? `Open ${labelTitle} (unsubmitted draft)`
+    : `Open ${labelTitle}`;
   const linkTitle = linkLabel;
-  const parentDragBindings = parentOptions?.dragBindings;
+  const rowDragBindings = options.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -415,19 +435,19 @@ function ThreadRowComponent({
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-    parentDragBindings && !parentDragBindings.disabled && "select-none",
+    rowDragBindings && !rowDragBindings.disabled && "select-none",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
-  const handleParentClickCapture = useCallback<ThreadRowClickCaptureHandler>(
+  const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
-      if (!parentOptions?.consumeClickSuppression?.()) {
+      if (!options.consumeClickSuppression?.()) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
     },
-    [parentOptions],
+    [options],
   );
 
   const rowContent = (
@@ -445,7 +465,7 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate">{threadTitle}</span>
+        <span className="min-w-0 truncate">{visibleTitle}</span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
@@ -511,8 +531,10 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
-    dragBindings: parentDragBindings,
-    onClickCapture: parentOptions ? handleParentClickCapture : undefined,
+    dragBindings: rowDragBindings,
+    onClickCapture: options.consumeClickSuppression
+      ? handleRowClickCapture
+      : undefined,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });

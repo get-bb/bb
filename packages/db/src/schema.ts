@@ -263,6 +263,7 @@ export const threads = sqliteTable(
     ).$type<ReasoningLevel>(),
     title: text("title"),
     titleFallback: text("title_fallback"),
+    folderPath: text("folder_path"),
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
@@ -317,6 +318,20 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const threadFolders = sqliteTable(
+  "thread_folders",
+  {
+    id: text("id").primaryKey(),
+    path: text("path").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_folders_path_idx").on(table.path),
+    index("thread_folders_updated_idx").on(table.updatedAt),
   ],
 );
 

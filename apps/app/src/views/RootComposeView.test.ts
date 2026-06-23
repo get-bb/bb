@@ -62,6 +62,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     providerId: "codex",
     title: args.id,
     titleFallback: args.id,
+    folderPath: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -126,6 +127,7 @@ function makeTerminalSession(
 describe("buildMobileRecentThreads", () => {
   it("includes projectless and every project thread", () => {
     const sidebarNavigation: SidebarBootstrapResponse = {
+      folders: [],
       personalProject: makeProject({
         id: PERSONAL_PROJECT_ID,
         kind: "personal",

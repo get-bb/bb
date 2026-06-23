@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
-import type { ThreadListEntry } from "@bb/domain";
+import { Link, useSearchParams } from "react-router-dom";
+import { useAtomValue } from "jotai";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -11,6 +12,7 @@ import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 
 type ArchivedThreadPillLabel = "child";
 
@@ -21,9 +23,30 @@ function getArchivedThreadPillLabel(
   return null;
 }
 
-export function ProjectArchivedThreadsView() {
+// One archived-threads page for every scope. The route + `?folder=` param
+// decide which threads are listed; the scope is shown in the AppLayout header
+// breadcrumb (project name / "Threads" / folder), so the body stays identical:
+//   - project:        all archived threads in a project
+//   - personal/loose: archived threads not filed under any folder (unfiled)
+//   - folder:         archived threads filed directly under one folder
+export function ArchivedThreadsView() {
   const { projectId } = useRouteState();
-  const archivedThreadsQuery = useArchivedThreads({ projectId });
+  const [searchParams] = useSearchParams();
+  const sidebarOrganizationMode = useAtomValue(sidebarOrganizationModeAtom);
+  const folderPath = searchParams.get("folder") ?? undefined;
+  const isGlobalFoldersMode =
+    projectId === PERSONAL_PROJECT_ID &&
+    sidebarOrganizationMode === "chronological";
+  const archivedProjectId =
+    folderPath || isGlobalFoldersMode ? undefined : projectId;
+  // The loose archived list mirrors the current sidebar scope: in project mode
+  // it is personal-only; in Folders mode it is cross-project loose threads.
+  const restrictToLoose = !folderPath && projectId === PERSONAL_PROJECT_ID;
+  const archivedThreadsQuery = useArchivedThreads({
+    projectId: archivedProjectId,
+    ...(folderPath ? { folderPath } : {}),
+    ...(restrictToLoose ? { unfiled: true } : {}),
+  });
   const unarchiveThread = useUnarchiveThread();
 
   const archivedThreads = useMemo(() => {

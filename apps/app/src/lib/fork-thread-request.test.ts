@@ -24,6 +24,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     status: "idle",
     title: "Investigate flaky test",
     titleFallback: null,
+    folderPath: null,
     updatedAt: 1,
   };
   return { ...base, ...overrides };

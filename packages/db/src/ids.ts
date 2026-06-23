@@ -36,6 +36,10 @@ export function createThreadId(): string {
   return createId("thr");
 }
 
+export function createThreadFolderId(): string {
+  return createId("fld");
+}
+
 export function createAutomationId(): string {
   return createId("auto");
 }

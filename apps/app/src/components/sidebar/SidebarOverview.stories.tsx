@@ -54,6 +54,7 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = {
+  folders: [],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,

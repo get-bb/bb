@@ -68,6 +68,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
+      "createThreadRequestSchema.folderPath",
       "createThreadRequestSchema.model",
       "createThreadRequestSchema.parentThreadId",
       "createThreadRequestSchema.providerId",
@@ -145,6 +146,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread PATCH requests omit fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateThreadRequestSchema.model",
+      "updateThreadRequestSchema.folderPath",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.title",
@@ -184,6 +186,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.childOrigin",
       "threadListQuerySchema.excludeSideChats",
+      "threadListQuerySchema.folderPath",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.offset",
@@ -191,6 +194,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",
+      "threadListQuerySchema.unfiled",
     ],
   },
   {
@@ -762,6 +766,7 @@ describe("server-contract canonical schemas", () => {
           providerId: "codex",
           title: "Pending thread",
           titleFallback: "Pending thread",
+          folderPath: null,
           status: "idle",
           parentThreadId: null,
           sourceThreadId: null,

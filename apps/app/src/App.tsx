@@ -57,9 +57,9 @@ const ProjectSettingsView = lazy(() =>
     default: m.ProjectSettingsView,
   })),
 );
-const ProjectArchivedThreadsView = lazy(() =>
-  import("./views/ProjectArchivedThreadsView").then((m) => ({
-    default: m.ProjectArchivedThreadsView,
+const ArchivedThreadsView = lazy(() =>
+  import("./views/ArchivedThreadsView").then((m) => ({
+    default: m.ArchivedThreadsView,
   })),
 );
 const PopoutChatView = lazy(() =>
@@ -119,11 +119,11 @@ function AppRoutes() {
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
-            element={<ProjectArchivedThreadsView />}
+            element={<ArchivedThreadsView />}
           />
           <Route
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
-            element={<ProjectArchivedThreadsView />}
+            element={<ArchivedThreadsView />}
           />
           <Route
             path={THREAD_DETAIL_ROUTE_PATH}

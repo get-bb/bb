@@ -248,6 +248,7 @@ export function applyToCachedSidebarNavigationThreads({
         return currentNavigation;
       }
       return {
+        folders: currentNavigation.folders,
         projects: currentNavigation.projects.map((project) =>
           mapSidebarNavigationProjectThreads(project, mapper),
         ),

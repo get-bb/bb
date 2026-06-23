@@ -282,15 +282,21 @@ export function hasThreadSearchableQuery(value: string): boolean {
 }
 
 export interface UseArchivedThreadsFilters {
-  projectId: string | undefined;
+  projectId?: string;
+  /** Restrict to threads filed directly under this folder path. */
+  folderPath?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId } = filters;
-  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  const { projectId, folderPath, unfiled } = filters;
+  const enabled =
+    (options?.enabled ?? true) &&
+    (Boolean(projectId) || Boolean(folderPath) || Boolean(unfiled));
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -301,12 +307,16 @@ export function useArchivedThreads(
     number
   >({
     queryKey: archivedThreadsListQueryKey({
-      projectId: projectId ?? "",
+      ...(projectId ? { projectId } : {}),
+      ...(folderPath ? { folderPath } : {}),
+      ...(unfiled ? { unfiled: true } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
-          projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
+          ...(projectId ? { projectId } : {}),
+          ...(folderPath ? { folderPath } : {}),
+          ...(unfiled ? { unfiled: true } : {}),
           archived: true,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,

@@ -50,7 +50,9 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
+  CreateThreadFolderRequest,
   CreateThreadRequest,
+  DeleteThreadFolderRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
@@ -112,6 +114,8 @@ import type {
   ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
+  ThreadFolderMutationResponse,
+  ThreadFolderResponse,
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
@@ -135,6 +139,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
+  UpdateThreadFolderRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
@@ -149,6 +154,8 @@ import {
   createAutomationRequestSchema,
   runAutomationRequestSchema,
   updateAutomationRequestSchema,
+  createThreadFolderRequestSchema,
+  deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
@@ -196,6 +203,7 @@ import {
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateThreadFolderRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
@@ -531,6 +539,33 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentArchiveThreadsResponse>(),
+    }),
+  },
+
+  threadFolders: {
+    create: defineRoute({
+      path: "/thread-folders",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
+        createThreadFolderRequestSchema,
+      ),
+      response: jsonResponse<ThreadFolderResponse>({ status: 201 }),
+    }),
+    update: defineRoute({
+      path: "/thread-folders",
+      method: "patch",
+      request: jsonRequest<EmptyInput, UpdateThreadFolderRequest>(
+        updateThreadFolderRequestSchema,
+      ),
+      response: jsonResponse<ThreadFolderMutationResponse>(),
+    }),
+    delete: defineRoute({
+      path: "/thread-folders",
+      method: "delete",
+      request: jsonRequest<EmptyInput, DeleteThreadFolderRequest>(
+        deleteThreadFolderRequestSchema,
+      ),
+      response: jsonResponse<ThreadFolderMutationResponse>(),
     }),
   },
 
