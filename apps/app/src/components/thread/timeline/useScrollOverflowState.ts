@@ -153,9 +153,10 @@ export function useScrollOverflowState<
             belowVisible = entry.isIntersecting;
           }
         }
+        const hasOverflow = scroll.scrollHeight - scroll.clientHeight > 1;
         applyFlags({
-          above: !aboveVisible,
-          below: !belowVisible,
+          above: hasOverflow && !aboveVisible,
+          below: hasOverflow && !belowVisible,
         });
       },
       { root: scroll, threshold: 0 },

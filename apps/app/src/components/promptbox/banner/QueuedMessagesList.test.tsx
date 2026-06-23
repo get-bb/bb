@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 
@@ -38,6 +44,7 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe("QueuedMessagesList", () => {
@@ -91,5 +98,90 @@ describe("QueuedMessagesList", () => {
         container.querySelector('[data-queued-messages-fade="below"]'),
       ).not.toBeNull();
     });
+  });
+
+  it("does not show a fade when stale observer entries report hidden sentinels without overflow", async () => {
+    interface ObserverControl {
+      targets: Element[];
+      trigger(entries: readonly Partial<IntersectionObserverEntry>[]): void;
+    }
+
+    const observers: ObserverControl[] = [];
+
+    class IntersectionObserverMock implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds = [0];
+      readonly targets: Element[] = [];
+
+      constructor(private readonly callback: IntersectionObserverCallback) {
+        observers.push(this);
+      }
+
+      disconnect() {}
+
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+
+      takeRecords() {
+        return [];
+      }
+
+      trigger(entries: readonly Partial<IntersectionObserverEntry>[]) {
+        this.callback(entries as IntersectionObserverEntry[], this);
+      }
+
+      unobserve() {}
+    }
+
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "single queued message"),
+    ]);
+    const scroll = container.querySelector<HTMLDivElement>(
+      "[data-queued-messages-scroll]",
+    );
+    expect(scroll).not.toBeNull();
+    if (!scroll) return;
+
+    Object.defineProperty(scroll, "clientHeight", {
+      configurable: true,
+      value: 48,
+    });
+    Object.defineProperty(scroll, "scrollHeight", {
+      configurable: true,
+      value: 48,
+    });
+
+    await waitFor(() => {
+      expect(observers[0]?.targets).toHaveLength(2);
+    });
+
+    const currentObserver = observers[0];
+    expect(currentObserver).toBeDefined();
+    if (!currentObserver) return;
+
+    const [topSentinel, bottomSentinel] = currentObserver.targets;
+    expect(topSentinel).toBeDefined();
+    expect(bottomSentinel).toBeDefined();
+    if (!topSentinel || !bottomSentinel) return;
+
+    act(() => {
+      currentObserver.trigger([
+        { target: topSentinel, isIntersecting: false },
+        { target: bottomSentinel, isIntersecting: false },
+      ]);
+    });
+
+    expect(
+      container.querySelector('[data-queued-messages-fade="above"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-queued-messages-fade="below"]'),
+    ).toBeNull();
   });
 });
