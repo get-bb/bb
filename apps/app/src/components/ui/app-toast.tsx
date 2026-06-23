@@ -131,7 +131,7 @@ export function AppToastContent({
 
   return (
     <div
-      className="relative w-[var(--width,356px)] max-w-[calc(100vw-32px)] rounded-md border border-border bg-popover px-4 py-3 text-popover-foreground shadow-sm"
+      className="relative w-[var(--width,356px)] max-w-[calc(100vw-32px)] rounded-md border border-border bg-popover px-4 py-3 text-popover-foreground shadow-sm max-[600px]:w-[calc(100vw-32px)]"
     >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-foreground">
