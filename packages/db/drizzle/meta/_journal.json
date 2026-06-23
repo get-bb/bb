@@ -316,6 +316,13 @@
       "when": 1782249376381,
       "tag": "0044_flimsy_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1782251367423,
+      "tag": "0045_unique_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

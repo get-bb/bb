@@ -170,7 +170,11 @@ export type {
 
 export { getExperiments, setExperiments } from "./experiments.js";
 
-export { getStoredThemeId, setStoredThemeId } from "./app-theme.js";
+export {
+  getStoredThemeId,
+  getStoredFaviconColor,
+  setStoredAppearance,
+} from "./app-theme.js";
 
 export {
   getThreadDynamicContextFileState,

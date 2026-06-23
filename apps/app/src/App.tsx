@@ -7,6 +7,7 @@ import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
+import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
@@ -154,6 +155,9 @@ export function App() {
   useDesktopThemeSync();
   // Apply the server-stored app palette (built-in or custom CSS) app-wide.
   useAppTheme();
+  // Reconcile the favicon tint with the server-stored appearance (and migrate
+  // any legacy localStorage-only preference on first load).
+  useFaviconColorSync();
 
   return (
     <QuickCreateProjectProvider>

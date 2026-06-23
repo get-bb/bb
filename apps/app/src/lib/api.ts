@@ -1,6 +1,7 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
   AppTheme,
+  AppThemeSelection,
   Environment,
   Experiments,
   Host,
@@ -1652,9 +1653,11 @@ export async function updateExperiments(
   );
 }
 
-export async function updateAppearance(themeId: string): Promise<AppTheme> {
+export async function updateAppearance(
+  selection: AppThemeSelection,
+): Promise<AppTheme> {
   return request<AppTheme>(
-    apiClient.settings.appearance.$put({ json: { themeId } }),
+    apiClient.settings.appearance.$put({ json: selection }),
   );
 }
 

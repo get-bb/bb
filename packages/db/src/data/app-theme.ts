@@ -1,5 +1,9 @@
 import { eq } from "drizzle-orm";
-import { defaultAppTheme } from "@bb/domain";
+import {
+  defaultAppTheme,
+  defaultFaviconColor,
+  type FaviconColorPreference,
+} from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { appTheme } from "../schema.js";
 
@@ -19,13 +23,28 @@ export function getStoredThemeId(db: DbConnection): string {
   return row?.themeId ?? defaultAppTheme.themeId;
 }
 
-export function setStoredThemeId(db: DbConnection, themeId: string): void {
+/** The persisted favicon tint; "default" when unset. */
+export function getStoredFaviconColor(db: DbConnection): FaviconColorPreference {
+  const row = db
+    .select({ faviconColor: appTheme.faviconColor })
+    .from(appTheme)
+    .where(eq(appTheme.id, APP_THEME_ROW_ID))
+    .get();
+
+  return row?.faviconColor ?? defaultFaviconColor;
+}
+
+export function setStoredAppearance(
+  db: DbConnection,
+  appearance: { themeId: string; faviconColor: FaviconColorPreference },
+): void {
   const updatedAt = Date.now();
+  const { themeId, faviconColor } = appearance;
   db.insert(appTheme)
-    .values({ id: APP_THEME_ROW_ID, themeId, updatedAt })
+    .values({ id: APP_THEME_ROW_ID, themeId, faviconColor, updatedAt })
     .onConflictDoUpdate({
       target: appTheme.id,
-      set: { themeId, updatedAt },
+      set: { themeId, faviconColor, updatedAt },
     })
     .run();
 }

@@ -1,23 +1,18 @@
 import { useEffect } from "react";
-import { atom, getDefaultStore, useAtom, useSetAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { createLocalStorageEnumStorage } from "./browser-storage";
+import { atom, getDefaultStore, useSetAtom } from "jotai";
+import {
+  defaultFaviconColor,
+  faviconColorPreferenceSchema,
+  type FaviconColor,
+  type FaviconColorPreference,
+} from "@bb/domain";
+import { useUpdateAppearance } from "@/hooks/mutations/settings-mutations";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 
+// Reused as both the boot cache (apply the last-known tint before /system/config
+// loads, so the tab icon doesn't flash) and the legacy source for the one-time
+// migration off the old localStorage-only preference.
 export const FAVICON_COLOR_STORAGE_KEY = "bb.faviconColor";
-
-export const FAVICON_COLORS = [
-  "red",
-  "orange",
-  "yellow",
-  "green",
-  "teal",
-  "blue",
-  "purple",
-  "pink",
-] as const;
-
-export type FaviconColor = (typeof FAVICON_COLORS)[number];
-export type FaviconColorPreference = FaviconColor | "default";
 
 export const FAVICON_BADGES = ["none", "unread"] as const;
 export type FaviconBadge = (typeof FAVICON_BADGES)[number];
@@ -33,27 +28,71 @@ export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   pink: "#d6409f",
 };
 
-function isFaviconColorPreference(
-  value: string,
-): value is FaviconColorPreference {
-  return value === "default" || FAVICON_COLORS.some((color) => color === value);
+function readCachedFaviconColor(): FaviconColorPreference {
+  try {
+    const parsed = faviconColorPreferenceSchema.safeParse(
+      localStorage.getItem(FAVICON_COLOR_STORAGE_KEY),
+    );
+    return parsed.success ? parsed.data : defaultFaviconColor;
+  } catch {
+    return defaultFaviconColor;
+  }
 }
 
-const faviconColorPreferenceStorage =
-  createLocalStorageEnumStorage<FaviconColorPreference>(
-    isFaviconColorPreference,
-  );
+function cacheFaviconColor(color: FaviconColorPreference): void {
+  try {
+    if (color === defaultFaviconColor) {
+      localStorage.removeItem(FAVICON_COLOR_STORAGE_KEY);
+    } else {
+      localStorage.setItem(FAVICON_COLOR_STORAGE_KEY, color);
+    }
+  } catch {
+    // Best-effort cache; ignore private-mode / quota failures.
+  }
+}
 
-const faviconColorPreferenceAtom = atomWithStorage<FaviconColorPreference>(
-  FAVICON_COLOR_STORAGE_KEY,
-  "default",
-  faviconColorPreferenceStorage,
-  { getOnInit: true },
-);
+// Seeded from the boot cache so initializeFavicon() can tint immediately, then
+// reconciled with the server's authoritative value by useFaviconColorSync().
+const faviconColorAtom = atom<FaviconColorPreference>(readCachedFaviconColor());
 const faviconBadgeAtom = atom<FaviconBadge>("none");
 
-export function useFaviconColorPreference() {
-  return useAtom(faviconColorPreferenceAtom);
+function setActiveFaviconColor(color: FaviconColorPreference): void {
+  getDefaultStore().set(faviconColorAtom, color);
+  cacheFaviconColor(color);
+}
+
+let legacyFaviconColorMigrated = false;
+
+/**
+ * Reconciles the favicon tint with the server-stored appearance and re-applies
+ * it whenever /system/config changes (another window updated it). Also performs
+ * a one-time migration off the old localStorage-only preference: if this client
+ * still has a non-default cached color and the server has none, adopt it
+ * server-side so the choice survives the move to server storage.
+ */
+export function useFaviconColorSync(): void {
+  const { data } = useSystemConfig();
+  const appearance = data?.appearance;
+  const { mutate: updateAppearance } = useUpdateAppearance();
+
+  useEffect(() => {
+    if (!appearance) return;
+    const legacy = readCachedFaviconColor();
+    const needsMigration =
+      legacy !== defaultFaviconColor &&
+      appearance.faviconColor === defaultFaviconColor;
+    if (needsMigration) {
+      // Keep showing the legacy tint locally until the server adopts it (so it
+      // doesn't flash to default mid-flight), and fire the migration once.
+      setActiveFaviconColor(legacy);
+      if (!legacyFaviconColorMigrated) {
+        legacyFaviconColorMigrated = true;
+        updateAppearance({ themeId: appearance.themeId, faviconColor: legacy });
+      }
+      return;
+    }
+    setActiveFaviconColor(appearance.faviconColor);
+  }, [appearance, updateAppearance]);
 }
 
 export function useFaviconBadge(badge: FaviconBadge): void {
@@ -228,10 +267,10 @@ export function initializeFavicon(): void {
     // index.html bootstrap script already applied.
     void applyFaviconState({
       badge: store.get(faviconBadgeAtom),
-      colorPreference: store.get(faviconColorPreferenceAtom),
+      colorPreference: store.get(faviconColorAtom),
     }).catch(() => {});
   };
-  store.sub(faviconColorPreferenceAtom, apply);
+  store.sub(faviconColorAtom, apply);
   store.sub(faviconBadgeAtom, apply);
   if (typeof window.matchMedia === "function") {
     window

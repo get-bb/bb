@@ -6,6 +6,7 @@ import {
   defaultAppTheme,
   isBuiltInThemeId,
   type AppTheme,
+  type FaviconColorPreference,
 } from "@bb/domain";
 
 const THEME_DIR_NAME = "theme";
@@ -72,11 +73,16 @@ export function readCustomThemeCss(
  * Resolve a stored palette id into the active appearance: built-ins carry no
  * CSS (the frontend bundles it); a custom theme's CSS is read from disk. A
  * selection whose theme folder is gone (deleted out from under the app) falls
- * back to the default palette so the app never renders against missing CSS.
+ * back to the default palette so the app never renders against missing CSS. The
+ * favicon tint is an independent appearance facet, passed through unchanged.
  */
-export function resolveAppTheme(themeRoot: string, themeId: string): AppTheme {
-  if (isBuiltInThemeId(themeId)) return { themeId, customCss: null };
+export function resolveAppTheme(
+  themeRoot: string,
+  themeId: string,
+  faviconColor: FaviconColorPreference,
+): AppTheme {
+  if (isBuiltInThemeId(themeId)) return { themeId, customCss: null, faviconColor };
   const customCss = readCustomThemeCss(themeRoot, themeId);
-  if (customCss === null) return defaultAppTheme;
-  return { themeId, customCss };
+  if (customCss === null) return { ...defaultAppTheme, faviconColor };
+  return { themeId, customCss, faviconColor };
 }

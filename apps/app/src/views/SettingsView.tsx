@@ -5,6 +5,7 @@ import {
   defaultExperiments,
   isValidElectronAccelerator,
   type AppTheme,
+  type FaviconColorPreference,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -43,8 +44,6 @@ import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   FAVICON_COLOR_VALUES,
   getFaviconGlyphHref,
-  useFaviconColorPreference,
-  type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
@@ -114,6 +113,7 @@ export interface RichTextEditingSettingsControlProps {
 }
 
 export interface FaviconColorSettingsControlProps {
+  disabled: boolean;
   faviconColor: FaviconColorPreference;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
@@ -209,6 +209,7 @@ function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
 }
 
 export function FaviconColorSettingsControl({
+  disabled,
   faviconColor,
   onFaviconColorChange,
 }: FaviconColorSettingsControlProps) {
@@ -224,6 +225,7 @@ export function FaviconColorSettingsControl({
             size="sm"
             className="w-full justify-between border-border/60 bg-card sm:w-48"
             aria-label="Favicon color"
+            disabled={disabled}
           >
             <span className="flex min-w-0 items-center gap-2">
               <FaviconColorPreview value={faviconColor} />
@@ -593,6 +595,7 @@ export function GeneralSettingsSection({
         </SettingsWithControl>
 
         <FaviconColorSettingsControl
+          disabled={appearanceDisabled}
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
         />
@@ -873,7 +876,6 @@ export function ExperimentsSettingsSection({
 export function SettingsView() {
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
-  const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
@@ -908,16 +910,21 @@ export function SettingsView() {
           }
           customThemes={systemConfigQuery.data?.customThemes ?? []}
           desktopBrowserAvailable={desktopBrowserAvailable}
-          faviconColor={faviconColor}
+          faviconColor={appearance.faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
           themePreference={themePreference}
           onAppearanceThemeChange={(themeId) =>
-            updateAppearanceMutation.mutate(themeId)
+            updateAppearanceMutation.mutate({ themeId })
           }
-          onFaviconColorChange={setFaviconColor}
+          onFaviconColorChange={(faviconColor) =>
+            updateAppearanceMutation.mutate({
+              themeId: appearance.themeId,
+              faviconColor,
+            })
+          }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}

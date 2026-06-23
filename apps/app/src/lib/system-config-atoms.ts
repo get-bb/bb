@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -13,7 +14,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
   },
-  appearance: { themeId: "default", customCss: null },
+  appearance: defaultAppTheme,
   customThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,

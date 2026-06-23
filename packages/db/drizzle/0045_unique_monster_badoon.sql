@@ -1,0 +1,1 @@
+ALTER TABLE `app_theme` ADD `favicon_color` text DEFAULT 'default' NOT NULL;

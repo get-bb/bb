@@ -1,8 +1,9 @@
 import {
   getExperiments,
+  getStoredFaviconColor,
   getStoredThemeId,
   setExperiments,
-  setStoredThemeId,
+  setStoredAppearance,
 } from "@bb/db";
 import { customThemeNameSchema, isBuiltInThemeId } from "@bb/domain";
 import {
@@ -41,7 +42,11 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   function buildSystemConfigResponse() {
     return {
       experiments: getExperiments(deps.db),
-      appearance: resolveAppTheme(themeRoot, getStoredThemeId(deps.db)),
+      appearance: resolveAppTheme(
+        themeRoot,
+        getStoredThemeId(deps.db),
+        getStoredFaviconColor(deps.db),
+      ),
       customThemes: listCustomThemeNames(themeRoot),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
@@ -77,18 +82,24 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
         );
       }
     }
-    setStoredThemeId(deps.db, themeId);
+    // Favicon tint is omitted for theme-only changes; keep the current value.
+    const faviconColor = payload.faviconColor ?? getStoredFaviconColor(deps.db);
+    setStoredAppearance(deps.db, { themeId, faviconColor });
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(resolveAppTheme(themeRoot, themeId));
+    return context.json(resolveAppTheme(themeRoot, themeId, faviconColor));
   });
 
   get(routes.themes, (context) =>
     context.json({
       dir: themeRoot,
       custom: listCustomThemeNames(themeRoot),
-      active: resolveAppTheme(themeRoot, getStoredThemeId(deps.db)),
+      active: resolveAppTheme(
+        themeRoot,
+        getStoredThemeId(deps.db),
+        getStoredFaviconColor(deps.db),
+      ),
     }),
   );
 

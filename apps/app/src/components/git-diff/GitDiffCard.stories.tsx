@@ -75,7 +75,11 @@ function usePaletteCss(themeId: BuiltInThemeId) {
       el.id = STORY_THEME_STYLE_ID;
       document.head.appendChild(el);
     }
-    el.textContent = resolveAppThemeCss({ themeId, customCss: null });
+    el.textContent = resolveAppThemeCss({
+      themeId,
+      customCss: null,
+      faviconColor: "default",
+    });
   }, [themeId]);
   useEffect(
     () => () => document.getElementById(STORY_THEME_STYLE_ID)?.remove(),

@@ -90,21 +90,55 @@ export const CUSTOM_THEME_CSS_MAX_LENGTH = 256_000;
  * custom theme name) plus the resolved custom CSS (null for built-ins, the
  * `theme.css` contents for a custom theme).
  */
+/**
+ * Selectable favicon tints. The hex values and canvas tinting live in the
+ * frontend; the contract only needs the set of allowed ids so the server can
+ * validate writes. "default" leaves the monochrome glyph untinted.
+ */
+export const FAVICON_COLORS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "blue",
+  "purple",
+  "pink",
+] as const;
+export type FaviconColor = (typeof FAVICON_COLORS)[number];
+
+export const faviconColorPreferenceSchema = z.enum([
+  "default",
+  ...FAVICON_COLORS,
+]);
+export type FaviconColorPreference = z.infer<typeof faviconColorPreferenceSchema>;
+
+export const defaultFaviconColor: FaviconColorPreference = "default";
+
 export const appThemeSchema = z.object({
   themeId: z.string().min(1),
   /** Resolved CSS for a custom palette; null for built-ins. */
   customCss: z.string().max(CUSTOM_THEME_CSS_MAX_LENGTH).nullable(),
+  /** Browser tab icon tint; "default" leaves the glyph untinted. */
+  faviconColor: faviconColorPreferenceSchema,
 });
 export type AppTheme = z.infer<typeof appThemeSchema>;
 
 /**
- * The palette selection a client sends when switching themes: just the id. The
- * server validates it (built-in id or an existing custom theme) and resolves the
- * CSS from disk for custom themes.
+ * The appearance selection a client sends when changing the palette and/or the
+ * favicon tint. The server validates `themeId` (built-in id or an existing
+ * custom theme) and resolves the CSS from disk for custom themes. `faviconColor`
+ * is omitted to leave the current tint unchanged, so a theme-only change (and
+ * the CLI/SDK `theme set`, which only knows the id) never resets the tint.
  */
 export const appThemeSelectionSchema = z.object({
   themeId: z.string().min(1),
+  faviconColor: faviconColorPreferenceSchema.optional(),
 });
 export type AppThemeSelection = z.infer<typeof appThemeSelectionSchema>;
 
-export const defaultAppTheme: AppTheme = { themeId: "default", customCss: null };
+export const defaultAppTheme: AppTheme = {
+  themeId: "default",
+  customCss: null,
+  faviconColor: defaultFaviconColor,
+};

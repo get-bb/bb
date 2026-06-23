@@ -42,37 +42,42 @@ describe("custom themes service", () => {
   });
 
   it("resolves a built-in id without reading disk", () => {
-    expect(resolveAppTheme(themeRoot, "nord")).toEqual({
+    expect(resolveAppTheme(themeRoot, "nord", "blue")).toEqual({
       themeId: "nord",
       customCss: null,
+      faviconColor: "blue",
     });
   });
 
   it("resolves a custom theme's CSS from disk", async () => {
     await writeTheme(themeRoot, "ocean", ":root { --primary: #06f; }");
-    expect(resolveAppTheme(themeRoot, "ocean")).toEqual({
+    expect(resolveAppTheme(themeRoot, "ocean", "teal")).toEqual({
       themeId: "ocean",
       customCss: ":root { --primary: #06f; }",
+      faviconColor: "teal",
     });
   });
 
-  it("falls back to default for a missing or unsafe selection", () => {
-    expect(resolveAppTheme(themeRoot, "missing")).toEqual({
+  it("falls back to default palette but keeps the favicon tint for a missing or unsafe selection", () => {
+    expect(resolveAppTheme(themeRoot, "missing", "pink")).toEqual({
       themeId: "default",
       customCss: null,
+      faviconColor: "pink",
     });
-    expect(resolveAppTheme(themeRoot, "../escape")).toEqual({
+    expect(resolveAppTheme(themeRoot, "../escape", "pink")).toEqual({
       themeId: "default",
       customCss: null,
+      faviconColor: "pink",
     });
   });
 
   it("rejects oversized stylesheets so the broadcast payload stays bounded", async () => {
     await writeTheme(themeRoot, "huge", "a".repeat(CUSTOM_THEME_CSS_MAX_LENGTH + 1));
     expect(readCustomThemeCss(themeRoot, "huge")).toBeNull();
-    expect(resolveAppTheme(themeRoot, "huge")).toEqual({
+    expect(resolveAppTheme(themeRoot, "huge", "default")).toEqual({
       themeId: "default",
       customCss: null,
+      faviconColor: "default",
     });
   });
 });

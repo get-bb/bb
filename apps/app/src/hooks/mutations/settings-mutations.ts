@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Experiments } from "@bb/domain";
+import type { AppThemeSelection, Experiments } from "@bb/domain";
 import * as api from "@/lib/api";
 import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
 
@@ -24,7 +24,8 @@ export function useUpdateExperiments() {
 }
 
 /**
- * Set the app-wide color palette by id (built-in id or custom theme name). Like
+ * Set the app-wide appearance: the palette id (built-in id or custom theme name)
+ * and optionally the favicon tint (omit to leave it unchanged). Like
  * experiments, the server broadcasts `config-changed` for other windows; the
  * local invalidation refreshes this one.
  */
@@ -35,7 +36,8 @@ export function useUpdateAppearance() {
     meta: {
       errorMessage: "Failed to update appearance.",
     },
-    mutationFn: (themeId: string) => api.updateAppearance(themeId),
+    mutationFn: (selection: AppThemeSelection) =>
+      api.updateAppearance(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },
