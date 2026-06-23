@@ -170,6 +170,19 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
+  it("clips horizontal overflow at the timeline scroll boundary", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a"],
+    });
+    const scrollContent = requireHTMLElement(scrollArea.firstElementChild);
+    const contentColumn = requireHTMLElement(scrollContent.firstElementChild);
+
+    expect(scrollArea.classList.contains("overflow-x-hidden")).toBe(true);
+    expect(scrollContent.classList.contains("min-w-0")).toBe(true);
+    expect(contentColumn.classList.contains("min-w-0")).toBe(true);
+  });
+
   it("captures the top-most visible row when scrolled mid-timeline", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",

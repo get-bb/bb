@@ -729,20 +729,20 @@ export function BottomAnchoredScrollBody({
         <div
           ref={scrollAreaRef}
           className={cn(
-            "@container/page min-h-0 flex-1 overflow-y-auto",
+            "@container/page min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
             scrollAreaClassName,
           )}
         >
           <div
             ref={scrollContentRef}
             className={cn(
-              "flex min-h-full flex-col",
+              "flex min-h-full min-w-0 flex-col",
               isAtBottom && "scroll-bottom-anchor-content",
             )}
           >
             <div
               className={cn(
-                "mx-auto flex w-full flex-1 flex-col px-4 pb-4 pt-2",
+                "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
                 maxWidthClassName,
                 contentClassName,
               )}

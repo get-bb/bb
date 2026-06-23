@@ -485,8 +485,7 @@ function MarkdownAnchor({
       {...anchorProps}
       href={anchorHref}
       className={cn(
-        "break-words underline underline-offset-2",
-        localFileLink && "inline-flex items-baseline gap-1",
+        "break-words [overflow-wrap:anywhere] underline underline-offset-2",
       )}
       target="_blank"
       rel="noopener noreferrer"
@@ -497,7 +496,7 @@ function MarkdownAnchor({
         <Icon
           name="ExternalLink"
           aria-hidden
-          className="size-3 shrink-0 self-center text-subtle-foreground"
+          className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
         />
       ) : null}
     </RouteAnchor>

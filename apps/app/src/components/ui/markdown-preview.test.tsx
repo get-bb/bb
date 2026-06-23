@@ -67,6 +67,24 @@ describe("MarkdownPreview", () => {
     expect(onOpenLink).toHaveBeenCalledWith({ href });
   });
 
+  it("lets long local file link labels wrap without making the anchor flex", () => {
+    const href =
+      "file:///Users/brsbl/Moss/Notes/Agent%20Workspaces/Claude%20Workspace/Release%20Readiness%20Inventory%20%E2%80%94%20Next%20Release/Release%20Readiness%20Inventory%20%E2%80%94%20Next%20Release.md";
+
+    render(
+      <MarkdownPreview
+        content={`[${href}](${href})`}
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: href });
+
+    expect(link.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
+    expect(link.classList.contains("inline-flex")).toBe(false);
+    expect(link.querySelector('[data-icon="ExternalLink"]')).not.toBeNull();
+  });
+
   it("rewrites localhost link hrefs without changing the visible text", () => {
     const displayedText = "http://127.0.0.1:5173";
 
