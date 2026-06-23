@@ -1,30 +1,37 @@
 import { type ReactNode } from "react";
 import {
   ContextMenu,
-  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuLabel,
   ContextMenuSeparator,
-  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "./context-menu.js";
+import { Icon } from "@/components/ui/icon.js";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
   title: "ui/Context menu",
 };
 
-// Radix context menus open at the pointer on right-click — there is no
-// declarative "open" prop — so this story is interactive: right-click the
-// target to open the menu. It shares the dropdown menu's chrome (rounded-md
-// border + shadow-md popover). `modal={false}` keeps Ladle interactive.
-function Target({ children }: { children: ReactNode }) {
+// Context menus open at the pointer on right-click (Radix has no declarative
+// "open"), so this story is interactive: right-click the row to open it. It
+// renders the real project-row actions — the same items as the project's ···
+// dropdown — so the right-click surface + shadow-md chrome match the app. Thread
+// rows expose the equivalent menu via ThreadActionsMenu.
+function ProjectRowTarget({ children }: { children: ReactNode }) {
   return (
     <ContextMenu modal={false}>
       <ContextMenuTrigger asChild>
-        <div className="flex min-h-[160px] w-full max-w-[420px] items-center justify-center rounded-lg border border-dashed border-border bg-surface-recessed text-sm text-muted-foreground">
-          Right-click anywhere in this area
+        <div className="flex h-7 w-full max-w-[260px] items-center gap-1.5 rounded-md border border-border bg-surface-recessed px-2 text-sm">
+          <Icon
+            name="FolderOpen"
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate">bb</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            right-click ⌥
+          </span>
         </div>
       </ContextMenuTrigger>
       {children}
@@ -36,24 +43,21 @@ export function Overview() {
   return (
     <StoryCard>
       <StoryRow
-        label="right-click target"
-        hint="rounded-md border + shadow-md popover; label / item / shortcut / checkbox / destructive"
+        label="project row (right-click)"
+        hint="the real project actions — same items as the project's ··· dropdown"
       >
-        <Target>
-          <ContextMenuContent className="w-52">
-            <ContextMenuLabel>Thread</ContextMenuLabel>
-            <ContextMenuItem>
-              Open
-              <ContextMenuShortcut>⏎</ContextMenuShortcut>
-            </ContextMenuItem>
-            <ContextMenuItem>Rename</ContextMenuItem>
-            <ContextMenuCheckboxItem checked>Pinned</ContextMenuCheckboxItem>
+        <ProjectRowTarget>
+          <ContextMenuContent className="w-48">
+            <ContextMenuItem>Project settings</ContextMenuItem>
+            <ContextMenuItem>Archived threads</ContextMenuItem>
             <ContextMenuSeparator />
+            <ContextMenuItem>Rename</ContextMenuItem>
+            <ContextMenuItem>Add local path</ContextMenuItem>
             <ContextMenuItem className="text-destructive focus:text-destructive">
-              Delete
+              Remove
             </ContextMenuItem>
           </ContextMenuContent>
-        </Target>
+        </ProjectRowTarget>
       </StoryRow>
     </StoryCard>
   );
