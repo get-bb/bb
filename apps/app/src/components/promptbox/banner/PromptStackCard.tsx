@@ -1,8 +1,7 @@
 import { type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const BASE_CHROME =
-  "rounded-lg border border-border bg-surface-recessed shadow-sm";
+const BASE_CHROME = "rounded-lg border border-border bg-surface-recessed";
 
 export interface PromptStackCardProps {
   children: ReactNode;

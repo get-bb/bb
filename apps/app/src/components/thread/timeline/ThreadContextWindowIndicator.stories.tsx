@@ -53,22 +53,48 @@ export function Overview() {
 // The usage menu opened (normally hover-triggered): a labeled header, a tone-
 // colored usage bar, and the token / remaining line. Bottom-aligned with room
 // above because the popover anchors to the top of the trigger.
-function MenuStage({ usage: u }: { usage: ThreadContextWindowUsage }) {
+function MenuStage({
+  usage: u,
+  label,
+  hint,
+}: {
+  usage: ThreadContextWindowUsage;
+  label: string;
+  hint: string;
+}) {
   return (
-    <div className="flex min-h-[220px] items-end justify-center p-10">
-      <ThreadContextWindowIndicator usage={u} defaultOpen />
-    </div>
+    <StoryCard>
+      <StoryRow label={label} hint={hint}>
+        <div className="flex min-h-[220px] items-end justify-center p-10">
+          <ThreadContextWindowIndicator usage={u} defaultOpen />
+        </div>
+      </StoryRow>
+    </StoryCard>
   );
 }
 
 export function UsageMenu() {
-  return <MenuStage usage={approachingLimit} />;
+  return (
+    <MenuStage
+      usage={approachingLimit}
+      label="Approaching limit (83%)"
+      hint="warning tone — labeled header, usage bar, token / remaining line"
+    />
+  );
 }
 
 export function UsageMenuCritical() {
-  return <MenuStage usage={critical} />;
+  return (
+    <MenuStage usage={critical} label="Critical (96%)" hint="destructive tone" />
+  );
 }
 
 export function UsageMenuEstimated() {
-  return <MenuStage usage={estimated} />;
+  return (
+    <MenuStage
+      usage={estimated}
+      label="Estimated (75%)"
+      hint='menu header reads "Estimated context"'
+    />
+  );
 }
