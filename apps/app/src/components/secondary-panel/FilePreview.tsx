@@ -136,6 +136,18 @@ interface FilePreviewCodeProps {
   lineRange: FilePreviewLineRange | null;
 }
 
+interface FilePreviewWorkerPoolStats {
+  managerState: "waiting" | "initializing" | "initialized";
+  workersFailed: boolean;
+  totalWorkers: number;
+  busyWorkers: number;
+  queuedTasks: number;
+  activeTasks: number;
+  themeSubscribers: number;
+  fileCacheSize: number;
+  diffCacheSize: number;
+}
+
 interface GetInitialFilePreviewViewModeArgs {
   lineRange: FilePreviewLineRange | null;
   toggleKind: FilePreviewToggleKind | null;
@@ -709,6 +721,8 @@ function FilePreviewCode({
   const containerRef = useRef<HTMLDivElement>(null);
   const workerPool = useWorkerPool();
   const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
+  const [workerPoolStats, setWorkerPoolStats] =
+    useState<FilePreviewWorkerPoolStats | null>(null);
   const [, rerenderAfterWorkerPoolChange] = useState(0);
   const options = useMemo<FileOptions<undefined>>(
     () => ({
@@ -733,11 +747,13 @@ function FilePreviewCode({
 
   useEffect(() => {
     if (!workerPool) {
+      setWorkerPoolStats(null);
       return;
     }
 
     lastWorkerPoolStatsKeyRef.current = null;
     return workerPool.subscribeToStatChanges((stats) => {
+      setWorkerPoolStats(stats);
       const statsKey = [
         stats.managerState,
         stats.workersFailed,
@@ -753,6 +769,18 @@ function FilePreviewCode({
       rerenderAfterWorkerPoolChange((version) => version + 1);
     });
   }, [file.contents, file.name, workerPool]);
+
+  const shouldWaitForWorkerPool =
+    workerPool !== undefined &&
+    workerPoolStats?.managerState !== "initialized" &&
+    workerPoolStats?.workersFailed !== true;
+  // Pierre can mount an empty zero-height <pre> while its worker highlighter is
+  // still initializing, and the imperative instance does not always recover
+  // when the highlighted AST is cached later. Wait for readiness, then remount
+  // once the cache entry for this exact file appears so syntax highlighting
+  // replaces the plain-text fallback.
+  const workerHighlightCacheState =
+    workerPool?.getFileResultCache(file) !== undefined ? "highlighted" : "plain";
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
@@ -802,6 +830,10 @@ function FilePreviewCode({
     };
   }, [file.contents, file.name, targetLineNumber]);
 
+  if (shouldWaitForWorkerPool) {
+    return <FilePreviewLoading />;
+  }
+
   return (
     <div
       ref={containerRef}
@@ -809,7 +841,13 @@ function FilePreviewCode({
       style={FILE_PREVIEW_VIEW_STYLE}
       data-file-preview-line-number={targetLineNumber ?? undefined}
     >
-      <PierreFile file={file} options={options} selectedLines={selectedLines} />
+      <PierreFile
+        key={`${file.cacheKey ?? file.name}:${workerHighlightCacheState}`}
+        disableWorkerPool={workerPoolStats?.workersFailed === true}
+        file={file}
+        options={options}
+        selectedLines={selectedLines}
+      />
     </div>
   );
 }
