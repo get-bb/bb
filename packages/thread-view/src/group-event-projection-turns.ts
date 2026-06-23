@@ -156,6 +156,42 @@ function addProjectionTurnMessage(
   });
 }
 
+function isExternalUserBoundaryForTurn(
+  turnId: string,
+  turn: EventProjectionTurn,
+  message: EventProjectionMessage,
+): boolean {
+  if (message.kind !== "user" || message.initiator !== "user") {
+    return false;
+  }
+  if (
+    message.sourceSeqStart <= turn.sourceSeqStart ||
+    message.sourceSeqStart >= turn.sourceSeqEnd
+  ) {
+    return false;
+  }
+  return message.scope.kind !== "turn" || message.scope.turnId !== turnId;
+}
+
+function applyExternalUserBoundaries(
+  turnsById: Map<string, ProjectionTurnDraft>,
+  messages: EventProjectionMessage[],
+): void {
+  for (const [turnId, draft] of turnsById) {
+    const boundarySeqs = new Set<number>();
+    for (const message of messages) {
+      if (isExternalUserBoundaryForTurn(turnId, draft.turn, message)) {
+        boundarySeqs.add(message.sourceSeqStart);
+      }
+    }
+    if (boundarySeqs.size > 0) {
+      draft.turn.externalUserBoundarySeqs = [...boundarySeqs].sort(
+        (left, right) => left - right,
+      );
+    }
+  }
+}
+
 function createEventProjectionEntry(
   draft: ProjectionEntryDraft,
   turnsById: Map<string, ProjectionTurnDraft>,
@@ -289,6 +325,8 @@ export function groupEventProjectionTurns(
 
     addProjectionTurnMessage(turnDraft, message);
   }
+
+  applyExternalUserBoundaries(turnsById, args.messages);
 
   const orderedEntryDrafts = [...entryDrafts].sort((left, right) => {
     if (left.sourceSeqStart !== right.sourceSeqStart) {

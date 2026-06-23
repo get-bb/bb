@@ -76,6 +76,7 @@ export interface EventProjectionTurn {
   completedAt: number | null;
   status: EventProjectionTurnStatus;
   summaryCount: number;
+  externalUserBoundarySeqs?: number[];
   terminalMessage?: EventProjectionMessage;
   messages?: EventProjectionMessage[];
 }

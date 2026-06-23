@@ -123,7 +123,11 @@ function groupCompletedTurnSummaryMessages(
   turn: EventProjectionTurn,
   summaryMessages: EventProjectionMessage[],
 ): CompletedTurnSummaryItem[] {
-  if (!summaryMessages.some(isTimelineUngroupableMessage)) {
+  const externalBoundarySeqs = turn.externalUserBoundarySeqs ?? [];
+  if (
+    externalBoundarySeqs.length === 0 &&
+    !summaryMessages.some(isTimelineUngroupableMessage)
+  ) {
     return [
       {
         kind: "summary",
@@ -139,6 +143,7 @@ function groupCompletedTurnSummaryMessages(
   const items: CompletedTurnSummaryItem[] = [];
   let groupedMessages: EventProjectionMessage[] = [];
   let segmentIndex = 0;
+  let externalBoundaryIndex = 0;
 
   function flushGroupedMessages(): void {
     if (groupedMessages.length === 0) {
@@ -159,7 +164,19 @@ function groupCompletedTurnSummaryMessages(
     groupedMessages = [];
   }
 
+  function flushExternalBoundariesBefore(message: EventProjectionMessage): void {
+    while (
+      externalBoundaryIndex < externalBoundarySeqs.length &&
+      (externalBoundarySeqs[externalBoundaryIndex] ?? 0) <
+        message.sourceSeqStart
+    ) {
+      flushGroupedMessages();
+      externalBoundaryIndex += 1;
+    }
+  }
+
   for (const message of summaryMessages) {
+    flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
       flushGroupedMessages();
       items.push({

@@ -256,6 +256,110 @@ describe("completed turn summary rendering", () => {
     ).toEqual([["work:command"], ["work:command"]]);
   });
 
+  it("splits completed turn summaries at external human new-turn boundaries", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const initialRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "start the long turn",
+    });
+    const events: TimelineFixtureEvent[] = [
+      initialRequest,
+      event.turnStarted({ turnId: "long-turn" }),
+      event.inputAccepted({
+        clientRequestId: initialRequest.data.requestId,
+        turnId: "long-turn",
+      }),
+      event.commandCompleted({
+        command: "pnpm test",
+        itemId: "before-user",
+        turnId: "long-turn",
+      }),
+    ];
+    const followUpRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "new turn while the first turn is still emitting",
+    });
+    events.push(
+      followUpRequest,
+      event.commandCompleted({
+        command: "pnpm typecheck",
+        itemId: "after-user",
+        turnId: "long-turn",
+      }),
+      event.assistantCompleted({
+        itemId: "assistant-1",
+        text: "Long turn finished.",
+        turnId: "long-turn",
+      }),
+      event.turnCompleted({ turnId: "long-turn" }),
+    );
+
+    const timeline = renderCompletedTimeline({ events });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-4",
+      "conversation:user",
+      "turn:6-6",
+      "conversation:assistant",
+    ]);
+    expect(
+      turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
+    ).toEqual([["work:command"], ["work:command"]]);
+  });
+
+  it("keeps provisioning rows before the initial completed turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "thread-start" },
+      text: "start with provisioning",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.threadProvisioning({
+          status: "active",
+          entries: [
+            {
+              type: "step",
+              key: "workspace",
+              text: "Using workspace",
+              status: "started",
+            },
+          ],
+        }),
+        event.threadProvisioning({
+          status: "completed",
+          entries: [],
+        }),
+        event.turnStarted({ turnId: "turn-1" }),
+        event.inputAccepted({
+          clientRequestId: request.data.requestId,
+          turnId: "turn-1",
+        }),
+        event.commandCompleted({
+          command: "pnpm test",
+          itemId: "tool-1",
+          turnId: "turn-1",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "Done.",
+          turnId: "turn-1",
+        }),
+        event.turnCompleted({ turnId: "turn-1" }),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "system:operation",
+      "turn:1-8",
+      "conversation:assistant",
+    ]);
+  });
+
   it("does not split completed turn summaries around accepted assistant steers", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [

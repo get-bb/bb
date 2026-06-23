@@ -108,6 +108,7 @@ function applyTurnMessageDetail(
   const includeMessages =
     turn.status === "pending" ||
     turnMessageDetail === "full" ||
+    (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
     shouldIncludeSummaryTurnMessages(messages, terminalMessage);
 
   const detailedTurn: EventProjectionTurn = {
@@ -120,6 +121,9 @@ function applyTurnMessageDetail(
     completedAt: turn.completedAt,
     status: turn.status,
     summaryCount,
+    ...(turn.externalUserBoundarySeqs
+      ? { externalUserBoundarySeqs: turn.externalUserBoundarySeqs }
+      : {}),
   };
   if (terminalMessage) {
     detailedTurn.terminalMessage = terminalMessage;
