@@ -303,6 +303,46 @@ describe("PromptBoxInternal controlled value sync", () => {
   });
 });
 
+describe("PromptBoxInternal zen mode layout", () => {
+  it("keeps long editor content constrained to the scroll area", async () => {
+    const storageKey = "bb.test.promptbox.zen-layout";
+    window.localStorage.removeItem(storageKey);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`)
+            .join("\n"),
+          zenMode: { storageKey },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
+
+    await waitFor(() => {
+      const scrollContainer = document.querySelector(
+        "[data-promptbox-editor-scroll]",
+      );
+      if (!(scrollContainer instanceof HTMLElement)) {
+        throw new Error("Prompt editor scroll container was not rendered");
+      }
+
+      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
+      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
+        true,
+      );
+    });
+
+    const footerRow =
+      screen.getByRole("button", { name: "Attach files" }).parentElement
+        ?.parentElement;
+    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
+
+    window.localStorage.removeItem(storageKey);
+  });
+});
+
 describe("PromptBoxInternal prompt actions", () => {
   it("places prompt actions before the right-side action cluster", () => {
     renderPromptBox("");

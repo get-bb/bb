@@ -2289,7 +2289,9 @@ export function PromptBoxInternal({
         // mode also gets more top room since the card fills the viewport.
         <div className="pl-4 pr-14 pt-3">{header}</div>
       ) : null}
-      <div className={cn("relative", isZenMode && "flex flex-1 flex-col")}>
+      <div
+        className={cn("relative", isZenMode && "min-h-0 flex flex-1 flex-col")}
+      >
         <Button
           type="button"
           size="icon"
@@ -2410,7 +2412,7 @@ export function PromptBoxInternal({
         </div>
       ) : null}
 
-      <div className="flex flex-row items-center gap-3 px-3.5 pt-1.5">
+      <div className="flex shrink-0 flex-row items-center gap-3 px-3.5 pt-1.5">
         <div
           className="flex min-w-0 flex-1 flex-row items-center gap-1"
           aria-live="polite"
