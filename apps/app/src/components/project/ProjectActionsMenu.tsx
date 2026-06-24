@@ -194,12 +194,14 @@ export function ProjectActionsMenu({
             event.stopPropagation();
           }}
         >
-          <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+          <Icon
+            name="MoreHorizontal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
-        className="w-44"
         onClick={stopProjectActionsMenuClickPropagation}
       >
         <ProjectActionsMenuItems project={project} surface="dropdown" />
@@ -218,7 +220,6 @@ export function ProjectActionsContextMenu({
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent
         aria-label={`${project.name} actions`}
-        className="w-44"
         onClick={stopProjectActionsMenuClickPropagation}
       >
         <ProjectActionsMenuItems project={project} surface="context" />

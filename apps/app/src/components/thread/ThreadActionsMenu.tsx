@@ -221,7 +221,7 @@ export function ThreadActionsMenu({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="w-44">
+      <DropdownMenuContent align={align}>
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
@@ -241,10 +241,7 @@ export function ThreadActionsContextMenu({
   return (
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label="Thread actions"
-        className="w-44"
-      >
+      <ContextMenuContent aria-label="Thread actions">
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
