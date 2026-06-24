@@ -140,6 +140,7 @@ function ThreadFolderDialogContent({
       return;
     }
 
+    setHiddenErrorMessage(null);
     onSubmit(normalizedName);
   };
   const displayedServerMessage =
