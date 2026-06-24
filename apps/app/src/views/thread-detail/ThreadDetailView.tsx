@@ -513,9 +513,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     isFetching: threadComposerBootstrapQuery.isFetching,
     isSuccess: threadComposerBootstrapQuery.isSuccess,
   });
-  const composerQueryThreadId = hasThreadComposerBootstrapReady
-    ? (thread?.id ?? "")
-    : "";
   const composerHydratedDataStaleTime = hasThreadComposerBootstrapData
     ? 10_000
     : undefined;
@@ -526,9 +523,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
   const { data: pendingInteractions = [] } = useThreadPendingInteractions(
-    composerQueryThreadId,
+    thread?.id ?? "",
     {
-      enabled: hasThreadComposerBootstrapReady,
+      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
       staleTime: composerHydratedDataStaleTime,
     },
   );

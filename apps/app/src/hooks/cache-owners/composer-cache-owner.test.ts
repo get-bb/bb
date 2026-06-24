@@ -1,4 +1,5 @@
 import { QueryObserver } from "@tanstack/react-query";
+import type { PendingInteraction } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
   ThreadComposerBootstrapResponse,
@@ -59,6 +60,33 @@ const NULL_EXECUTION_BOOTSTRAP: ThreadComposerBootstrapResponse = {
   promptHistory: [],
 };
 
+function makePendingInteraction(id: string): PendingInteraction {
+  return {
+    id,
+    threadId: "thread-1",
+    turnId: "turn-1",
+    providerId: "codex",
+    providerThreadId: "provider-thread-1",
+    providerRequestId: "provider-request-1",
+    status: "pending",
+    payload: {
+      kind: "user_question",
+      questions: [
+        {
+          id: "question-1",
+          prompt: "Choose a direction",
+          multiSelect: false,
+          allowFreeText: true,
+        },
+      ],
+    },
+    resolution: null,
+    statusReason: null,
+    createdAt: 1,
+    resolvedAt: null,
+  };
+}
+
 describe("composer cache owner", () => {
   it("does not clobber an active queued-message cache from bootstrap hydration", () => {
     const queryClient = createAppQueryClient({
@@ -105,6 +133,46 @@ describe("composer cache owner", () => {
     }
 
     expect(queryClient.getQueryData(queuedMessagesKey)).toEqual([]);
+  });
+
+  it("does not clobber an active pending-interactions cache from bootstrap hydration", () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          gcTime: Infinity,
+          retry: false,
+        },
+      },
+      showMutationErrorToasts: false,
+    });
+    const pendingInteractionsKey = threadPendingInteractionsQueryKey("thread-1");
+    const activePendingInteractions = [makePendingInteraction("pi-active")];
+    queryClient.setQueryData(pendingInteractionsKey, activePendingInteractions);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: pendingInteractionsKey,
+      queryFn: () => Promise.resolve(activePendingInteractions),
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    try {
+      hydrateThreadComposerBootstrap({
+        bootstrap: {
+          ...NULL_EXECUTION_BOOTSTRAP,
+          pendingInteractions: [makePendingInteraction("pi-stale")],
+        },
+        environmentId: null,
+        providerId: "codex",
+        queryClient,
+        threadId: "thread-1",
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(queryClient.getQueryData(pendingInteractionsKey)).toEqual(
+      activePendingInteractions,
+    );
   });
 
   it("does not clobber new-thread system execution options for an environmentless archived bootstrap", () => {

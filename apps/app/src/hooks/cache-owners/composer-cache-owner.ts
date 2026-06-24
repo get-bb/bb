@@ -29,6 +29,15 @@ export function hydrateThreadComposerBootstrap({
     .find({ queryKey: queuedMessagesQueryKey });
   const hasActiveQueuedMessagesOwner =
     queuedMessagesQuery?.isActive() ?? false;
+  const pendingInteractionsQueryKey =
+    threadPendingInteractionsQueryKey(threadId);
+  const pendingInteractionsQuery = queryClient
+    .getQueryCache()
+    .find({ queryKey: pendingInteractionsQueryKey });
+  const hasActivePendingInteractionsOwner =
+    pendingInteractionsQuery?.isActive() ?? false;
+  const isPendingInteractionsOwnerFetching =
+    pendingInteractionsQuery?.state.fetchStatus === "fetching";
 
   queryClient.setQueryData(
     threadDefaultExecutionOptionsQueryKey(threadId),
@@ -50,8 +59,17 @@ export function hydrateThreadComposerBootstrap({
     bootstrap.promptHistory,
   );
   queryClient.setQueryData(
-    threadPendingInteractionsQueryKey(threadId),
-    bootstrap.pendingInteractions,
+    pendingInteractionsQueryKey,
+    (
+      currentPendingInteractions:
+        | ThreadComposerBootstrapResponse["pendingInteractions"]
+        | undefined,
+    ) =>
+      currentPendingInteractions === undefined ||
+      !hasActivePendingInteractionsOwner ||
+      isPendingInteractionsOwnerFetching
+        ? bootstrap.pendingInteractions
+        : currentPendingInteractions,
   );
   // Only seed the SHARED system-execution-options cache when the server
   // actually resolved options. Null means "not resolved" (archived /

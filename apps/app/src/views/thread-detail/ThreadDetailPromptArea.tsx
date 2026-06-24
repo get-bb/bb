@@ -212,9 +212,8 @@ export function ThreadDetailPromptArea({
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
-  const composerQueryThreadId = composerQueriesEnabled ? thread.id : "";
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
-    composerQueryThreadId,
+    thread.id,
     {
       enabled: composerQueriesEnabled,
       staleTime: composerQueriesStaleTime,
@@ -233,9 +232,9 @@ export function ThreadDetailPromptArea({
   const isDefaultExecutionOptionsLoading =
     defaultExecutionOptionsState === "loading";
   const { data: queuedMessages = [] } = useThreadQueuedMessages(
-    composerQueryThreadId,
+    thread.id,
     {
-      enabled: composerQueriesEnabled,
+      enabled: true,
       staleTime: composerQueriesStaleTime,
     },
   );
@@ -276,7 +275,7 @@ export function ThreadDetailPromptArea({
     [processingQueuedMessage, queuedMessages],
   );
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
-    composerQueryThreadId,
+    thread.id,
     {
       enabled: composerQueriesEnabled,
       staleTime: composerQueriesStaleTime,
