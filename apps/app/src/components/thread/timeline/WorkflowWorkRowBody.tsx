@@ -225,33 +225,35 @@ function WorkflowAgentLine({
       <div
         className={promptStackActivityRowClass(
           activityState,
-          "grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_minmax(9rem,15rem)] items-center gap-2 text-xs",
+          "w-full min-w-0 text-xs",
         )}
       >
-        <WorkflowAgentStateIcon
-          state={displayState}
-          className={promptStackActivityIconClass(activityState)}
-        />
-        <span
-          className={activityTextClass(
-            activityState,
-            "min-w-0 flex-1 truncate text-xs",
-          )}
-          title={agent.label}
-        >
-          {agent.label}
-        </span>
-        <span
-          className={activityMetaClass(
-            activityState,
-            "min-w-0 truncate whitespace-nowrap text-left text-[11px]",
-          )}
-          title={stats}
-        >
-          {stats}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <WorkflowAgentStateIcon
+            state={displayState}
+            className={promptStackActivityIconClass(activityState)}
+          />
+          <span
+            className={activityTextClass(
+              activityState,
+              "min-w-0 flex-1 truncate text-xs",
+            )}
+            title={agent.label}
+          >
+            {agent.label}
+          </span>
+          <span
+            className={activityMetaClass(
+              activityState,
+              "ml-auto w-[clamp(9rem,35%,15rem)] shrink-0 truncate whitespace-nowrap text-left text-[11px]",
+            )}
+            title={stats}
+          >
+            {stats}
+          </span>
+        </div>
         {displayState === "failed" && agent.error ? (
-          <span className="col-span-2 col-start-2 min-w-0 truncate text-xs text-destructive/80">
+          <span className="ml-6 mt-0.5 block min-w-0 truncate text-xs text-destructive/80">
             — {agent.error}
           </span>
         ) : null}
