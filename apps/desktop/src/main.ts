@@ -1004,7 +1004,7 @@ async function loadBbApp(serverUrl: string): Promise<void> {
 }
 
 function shouldOpenDevTools(): boolean {
-  return !app.isPackaged || process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
+  return process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
 }
 
 async function createApplicationWindow(
