@@ -201,9 +201,9 @@ const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
 const CREATE_CUSTOM_PALETTE_PROMPT =
-  "Create a custom bb palette for this workspace. Ask me for the palette name and visual direction, then create `.bb/theme/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
+  "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
-  "Palettes change bb's colors across the app. Choose a built-in palette, load a local .bb theme, or create one from chat.";
+  "Palettes change bb's colors across light and dark mode. Add one by creating theme.css under the directory shown by bb theme dir; Create starts a prompt to generate one.";
 
 // Renders the favicon glyph itself in the candidate color by using the
 // favicon image as a CSS mask, so the preview matches the resulting tab icon.
@@ -560,77 +560,72 @@ export function GeneralSettingsSection({
           </DropdownMenu>
         </SettingsWithControl>
 
-        <div className="border-l border-border pl-3">
-          <SettingsWithControl
-            label="Palette"
-            description={PALETTE_SETTING_DESCRIPTION}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
-                  aria-label="Palette"
-                  disabled={appearanceDisabled}
-                >
-                  <span className="min-w-0 truncate">
-                    {appPaletteLabel(appearance)}
-                  </span>
-                  <Icon
-                    name="ChevronDown"
-                    className="size-3.5 text-muted-foreground"
-                  />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+        <SettingsWithControl
+          label="Palette"
+          description={PALETTE_SETTING_DESCRIPTION}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+                aria-label="Palette"
+                disabled={appearanceDisabled}
               >
-                {builtInThemes.map((entry) => (
-                  <DropdownMenuItem
-                    key={entry.id}
-                    onSelect={() => onAppearanceThemeChange(entry.id)}
-                  >
-                    {entry.name}
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto",
-                        appearance.themeId !== entry.id && "opacity-0",
-                        COARSE_POINTER_ICON_SIZE_CLASS,
-                      )}
-                    />
-                  </DropdownMenuItem>
-                ))}
-                {customThemes.map((name) => (
-                  <DropdownMenuItem
-                    key={`custom:${name}`}
-                    onSelect={() => onAppearanceThemeChange(name)}
-                  >
-                    {name}
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto",
-                        appearance.themeId !== name && "opacity-0",
-                        COARSE_POINTER_ICON_SIZE_CLASS,
-                      )}
-                    />
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onCreatePalette}>
+                <span className="min-w-0 truncate">
+                  {appPaletteLabel(appearance)}
+                </span>
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+            >
+              {builtInThemes.map((entry) => (
+                <DropdownMenuItem
+                  key={entry.id}
+                  onSelect={() => onAppearanceThemeChange(entry.id)}
+                >
+                  {entry.name}
                   <Icon
-                    name="Plus"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== entry.id && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
                   />
-                  Create
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SettingsWithControl>
-        </div>
+              ))}
+              {customThemes.map((name) => (
+                <DropdownMenuItem
+                  key={`custom:${name}`}
+                  onSelect={() => onAppearanceThemeChange(name)}
+                >
+                  {name}
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== name && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onCreatePalette}>
+                <Icon name="Plus" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+                Create
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SettingsWithControl>
 
         <FaviconColorSettingsControl
           disabled={appearanceDisabled}
