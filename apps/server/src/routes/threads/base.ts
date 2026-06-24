@@ -206,6 +206,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.projectId) {
       requirePublicProject(deps.db, query.projectId);
     }
+    if (query.folderId && query.unfiled === "true") {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "folderId and unfiled cannot be used together",
+      );
+    }
     if (query.folderId) {
       requireThreadFolder(deps, query.folderId);
     }

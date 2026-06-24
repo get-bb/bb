@@ -154,25 +154,57 @@ function isArchivedThreadsListFilters(
     return false;
   }
 
-  if (!("projectId" in candidate) || typeof candidate.projectId !== "string") {
-    return false;
+  let hasScope = false;
+  if ("projectId" in candidate && candidate.projectId !== undefined) {
+    if (typeof candidate.projectId !== "string") {
+      return false;
+    }
+    hasScope = true;
+  }
+  if ("folderId" in candidate && candidate.folderId !== undefined) {
+    if (typeof candidate.folderId !== "string") {
+      return false;
+    }
+    hasScope = true;
+  }
+  if ("unfiled" in candidate && candidate.unfiled !== undefined) {
+    if (typeof candidate.unfiled !== "boolean") {
+      return false;
+    }
+    hasScope = hasScope || candidate.unfiled;
   }
 
-  return true;
+  return hasScope;
+}
+
+function getArchivedThreadListFiltersFromQueryKey(
+  queryKey: QueryKey,
+): ArchivedThreadsListFilters | undefined {
+  if (
+    queryKey[0] !== THREADS_QUERY_KEY ||
+    queryKey[1] !== ARCHIVED_THREADS_LIST_KIND
+  ) {
+    return undefined;
+  }
+
+  const filters = queryKey[2];
+  if (!isArchivedThreadsListFilters(filters)) {
+    return undefined;
+  }
+
+  return filters;
 }
 
 function getThreadListProjectIdFromQueryKey(
   queryKey: QueryKey,
 ): string | undefined {
-  if (queryKey[0] !== THREADS_QUERY_KEY) {
-    return undefined;
+  const archivedFilters = getArchivedThreadListFiltersFromQueryKey(queryKey);
+  if (archivedFilters) {
+    return archivedFilters.projectId;
   }
 
-  if (queryKey[1] === ARCHIVED_THREADS_LIST_KIND) {
-    const filters = queryKey[2];
-    return isArchivedThreadsListFilters(filters)
-      ? filters.projectId
-      : undefined;
+  if (queryKey[0] !== THREADS_QUERY_KEY) {
+    return undefined;
   }
 
   return getThreadListFiltersFromQueryKey(queryKey)?.projectId;
@@ -200,6 +232,15 @@ export function getCachedGlobalThreadListInvalidationQueryKeys({
   for (const [queryKey] of queryClient.getQueriesData({
     queryKey: threadsQueryKey(),
   })) {
+    const archivedFilters = getArchivedThreadListFiltersFromQueryKey(queryKey);
+    if (
+      archivedFilters !== undefined &&
+      archivedFilters.projectId === undefined
+    ) {
+      queryKeys.push(queryKey);
+      continue;
+    }
+
     const filters = getThreadListFiltersFromQueryKey(queryKey);
     if (filters !== undefined && filters.projectId === undefined) {
       queryKeys.push(queryKey);

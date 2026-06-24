@@ -79,6 +79,20 @@ const clientTurnRequestedDataSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 describe("public thread data routes", () => {
+  it("rejects contradictory folder and unfiled thread list filters", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request(
+        "/api/v1/threads?folderId=fld_work&unfiled=true",
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "folderId and unfiled cannot be used together",
+      });
+    });
+  });
+
   it("embeds thread environment and host snapshots when requested", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

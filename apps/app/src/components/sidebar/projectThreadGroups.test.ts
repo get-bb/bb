@@ -9,6 +9,7 @@ import {
   pruneManualOrderForChildren,
   type ProjectThreadItem,
   type ProjectThreadNode,
+  type ThreadComparator,
 } from "./projectThreadGroups";
 
 type ThreadListEntryOverrides = Partial<ThreadListEntry>;
@@ -17,6 +18,28 @@ type TreeSummary =
   | { id: string; children: TreeSummary[] }
   | { env: string; threads: TreeSummary[] }
   | { folder: string; name: string; items: TreeSummary[] };
+
+function getItemAlphaLabel(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "folder":
+      return item.group.name;
+    case "thread":
+      return item.node.thread.title ?? item.node.thread.titleFallback ?? "";
+    case "environment":
+      return (
+        item.group.nodes[0]?.thread.title ??
+        item.group.nodes[0]?.thread.titleFallback ??
+        ""
+      );
+  }
+}
+
+const compareAlphaDescending = ((left, right) =>
+  (right.title ?? right.titleFallback ?? "").localeCompare(
+    left.title ?? left.titleFallback ?? "",
+  )) as ThreadComparator;
+compareAlphaDescending.compareItems = (left, right) =>
+  getItemAlphaLabel(right).localeCompare(getItemAlphaLabel(left));
 
 function createThread(
   overrides: ThreadListEntryOverrides = {},
@@ -764,6 +787,23 @@ describe("folder bucketing", () => {
       },
       { folder: "proj_1::fld_empty", name: "Empty", items: [] },
       { folder: "proj_1::fld_work", name: "Work", items: ["new-idle"] },
+    ]);
+  });
+
+  it("applies alpha descending order to folder rows", () => {
+    const items = buildProjectThreadGroups([], compareAlphaDescending, {
+      ...FOLDER_OPTIONS,
+      folders: [
+        { id: "fld_archive", name: "Archive" },
+        { id: "fld_empty", name: "Empty" },
+        { id: "fld_work", name: "Work" },
+      ],
+    });
+
+    expect(summarizeItems(items)).toEqual([
+      { folder: "proj_1::fld_work", name: "Work", items: [] },
+      { folder: "proj_1::fld_empty", name: "Empty", items: [] },
+      { folder: "proj_1::fld_archive", name: "Archive", items: [] },
     ]);
   });
 

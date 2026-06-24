@@ -718,7 +718,7 @@ export function bucketIntoFolders(
     folderItems.push(item);
   }
 
-  const folderItems = orderedFolders.map((folder): ProjectThreadItem => {
+  const folderItemsByName = orderedFolders.map((folder): ProjectThreadItem => {
     const folderKey = buildFolderKey(containerId, folder.id);
     const children = orderSiblingItems(
       itemsByFolderId.get(folder.id) ?? [],
@@ -731,6 +731,11 @@ export function bucketIntoFolders(
       group: buildFolderGroup(containerId, folder, children),
     };
   });
+  const folderItems = compareThreads.compareItems
+    ? orderSiblingItems(folderItemsByName, containerId, compareThreads, {
+        manualOrder,
+      })
+    : folderItemsByName;
   const orderedLooseItems = orderSiblingItems(
     looseItems,
     containerId,
