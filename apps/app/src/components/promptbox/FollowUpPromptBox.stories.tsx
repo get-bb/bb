@@ -50,6 +50,7 @@ import type {
   ExecutionControlsProps,
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
+import { PageShell } from "@/components/ui/page-shell.js";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -579,15 +580,20 @@ type FollowUpComposerRuntimeStatus = NonNullable<
   Parameters<typeof FollowUpPromptBox>[0]["composer"]
 >["threadRuntimeDisplayStatus"];
 
-// Match production: ThreadTimelinePane renders this component as PageShell's
-// footer. That footer caps the strip at 760px, adds horizontal shell padding,
-// and leaves bottom breathing room below the prompt controls.
-function PromptStage({ children }: { children: React.ReactNode }) {
+// Match production: ThreadTimelinePane renders FollowUpPromptBox through
+// PageShell's actual footer path. The story hides the timeline scroll area so
+// the row stays compact, but the prompt/below-prompt shell itself is real.
+function PromptStage({ children }: { children: ReactNode }) {
   return (
-    <div className="w-full bg-background">
-      <div className="chat-prompt-box mx-auto w-full max-w-[760px] px-4 pb-4">
-        {children}
-      </div>
+    <div className="w-full min-w-0 bg-background">
+      <PageShell
+        shellClassName="!mx-0 !mt-0 !h-auto !min-h-0 !flex-none md:!mx-0 md:!mt-0"
+        scrollAreaClassName="hidden"
+        footerClassName="chat-prompt-box"
+        footer={children}
+      >
+        <span aria-hidden="true" />
+      </PageShell>
     </div>
   );
 }
