@@ -1085,6 +1085,9 @@ export function TopLevelSidebarSection({
             <button
               type="button"
               aria-expanded={!collapseControl.isCollapsed}
+              data-sidebar-hover-actions-mobile={
+                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+              }
               aria-label={
                 collapseControl.isCollapsed
                   ? `Expand ${label} section`
@@ -1206,7 +1209,9 @@ export function ProjectListActionButtons({
             size="icon"
             variant="ghost"
             aria-label={
-              threadSearch.query.trim() ? "Clear search" : "Close search"
+              threadSearch.query.trim()
+                ? "Clear and close search"
+                : "Close search"
             }
             className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
             onClick={handleSearchClose}

@@ -56,7 +56,7 @@ export interface ThreadTimelineSurfaceProps {
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
-  onLoadOlderRows?: () => void;
+  onLoadOlderRows?: () => Promise<void> | void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -227,6 +227,9 @@ export function ThreadTimelineSurface({
           projectId={projectId}
           resolveMentionLink={resolveMentionLink}
           resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+          hasOlderTimelineRows={hasOlderTimelineRows}
+          isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
+          onLoadOlderRows={onLoadOlderRows}
           themeType={preferredTheme}
           timelineRows={timelineRowsWithPendingStop}
           threadId={threadId}
@@ -263,12 +266,12 @@ function LoadOlderMessagesButton({
   onLoadOlderRows,
 }: {
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => void;
+  onLoadOlderRows: () => Promise<void> | void;
 }) {
   const bottomAnchor = useBottomAnchoredScroll();
   const handleClick = useCallback(() => {
     bottomAnchor?.captureScrollAnchor();
-    onLoadOlderRows();
+    void onLoadOlderRows();
   }, [bottomAnchor, onLoadOlderRows]);
 
   return (

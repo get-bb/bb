@@ -17,6 +17,17 @@ interface SearchMessageTarget {
   threadId: string | null;
 }
 
+interface SearchMessagePaginationOptions {
+  hasOlderRows?: boolean;
+  isLoadingOlderRows?: boolean;
+  onLoadOlderRows?: () => Promise<void> | void;
+}
+
+interface SeqRange {
+  min: number;
+  max: number;
+}
+
 const FLASH_CLASS_NAME = "bb-search-flash";
 const FLASH_DURATION_MS = 1700;
 
@@ -56,6 +67,52 @@ function findDeepestSeqAnchoredRow(
     return findDeepestSeqAnchoredRow(nestedRows, seq) ?? row;
   }
   return null;
+}
+
+function mergeSeqRange(left: SeqRange | null, right: SeqRange): SeqRange {
+  if (left === null) {
+    return right;
+  }
+  return {
+    min: Math.min(left.min, right.min),
+    max: Math.max(left.max, right.max),
+  };
+}
+
+function getRowsSeqRange(rows: readonly SeqAnchoredRow[]): SeqRange | null {
+  let range: SeqRange | null = null;
+  for (const row of rows) {
+    range = mergeSeqRange(range, {
+      min: row.sourceSeqStart,
+      max: row.sourceSeqEnd,
+    });
+    const nestedRows = getNestedRows(row);
+    if (nestedRows !== null) {
+      const nestedRange = getRowsSeqRange(nestedRows);
+      if (nestedRange !== null) {
+        range = mergeSeqRange(range, nestedRange);
+      }
+    }
+  }
+  return range;
+}
+
+function getRowsSeqWindowKey(rows: readonly SeqAnchoredRow[]): string {
+  return rows
+    .map((row) => {
+      const nestedRows = getNestedRows(row);
+      return [
+        row.id,
+        row.sourceSeqStart,
+        row.sourceSeqEnd,
+        nestedRows === null ? "collapsed" : getRowsSeqWindowKey(nestedRows),
+      ].join(":");
+    })
+    .join("|");
+}
+
+function rowsContainSeq(rows: readonly SeqAnchoredRow[], seq: number): boolean {
+  return rows.some((row) => containsSeq(row, seq));
 }
 
 function collectSearchedMessageAncestorRowIdsInRows({
@@ -134,10 +191,16 @@ export function readSearchMessageTarget(
 export function useScrollToSearchedMessage(
   rows: readonly SeqAnchoredRow[],
   threadId: string | undefined,
+  {
+    hasOlderRows = false,
+    isLoadingOlderRows = false,
+    onLoadOlderRows,
+  }: SearchMessagePaginationOptions = {},
 ): void {
   const location = useLocation();
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
+  const olderLoadAttemptKeyRef = useRef<string | null>(null);
   const target = readSearchMessageTarget(location.state);
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
@@ -155,6 +218,32 @@ export function useScrollToSearchedMessage(
     if (targetLeafRow === null) {
       // Target row not rendered yet (still loading, or inside a collapsed
       // group). Leave the key unhandled so a later rows change can retry.
+      const loadedRange = getRowsSeqRange(rows);
+      const targetIsOlderThanLoadedRows =
+        loadedRange !== null && targetSeq < loadedRange.max;
+      const olderLoadAttemptKey =
+        loadedRange === null
+          ? null
+          : [
+              location.key,
+              targetThreadId ?? "",
+              targetSeq,
+              loadedRange.min,
+              loadedRange.max,
+              getRowsSeqWindowKey(rows),
+            ].join("::");
+      if (
+        targetIsOlderThanLoadedRows &&
+        !rowsContainSeq(rows, targetSeq) &&
+        hasOlderRows &&
+        !isLoadingOlderRows &&
+        onLoadOlderRows !== undefined &&
+        olderLoadAttemptKey !== null &&
+        olderLoadAttemptKeyRef.current !== olderLoadAttemptKey
+      ) {
+        olderLoadAttemptKeyRef.current = olderLoadAttemptKey;
+        void Promise.resolve(onLoadOlderRows()).catch(() => undefined);
+      }
       return;
     }
     const selector = `[data-timeline-row-id="${escapeTimelineRowId(targetLeafRow.id)}"]`;
@@ -196,5 +285,15 @@ export function useScrollToSearchedMessage(
       cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [bottomAnchor, location.key, rows, targetSeq, targetThreadId, threadId]);
+  }, [
+    bottomAnchor,
+    hasOlderRows,
+    isLoadingOlderRows,
+    location.key,
+    onLoadOlderRows,
+    rows,
+    targetSeq,
+    targetThreadId,
+    threadId,
+  ]);
 }

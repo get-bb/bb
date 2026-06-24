@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import type {
@@ -267,6 +273,52 @@ describe("SidebarThreadSearchPanel", () => {
     expect(rowText).toContain("Infra / CI");
     expect(rowText).not.toContain("Search project");
   });
+
+  it("shows overflow counts for capped archived search results", () => {
+    const archivedThread = createThreadListEntry({
+      id: "thr_archived",
+      title: "Archived cleanup",
+    });
+    mockThreadSearch({
+      data: {
+        active: {
+          results: [],
+          total: 0,
+        },
+        archived: {
+          results: [
+            {
+              matches: [],
+              thread: archivedThread,
+            },
+          ],
+          total: 3,
+        },
+      },
+      debouncedQuery: "cleanup",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="cleanup"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(screen.getByText("Archived")).not.toBeNull();
+    expect(screen.getByText("1/3")).not.toBeNull();
+  });
 });
 
 describe("sidebar thread search navigation items", () => {
@@ -313,6 +365,32 @@ describe("ProjectListActionButtons", () => {
     expect(
       screen.getByRole("combobox").getAttribute("aria-activedescendant"),
     ).toBe("active-option");
+  });
+
+  it("labels the search close button as a close-and-clear action when a query exists", () => {
+    const inputRef = createRef<HTMLInputElement>();
+    const onClose = vi.fn();
+
+    render(
+      <ProjectListActionButtons
+        onNewChat={vi.fn()}
+        threadSearch={{
+          activeDescendantId: undefined,
+          inputRef,
+          isActive: true,
+          onActivate: vi.fn(),
+          onClose,
+          onQueryChange: vi.fn(),
+          query: "needle",
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear and close search" }),
+    );
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

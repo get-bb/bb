@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ComponentProps, ReactElement } from "react";
+import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
@@ -59,6 +60,99 @@ function SameThreadSearchNavigationHarness() {
             threadId: "thr_main",
           }),
         ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />
+    </>
+  );
+}
+
+function SearchOlderRowsHarness({
+  onLoadOlderRows,
+}: {
+  onLoadOlderRows: () => void;
+}) {
+  const [loadedOlderRows, setLoadedOlderRows] = useState(false);
+  const rows = loadedOlderRows
+    ? [
+        conversationRow({
+          id: "older_match",
+          role: "assistant",
+          text: "Older answer containing the search result.",
+          sourceSeqStart: 12,
+          sourceSeqEnd: 12,
+          threadId: "thr_main",
+        }),
+        conversationRow({
+          id: "latest_message",
+          role: "assistant",
+          text: "Latest answer.",
+          sourceSeqStart: 30,
+          sourceSeqEnd: 30,
+          threadId: "thr_main",
+        }),
+      ]
+    : [
+        conversationRow({
+          id: "latest_message",
+          role: "assistant",
+          text: "Latest answer.",
+          sourceSeqStart: 30,
+          sourceSeqEnd: 30,
+          threadId: "thr_main",
+        }),
+      ];
+
+  return (
+    <ThreadTimelineRows
+      threadId="thr_main"
+      timelineRows={rows}
+      hasOlderTimelineRows={!loadedOlderRows}
+      isLoadingOlderTimelineRows={false}
+      onLoadOlderRows={() => {
+        onLoadOlderRows();
+        setLoadedOlderRows(true);
+      }}
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+    />
+  );
+}
+
+function SearchOlderRowsFailedLoadHarness({
+  onLoadOlderRows,
+}: {
+  onLoadOlderRows: () => void;
+}) {
+  const [isLoadingOlderRows, setIsLoadingOlderRows] = useState(false);
+
+  return (
+    <>
+      <span data-testid="older-load-state">
+        {isLoadingOlderRows ? "loading" : "idle"}
+      </span>
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "latest_message",
+            role: "assistant",
+            text: "Latest answer.",
+            sourceSeqStart: 30,
+            sourceSeqEnd: 30,
+            threadId: "thr_main",
+          }),
+        ]}
+        hasOlderTimelineRows
+        isLoadingOlderTimelineRows={isLoadingOlderRows}
+        onLoadOlderRows={() => {
+          onLoadOlderRows();
+          setIsLoadingOlderRows(true);
+          return Promise.resolve().then(() => {
+            setIsLoadingOlderRows(false);
+            throw new Error("Older page failed");
+          });
+        }}
         threadRuntimeDisplayStatus="idle"
         workspaceRootPath={undefined}
       />
@@ -341,6 +435,66 @@ describe("ThreadTimelineRows actions", () => {
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+  });
+
+  it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
+    const onLoadOlderRows = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    const olderRow = await waitFor(() => {
+      const row = container.querySelector('[data-timeline-row-id="older_match"]');
+      if (row === null) {
+        throw new Error("Older search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(olderRow.classList.contains("bb-search-flash")).toBe(true),
+    );
+  });
+
+  it("does not retry failed older-row auto-loading until rows advance", async () => {
+    const onLoadOlderRows = vi.fn();
+
+    renderWithRouter(
+      <SearchOlderRowsFailedLoadHarness onLoadOlderRows={onLoadOlderRows} />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("older-load-state").textContent).toBe("idle"),
+    );
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
   });
 
   it("forces a manually collapsed same-thread search ancestor open", async () => {

@@ -152,6 +152,9 @@ export interface ThreadTimelineRowsProps {
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
+  hasOlderTimelineRows?: boolean;
+  isLoadingOlderTimelineRows?: boolean;
+  onLoadOlderRows?: () => Promise<void> | void;
   themeType?: ThreadTimelineTheme;
   timelineRows: TimelineRow[];
   threadId?: string;
@@ -241,6 +244,9 @@ interface TimelineTurnStateContextValue {
 
 interface TimelineRowsListProps {
   compactActivityIntents: boolean;
+  hasOlderTimelineRows?: boolean;
+  isLoadingOlderTimelineRows?: boolean;
+  onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
   showAssistantMessageActions: boolean;
@@ -1672,6 +1678,9 @@ function buildTimelineRowsListItems({
 
 function TimelineRowsList({
   compactActivityIntents,
+  hasOlderTimelineRows,
+  isLoadingOlderTimelineRows,
+  onLoadOlderRows,
   rows,
   scopeActive,
   showAssistantMessageActions,
@@ -1684,7 +1693,11 @@ function TimelineRowsList({
   const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
   const stableSearchExpandedRowIds =
     useStableReadonlySet(searchExpandedRowIds);
-  useScrollToSearchedMessage(rows, threadId);
+  useScrollToSearchedMessage(rows, threadId, {
+    hasOlderRows: hasOlderTimelineRows,
+    isLoadingOlderRows: isLoadingOlderTimelineRows,
+    onLoadOlderRows,
+  });
   const activeLatestBundleId = useMemo(
     () => findActiveLatestBundleId(rows),
     [rows],
@@ -1883,6 +1896,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       <TimelineTurnStateContext.Provider value={turnStateContextValue}>
         <AutoHeightContainer>
           <TimelineRowsList
+            hasOlderTimelineRows={props.hasOlderTimelineRows}
+            isLoadingOlderTimelineRows={props.isLoadingOlderTimelineRows}
+            onLoadOlderRows={props.onLoadOlderRows}
             rows={rows}
             scopeActive={scopeActive}
             showAssistantMessageActions={true}

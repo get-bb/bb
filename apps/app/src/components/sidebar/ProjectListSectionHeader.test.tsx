@@ -53,6 +53,9 @@ describe("TopLevelSidebarSection", () => {
     });
     expect(collapseButton.className).toContain("hover:bg-sidebar-accent");
     expect(
+      collapseButton.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+    expect(
       screen.getByRole("button", { name: "New thread" }).closest(
         ".bb-sidebar-hover-actions",
       ),

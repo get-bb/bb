@@ -145,7 +145,7 @@ function renderSectionRows({
         )}
       >
         <span className="min-w-0 truncate">{section.label}</span>
-        {section.id !== "archived" && section.total > section.rows.length ? (
+        {section.total > section.rows.length ? (
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {section.rows.length}/{section.total}
           </span>
