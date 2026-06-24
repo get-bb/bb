@@ -102,6 +102,8 @@ const BRANCH_PICKER_HEADER_BASE_CLASS_NAME =
   "text-xs font-medium text-muted-foreground";
 const BRANCH_PICKER_HEADER_STICKY_CLASS_NAME =
   "sticky top-0 z-20 -mx-1 bg-background px-3";
+const BRANCH_PICKER_CONTENT_CLASS_NAME =
+  "flex w-max min-w-0 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden p-0 md:max-h-[calc(100vh-6rem)]";
 const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
@@ -131,6 +133,7 @@ interface BranchPickerTextProps {
   emphasizePlainLabel?: boolean;
   className?: string;
   compactAffixesInPromptbox?: boolean;
+  wrap?: boolean;
 }
 
 interface BranchPickerSectionHeaderProps {
@@ -299,7 +302,11 @@ function BranchPickerText({
   emphasizePlainLabel = false,
   className,
   compactAffixesInPromptbox = false,
+  wrap = false,
 }: BranchPickerTextProps) {
+  const valueClassName = wrap
+    ? "min-w-0 whitespace-normal break-words"
+    : "min-w-0 truncate";
   const compactAffixProps = compactAffixesInPromptbox
     ? { "data-promptbox-hide-compact": "" }
     : {};
@@ -308,7 +315,7 @@ function BranchPickerText({
       <span className={cn("flex min-w-0 items-baseline gap-1", className)}>
         <span
           className={cn(
-            "min-w-0 truncate",
+            valueClassName,
             emphasizePlainLabel && "font-medium text-foreground",
           )}
         >
@@ -326,7 +333,7 @@ function BranchPickerText({
     return (
       <span
         className={cn(
-          "min-w-0 truncate",
+          valueClassName,
           emphasizePlainLabel && "font-medium text-foreground",
           className,
         )}
@@ -338,11 +345,17 @@ function BranchPickerText({
 
   if (parts.kind === "parenthetical") {
     return (
-      <span className={cn("flex min-w-0 items-baseline", className)}>
+      <span
+        className={cn(
+          "flex min-w-0 items-baseline",
+          wrap && "flex-wrap",
+          className,
+        )}
+      >
         <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
           {parts.prefix} (
         </span>
-        <span className="min-w-0 truncate font-medium text-foreground">
+        <span className={cn(valueClassName, "font-medium text-foreground")}>
           {parts.value}
         </span>
         <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
@@ -353,11 +366,17 @@ function BranchPickerText({
   }
 
   return (
-    <span className={cn("flex min-w-0 items-baseline gap-1", className)}>
+    <span
+      className={cn(
+        "flex min-w-0 items-baseline gap-1",
+        wrap && "flex-wrap",
+        className,
+      )}
+    >
       <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
         {parts.prefix}
       </span>
-      <span className="min-w-0 truncate font-medium text-foreground">
+      <span className={cn(valueClassName, "font-medium text-foreground")}>
         {parts.value}
       </span>
     </span>
@@ -428,8 +447,12 @@ function BranchPickerUnavailableRow({
         )}
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-foreground/80">{label}</span>
-        <span className="text-xs leading-snug">{description}</span>
+        <span className="whitespace-normal break-words text-foreground/80">
+          {label}
+        </span>
+        <span className="whitespace-normal break-words text-xs leading-snug">
+          {description}
+        </span>
       </span>
     </div>
   );
@@ -467,6 +490,7 @@ function BranchPickerRowButton({
         label={label}
         emphasizePlainLabel={emphasizeLabel}
         className="flex-1"
+        wrap
       />
       <Icon
         name="Check"
@@ -985,7 +1009,10 @@ export function BranchPicker({
         sideOffset={6}
         collisionPadding={16}
         mobileTitle={menuCopy.title ?? "Branch"}
-        className="flex flex-col overflow-hidden p-0 md:max-h-[calc(100vh-6rem)] md:w-[18rem] md:min-w-[min(var(--radix-popover-trigger-width),18rem)] md:max-w-[min(18rem,calc(100vw-2rem))]"
+        className={cn(
+          BRANCH_PICKER_CONTENT_CLASS_NAME,
+          showOptionsSearch && "min-w-40",
+        )}
       >
         {showOptionsSearch ? (
           <BranchPickerSearch

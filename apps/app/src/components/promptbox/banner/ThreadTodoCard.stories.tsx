@@ -103,21 +103,6 @@ function ToggleableTodoCard({
   );
 }
 
-function FauxComposer() {
-  return (
-    <div className="rounded-lg border border-border bg-popover p-3">
-      <div className="pb-3 text-sm text-subtle-foreground">
-        Reply to the agent...
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
-          opus
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function Overview() {
   return (
     <StoryCard>
@@ -126,10 +111,7 @@ export function Overview() {
         hint="collapsed header shows compact N/M progress; click to expand"
       >
         <ResponsiveStage>
-          <div className="flex flex-col gap-2">
-            <ToggleableTodoCard pendingTodos={mixedTodos} />
-            <FauxComposer />
-          </div>
+          <ToggleableTodoCard pendingTodos={mixedTodos} />
         </ResponsiveStage>
       </StoryRow>
       <StoryRow

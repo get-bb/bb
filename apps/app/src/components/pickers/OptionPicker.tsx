@@ -21,6 +21,7 @@ export const OPTION_INTERACTIVE_CLASS_NAME =
   "border-none bg-transparent shadow-none";
 export const OPTION_CONTENT_CLASS_NAME = "flex min-w-0 items-center gap-1.5";
 export const OPTION_TRIGGER_CONTENT_CLASS_NAME = "contents";
+export const OPTION_MENU_CONTENT_CLASS_NAME = "w-max min-w-0 max-w-96";
 export const OPTION_MUTED_CLASS_NAME =
   "text-muted-foreground hover:text-foreground";
 const OPTION_WARNING_TEXT_CLASS_NAME = "text-warning-text";
@@ -233,7 +234,7 @@ export function OptionPicker<T extends string>({
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
-        className={cn("min-w-52 max-w-96", contentClassName)}
+        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, contentClassName)}
         mobileTitle={label}
       >
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
@@ -243,23 +244,26 @@ export function OptionPicker<T extends string>({
             <DropdownMenuItem
               key={option.value}
               onSelect={() => onChange(option.value)}
-              className="flex items-start justify-between gap-3"
+              className="flex items-start justify-between gap-3 whitespace-normal"
             >
               <span
                 className={cn(
-                  "flex min-w-0 items-start gap-2",
+                  "flex min-w-0 flex-1 items-start gap-2",
                   option.tone === "warning" && "text-warning-text",
                 )}
               >
                 {OptionIcon ? (
                   <OptionIcon className="mt-0.5 size-4 shrink-0" />
                 ) : null}
-                <span className="min-w-0">
-                  <span className="block truncate" title={option.label}>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className="block whitespace-normal break-words"
+                    title={option.label}
+                  >
                     {option.label}
                   </span>
                   {option.description ? (
-                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                    <span className="mt-0.5 block whitespace-normal break-words text-xs leading-snug text-muted-foreground">
                       {option.description}
                     </span>
                   ) : null}
@@ -269,6 +273,7 @@ export function OptionPicker<T extends string>({
                 name="Check"
                 className={cn(
                   COARSE_POINTER_ICON_SIZE_CLASS,
+                  "shrink-0",
                   option.value === value ? "opacity-100" : "opacity-0",
                 )}
               />

@@ -9,12 +9,22 @@ import { Icon } from "../../ui/icon.js";
 import type { DetailScrollSize } from "../../ui/detail-scroll-size.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { cn } from "@/lib/utils";
+import {
+  activityIconClass,
+  activityMetaClass,
+  activityRowClass,
+  activityTextClass,
+  type ActivityRowState,
+} from "@/components/ui/activity-row-styles";
 
 /**
  * Display state per agent. "interrupted" is derived, not persisted: a settled
  * workflow can leave queued/running agents behind (stop, crash, daemon loss).
  */
 type WorkflowAgentDisplayState = WorkflowAgentSnapshot["state"] | "interrupted";
+
+const PROMPT_STACK_ACTIVE_ROW_CLASS = "shadow-none ring-0";
+const PROMPT_STACK_ACTIVE_ICON_CLASS = "text-foreground";
 
 function deriveAgentDisplayState(
   agent: WorkflowAgentSnapshot,
@@ -28,16 +38,22 @@ function deriveAgentDisplayState(
 
 function WorkflowAgentStateIcon({
   state,
+  className: overrideClassName,
 }: {
   state: WorkflowAgentDisplayState;
+  className?: string;
 }) {
-  const className = "size-3.5 shrink-0";
+  const baseClassName = "size-3.5 shrink-0";
   switch (state) {
     case "done":
       return (
         <Icon
           name="Check"
-          className={cn(className, "text-muted-foreground/60")}
+          className={cn(
+            baseClassName,
+            "text-muted-foreground/60",
+            overrideClassName,
+          )}
           aria-hidden="true"
         />
       );
@@ -45,7 +61,11 @@ function WorkflowAgentStateIcon({
       return (
         <Icon
           name="X"
-          className={cn(className, "text-destructive/80")}
+          className={cn(
+            baseClassName,
+            "text-destructive/80",
+            overrideClassName,
+          )}
           aria-hidden="true"
         />
       );
@@ -53,7 +73,11 @@ function WorkflowAgentStateIcon({
       return (
         <Icon
           name="X"
-          className={cn(className, "text-muted-foreground/45")}
+          className={cn(
+            baseClassName,
+            "text-muted-foreground/45",
+            overrideClassName,
+          )}
           aria-hidden="true"
         />
       );
@@ -61,7 +85,11 @@ function WorkflowAgentStateIcon({
       return (
         <Icon
           name="Square"
-          className={cn(className, "text-muted-foreground")}
+          className={cn(
+            baseClassName,
+            "text-muted-foreground",
+            overrideClassName,
+          )}
           aria-hidden="true"
         />
       );
@@ -70,7 +98,11 @@ function WorkflowAgentStateIcon({
       return (
         <Icon
           name="Square"
-          className={cn(className, "text-muted-foreground/45")}
+          className={cn(
+            baseClassName,
+            "text-muted-foreground/45",
+            overrideClassName,
+          )}
           aria-hidden="true"
         />
       );
@@ -138,14 +170,92 @@ function buildAgentStats(
   return parts.join(" · ");
 }
 
+function activityStateForAgent(
+  displayState: WorkflowAgentDisplayState,
+): ActivityRowState {
+  switch (displayState) {
+    case "running":
+      return "active";
+    case "done":
+    case "skipped":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "queued":
+      return "pending";
+    case "interrupted":
+      return "muted";
+  }
+}
+
+function promptStackActivityRowClass(
+  state: ActivityRowState,
+  className?: string,
+): string {
+  return activityRowClass(
+    state,
+    cn(state === "active" && PROMPT_STACK_ACTIVE_ROW_CLASS, className),
+  );
+}
+
+function promptStackActivityIconClass(
+  state: ActivityRowState,
+  className?: string,
+): string {
+  if (state === "active") {
+    return cn(PROMPT_STACK_ACTIVE_ICON_CLASS, className);
+  }
+  return activityIconClass(state, className);
+}
+
 function WorkflowAgentLine({
   agent,
+  promptStack = false,
   workflowSettled,
 }: {
   agent: WorkflowAgentSnapshot;
+  promptStack?: boolean;
   workflowSettled: boolean;
 }) {
   const displayState = deriveAgentDisplayState(agent, workflowSettled);
+  const activityState = activityStateForAgent(displayState);
+  if (promptStack) {
+    return (
+      <div
+        className={promptStackActivityRowClass(
+          activityState,
+          "flex min-w-0 items-center gap-2 text-xs",
+        )}
+      >
+        <WorkflowAgentStateIcon
+          state={displayState}
+          className={promptStackActivityIconClass(activityState)}
+        />
+        <span
+          className={activityTextClass(
+            activityState,
+            "min-w-0 flex-1 truncate text-xs",
+          )}
+          title={agent.label}
+        >
+          {agent.label}
+        </span>
+        <span
+          className={activityMetaClass(
+            activityState,
+            "ml-auto shrink-0 whitespace-nowrap text-[11px]",
+          )}
+        >
+          {buildAgentStats(agent, displayState)}
+        </span>
+        {displayState === "failed" && agent.error ? (
+          <span className="min-w-0 truncate text-xs text-destructive/80">
+            — {agent.error}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 items-center gap-2 px-2 py-0.5">
       <WorkflowAgentStateIcon state={displayState} />
@@ -251,6 +361,33 @@ function activePhaseKey(groups: readonly WorkflowPhaseGroup[]): string | null {
   return null;
 }
 
+function activityStateForPhase({
+  group,
+  isActive,
+  workflowSettled,
+}: {
+  group: WorkflowPhaseGroup;
+  isActive: boolean;
+  workflowSettled: boolean;
+}): ActivityRowState {
+  if (isActive && !workflowSettled) {
+    return "active";
+  }
+  if (group.agents.some((agent) => agent.state === "failed")) {
+    return "failed";
+  }
+  if (
+    group.agents.length > 0 &&
+    group.agents.every((agent) => isSettledWorkflowAgentState(agent.state))
+  ) {
+    return "completed";
+  }
+  if (group.agents.length === 0) {
+    return "muted";
+  }
+  return "pending";
+}
+
 function StaticPhaseGroup({
   group,
   workflowSettled,
@@ -293,6 +430,7 @@ function CollapsiblePhaseSection({
   expanded,
   isActive,
   onToggle,
+  promptStack,
   workflowSettled,
 }: {
   group: WorkflowPhaseGroup;
@@ -304,6 +442,7 @@ function CollapsiblePhaseSection({
    */
   isActive: boolean;
   onToggle: () => void;
+  promptStack: boolean;
   workflowSettled: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -328,6 +467,7 @@ function CollapsiblePhaseSection({
     <WorkflowAgentLine
       key={agent.index}
       agent={agent}
+      promptStack={promptStack}
       workflowSettled={workflowSettled}
     />
   ));
@@ -338,15 +478,44 @@ function CollapsiblePhaseSection({
   }
 
   const progress = phaseProgressLabel(group.agents);
+  const activityState = activityStateForPhase({
+    group,
+    isActive,
+    workflowSettled,
+  });
   // A declared-but-empty phase has nothing to reveal, so it isn't a toggle.
   if (group.agents.length === 0) {
     return (
-      <div ref={ref} className="flex items-center gap-1.5 px-2 py-0.5">
+      <div
+        ref={ref}
+        className={cn(
+          "flex items-center gap-1.5",
+          promptStack
+            ? promptStackActivityRowClass(activityState)
+            : "px-2 py-0.5",
+        )}
+      >
         <span className="size-3 shrink-0" aria-hidden="true" />
-        <span className="text-xs font-medium text-foreground">
+        <span
+          className={cn(
+            "text-xs font-medium",
+            promptStack
+              ? activityTextClass(activityState)
+              : "text-foreground",
+          )}
+        >
           {group.phase.title}
         </span>
-        <span className="text-xs text-subtle-foreground">{progress}</span>
+        <span
+          className={cn(
+            "text-xs",
+            promptStack
+              ? activityMetaClass(activityState)
+              : "text-subtle-foreground",
+          )}
+        >
+          {progress}
+        </span>
       </div>
     );
   }
@@ -357,22 +526,46 @@ function CollapsiblePhaseSection({
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
-        className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left transition-colors hover:bg-state-hover"
+        className={cn(
+          "flex w-full items-center gap-1.5 text-left transition-colors hover:bg-state-hover",
+          promptStack
+            ? promptStackActivityRowClass(activityState)
+            : "rounded px-2 py-0.5",
+        )}
       >
         <Icon
           name="ChevronDown"
           className={cn(
             "size-3 shrink-0 text-subtle-foreground transition-transform duration-200",
             !expanded && "-rotate-90",
+            promptStack && promptStackActivityIconClass(activityState),
           )}
           aria-hidden="true"
         />
-        <span className="text-xs font-medium text-foreground">
+        <span
+          className={cn(
+            "text-xs font-medium",
+            promptStack
+              ? activityTextClass(activityState)
+              : "text-foreground",
+          )}
+        >
           {group.phase.title}
         </span>
-        <span className="text-xs text-subtle-foreground">{progress}</span>
+        <span
+          className={cn(
+            "text-xs",
+            promptStack
+              ? activityMetaClass(activityState)
+              : "text-subtle-foreground",
+          )}
+        >
+          {progress}
+        </span>
       </button>
-      {expanded ? agentLines : null}
+      {expanded ? (
+        <div className={cn(promptStack && "mt-1 space-y-1")}>{agentLines}</div>
+      ) : null}
     </div>
   );
 }
@@ -386,9 +579,11 @@ function CollapsiblePhaseSection({
  */
 function CollapsiblePhaseGroups({
   groups,
+  promptStack,
   workflowSettled,
 }: {
   groups: readonly WorkflowPhaseGroup[];
+  promptStack: boolean;
   workflowSettled: boolean;
 }) {
   const activeKey = activePhaseKey(groups);
@@ -416,6 +611,7 @@ function CollapsiblePhaseGroups({
             expanded={isExpanded(key)}
             isActive={key === activeKey}
             onToggle={() => toggle(key)}
+            promptStack={promptStack}
             workflowSettled={workflowSettled}
           />
         );
@@ -468,11 +664,18 @@ export function WorkflowWorkRowBody({
       // phases.
       streaming={collapsiblePhases ? false : row.status === "pending"}
       contentKey={contentKey}
+      scrollClassName={collapsiblePhases ? "px-2.5 py-2" : undefined}
     >
-      <div className="flex flex-col gap-1 py-1">
+      <div
+        className={cn(
+          "flex flex-col",
+          collapsiblePhases ? "gap-1.5" : "gap-1 py-1",
+        )}
+      >
         {collapsiblePhases ? (
           <CollapsiblePhaseGroups
             groups={groups}
+            promptStack={collapsiblePhases}
             workflowSettled={workflowSettled}
           />
         ) : (

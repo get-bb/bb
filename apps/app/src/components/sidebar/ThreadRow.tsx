@@ -1,9 +1,6 @@
 import {
   memo,
   useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -47,9 +44,7 @@ import {
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
-  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
-  SIDEBAR_SUCCESS_STATUS_ICON_SIZE_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
@@ -169,7 +164,6 @@ interface ThreadStatusGlyphProps {
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
-  successAnimationKey?: number | null;
   unreadBadgeTone: SidebarUnreadDotTone;
 }
 
@@ -177,55 +171,11 @@ interface ThreadUnreadBadgeLabelArgs {
   tone: SidebarUnreadDotTone;
 }
 
-const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
-
-function ThreadSuccessStatusGlyph({
-  animate,
-  label,
-}: {
-  animate: boolean;
-  label: string;
-}) {
-  const [showCheck, setShowCheck] = useState(animate);
-
-  useEffect(() => {
-    if (!animate) {
-      setShowCheck(false);
-      return;
-    }
-
-    setShowCheck(true);
-    const timeoutId = window.setTimeout(
-      () => setShowCheck(false),
-      THREAD_SUCCESS_CHECK_DELAY_MS,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [animate]);
-
-  if (showCheck) {
-    return (
-      <Icon
-        name="CircleCheck"
-        className={cn(
-          SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
-          SIDEBAR_SUCCESS_STATUS_ICON_SIZE_CLASS,
-        )}
-        aria-label={label}
-      />
-    );
-  }
-
-  return (
-    <span className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS} aria-label={label} />
-  );
-}
-
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
-  successAnimationKey = null,
   unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
   if (showUnreadBadge && unreadBadgeTone === "error") {
@@ -265,11 +215,7 @@ export function ThreadStatusGlyph({
   if (showUnreadBadge) {
     const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
     return (
-      <ThreadSuccessStatusGlyph
-        key={successAnimationKey ?? "settled"}
-        animate={successAnimationKey !== null}
-        label={label}
-      />
+      <span className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS} aria-label={label} />
     );
   }
 
@@ -298,35 +244,11 @@ function getThreadUnreadBadgeLabel({
 
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
-function useUnreadSuccessAnimationKey(
-  showUnreadSuccess: boolean,
-): number | null {
-  const previousShowUnreadSuccessRef = useRef(showUnreadSuccess);
-  const [animationKey, setAnimationKey] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    const previousShowUnreadSuccess = previousShowUnreadSuccessRef.current;
-    previousShowUnreadSuccessRef.current = showUnreadSuccess;
-
-    if (showUnreadSuccess && !previousShowUnreadSuccess) {
-      setAnimationKey((current) => (current ?? 0) + 1);
-      return;
-    }
-
-    if (!showUnreadSuccess && animationKey !== null) {
-      setAnimationKey(null);
-    }
-  }, [animationKey, showUnreadSuccess]);
-
-  return showUnreadSuccess ? animationKey : null;
-}
-
 function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
-  successAnimationKey,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
@@ -348,7 +270,6 @@ function ThreadTrailingIndicator({
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
-        successAnimationKey={successAnimationKey}
         unreadBadgeTone={unreadBadgeTone}
       />
     </span>
@@ -413,9 +334,6 @@ function ThreadRowComponent({
     : showUnreadBadge;
   const trailingUnreadBadgeTone: SidebarUnreadDotTone =
     hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
-  const unreadSuccessAnimationKey = useUnreadSuccessAnimationKey(
-    trailingShowUnreadBadge && trailingUnreadBadgeTone === "default",
-  );
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
@@ -503,7 +421,6 @@ function ThreadRowComponent({
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}
-              successAnimationKey={unreadSuccessAnimationKey}
               unreadBadgeTone={trailingUnreadBadgeTone}
             />
           </span>

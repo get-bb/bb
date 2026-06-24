@@ -998,7 +998,7 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-function TopLevelSidebarSection({
+export function TopLevelSidebarSection({
   label,
   children,
   actions,
@@ -1031,11 +1031,6 @@ function TopLevelSidebarSection({
     },
     [collapseControl],
   );
-  const handleSectionLabelClick = useCallback<
-    MouseEventHandler<HTMLDivElement>
-  >(() => {
-    collapseControl?.onToggleCollapsed();
-  }, [collapseControl]);
   const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
     (event) => {
       event.stopPropagation();
@@ -1073,7 +1068,7 @@ function TopLevelSidebarSection({
           "rounded-md pr-1 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
-        onClick={collapseControl ? handleSectionLabelClick : undefined}
+        title={label}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
@@ -1098,7 +1093,7 @@ function TopLevelSidebarSection({
               title={undefined}
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}

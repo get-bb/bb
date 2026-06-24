@@ -4,6 +4,12 @@ import type {
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  activityIconClass,
+  activityRowClass,
+  activityTextClass,
+  type ActivityRowState,
+} from "@/components/ui/activity-row-styles";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +21,15 @@ const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
   completed: 2,
 };
 
+const STATUS_ACTIVITY_STATE: Record<
+  ThreadTimelinePendingTodoItemStatus,
+  ActivityRowState
+> = {
+  in_progress: "active",
+  pending: "pending",
+  completed: "completed",
+};
+
 export interface ThreadTodoCardProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   isExpanded: boolean;
@@ -23,6 +38,8 @@ export interface ThreadTodoCardProps {
 
 const BODY_ID = "thread-todo-card-body";
 const TOGGLE_ID = "thread-todo-card-toggle";
+const TODO_ACTIVE_ROW_CLASS = "shadow-none ring-0";
+const TODO_ACTIVE_ICON_CLASS = "text-foreground";
 
 function getTodoSummary(items: readonly ThreadTimelinePendingTodoItem[]): {
   visible: string;
@@ -46,12 +63,13 @@ function TodoStatusIcon({
   status: ThreadTimelinePendingTodoItemStatus;
 }) {
   const className = "size-3.5 shrink-0";
+  const activityState = STATUS_ACTIVITY_STATE[status];
   switch (status) {
     case "in_progress":
       return (
         <Icon
           name="Square"
-          className={cn(className, "fill-current text-muted-foreground/30")}
+          className={cn(className, TODO_ACTIVE_ICON_CLASS)}
           aria-hidden="true"
         />
       );
@@ -59,7 +77,7 @@ function TodoStatusIcon({
       return (
         <Icon
           name="Check"
-          className={cn(className, "text-muted-foreground/60")}
+          className={cn(className, activityIconClass(activityState))}
           aria-hidden="true"
         />
       );
@@ -67,7 +85,7 @@ function TodoStatusIcon({
       return (
         <Icon
           name="Square"
-          className={cn(className, "text-muted-foreground/45")}
+          className={cn(className, activityIconClass(activityState))}
           aria-hidden="true"
         />
       );
@@ -83,27 +101,34 @@ function TodoBody({
     (a, b) => STATUS_SORT_RANK[a.status] - STATUS_SORT_RANK[b.status],
   );
   return (
-    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
-      {ordered.map((item) => (
-        <li
-          key={item.id}
-          className="flex min-w-0 items-center gap-2 py-0.5 text-xs"
-        >
-          <TodoStatusIcon status={item.status} />
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate",
-              item.status === "in_progress" && "font-medium text-foreground",
-              item.status === "pending" && "text-muted-foreground",
-              item.status === "completed" &&
-                "text-subtle-foreground line-through decoration-subtle-foreground",
+    <ul className="max-h-40 space-y-1 overflow-y-auto px-2.5 pb-2 pt-2">
+      {ordered.map((item) => {
+        const activityState = STATUS_ACTIVITY_STATE[item.status];
+        const isActive = activityState === "active";
+        return (
+          <li
+            key={item.id}
+            className={activityRowClass(
+              activityState,
+              cn(
+                "flex min-w-0 items-center gap-2 text-xs",
+                isActive && TODO_ACTIVE_ROW_CLASS,
+              ),
             )}
-            title={item.text}
           >
-            {item.text}
-          </span>
-        </li>
-      ))}
+            <TodoStatusIcon status={item.status} />
+            <span
+              className={activityTextClass(
+                activityState,
+                "min-w-0 flex-1 truncate",
+              )}
+              title={item.text}
+            >
+              {item.text}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

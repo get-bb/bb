@@ -111,6 +111,10 @@ function getSnippetMatch(
   return matches.find((match) => !TITLE_SOURCE_KINDS.has(match.sourceKind));
 }
 
+function isNonEmptyMetadataPart(value: string | null): value is string {
+  return value !== null && value.length > 0;
+}
+
 function ThreadSearchResultRowComponent({
   id,
   isActive,
@@ -125,6 +129,9 @@ function ThreadSearchResultRowComponent({
   const title = getThreadDisplayTitle(thread);
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
+  const primaryMatch = snippetMatch ?? titleMatch;
+  const primaryText = primaryMatch?.text ?? title;
+  const primaryHighlightRanges = primaryMatch?.highlightRanges ?? [];
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
@@ -146,6 +153,13 @@ function ThreadSearchResultRowComponent({
     timestamp: thread.updatedAt,
     now: Date.now(),
   });
+  const metadataText = [
+    snippetMatch ? title : null,
+    contextLabel,
+    relativeTime,
+  ]
+    .filter(isNonEmptyMetadataPart)
+    .join(" · ");
   const handleMouseEnter = useCallback<
     MouseEventHandler<HTMLButtonElement>
   >(() => {
@@ -180,42 +194,25 @@ function ThreadSearchResultRowComponent({
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="block min-w-0 truncate">
           <HighlightedText
-            text={title}
-            ranges={titleMatch?.highlightRanges ?? []}
+            text={primaryText}
+            ranges={primaryHighlightRanges}
           />
         </span>
-        {snippetMatch ? (
-          <span className="flex min-w-0 items-start gap-1.5 text-xs leading-4 text-muted-foreground">
+        <span
+          className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+          title={metadataText}
+        >
+          {snippetMatch ? (
             <Icon
               name="MessageSquare"
-              className="mt-px size-3 shrink-0 text-subtle-foreground"
+              className="size-3 shrink-0 text-subtle-foreground"
               aria-hidden="true"
             />
-            <span className="line-clamp-2 min-w-0">
-              <HighlightedText
-                text={snippetMatch.text}
-                ranges={snippetMatch.highlightRanges}
-              />
-            </span>
-          </span>
-        ) : (
-          <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-            {contextLabel ? (
-              <>
-                <span className="flex min-w-0 items-center gap-1">
-                  <Icon
-                    name="Folder"
-                    className="size-3.5 shrink-0"
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 truncate">{contextLabel}</span>
-                </span>
-                <span className="shrink-0 opacity-60">·</span>
-              </>
-            ) : null}
-            <span className="shrink-0">{relativeTime}</span>
-          </span>
-        )}
+          ) : contextLabel ? (
+            <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          ) : null}
+          <span className="min-w-0 truncate">{metadataText}</span>
+        </span>
       </span>
       {hasPendingInteraction || threadIsBusy ? (
         <span className="inline-flex size-4 shrink-0 items-center justify-center">

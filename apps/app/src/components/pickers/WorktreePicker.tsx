@@ -18,6 +18,7 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "./OptionPicker";
@@ -112,7 +113,7 @@ export function WorktreePicker({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="min-w-52 max-w-80"
+        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
         mobileTitle="Worktree"
       >
         <DropdownMenuLabel>Reuse existing worktree</DropdownMenuLabel>

@@ -14,6 +14,28 @@ const allOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "readonly", label: "Readonly" },
 ];
 
+const longOptions: readonly PickerOption<PermissionMode>[] = [
+  {
+    value: "full",
+    label: "Full Access with approval before every workspace-changing command",
+    description:
+      "Use this when the agent needs broad execution capability, but the picker should still wrap the warning copy inside the menu.",
+    tone: "warning",
+  },
+  {
+    value: "workspace-write",
+    label: "Workspace Write with repository-scoped edits and background tasks",
+    description:
+      "Allows file edits in the workspace while keeping the menu content wrapped within the picker width.",
+  },
+  {
+    value: "readonly",
+    label: "Readonly investigation without filesystem writes",
+    description:
+      "Long readonly explanations should wrap instead of stretching or clipping the permission menu.",
+  },
+];
+
 const noop = () => {};
 
 export function Overview() {
@@ -70,6 +92,16 @@ export function Overview() {
         <PermissionModePicker
           value="workspace-write"
           options={allOptions}
+          onChange={noop}
+          supported
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+      <StoryRow label="wrapping menu" hint="long labels and descriptions">
+        <PermissionModePicker
+          value="workspace-write"
+          options={longOptions}
           onChange={noop}
           supported
           defaultOpen

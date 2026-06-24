@@ -511,7 +511,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — unread child"
-        hint="surfaces like a regular unread thread — success check before settling to the done dot"
+        hint="surfaces like a regular unread thread — the trailing slot shows the done dot"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_unread"]),

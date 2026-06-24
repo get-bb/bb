@@ -104,6 +104,16 @@ const newBranchPicker: BranchPickerStoryConfig = {
   triggerTitle: "Create a new branch from origin/main",
 };
 
+const longBranchPicker: BranchPickerStoryConfig = {
+  value: "bb/implement-server-daemon-protocol-simplification-thr_qfk8ksbxkk",
+  triggerLabel:
+    "bb/implement-server-daemon-protocol-simplification-thr_qfk8ksbxkk",
+  triggerTitle:
+    "Branch: bb/implement-server-daemon-protocol-simplification-thr_qfk8ksbxkk",
+  defaultOpen: true,
+  modal: false,
+};
+
 function getInitialBranchPickerStoryState({
   picker,
 }: GetInitialBranchPickerStoryStateArgs): BranchPickerStoryState {
@@ -276,6 +286,11 @@ export function Overview() {
         hint="defaultOpen + modal=false - top section chooses current, new branch, or checkout"
         picker={{ ...currentCheckoutPicker, defaultOpen: true }}
         variant="minimal"
+      />
+      <BranchPickerStoryRow
+        label="open long branches"
+        hint="branch names wrap inside the popover"
+        picker={longBranchPicker}
       />
     </StoryCard>
   );

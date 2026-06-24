@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
@@ -155,44 +155,31 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
   });
 
-  it("shows the success checkmark when a mounted row becomes unread after finishing", async () => {
-    vi.useFakeTimers();
-    try {
-      const thread = createThread({
-        status: "active",
-        lastReadAt: 1_000,
-        latestAttentionAt: 1_000,
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      });
-      const { container, rerenderThreadRow } = renderThreadRow({ thread });
+  it("switches directly from working to the settled done dot after finishing", () => {
+    const thread = createThread({
+      status: "active",
+      lastReadAt: 1_000,
+      latestAttentionAt: 1_000,
+      runtime: {
+        displayStatus: "active",
+        hostReconnectGraceExpiresAt: null,
+      },
+    });
+    const { container, rerenderThreadRow } = renderThreadRow({ thread });
 
-      expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
 
-      rerenderThreadRow({
-        ...thread,
-        status: "idle",
-        latestAttentionAt: 2_000,
-        runtime: {
-          displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
-        },
-      });
+    rerenderThreadRow({
+      ...thread,
+      status: "idle",
+      latestAttentionAt: 2_000,
+      runtime: {
+        displayStatus: "idle",
+        hostReconnectGraceExpiresAt: null,
+      },
+    });
 
-      expect(
-        container.querySelector('[data-icon="CircleCheck"]'),
-      ).not.toBeNull();
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_200);
-      });
-
-      expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
-      expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
   });
 });

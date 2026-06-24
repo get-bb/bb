@@ -663,7 +663,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="archived thread"
-        hint="archive icon + 'Thread is archived' with an underlined unarchive label pinned to the far right"
+        hint="archive icon + 'Thread is archived' with a filled unarchive action pinned to the far right"
       >
         <Row archived={archivedFixture} mergeBase={null} />
       </StoryRow>

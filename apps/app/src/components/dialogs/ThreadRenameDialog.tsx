@@ -13,6 +13,9 @@ import { Input } from "@/components/ui/input.js";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
+export const THREAD_RENAME_DIALOG_SHELL_CLASS =
+  "max-w-[24rem] sm:gap-3 sm:p-5";
+
 export interface ThreadRenameDialogTarget {
   id: string;
   currentTitle: string;
@@ -38,7 +41,10 @@ export function ThreadRenameDialog({
   const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
+      <DialogContent
+        className={THREAD_RENAME_DIALOG_SHELL_CLASS}
+        onOpenAutoFocus={handleOpenAutoFocus}
+      >
         {target ? (
           <ThreadRenameDialogContent
             key={target.id}
@@ -91,8 +97,8 @@ export function ThreadRenameDialogContent({
           Choose a new name for this {label}.
         </DialogDescription>
       </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
+      <form className="space-y-3" onSubmit={handleSubmit}>
+        <div className="space-y-1.5">
           <Input
             ref={inputRef}
             id={inputId}

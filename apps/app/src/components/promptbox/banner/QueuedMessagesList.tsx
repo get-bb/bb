@@ -648,14 +648,20 @@ export function QueuedMessagesList({
       // coming up from behind the composer rather than floating above it. No
       // shadow here: it tucks behind the composer rather than floating above it,
       // and a drop shadow on the tucked bottom edge bleeds out as an artifact.
-      className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
+      className={cn(
+        "relative -mb-5 overflow-hidden rounded-b-none border-b-0 shadow-none",
+        isExpanded && "pb-1",
+      )}
     >
-      <div className="pb-1">
+      <div>
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="flex w-full cursor-pointer items-center gap-1.5 px-3 pb-1 pt-2.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+          className={cn(
+            "flex w-full cursor-pointer items-center gap-1.5 px-3 pt-2.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover",
+            isExpanded ? "pb-1" : "pb-4",
+          )}
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">
@@ -672,7 +678,10 @@ export function QueuedMessagesList({
         </button>
       </div>
       {isExpanded ? (
-        <div className="relative isolate">
+        <div
+          className="relative isolate min-w-0 overflow-hidden"
+          data-queued-messages-scroll-frame=""
+        >
           <div
             ref={scrollRef}
             data-queued-messages-scroll=""
@@ -737,11 +746,19 @@ export function QueuedMessagesList({
             <div
               aria-hidden
               data-queued-messages-fade="below"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface-recessed-solid to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-surface-recessed-solid via-surface-recessed-solid/90 to-transparent"
             />
           ) : null}
         </div>
       ) : null}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 z-20 h-8 w-4 bg-background"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 right-0 z-20 h-8 w-4 bg-background"
+      />
     </PromptStackCard>
   );
 }

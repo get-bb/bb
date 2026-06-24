@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import {
+  THREAD_RENAME_DIALOG_SHELL_CLASS,
   ThreadRenameDialogContent,
   type ThreadRenameDialogTarget,
 } from "./ThreadRenameDialog";
@@ -33,81 +34,89 @@ const longTitleTarget: ThreadRenameDialogTarget = {
     "Investigate slow tests on recurring CI failures after the timeline pagination v2 merge",
 };
 
+function ThreadRenameDialogStage({ children }: { children: ReactNode }) {
+  return (
+    <DialogStage className={THREAD_RENAME_DIALOG_SHELL_CLASS}>
+      {children}
+    </DialogStage>
+  );
+}
+
 export function Overview() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   return (
     <StoryCard>
       <StoryRow label="default" hint="thread, idle">
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={defaultTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
       <StoryRow
         label="parent thread"
         hint="parent threads use the same rename dialog copy"
       >
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={parentTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
       <StoryRow label="slash title" hint="slashes stay part of the title">
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={slashTitleTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
       <StoryRow
         label="pending"
         hint="submit in flight — input and submit are disabled"
       >
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={defaultTarget}
             pending
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
       <StoryRow
         label="long title"
         hint="input overflows horizontally inside the dialog frame"
       >
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={longTitleTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
       <StoryRow
         label="empty input"
         hint="clear the field and submit to see the validation message"
       >
-        <DialogStage>
+        <ThreadRenameDialogStage>
           <ThreadRenameDialogContent
             target={{ id: "thr_blank", currentTitle: "" }}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
           />
-        </DialogStage>
+        </ThreadRenameDialogStage>
       </StoryRow>
     </StoryCard>
   );

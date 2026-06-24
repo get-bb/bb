@@ -4,7 +4,10 @@ import { createRef } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
-import type { ThreadSearchResponse } from "@bb/server-contract";
+import type {
+  ThreadSearchMatch,
+  ThreadSearchResponse,
+} from "@bb/server-contract";
 import {
   useThreadSearch,
   type UseThreadSearchResult,
@@ -66,12 +69,15 @@ function createThreadListEntry({
   };
 }
 
-function createSearchResponse(thread: ThreadListEntry): ThreadSearchResponse {
+function createSearchResponse(
+  thread: ThreadListEntry,
+  matches: readonly ThreadSearchMatch[] = [],
+): ThreadSearchResponse {
   return {
     active: {
       results: [
         {
-          matches: [],
+          matches: [...matches],
           thread,
         },
       ],
@@ -178,6 +184,49 @@ describe("SidebarThreadSearchPanel", () => {
       ]),
     );
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("renders the matched message text before thread metadata", () => {
+    const thread = createThreadListEntry({
+      id: "thr_message",
+      title: "Worktree cleanup",
+    });
+    const snippet = "needle appears in the original request";
+    mockThreadSearch({
+      data: createSearchResponse(thread, [
+        {
+          sourceKind: "assistant_message",
+          text: snippet,
+          highlightRanges: [{ start: 0, end: 6 }],
+          sourceSeq: 3,
+        },
+      ]),
+      debouncedQuery: "needle",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map([["proj_search", "Search project"]])}
+        query="needle"
+        recentThreads={[]}
+      />,
+    );
+
+    const rowText = screen.getByRole("option").textContent ?? "";
+    expect(rowText.indexOf(snippet)).toBeGreaterThanOrEqual(0);
+    expect(rowText.indexOf("Worktree cleanup")).toBeGreaterThan(
+      rowText.indexOf(snippet),
+    );
   });
 });
 

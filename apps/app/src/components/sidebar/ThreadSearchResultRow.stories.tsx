@@ -60,8 +60,7 @@ const personalThread = makeThreadListEntry({
 const messageSnippet =
   "The permission prompts keep recurring after the worktree is recreated — here is the fix I landed and why it works.";
 
-// The redesigned result row: title-first, with a labeled message snippet when a
-// match comes from the conversation body, and project + relative time otherwise.
+// The redesigned result row: matched text first, with thread metadata underneath.
 export function Overview() {
   return (
     <StoryCard>
@@ -126,7 +125,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="message-body match"
-        hint="2-line snippet under a message glyph, matched term highlighted"
+        hint="matched snippet first; thread title, project, and relative time underneath"
       >
         <Stage>
           <ThreadSearchResultRow

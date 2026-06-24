@@ -27,11 +27,8 @@ export default {
 
 const noop = () => {};
 
-const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 const ANIMATION_SETTLED_MS = 650;
 const ANIMATION_WORKING_MS = 650;
-const ANIMATION_SUCCESS_MS =
-  THREAD_SUCCESS_CHECK_DELAY_MS + ANIMATION_SETTLED_MS;
 
 const defaultThreadOption: ThreadRowOptions = {
   kind: "default",
@@ -368,7 +365,7 @@ function AnimatedUnreadDoneThreadRow() {
       () => {
         setIsUnreadDone((current) => !current);
       },
-      isUnreadDone ? ANIMATION_SUCCESS_MS : ANIMATION_WORKING_MS,
+      isUnreadDone ? ANIMATION_SETTLED_MS : ANIMATION_WORKING_MS,
     );
     return () => window.clearTimeout(timeoutId);
   }, [isUnreadDone]);
@@ -460,7 +457,7 @@ export function UnreadDoneAnimation() {
     <StoryCard labelWidth="210px">
       <StoryRow
         label="unread success -> done"
-        hint="Loops through a live completion transition: working, 1200ms CircleCheck, then settled dot."
+        hint="Loops through a live completion transition: working, then settled dot."
       >
         <AnimatedUnreadDoneThreadRow />
       </StoryRow>

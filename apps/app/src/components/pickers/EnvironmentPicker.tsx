@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "./OptionPicker";
@@ -192,7 +193,7 @@ export function EnvironmentPickerUI({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="min-w-52 max-w-80"
+        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
         mobileTitle="Environment"
       >
         <EnvironmentOptionsSection
@@ -250,12 +251,15 @@ function EnvironmentOptionsSection({
   return (
     <DropdownMenuGroup>
       {hostName ? (
-        <DropdownMenuLabel className="truncate text-muted-foreground">
+        <DropdownMenuLabel className="whitespace-normal break-words text-muted-foreground">
           {hostName}
         </DropdownMenuLabel>
       ) : null}
       {hostUnavailableReason !== null ? (
-        <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+        <DropdownMenuItem
+          disabled
+          className="whitespace-normal break-words text-xs text-muted-foreground"
+        >
           {hostUnavailableReason}
         </DropdownMenuItem>
       ) : (
@@ -321,25 +325,33 @@ function EnvironmentMenuItem({
         if (disabled) return;
         onSelect();
       }}
-      className="flex items-center justify-between gap-3"
+      className="flex items-start justify-between gap-3 whitespace-normal"
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 flex-1 items-start gap-2">
         <Icon
           name={icon}
           className={cn(
+            "mt-0.5",
             "text-muted-foreground",
             COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
           )}
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-xs">{label}</span>
-          {description ? <span className="text-xs">{description}</span> : null}
+          <span className="whitespace-normal break-words text-xs">
+            {label}
+          </span>
+          {description ? (
+            <span className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-muted-foreground">
+              {description}
+            </span>
+          ) : null}
         </span>
       </span>
       <Icon
         name="Check"
         className={cn(
           COARSE_POINTER_ICON_SIZE_CLASS,
+          "shrink-0",
           selected ? "opacity-100" : "opacity-0",
         )}
       />

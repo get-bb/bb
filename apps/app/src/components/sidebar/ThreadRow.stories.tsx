@@ -19,7 +19,6 @@ const childActivity = (
   overrides: Partial<CollapsedChildActivity> = {},
 ): CollapsedChildActivity => ({ ...NO_COLLAPSED_CHILD_ACTIVITY, ...overrides });
 
-const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 const UNREAD_DONE_SETTLED_DOT_MS = 650;
 const UNREAD_DONE_WORKING_MS = 650;
 
@@ -68,9 +67,7 @@ function UnreadDoneThreadRowCycle() {
   useEffect(() => {
     const timeoutId = window.setTimeout(
       () => setIsUnreadDone((current) => !current),
-      isUnreadDone
-        ? THREAD_SUCCESS_CHECK_DELAY_MS + UNREAD_DONE_SETTLED_DOT_MS
-        : UNREAD_DONE_WORKING_MS,
+      isUnreadDone ? UNREAD_DONE_SETTLED_DOT_MS : UNREAD_DONE_WORKING_MS,
     );
     return () => window.clearTimeout(timeoutId);
   }, [isUnreadDone]);
@@ -244,7 +241,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="unread done"
-        hint="live completion transition: working spinner, CircleCheck for 1200ms, then the settled done dot"
+        hint="live completion transition: working spinner, then the settled done dot"
       >
         <SidebarStage>
           <UnreadDoneThreadRowCycle />

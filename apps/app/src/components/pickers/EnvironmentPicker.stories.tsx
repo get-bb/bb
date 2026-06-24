@@ -5,6 +5,10 @@ import { HOST_IDS, makeHost } from "../../../.ladle/story-fixtures";
 
 const localHost = makeHost({ id: HOST_IDS.local });
 const remoteHost = makeHost({ id: HOST_IDS.local, name: "studio-mac-mini" });
+const longRemoteHost = makeHost({
+  id: HOST_IDS.local,
+  name: "studio-mac-mini-with-a-very-long-tailnet-host-name-for-launch-testing",
+});
 const offlineHost = makeHost({
   id: HOST_IDS.local,
   name: "studio-mac-mini",
@@ -113,6 +117,20 @@ export function Overview() {
           sources={localProjectSources}
           host={remoteHost}
           isLocal={false}
+          modal={false}
+        />
+      </StoryRow>
+      <StoryRow
+        label="long host"
+        hint="open menu wraps the host label inside the menu"
+      >
+        <EnvironmentPickerUI
+          value={`host:${HOST_IDS.local}:local`}
+          onChange={noop}
+          sources={localProjectSources}
+          host={longRemoteHost}
+          isLocal={false}
+          defaultOpen
           modal={false}
         />
       </StoryRow>
