@@ -79,7 +79,7 @@ export function SettingsWithControl({
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="min-w-0 text-sm font-normal text-foreground">
+          <p className="min-w-0 text-sm font-medium text-foreground">
             {label}
           </p>
           {labelBadge ? (
