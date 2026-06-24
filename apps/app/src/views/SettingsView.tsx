@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   builtInThemes,
   defaultAppTheme,
@@ -19,6 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -48,6 +50,7 @@ import {
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@/lib/utils";
 import {
@@ -126,6 +129,7 @@ export interface GeneralSettingsSectionProps {
   faviconColor: FaviconColorPreference;
   navigateToThreadAfterCreate: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
+  onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
@@ -191,6 +195,14 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
   yellow: "Yellow",
 };
 
+const SETTINGS_DROPDOWN_TRIGGER_CLASS =
+  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";
+const SETTINGS_DROPDOWN_CONTENT_CLASS =
+  "min-w-[var(--radix-dropdown-menu-trigger-width)]";
+
+const CREATE_CUSTOM_PALETTE_PROMPT =
+  "Create a custom bb palette for this workspace. Ask me for the palette name and visual direction, then create `.bb/theme/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
+
 // Renders the favicon glyph itself in the candidate color by using the
 // favicon image as a CSS mask, so the preview matches the resulting tab icon.
 function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
@@ -223,7 +235,7 @@ export function FaviconColorSettingsControl({
           <Button
             variant="outline"
             size="sm"
-            className="w-full justify-between border-border/60 bg-card sm:w-48"
+            className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
             aria-label="Favicon color"
             disabled={disabled}
           >
@@ -239,7 +251,10 @@ export function FaviconColorSettingsControl({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent
+          align="end"
+          className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+        >
           {FAVICON_COLOR_OPTIONS.map((option) => (
             <DropdownMenuItem
               key={option.value}
@@ -316,7 +331,7 @@ function LocalOpenTargetPreferenceControl({
           <Button
             variant="outline"
             size="sm"
-            className="w-full justify-between border-border/60 bg-card sm:w-48"
+            className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
             aria-label={definition.label}
           >
             <span className="flex min-w-0 items-center gap-2">
@@ -334,7 +349,10 @@ function LocalOpenTargetPreferenceControl({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent
+          align="end"
+          className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+        >
           {unavailableMessage ? (
             <div
               role="note"
@@ -492,6 +510,7 @@ export function GeneralSettingsSection({
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
+  onCreatePalette,
   onThemePreferenceChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
@@ -507,7 +526,7 @@ export function GeneralSettingsSection({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-between border-border/60 bg-card sm:w-48"
+                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
                 aria-label="Theme"
               >
                 {THEME_PREFERENCE_LABELS[themePreference]}
@@ -517,7 +536,10 @@ export function GeneralSettingsSection({
                 />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent
+              align="end"
+              className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+            >
               {THEME_PREFERENCE_OPTIONS.map((option) => (
                 <DropdownMenuItem
                   key={option.value}
@@ -547,18 +569,23 @@ export function GeneralSettingsSection({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-between border-border/60 bg-card sm:w-48"
+                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
                 aria-label="Palette"
                 disabled={appearanceDisabled}
               >
-                {appPaletteLabel(appearance)}
+                <span className="min-w-0 truncate">
+                  {appPaletteLabel(appearance)}
+                </span>
                 <Icon
                   name="ChevronDown"
                   className="size-3.5 text-muted-foreground"
                 />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent
+              align="end"
+              className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+            >
               {builtInThemes.map((entry) => (
                 <DropdownMenuItem
                   key={entry.id}
@@ -591,6 +618,11 @@ export function GeneralSettingsSection({
                   />
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onCreatePalette}>
+                <Icon name="Plus" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+                Create
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </SettingsWithControl>
@@ -876,6 +908,7 @@ export function ExperimentsSettingsSection({
 }
 
 export function SettingsView() {
+  const navigate = useNavigate();
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
   const { hasDaemon } = useHostDaemon();
@@ -920,6 +953,14 @@ export function SettingsView() {
           themePreference={themePreference}
           onAppearanceThemeChange={(themeId) =>
             updateAppearanceMutation.mutate({ themeId })
+          }
+          onCreatePalette={() =>
+            navigate(getRootComposeRoutePath(), {
+              state: {
+                focusPrompt: true,
+                initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
+              },
+            })
           }
           onFaviconColorChange={(faviconColor) =>
             updateAppearanceMutation.mutate({

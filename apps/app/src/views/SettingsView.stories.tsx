@@ -176,6 +176,7 @@ function GeneralSettingsStory({
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }
+      onCreatePalette={() => undefined}
       onFaviconColorChange={(faviconColor) =>
         state.setAppearance((current) => ({ ...current, faviconColor }))
       }

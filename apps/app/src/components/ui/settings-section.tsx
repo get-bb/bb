@@ -79,7 +79,7 @@ export function SettingsWithControl({
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="min-w-0 text-sm font-medium text-foreground">
+          <p className="min-w-0 text-sm font-normal text-foreground">
             {label}
           </p>
           {labelBadge ? (
@@ -89,7 +89,7 @@ export function SettingsWithControl({
           ) : null}
         </div>
         {description ? (
-          <p className="text-xs text-subtle-foreground">{description}</p>
+          <p className="text-xs text-subtle-foreground/80">{description}</p>
         ) : null}
       </div>
       <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
