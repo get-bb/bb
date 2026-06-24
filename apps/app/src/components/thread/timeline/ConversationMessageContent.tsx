@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -91,6 +91,13 @@ type AssistantMessageRowIdentity = Pick<
   TimelineRowBase,
   "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
 >;
+
+const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
+  maskImage:
+    "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
+  WebkitMaskImage:
+    "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
+};
 
 export interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
@@ -270,6 +277,9 @@ function CollapsibleMessageText({
           "break-words",
           !isExpanded && "max-h-[15lh] overflow-hidden",
         )}
+        style={
+          !isExpanded && showToggle ? COLLAPSED_MESSAGE_FADE_STYLE : undefined
+        }
       >
         <MarkdownPreview
           content={body.text}
