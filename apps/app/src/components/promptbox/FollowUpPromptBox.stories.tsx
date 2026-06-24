@@ -56,6 +56,7 @@ export default {
 };
 
 const noop = () => {};
+const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 // FollowUp commits the provider — omit `onChange` so the picker renders the
 // provider segment as locked, and pass `displayName` so the static label
@@ -229,7 +230,7 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -240,7 +241,7 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -250,7 +251,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
   // Worktree threads expose a "new thread in this worktree" affordance —
   // production wires it to the new-thread route. The story just needs a
   // non-null handler so the MessageSquarePlus icon renders.
@@ -428,12 +429,12 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     deletions: 24,
   },
   branch: {
-    currentBranch: "bb/promptbox-stories",
+    currentBranch: STORY_BRANCH_NAME,
     defaultBranch: "main",
   },
   checkout: {
     kind: "branch",
-    branchName: "bb/promptbox-stories",
+    branchName: STORY_BRANCH_NAME,
     headSha: null,
   },
   mergeBase: null,
@@ -578,11 +579,17 @@ type FollowUpComposerRuntimeStatus = NonNullable<
   Parameters<typeof FollowUpPromptBox>[0]["composer"]
 >["threadRuntimeDisplayStatus"];
 
-// Match production: ThreadTimelinePane's PageShell footer caps content at
-// 760px. The story's StoryRow value cell uses flex-wrap, which would
-// otherwise let the prompt box collapse to its intrinsic content width.
+// Match production: ThreadTimelinePane renders this component as PageShell's
+// footer. That footer caps the strip at 760px, adds horizontal shell padding,
+// and leaves bottom breathing room below the prompt controls.
 function PromptStage({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+  return (
+    <div className="w-full bg-background">
+      <div className="chat-prompt-box mx-auto w-full max-w-[760px] px-4 pb-4">
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function Row({
