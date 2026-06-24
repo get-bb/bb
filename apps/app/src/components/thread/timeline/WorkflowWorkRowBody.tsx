@@ -225,7 +225,7 @@ function WorkflowAgentLine({
       <div
         className={promptStackActivityRowClass(
           activityState,
-          "w-full min-w-0 text-xs",
+          "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-agent-stats-column,15rem)] items-center gap-4 text-xs",
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -242,18 +242,18 @@ function WorkflowAgentLine({
           >
             {agent.label}
           </span>
-          <span
-            className={activityMetaClass(
-              activityState,
-              "ml-auto w-[clamp(9rem,35%,15rem)] shrink-0 truncate whitespace-nowrap text-left text-[11px]",
-            )}
-            title={stats}
-          >
-            {stats}
-          </span>
         </div>
+        <span
+          className={activityMetaClass(
+            activityState,
+            "block min-w-0 truncate whitespace-nowrap text-left text-[11px]",
+          )}
+          title={stats}
+        >
+          {stats}
+        </span>
         {displayState === "failed" && agent.error ? (
-          <span className="ml-6 mt-0.5 block min-w-0 truncate text-xs text-destructive/80">
+          <span className="col-span-2 ml-6 mt-0.5 block min-w-0 truncate text-xs text-destructive/80">
             — {agent.error}
           </span>
         ) : null}
@@ -568,7 +568,12 @@ function CollapsiblePhaseSection({
         </span>
       </button>
       {expanded ? (
-        <div className={cn(promptStack && "mt-1 space-y-1 pl-5")}>
+        <div
+          className={cn(
+            promptStack &&
+              "mt-1 space-y-1 pl-5 [--workflow-agent-stats-column:min(32rem,42%)]",
+          )}
+        >
           {agentLines}
         </div>
       ) : null}
