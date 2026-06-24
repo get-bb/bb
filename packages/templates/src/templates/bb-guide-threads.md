@@ -47,6 +47,10 @@ Inspecting:
     --diff-merge-base <branch>             Override merge-base branch for diff
     --merge-base-branches                  List available merge-base branches
 
+  bb thread metadata [id]                  Show thread metadata
+    --self                                 Target current thread
+    --json                                 Print structured metadata
+
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
     --format <format>                      Output format: json, minimal, verbose

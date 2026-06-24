@@ -52,6 +52,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { buildThreadMetadataResponse } from "../../services/threads/thread-metadata.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -276,6 +277,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         thread,
       }),
     );
+  });
+
+  get(routes.metadata, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(await buildThreadMetadataResponse(deps, thread));
   });
 
   function getThreadChildSummary(threadId: string): ThreadChildSummaryResponse {

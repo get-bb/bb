@@ -122,6 +122,7 @@ import type {
   ThreadHostFileContentQuery,
   ThreadListQuery,
   ThreadListResponse,
+  ThreadMetadataResponse,
   ThreadOpenRequest,
   ThreadOpenResponse,
   ThreadPendingInteractionsResponse,
@@ -613,6 +614,12 @@ export const publicApiRoutes = {
         threadGetQuerySchema,
       ),
       response: jsonResponse<ThreadResponse | ThreadWithIncludesResponse>(),
+    }),
+    metadata: defineRoute({
+      path: "/threads/:id/metadata",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadMetadataResponse>(),
     }),
     update: defineRoute({
       path: "/threads/:id",

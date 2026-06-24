@@ -77,6 +77,8 @@ or artifacts, validation performed, and blockers.
 ## Inspecting Results
 
 - Use `bb thread show <thread-id>` for status, parent, environment, and result.
+- Use `bb thread metadata <thread-id>` for spawn execution settings,
+  origin/source fields, event metadata categories, and pull request status.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
 - Use `bb thread log <thread-id>` to inspect the conversation.
 - Use `bb thread output <thread-id>` to read the latest final output, or

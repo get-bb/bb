@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
 import { registerInteractionCommands } from "./interactions.js";
 import { registerListCommand } from "./list.js";
+import { registerMetadataCommand } from "./metadata.js";
 import { registerOpenCommand } from "./open.js";
 import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
@@ -19,6 +20,7 @@ export function registerThreadCommands(
   registerSpawnCommand(thread, getUrl);
   registerListCommand(thread, getUrl);
   registerShowCommand(thread, getUrl);
+  registerMetadataCommand(thread, getUrl);
   registerOpenCommand(thread, getUrl);
   registerActionsCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
