@@ -10,6 +10,7 @@ import {
   isExpectedCommandDispatchError,
 } from "../command-dispatch-support.js";
 import {
+  browseHostDirectory,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
@@ -234,6 +235,77 @@ describe("readHostFileMetadata", () => {
     ).rejects.toMatchObject({
       code: "invalid_path",
       message: expect.stringContaining("escapes read root"),
+    });
+  });
+});
+
+describe("browseHostDirectory", () => {
+  it("lists immediate children sorted directories-first, hiding noise", async () => {
+    const root = await makeTempDir("bb-browse-");
+    await fs.mkdir(path.join(root, "beta"));
+    await fs.mkdir(path.join(root, "alpha"));
+    await fs.mkdir(path.join(root, ".hidden"));
+    await fs.mkdir(path.join(root, "node_modules"));
+    await fs.writeFile(path.join(root, "readme.md"), "hi", "utf8");
+    // A nested file must not surface — listing is single-level.
+    await fs.writeFile(path.join(root, "alpha", "deep.txt"), "x", "utf8");
+    await fs.symlink(path.join(root, "alpha"), path.join(root, "link"));
+
+    const realRoot = await fs.realpath(root);
+    const result = await browseHostDirectory({
+      type: "host.browse_directory",
+      path: root,
+    });
+
+    expect(result.directory).toBe(realRoot);
+    expect(result.parent).toBe(path.dirname(realRoot));
+    expect(result.entries).toEqual([
+      {
+        kind: "directory",
+        name: "alpha",
+        path: path.join(realRoot, "alpha"),
+      },
+      { kind: "directory", name: "beta", path: path.join(realRoot, "beta") },
+      // Symlink to a directory is classified as a navigable directory.
+      { kind: "directory", name: "link", path: path.join(realRoot, "link") },
+      {
+        kind: "file",
+        name: "readme.md",
+        path: path.join(realRoot, "readme.md"),
+      },
+    ]);
+  });
+
+  it("defaults to the host home directory when no path is given", async () => {
+    const result = await browseHostDirectory({
+      type: "host.browse_directory",
+    });
+
+    expect(result.directory).toBe(await fs.realpath(os.homedir()));
+  });
+
+  it("rejects a relative path", async () => {
+    await expect(
+      browseHostDirectory({
+        type: "host.browse_directory",
+        path: "relative/dir",
+      }),
+    ).rejects.toBeInstanceOf(CommandDispatchError);
+  });
+
+  it("rejects a path that is not a directory", async () => {
+    const root = await makeTempDir("bb-browse-file-");
+    const filePath = path.join(root, "file.txt");
+    await fs.writeFile(filePath, "x", "utf8");
+
+    await expect(
+      browseHostDirectory({
+        type: "host.browse_directory",
+        path: filePath,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_path",
+      message: expect.stringContaining("is not a directory"),
     });
   });
 });

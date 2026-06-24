@@ -424,6 +424,33 @@ const hostListPathsCommandSchema = z
     message: "At least one path kind must be included",
   });
 
+// Single-level directory listing for the interactive path browser. Unlike
+// `host.list_paths` (a recursive fuzzy-search walk over relative paths), this
+// reads exactly one directory and returns absolute child paths so the UI can
+// navigate step by step.
+const hostBrowseDirectoryCommandSchema = z.object({
+  type: z.literal("host.browse_directory"),
+  // Absolute directory to list. Omitted means the host's home directory, which
+  // the daemon resolves — a remote caller has no way to know the host's home.
+  path: z.string().min(1).optional(),
+});
+
+export const directoryEntrySchema = z.object({
+  kind: hostPathEntryKindSchema,
+  name: z.string(),
+  path: z.string(),
+});
+export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
+
+export const directoryListingSchema = z.object({
+  // Resolved absolute directory that was listed (symlinks already followed).
+  directory: z.string(),
+  // Absolute parent directory, or null at the filesystem root.
+  parent: z.string().nullable(),
+  entries: z.array(directoryEntrySchema),
+});
+export type DirectoryListing = z.infer<typeof directoryListingSchema>;
+
 export const hostCommandSourceSchema = z.enum(["skill", "command"]);
 export type HostCommandSource = z.infer<typeof hostCommandSourceSchema>;
 
@@ -1135,6 +1162,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_paths",
     schema: hostListPathsCommandSchema,
     resultSchema: pathListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.browse_directory": defineHostDaemonCommandDescriptor({
+    type: "host.browse_directory",
+    schema: hostBrowseDirectoryCommandSchema,
+    resultSchema: directoryListingSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

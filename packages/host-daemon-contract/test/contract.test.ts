@@ -170,6 +170,14 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "host.browse_directory": {
+    directory: "/home/me/project",
+    parent: "/home/me",
+    entries: [
+      { kind: "directory", name: "src", path: "/home/me/project/src" },
+      { kind: "file", name: "README.md", path: "/home/me/project/README.md" },
+    ],
+  },
   "host.list_commands": {
     commands: [
       {
@@ -503,6 +511,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
+  "hostDaemonOnlineRpcCommandSchema.path":
+    "host.browse_directory may omit path to list the host's home directory, which a remote caller cannot resolve.",
   "hostDaemonOnlineRpcCommandSchema.ref":
     "host.read_file may omit ref to read from disk; setting ref switches to git history at that ref.",
   "hostDaemonOnlineRpcCommandSchema.rootPath":

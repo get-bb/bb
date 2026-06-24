@@ -1,5 +1,11 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import type {
+  DirectoryEntry,
+  HostDaemonOnlineRpcResult,
+  HostPathEntryKind,
+} from "@bb/host-daemon-contract";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
@@ -110,6 +116,71 @@ export async function listHostPaths(
     }
     throw error;
   }
+}
+
+const DIRECTORY_BROWSE_SKIP_NAMES = new Set(["node_modules"]);
+
+function compareDirectoryEntries(a: DirectoryEntry, b: DirectoryEntry): number {
+  if (a.kind !== b.kind) {
+    return a.kind === "directory" ? -1 : 1;
+  }
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+export async function browseHostDirectory(
+  command: CommandOf<"host.browse_directory">,
+): Promise<HostDaemonOnlineRpcResult<"host.browse_directory">> {
+  const requestedPath = command.path ?? os.homedir();
+  if (!path.isAbsolute(requestedPath)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+
+  // Follow a symlinked base directory: single-level browsing has no recursion
+  // loop risk (unlike the recursive lister), and users legitimately navigate
+  // through symlinked folders.
+  const stat = await fs.stat(requestedPath);
+  if (!stat.isDirectory()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      `Path "${requestedPath}" is not a directory`,
+    );
+  }
+  const directory = await fs.realpath(requestedPath);
+
+  const dirents = await fs.readdir(directory, { withFileTypes: true });
+  const entries: DirectoryEntry[] = [];
+  for (const dirent of dirents) {
+    if (dirent.name.startsWith(".")) continue;
+    if (DIRECTORY_BROWSE_SKIP_NAMES.has(dirent.name)) continue;
+
+    const fullPath = path.join(directory, dirent.name);
+    let kind: HostPathEntryKind;
+    if (dirent.isSymbolicLink()) {
+      // Classify by the symlink target; skip broken links.
+      try {
+        kind = (await fs.stat(fullPath)).isDirectory() ? "directory" : "file";
+      } catch {
+        continue;
+      }
+    } else if (dirent.isDirectory()) {
+      kind = "directory";
+    } else if (dirent.isFile()) {
+      kind = "file";
+    } else {
+      continue; // sockets, fifos, devices — not browsable
+    }
+
+    entries.push({ kind, name: dirent.name, path: fullPath });
+  }
+
+  entries.sort(compareDirectoryEntries);
+
+  const parent = path.dirname(directory);
+  return {
+    directory,
+    parent: parent === directory ? null : parent,
+    entries,
+  };
 }
 
 export async function readHostFile(
