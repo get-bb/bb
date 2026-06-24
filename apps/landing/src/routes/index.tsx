@@ -157,7 +157,7 @@ function InstallOptions({ placement }: { placement: CtaPlacement }) {
         <span className="install-choice">
           <RunCommandButton placement={placement} />
           <span className="install-note">
-            Windows, Linux &amp; remote machines
+            Windows (via WSL), Linux &amp; remote machines
           </span>
         </span>
       </div>
