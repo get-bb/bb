@@ -43,6 +43,9 @@
       ]
     },
     "@bb/sdk#test": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/*/package.json",
@@ -215,6 +218,16 @@
         "$TURBO_ROOT$/pnpm-workspace.yaml"
       ]
     },
+    "//#ensure-native-modules": {
+      "cache": false,
+      "inputs": [
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/db/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/scripts/ensure-native-modules.mjs"
+      ],
+      "outputs": []
+    },
     "typecheck": {},
     "@bb/integration-tests#typecheck": {
       "inputs": [
@@ -229,6 +242,9 @@
       ]
     },
     "test": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -242,6 +258,9 @@
       "outputs": []
     },
     "@bb/integration-tests#test": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -254,12 +273,18 @@
       ]
     },
     "test:smoke": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "@bb/integration-tests#test:smoke": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -272,6 +297,9 @@
       ]
     },
     "test:integration": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -279,6 +307,7 @@
     },
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
+        "//#ensure-native-modules",
         "@bb/agent-runtime#test:integration"
       ],
       "inputs": [
@@ -294,6 +323,10 @@
     },
     "@bb/sdk#typecheck": {},
     "@bb/server#typecheck": {},
-    "@bb/server#test": {}
+    "@bb/server#test": {
+      "dependsOn": [
+        "//#ensure-native-modules"
+      ]
+    }
   }
 }

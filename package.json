@@ -9,6 +9,7 @@
   "scripts": {
     "scripts:prepare": "pnpm exec turbo run build --filter=@bb/scripts --output-logs=none --log-prefix=none --summarize=false",
     "cli:prepare": "pnpm exec turbo run build --filter=@bb/scripts --filter=@bb/cli --output-logs=none --log-prefix=none --summarize=false",
+    "ensure-native-modules": "node scripts/ensure-native-modules.mjs",
     "dev": "node scripts/ensure-native-modules.mjs && cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts",
     "dev:desktop": "scripts/bb-dev-app current --desktop",
     "dev:restart": "cross-env NODE_ENV=development node --conditions=source --import tsx packages/scripts/src/commands/request-dev-restart.ts both",
