@@ -289,7 +289,7 @@ describe("acp adapter model cli", () => {
     });
   });
 
-  it("does not use ACP-native selection for CLI-discovered models without a select flag", () => {
+  it("uses ACP-native selection for CLI-discovered models without a select flag", () => {
     const adapter = createAcpProviderAdapter({
       profile: {
         providerId: "acp-custom",
@@ -314,8 +314,11 @@ describe("acp adapter model cli", () => {
       instructionMode: "append",
     });
 
-    const params = (plan as { params: Record<string, unknown> }).params;
-    expect("modelSelection" in params).toBe(false);
+    expect(plan).toMatchObject({
+      params: {
+        modelSelection: { modelId: "custom/strong" },
+      },
+    });
   });
 
   it("omits the reasoning level when the session has none", () => {

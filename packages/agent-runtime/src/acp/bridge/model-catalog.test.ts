@@ -48,6 +48,20 @@ describe("acp model catalog", () => {
     ]);
   });
 
+  it("parses bare model id lines", () => {
+    expect(
+      parseAgentModelLines(
+        "Available models\n\nopenai/gpt-5.3-codex\nopencode/big-pickle\n",
+      ),
+    ).toEqual([
+      {
+        id: "openai/gpt-5.3-codex",
+        displayName: "openai/gpt-5.3-codex",
+      },
+      { id: "opencode/big-pickle", displayName: "opencode/big-pickle" },
+    ]);
+  });
+
   it("groups effort variants into families keyed by the default variant", () => {
     const catalog = catalogFromSample();
     const codex = catalog.models.find((m) => m.id === "gpt-5.3-codex");

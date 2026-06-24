@@ -56,6 +56,7 @@ import {
   acpRequestPermissionParamsSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
+  type AcpSessionModels,
   acpStopReasonSchema,
   acpWriteTextFileParamsSchema,
   type AcpContentBlock,
@@ -70,6 +71,7 @@ import {
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
+  buildModelCatalogFromSessionModels,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
   findAcpThoughtLevelConfigOption,
@@ -330,9 +332,19 @@ async function loadSessionDiscoveredModels(
     }
 
     const modelOption = findAcpModelConfigOption(newSession.configOptions);
-    const baseModels = buildModelCatalogFromConfigOptions(modelOption);
-    if (baseModels.length === 0) {
+    const configOptionModels = buildModelCatalogFromConfigOptions(modelOption);
+    const sessionModels = buildModelCatalogFromSessionModels(newSession.models);
+    if (configOptionModels.length === 0 && sessionModels.length === 0) {
       return null;
+    }
+
+    if (configOptionModels.length === 0) {
+      cachedSessionDiscoveredModels = {
+        key,
+        models: sessionModels,
+        fetchedAt: Date.now(),
+      };
+      return sessionModels;
     }
 
     const reasoningByModel = await discoverAcpNativeReasoningByModel({
@@ -342,7 +354,7 @@ async function loadSessionDiscoveredModels(
     });
     const models =
       reasoningByModel === null
-        ? baseModels
+        ? configOptionModels
         : buildModelCatalogFromConfigOptions(modelOption, reasoningByModel);
     cachedSessionDiscoveredModels = {
       key,
@@ -514,6 +526,7 @@ async function selectAcpNativeModel(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   configOptions: readonly AcpConfigOption[] | undefined;
+  models: AcpSessionModels | undefined;
   modelSelection: AcpBridgeThreadStartParams["modelSelection"];
 }): Promise<void> {
   const selection = args.modelSelection;
@@ -522,13 +535,22 @@ async function selectAcpNativeModel(args: {
   }
   let configOptions = args.configOptions;
   const modelOption = findAcpModelConfigOption(args.configOptions);
-  if (modelOption && modelOption.currentValue !== selection.modelId) {
+  const availableSessionModels = args.models?.availableModels ?? [];
+  const sessionModelsIncludeSelection = availableSessionModels.some(
+    (model) => model.modelId === selection.modelId,
+  );
+  const shouldSetModel =
+    (modelOption && modelOption.currentValue !== selection.modelId) ||
+    (!modelOption &&
+      sessionModelsIncludeSelection &&
+      args.models?.currentModelId !== selection.modelId);
+  if (shouldSetModel) {
     const configState = await args.connection.request({
       method: "session/set_model",
       params: { sessionId: args.sessionId, modelId: selection.modelId },
       resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
     });
-    configOptions = configState?.configOptions;
+    configOptions = configState?.configOptions ?? configOptions;
   }
   await selectAcpNativeReasoning({
     connection: args.connection,
@@ -1005,6 +1027,7 @@ async function startAgentSession(
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
+    let loadedModels: AcpSessionModels | undefined;
     if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
       try {
@@ -1018,6 +1041,7 @@ async function startAgentSession(
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
         });
         loadedConfigOptions = configState?.configOptions;
+        loadedModels = configState?.models;
         sessionId = request.params.providerThreadId;
       } catch {
         sessionId = undefined;
@@ -1037,6 +1061,7 @@ async function startAgentSession(
         connection,
         sessionId,
         configOptions: newSession.configOptions,
+        models: newSession.models,
         modelSelection: params.modelSelection,
       });
       if (request.kind === "resume") {
@@ -1050,6 +1075,7 @@ async function startAgentSession(
         connection,
         sessionId,
         configOptions: loadedConfigOptions,
+        models: loadedModels,
         modelSelection: params.modelSelection,
       });
     }

@@ -1170,7 +1170,7 @@ export function createAcpProviderAdapter(
     if (!model || model === ACP_DEFAULT_MODEL_ID) {
       return {};
     }
-    if (!listCommand) {
+    if (!listCommand || !profile.modelCli?.selectFlag) {
       return {
         modelSelection: {
           modelId: model,
@@ -1179,9 +1179,6 @@ export function createAcpProviderAdapter(
             : {}),
         },
       };
-    }
-    if (!profile.modelCli?.selectFlag) {
-      return {};
     }
     // Cursor encodes reasoning in the selected model id and has no ACP
     // `thought_level` option; keep that CLI variant path separate from native

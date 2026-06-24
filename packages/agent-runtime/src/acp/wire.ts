@@ -227,6 +227,23 @@ export const acpConfigOptionSchema = z
   .passthrough();
 export type AcpConfigOption = z.infer<typeof acpConfigOptionSchema>;
 
+export const acpSessionModelSchema = z
+  .object({
+    modelId: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+  })
+  .passthrough();
+export type AcpSessionModel = z.infer<typeof acpSessionModelSchema>;
+
+export const acpSessionModelsSchema = z
+  .object({
+    currentModelId: z.string().optional(),
+    availableModels: z.array(acpSessionModelSchema).optional(),
+  })
+  .passthrough();
+export type AcpSessionModels = z.infer<typeof acpSessionModelsSchema>;
+
 const acpLooseConfigOptionSchema = z
   .object({
     id: z.string().optional(),
@@ -295,6 +312,7 @@ function parseAcpConfigOptions(
 export const acpSessionNewResultSchema = z
   .object({
     sessionId: z.string(),
+    models: acpSessionModelsSchema.optional(),
     configOptions: z
       .array(z.unknown())
       .optional()
@@ -305,6 +323,7 @@ export type AcpSessionNewResult = z.infer<typeof acpSessionNewResultSchema>;
 
 export const acpConfigStateResultSchema = z
   .object({
+    models: acpSessionModelsSchema.optional(),
     configOptions: z
       .array(z.unknown())
       .optional()

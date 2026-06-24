@@ -53,7 +53,7 @@ const acpBridgeModelListParamsSchema = z.object({
   /**
    * ACP-native model discovery command. Used only when `listCommand` is
    * absent: the bridge starts a throwaway session and reads the model select
-   * from the `session/new` result's `configOptions`.
+   * from the `session/new` result's config state.
    */
   agent: acpBridgeAgentCommandSchema.optional(),
   /**

@@ -1,12 +1,13 @@
 /**
  * Agent CLI model catalog.
  *
- * Cursor's `agent --list-models` prints one `id - Display Name` line per
- * model and encodes reasoning effort in the id: `gpt-5.3-codex-low`, bare
- * `gpt-5.3-codex` for medium, `gpt-5.5-extra-high` as an alternate xhigh
- * spelling, with an optional `-fast` service tail after the effort token
- * (`gpt-5.3-codex-low-fast`). This module groups those raw variants into bb
- * model families so the picker offers one clean entry per family with
+ * Cursor's `agent --list-models` prints one `id - Display Name` line per model,
+ * while OpenCode's `opencode models` prints one bare id per line. These ids
+ * can encode reasoning effort: `gpt-5.3-codex-low`, bare `gpt-5.3-codex` for
+ * medium, `gpt-5.5-extra-high` as an alternate xhigh spelling, with an optional
+ * `-fast` service tail after the effort token (`gpt-5.3-codex-low-fast`). This
+ * module groups those raw variants into bb model families so the picker offers
+ * one clean entry per family with
  * selectable reasoning efforts, and resolves a (family, effort, serviceTier)
  * selection back to the exact raw id at session launch — by table lookup,
  * never string synthesis, because effort spellings vary per family.
@@ -31,7 +32,7 @@
 
 import { reasoningLevelValues } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
-import type { AcpConfigOption } from "../wire.js";
+import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
 export interface RawAgentModel {
   id: string;
@@ -63,6 +64,7 @@ interface AgentModelVariant extends RawAgentModel {
 }
 
 const MODEL_LINE_PATTERN = /^(\S+) - (.+)$/;
+const BARE_PROVIDER_MODEL_LINE_PATTERN = /^\S+\/\S+$/;
 
 // Trailing id tokens that mark a reasoning-effort variant, longest first so
 // `extra-high` wins over `high`. `none` maps onto bb's "none" (thinking-off)
@@ -96,12 +98,19 @@ export interface AgentModelCatalog {
   }): string | undefined;
 }
 
-/** Parse `id - Display Name` stdout lines; headers and chatter are skipped. */
+/**
+ * Parse model-list stdout lines. Supports `id - Display Name` and bare
+ * `provider/model`; headers and chatter are skipped.
+ */
 export function parseAgentModelLines(stdout: string): RawAgentModel[] {
   const models: RawAgentModel[] = [];
   for (const line of stdout.split("\n")) {
-    const match = MODEL_LINE_PATTERN.exec(line.trim());
+    const trimmed = line.trim();
+    const match = MODEL_LINE_PATTERN.exec(trimmed);
     if (!match) {
+      if (BARE_PROVIDER_MODEL_LINE_PATTERN.test(trimmed)) {
+        models.push({ id: trimmed, displayName: trimmed });
+      }
       continue;
     }
     const [, id, displayName] = match;
@@ -238,6 +247,36 @@ export function buildModelCatalogFromConfigOptions(
       description: "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
+      isDefault,
+    };
+  });
+  return models.some((model) => model.isDefault)
+    ? models
+    : models.map((model, index) =>
+        index === 0 ? { ...model, isDefault: true } : model,
+      );
+}
+
+export function buildModelCatalogFromSessionModels(
+  sessionModels: AcpSessionModels | undefined,
+): AvailableModel[] {
+  const availableModels = sessionModels?.availableModels ?? [];
+  if (availableModels.length === 0) {
+    return [];
+  }
+  const currentModelId = sessionModels?.currentModelId;
+  const models = availableModels.map((model, index): AvailableModel => {
+    const isDefault =
+      currentModelId !== undefined
+        ? model.modelId === currentModelId
+        : index === 0;
+    return {
+      id: model.modelId,
+      model: model.modelId,
+      displayName: model.name ?? model.modelId,
+      description: model.description ?? "",
+      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      defaultReasoningEffort: "medium",
       isDefault,
     };
   });

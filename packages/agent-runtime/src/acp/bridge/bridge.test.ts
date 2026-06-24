@@ -310,6 +310,39 @@ describe("acp bridge", () => {
     });
   });
 
+  it("discovers ACP-native models from session models state", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODELS_FIELD: "1" },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          model: "fake/default",
+          displayName: "Fake Default",
+          isDefault: true,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        },
+        {
+          id: "fake/strong",
+          model: "fake/strong",
+          displayName: "Fake Strong",
+          isDefault: false,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        },
+      ],
+      selectedOnlyModels: [],
+    });
+  });
+
   it("keeps ACP-native discovered models when per-model reasoning discovery errors", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
@@ -528,6 +561,21 @@ describe("acp bridge", () => {
   it("selects ACP-native models with session/set_model before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      modelSelection: { modelId: "fake/strong" },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
+  it("selects ACP-native models from session models state", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_MODELS_FIELD: "1" },
       modelSelection: { modelId: "fake/strong" },
     });
 

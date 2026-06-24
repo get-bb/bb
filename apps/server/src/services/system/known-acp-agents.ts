@@ -8,6 +8,11 @@ export interface KnownAcpAgent {
   args: string[];
   env: Record<string, string>;
   executableName: string;
+  modelCli?: {
+    listArgs: string[];
+    selectFlag?: string;
+    primaryModels: string[];
+  };
 }
 
 export interface KnownAcpAgentExecutableQuery {

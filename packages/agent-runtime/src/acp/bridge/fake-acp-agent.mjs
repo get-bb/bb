@@ -10,6 +10,7 @@
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
+ * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
@@ -24,6 +25,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
+const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const setConfigModelError =
   process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
@@ -122,8 +124,21 @@ function configOptions() {
 }
 
 function configState() {
+  const state = {};
   const options = configOptions();
-  return options === undefined ? {} : { configOptions: options };
+  if (options !== undefined) {
+    state.configOptions = options;
+  }
+  if (modelsField) {
+    state.models = {
+      currentModelId: selectedModel,
+      availableModels: fakeModels.map((model) => ({
+        modelId: model.value,
+        name: model.name,
+      })),
+    };
+  }
+  return state;
 }
 
 function requestClient(method, params) {
@@ -271,7 +286,7 @@ async function handleMessage(message) {
     case "session/set_model": {
       const modelId = message.params?.modelId;
       if (
-        !modelConfig ||
+        (!modelConfig && !modelsField) ||
         typeof modelId !== "string" ||
         !fakeModels.some((model) => model.value === modelId)
       ) {
