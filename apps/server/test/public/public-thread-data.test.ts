@@ -2267,8 +2267,10 @@ describe("public thread data routes", () => {
       );
 
       expect(response.status).toBe(200);
+      const rawBootstrap = await readJson(response);
+      expect(rawBootstrap).not.toHaveProperty("pendingInteractions");
       const bootstrap = threadComposerBootstrapResponseSchema.parse(
-        await readJson(response),
+        rawBootstrap,
       );
       expect(bootstrap.defaultExecutionOptions).toMatchObject({
         model: "gpt-5.5",
@@ -2292,7 +2294,6 @@ describe("public thread data routes", () => {
       expect(bootstrap.queuedMessages[0]?.content).toEqual(
         textInput("Queued message"),
       );
-      expect(bootstrap.pendingInteractions).toEqual([]);
       expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
         expect.arrayContaining([
           textInput("Accepted prompt"),

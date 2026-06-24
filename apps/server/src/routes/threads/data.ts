@@ -141,8 +141,6 @@ async function buildThreadComposerBootstrapResponse(
       toThreadQueuedMessage,
     ),
     executionOptions,
-    pendingInteractions:
-      deps.pendingInteractions.listPendingThreadInteractions(threadId),
     promptHistory: listThreadPromptHistory(deps, {
       threadId,
       limit: PROMPT_HISTORY_ENTRY_LIMIT,

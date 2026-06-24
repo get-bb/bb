@@ -408,7 +408,6 @@ export const threadComposerBootstrapResponseSchema = z.object({
    * shared system-execution-options cache with it).
    */
   executionOptions: systemExecutionOptionsResponseSchema.nullable(),
-  pendingInteractions: threadPendingInteractionsResponseSchema,
   promptHistory: promptHistoryResponseSchema,
 });
 export type ThreadComposerBootstrapResponse = z.infer<

@@ -526,7 +526,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     thread?.id ?? "",
     {
       enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-      staleTime: composerHydratedDataStaleTime,
     },
   );
   const hasPendingInteraction =
