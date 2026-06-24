@@ -59,6 +59,17 @@ interface WriteWorkspaceAgentInstructionsArgs {
   workspacePath: string;
 }
 
+interface WriteDataDirAgentInstructionsArgs {
+  content: string;
+  dataDir: string;
+}
+
+async function writeDataDirAgentInstructions(
+  args: WriteDataDirAgentInstructionsArgs,
+): Promise<void> {
+  await writeFile(path.join(args.dataDir, "AGENTS.md"), args.content, "utf8");
+}
+
 async function writeWorkspaceAgentInstructions(
   args: WriteWorkspaceAgentInstructionsArgs,
 ): Promise<void> {
@@ -999,6 +1010,70 @@ describe("thread runtime config", () => {
       );
       expect(runtimeConfig.instructions).toContain(
         "Always run the smoke test before pushing.",
+      );
+    });
+  });
+
+  it("appends data-dir AGENTS.md instructions before workspace instructions", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-runtime-data-dir-agents-md";
+      seedHostSession(harness.deps, { id: hostId });
+      const workspacePath = path.join(
+        harness.config.dataDir,
+        "data-dir-agents-md-workspace",
+      );
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      await writeDataDirAgentInstructions({
+        content: "# User Rules\n\nPrefer concise progress updates.\n",
+        dataDir: harness.config.dataDir,
+      });
+      await writeWorkspaceAgentInstructions({
+        content:
+          "# Project Rules\n\nAlways run the smoke test before pushing.\n",
+        workspacePath,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread,
+          environment: {
+            hostId: environment.hostId,
+            id: environment.id,
+            path: environment.path,
+            status: environment.status,
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+        },
+      );
+
+      const userSource =
+        "The following user instructions come from <dataDir>/AGENTS.md:";
+      const workspaceSource =
+        "The following workspace instructions come from .bb/AGENTS.md:";
+      expect(runtimeConfig.instructions).toContain(userSource);
+      expect(runtimeConfig.instructions).toContain(
+        "Prefer concise progress updates.",
+      );
+      expect(runtimeConfig.instructions).toContain(workspaceSource);
+      expect(runtimeConfig.instructions).toContain(
+        "Always run the smoke test before pushing.",
+      );
+      expect(runtimeConfig.instructions.indexOf(userSource)).toBeLessThan(
+        runtimeConfig.instructions.indexOf(workspaceSource),
       );
     });
   });

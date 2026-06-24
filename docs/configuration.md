@@ -147,25 +147,33 @@ can write `~/.bb/config.json` can cause bb to run that command as the local user
 when the provider is used. Treat `config.json` write access as the trust
 boundary.
 
-## Workspace Agent Instructions
+## Agent Instructions
 
-bb reads per-workspace agent instructions from a project's `.bb/` directory and
-appends them to every thread's system prompt, alongside the `.bb/skills/`
-convention. Create `.bb/AGENTS.md` at the workspace root:
+bb can inject user-level and workspace-level agent instructions into every
+provider-backed thread's system prompt, alongside the skills convention.
+
+For user-level defaults across projects, create `AGENTS.md` in the bb data dir:
+
+```
+<dataDir>/AGENTS.md
+```
+
+For repo-specific guidance, create `.bb/AGENTS.md` at the workspace root:
 
 ```
 <workspace>/.bb/AGENTS.md
 ```
 
-The file contents are appended to bb's standard agent instructions for every
-provider-backed thread (start and resume), so the guidance applies regardless of
-which provider runs. An empty or whitespace-only file is treated as absent.
+The file contents are appended to bb's standard agent instructions when a
+provider session starts, so the guidance applies regardless of which provider
+runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
+`<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
+as absent.
 
-No agent loads `.bb/AGENTS.md` natively — provider-native instruction files
-(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) live at the
-workspace root and are never read from the `.bb/` subdirectory. bb reads
-`.bb/AGENTS.md` itself and injects it, so use it for guidance you want every bb
-thread to receive regardless of provider.
+No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
+(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) remain
+provider-specific. bb reads the files above itself and injects them, so use them
+for guidance you want every bb thread to receive regardless of provider.
 
 ## Startup Flags
 

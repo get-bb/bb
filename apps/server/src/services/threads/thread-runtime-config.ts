@@ -25,7 +25,9 @@ import {
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
 import {
+  DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
+  readDataDirAgentInstructions,
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
 import { isSideChatThread } from "./side-chat-thread.js";
@@ -129,17 +131,28 @@ export async function resolveThreadRuntimeCommandConfig(
     dataDir: deps.config.dataDir,
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
   });
+  const dataDirAgentInstructions = readDataDirAgentInstructions(
+    deps.logger,
+    deps.config.dataDir,
+  );
   const workspaceAgentInstructions = readWorkspaceAgentInstructions(
     deps.logger,
     workspacePath,
   );
-  const instructions = workspaceAgentInstructions
-    ? [
-        STANDARD_AGENT_INSTRUCTIONS,
-        `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
-        workspaceAgentInstructions,
-      ].join("\n\n")
-    : STANDARD_AGENT_INSTRUCTIONS;
+  const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
+  if (dataDirAgentInstructions) {
+    instructionSections.push(
+      `The following user instructions come from <dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
+      dataDirAgentInstructions,
+    );
+  }
+  if (workspaceAgentInstructions) {
+    instructionSections.push(
+      `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
+      workspaceAgentInstructions,
+    );
+  }
+  const instructions = instructionSections.join("\n\n");
   const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,

@@ -20,16 +20,20 @@ message agents, or inspect projects, providers, and environments.
 - To make a repo work with bb worktrees, run `bb guide environments`. It
   documents the repo-level `.bb-env-setup.sh` setup hook.
 
-## Workspace Agent Instructions
+## Agent Instructions
 
-- Add a `.bb/AGENTS.md` file at a workspace root to inject repo-specific
-  instructions into every thread that runs there. bb appends the file contents
-  to the thread system prompt for all providers, on start and resume; edits
-  apply on the next turn.
-- Only the plural `AGENTS.md` is read, only from the workspace-root `.bb/`
-  directory (no parent-directory walk); an empty file is ignored. Track it with
-  git so fresh managed worktrees include it. Run `bb guide agent-configuration`
-  for details (it also covers project `.bb/skills/`).
+- Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject
+  user-level default instructions for every provider-backed thread across all
+  projects.
+- Add `.bb/AGENTS.md` at a workspace root to inject repo-specific instructions
+  into every thread that runs there. Track the workspace file with git so fresh
+  managed worktrees include it.
+- bb appends data-dir instructions first, then workspace instructions, to the
+  thread system prompt for all providers when a provider session starts.
+- Only the plural `AGENTS.md` is read, only from those exact locations (no
+  parent-directory walk); an empty file is ignored. Run
+  `bb guide agent-configuration` for details (it also covers project
+  `.bb/skills/`).
 
 ## Spawning Threads
 
@@ -171,7 +175,7 @@ For review or fix pipelines, get the environment ID from
   palette layers on top of.
 - **Custom themes live on disk** under the app data dir, one folder per theme:
   `<bb-data-dir>/theme/<name>/theme.css` (the packaged app uses `~/.bb/theme/…`).
-  The folder name *is* the theme id. This mirrors how user skills live under
+  The folder name _is_ the theme id. This mirrors how user skills live under
   `<bb-data-dir>/skills/<name>/`.
 - Commands:
   - `bb theme list` — built-in and custom themes and which palette is active.
