@@ -20,7 +20,11 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PromptStackCard,
+  PROMPT_STACK_INLAY_HEADER_CLASS,
+  PROMPT_STACK_INLAY_INSET_CLASS,
+} from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import {
   Tooltip,
@@ -650,12 +654,15 @@ export function QueuedMessagesList({
       // instead of leaving a visible gap between the two surfaces.
       className="relative -mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
-      <div className="p-2">
+      <div className={PROMPT_STACK_INLAY_INSET_CLASS}>
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn(
+            PROMPT_STACK_INLAY_HEADER_CLASS,
+            "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          )}
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">

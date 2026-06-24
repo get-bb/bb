@@ -11,7 +11,12 @@ import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PromptStackCard,
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_STACK_INLAY_INSET_CLASS,
+  PROMPT_STACK_INLAY_SEGMENT_CLASS,
+} from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
   activityRowClass,
@@ -149,7 +154,8 @@ export type ThreadPromptContextBannerExpandedSection =
  * sides on the same constant means tweaking banner chrome only requires
  * updating this number in one place.
  */
-export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT = 32;
+export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT =
+  PROMPT_STACK_CARD_ROW_HEIGHT;
 
 export interface ThreadPromptContextBannerProps {
   gitSection: ThreadPromptGitSection | null;
@@ -267,19 +273,20 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex min-h-6 cursor-pointer items-center rounded px-2 py-1 text-xs transition-colors",
-        active ? "hover:bg-background/80" : "hover:bg-state-hover",
+        active && activityRowClass("active"),
+        "flex cursor-pointer items-center text-xs transition-colors",
+        PROMPT_STACK_INLAY_SEGMENT_CLASS,
+        active
+          ? "text-foreground hover:bg-background/80"
+          : "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        active
-          ? "text-foreground"
-          : isExpanded
-            ? "text-foreground"
-            : "text-muted-foreground",
+        !active &&
+          (isExpanded ? "text-foreground" : "text-muted-foreground"),
       )}
     >
       {icon}
@@ -584,7 +591,8 @@ function PullRequestBannerLink({
       title={pullRequest.title}
       aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
       className={cn(
-        "flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        PROMPT_STACK_INLAY_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
       )}
     >
@@ -667,7 +675,12 @@ function ReadOnlyContextBanner({
       className="overflow-hidden"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-0.5 p-1 text-xs text-muted-foreground">
+      <div
+        className={cn(
+          "flex items-center gap-0.5 text-xs text-muted-foreground",
+          PROMPT_STACK_INLAY_INSET_CLASS,
+        )}
+      >
         {parentThreadSection ? (
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
@@ -686,7 +699,10 @@ function ReadOnlyContextBanner({
           />
         ) : null}
         <div
-          className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
+          className={cn(
+            "flex min-w-0 items-center gap-1.5 text-xs",
+            PROMPT_STACK_INLAY_SEGMENT_CLASS,
+          )}
           role="status"
           aria-label={statusAriaLabel}
           title={statusAriaLabel}
@@ -888,19 +904,19 @@ export function ThreadPromptContextBanner({
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
       <div
-        className={
-          hasActiveChildThreads
-            ? activityRowClass(
-                "active",
-                "flex min-h-8 items-center gap-0.5 rounded-none text-xs text-foreground",
-              )
-            : "flex items-center gap-0.5 p-1 text-xs text-muted-foreground"
-        }
+        className={cn(
+          "flex items-center gap-0.5 text-xs",
+          PROMPT_STACK_INLAY_INSET_CLASS,
+          hasActiveChildThreads ? "text-foreground" : "text-muted-foreground",
+        )}
       >
         {/* Segment order: relationship metadata, active child state, GitHub PR, git status. */}
         {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
-            className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-xs",
+              PROMPT_STACK_INLAY_SEGMENT_CLASS,
+            )}
             title={parentSectionAriaLabel(parentThreadSection)}
           >
             <Icon

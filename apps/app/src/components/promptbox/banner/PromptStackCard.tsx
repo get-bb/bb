@@ -3,6 +3,14 @@ import { cn } from "@/lib/utils";
 
 const BASE_CHROME = "rounded-lg border border-border bg-surface-recessed";
 
+export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
+// Outer cards are rounded-lg (8px). A 4px inset means inner hover/focus
+// targets use rounded (4px) so the corner arcs stay visually aligned.
+export const PROMPT_STACK_INLAY_INSET_CLASS = "p-1";
+export const PROMPT_STACK_INLAY_SEGMENT_CLASS = "min-h-6 rounded px-2 py-1";
+export const PROMPT_STACK_INLAY_HEADER_CLASS =
+  "flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
 export interface PromptStackCardProps {
   children: ReactNode;
   /**
