@@ -663,7 +663,7 @@ export async function createHostDaemonApp(
     }
   };
   const getProviderCliEnv = async () =>
-    providerCliEnvFromShellEnv(await refreshRuntimeShellEnv());
+    providerCliEnvFromShellEnv(runtimeManager.getShellEnv());
 
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,

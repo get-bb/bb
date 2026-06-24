@@ -528,16 +528,10 @@ describe("provider CLI health", () => {
     expect(runner.commandLines()).not.toContain("npm view cursor version");
   });
 
-  it("reports known ACP agent executables with the shared resolution logic", async () => {
+  it("reports known ACP agent executables from PATH without version checks", async () => {
     const runner = new FakeProviderCliCommandRunner();
     runner.setSuccess("which", ["opencode"], "/opt/homebrew/bin/opencode\n");
-    runner.setSuccess("opencode", ["--version"], "opencode 1.0.0\n");
     runner.setExit("which", ["missing-acp"], 1, "missing-acp not found");
-    runner.setSpawnError(
-      "missing-acp",
-      ["--version"],
-      "spawn missing-acp ENOENT",
-    );
 
     const status = await getKnownAcpAgentsStatus({
       runner,
@@ -563,6 +557,10 @@ describe("provider CLI health", () => {
         },
       ],
     });
+    expect(runner.commandLines()).toEqual([
+      "which opencode",
+      "which missing-acp",
+    ]);
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {

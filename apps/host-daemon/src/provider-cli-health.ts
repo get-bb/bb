@@ -471,6 +471,19 @@ function resolveExecutableInstallStatus(
   };
 }
 
+function resolveExecutablePathStatus(whichResult: ProviderCliCommandResult): {
+  installed: boolean;
+  executablePath: string | null;
+} {
+  const executablePath = isSuccessfulCommand(whichResult)
+    ? firstOutputLine(whichResult.stdout)
+    : null;
+  return {
+    executablePath,
+    installed: executablePath !== null,
+  };
+}
+
 function buildInstallAction({
   definition,
   installed,
@@ -749,20 +762,13 @@ export async function inspectExecutableInstallStatus({
   installed: boolean;
   executablePath: string | null;
 }> {
-  const [whichResult, versionResult] = await Promise.all([
-    runner.run({
-      command: "which",
-      args: [executableName],
-      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
-    }),
-    runner.run({
-      command: executableName,
-      args: ["--version"],
-      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
-    }),
-  ]);
+  const whichResult = await runner.run({
+    command: "which",
+    args: [executableName],
+    timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
+  });
 
-  return resolveExecutableInstallStatus(whichResult, versionResult);
+  return resolveExecutablePathStatus(whichResult);
 }
 
 export async function getKnownAcpAgentsStatus({
