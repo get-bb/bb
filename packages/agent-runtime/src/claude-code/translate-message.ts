@@ -151,6 +151,31 @@ const claudeResultFallbackErrorDetails: Record<string, string> = {
 
 const CLAUDE_SYNTHETIC_MODEL = "<synthetic>";
 const CLAUDE_NO_RESPONSE_REQUESTED_TEXT = "No response requested.";
+const CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS = [
+  "input_tokens",
+  "cache_creation_input_tokens",
+  "cache_read_input_tokens",
+  "output_tokens",
+] as const;
+
+function hasClaudeAssistantErrorMarker(
+  message: ClaudeAssistantMessage,
+): boolean {
+  const messageRecord = toOptionalRecord(message);
+  return (
+    messageRecord?.error !== undefined ||
+    messageRecord?.isApiErrorMessage === true ||
+    messageRecord?.apiErrorStatus !== undefined
+  );
+}
+
+function hasClaudeZeroUsage(usage: unknown): boolean {
+  const usageRecord = toOptionalRecord(usage);
+  return (
+    usageRecord !== undefined &&
+    CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS.every((key) => usageRecord[key] === 0)
+  );
+}
 
 function isClaudeNoResponseRequestedSyntheticMessage(
   message: ClaudeAssistantMessage,
@@ -161,6 +186,8 @@ function isClaudeNoResponseRequestedSyntheticMessage(
     nestedMessage.role === "assistant" &&
     nestedMessage.stop_reason === "stop_sequence" &&
     nestedMessage.stop_sequence === "" &&
+    !hasClaudeAssistantErrorMarker(message) &&
+    hasClaudeZeroUsage(nestedMessage.usage) &&
     extractAssistantText(message) === CLAUDE_NO_RESPONSE_REQUESTED_TEXT
   );
 }
