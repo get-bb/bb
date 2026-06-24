@@ -101,7 +101,7 @@ function renderProjectRow(
   onToggleProjectCollapsed = vi.fn(),
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
 ) {
-  render(
+  const result = render(
     <MemoryRouter>
       <ProjectRow
         project={makeProject()}
@@ -118,7 +118,7 @@ function renderProjectRow(
       />
     </MemoryRouter>,
   );
-  return { onToggleProjectCollapsed };
+  return { ...result, onToggleProjectCollapsed };
 }
 
 describe("ProjectRow interactions", () => {
@@ -143,6 +143,18 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(onToggleProjectCollapsed).toHaveBeenCalledWith("proj_test");
+  });
+
+  it("keeps hover background scoped to the project chevron", () => {
+    const { container } = renderProjectRow();
+
+    const header = container.querySelector(".bb-sidebar-hover-actions-row");
+    expect(header).not.toBeNull();
+    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
+
+    expect(
+      screen.getByRole("button", { name: "Collapse Test project" }).className,
+    ).toContain("hover:bg-sidebar-accent");
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

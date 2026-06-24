@@ -96,8 +96,8 @@ import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
+  SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -2131,7 +2131,7 @@ function ProjectRowComponent({
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
                 ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+                : SIDEBAR_ROW_STATIC_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none",
