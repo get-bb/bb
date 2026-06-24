@@ -1,4 +1,5 @@
 import {
+  archivedThreadsListQueryKey,
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadQueuedMessagesQueryKey,
@@ -34,6 +35,10 @@ import {
 
 interface ProjectSourceInvalidationArg extends QueryClientArg {
   projectId: string | undefined;
+}
+
+interface ThreadFolderArchivedListRemovalArg extends QueryClientArg {
+  folderId: string;
 }
 
 export function invalidateProjectListQueries({
@@ -99,6 +104,16 @@ export function invalidateThreadListQueries({
       projectId: undefined,
       queryClient,
     }),
+  });
+}
+
+export function removeThreadFolderArchivedListQuery({
+  folderId,
+  queryClient,
+}: ThreadFolderArchivedListRemovalArg): void {
+  queryClient.removeQueries({
+    exact: true,
+    queryKey: archivedThreadsListQueryKey({ folderId }),
   });
 }
 

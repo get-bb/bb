@@ -8,8 +8,8 @@ import * as api from "@/lib/api";
 import {
   invalidateProjectListQueries,
   invalidateThreadListQueries,
+  removeThreadFolderArchivedListQuery,
 } from "../cache-owners/mutation-cache-effects";
-import { archivedThreadsListQueryKey } from "../queries/query-keys";
 
 function invalidateThreadFolderQueries(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -60,9 +60,9 @@ export function useDeleteThreadFolder() {
     mutationFn: (request: DeleteThreadFolderRequest) =>
       api.deleteThreadFolder(request),
     onSuccess: (_result, request) => {
-      queryClient.removeQueries({
-        exact: true,
-        queryKey: archivedThreadsListQueryKey({ folderId: request.id }),
+      removeThreadFolderArchivedListQuery({
+        folderId: request.id,
+        queryClient,
       });
       invalidateThreadFolderQueries(queryClient);
     },

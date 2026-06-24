@@ -97,6 +97,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadSearchQueryKeyPrefix",
   ],
   "hooks/cache-owners/mutation-cache-effects.ts": [
+    "archivedThreadsListQueryKey",
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
     "threadPromptHistoryQueryKey",
