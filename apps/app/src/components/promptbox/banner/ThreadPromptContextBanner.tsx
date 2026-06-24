@@ -267,7 +267,7 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex cursor-pointer items-center rounded px-1 py-0.5 text-xs transition-colors",
+        "flex cursor-pointer items-center rounded-md px-2 py-1 text-xs transition-colors",
         active ? "hover:bg-background/80" : "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
