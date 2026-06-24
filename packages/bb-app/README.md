@@ -107,13 +107,13 @@ targets. Scripts launched by bb already receive `BB_SERVER_URL` and
 
 bb uses whichever providers you have configured. Common providers:
 
-| Provider         |
-| ---------------- |
-| `codex`          |
-| `claude-code`    |
-| `cursor`[^acp]   |
-| `pi`             |
-| `opencode`[^acp] |
+| Provider         | Notes        |
+| ---------------- | ------------ |
+| `codex`          | Codex CLI    |
+| `claude-code`    | Claude Code  |
+| `cursor`[^acp]   | Cursor agent |
+| `pi`             | Pi agent     |
+| `opencode`[^acp] | opencode     |
 
 [^acp]:
     Cursor, opencode, and other ACP-compatible agents run through bb's ACP
