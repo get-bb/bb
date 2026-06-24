@@ -81,7 +81,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium">{window.label}</span>
+        <span className="text-xs text-foreground">{window.label}</span>
         <span className="text-xs tabular-nums text-muted-foreground">
           {window.usedPercent}% used
         </span>
@@ -107,6 +107,17 @@ interface ProviderUsageBlockProps {
   isError: boolean;
 }
 
+export interface UsageLimitsSettingsSectionContentProps {
+  usage: {
+    codex?: ProviderUsage;
+    claudeCode?: ProviderUsage;
+  };
+  isLoading: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  onRefresh: () => void;
+}
+
 function ProviderUsageBlock({
   config,
   usage,
@@ -118,7 +129,7 @@ function ProviderUsageBlock({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{config.name}</h3>
+        <h3 className="text-sm font-medium text-foreground">{config.name}</h3>
         {planLabel ? (
           <span className="text-xs text-muted-foreground">{planLabel}</span>
         ) : null}
@@ -185,9 +196,13 @@ function ProviderUsageBody({
   }
 }
 
-export function UsageLimitsSettingsSection() {
-  const usageQuery = useSystemUsageLimits();
-
+export function UsageLimitsSettingsSectionContent({
+  usage,
+  isLoading,
+  isError,
+  isFetching,
+  onRefresh,
+}: UsageLimitsSettingsSectionContentProps) {
   return (
     <SettingsSection
       title="Usage limits"
@@ -196,12 +211,10 @@ export function UsageLimitsSettingsSection() {
         <Button
           variant="outline"
           size="sm"
-          disabled={usageQuery.isFetching}
-          onClick={() => {
-            void usageQuery.refetch();
-          }}
+          disabled={isFetching}
+          onClick={onRefresh}
         >
-          {usageQuery.isFetching ? "Refreshing…" : "Refresh"}
+          {isFetching ? "Refreshing…" : "Refresh"}
         </Button>
       }
     >
@@ -210,13 +223,29 @@ export function UsageLimitsSettingsSection() {
           <div key={config.key} className="py-3 first:pt-0 last:pb-0">
             <ProviderUsageBlock
               config={config}
-              usage={usageQuery.data?.[config.key]}
-              isLoading={usageQuery.isLoading}
-              isError={usageQuery.isError}
+              usage={usage[config.key]}
+              isLoading={isLoading}
+              isError={isError}
             />
           </div>
         ))}
       </div>
     </SettingsSection>
+  );
+}
+
+export function UsageLimitsSettingsSection() {
+  const usageQuery = useSystemUsageLimits();
+
+  return (
+    <UsageLimitsSettingsSectionContent
+      usage={usageQuery.data ?? {}}
+      isLoading={usageQuery.isLoading}
+      isError={usageQuery.isError}
+      isFetching={usageQuery.isFetching}
+      onRefresh={() => {
+        void usageQuery.refetch();
+      }}
+    />
   );
 }

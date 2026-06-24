@@ -8,6 +8,8 @@ interface SeqAnchoredRow {
   id: string;
   sourceSeqStart: number;
   sourceSeqEnd: number;
+  childRows?: readonly SeqAnchoredRow[];
+  children?: readonly SeqAnchoredRow[] | null;
 }
 
 interface SearchMessageTarget {
@@ -18,9 +20,90 @@ interface SearchMessageTarget {
 const FLASH_CLASS_NAME = "bb-search-flash";
 const FLASH_DURATION_MS = 1700;
 
+function escapeTimelineRowId(rowId: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(rowId);
+  }
+  return rowId.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function containsSeq(row: SeqAnchoredRow, seq: number): boolean {
+  return row.sourceSeqStart <= seq && seq <= row.sourceSeqEnd;
+}
+
+function getNestedRows(row: SeqAnchoredRow): readonly SeqAnchoredRow[] | null {
+  if (row.childRows) {
+    return row.childRows;
+  }
+  if ("children" in row) {
+    return row.children ?? null;
+  }
+  return [];
+}
+
+function findDeepestSeqAnchoredRow(
+  rows: readonly SeqAnchoredRow[],
+  seq: number,
+): SeqAnchoredRow | null {
+  for (const row of rows) {
+    if (!containsSeq(row, seq)) {
+      continue;
+    }
+    const nestedRows = getNestedRows(row);
+    if (nestedRows === null) {
+      return null;
+    }
+    return findDeepestSeqAnchoredRow(nestedRows, seq) ?? row;
+  }
+  return null;
+}
+
+function collectSearchedMessageAncestorRowIdsInRows({
+  ancestorIds,
+  rows,
+  seq,
+}: {
+  ancestorIds: Set<string>;
+  rows: readonly SeqAnchoredRow[];
+  seq: number;
+}): boolean {
+  for (const row of rows) {
+    if (!containsSeq(row, seq)) {
+      continue;
+    }
+    const nestedRows = getNestedRows(row);
+    if (nestedRows === null) {
+      ancestorIds.add(row.id);
+      return true;
+    }
+    if (
+      collectSearchedMessageAncestorRowIdsInRows({
+        ancestorIds,
+        rows: nestedRows,
+        seq,
+      })
+    ) {
+      ancestorIds.add(row.id);
+    }
+    return true;
+  }
+  return false;
+}
+
+export function collectSearchedMessageAncestorRowIds(
+  rows: readonly SeqAnchoredRow[],
+  seq: number,
+): ReadonlySet<string> {
+  const ancestorIds = new Set<string>();
+  collectSearchedMessageAncestorRowIdsInRows({ ancestorIds, rows, seq });
+  return ancestorIds;
+}
+
 // Sidebar search hands the matched message's event sequence to the thread route
 // via `navigate(path, { state: { searchMessageSeq, searchThreadId } })`.
-function readSearchMessageTarget(state: unknown): SearchMessageTarget | null {
+export function readSearchMessageTarget(
+  state: unknown,
+): SearchMessageTarget | null {
   if (
     state !== null &&
     typeof state === "object" &&
@@ -68,15 +151,13 @@ export function useScrollToSearchedMessage(
         return;
       }
     }
-    const targetRow = rows.find(
-      (row) => row.sourceSeqStart <= targetSeq && targetSeq <= row.sourceSeqEnd,
-    );
-    if (targetRow === undefined) {
+    const targetLeafRow = findDeepestSeqAnchoredRow(rows, targetSeq);
+    if (targetLeafRow === null) {
       // Target row not rendered yet (still loading, or inside a collapsed
       // group). Leave the key unhandled so a later rows change can retry.
       return;
     }
-    const selector = `[data-timeline-row-id="${CSS.escape(targetRow.id)}"]`;
+    const selector = `[data-timeline-row-id="${escapeTimelineRowId(targetLeafRow.id)}"]`;
     if (document.querySelector(selector) === null) {
       return;
     }

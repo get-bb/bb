@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import {
   notifyManager,
   QueryClientContext,
@@ -83,7 +84,11 @@ import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
-import { useScrollToSearchedMessage } from "./useScrollToSearchedMessage.js";
+import {
+  collectSearchedMessageAncestorRowIds,
+  readSearchMessageTarget,
+  useScrollToSearchedMessage,
+} from "./useScrollToSearchedMessage.js";
 import {
   joinSignatureParts,
   timelineRowRenderSignature,
@@ -380,6 +385,9 @@ const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
 const TimelineTurnStateContext =
   createContext<TimelineTurnStateContextValue | null>(null);
+const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
+const TimelineSearchExpansionContext =
+  createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
 const SKILL_FILE_NAME = "SKILL.md";
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
@@ -520,6 +528,36 @@ function useStableReadonlySet(
     valuesRef.current = values;
   }
   return valuesRef.current;
+}
+
+function useTimelineSearchExpansionRowIds(
+  rows: readonly ThreadTimelineViewRow[],
+): ReadonlySet<string> {
+  const inheritedRowIds = useContext(TimelineSearchExpansionContext);
+  const { threadId } = useTimelineRendererStaticContext();
+  const location = useLocation();
+  return useMemo(() => {
+    const target = readSearchMessageTarget(location.state);
+    if (target === null) {
+      return inheritedRowIds;
+    }
+    if (
+      threadId !== undefined &&
+      target.threadId !== null &&
+      target.threadId !== threadId
+    ) {
+      return inheritedRowIds;
+    }
+    const localRowIds = collectSearchedMessageAncestorRowIds(rows, target.seq);
+    if (localRowIds.size === 0) {
+      return inheritedRowIds;
+    }
+    const combinedRowIds = new Set<string>(inheritedRowIds);
+    for (const id of localRowIds) {
+      combinedRowIds.add(id);
+    }
+    return combinedRowIds;
+  }, [inheritedRowIds, location.state, rows, threadId]);
 }
 
 function buildTurnSummaryDetailsIdentity({
@@ -1519,6 +1557,7 @@ function TimelineExpandableRowView({
     liveAutoExpandedRowIds,
     terminalAutoExpandedRowIds,
   } = useTimelineTurnStateContext();
+  const searchExpandedRowIds = useContext(TimelineSearchExpansionContext);
   const renderBody = useCallback(
     () => (
       <TimelineExpandableBody
@@ -1555,6 +1594,7 @@ function TimelineExpandableRowView({
         liveAutoExpandedRowIds.has(row.id) ||
         initialAutoExpandedRowIds.has(row.id)
       }
+      forceExpanded={searchExpandedRowIds.has(row.id)}
       terminalAutoExpanded={terminalAutoExpandedRowIds.has(row.id)}
       onTitleAction={onTitleAction}
       resolveSegmentLinkHref={resolveSegmentLinkHref}
@@ -1640,6 +1680,11 @@ function TimelineRowsList({
   unreadDividerAutoScroll,
   unreadDividerPlacement,
 }: TimelineRowsListProps) {
+  const { threadId } = useTimelineRendererStaticContext();
+  const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
+  const stableSearchExpandedRowIds =
+    useStableReadonlySet(searchExpandedRowIds);
+  useScrollToSearchedMessage(rows, threadId);
   const activeLatestBundleId = useMemo(
     () => findActiveLatestBundleId(rows),
     [rows],
@@ -1649,38 +1694,40 @@ function TimelineRowsList({
     [rows, unreadDividerPlacement],
   );
   return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
-        timelineRowsListGapClassName(spacing),
-        className,
-      )}
-      data-timeline-row-list={spacing}
-    >
-      {items.map((item) => {
-        if (item.kind === "unread-divider") {
-          return (
-            <TimelineUnreadDivider
-              key={item.id}
-              autoScroll={unreadDividerAutoScroll}
-            />
-          );
-        }
+    <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
+      <div
+        className={cn(
+          "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+          timelineRowsListGapClassName(spacing),
+          className,
+        )}
+        data-timeline-row-list={spacing}
+      >
+        {items.map((item) => {
+          if (item.kind === "unread-divider") {
+            return (
+              <TimelineUnreadDivider
+                key={item.id}
+                autoScroll={unreadDividerAutoScroll}
+              />
+            );
+          }
 
-        return (
-          <div key={item.row.id} data-timeline-row-id={item.row.id}>
-            <MemoizedTimelineRowView
-              activeLatestBundleId={activeLatestBundleId}
-              row={item.row}
-              scopeActive={scopeActive}
-              showAssistantMessageActions={showAssistantMessageActions}
-              spacing={spacing}
-              compactActivityIntents={compactActivityIntents}
-            />
-          </div>
-        );
-      })}
-    </div>
+          return (
+            <div key={item.row.id} data-timeline-row-id={item.row.id}>
+              <MemoizedTimelineRowView
+                activeLatestBundleId={activeLatestBundleId}
+                row={item.row}
+                scopeActive={scopeActive}
+                showAssistantMessageActions={showAssistantMessageActions}
+                spacing={spacing}
+                compactActivityIntents={compactActivityIntents}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </TimelineSearchExpansionContext.Provider>
   );
 }
 
@@ -1699,7 +1746,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
   );
-  useScrollToSearchedMessage(rows, props.threadId);
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
   );
@@ -1715,7 +1761,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     computedAutoExpansionRowIds.terminalFrontierRowIds,
   );
   const initialAutoExpandedRowIds = useStableReadonlySet(
-    props.initialExpanded ?? new Set<string>(),
+    props.initialExpanded ?? EMPTY_ROW_ID_SET,
   );
   const projectId = props.projectId;
   const senderThreadMetadataById = useSenderThreadMetadataById({

@@ -1,24 +1,30 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  defaultAppTheme,
+  defaultExperiments,
+  type AppTheme,
+  type Experiments,
+} from "@bb/domain";
 import type {
+  ProviderUsage,
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { StoryCard, StoryRow } from "../../.ladle/story-card";
+import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
+import { PageShell } from "@/components/ui/page-shell";
+import type { ThemePreference } from "@/hooks/useTheme";
 import {
+  ExperimentsSettingsSection,
+  GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
   type LocalOpenTargetSettingsSectionProps,
 } from "./SettingsView";
 
 export default {
-  title: "settings/Open File Preferences",
+  title: "settings/Settings Page",
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
-
-interface LocalOpenTargetSettingsStoryProps {
-  hasDaemon: boolean;
-  targets: WorkspaceOpenTarget[];
-}
 
 const vscodeTarget: WorkspaceOpenTarget = {
   capabilities: {
@@ -67,48 +73,261 @@ const connectedTargets: WorkspaceOpenTarget[] = [
   defaultAppTarget,
 ];
 
-function LocalOpenTargetSettingsStory({
-  hasDaemon,
-  targets,
-}: LocalOpenTargetSettingsStoryProps) {
+function futureIso(minutesFromNow: number): string {
+  return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
+}
+
+const usageFixture: {
+  codex: ProviderUsage;
+  claudeCode: ProviderUsage;
+} = {
+  codex: {
+    status: "ok",
+    planLabel: "Pro",
+    windows: [
+      {
+        label: "Current session",
+        resetsAt: futureIso(136),
+        usedPercent: 35,
+      },
+      {
+        label: "Weekly limit",
+        resetsAt: futureIso(48),
+        usedPercent: 74,
+      },
+    ],
+  },
+  claudeCode: {
+    status: "ok",
+    planLabel: "Max (20x)",
+    windows: [
+      {
+        label: "Current session",
+        resetsAt: futureIso(179),
+        usedPercent: 3,
+      },
+      {
+        label: "Weekly limit",
+        resetsAt: futureIso(4 * 24 * 60),
+        usedPercent: 26,
+      },
+    ],
+  },
+};
+
+function useSettingsStoryState() {
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>("system");
+  const [appearance, setAppearance] = useState<AppTheme>({
+    ...defaultAppTheme,
+    faviconColor: "red",
+  });
+  const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
+    useState(false);
+  const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
+  const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
+  const [richTextEditing, setRichTextEditing] = useState(false);
   const [directoryTargetId, setDirectoryTargetId] =
-    useState<StoredTargetId>(null);
-  const [fileTargetId, setFileTargetId] = useState<StoredTargetId>(null);
+    useState<StoredTargetId>("finder");
+  const [fileTargetId, setFileTargetId] =
+    useState<StoredTargetId>("default-app");
+  const [experiments, setExperiments] = useState<Experiments>({
+    ...defaultExperiments,
+    popoutChat: true,
+  });
+
+  return {
+    appearance,
+    directoryTargetId,
+    experiments,
+    fileTargetId,
+    navigateToThreadAfterCreate,
+    openLinksInAppBrowser,
+    rewriteLocalhostLinks,
+    richTextEditing,
+    setAppearance,
+    setDirectoryTargetId,
+    setExperiments,
+    setFileTargetId,
+    setNavigateToThreadAfterCreate,
+    setOpenLinksInAppBrowser,
+    setRewriteLocalhostLinks,
+    setRichTextEditing,
+    setThemePreference,
+    themePreference,
+  };
+}
+
+function GeneralSettingsStory({
+  desktopBrowserAvailable = false,
+}: {
+  desktopBrowserAvailable?: boolean;
+}) {
+  const state = useSettingsStoryState();
+
+  return (
+    <GeneralSettingsSection
+      appearance={state.appearance}
+      appearanceDisabled={false}
+      customThemes={["Monochrome Lab", "Low Contrast"]}
+      desktopBrowserAvailable={desktopBrowserAvailable}
+      faviconColor={state.appearance.faviconColor}
+      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+      onAppearanceThemeChange={(themeId) =>
+        state.setAppearance((current) => ({ ...current, themeId }))
+      }
+      onFaviconColorChange={(faviconColor) =>
+        state.setAppearance((current) => ({ ...current, faviconColor }))
+      }
+      onNavigateToThreadAfterCreateChange={
+        state.setNavigateToThreadAfterCreate
+      }
+      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
+      onRichTextEditingChange={state.setRichTextEditing}
+      onThemePreferenceChange={state.setThemePreference}
+      openLinksInAppBrowser={state.openLinksInAppBrowser}
+      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
+      richTextEditing={state.richTextEditing}
+      themePreference={state.themePreference}
+    />
+  );
+}
+
+function FilePreferencesStory() {
+  const state = useSettingsStoryState();
 
   function handleDirectoryTargetChange(targetId: WorkspaceOpenTargetId): void {
-    setDirectoryTargetId(targetId);
+    state.setDirectoryTargetId(targetId);
   }
 
   function handleFileTargetChange(targetId: WorkspaceOpenTargetId): void {
-    setFileTargetId(targetId);
+    state.setFileTargetId(targetId);
   }
 
   return (
     <LocalOpenTargetSettingsSection
-      directoryTargetId={directoryTargetId}
-      fileTargetId={fileTargetId}
-      hasDaemon={hasDaemon}
+      directoryTargetId={state.directoryTargetId}
+      fileTargetId={state.fileTargetId}
+      hasDaemon={true}
       onDirectoryTargetChange={handleDirectoryTargetChange}
       onFileTargetChange={handleFileTargetChange}
-      targets={targets}
+      targets={connectedTargets}
     />
+  );
+}
+
+function ExperimentsStory({
+  desktopShellAvailable = true,
+}: {
+  desktopShellAvailable?: boolean;
+}) {
+  const state = useSettingsStoryState();
+
+  return (
+    <ExperimentsSettingsSection
+      claudeCodeMockCliTrafficEnabled={
+        state.experiments.claudeCodeMockCliTraffic
+      }
+      desktopShellAvailable={desktopShellAvailable}
+      disabled={false}
+      onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          claudeCodeMockCliTraffic: enabled,
+        }))
+      }
+      onPopoutChatEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          popoutChat: enabled,
+        }))
+      }
+      onPopoutChatHotkeyChange={(popoutChatHotkey) =>
+        state.setExperiments((current) => ({
+          ...current,
+          popoutChatHotkey,
+        }))
+      }
+      popoutChatEnabled={state.experiments.popoutChat}
+      popoutChatHotkey={state.experiments.popoutChatHotkey}
+    />
+  );
+}
+
+function UsageLimitsStory() {
+  const [isFetching, setIsFetching] = useState(false);
+
+  return (
+    <UsageLimitsSettingsSectionContent
+      usage={usageFixture}
+      isLoading={false}
+      isError={false}
+      isFetching={isFetching}
+      onRefresh={() => {
+        setIsFetching(true);
+        window.setTimeout(() => setIsFetching(false), 500);
+      }}
+    />
+  );
+}
+
+function SettingsStoryFrame({
+  children,
+  useShell = false,
+}: {
+  children: ReactNode;
+  useShell?: boolean;
+}) {
+  if (useShell) {
+    return (
+      <div className="h-[1120px] bg-background p-4 md:p-5">
+        <PageShell contentClassName="pt-4 md:pt-5">
+          <div className="mx-auto w-full max-w-3xl space-y-6">{children}</div>
+        </PageShell>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-background p-4 md:p-6">
+      <div className="mx-auto w-full max-w-3xl space-y-6">{children}</div>
+    </div>
   );
 }
 
 export function Overview() {
   return (
-    <StoryCard labelWidth="180px" className="max-w-5xl">
-      <StoryRow
-        label="connected"
-        hint="directory and file defaults resolve from available targets"
-      >
-        <div className="w-full max-w-3xl">
-          <LocalOpenTargetSettingsStory
-            hasDaemon={true}
-            targets={connectedTargets}
-          />
-        </div>
-      </StoryRow>
-    </StoryCard>
+    <SettingsStoryFrame useShell>
+      <GeneralSettingsStory />
+      <UsageLimitsStory />
+      <FilePreferencesStory />
+      <ExperimentsStory />
+    </SettingsStoryFrame>
+  );
+}
+
+export function General() {
+  return (
+    <SettingsStoryFrame>
+      <GeneralSettingsStory desktopBrowserAvailable />
+    </SettingsStoryFrame>
+  );
+}
+
+export function UsageAndFiles() {
+  return (
+    <SettingsStoryFrame>
+      <UsageLimitsStory />
+      <FilePreferencesStory />
+    </SettingsStoryFrame>
+  );
+}
+
+export function Experiments() {
+  return (
+    <SettingsStoryFrame>
+      <ExperimentsStory />
+    </SettingsStoryFrame>
   );
 }

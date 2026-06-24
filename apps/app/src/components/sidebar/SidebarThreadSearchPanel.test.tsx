@@ -30,9 +30,11 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 const mockUseThreadSearch = vi.mocked(useThreadSearch);
 
 function createThreadListEntry({
+  folderId = null,
   id,
   title,
 }: {
+  folderId?: string | null;
   id: string;
   title: string;
 }): ThreadListEntry {
@@ -65,7 +67,7 @@ function createThreadListEntry({
     status: "idle",
     title,
     titleFallback: null,
-    folderId: null,
+    folderId,
     updatedAt: 1000,
   };
 }
@@ -228,6 +230,42 @@ describe("SidebarThreadSearchPanel", () => {
     expect(rowText.indexOf("Worktree cleanup")).toBeGreaterThan(
       rowText.indexOf(snippet),
     );
+  });
+
+  it("shows folder metadata instead of project metadata in folder mode", () => {
+    const thread = createThreadListEntry({
+      folderId: "fld_ci",
+      id: "thr_folder",
+      title: "CI cleanup",
+    });
+    mockThreadSearch({
+      data: createSearchResponse(thread),
+      debouncedQuery: "needle",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        folderNamesById={new Map([["fld_ci", "Infra / CI"]])}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map([["proj_search", "Search project"]])}
+        query="needle"
+        recentThreads={[]}
+        showFolderLabels
+      />,
+    );
+
+    const rowText = screen.getByRole("option").textContent ?? "";
+    expect(rowText).toContain("Infra / CI");
+    expect(rowText).not.toContain("Search project");
   });
 });
 

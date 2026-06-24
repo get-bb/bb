@@ -23,7 +23,7 @@ export function SettingsSection({
         )}
       >
         <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           {description ? (
             <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
@@ -76,7 +76,7 @@ export function SettingsWithControl({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{label}</p>
+        <p className="text-sm font-medium text-foreground">{label}</p>
         {description ? (
           <p className="text-xs text-muted-foreground">{description}</p>
         ) : null}

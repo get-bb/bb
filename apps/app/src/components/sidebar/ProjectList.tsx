@@ -1308,6 +1308,13 @@ function ProjectListComponent({
     namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
     return namesById;
   }, [sidebarNavigation]);
+  const folderNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    for (const folder of folders) {
+      namesById.set(folder.id, folder.name);
+    }
+    return namesById;
+  }, [folders]);
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
     for (const thread of threads) {
@@ -2126,9 +2133,11 @@ function ProjectListComponent({
           onActiveIndexChange={threadSearch.onActiveIndexChange}
           onNavigationItemsChange={threadSearch.onNavigationItemsChange}
           onSelect={threadSearch.onSelectItem}
+          folderNamesById={folderNamesById}
           projectNamesById={projectNamesById}
           query={threadSearch.query}
           recentThreads={threads}
+          showFolderLabels={isFolderOrganizationMode}
         />
       </ProjectListShell>
     );

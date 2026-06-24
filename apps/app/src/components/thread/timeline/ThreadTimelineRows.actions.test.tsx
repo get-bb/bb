@@ -10,7 +10,7 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps, ReactElement } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
@@ -23,6 +23,48 @@ const renderWithRouter = (
   ui: ReactElement,
   initialEntries: ComponentProps<typeof MemoryRouter>["initialEntries"] = ["/"],
 ) => render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+
+function SameThreadSearchNavigationHarness() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          navigate("/thread", {
+            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+          })
+        }
+      >
+        Open search match
+      </button>
+      <ThreadTimelineRows
+        initialExpanded={new Set(["turn_with_match"])}
+        threadId="thr_main"
+        timelineRows={[
+          turnRow({
+            id: "turn_with_match",
+            sourceSeqStart: 10,
+            sourceSeqEnd: 20,
+            children: [
+              conversationRow({
+                id: "nested_match",
+                role: "assistant",
+                text: "Nested answer containing the search result.",
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ],
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />
+    </>
+  );
+}
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
@@ -237,5 +279,110 @@ describe("ThreadTimelineRows actions", () => {
     );
 
     expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          turnRow({
+            id: "turn_with_match",
+            sourceSeqStart: 10,
+            sourceSeqEnd: 20,
+            children: [
+              conversationRow({
+                id: "nested_match",
+                role: "assistant",
+                text: "Nested answer containing the search result.",
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ],
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    const parentRow = container.querySelector(
+      '[data-timeline-row-id="turn_with_match"]',
+    );
+    const nestedRow = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-timeline-row-id="nested_match"]',
+      );
+      if (row === null) {
+        throw new Error("Nested search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
+    expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+  });
+
+  it("forces a manually collapsed same-thread search ancestor open", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <SameThreadSearchNavigationHarness />,
+      ["/thread"],
+    );
+
+    expect(
+      container.querySelector('[data-timeline-row-id="nested_match"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-timeline-row-id="nested_match"]'),
+      ).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open search match" }));
+    const nestedRow = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-timeline-row-id="nested_match"]',
+      );
+      if (row === null) {
+        throw new Error("Nested search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
   });
 });

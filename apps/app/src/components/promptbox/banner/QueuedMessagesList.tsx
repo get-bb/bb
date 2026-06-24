@@ -648,15 +648,10 @@ export function QueuedMessagesList({
     <PromptStackCard
       ariaLabel="Queued messages"
       className={cn(
-        "relative -mx-1 overflow-hidden shadow-none",
-        // Expanded drawers tuck their flat, borderless bottom behind the prompt
-        // box. Collapsed drawers use the same flat bottom edge, but without the
-        // expanded-only padding that made the collapsed state too tall. The
-        // horizontal bleed lets the straight drawer rails sit outside the
-        // prompt box's rounded top corners.
-        isExpanded
-          ? "-mb-3 rounded-b-none border-b-0 pb-3"
-          : "-mb-2 rounded-b-none border-b-0",
+        "relative -mb-5 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none",
+        // Keep a hidden flat tail below the visible drawer content. The prompt
+        // box overlaps that tail, so the drawer rails continue underneath the
+        // prompt's rounded top corners without adding visible collapsed height.
       )}
     >
       <div className={PROMPT_STACK_COMPACT_INLAY_INSET_CLASS}>

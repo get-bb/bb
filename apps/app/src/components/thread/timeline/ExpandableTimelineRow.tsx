@@ -30,6 +30,7 @@ import {
 
 export interface ExpandableTimelineRowProps {
   autoExpanded?: boolean;
+  forceExpanded?: boolean;
   /**
    * Opens terminal frontier rows when they arrive, then latches that visible
    * state until the user toggles the row or the row unmounts.
@@ -81,6 +82,7 @@ function ExpandableTimelineRowComponent({
   className,
   collapsedPreview,
   expandable = true,
+  forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
   onBeforeExpand,
@@ -103,8 +105,9 @@ function ExpandableTimelineRowComponent({
   }, [terminalAutoExpanded]);
   const isExpanded =
     expandable &&
-    (manualExpansionOverride ??
-      (autoExpanded || terminalAutoExpanded || terminalAutoExpandedLatch));
+    (forceExpanded ||
+      (manualExpansionOverride ??
+        (autoExpanded || terminalAutoExpanded || terminalAutoExpandedLatch)));
   useEffect(() => {
     if (isExpanded) {
       setCollapsedPreviewActive(false);
