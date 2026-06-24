@@ -267,7 +267,7 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex cursor-pointer items-center rounded-lg px-2 py-1 text-xs transition-colors",
+        "flex min-h-6 cursor-pointer items-center rounded px-2 py-1 text-xs transition-colors",
         active ? "hover:bg-background/80" : "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
@@ -667,7 +667,7 @@ function ReadOnlyContextBanner({
       className="overflow-hidden"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
+      <div className="flex items-center gap-0.5 p-1 text-xs text-muted-foreground">
         {parentThreadSection ? (
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
@@ -894,7 +894,7 @@ export function ThreadPromptContextBanner({
                 "active",
                 "flex min-h-8 items-center gap-0.5 rounded-none text-xs text-foreground",
               )
-            : "flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground"
+            : "flex items-center gap-0.5 p-1 text-xs text-muted-foreground"
         }
       >
         {/* Segment order: relationship metadata, active child state, GitHub PR, git status. */}
