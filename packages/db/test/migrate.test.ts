@@ -389,7 +389,7 @@ function dropPost0023Tables(db: DbConnection): void {
 }
 
 /**
- * Folder schema lands in migrations 0046/0047. Replay scenarios that rewind the
+ * Folder schema lands in migration 0046. Replay scenarios that rewind the
  * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
  * against a DB that already has it.
  */
@@ -398,9 +398,6 @@ function dropThreadFolderSchema(db: DbConnection): void {
   const threadColumns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
     .all();
-  if (threadColumns.some((row) => row.name === "folder_path")) {
-    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_path").run();
-  }
   if (threadColumns.some((row) => row.name === "folder_id")) {
     db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_id").run();
   }

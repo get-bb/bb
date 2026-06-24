@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "84becca0-b668-4c7f-b954-76dc3f567ec3",
+  "id": "c75f6ebb-133d-41f0-9414-2bb2e27a848d",
   "prevId": "3ad532d1-168c-4b2c-a7f9-854978aa6d94",
   "tables": {
     "app_theme": {
@@ -2375,8 +2375,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "path": {
-          "name": "path",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -2398,19 +2398,12 @@
         }
       },
       "indexes": {
-        "thread_folders_path_idx": {
-          "name": "thread_folders_path_idx",
+        "thread_folders_name_idx": {
+          "name": "thread_folders_name_idx",
           "columns": [
-            "path"
+            "name"
           ],
           "isUnique": true
-        },
-        "thread_folders_updated_idx": {
-          "name": "thread_folders_updated_idx",
-          "columns": [
-            "updated_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -2574,8 +2567,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "folder_path": {
-          "name": "folder_path",
+        "folder_id": {
+          "name": "folder_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2726,6 +2719,16 @@
           ],
           "isUnique": false
         },
+        "threads_folder_archived_deleted_idx": {
+          "name": "threads_folder_archived_deleted_idx",
+          "columns": [
+            "folder_id",
+            "archived_at",
+            "deleted_at",
+            "id"
+          ],
+          "isUnique": false
+        },
         "threads_archived_status_idx": {
           "name": "threads_archived_status_idx",
           "columns": [
@@ -2772,6 +2775,19 @@
           "tableTo": "environments",
           "columnsFrom": [
             "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "threads_folder_id_thread_folders_id_fk": {
+          "name": "threads_folder_id_thread_folders_id_fk",
+          "tableFrom": "threads",
+          "tableTo": "thread_folders",
+          "columnsFrom": [
+            "folder_id"
           ],
           "columnsTo": [
             "id"

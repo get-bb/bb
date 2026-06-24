@@ -330,13 +330,6 @@
       "when": 1782252763916,
       "tag": "0046_thread_folders",
       "breakpoints": true
-    },
-    {
-      "idx": 47,
-      "version": "6",
-      "when": 1782280559775,
-      "tag": "0047_colorful_old_lace",
-      "breakpoints": true
     }
   ]
 }
