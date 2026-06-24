@@ -4,8 +4,14 @@ import {
   getThread,
   listQueuedThreadMessages,
   markThreadDeleted,
+  updateThread,
 } from "@bb/db";
-import type { Environment, Thread } from "@bb/domain";
+import {
+  threadScope,
+  turnScope,
+  type Environment,
+  type Thread,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
@@ -16,6 +22,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedQueuedMessage,
+  seedStoredEvent,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -207,6 +214,80 @@ describe("idle cold-start activation", () => {
         status: "active",
       });
       // A cold thread.start command (not a warm turn.submit) was dispatched.
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toHaveLength(1);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("cold-starts after an environment directory update resets provider continuity", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedIdleProviderThreadFixture({
+        harness,
+        value: 4,
+      });
+      const targetEnvironment = seedEnvironment(harness.deps, {
+        hostId: environment.hostId,
+        projectId: environment.projectId,
+        path: "/tmp/send-dispatch-switched",
+        status: "ready",
+      });
+      updateThread(harness.db, harness.hub, thread.id, {
+        environmentId: targetEnvironment.id,
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: targetEnvironment.id,
+        sequence: 3,
+        type: "system/operation",
+        scope: threadScope(),
+        data: {
+          operation: "environment_directory_update",
+          operationId: "evt_send_dispatch_switch",
+          status: "completed",
+          message: "Updated environment directory",
+          metadata: {
+            nextEnvironmentId: targetEnvironment.id,
+            nextPath: targetEnvironment.path,
+            previousEnvironmentId: environment.id,
+            previousPath: environment.path,
+          },
+        },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: targetEnvironment.id,
+        providerThreadId: `provider-send-dispatch-4`,
+        sequence: 4,
+        type: "turn/completed",
+        scope: turnScope("turn_after_switch"),
+        data: {
+          providerThreadId: `provider-send-dispatch-4`,
+          status: "completed",
+        },
+      });
+      const switchedThread = getThread(harness.db, thread.id);
+      if (!switchedThread) {
+        throw new Error("Expected switched thread to exist");
+      }
+
+      await sendThreadMessage(harness.deps, {
+        environment: targetEnvironment,
+        payload: {
+          input: textInput("start after switch"),
+          mode: "start",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: switchedThread,
+        trigger: "user",
+      });
+
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(1);

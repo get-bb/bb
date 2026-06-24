@@ -51,6 +51,7 @@ import {
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 
 const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
+const isEnvironmentDirectoryUpdateEventData = sql`json_extract(${events.data}, '$.operation') = 'environment_directory_update'`;
 
 export interface InsertEventInput {
   threadId: string;
@@ -1689,7 +1690,7 @@ export function getLastStoredProviderThreadId(
   db: DbQueryConnection,
   threadId: string,
 ): string | null {
-  const row = db
+  const latestProviderRow = db
     .select({ providerThreadId: events.providerThreadId })
     .from(events)
     .where(
@@ -1699,7 +1700,46 @@ export function getLastStoredProviderThreadId(
     .orderBy(sql`${events.sequence} DESC`)
     .limit(1)
     .get();
-  return row?.providerThreadId ?? null;
+  if (!latestProviderRow?.providerThreadId) {
+    return null;
+  }
+
+  const latestIdentityRow = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "thread/identity"),
+        isNotNull(events.providerThreadId),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const latestEnvironmentDirectoryUpdateRow = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "system/operation"),
+        isEnvironmentDirectoryUpdateEventData,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+
+  if (
+    latestEnvironmentDirectoryUpdateRow &&
+    (!latestIdentityRow ||
+      latestIdentityRow.sequence < latestEnvironmentDirectoryUpdateRow.sequence)
+  ) {
+    return null;
+  }
+
+  return latestProviderRow.providerThreadId;
 }
 
 export function getStoredProviderThreadIdAtOrBeforeSequence(

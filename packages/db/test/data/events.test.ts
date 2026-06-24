@@ -1345,6 +1345,61 @@ describe("events", () => {
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
   });
 
+  it("resets the latest provider thread id after an environment directory update", () => {
+    const { db, thread } = setup();
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider_old",
+      type: "thread/identity",
+      data: {
+        providerThreadId: "provider_old",
+      },
+    });
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: threadScope(),
+      type: "system/operation",
+      data: {
+        operation: "environment_directory_update",
+        operationId: "evt_environment_switch",
+        status: "completed",
+        message: "Updated environment directory",
+        metadata: {
+          nextEnvironmentId: "env_next",
+          nextPath: "/tmp/next",
+          previousEnvironmentId: "env_previous",
+          previousPath: "/tmp/previous",
+        },
+      },
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: turnScope("turn_1"),
+      providerThreadId: "provider_old",
+      type: "turn/completed",
+      data: {
+        providerThreadId: "provider_old",
+        status: "completed",
+      },
+    });
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBeNull();
+
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider_new",
+      type: "thread/identity",
+      data: {
+        providerThreadId: "provider_new",
+      },
+    });
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_new");
+  });
+
   it("ignores delegated child turn starts when reconstructing the active stored turn", () => {
     const { db, thread } = setup();
 
