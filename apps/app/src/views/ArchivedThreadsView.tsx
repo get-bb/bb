@@ -33,18 +33,18 @@ export function ArchivedThreadsView() {
   const { projectId } = useRouteState();
   const [searchParams] = useSearchParams();
   const sidebarOrganizationMode = useAtomValue(sidebarOrganizationModeAtom);
-  const folderPath = searchParams.get("folder") ?? undefined;
+  const folderId = searchParams.get("folderId") ?? undefined;
   const isGlobalFoldersMode =
     projectId === PERSONAL_PROJECT_ID &&
     sidebarOrganizationMode === "chronological";
   const archivedProjectId =
-    folderPath || isGlobalFoldersMode ? undefined : projectId;
+    folderId || isGlobalFoldersMode ? undefined : projectId;
   // The loose archived list mirrors the current sidebar scope: in project mode
   // it is personal-only; in Folders mode it is cross-project loose threads.
-  const restrictToLoose = !folderPath && projectId === PERSONAL_PROJECT_ID;
+  const restrictToLoose = !folderId && projectId === PERSONAL_PROJECT_ID;
   const archivedThreadsQuery = useArchivedThreads({
     projectId: archivedProjectId,
-    ...(folderPath ? { folderPath } : {}),
+    ...(folderId ? { folderId } : {}),
     ...(restrictToLoose ? { unfiled: true } : {}),
   });
   const unarchiveThread = useUnarchiveThread();

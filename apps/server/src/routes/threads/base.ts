@@ -4,6 +4,7 @@ import {
   countNonDeletedAssignedChildThreads,
   disableAutomationsForDeletedThread,
   getEnvironment,
+  getThreadFolderById,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
@@ -79,18 +80,6 @@ interface BuildThreadSearchResponseArgs {
   archived: DbThreadSearchResultGroup;
 }
 
-function normalizeThreadFolderPath(folderPath: string | null): string | null {
-  if (folderPath === null) {
-    return null;
-  }
-  const normalized = folderPath
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0)
-    .join("/");
-  return normalized.length > 0 ? normalized : null;
-}
-
 function resolveIncludedThreadEnvironment(
   deps: Pick<AppDeps, "db">,
   thread: Thread,
@@ -157,6 +146,15 @@ function parseSearchLimitPerGroup(value: string | undefined): number {
   return limit;
 }
 
+function requireThreadFolder(
+  deps: Pick<AppDeps, "db">,
+  folderId: string,
+): void {
+  if (!getThreadFolderById(deps.db, folderId)) {
+    throw new ApiError(404, "folder_not_found", "Folder not found");
+  }
+}
+
 function buildThreadSearchGroupResponse(
   deps: AppDeps,
   args: BuildThreadSearchGroupResponseArgs,
@@ -208,11 +206,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.projectId) {
       requirePublicProject(deps.db, query.projectId);
     }
+    if (query.folderId) {
+      requireThreadFolder(deps, query.folderId);
+    }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
-      ...(query.folderPath ? { folderPath: query.folderPath } : {}),
+      ...(query.folderId ? { folderId: query.folderId } : {}),
       ...(query.unfiled === "true" ? { unfiled: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
@@ -250,12 +251,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.create, async (context, payload) => {
+    if (payload.folderId) {
+      requireThreadFolder(deps, payload.folderId);
+    }
     const thread = await createThreadFromRequest(deps, {
       ...payload,
-      folderPath:
-        payload.folderPath === undefined
-          ? undefined
-          : normalizeThreadFolderPath(payload.folderPath),
       origin: payload.origin,
     });
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
@@ -314,10 +314,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if ("title" in payload) {
       metadataUpdate.title = payload.title;
     }
-    if ("folderPath" in payload) {
-      metadataUpdate.folderPath = normalizeThreadFolderPath(
-        payload.folderPath ?? null,
-      );
+    const folderId = payload.folderId;
+    if (folderId !== undefined) {
+      if (folderId !== null) {
+        requireThreadFolder(deps, folderId);
+      }
+      metadataUpdate.folderId = folderId;
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;

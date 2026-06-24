@@ -16,7 +16,7 @@ type TreeSummary =
   | string
   | { id: string; children: TreeSummary[] }
   | { env: string; threads: TreeSummary[] }
-  | { folder: string; items: TreeSummary[] };
+  | { folder: string; name: string; items: TreeSummary[] };
 
 function createThread(
   overrides: ThreadListEntryOverrides = {},
@@ -28,7 +28,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderPath: null,
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -80,6 +80,7 @@ function summarizeItems(items: readonly ProjectThreadItem[]): TreeSummary[] {
       case "folder":
         return {
           folder: item.group.key,
+          name: item.group.name,
           items: summarizeItems(item.group.items),
         };
     }
@@ -520,19 +521,19 @@ describe("manual order (Sort by: None)", () => {
     expect(summarizeItems(items)).toEqual(["new", "stored-a", "stored-b"]);
   });
 
-  it("lets manual folder mode interleave folders and loose threads by parent", () => {
+  it("lets manual folder mode order threads inside a folder", () => {
     const items = buildProjectThreadGroups(
       [
         createThread({
           id: "a",
           title: "A",
-          folderPath: "Work",
+          folderId: "fld_work",
           latestAttentionAt: 30,
         }),
         createThread({
           id: "b",
           title: "B",
-          folderPath: "Work",
+          folderId: "fld_work",
           latestAttentionAt: 20,
         }),
         createThread({ id: "loose", title: "Loose", latestAttentionAt: 10 }),
@@ -541,16 +542,17 @@ describe("manual order (Sort by: None)", () => {
       {
         groupBy: "folder",
         containerId: "proj_1",
+        folders: [{ id: "fld_work", name: "Work" }],
         manualOrder: {
-          proj_1: ["loose", "proj_1::Work"],
-          "proj_1::Work": ["b", "a"],
+          proj_1: ["loose", "proj_1::fld_work"],
+          "proj_1::fld_work": ["b", "a"],
         },
       },
     );
 
     expect(summarizeItems(items)).toEqual([
+      { folder: "proj_1::fld_work", name: "Work", items: ["b", "a"] },
       "loose",
-      { folder: "proj_1::Work", items: ["b", "a"] },
     ]);
   });
 
@@ -567,24 +569,32 @@ describe("manual order (Sort by: None)", () => {
 const FOLDER_OPTIONS = { groupBy: "folder", containerId: "proj_1" } as const;
 
 describe("folder bucketing", () => {
-  it("nests threads into folders derived from folderPath, folders above loose threads", () => {
+  it("buckets threads into flat folders by folder id, folders above loose threads", () => {
     const items = buildProjectThreadGroups(
       [
-        createThread({ id: "a", title: "Plan", folderPath: "Work/Q3" }),
-        createThread({ id: "b", title: "Notes", folderPath: "Work/Q3" }),
-        createThread({ id: "c", title: "Q4", folderPath: "Work" }),
+        createThread({ id: "a", title: "Plan", folderId: "fld_work_q3" }),
+        createThread({ id: "b", title: "Notes", folderId: "fld_work_q3" }),
+        createThread({ id: "c", title: "Q4", folderId: "fld_work" }),
         createThread({ id: "d", title: "Standalone" }),
       ],
       compareStandardThreads,
-      FOLDER_OPTIONS,
+      {
+        ...FOLDER_OPTIONS,
+        folders: [
+          { id: "fld_work", name: "Work" },
+          { id: "fld_work_q3", name: "Work/Q3" },
+        ],
+      },
     );
 
-    // Same idle/attention threads tie-break on codepoint id; folders render as a
-    // block above the loose "Standalone" thread.
+    // Same idle/attention threads tie-break on codepoint id; flat folders render
+    // as a block above the loose "Standalone" thread.
     expect(summarizeItems(items)).toEqual([
+      { folder: "proj_1::fld_work", name: "Work", items: ["c"] },
       {
-        folder: "proj_1::Work",
-        items: [{ folder: "proj_1::Work/Q3", items: ["a", "b"] }, "c"],
+        folder: "proj_1::fld_work_q3",
+        name: "Work/Q3",
+        items: ["a", "b"],
       },
       "d",
     ]);
@@ -603,47 +613,60 @@ describe("folder bucketing", () => {
     expect(summarizeItems(items)).toEqual(["a", "b"]);
   });
 
-  it("renders explicit empty folders without a thread using that path", () => {
+  it("renders explicit empty folders without a thread using that id", () => {
     const items = buildProjectThreadGroups(
       [createThread({ id: "a", title: "Standalone" })],
       compareStandardThreads,
       {
         ...FOLDER_OPTIONS,
-        folderPaths: ["Work/Q3"],
+        folders: [{ id: "fld_work_q3", name: "Work/Q3" }],
       },
     );
 
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "proj_1::Work",
-        items: [{ folder: "proj_1::Work/Q3", items: [] }],
+        folder: "proj_1::fld_work_q3",
+        name: "Work/Q3",
+        items: [],
       },
       "a",
     ]);
   });
 
-  it("keeps a folder thread's own children nested under it and ignores their slashes", () => {
+  it("keeps a folder thread's own children nested under it and ignores child folders", () => {
     const items = buildProjectThreadGroups(
       [
-        createThread({ id: "parent", title: "Project", folderPath: "Work" }),
+        createThread({
+          id: "parent",
+          title: "Project",
+          folderId: "fld_work",
+        }),
         createThread({
           id: "child",
           parentThreadId: "parent",
           title: "Path",
-          folderPath: "Ignored/Child",
+          folderId: "fld_ignored",
         }),
       ],
       compareStandardThreads,
-      FOLDER_OPTIONS,
+      {
+        ...FOLDER_OPTIONS,
+        folders: [
+          { id: "fld_work", name: "Work" },
+          { id: "fld_ignored", name: "Ignored/Child" },
+        ],
+      },
     );
 
-    // Only the top-level "parent" forms a folder; the child stays nested under
-    // it and its own folderPath does not create a second folder branch.
+    // Only the top-level parent picks the bucket; the child stays nested under it
+    // and does not create a second folder row.
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "proj_1::Work",
+        folder: "proj_1::fld_work",
+        name: "Work",
         items: [{ id: "parent", children: ["child"] }],
       },
+      { folder: "proj_1::fld_ignored", name: "Ignored/Child", items: [] },
     ]);
   });
 
@@ -653,36 +676,40 @@ describe("folder bucketing", () => {
         createThread({
           id: "w1",
           title: "Alpha",
-          folderPath: "Work",
+          folderId: "fld_work",
           environmentId: "env_shared",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
         createThread({
           id: "w2",
           title: "Beta",
-          folderPath: "Work",
+          folderId: "fld_work",
           environmentId: "env_shared",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
       ],
       compareStandardThreads,
-      FOLDER_OPTIONS,
+      {
+        ...FOLDER_OPTIONS,
+        folders: [{ id: "fld_work", name: "Work" }],
+      },
     );
 
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "proj_1::Work",
+        folder: "proj_1::fld_work",
+        name: "Work",
         items: [{ env: "env_shared", threads: ["w1", "w2"] }],
       },
     ]);
   });
 
-  it("orders folders by their representative descendant under both comparators", () => {
+  it("orders explicit folders by name rather than descendant recency", () => {
     const threads = [
       createThread({
         id: "old-active",
         title: "x",
-        folderPath: "FolderA",
+        folderId: "fld_archive",
         status: "active",
         createdAt: 10,
         latestAttentionAt: 5,
@@ -691,39 +718,52 @@ describe("folder bucketing", () => {
       createThread({
         id: "new-idle",
         title: "y",
-        folderPath: "FolderB",
+        folderId: "fld_work",
         status: "idle",
         createdAt: 50,
         latestAttentionAt: 5,
       }),
     ];
 
-    // Standard comparator pins the active folder's representative first.
+    const options = {
+      ...FOLDER_OPTIONS,
+      folders: [
+        { id: "fld_archive", name: "Archive" },
+        { id: "fld_empty", name: "Empty" },
+        { id: "fld_work", name: "Work" },
+      ],
+    };
+
     expect(
       summarizeItems(
-        buildProjectThreadGroups(
-          threads,
-          compareStandardThreads,
-          FOLDER_OPTIONS,
-        ),
+        buildProjectThreadGroups(threads, compareStandardThreads, options),
       ),
     ).toEqual([
-      { folder: "proj_1::FolderA", items: ["old-active"] },
-      { folder: "proj_1::FolderB", items: ["new-idle"] },
+      {
+        folder: "proj_1::fld_archive",
+        name: "Archive",
+        items: ["old-active"],
+      },
+      { folder: "proj_1::fld_empty", name: "Empty", items: [] },
+      { folder: "proj_1::fld_work", name: "Work", items: ["new-idle"] },
     ]);
 
-    // Created comparator ignores status and ranks the newer createdAt first.
     expect(
       summarizeItems(
         buildProjectThreadGroups(
           threads,
           compareByCreatedAtDescending,
-          FOLDER_OPTIONS,
+          options,
         ),
       ),
     ).toEqual([
-      { folder: "proj_1::FolderB", items: ["new-idle"] },
-      { folder: "proj_1::FolderA", items: ["old-active"] },
+      {
+        folder: "proj_1::fld_archive",
+        name: "Archive",
+        items: ["old-active"],
+      },
+      { folder: "proj_1::fld_empty", name: "Empty", items: [] },
+      { folder: "proj_1::fld_work", name: "Work", items: ["new-idle"] },
     ]);
   });
 
@@ -733,13 +773,15 @@ describe("folder bucketing", () => {
         createThread({
           id: "busy",
           title: "Busy",
-          folderPath: "Work",
+          folderId: "fld_work",
           hasPendingInteraction: true,
         }),
-        createThread({ id: "quiet", title: "Quiet", folderPath: "Work" }),
+        createThread({ id: "quiet", title: "Quiet", folderId: "fld_work" }),
       ]),
       "proj_1",
       compareStandardThreads,
+      undefined,
+      [{ id: "fld_work", name: "Work" }],
     );
 
     expect(items).toHaveLength(1);
@@ -757,41 +799,13 @@ describe("folder bucketing", () => {
         createThread({
           id: "a",
           title: "One",
-          folderPath: "Work",
+          folderId: "fld_work",
           createdAt: 20,
         }),
         createThread({
           id: "b",
           title: "Two",
-          folderPath: "Personal",
-          createdAt: 10,
-        }),
-      ],
-      compareByCreatedAtDescending,
-      { groupBy: "folder", containerId: "chronological" },
-    );
-
-    expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::Work", items: ["a"] },
-      { folder: "chronological::Personal", items: ["b"] },
-    ]);
-  });
-
-  it("combines same-named folders across projects in the chronological list", () => {
-    const items = buildChronologicalThreadList(
-      [
-        createThread({
-          id: "a",
-          projectId: "proj_1",
-          title: "One",
-          folderPath: "Work",
-          createdAt: 20,
-        }),
-        createThread({
-          id: "b",
-          projectId: "proj_2",
-          title: "Two",
-          folderPath: "Work",
+          folderId: "fld_personal",
           createdAt: 10,
         }),
       ],
@@ -799,12 +813,47 @@ describe("folder bucketing", () => {
       {
         groupBy: "folder",
         containerId: "chronological",
-        folderPaths: ["Work", "Work"],
+        folders: [
+          { id: "fld_personal", name: "Personal" },
+          { id: "fld_work", name: "Work" },
+        ],
       },
     );
 
     expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::Work", items: ["a", "b"] },
+      { folder: "chronological::fld_personal", name: "Personal", items: ["b"] },
+      { folder: "chronological::fld_work", name: "Work", items: ["a"] },
+    ]);
+  });
+
+  it("combines threads from different projects that share the same folder id", () => {
+    const items = buildChronologicalThreadList(
+      [
+        createThread({
+          id: "a",
+          projectId: "proj_1",
+          title: "One",
+          folderId: "fld_work",
+          createdAt: 20,
+        }),
+        createThread({
+          id: "b",
+          projectId: "proj_2",
+          title: "Two",
+          folderId: "fld_work",
+          createdAt: 10,
+        }),
+      ],
+      compareByCreatedAtDescending,
+      {
+        groupBy: "folder",
+        containerId: "chronological",
+        folders: [{ id: "fld_work", name: "Work" }],
+      },
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      { folder: "chronological::fld_work", name: "Work", items: ["a", "b"] },
     ]);
   });
 

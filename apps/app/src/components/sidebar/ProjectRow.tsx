@@ -87,15 +87,11 @@ import {
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
+  type SidebarFolderDefinition,
   type SidebarFolderGroup,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import { SidebarFolderRow } from "./SidebarFolderRow";
-import {
-  formatFolderPathLabel,
-  normalizeFolderPath,
-  splitFolderPath,
-} from "./folderPath";
 import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
@@ -156,7 +152,7 @@ export interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
-  folderPaths?: readonly string[];
+  folders?: readonly SidebarFolderDefinition[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -169,15 +165,15 @@ export interface ProjectThreadTreeProps {
 export interface ChronologicalThreadTreeProps {
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
-  folderPaths?: readonly string[];
+  folders?: readonly SidebarFolderDefinition[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderPath: string) => void;
-  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
-  onRenameFolder?: (folderPath: string) => void;
-  onRemoveFolder?: (folderPath: string) => void;
+  onCreateThreadInFolder?: (folderId: string) => void;
+  onViewArchivedThreadsInFolder?: (folderId: string) => void;
+  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
+  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
@@ -193,7 +189,7 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
-const EMPTY_FOLDER_PATHS: readonly string[] = [];
+const EMPTY_FOLDERS: readonly SidebarFolderDefinition[] = [];
 const PROJECT_ROW_LEADING_SLOT_CLASS =
   "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
 
@@ -219,26 +215,21 @@ interface ThreadTreeNodeRowProps {
   dragBindings?: SidebarSortableDragBindings;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
-  // True when this row is a direct member of a folder: show the leaf, keep the
-  // full path for a11y. Its own child threads stay full-titled.
-  insideFolder?: boolean;
 }
 
 interface ThreadTreeItemRowProps {
   projectId: string;
   item: ProjectThreadItem;
   depthOffset: number;
-  // True for the direct members of a folder, so thread rows show the leaf.
-  insideFolder?: boolean;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderPath: string) => void;
-  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
-  onRenameFolder?: (folderPath: string) => void;
-  onRemoveFolder?: (folderPath: string) => void;
+  onCreateThreadInFolder?: (folderId: string) => void;
+  onViewArchivedThreadsInFolder?: (folderId: string) => void;
+  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
+  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -257,10 +248,10 @@ interface FolderTreeItemRowProps {
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderPath: string) => void;
-  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
-  onRenameFolder?: (folderPath: string) => void;
-  onRemoveFolder?: (folderPath: string) => void;
+  onCreateThreadInFolder?: (folderId: string) => void;
+  onViewArchivedThreadsInFolder?: (folderId: string) => void;
+  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
+  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -293,7 +284,7 @@ interface UseManualThreadTreeDndArgs {
 type ManualSortableItemKind = "thread" | "folder" | "environment";
 
 interface ManualThreadTreeLookup {
-  folderPathByParentKey: Map<string, readonly string[]>;
+  folderIdByParentKey: Map<string, string | null>;
   itemIdsByParentKey: Map<string, string[]>;
   itemKindById: Map<string, ManualSortableItemKind>;
   parentKeyByItemId: Map<string, string>;
@@ -339,7 +330,7 @@ function collectManualThreadTreeLookup(
   containerId: string,
 ): ManualThreadTreeLookup {
   const lookup: ManualThreadTreeLookup = {
-    folderPathByParentKey: new Map([[containerId, []]]),
+    folderIdByParentKey: new Map([[containerId, null]]),
     itemIdsByParentKey: new Map(),
     itemKindById: new Map(),
     parentKeyByItemId: new Map(),
@@ -361,7 +352,7 @@ function collectManualThreadTreeLookup(
       if (item.kind === "thread") {
         lookup.threadByItemId.set(itemId, item.node.thread);
       } else if (item.kind === "folder") {
-        lookup.folderPathByParentKey.set(item.group.key, item.group.path);
+        lookup.folderIdByParentKey.set(item.group.key, item.group.id);
         walk(item.group.items, item.group.key);
       }
     }
@@ -402,7 +393,7 @@ function resolveThreadDropTarget(
   if (activeKind !== "thread" || !fromParentKey) return null;
 
   let toParentKey = overKind ? lookup.parentKeyByItemId.get(overId) : undefined;
-  if (!overKind && lookup.folderPathByParentKey.has(overId)) {
+  if (!overKind && lookup.folderIdByParentKey.has(overId)) {
     // Dropping on a folder's child area (the droppable parent).
     toParentKey = overId;
   } else if (overKind === "folder") {
@@ -518,12 +509,11 @@ function useManualThreadTreeDnd({
       const thread = lookup.threadByItemId.get(drop.activeId);
       if (!thread) return;
 
-      const destinationFolderPath = normalizeFolderPath(
-        (lookup.folderPathByParentKey.get(drop.toParentKey) ?? []).join("/"),
-      );
+      const destinationFolderId =
+        lookup.folderIdByParentKey.get(drop.toParentKey) ?? null;
       updateThread.mutate({
         id: drop.activeId,
-        folderPath: destinationFolderPath,
+        folderId: destinationFolderId,
       });
     },
     [clearDropDwell, enabled, lookup, updateThread],
@@ -1356,7 +1346,6 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   projectId,
   item,
   depthOffset,
-  insideFolder = false,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1408,7 +1397,6 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         node={item.node}
         depthOffset={depthOffset}
         isEnvGrouped={false}
-        insideFolder={insideFolder}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1444,7 +1432,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
 // A derived folder and its (recursively rendered) contents. Collapse state lives
 // in sidebarCollapsedFoldersAtom — read here rather than threaded so the rest of
 // the tree's prop wiring and memo equality stay untouched. Children render one
-// depth deeper and, when threads, show their leaf via insideFolder.
+// depth deeper.
 // Empty drop-slot rendered inside the (auto-expanded) hovered folder so the
 // landing spot is visible. The dragged row itself carries the title (like
 // dragging a queued message), so this placeholder stays intentionally blank.
@@ -1499,7 +1487,6 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
-  const folderPath = folder.path.join("/");
   const showDropPreview = manualSort?.dragOverParentKey === folderKey;
   const showChildren = !isCollapsed && folder.items.length > 0;
   // Force the children area open while a thread is dragged over this folder so
@@ -1518,7 +1505,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
     >
       <SidebarFolderRow
         name={folder.name}
-        pathLabel={formatFolderPathLabel(folder.path)}
+        label={folder.name}
         depth={headerDepth}
         activity={folder.activity}
         consumeClickSuppression={consumeClickSuppression}
@@ -1527,16 +1514,16 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         isCollapsed={isCollapsed}
         onCreateThread={
           onCreateThreadInFolder
-            ? () => onCreateThreadInFolder(folderPath)
+            ? () => onCreateThreadInFolder(folder.id)
             : undefined
         }
         onViewArchivedThreads={
           onViewArchivedThreadsInFolder
-            ? () => onViewArchivedThreadsInFolder(folderPath)
+            ? () => onViewArchivedThreadsInFolder(folder.id)
             : undefined
         }
-        onRename={onRenameFolder ? () => onRenameFolder(folderPath) : undefined}
-        onRemove={onRemoveFolder ? () => onRemoveFolder(folderPath) : undefined}
+        onRename={onRenameFolder ? () => onRenameFolder(folder) : undefined}
+        onRemove={onRemoveFolder ? () => onRemoveFolder(folder) : undefined}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
@@ -1551,7 +1538,6 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
                   projectId={getItemProjectId(item)}
                   item={item}
                   depthOffset={depthOffset + 1}
-                  insideFolder
                   selectedThreadId={selectedThreadId}
                   collapsedThreadIds={collapsedThreadIds}
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1599,7 +1585,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   dragBindings,
   sortableRef,
   sortableStyle,
-  insideFolder = false,
 }: ThreadTreeNodeRowProps) {
   const isCollapsed = collapsedThreadIds.has(node.thread.id);
   const hasChildren = node.children.length > 0;
@@ -1648,20 +1633,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     projectId: rowProjectId,
     threadId: node.thread.id,
   });
-  // Inside a folder the row shows its leaf but keeps the full path for a11y;
-  // outside a folder (or for this node's own children) it shows the full title.
-  const folderTitles = useMemo(() => {
-    if (!insideFolder) {
-      return undefined;
-    }
-    const title = getThreadDisplayTitle(node.thread);
-    const folders = splitFolderPath(node.thread.folderPath);
-    return {
-      displayTitle: title,
-      accessibleTitle:
-        folders.length > 0 ? formatFolderPathLabel([...folders, title]) : title,
-    };
-  }, [insideFolder, node.thread]);
   const row = (
     <ThreadRow
       projectId={rowProjectId}
@@ -1670,8 +1641,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       hasComposerDraft={hasComposerDraft}
       onProjectSelect={onProjectSelect}
       options={options}
-      displayTitle={folderTitles?.displayTitle}
-      accessibleTitle={folderTitles?.accessibleTitle}
     />
   );
 
@@ -1735,10 +1704,10 @@ interface ManualThreadTreeItemsProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
-  onCreateThreadInFolder?: (folderPath: string) => void;
-  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
-  onRenameFolder?: (folderPath: string) => void;
-  onRemoveFolder?: (folderPath: string) => void;
+  onCreateThreadInFolder?: (folderId: string) => void;
+  onViewArchivedThreadsInFolder?: (folderId: string) => void;
+  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
+  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
@@ -1806,7 +1775,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
   compareThreads,
-  folderPaths = EMPTY_FOLDER_PATHS,
+  folders = EMPTY_FOLDERS,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1825,9 +1794,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(projectThreads, compareThreads, {
         groupBy,
         containerId: projectId,
-        folderPaths,
+        folders,
       }),
-    [compareThreads, projectThreads, groupBy, projectId, folderPaths],
+    [compareThreads, projectThreads, groupBy, projectId, folders],
   );
 
   if (threadListState.status === "loading") {
@@ -1890,7 +1859,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,
-  folderPaths = EMPTY_FOLDER_PATHS,
+  folders = EMPTY_FOLDERS,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1908,9 +1877,9 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       buildChronologicalThreadList(threads, compareThreads, {
         groupBy,
         containerId: CHRONOLOGICAL_CONTAINER_ID,
-        folderPaths,
+        folders,
       }),
-    [threads, compareThreads, groupBy, folderPaths],
+    [threads, compareThreads, groupBy, folders],
   );
   const manualSort = useManualThreadTreeDnd({
     containerId: CHRONOLOGICAL_CONTAINER_ID,
@@ -1964,7 +1933,7 @@ export const ChronologicalFolderThreadSections = memo(
   function ChronologicalFolderThreadSections({
     threadListState,
     compareThreads,
-    folderPaths = EMPTY_FOLDER_PATHS,
+    folders = EMPTY_FOLDERS,
     selectedThreadId,
     collapsedThreadIds,
     collapsedEnvironmentIds,
@@ -1988,9 +1957,9 @@ export const ChronologicalFolderThreadSections = memo(
         buildChronologicalThreadList(threads, compareThreads, {
           groupBy,
           containerId: CHRONOLOGICAL_CONTAINER_ID,
-          folderPaths,
+          folders,
         }),
-      [threads, compareThreads, groupBy, folderPaths],
+      [threads, compareThreads, groupBy, folders],
     );
     const manualSort = useManualThreadTreeDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,

@@ -72,7 +72,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     providerId: "codex",
     title: "Test thread",
     titleFallback: "Test thread",
-    folderPath: null,
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

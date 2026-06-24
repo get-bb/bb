@@ -23,7 +23,7 @@ function makeThreadWithRuntime(
     providerId: "codex",
     title: null,
     titleFallback: null,
-    folderPath: null,
+    folderId: null,
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,

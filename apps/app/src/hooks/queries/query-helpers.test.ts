@@ -130,7 +130,7 @@ function makeThreadWithRuntime(
     environmentId: "env-1",
     title: null,
     titleFallback: null,
-    folderPath: null,
+    folderId: null,
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,

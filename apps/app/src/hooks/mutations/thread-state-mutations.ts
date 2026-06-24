@@ -78,16 +78,16 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       api.updateThread(id, request),
     onMutate: ({
-      folderPath,
+      folderId,
       id,
       title,
     }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
-      if (title === undefined && folderPath === undefined) {
+      if (title === undefined && folderId === undefined) {
         return undefined;
       }
 
       return beginThreadMetadataTransaction({
-        folderPath,
+        folderId,
         queryClient,
         threadId: id,
         title,

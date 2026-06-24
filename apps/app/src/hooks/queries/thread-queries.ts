@@ -283,8 +283,8 @@ export function hasThreadSearchableQuery(value: string): boolean {
 
 export interface UseArchivedThreadsFilters {
   projectId?: string;
-  /** Restrict to threads filed directly under this folder path. */
-  folderPath?: string;
+  /** Restrict to threads filed directly under this folder. */
+  folderId?: string;
   /** Restrict to loose threads — those not filed under any folder. */
   unfiled?: boolean;
 }
@@ -293,10 +293,10 @@ export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, folderPath, unfiled } = filters;
+  const { projectId, folderId, unfiled } = filters;
   const enabled =
     (options?.enabled ?? true) &&
-    (Boolean(projectId) || Boolean(folderPath) || Boolean(unfiled));
+    (Boolean(projectId) || Boolean(folderId) || Boolean(unfiled));
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -308,14 +308,14 @@ export function useArchivedThreads(
   >({
     queryKey: archivedThreadsListQueryKey({
       ...(projectId ? { projectId } : {}),
-      ...(folderPath ? { folderPath } : {}),
+      ...(folderId ? { folderId } : {}),
       ...(unfiled ? { unfiled: true } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           ...(projectId ? { projectId } : {}),
-          ...(folderPath ? { folderPath } : {}),
+          ...(folderId ? { folderId } : {}),
           ...(unfiled ? { unfiled: true } : {}),
           archived: true,
           limit: ARCHIVED_THREADS_PAGE_SIZE,

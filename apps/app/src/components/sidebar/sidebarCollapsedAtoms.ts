@@ -25,9 +25,8 @@ export type SidebarOrganizationMode = "project" | "chronological";
 // legacy/internal value that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 export type SidebarSortDirection = "asc" | "desc";
-// Low-level folder grouping switch used by folder helpers and tests. The app
-// runtime always renders stored folderPath metadata; "none" remains for
-// regression coverage.
+// Low-level folder grouping switch used by folder helpers and tests. Runtime
+// sidebar trees enable "folder" only in the Folders organization mode.
 export type SidebarGroupBy = "none" | "folder";
 // Per-parent manual order for Sort: None. Keys are section/folder parent keys;
 // values are child thread ids and child folder keys.
@@ -108,8 +107,8 @@ export const sidebarGroupByAtom = atomWithStorage<SidebarGroupBy>(
   { getOnInit: true },
 );
 
-// Collapsed folder keys (see buildFolderKey in folderPath.ts). A plain
-// string[], matching collapsedThreadIds / collapsedProjectIds.
+// Collapsed folder keys (see buildFolderKey in folderKeys.ts). A plain string[],
+// matching collapsedThreadIds / collapsedProjectIds.
 export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   COLLAPSED_FOLDERS_STORAGE_KEY,
   [],

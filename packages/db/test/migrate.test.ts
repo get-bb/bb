@@ -205,7 +205,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
   // tables (added by 0039/0041), app_theme (added by 0042), and the thread
-  // folder schema (folder_path column + thread_folders table).
+  // folder schema (thread folder columns + thread_folders table).
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
@@ -389,19 +389,22 @@ function dropPost0023Tables(db: DbConnection): void {
 }
 
 /**
- * Folder schema lands in migration 0046 (folder_path column + thread_folders
- * table). Replay scenarios that rewind the ledger past it must drop the schema
- * too, or migrate() re-runs the ADD/CREATE against a DB that already has them.
+ * Folder schema lands in migrations 0046/0047. Replay scenarios that rewind the
+ * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
+ * against a DB that already has it.
  */
 function dropThreadFolderSchema(db: DbConnection): void {
-  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
-  const hasFolderPath = db.$client
+  db.$client.exec("DROP INDEX IF EXISTS threads_folder_archived_deleted_idx;");
+  const threadColumns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
-    .all()
-    .some((row) => row.name === "folder_path");
-  if (hasFolderPath) {
+    .all();
+  if (threadColumns.some((row) => row.name === "folder_path")) {
     db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_path").run();
   }
+  if (threadColumns.some((row) => row.name === "folder_id")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_id").run();
+  }
+  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
 }
 
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {

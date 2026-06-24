@@ -549,7 +549,10 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
         createThreadFolderRequestSchema,
       ),
-      response: jsonResponse<ThreadFolderResponse>({ status: 201 }),
+      response: [
+        jsonResponse<ThreadFolderResponse>({ status: 201 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
     }),
     update: defineRoute({
       path: "/thread-folders",
@@ -557,7 +560,11 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, UpdateThreadFolderRequest>(
         updateThreadFolderRequestSchema,
       ),
-      response: jsonResponse<ThreadFolderMutationResponse>(),
+      response: [
+        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
     }),
     delete: defineRoute({
       path: "/thread-folders",
@@ -565,7 +572,10 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, DeleteThreadFolderRequest>(
         deleteThreadFolderRequestSchema,
       ),
-      response: jsonResponse<ThreadFolderMutationResponse>(),
+      response: [
+        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
     }),
   },
 

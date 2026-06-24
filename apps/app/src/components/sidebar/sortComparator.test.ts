@@ -11,7 +11,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderPath: null,
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

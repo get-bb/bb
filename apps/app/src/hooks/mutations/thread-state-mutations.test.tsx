@@ -34,7 +34,7 @@ function makeThreadWithRuntime(
     providerId: "codex",
     title: null,
     titleFallback: null,
-    folderPath: null,
+    folderId: null,
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,
@@ -191,11 +191,11 @@ describe("thread state mutations", () => {
     const threadId = "thread-1";
     const thread = makeThreadWithRuntime({
       id: threadId,
-      folderPath: "Work",
+      folderId: "fld_work",
     });
     const listEntry = makeThreadListEntry({
       id: threadId,
-      folderPath: "Work",
+      folderId: "fld_work",
     });
     const threadListKey = threadListQueryKey({
       archived: false,
@@ -219,33 +219,32 @@ describe("thread state mutations", () => {
     const { result } = renderHook(() => useUpdateThread(), { wrapper });
 
     act(() => {
-      result.current.mutate({ id: threadId, folderPath: "Personal" });
+      result.current.mutate({ id: threadId, folderId: "fld_personal" });
     });
 
     await waitFor(() => {
       expect(
-        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-          ?.folderPath,
-      ).toBe("Personal");
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.folderId,
+    ).toBe("fld_personal");
     });
     expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
-        ?.folderPath,
-    ).toBe("Personal");
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.folderId,
+    ).toBe("fld_personal");
     expect(
       queryClient.getQueryData<SidebarBootstrapResponse>(
         sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.folderPath,
-    ).toBe("Personal");
+      )?.projects[0]?.threads[0]?.folderId,
+    ).toBe("fld_personal");
     expect(api.updateThread).toHaveBeenCalledWith(threadId, {
-      folderPath: "Personal",
+      folderId: "fld_personal",
     });
 
     act(() => {
       resolveUpdate(
         makeThreadResponse({
           id: threadId,
-          folderPath: "Personal",
+          folderId: "fld_personal",
           updatedAt: 2,
         }),
       );

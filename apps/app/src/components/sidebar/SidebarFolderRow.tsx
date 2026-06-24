@@ -48,9 +48,7 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 interface SidebarFolderRowProps {
   // Leaf segment shown on the header ("Q3").
   name: string;
-  // Full normalized path for the tooltip + accessible name ("Work › Q3"), so
-  // two same-named folders in different branches stay distinguishable.
-  pathLabel: string;
+  label: string;
   // Render depth (folder nesting + section offset); drives indentation.
   depth: number;
   activity: CollapsedChildActivity;
@@ -72,7 +70,7 @@ interface SidebarFolderRowProps {
 // project row while still mirroring parent-thread disclosure behavior.
 function SidebarFolderRowComponent({
   name,
-  pathLabel,
+  label,
   depth,
   activity,
   consumeClickSuppression,
@@ -151,8 +149,8 @@ function SidebarFolderRowComponent({
         <span className="min-w-0 truncate">{name}</span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
-          expandLabel={`Expand ${pathLabel} folder`}
-          collapseLabel={`Collapse ${pathLabel} folder`}
+          expandLabel={`Expand ${label} folder`}
+          collapseLabel={`Collapse ${label} folder`}
           expandTitle="Expand folder"
           collapseTitle="Collapse folder"
           onToggle={onToggleCollapsed}
@@ -201,7 +199,7 @@ function SidebarFolderRowComponent({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={`${pathLabel} folder actions`}
+                  aria-label={`${label} folder actions`}
                   title={undefined}
                   className={cn(
                     "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
@@ -249,7 +247,7 @@ function SidebarFolderRowComponent({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={`New thread in ${pathLabel}`}
+                  aria-label={`New thread in ${label}`}
                   title={undefined}
                   onClick={(event) => {
                     event.stopPropagation();

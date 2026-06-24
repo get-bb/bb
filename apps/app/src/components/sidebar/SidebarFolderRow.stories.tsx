@@ -37,7 +37,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Work"
-            pathLabel="Work"
+            label="Work"
             depth={0}
             activity={activity()}
             isCollapsed={false}
@@ -49,7 +49,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Q3"
-            pathLabel="Work / Q3"
+            label="Work / Q3"
             depth={1}
             activity={activity({ unread: true })}
             isCollapsed
@@ -61,7 +61,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Build"
-            pathLabel="Work / Build"
+            label="Work / Build"
             depth={2}
             activity={activity({ working: true })}
             isCollapsed
@@ -73,7 +73,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Reviews"
-            pathLabel="Work / Reviews"
+            label="Work / Reviews"
             depth={3}
             activity={activity({ pending: true, unread: true })}
             isCollapsed
@@ -85,7 +85,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Very long customer migration and rollout folder"
-            pathLabel="Clients / Very long customer migration and rollout folder"
+            label="Clients / Very long customer migration and rollout folder"
             depth={1}
             activity={activity()}
             isCollapsed={false}
@@ -97,7 +97,7 @@ export function Overview() {
         <SidebarStage>
           <SidebarFolderRow
             name="Fifth level"
-            pathLabel="A / B / C / D / Fifth level"
+            label="A / B / C / D / Fifth level"
             depth={5}
             activity={activity()}
             isCollapsed={false}
@@ -123,7 +123,7 @@ export function DragInto() {
         <SidebarStage>
           <SidebarFolderRow
             name="Work"
-            pathLabel="Work"
+            label="Work"
             depth={0}
             activity={activity()}
             isCollapsed={false}
@@ -139,7 +139,7 @@ export function DragInto() {
         <SidebarStage>
           <SidebarFolderRow
             name="Work"
-            pathLabel="Work"
+            label="Work"
             depth={0}
             activity={activity()}
             isCollapsed={false}

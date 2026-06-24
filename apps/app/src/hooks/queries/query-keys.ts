@@ -83,7 +83,7 @@ export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
   projectId?: string;
-  folderPath?: string;
+  folderId?: string;
   unfiled?: boolean;
 }
 

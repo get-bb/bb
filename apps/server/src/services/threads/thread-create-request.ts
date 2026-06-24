@@ -16,7 +16,7 @@ export interface ThreadCreateServiceRequestInput {
   environment: EnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   input: PromptInput[];
-  folderPath?: CreateThreadRequest["folderPath"];
+  folderId?: CreateThreadRequest["folderId"];
   model?: CreateThreadRequest["model"];
   origin: ThreadCreateOrigin | null;
   originKind?: ThreadOriginKind | null;

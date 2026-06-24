@@ -7,7 +7,7 @@ import {
   getCollapsedChildActivity,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
-import { buildFolderKey, splitFolderPath } from "./folderPath";
+import { buildFolderKey } from "./folderKeys";
 import type {
   SidebarGroupBy,
   SidebarManualOrder,
@@ -37,18 +37,19 @@ export interface EnvironmentThreadGroup {
   stats: ProjectThreadNodeStats;
 }
 
-// A folder node folded out of stored thread.folderPath metadata.
-// A folder holds further items (threads, env groups, and nested folders) and
-// rolls up its descendants' count + activity so a collapsed header can speak for
-// them, mirroring a collapsed parent thread.
+export interface SidebarFolderDefinition {
+  id: string;
+  name: string;
+}
+
+// A flat folder node backed by a durable DB folder row.
 export interface SidebarFolderGroup {
-  key: string; // `${containerId}::Work/Q3` — unique per project/section
-  name: string; // leaf segment shown on the header ("Q3")
-  path: string[]; // ["Work","Q3"]
-  depth: number; // folder nesting depth (0 = first level), drives indentation
+  id: string;
+  key: string;
+  name: string;
   items: ProjectThreadItem[];
-  threadCount: number; // total descendant threads
-  activity: CollapsedChildActivity; // rolled-up unread/working/pending
+  threadCount: number;
+  activity: CollapsedChildActivity;
 }
 
 // A single render slot in a thread sibling list. Threads and env groups
@@ -66,7 +67,7 @@ export type ProjectThreadItem =
 export interface SidebarFolderOptions {
   groupBy: SidebarGroupBy;
   containerId: string;
-  folderPaths?: readonly string[];
+  folders?: readonly SidebarFolderDefinition[];
   manualOrder?: SidebarManualOrder;
 }
 
@@ -347,7 +348,7 @@ export function buildProjectThreadGroups(
     folderOptions.containerId,
     compareThreads,
     folderOptions.manualOrder,
-    folderOptions.folderPaths,
+    folderOptions.folders,
   );
 }
 
@@ -444,7 +445,7 @@ export function buildChronologicalThreadList(
         folderOptions.containerId,
         compareThreads,
         folderOptions.manualOrder,
-        folderOptions.folderPaths,
+        folderOptions.folders,
       );
     }
     return orderSiblingItems(items, folderOptions.containerId, compareThreads, {
@@ -508,33 +509,11 @@ function hasAtLeastTwoThreadNodes(
   return nodes.length >= 2;
 }
 
-// ---------------------------------------------------------------------------
-// Folder bucketing
-//
-// A pure layer that folds an already-built top-level item list into a nested
-// folder tree derived from each top-level thread's stored folderPath. Only
-// top-level items form folders; a thread's own children and env groups keep
-// nesting under it exactly as today. The active comparator still drives order:
-// folders render as a block above loose items, and folders, their contents, and
-// the loose block are each sorted recursively by the same comparator.
-// ---------------------------------------------------------------------------
-
-interface FolderBucket {
-  subfolders: Map<string, FolderBucket>;
-  items: ProjectThreadItem[];
-}
-
 interface ManualOrderSiblingOptions {
   manualOrder?: SidebarManualOrder;
 }
 
-function createFolderBucket(): FolderBucket {
-  return { subfolders: new Map(), items: [] };
-}
-
-// The thread that orders an item among its siblings, and whose folderPath
-// decides its folder path: a thread/env item keeps today's representative; a folder
-// uses the descendant thread that sorts first under the active comparator.
+// The thread that orders an item among its siblings.
 function getItemOrderingThread(
   item: ProjectThreadItem,
   compareThreads: ThreadComparator,
@@ -653,7 +632,7 @@ function getItemFallbackSortLabel(item: ProjectThreadItem): string {
     case "environment":
       return item.group.environmentId;
     case "folder":
-      return item.group.path.join("/");
+      return item.group.name;
   }
 }
 
@@ -682,101 +661,81 @@ function compareSiblingItems(
 
 function buildFolderGroup(
   containerId: string,
-  path: string[],
+  folder: SidebarFolderDefinition,
   items: ProjectThreadItem[],
 ): SidebarFolderGroup {
   const descendantThreads = getItemThreadDescendants(items);
   return {
-    key: buildFolderKey(containerId, path),
-    name: path[path.length - 1],
-    path,
-    depth: path.length - 1,
+    id: folder.id,
+    key: buildFolderKey(containerId, folder.id),
+    name: folder.name,
     items,
     threadCount: descendantThreads.length,
     activity: getCollapsedChildActivity(descendantThreads),
   };
 }
 
-function buildFolderLevelItems(
-  bucket: FolderBucket,
-  containerId: string,
-  parentPath: readonly string[],
-  compareThreads: ThreadComparator,
-  manualOrder?: SidebarManualOrder,
-): ProjectThreadItem[] {
-  const folderItems: ProjectThreadItem[] = [];
-  for (const [name, subBucket] of bucket.subfolders) {
-    const path = [...parentPath, name];
-    const childItems = buildFolderLevelItems(
-      subBucket,
-      containerId,
-      path,
-      compareThreads,
-      manualOrder,
-    );
-    folderItems.push({
-      kind: "folder",
-      group: buildFolderGroup(containerId, path, childItems),
-    });
-  }
-  const parentKey =
-    parentPath.length === 0
-      ? containerId
-      : buildFolderKey(containerId, parentPath);
-  return orderSiblingItems(
-    [...folderItems, ...bucket.items],
-    parentKey,
-    compareThreads,
-    { manualOrder },
-  );
-}
-
-// Fold a top-level item list into a nested folder tree. Items whose
-// representative thread has no folderPath stay loose at the top level; the rest
-// nest into the deepest folder of their path. Explicit folder paths can create
-// empty folder nodes so new folders exist before their first thread is dropped.
+// Fold a top-level item list into flat DB-backed folders plus loose items.
 export function bucketIntoFolders(
   items: readonly ProjectThreadItem[],
   containerId: string,
   compareThreads: ThreadComparator = compareStandardThreads,
   manualOrder?: SidebarManualOrder,
-  folderPaths: readonly string[] = [],
+  folders: readonly SidebarFolderDefinition[] = [],
 ): ProjectThreadItem[] {
-  const root = createFolderBucket();
-  for (const folderPath of folderPaths) {
-    const folders = splitFolderPath(folderPath);
-    let bucket = root;
-    for (const segment of folders) {
-      let next = bucket.subfolders.get(segment);
-      if (!next) {
-        next = createFolderBucket();
-        bucket.subfolders.set(segment, next);
-      }
-      bucket = next;
-    }
-  }
-  for (const item of items) {
-    const orderingThread = getItemOrderingThread(item, compareThreads);
-    if (!orderingThread) {
+  const folderDefinitionsById = new Map<string, SidebarFolderDefinition>();
+  const orderedFolders: SidebarFolderDefinition[] = [];
+  for (const folder of folders) {
+    if (folderDefinitionsById.has(folder.id)) {
       continue;
     }
-    const folders = splitFolderPath(orderingThread.folderPath);
-    let bucket = root;
-    for (const segment of folders) {
-      let next = bucket.subfolders.get(segment);
-      if (!next) {
-        next = createFolderBucket();
-        bucket.subfolders.set(segment, next);
-      }
-      bucket = next;
-    }
-    bucket.items.push(item);
+    folderDefinitionsById.set(folder.id, folder);
+    orderedFolders.push(folder);
   }
-  return buildFolderLevelItems(
-    root,
+
+  const itemsByFolderId = new Map<string, ProjectThreadItem[]>();
+  for (const folder of orderedFolders) {
+    itemsByFolderId.set(folder.id, []);
+  }
+  const looseItems: ProjectThreadItem[] = [];
+
+  for (const item of items) {
+    const orderingThread = getItemOrderingThread(item, compareThreads);
+    const folderId = orderingThread?.folderId;
+    if (!folderId) {
+      looseItems.push(item);
+      continue;
+    }
+
+    let folderItems = itemsByFolderId.get(folderId);
+    if (!folderItems) {
+      const fallbackFolder = { id: folderId, name: "Folder" };
+      folderDefinitionsById.set(folderId, fallbackFolder);
+      orderedFolders.push(fallbackFolder);
+      folderItems = [];
+      itemsByFolderId.set(folderId, folderItems);
+    }
+    folderItems.push(item);
+  }
+
+  const folderItems = orderedFolders.map((folder): ProjectThreadItem => {
+    const folderKey = buildFolderKey(containerId, folder.id);
+    const children = orderSiblingItems(
+      itemsByFolderId.get(folder.id) ?? [],
+      folderKey,
+      compareThreads,
+      { manualOrder },
+    );
+    return {
+      kind: "folder",
+      group: buildFolderGroup(containerId, folder, children),
+    };
+  });
+  const orderedLooseItems = orderSiblingItems(
+    looseItems,
     containerId,
-    [],
     compareThreads,
-    manualOrder,
+    { manualOrder },
   );
+  return [...folderItems, ...orderedLooseItems];
 }

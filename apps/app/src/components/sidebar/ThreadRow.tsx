@@ -87,13 +87,9 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
-  // Visible row text. Inside a folder this is the leaf ("Planning"); otherwise
-  // it is the full title (default). The folder path is hidden visually but kept
-  // in `accessibleTitle`.
+  // Visible row text override. Defaults to the thread title.
   displayTitle?: string;
-  // Accessible name + hover tooltip. Inside a folder this is the full path
-  // ("Work › Q3 › Planning") so two same-leaf threads stay distinguishable;
-  // otherwise it defaults to the full title.
+  // Accessible name + hover tooltip override. Defaults to the thread title.
   accessibleTitle?: string;
 }
 

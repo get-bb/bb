@@ -883,8 +883,8 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
-  /** Restrict to threads filed directly under this folder path. */
-  folderPath?: string;
+  /** Restrict to threads filed directly under this folder. */
+  folderId?: string;
   /** Restrict to loose threads — those not filed under any folder. */
   unfiled?: boolean;
   hasParent?: boolean;
@@ -924,7 +924,7 @@ export async function listThreads(
           ...(filters.sourceThreadId
             ? { sourceThreadId: filters.sourceThreadId }
             : {}),
-          ...(filters.folderPath ? { folderPath: filters.folderPath } : {}),
+          ...(filters.folderId ? { folderId: filters.folderId } : {}),
           ...(filters.unfiled ? { unfiled: toBooleanQueryValue(true) } : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }

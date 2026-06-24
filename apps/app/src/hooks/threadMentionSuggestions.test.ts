@@ -28,7 +28,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     providerId: "openai",
     title: options.title,
     titleFallback: options.titleFallback ?? null,
-    folderPath: null,
+    folderId: null,
     status: "idle",
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,

@@ -33,14 +33,14 @@ describe("useArchivedThreads", () => {
   it("omits projectId for folder-scoped archived lists", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
-    renderHook(() => useArchivedThreads({ folderPath: "Work" }), { wrapper });
+    renderHook(() => useArchivedThreads({ folderId: "fld_work" }), { wrapper });
 
     await waitFor(() => {
       expect(api.listThreads).toHaveBeenCalled();
     });
     expect(vi.mocked(api.listThreads).mock.calls[0]?.[0]).toEqual({
       archived: true,
-      folderPath: "Work",
+      folderId: "fld_work",
       limit: ARCHIVED_THREADS_PAGE_SIZE,
       offset: 0,
     });

@@ -62,12 +62,12 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
-  folderPath?: string | null;
+  folderId?: string | null;
   title: string | null;
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
-  folderPath?: string | null;
+  folderId?: string | null;
   title?: string | null;
 }
 
@@ -367,13 +367,13 @@ export function beginThreadReadStateTransaction({
 }
 
 export function beginThreadTitleTransaction({
-  folderPath,
+  folderId,
   queryClient,
   threadId,
   title,
 }: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
   return beginThreadMetadataTransaction({
-    folderPath,
+    folderId,
     queryClient,
     threadId,
     title,
@@ -381,14 +381,14 @@ export function beginThreadTitleTransaction({
 }
 
 export function beginThreadMetadataTransaction({
-  folderPath,
+  folderId,
   queryClient,
   threadId,
   title,
 }: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
   const patch = {
     ...(title !== undefined ? { title } : {}),
-    ...(folderPath !== undefined ? { folderPath } : {}),
+    ...(folderId !== undefined ? { folderId } : {}),
   };
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>

@@ -9,40 +9,45 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
-import { normalizeFolderPath } from "@/components/sidebar/folderPath";
+import { normalizeFolderName } from "@/components/sidebar/folderKeys";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
 interface ThreadFolderCreateDialogProps {
+  errorMessage?: string | null;
   open: boolean;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (path: string) => void;
+  onCreate: (name: string) => void;
 }
 
 export interface ThreadFolderRenameDialogTarget {
-  path: string;
+  id: string;
+  name: string;
 }
 
 interface ThreadFolderRenameDialogProps {
+  errorMessage?: string | null;
   target: ThreadFolderRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
-  onRename: (path: string, newPath: string) => void;
+  onRename: (id: string, name: string) => void;
 }
 
 interface ThreadFolderDialogContentProps {
   description: string;
-  initialPath: string;
+  errorMessage?: string | null;
+  initialName: string;
   inputLabel: string;
   pending: boolean;
   submitLabel: string;
   title: string;
-  onSubmit: (path: string) => void;
+  onSubmit: (name: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
 export function ThreadFolderCreateDialog({
+  errorMessage,
   open,
   pending = false,
   onOpenChange,
@@ -55,7 +60,8 @@ export function ThreadFolderCreateDialog({
         {open ? (
           <ThreadFolderDialogContent
             description="Create a folder for threads."
-            initialPath=""
+            errorMessage={errorMessage}
+            initialName=""
             inputLabel="Folder name"
             pending={pending}
             submitLabel="Create folder"
@@ -70,6 +76,7 @@ export function ThreadFolderCreateDialog({
 }
 
 export function ThreadFolderRenameDialog({
+  errorMessage,
   target,
   pending = false,
   onOpenChange,
@@ -81,14 +88,15 @@ export function ThreadFolderRenameDialog({
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         {target ? (
           <ThreadFolderDialogContent
-            key={target.path}
-            description="Choose a new path for this folder."
-            initialPath={target.path}
-            inputLabel="Folder path"
+            key={target.id}
+            description="Choose a new name for this folder."
+            errorMessage={errorMessage}
+            initialName={target.name}
+            inputLabel="Folder name"
             pending={pending}
             submitLabel="Rename folder"
             title="Rename folder"
-            onSubmit={(newPath) => onRename(target.path, newPath)}
+            onSubmit={(name) => onRename(target.id, name)}
             inputRef={inputRef}
           />
         ) : null}
@@ -99,7 +107,8 @@ export function ThreadFolderRenameDialog({
 
 function ThreadFolderDialogContent({
   description,
-  initialPath,
+  errorMessage,
+  initialName,
   inputLabel,
   pending,
   submitLabel,
@@ -108,8 +117,11 @@ function ThreadFolderDialogContent({
   inputRef,
 }: ThreadFolderDialogContentProps) {
   const inputId = useId();
-  const [path, setPath] = useState(initialPath);
-  const [folderPathMessage, setFolderPathMessage] = useState<string | null>(
+  const [name, setName] = useState(initialName);
+  const [folderNameMessage, setFolderNameMessage] = useState<string | null>(
+    null,
+  );
+  const [hiddenErrorMessage, setHiddenErrorMessage] = useState<string | null>(
     null,
   );
   const { validationMessage, validate, clearMessage } = useNameValidation({
@@ -120,17 +132,20 @@ function ThreadFolderDialogContent({
     event.preventDefault();
     if (pending) return;
 
-    const trimmedPath = validate(path);
-    if (trimmedPath === null) return;
-    const normalizedPath = normalizeFolderPath(trimmedPath);
-    if (normalizedPath === null) {
-      setFolderPathMessage("Folder name cannot be empty.");
+    const trimmedName = validate(name);
+    if (trimmedName === null) return;
+    const normalizedName = normalizeFolderName(trimmedName);
+    if (normalizedName === null) {
+      setFolderNameMessage("Folder name cannot be empty.");
       return;
     }
 
-    onSubmit(normalizedPath);
+    onSubmit(normalizedName);
   };
-  const displayedMessage = validationMessage ?? folderPathMessage;
+  const displayedServerMessage =
+    errorMessage && hiddenErrorMessage !== errorMessage ? errorMessage : null;
+  const displayedMessage =
+    validationMessage ?? folderNameMessage ?? displayedServerMessage;
 
   return (
     <>
@@ -144,14 +159,15 @@ function ThreadFolderDialogContent({
             ref={inputRef}
             id={inputId}
             aria-label={inputLabel}
-            value={path}
+            value={name}
             autoCapitalize="sentences"
             autoCorrect="off"
             spellCheck={false}
             disabled={pending}
             onChange={(event) => {
-              setPath(event.target.value);
-              setFolderPathMessage(null);
+              setName(event.target.value);
+              setFolderNameMessage(null);
+              setHiddenErrorMessage(errorMessage ?? null);
               clearMessage();
             }}
           />

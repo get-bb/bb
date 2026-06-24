@@ -109,10 +109,10 @@ export function getProjectArchivedRoutePath(projectId: string): string {
 }
 
 // Folders live in the personal/projectless section, so a folder's archived
-// list reuses the projectless archived route, scoped by a `folder` query param.
-export function getFolderArchivedRoutePath(folderPath: string): string {
-  return `${PROJECTLESS_ARCHIVED_ROUTE_PATH}?folder=${encodeURIComponent(
-    folderPath,
+// list reuses the projectless archived route, scoped by a `folderId` query param.
+export function getFolderArchivedRoutePath(folderId: string): string {
+  return `${PROJECTLESS_ARCHIVED_ROUTE_PATH}?folderId=${encodeURIComponent(
+    folderId,
   )}`;
 }
 

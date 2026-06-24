@@ -1,4 +1,4 @@
-import { asc, eq, or, sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   DbConnection,
@@ -14,103 +14,67 @@ type ThreadFolderWriteConnection = DbConnection | DbTransaction;
 export type ThreadFolderRow = typeof threadFolders.$inferSelect;
 
 export interface CreateThreadFolderInput {
-  path: string;
+  name: string;
 }
 
 export interface RenameThreadFolderInput {
-  path: string;
-  newPath: string;
+  id: string;
+  name: string;
 }
 
 export interface DeleteThreadFolderInput {
-  path: string;
+  id: string;
 }
 
 export interface ThreadFolderMutationResult {
-  path: string;
+  id: string;
+  name: string;
   updatedThreadCount: number;
 }
 
-function splitFolderSegments(path: string): string[] {
-  return path
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
-}
+export type CreateThreadFolderResult =
+  | { status: "created"; folder: ThreadFolderRow }
+  | { status: "duplicate"; folder: ThreadFolderRow };
 
-export function normalizeThreadFolderPath(
-  path: string | null | undefined,
+export type RenameThreadFolderResult =
+  | { status: "renamed"; result: ThreadFolderMutationResult }
+  | { status: "duplicate"; folder: ThreadFolderRow }
+  | { status: "not_found" };
+
+export function normalizeThreadFolderName(
+  name: string | null | undefined,
 ): string | null {
-  const normalized = splitFolderSegments(path ?? "").join("/");
+  const normalized = (name ?? "").trim();
   return normalized.length > 0 ? normalized : null;
 }
 
-function folderAncestors(path: string): string[] {
-  const segments = splitFolderSegments(path);
-  const ancestors: string[] = [];
-  for (let depth = 1; depth <= segments.length; depth += 1) {
-    ancestors.push(segments.slice(0, depth).join("/"));
-  }
-  return ancestors;
-}
-
-function folderPathSubtreeFilter(
-  column: typeof threadFolders.path | typeof threads.folderPath,
-  path: string,
-) {
-  // SQLite substr() counts by code point, so the length argument must be the
-  // path's code-point count ([...path].length), not its UTF-16 length
-  // (path.length). For a folder named with a non-BMP character (e.g. an emoji),
-  // path.length over-counts, substr() over-reads, and the "${path}/" prefix
-  // never matches — silently skipping descendant folders/threads on
-  // rename/delete and orphaning their folder_path values.
-  const prefixCodePointLength = [...path].length + 1;
-  return or(
-    eq(column, path),
-    sql`substr(${column}, 1, ${prefixCodePointLength}) = ${`${path}/`}`,
-  );
-}
-
-function replaceFolderPathPrefix(
-  value: string,
-  oldPath: string,
-  newPath: string,
-): string {
-  if (value === oldPath) {
-    return newPath;
-  }
-  return `${newPath}/${value.slice(oldPath.length + 1)}`;
+function notifyThreadFolderListChanged(notifier: DbNotifier): void {
+  notifier.notifyProject(PERSONAL_PROJECT_ID, ["threads-changed"]);
 }
 
 function notifyThreadFolderMutationProjects(
   notifier: DbNotifier,
-  projectIds: ReadonlySet<string | null>,
+  projectIds: ReadonlySet<string>,
 ): void {
+  notifyThreadFolderListChanged(notifier);
   for (const projectId of projectIds) {
-    notifier.notifyProject(projectId ?? PERSONAL_PROJECT_ID, [
-      "threads-changed",
-    ]);
+    notifier.notifyProject(projectId, ["threads-changed"]);
   }
 }
 
-export function isThreadFolderDescendantPath(
-  path: string | null | undefined,
-  possibleDescendantPath: string | null | undefined,
-): boolean {
-  const normalizedPath = normalizeThreadFolderPath(path);
-  const normalizedDescendant = normalizeThreadFolderPath(possibleDescendantPath);
-  return Boolean(
-    normalizedPath &&
-      normalizedDescendant &&
-      normalizedDescendant.startsWith(`${normalizedPath}/`),
-  );
+export function getThreadFolderById(
+  db: DbQueryConnection,
+  id: string,
+): ThreadFolderRow | null {
+  return db.select().from(threadFolders).where(eq(threadFolders.id, id)).get()
+    ?? null;
 }
 
-export function getThreadFolderByPath(
+export function getThreadFolderByName(
   db: DbQueryConnection,
-  path: string,
+  name: string,
 ): ThreadFolderRow | null {
-  const normalized = normalizeThreadFolderPath(path);
+  const normalized = normalizeThreadFolderName(name);
   if (!normalized) {
     return null;
   }
@@ -118,7 +82,7 @@ export function getThreadFolderByPath(
     db
       .select()
       .from(threadFolders)
-      .where(eq(threadFolders.path, normalized))
+      .where(eq(threadFolders.name, normalized))
       .get() ?? null
   );
 }
@@ -127,139 +91,86 @@ export function listThreadFolders(db: DbQueryConnection): ThreadFolderRow[] {
   return db
     .select()
     .from(threadFolders)
-    .orderBy(asc(threadFolders.path), asc(threadFolders.id))
+    .orderBy(asc(threadFolders.name), asc(threadFolders.id))
     .all();
 }
 
-export function ensureThreadFolderPath(
+export function createThreadFolder(
   db: ThreadFolderWriteConnection,
   notifier: DbNotifier,
-  path: string | null | undefined,
-): ThreadFolderRow | null {
-  const normalized = normalizeThreadFolderPath(path);
-  if (!normalized) {
-    return null;
+  input: CreateThreadFolderInput,
+): CreateThreadFolderResult {
+  const name = normalizeThreadFolderName(input.name);
+  if (!name) {
+    throw new Error("Thread folder name cannot be empty");
+  }
+
+  const existing = getThreadFolderByName(db, name);
+  if (existing) {
+    return { status: "duplicate", folder: existing };
   }
 
   const now = Date.now();
-  let createdAny = false;
-  let deepest: ThreadFolderRow | null = null;
-  for (const ancestorPath of folderAncestors(normalized)) {
-    const inserted =
-      db
-        .insert(threadFolders)
-        .values({
-          id: createThreadFolderId(),
-          path: ancestorPath,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning()
-        .get() ?? null;
-    if (inserted) {
-      createdAny = true;
-      deepest = inserted;
-      continue;
-    }
-    deepest = getThreadFolderByPath(db, ancestorPath);
-  }
-
-  if (createdAny) {
-    notifier.notifyProject(PERSONAL_PROJECT_ID, ["threads-changed"]);
-  }
-  return deepest;
-}
-
-export function createThreadFolder(
-  db: DbConnection,
-  notifier: DbNotifier,
-  input: CreateThreadFolderInput,
-): ThreadFolderRow {
-  const folder = ensureThreadFolderPath(db, notifier, input.path);
-  if (!folder) {
-    throw new Error("Thread folder path cannot be empty");
-  }
-  return folder;
+  const folder = db
+    .insert(threadFolders)
+    .values({
+      id: createThreadFolderId(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  notifyThreadFolderListChanged(notifier);
+  return { status: "created", folder };
 }
 
 export function renameThreadFolder(
   db: DbConnection,
   notifier: DbNotifier,
   input: RenameThreadFolderInput,
-): ThreadFolderMutationResult | null {
-  const path = normalizeThreadFolderPath(input.path);
-  const newPath = normalizeThreadFolderPath(input.newPath);
-  if (!path || !newPath) {
-    return null;
-  }
-  if (path === newPath) {
-    return { path: newPath, updatedThreadCount: 0 };
-  }
-  if (isThreadFolderDescendantPath(path, newPath)) {
-    return null;
+): RenameThreadFolderResult {
+  const name = normalizeThreadFolderName(input.name);
+  if (!name) {
+    return { status: "not_found" };
   }
 
   return db.transaction(
     (tx) => {
-      const matchingFolders = tx
-        .select()
-        .from(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
-        .all();
-      const matchingThreads = tx
-        .select({
-          id: threads.id,
-          projectId: threads.projectId,
-          folderPath: threads.folderPath,
-        })
-        .from(threads)
-        .where(folderPathSubtreeFilter(threads.folderPath, path))
-        .all();
-
-      if (matchingFolders.length === 0 && matchingThreads.length === 0) {
-        return null;
+      const existing = getThreadFolderById(tx, input.id);
+      if (!existing) {
+        return { status: "not_found" };
       }
 
-      tx.delete(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
+      if (existing.name === name) {
+        return {
+          status: "renamed",
+          result: {
+            id: existing.id,
+            name: existing.name,
+            updatedThreadCount: 0,
+          },
+        };
+      }
+
+      const duplicate = getThreadFolderByName(tx, name);
+      if (duplicate && duplicate.id !== input.id) {
+        return { status: "duplicate", folder: duplicate };
+      }
+
+      tx.update(threadFolders)
+        .set({ name, updatedAt: Date.now() })
+        .where(eq(threadFolders.id, input.id))
         .run();
-
-      // Folders are a single global namespace keyed by path, so the global
-      // folder list (PERSONAL_PROJECT_ID) always refreshes; each moved thread's
-      // own project refreshes too.
-      const affectedProjects = new Set<string | null>([null]);
-      for (const folder of matchingFolders) {
-        ensureThreadFolderPath(
-          tx,
-          notifier,
-          replaceFolderPathPrefix(folder.path, path, newPath),
-        );
-      }
-
-      const now = Date.now();
-      for (const thread of matchingThreads) {
-        if (!thread.folderPath) {
-          continue;
-        }
-        const nextFolderPath = replaceFolderPathPrefix(
-          thread.folderPath,
-          path,
-          newPath,
-        );
-        affectedProjects.add(thread.projectId);
-        ensureThreadFolderPath(tx, notifier, nextFolderPath);
-        tx.update(threads)
-          .set({ folderPath: nextFolderPath, updatedAt: now })
-          .where(eq(threads.id, thread.id))
-          .run();
-        notifier.notifyThread(thread.id, ["title-changed"], {
-          projectId: thread.projectId,
-        });
-      }
-
-      notifyThreadFolderMutationProjects(notifier, affectedProjects);
-      return { path: newPath, updatedThreadCount: matchingThreads.length };
+      notifyThreadFolderListChanged(notifier);
+      return {
+        status: "renamed",
+        result: {
+          id: input.id,
+          name,
+          updatedThreadCount: 0,
+        },
+      };
     },
     { behavior: "immediate" },
   );
@@ -270,43 +181,28 @@ export function deleteThreadFolder(
   notifier: DbNotifier,
   input: DeleteThreadFolderInput,
 ): ThreadFolderMutationResult | null {
-  const path = normalizeThreadFolderPath(input.path);
-  if (!path) {
-    return null;
-  }
-
   return db.transaction(
     (tx) => {
-      const matchingFolders = tx
-        .select()
-        .from(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
-        .all();
+      const folder = getThreadFolderById(tx, input.id);
+      if (!folder) {
+        return null;
+      }
+
       const matchingThreads = tx
         .select({
           id: threads.id,
           projectId: threads.projectId,
         })
         .from(threads)
-        .where(folderPathSubtreeFilter(threads.folderPath, path))
+        .where(eq(threads.folderId, input.id))
         .all();
 
-      if (matchingFolders.length === 0 && matchingThreads.length === 0) {
-        return null;
-      }
-
-      tx.delete(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
-        .run();
-
       const now = Date.now();
-      // The global folder list (PERSONAL_PROJECT_ID) always refreshes; each
-      // cleared thread's own project refreshes too.
-      const affectedProjects = new Set<string | null>([null]);
+      const affectedProjects = new Set<string>();
       for (const thread of matchingThreads) {
         affectedProjects.add(thread.projectId);
         tx.update(threads)
-          .set({ folderPath: null, updatedAt: now })
+          .set({ folderId: null, updatedAt: now })
           .where(eq(threads.id, thread.id))
           .run();
         notifier.notifyThread(thread.id, ["title-changed"], {
@@ -314,8 +210,13 @@ export function deleteThreadFolder(
         });
       }
 
+      tx.delete(threadFolders).where(eq(threadFolders.id, input.id)).run();
       notifyThreadFolderMutationProjects(notifier, affectedProjects);
-      return { path, updatedThreadCount: matchingThreads.length };
+      return {
+        id: folder.id,
+        name: folder.name,
+        updatedThreadCount: matchingThreads.length,
+      };
     },
     { behavior: "immediate" },
   );

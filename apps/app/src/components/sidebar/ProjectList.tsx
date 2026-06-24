@@ -52,6 +52,7 @@ import {
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -94,6 +95,7 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   type ProjectThreadItem,
+  type SidebarFolderDefinition,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import {
@@ -122,7 +124,7 @@ import {
   type SidebarSectionId,
   type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
-import { folderAncestorKeys } from "./folderPath";
+import { folderKeyForThreadFolder } from "./folderKeys";
 import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
@@ -422,16 +424,6 @@ function normalizeCollapsedSidebarSectionIds(
   return normalized;
 }
 
-function uniqueFolderPaths(
-  folders: readonly ThreadFolderResponse[],
-): readonly string[] {
-  const paths = new Set<string>();
-  for (const folder of folders) {
-    paths.add(folder.path);
-  }
-  return Array.from(paths).sort((left, right) => left.localeCompare(right));
-}
-
 function compareByTitleAscending(
   left: ThreadListEntry,
   right: ThreadListEntry,
@@ -453,7 +445,7 @@ function getProjectThreadItemAlphaLabel(item: ProjectThreadItem): string {
     case "environment":
       return getThreadDisplayTitle(item.group.nodes[0].thread);
     case "folder":
-      return item.group.path.join("/");
+      return item.group.name;
   }
 }
 
@@ -1259,10 +1251,6 @@ function ProjectListComponent({
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
   const folders = sidebarNavigation?.folders ?? EMPTY_FOLDER_DEFINITIONS;
-  const chronologicalFolderPaths = useMemo(
-    () => uniqueFolderPaths(folders),
-    [folders],
-  );
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -1405,13 +1393,13 @@ function ProjectListComponent({
     [reorderPinnedThreadMutate],
   );
   const openRootComposeForProject = useCallback(
-    (projectId: string, folderPath?: string) => {
+    (projectId: string, folderId?: string) => {
       setRootComposeProjectId(projectId);
       onProjectSelect?.();
       navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
-          ...(folderPath ? { folderPath } : {}),
+          ...(folderId ? { folderId } : {}),
         },
       });
     },
@@ -1427,69 +1415,96 @@ function ProjectListComponent({
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
   const handleCreateThreadInFolder = useCallback(
-    (folderPath: string) => {
-      openRootComposeForProject(PERSONAL_PROJECT_ID, folderPath);
+    (folderId: string) => {
+      openRootComposeForProject(PERSONAL_PROJECT_ID, folderId);
     },
     [openRootComposeForProject],
   );
   const handleViewArchivedThreadsInFolder = useCallback(
-    (folderPath: string) => {
+    (folderId: string) => {
       onProjectSelect?.();
-      navigate(getFolderArchivedRoutePath(folderPath));
+      navigate(getFolderArchivedRoutePath(folderId));
     },
     [navigate, onProjectSelect],
   );
   const [isFolderCreateDialogOpen, setIsFolderCreateDialogOpen] =
     useState(false);
+  const [folderCreateErrorMessage, setFolderCreateErrorMessage] = useState<
+    string | null
+  >(null);
+  const [folderRenameErrorMessage, setFolderRenameErrorMessage] = useState<
+    string | null
+  >(null);
   const folderRenameDialog = useDialogState<ThreadFolderRenameDialogTarget>();
-  const folderDeleteDialog = useDialogState<string>();
+  const folderDeleteDialog = useDialogState<SidebarFolderDefinition>();
   const handleOpenCreateFolderDialog = useCallback(() => {
+    setFolderCreateErrorMessage(null);
     setIsFolderCreateDialogOpen(true);
   }, []);
   const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
+      setFolderCreateErrorMessage(null);
       setIsFolderCreateDialogOpen(false);
     }
   }, []);
   const handleCreateThreadFolder = useCallback(
-    (path: string) => {
+    (name: string) => {
+      setFolderCreateErrorMessage(null);
       createThreadFolderMutate(
-        { path },
+        { name },
         {
           onSuccess: () => setIsFolderCreateDialogOpen(false),
+          onError: (error) =>
+            setFolderCreateErrorMessage(
+              getMutationErrorMessage({
+                error,
+                fallbackMessage: "Failed to create folder.",
+              }),
+            ),
         },
       );
     },
     [createThreadFolderMutate],
   );
   const handleOpenRenameThreadFolder = useCallback(
-    (path: string) => {
-      folderRenameDialog.onOpen({ path });
+    (folder: SidebarFolderDefinition) => {
+      setFolderRenameErrorMessage(null);
+      folderRenameDialog.onOpen({ id: folder.id, name: folder.name });
     },
     [folderRenameDialog],
   );
   const handleRenameThreadFolder = useCallback(
-    (path: string, newPath: string) => {
+    (id: string, name: string) => {
+      setFolderRenameErrorMessage(null);
       updateThreadFolderMutate(
-        { path, newPath },
-        { onSuccess: () => folderRenameDialog.onClose() },
+        { id, name },
+        {
+          onSuccess: () => folderRenameDialog.onClose(),
+          onError: (error) =>
+            setFolderRenameErrorMessage(
+              getMutationErrorMessage({
+                error,
+                fallbackMessage: "Failed to rename folder.",
+              }),
+            ),
+        },
       );
     },
     [folderRenameDialog, updateThreadFolderMutate],
   );
   const handleRemoveThreadFolder = useCallback(
-    (path: string) => {
-      folderDeleteDialog.onOpen(path);
+    (folder: SidebarFolderDefinition) => {
+      folderDeleteDialog.onOpen(folder);
     },
     [folderDeleteDialog],
   );
   const handleConfirmRemoveThreadFolder = useCallback(() => {
-    const path = folderDeleteDialog.target;
-    if (!path) {
+    const folder = folderDeleteDialog.target;
+    if (!folder) {
       return;
     }
     deleteThreadFolderMutate(
-      { path },
+      { id: folder.id },
       { onSuccess: () => folderDeleteDialog.onClose() },
     );
   }, [deleteThreadFolderMutate, folderDeleteDialog]);
@@ -1501,6 +1516,15 @@ function ProjectListComponent({
       folderDeleteDialog.onClose();
     },
     [folderDeleteDialog],
+  );
+  const handleRenameThreadFolderOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setFolderRenameErrorMessage(null);
+      }
+      folderRenameDialog.onOpenChange(open);
+    },
+    [folderRenameDialog],
   );
   const handleOpenProjectlessArchivedThreads = useCallback(() => {
     onProjectSelect?.();
@@ -1678,20 +1702,18 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
-    // Also un-collapse folder ancestors hiding the selected thread in the
+    // Also un-collapse the folder hiding the selected thread in the
     // cross-project Folders view.
     const isPinned =
       pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
     if (isFolderOrganizationMode && !isPinned) {
-      const folderKeysToExpand = new Set(
-        folderAncestorKeys(
-          CHRONOLOGICAL_CONTAINER_ID,
-          selectedThread.folderPath,
-        ),
+      const folderKey = folderKeyForThreadFolder(
+        CHRONOLOGICAL_CONTAINER_ID,
+        selectedThread.folderId,
       );
-      if (folderKeysToExpand.size > 0) {
+      if (folderKey) {
         setCollapsedFolderList((current) =>
-          removeCollapsedIds(current, folderKeysToExpand),
+          removeCollapsedIds(current, new Set([folderKey])),
         );
       }
     }
@@ -1981,7 +2003,7 @@ function ProjectListComponent({
     <ChronologicalFolderThreadSections
       threadListState={allThreadsListState}
       compareThreads={sidebarThreadComparator}
-      folderPaths={chronologicalFolderPaths}
+      folders={folders}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -2022,6 +2044,7 @@ function ProjectListComponent({
   );
   const folderCreateDialog = (
     <ThreadFolderCreateDialog
+      errorMessage={folderCreateErrorMessage}
       open={isFolderCreateDialogOpen}
       pending={isCreateThreadFolderPending}
       onOpenChange={handleCreateFolderDialogOpenChange}
@@ -2030,9 +2053,10 @@ function ProjectListComponent({
   );
   const folderRenameDialogContent = (
     <ThreadFolderRenameDialog
+      errorMessage={folderRenameErrorMessage}
       target={folderRenameDialog.target}
       pending={isUpdateThreadFolderPending}
-      onOpenChange={folderRenameDialog.onOpenChange}
+      onOpenChange={handleRenameThreadFolderOpenChange}
       onRename={handleRenameThreadFolder}
     />
   );
@@ -2044,7 +2068,7 @@ function ProjectListComponent({
       {folderDeleteDialog.target ? (
         <ConfirmDeleteDialogContent
           title="Remove folder?"
-          description={`Remove "${folderDeleteDialog.target}" and clear it from its threads? This cannot be undone.`}
+          description={`Remove "${folderDeleteDialog.target.name}" and clear it from its threads? This cannot be undone.`}
           confirmLabel="Remove folder"
           pending={isDeleteThreadFolderPending}
           onConfirm={handleConfirmRemoveThreadFolder}

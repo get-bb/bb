@@ -23,6 +23,7 @@ export function useCreateThreadFolder() {
   return useMutation({
     meta: {
       errorMessage: "Failed to create folder.",
+      showErrorToast: false,
     },
     mutationFn: (request: CreateThreadFolderRequest) =>
       api.createThreadFolder(request),
@@ -38,6 +39,7 @@ export function useUpdateThreadFolder() {
   return useMutation({
     meta: {
       errorMessage: "Failed to rename folder.",
+      showErrorToast: false,
     },
     mutationFn: (request: UpdateThreadFolderRequest) =>
       api.updateThreadFolder(request),

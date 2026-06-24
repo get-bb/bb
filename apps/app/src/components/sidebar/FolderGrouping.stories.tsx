@@ -13,7 +13,10 @@ import {
   ProjectThreadTree,
   type ProjectThreadListState,
 } from "./ProjectRow";
-import { compareStandardThreads } from "./projectThreadGroups";
+import {
+  compareStandardThreads,
+  type SidebarFolderDefinition,
+} from "./projectThreadGroups";
 
 export default {
   title: "sidebar/Folder grouping",
@@ -21,6 +24,13 @@ export default {
 
 const noop = () => {};
 const PROJECT_ID = PROJECT_IDS.bb;
+const STORY_FOLDERS: readonly SidebarFolderDefinition[] = [
+  { id: "fld_work_q3", name: "Work/Q3" },
+  { id: "fld_work_q4", name: "Work/Q4" },
+  { id: "fld_personal_q3", name: "Personal/Q3" },
+  { id: "fld_build", name: "Build" },
+  { id: "fld_empty", name: "Empty" },
+];
 
 function makeThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return makeThreadListEntry({
@@ -34,36 +44,36 @@ const folderThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_work_plan",
     title: "Plan",
-    folderPath: "Work/Q3",
+    folderId: "fld_work_q3",
     latestAttentionAt: 90,
     createdAt: 90,
   }),
   makeThread({
     id: "thr_work_notes",
     title: "Notes",
-    folderPath: "Work/Q3",
+    folderId: "fld_work_q3",
     latestAttentionAt: 80,
     createdAt: 80,
   }),
   makeThread({
     id: "thr_work_parent",
     title: "Kickoff",
-    folderPath: "Work/Q4",
+    folderId: "fld_work_q4",
     latestAttentionAt: 70,
     createdAt: 70,
   }),
   makeThread({
     id: "thr_work_child",
     parentThreadId: "thr_work_parent",
-    title: "Child path stays literal / not a folder",
-    folderPath: "Ignored/Child",
+    title: "Child folder stays with the child",
+    folderId: "fld_personal_q3",
     latestAttentionAt: 65,
     createdAt: 65,
   }),
   makeThread({
     id: "thr_personal_plan",
     title: "Plan",
-    folderPath: "Personal/Q3",
+    folderId: "fld_personal_q3",
     latestAttentionAt: 60,
     createdAt: 60,
   }),
@@ -76,7 +86,7 @@ const folderThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_env_a",
     title: "Daemon",
-    folderPath: "Work/Build",
+    folderId: "fld_build",
     environmentId: "env_story_folder",
     environmentName: "Folder build",
     environmentBranchName: "bb/sidebar-folders",
@@ -87,7 +97,7 @@ const folderThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_env_b",
     title: "Stories",
-    folderPath: "Work/Build",
+    folderId: "fld_build",
     environmentId: "env_story_folder",
     environmentName: "Folder build",
     environmentBranchName: "bb/sidebar-folders",
@@ -122,6 +132,7 @@ function ProjectTree({ threads }: { threads: readonly ThreadListEntry[] }) {
       projectId={PROJECT_ID}
       threadListState={projectTree(threads)}
       compareThreads={compareStandardThreads}
+      folders={STORY_FOLDERS}
       collapsedThreadIds={new Set()}
       collapsedEnvironmentIds={new Set()}
       variant="section"
@@ -134,7 +145,7 @@ function ProjectTree({ threads }: { threads: readonly ThreadListEntry[] }) {
 export function ProjectFolders() {
   return (
     <StoryCard>
-      <StoryRow label="project" hint="stored folderPath groups project threads">
+      <StoryRow label="project" hint="flat folders group project threads">
         <SidebarStage>
           <ProjectTree threads={folderThreads} />
         </SidebarStage>
@@ -148,12 +159,13 @@ export function ChronologicalFolders() {
     <StoryCard>
       <StoryRow
         label="all threads"
-        hint="stored folderPath groups matching paths across projects"
+        hint="stored folderId groups matching threads across projects"
       >
         <SidebarStage>
           <ChronologicalThreadTree
             threadListState={projectTree(folderThreads)}
             compareThreads={compareStandardThreads}
+            folders={STORY_FOLDERS}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
