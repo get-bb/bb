@@ -63,9 +63,7 @@ function withOneMillionContext(model: string): string {
   return `${model}[1m]`;
 }
 
-const DEFAULT_CLAUDE_CODE_MODEL = withOneMillionContext(
-  CLAUDE_OPUS_4_8_MODEL,
-);
+const DEFAULT_CLAUDE_CODE_MODEL = withOneMillionContext(CLAUDE_OPUS_4_8_MODEL);
 
 // Keep the active catalog version-pinned. Moving aliases and retired model
 // strings live in the selected-only catalog so existing stored selections can
@@ -153,8 +151,7 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     id: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
     model: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
     displayName: "Opus 4.6 (1M, Legacy)",
-    description:
-      "Legacy Opus 4.6 1M model retained for existing selections",
+    description: "Legacy Opus 4.6 1M model retained for existing selections",
     supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
     defaultReasoningEffort: "medium",
   },
@@ -195,10 +192,11 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: "opus",
     model: "opus",
-    displayName: "Opus Alias (Legacy)",
-    description: "Legacy moving Opus alias retained for existing selections",
-    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
-    defaultReasoningEffort: "medium",
+    displayName: "Opus Alias (Current)",
+    description:
+      "Moving Opus alias accepted by Claude Code; resolves to the current Opus model",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
   },
   {
     id: "sonnet[1m]",

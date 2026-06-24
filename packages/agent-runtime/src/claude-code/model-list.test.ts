@@ -29,15 +29,9 @@ describe("listClaudeCodeModels", () => {
 
   it("routes non-active Opus models to the selected-only bucket", () => {
     const { models, selectedOnlyModels } = listClaudeCodeModels();
-    expect(models.map((model) => model.model)).not.toContain(
-      "claude-opus-4-8",
-    );
-    expect(models.map((model) => model.model)).not.toContain(
-      "claude-opus-4-7",
-    );
-    expect(models.map((model) => model.model)).not.toContain(
-      "claude-opus-4-6",
-    );
+    expect(models.map((model) => model.model)).not.toContain("claude-opus-4-8");
+    expect(models.map((model) => model.model)).not.toContain("claude-opus-4-7");
+    expect(models.map((model) => model.model)).not.toContain("claude-opus-4-6");
     expect(models.map((model) => model.model)).not.toContain(
       "claude-opus-4-6[1m]",
     );
@@ -145,6 +139,16 @@ describe("listClaudeCodeModels", () => {
     ).toEqual(
       expect.objectContaining({
         displayName: "Opus Alias (1M, Legacy)",
+      }),
+    );
+    expect(selectedOnlyModels.find((model) => model.model === "opus")).toEqual(
+      expect.objectContaining({
+        displayName: "Opus Alias (Current)",
+        defaultReasoningEffort: "high",
+        supportedReasoningEfforts: expect.arrayContaining([
+          expect.objectContaining({ reasoningEffort: "xhigh" }),
+          expect.objectContaining({ reasoningEffort: "ultracode" }),
+        ]),
       }),
     );
   });
