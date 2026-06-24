@@ -864,6 +864,41 @@ describe("threads", () => {
     expect(listThreadFolders(db)).toEqual([]);
   });
 
+  it("renames and removes folders with non-BMP names without orphaning descendants", () => {
+    // Regression: the subtree filter must size its substr() prefix by the
+    // path's code-point length, not its UTF-16 length, or a folder named with
+    // a non-BMP character (emoji) silently skips its descendant rows.
+    const { db, project } = setup();
+    const renamed = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "📁/Q3",
+    });
+
+    const renameResult = renameThreadFolder(db, noopNotifier, {
+      path: "📁",
+      newPath: "Archive",
+    });
+
+    expect(renameResult).toEqual({ path: "Archive", updatedThreadCount: 1 });
+    expect(getThread(db, renamed.id)?.folderPath).toBe("Archive/Q3");
+    expect(listThreadFolders(db).map((folder) => folder.path).sort()).toEqual([
+      "Archive",
+      "Archive/Q3",
+    ]);
+
+    const removed = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "📦/Inbox",
+    });
+
+    const deleteResult = deleteThreadFolder(db, noopNotifier, { path: "📦" });
+
+    expect(deleteResult).toEqual({ path: "📦", updatedThreadCount: 1 });
+    expect(getThread(db, removed.id)?.folderPath).toBeNull();
+  });
+
   it("notifies when a thread parent changes", () => {
     const { db, project } = setup();
     const spy: DbNotifier = {

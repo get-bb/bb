@@ -58,9 +58,16 @@ function folderPathSubtreeFilter(
   column: typeof threadFolders.path | typeof threads.folderPath,
   path: string,
 ) {
+  // SQLite substr() counts by code point, so the length argument must be the
+  // path's code-point count ([...path].length), not its UTF-16 length
+  // (path.length). For a folder named with a non-BMP character (e.g. an emoji),
+  // path.length over-counts, substr() over-reads, and the "${path}/" prefix
+  // never matches — silently skipping descendant folders/threads on
+  // rename/delete and orphaning their folder_path values.
+  const prefixCodePointLength = [...path].length + 1;
   return or(
     eq(column, path),
-    sql`substr(${column}, 1, ${path.length + 1}) = ${`${path}/`}`,
+    sql`substr(${column}, 1, ${prefixCodePointLength}) = ${`${path}/`}`,
   );
 }
 
