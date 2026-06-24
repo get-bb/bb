@@ -111,9 +111,9 @@ bb uses whichever providers you have configured. Common providers:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `codex`       | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                  |
 | `claude-code` | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                   |
-| `cursor`      | Install Cursor's agent CLI (`agent`) and authenticate per Cursor's docs.                                                                               |
+| `cursor`      | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                     |
 | `pi`          | See the [Pi coding agent docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
-| `opencode`    | Install opencode and authenticate per its docs.                                                                                                        |
+| `opencode`    | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                |
 
 Custom ACP agents can be configured through `customAcpAgents` in
 `~/.bb/config.json`.
