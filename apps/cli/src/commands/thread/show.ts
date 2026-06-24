@@ -61,10 +61,13 @@ interface ThreadStatusPayload {
   thread: Thread;
 }
 
+type ThreadShowEnvironmentJsonPayload = Environment & {
+  pullRequest: ThreadShowPullRequestPayload;
+};
+
 interface ThreadShowJsonPayload extends ThreadStatusPayload {
-  environment: Environment | null;
+  environment: ThreadShowEnvironmentJsonPayload | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
-  pullRequest: ThreadShowPullRequestPayload | null;
   workStatus?: WorkspaceStatus | null;
   gitDiff?: ThreadGitDiffResponse | null;
   mergeBaseBranches?: string[];
@@ -153,6 +156,25 @@ async function fetchPullRequest(args: {
       message: getErrorMessage(err),
     };
   }
+}
+
+function threadShowEnvironmentJson(
+  environment: Environment | null,
+  pullRequest: FetchedPullRequest | null,
+): ThreadShowEnvironmentJsonPayload | null {
+  if (!environment) {
+    return null;
+  }
+  return {
+    ...environment,
+    pullRequest:
+      pullRequest ??
+      {
+        status: "unavailable",
+        pullRequest: null,
+        message: "Pull request lookup was not run.",
+      },
+  };
 }
 
 export function registerShowCommand(
@@ -301,11 +323,14 @@ export function registerShowCommand(
         });
 
         if (opts.json) {
+          const environment = await getEnvironment();
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
-            environment: await getEnvironment(),
+            environment: threadShowEnvironmentJson(
+              environment,
+              fetchedPullRequest,
+            ),
             pendingTodos,
-            pullRequest: fetchedPullRequest,
           };
           if (fetchedWorkStatus !== undefined) {
             jsonPayload.workStatus = fetchedWorkStatus.available

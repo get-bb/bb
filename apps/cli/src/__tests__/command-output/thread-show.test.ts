@@ -406,12 +406,14 @@ describe("bb thread show command output", () => {
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
       thread,
-      environment,
-      pendingTodos: null,
-      pullRequest: {
-        status: "available",
-        pullRequest,
+      environment: {
+        ...environment,
+        pullRequest: {
+          status: "available",
+          pullRequest,
+        },
       },
+      pendingTodos: null,
     });
   });
 
@@ -442,7 +444,6 @@ describe("bb thread show command output", () => {
       thread,
       environment: null,
       pendingTodos: null,
-      pullRequest: null,
     });
   });
 });
