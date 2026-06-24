@@ -102,7 +102,7 @@ const mergeBaseRefQuerySchema = z.string().regex(/^[0-9a-f]{4,40}$/iu);
 
 /**
  * Query for fetching a single file's contents at one side of a diff target.
- * Used by the diff card to populate `<FileDiff>`'s `oldFile`/`newFile` props
+ * Used by the diff card to reparse the card's patch with full old/new contents
  * so `@pierre/diffs` can render expand-context buttons between hunks.
  *
  * For `branch_committed` / `all`, callers pass the resolved merge-base SHA

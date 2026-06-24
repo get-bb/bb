@@ -68,10 +68,11 @@ export interface GitDiffCardProps {
   showStuckHeaderEdge?: boolean;
   /**
    * When provided, the card lazy-fetches `oldFile`/`newFile` the first time
-   * it scrolls into view. Text results are forwarded to `<DiffView>`, which
-   * unlocks `@pierre/diffs`'s built-in expand-context buttons in the gaps
-   * between hunks; image results render as an inline preview instead of the
-   * text diff. Without this prop the card renders the hunk-only view.
+   * it scrolls into view. When `patchText` is also available to the shared body,
+   * text results reparse the patch with complete file contents, which unlocks
+   * `@pierre/diffs`'s built-in expand-context buttons in the gaps between
+   * hunks; image results render as an inline preview instead of the text diff.
+   * Without this prop the card renders the hunk-only view.
    *
    * The callback should resolve to `null` for binary files the card can't
    * preview (the diff renderer needs a UTF-8 string) so the card can leave
