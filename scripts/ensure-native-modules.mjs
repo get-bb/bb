@@ -23,6 +23,12 @@ export function verifyNativeModule(name, requireModule) {
   db.close();
 }
 
+function shouldRebuildNativeModule(errorMessage) {
+  return /NODE_MODULE_VERSION|Could not locate the bindings file/.test(
+    errorMessage,
+  );
+}
+
 export function ensureNativeModules({
   repoRoot = defaultRepoRoot,
   modules = nativeModules,
@@ -36,7 +42,7 @@ export function ensureNativeModules({
       verifyNativeModule(name, requireModule);
     } catch (err) {
       const message = formatThrownValue(err);
-      if (!/NODE_MODULE_VERSION/.test(message)) throw err;
+      if (!shouldRebuildNativeModule(message)) throw err;
 
       const pkgDir = dirname(requireModule.resolve(`${name}/package.json`));
       log(

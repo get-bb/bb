@@ -91,6 +91,16 @@ checkout path. The checkout instance id is the sanitized path to the checkout,
 relative to your home directory, plus a short hash suffix. Separate worktrees
 can run alongside each other and the packaged `npx bb-app@latest` instance.
 
+To run that same source dev server with the Electron desktop shell:
+
+```bash
+pnpm dev:desktop
+```
+
+This uses `scripts/bb-dev-app current --desktop`, which stops stale launcher
+sessions, checks dependencies and native modules, starts the source dev server,
+then opens the desktop shell against that dev app.
+
 To use the dev app from another machine, for example over Tailscale, run:
 
 ```bash

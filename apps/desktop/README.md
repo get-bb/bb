@@ -5,6 +5,15 @@ uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
 
 ## Development
 
+From the repo root, the full source dev loop is:
+
+```bash
+pnpm dev:desktop
+```
+
+That starts the source dev server and the Electron shell through
+`scripts/bb-dev-app`. To run only the desktop package task directly:
+
 ```bash
 pnpm exec turbo run dev --filter=@bb/desktop
 ```

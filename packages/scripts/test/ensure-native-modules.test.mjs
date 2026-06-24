@@ -97,6 +97,26 @@ describe("ensure-native-modules", () => {
     expect(fake.state.constructorCalls).toBe(2);
   });
 
+  it("rebuilds better-sqlite3 when the native binding is missing", () => {
+    const missingBindingError = new Error(
+      "Could not locate the bindings file. Tried: build/Release/better_sqlite3.node",
+    );
+    const fake = createBetterSqliteRequire(missingBindingError);
+    const execSync = vi.fn(() => {
+      fake.clearConstructorError();
+    });
+
+    expect(() =>
+      ensureNativeModules(createEnsureOptions(fake.requireModule, execSync)),
+    ).not.toThrow();
+
+    expect(execSync).toHaveBeenCalledWith("npx --yes node-gyp rebuild", {
+      cwd: "/tmp/fake-node-modules/better-sqlite3",
+      stdio: "inherit",
+    });
+    expect(fake.state.constructorCalls).toBe(2);
+  });
+
   it("exits non-zero when the post-rebuild instantiation still fails", () => {
     const result = spawnSync(
       process.execPath,
