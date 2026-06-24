@@ -245,6 +245,13 @@ export function readRootComposeFolderTargetFromLocationState(
   return null;
 }
 
+export function shouldStartComposingFromLocationState(state: unknown): boolean {
+  if (typeof state !== "object" || state === null) {
+    return false;
+  }
+  return "focusPrompt" in state && state.focusPrompt === true;
+}
+
 type RootComposeViewProps =
   | {
       surface: "page";
@@ -749,7 +756,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   // The no-projects welcome replaces the composer until the user opts in; once
   // they pick "New thread" we reveal the composer for the rest of the session.
-  const [startedComposing, setStartedComposing] = useState(false);
+  const [startedComposing, setStartedComposing] = useState(() =>
+    shouldStartComposingFromLocationState(location.state),
+  );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
@@ -903,6 +912,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     );
     if (!hasSingleUseRootComposeTargetState(location.state)) {
       return;
+    }
+    if (shouldStartComposingFromLocationState(location.state)) {
+      setStartedComposing(true);
     }
     if (folderTarget?.kind === "set") {
       setRootComposeFolderId(folderTarget.folderId);
