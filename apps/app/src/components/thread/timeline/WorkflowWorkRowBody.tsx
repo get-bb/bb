@@ -219,12 +219,13 @@ function WorkflowAgentLine({
 }) {
   const displayState = deriveAgentDisplayState(agent, workflowSettled);
   const activityState = activityStateForAgent(displayState);
+  const stats = buildAgentStats(agent, displayState);
   if (promptStack) {
     return (
       <div
         className={promptStackActivityRowClass(
           activityState,
-          "flex min-w-0 items-center gap-2 text-xs",
+          "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_minmax(9rem,15rem)] items-center gap-2 text-xs",
         )}
       >
         <WorkflowAgentStateIcon
@@ -243,13 +244,14 @@ function WorkflowAgentLine({
         <span
           className={activityMetaClass(
             activityState,
-            "ml-auto shrink-0 whitespace-nowrap text-[11px]",
+            "min-w-0 truncate whitespace-nowrap text-left text-[11px]",
           )}
+          title={stats}
         >
-          {buildAgentStats(agent, displayState)}
+          {stats}
         </span>
         {displayState === "failed" && agent.error ? (
-          <span className="min-w-0 truncate text-xs text-destructive/80">
+          <span className="col-span-2 col-start-2 min-w-0 truncate text-xs text-destructive/80">
             — {agent.error}
           </span>
         ) : null}
@@ -564,7 +566,9 @@ function CollapsiblePhaseSection({
         </span>
       </button>
       {expanded ? (
-        <div className={cn(promptStack && "mt-1 space-y-1")}>{agentLines}</div>
+        <div className={cn(promptStack && "mt-1 space-y-1 pl-5")}>
+          {agentLines}
+        </div>
       ) : null}
     </div>
   );

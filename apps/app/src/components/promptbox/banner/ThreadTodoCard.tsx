@@ -38,6 +38,10 @@ export interface ThreadTodoCardProps {
 
 const BODY_ID = "thread-todo-card-body";
 const TOGGLE_ID = "thread-todo-card-toggle";
+const TODO_HEADER_BUTTON_CLASS = activityRowClass(
+  "active",
+  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+);
 const TODO_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const TODO_ACTIVE_ICON_CLASS = "text-foreground";
 
@@ -157,20 +161,26 @@ export function ThreadTodoCard({
           aria-controls={BODY_ID}
           aria-label={`To-do list: ${summary.aria}`}
           onClick={onToggle}
-          className="flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+          className={TODO_HEADER_BUTTON_CLASS}
         >
           <Icon
             name="ListTodo"
-            className="size-3.5 shrink-0 text-muted-foreground"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground opacity-70">
+          <span
+            className={activityTextClass(
+              "active",
+              "min-w-0 flex-1 truncate text-left",
+            )}
+          >
             {summary.visible}
           </span>
           <Icon
             name="ChevronDown"
             className={cn(
-              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+              activityIconClass("active"),
+              "size-3.5 shrink-0 transition-transform duration-200",
               isExpanded && "rotate-180",
             )}
             aria-hidden="true"

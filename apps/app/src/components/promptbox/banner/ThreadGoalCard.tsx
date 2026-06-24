@@ -1,9 +1,19 @@
 import type { ThreadTimelineGoal } from "@bb/domain";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  activityIconClass,
+  activityMetaClass,
+  activityRowClass,
+  activityTextClass,
+} from "@/components/ui/activity-row-styles";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 
 const GOAL_CARD_ROW_HEIGHT = 32;
+const GOAL_HEADER_BUTTON_CLASS = activityRowClass(
+  "active",
+  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+);
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) {
@@ -68,32 +78,40 @@ export function ThreadGoalCard({
           aria-controls={BODY_ID}
           aria-label="Goal"
           onClick={onToggle}
-          className="flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+          className={GOAL_HEADER_BUTTON_CLASS}
         >
           <Icon
             name="Target"
-            className="size-3.5 shrink-0 text-muted-foreground"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
             aria-hidden="true"
           />
           {hasObjective ? (
             <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-              <span className="shrink-0 text-muted-foreground">Goal:</span>
+              <span className={activityMetaClass("active", "shrink-0")}>
+                Goal:
+              </span>
               <span
-                className="min-w-0 truncate font-medium text-foreground opacity-70"
+                className={activityTextClass("active", "min-w-0 truncate")}
                 title={objective}
               >
                 {objective}
               </span>
             </span>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-left font-medium opacity-70">
+            <span
+              className={activityTextClass(
+                "active",
+                "min-w-0 flex-1 truncate text-left",
+              )}
+            >
               Goal
             </span>
           )}
           <Icon
             name="ChevronDown"
             className={cn(
-              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+              activityIconClass("active"),
+              "size-3.5 shrink-0 transition-transform duration-200",
               isExpanded && "rotate-180",
             )}
             aria-hidden="true"

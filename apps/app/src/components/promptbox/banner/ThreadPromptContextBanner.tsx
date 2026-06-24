@@ -12,6 +12,11 @@ import {
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  activityIconClass,
+  activityRowClass,
+  activityTextClass,
+} from "@/components/ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import {
   formatChangeSummary,
@@ -229,6 +234,7 @@ function ChildThreadIcon({ className }: { className?: string }) {
 }
 
 interface SectionToggleButtonProps {
+  active?: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -241,6 +247,7 @@ interface SectionToggleButtonProps {
 }
 
 function SectionToggleButton({
+  active = false,
   id,
   controlsId,
   ariaLabel,
@@ -260,20 +267,28 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex cursor-pointer items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
+        "flex cursor-pointer items-center rounded px-1 py-0.5 text-xs transition-colors",
+        active ? "hover:bg-background/80" : "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        isExpanded ? "text-foreground" : "text-muted-foreground",
+        active
+          ? "text-foreground"
+          : isExpanded
+            ? "text-foreground"
+            : "text-muted-foreground",
       )}
     >
       {icon}
       {label !== null && label !== undefined ? (
         <span
-          className="min-w-0 truncate"
+          className={cn(
+            "min-w-0 truncate",
+            active && activityTextClass("active"),
+          )}
           data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
         >
           {label}
@@ -282,14 +297,23 @@ function SectionToggleButton({
       {hideLabelInCompact &&
       compactLabel !== null &&
       compactLabel !== undefined ? (
-        <span className="min-w-0 truncate" data-promptbox-compact-label="">
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            active && activityTextClass("active"),
+          )}
+          data-promptbox-compact-label=""
+        >
           {compactLabel}
         </span>
       ) : null}
       <Icon
         name="ChevronDown"
         className={cn(
-          "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+          active
+            ? activityIconClass("active")
+            : "text-subtle-foreground",
+          "size-3.5 shrink-0 transition-transform duration-200",
           isExpanded && "rotate-180",
         )}
         aria-hidden="true"
@@ -828,6 +852,7 @@ export function ThreadPromptContextBanner({
   // downgrade in legibility.
   const isParentThreadOnly =
     showParentThread && !showGit && !showChildThreads && !showPullRequest;
+  const hasActiveChildThreads = showChildThreads;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =
@@ -862,7 +887,16 @@ export function ThreadPromptContextBanner({
       className="overflow-hidden bg-surface-recessed"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
+      <div
+        className={
+          hasActiveChildThreads
+            ? activityRowClass(
+                "active",
+                "flex min-h-8 items-center gap-0.5 rounded-none text-xs text-foreground",
+              )
+            : "flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground"
+        }
+      >
         {/* Segment order: relationship metadata, active child state, GitHub PR, git status. */}
         {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
@@ -904,12 +938,13 @@ export function ThreadPromptContextBanner({
         ) : null}
         {showChildThreads && childThreadsSection ? (
           <SectionToggleButton
+            active
             id={SECTION_IDS.childThreads.toggle}
             controlsId={SECTION_IDS.childThreads.body}
             icon={
               <Icon
                 name="CircleDashed"
-                className="size-3.5 shrink-0 animate-spin"
+                className={activityIconClass("active", "size-3.5 shrink-0")}
                 aria-hidden="true"
               />
             }
