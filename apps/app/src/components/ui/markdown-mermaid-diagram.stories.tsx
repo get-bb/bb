@@ -20,13 +20,13 @@ const SEQUENCE = `sequenceDiagram
 
 // Renders inside a rounded-md recessed container with a copy/source/expand
 // toolbar. The expand (Maximize) control opens the full-screen viewer dialog
-// whose surface uses the reduced shadow-md.
+// whose surface uses the reduced shadow-sm.
 export function Overview() {
   return (
     <StoryCard>
       <StoryRow
         label="flowchart"
-        hint="inline diagram; the Maximize control opens the shadow-md viewer dialog"
+        hint="inline diagram; the Maximize control opens the shadow-sm viewer dialog"
       >
         <div className="w-full max-w-[640px]">
           <MarkdownMermaidDiagram preferredTheme="light" source={FLOWCHART} />

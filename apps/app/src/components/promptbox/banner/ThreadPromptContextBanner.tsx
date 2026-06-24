@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
@@ -196,17 +196,17 @@ const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
 const ENVIRONMENT_GONE_ARIA_LABEL =
   "Environment is unavailable. This thread can't run any more work.";
-const PULL_REQUEST_ACTION_FILL_CLASS = "bg-background shadow-xs";
-const PULL_REQUEST_ACTION_INTERACTIVE_CLASS =
+const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-none";
+const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
   "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
-const PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS = cn(
+const PROMPT_BANNER_ACTION_BUTTON_CLASS = cn(
   "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs",
-  PULL_REQUEST_ACTION_FILL_CLASS,
-  PULL_REQUEST_ACTION_INTERACTIVE_CLASS,
+  PROMPT_BANNER_ACTION_FILL_CLASS,
+  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
 );
-const PULL_REQUEST_ACTION_SEGMENT_CLASS = cn(
+const PROMPT_BANNER_ACTION_SEGMENT_CLASS = cn(
   "text-xs",
-  PULL_REQUEST_ACTION_INTERACTIVE_CLASS,
+  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
   "focus-visible:z-10",
 );
 
@@ -443,6 +443,55 @@ function BannerActionSlot({
   );
 }
 
+const PromptBannerActionButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function PromptBannerActionButton(
+  { className, type = "button", ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={cn(PROMPT_BANNER_ACTION_BUTTON_CLASS, className)}
+      {...props}
+    />
+  );
+});
+
+const PromptBannerActionGroup = ({ children }: { children: ReactNode }) => (
+  <div
+    className={cn(
+      "inline-flex overflow-hidden rounded border border-border",
+      PROMPT_BANNER_ACTION_FILL_CLASS,
+    )}
+  >
+    {children}
+  </div>
+);
+
+const PromptBannerActionSegmentButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function PromptBannerActionSegmentButton(
+  { className, type = "button", ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={cn(
+        "px-1.5 py-0.5",
+        PROMPT_BANNER_ACTION_SEGMENT_CLASS,
+        className,
+      )}
+      {...props}
+    />
+  );
+});
+
 function ThreadUnarchiveTextAction({
   isPending,
   onUnarchive,
@@ -451,14 +500,12 @@ function ThreadUnarchiveTextAction({
   onUnarchive: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <PromptBannerActionButton
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
-      className={PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS}
     >
       {isPending ? "Unarchiving..." : "Unarchive"}
-    </button>
+    </PromptBannerActionButton>
   );
 }
 
@@ -470,14 +517,12 @@ function PullRequestReadyTextAction({
   onMarkReady: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <PromptBannerActionButton
       onClick={onMarkReady}
       disabled={Boolean(disabled)}
-      className={PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS}
     >
       {disabled ? "Marking..." : "Mark ready"}
-    </button>
+    </PromptBannerActionButton>
   );
 }
 
@@ -506,34 +551,25 @@ function PullRequestMergeSplitButton({
       (action) => action.method === selectedMethod,
     ) ?? PULL_REQUEST_MERGE_ACTIONS[0];
   return (
-    <div
-      className={cn(
-        "inline-flex overflow-hidden rounded border border-border",
-        PULL_REQUEST_ACTION_FILL_CLASS,
-      )}
-    >
-      <button
-        type="button"
+    <PromptBannerActionGroup>
+      <PromptBannerActionSegmentButton
         disabled={Boolean(disabled)}
         onClick={() => onMerge(selectedAction.method)}
-        className={cn("px-1.5 py-0.5", PULL_REQUEST_ACTION_SEGMENT_CLASS)}
       >
         {selectedAction.label}
-      </button>
+      </PromptBannerActionSegmentButton>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <PromptBannerActionSegmentButton
             disabled={Boolean(disabled)}
             className={cn(
-              "inline-flex items-center border-l border-border px-1 py-0.5 data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-              PULL_REQUEST_ACTION_SEGMENT_CLASS,
+              "inline-flex items-center border-l border-border px-1 data-[state=open]:bg-state-active data-[state=open]:text-foreground",
             )}
             aria-label="Choose pull request merge method"
             title="Choose pull request merge method"
           >
             <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
-          </button>
+          </PromptBannerActionSegmentButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
@@ -562,7 +598,7 @@ function PullRequestMergeSplitButton({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </PromptBannerActionGroup>
   );
 }
 
