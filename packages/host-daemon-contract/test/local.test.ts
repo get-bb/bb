@@ -104,6 +104,7 @@ describe("provider CLI schemas", () => {
           installSource: "notInstalled",
           currentVersion: null,
           latestVersion: "0.133.0",
+          minimumSupportedVersion: "0.136.0",
           npmPackageName: "@openai/codex",
           npmGlobalPackageVersion: null,
           installAction: {
@@ -113,6 +114,7 @@ describe("provider CLI schemas", () => {
             command: "npm install -g @openai/codex@latest",
           },
           needsUpdate: false,
+          versionUnsupported: false,
         },
         claudeCode: {
           displayName: "Claude Code",
@@ -122,6 +124,7 @@ describe("provider CLI schemas", () => {
           installSource: "npmGlobal",
           currentVersion: "2.1.147",
           latestVersion: "2.1.148",
+          minimumSupportedVersion: null,
           npmPackageName: "@anthropic-ai/claude-code",
           npmGlobalPackageVersion: "2.1.147",
           installAction: {
@@ -131,6 +134,7 @@ describe("provider CLI schemas", () => {
             command: "claude update",
           },
           needsUpdate: true,
+          versionUnsupported: false,
         },
         cursor: {
           displayName: "Cursor",
@@ -140,6 +144,7 @@ describe("provider CLI schemas", () => {
           installSource: "notInstalled",
           currentVersion: null,
           latestVersion: null,
+          minimumSupportedVersion: null,
           npmPackageName: null,
           npmGlobalPackageVersion: null,
           installAction: {
@@ -150,6 +155,7 @@ describe("provider CLI schemas", () => {
               'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-cli-install.XXXXXX") && trap \'rm -f "$tmp"\' EXIT && curl -fsSL https://cursor.com/install -o "$tmp" && bash "$tmp"',
           },
           needsUpdate: false,
+          versionUnsupported: false,
         },
       }).claudeCode.needsUpdate,
     ).toBe(true);
@@ -164,10 +170,17 @@ describe("provider CLI schemas", () => {
           installSource: "npmGlobal",
           currentVersion: "0.133.0",
           latestVersion: "0.133.0",
+          minimumSupportedVersion: "0.136.0",
           npmPackageName: "@openai/codex",
           npmGlobalPackageVersion: "0.133.0",
-          installAction: null,
+          installAction: {
+            kind: "update",
+            label: "Update",
+            commandKind: "exec",
+            command: "codex update",
+          },
           needsUpdate: false,
+          versionUnsupported: true,
         },
         claudeCode: {
           displayName: "Claude Code",
@@ -177,6 +190,7 @@ describe("provider CLI schemas", () => {
           installSource: "notInstalled",
           currentVersion: null,
           latestVersion: "2.1.148",
+          minimumSupportedVersion: null,
           npmPackageName: "@anthropic-ai/claude-code",
           npmGlobalPackageVersion: null,
           installAction: {
@@ -187,6 +201,7 @@ describe("provider CLI schemas", () => {
               'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-cli-install.XXXXXX") && trap \'rm -f "$tmp"\' EXIT && curl -fsSL https://claude.ai/install.sh -o "$tmp" && bash "$tmp"',
           },
           needsUpdate: false,
+          versionUnsupported: false,
         },
         cursor: {
           displayName: "Cursor",
@@ -196,10 +211,12 @@ describe("provider CLI schemas", () => {
           installSource: "external",
           currentVersion: null,
           latestVersion: null,
+          minimumSupportedVersion: null,
           npmPackageName: null,
           npmGlobalPackageVersion: null,
           installAction: null,
           needsUpdate: false,
+          versionUnsupported: false,
         },
       }).claudeCode.installAction,
     ).toMatchObject({ commandKind: "shell" });

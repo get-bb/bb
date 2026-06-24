@@ -158,10 +158,12 @@ export const providerCliStatusSchema = z.object({
   installSource: providerCliInstallSourceSchema,
   currentVersion: z.string().min(1).nullable(),
   latestVersion: z.string().min(1).nullable(),
+  minimumSupportedVersion: z.string().min(1).nullable(),
   npmPackageName: z.string().min(1).nullable(),
   npmGlobalPackageVersion: z.string().min(1).nullable(),
   installAction: providerCliInstallActionSchema.nullable(),
   needsUpdate: z.boolean(),
+  versionUnsupported: z.boolean(),
 });
 export type ProviderCliStatus = z.infer<typeof providerCliStatusSchema>;
 

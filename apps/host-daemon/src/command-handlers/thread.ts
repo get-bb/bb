@@ -5,6 +5,7 @@ import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,
+  ExpectedCommandDispatchError,
   type CommandDispatchOptions,
   type CommandOf,
 } from "../command-dispatch-support.js";
@@ -13,6 +14,7 @@ import {
   stagePromptAttachments,
 } from "./prompt-attachments.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
+import { getProviderCliStatusForProvider } from "../provider-cli-health.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 
@@ -35,6 +37,11 @@ interface StagedThreadCommandInput {
   cleanup: () => Promise<void>;
   input: TurnSubmitCommand["input"];
   inputGroups?: TurnSubmitCommand["inputGroups"];
+}
+
+interface RequireSupportedProviderCliArgs {
+  command: CommandOf<"thread.start">;
+  options: CommandDispatchOptions;
 }
 
 function requireConfinedPath(rootPath: string, candidatePath: string): string {
@@ -74,6 +81,33 @@ function groupedInputForRuntime(
     index === 0
       ? input
       : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...input],
+  );
+}
+
+async function requireSupportedProviderCliForThreadStart({
+  command,
+  options,
+}: RequireSupportedProviderCliArgs): Promise<void> {
+  if (command.providerId !== "codex") {
+    return;
+  }
+
+  const status =
+    (await options.getProviderCliStatusForProvider?.(command.providerId)) ??
+    (await getProviderCliStatusForProvider("codex", {
+      env: options.runtimeManager.getShellEnv(),
+    }));
+  if (!status.versionUnsupported) {
+    return;
+  }
+
+  const currentVersion = status.currentVersion
+    ? ` ${status.currentVersion}`
+    : "";
+  const minimumVersion = status.minimumSupportedVersion ?? "a newer version";
+  throw new ExpectedCommandDispatchError(
+    "provider_cli_unsupported_version",
+    `Codex${currentVersion} is too old for this bb version. Update Codex to ${minimumVersion} or newer.`,
   );
 }
 
@@ -150,6 +184,7 @@ export async function startThread(
   command: CommandOf<"thread.start">,
   options: CommandDispatchOptions,
 ): Promise<HostDaemonCommandResult<"thread.start">> {
+  await requireSupportedProviderCliForThreadStart({ command, options });
   if (command.threadStoragePath) {
     const confined = requireConfinedPath(
       options.threadStorageRootPath,

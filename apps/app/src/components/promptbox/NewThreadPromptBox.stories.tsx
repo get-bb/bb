@@ -14,7 +14,10 @@ import type {
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
 import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon.js";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {
@@ -150,6 +153,33 @@ function PromptStage({ children }: PromptStageProps) {
   return <div className="mx-auto w-full max-w-[760px]">{children}</div>;
 }
 
+function UnsupportedCodexCliBanner() {
+  return (
+    <PromptStackCard ariaLabel="Codex update needed" className="overflow-hidden">
+      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
+        <Icon
+          name="Info"
+          className="size-3.5 shrink-0 text-subtle-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">
+          Update Codex to start this thread. Installed 0.135.0; required 0.136.0
+          or newer.
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-6 shrink-0 px-2 text-xs"
+          onClick={noop}
+        >
+          Update
+        </Button>
+      </div>
+    </PromptStackCard>
+  );
+}
+
 function DefaultRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
@@ -268,6 +298,36 @@ function ModelLoadFailedRow() {
             loadError: codexModelLoadError,
           },
         }}
+      />
+    </PromptStage>
+  );
+}
+
+function UnsupportedCodexCliRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Create a loop that checks the release until CI passes.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-unsupported-codex-cli"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.unsupported-codex-cli"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        promptActions={promptActions}
+        modeConfig={{
+          ...baseModeConfig,
+          banner: <UnsupportedCodexCliBanner />,
+        }}
+        project={baseProject}
+        execution={baseExecution}
       />
     </PromptStage>
   );
@@ -552,6 +612,12 @@ export function Overview() {
           <ModelLoadFailedRow />
         </StoryRow>
         <StoryRow
+          label="unsupported Codex CLI"
+          hint="thread creation blocked; banner exposes Update action"
+        >
+          <UnsupportedCodexCliRow />
+        </StoryRow>
+        <StoryRow
           label="missing Codex CLI"
           hint="provider-specific install help; picker menu keeps provider tabs"
         >
@@ -586,6 +652,21 @@ export function Overview() {
           hint="host picker replaces environment picker"
         >
           <ProjectlessThreadRow />
+        </StoryRow>
+      </StoryCard>
+    </ModelPickerStoryQueryProvider>
+  );
+}
+
+export function UnsupportedCodexCli() {
+  return (
+    <ModelPickerStoryQueryProvider>
+      <StoryCard>
+        <StoryRow
+          label="unsupported Codex CLI"
+          hint="Codex is installed but below bb's minimum supported version"
+        >
+          <UnsupportedCodexCliRow />
         </StoryRow>
       </StoryCard>
     </ModelPickerStoryQueryProvider>

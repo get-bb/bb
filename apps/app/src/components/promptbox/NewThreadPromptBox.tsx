@@ -123,6 +123,8 @@ export interface NewThreadModeConfig {
   branch: NewThreadBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  /** Slot rendered above the prompt box card, matching the follow-up banner stack. */
+  banner?: ReactNode;
   /** Slot rendered inside the prompt box card, above the text area.
    * Used by RootComposeView to surface contextual creation state. */
   header?: ReactNode;
@@ -235,6 +237,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       : "Submit (Enter)";
   return (
     <div data-promptbox-shell="" className="w-full">
+      {modeConfig.banner ? (
+        <div className="mb-2">{modeConfig.banner}</div>
+      ) : null}
       <PromptBoxInternal
         id={id}
         promptBoxRef={promptBoxRef}
@@ -414,6 +419,7 @@ export interface NewThreadConnectedModeConfig {
   branch: NewThreadConnectedBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  banner?: ReactNode;
   header?: ReactNode;
 }
 
@@ -505,6 +511,7 @@ function ConnectedThreadModeBranch({
         branch: uiBranch,
         worktree: threadConfig.worktree,
         permission: threadConfig.permission,
+        banner: threadConfig.banner,
         header: threadConfig.header,
       }}
     />

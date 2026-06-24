@@ -1,6 +1,7 @@
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import {
+  CODEX_MINIMUM_SUPPORTED_VERSION,
   getKnownAcpAgentsStatus,
   getProviderCliStatus,
   inspectProviderCli,
@@ -181,6 +182,7 @@ const CODEX_DEFINITION: ProviderCliDefinition = {
   displayName: "Codex",
   executableName: "codex",
   npmPackageName: "@openai/codex",
+  minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
   installCommand: {
     kind: "npmGlobal",
   },
@@ -197,6 +199,7 @@ const CLAUDE_CODE_DEFINITION: ProviderCliDefinition = {
   displayName: "Claude Code",
   executableName: "claude",
   npmPackageName: "@anthropic-ai/claude-code",
+  minimumSupportedVersion: null,
   installCommand: {
     kind: "downloadedShellScript",
     scriptUrl: CLAUDE_INSTALL_SCRIPT_URL,
@@ -214,6 +217,7 @@ const CURSOR_DEFINITION: ProviderCliDefinition = {
   displayName: "Cursor",
   executableName: "agent",
   npmPackageName: null,
+  minimumSupportedVersion: null,
   installCommand: {
     kind: "downloadedShellScript",
     scriptUrl: CURSOR_INSTALL_SCRIPT_URL,
@@ -287,6 +291,15 @@ function installOutdatedNpmCodexCommands(
   runner.setSuccess("codex", ["--version"], "codex 0.132.0\n");
   runner.setSuccess("npm", ["view", "@openai/codex", "version"], "0.133.0\n");
   installNpmStateCommands(runner, CODEX_DEFINITION, "/usr/local", "0.132.0");
+}
+
+function installUnsupportedCodexWithoutLatestCommands(
+  runner: FakeProviderCliCommandRunner,
+): void {
+  runner.setSuccess("which", ["codex"], "/usr/local/bin/codex\n");
+  runner.setSuccess("codex", ["--version"], "codex 0.135.0\n");
+  runner.setExit("npm", ["view", "@openai/codex", "version"], 1, "offline");
+  installNpmStateCommands(runner, CODEX_DEFINITION, "/usr/local", "0.135.0");
 }
 
 function installOutdatedExternalClaudeCommands(
@@ -382,6 +395,7 @@ describe("provider CLI health", () => {
       installSource: "notInstalled",
       currentVersion: null,
       latestVersion: "0.133.0",
+      minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
       npmPackageName: "@openai/codex",
       npmGlobalPackageVersion: null,
       installAction: {
@@ -391,6 +405,7 @@ describe("provider CLI health", () => {
         command: "npm install -g @openai/codex@latest",
       },
       needsUpdate: false,
+      versionUnsupported: false,
     });
   });
 
@@ -432,6 +447,7 @@ describe("provider CLI health", () => {
       installSource: "notInstalled",
       currentVersion: null,
       latestVersion: null,
+      minimumSupportedVersion: null,
       npmPackageName: null,
       npmGlobalPackageVersion: null,
       installAction: {
@@ -441,6 +457,7 @@ describe("provider CLI health", () => {
         command: CURSOR_INSTALL_COMMAND,
       },
       needsUpdate: false,
+      versionUnsupported: false,
     });
   });
 
@@ -459,6 +476,32 @@ describe("provider CLI health", () => {
     expect(status.currentVersion).toBe("0.132.0");
     expect(status.latestVersion).toBe("0.133.0");
     expect(status.needsUpdate).toBe(true);
+    expect(status.versionUnsupported).toBe(true);
+    expect(status.minimumSupportedVersion).toBe(
+      CODEX_MINIMUM_SUPPORTED_VERSION,
+    );
+    expect(status.installAction).toEqual({
+      kind: "update",
+      label: "Update",
+      commandKind: "exec",
+      command: "codex update",
+    });
+  });
+
+  it("offers a self-update action when Codex is below the minimum version", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    installUnsupportedCodexWithoutLatestCommands(runner);
+
+    const status = await inspectProviderCli({
+      definition: CODEX_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.currentVersion).toBe("0.135.0");
+    expect(status.latestVersion).toBeNull();
+    expect(status.needsUpdate).toBe(false);
+    expect(status.versionUnsupported).toBe(true);
     expect(status.installAction).toEqual({
       kind: "update",
       label: "Update",

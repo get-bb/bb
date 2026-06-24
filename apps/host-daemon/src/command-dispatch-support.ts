@@ -11,6 +11,7 @@ import type {
   HostDaemonAcpLaunchSpec,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
+  ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
@@ -49,6 +50,9 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  getProviderCliStatusForProvider?: (
+    providerId: string,
+  ) => Promise<ProviderCliStatus | null>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;

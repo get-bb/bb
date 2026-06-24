@@ -27,6 +27,13 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  buildProviderCliIssue,
+  hasProviderCliAction,
+  useProviderCliInstallRunner,
+  type ProviderCliActionableIssue,
+} from "@/components/provider-cli/provider-cli-install";
 import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
@@ -72,6 +79,10 @@ import {
 } from "@/hooks/queries/project-queries";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
+import {
+  useLocalProviderCliStatus,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -134,6 +145,7 @@ import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
+import { isLoopbackOrigin } from "@/lib/system-config-atoms";
 import { RootComposeSecondaryContent } from "./RootComposeSecondaryContent";
 import {
   buildRootComposeBranchUiState,
@@ -630,6 +642,56 @@ function LegacyProjectComposeRedirect({
   );
 }
 
+interface CodexCliVersionBannerProps {
+  currentVersion: string | null;
+  minimumSupportedVersion: string | null;
+  issue: ProviderCliActionableIssue | null;
+  updating: boolean;
+  onUpdate: () => void;
+}
+
+function CodexCliVersionBanner({
+  currentVersion,
+  minimumSupportedVersion,
+  issue,
+  updating,
+  onUpdate,
+}: CodexCliVersionBannerProps) {
+  const minimumVersion = minimumSupportedVersion ?? "a newer version";
+  const versionCopy = currentVersion
+    ? `Installed ${currentVersion}; required ${minimumVersion} or newer.`
+    : `Required ${minimumVersion} or newer.`;
+  return (
+    <PromptStackCard
+      ariaLabel="Codex update needed"
+      className="overflow-hidden"
+    >
+      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
+        <Icon
+          name="Info"
+          className="size-3.5 shrink-0 text-subtle-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">
+          Update Codex to start this thread. {versionCopy}
+        </span>
+        {issue ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 shrink-0 px-2 text-xs"
+            disabled={updating}
+            onClick={onUpdate}
+          >
+            {updating ? "Updating" : issue.action.label}
+          </Button>
+        ) : null}
+      </div>
+    </PromptStackCard>
+  );
+}
+
 export function RootComposeRoute() {
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -784,6 +846,45 @@ export function RootComposeView(props: RootComposeViewProps) {
     serviceTierSupportByProvider,
   } = creationOptions;
   const executionInputSources = creationOptions.executionInputSources;
+  const providerCliSystemConfig = useSystemConfig();
+  const providerCliDaemonPort = isLoopbackOrigin()
+    ? (providerCliSystemConfig.data?.hostDaemonPort ?? null)
+    : null;
+  const providerCliStatus = useLocalProviderCliStatus({
+    daemonPort: providerCliDaemonPort,
+    enabled: providerCliDaemonPort !== null,
+  });
+  const refetchProviderCliStatus = providerCliStatus.refetch;
+  const {
+    installLogDialog: providerCliInstallLogDialog,
+    runningProvider,
+    startInstall,
+  } = useProviderCliInstallRunner({
+    daemonPort: providerCliDaemonPort,
+    onStatusUpdated: () => {
+      void refetchProviderCliStatus();
+    },
+  });
+  const codexCliStatus = providerCliStatus.data?.codex ?? null;
+  const isCodexCliVersionBlocked =
+    selectedProviderId === "codex" &&
+    codexCliStatus?.versionUnsupported === true;
+  const codexCliIssue = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    const issue = buildProviderCliIssue({
+      provider: "codex",
+      status: codexCliStatus,
+    });
+    return issue && hasProviderCliAction(issue) ? issue : null;
+  }, [codexCliStatus, isCodexCliVersionBlocked]);
+  const handleUpdateCodexCli = useCallback(() => {
+    if (codexCliIssue === null) {
+      return;
+    }
+    startInstall(codexCliIssue);
+  }, [codexCliIssue, startInstall]);
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
   // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
@@ -1114,6 +1215,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     if (
       submittedInput.length === 0 ||
       createThread.isPending ||
+      isCodexCliVersionBlocked ||
       (forkSeed === null && !selectedEnvironment)
     ) {
       return;
@@ -1180,6 +1282,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     createThread,
     executionInputSources,
     forkSeed,
+    isCodexCliVersionBlocked,
     navigate,
     navigateToThreadAfterCreate,
     permissionMode,
@@ -1200,6 +1303,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isLoadingModels ||
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required" ||
+    isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||
@@ -2491,7 +2595,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   }, []);
 
   const promptHeader = useMemo(() => {
-    if (forkSeed === null) return null;
+    if (forkSeed === null) {
+      return null;
+    }
     return (
       <div className="flex">
         {/* `-ml-1.5` shifts the pill 6px left so its icon column lines up
@@ -2518,6 +2624,27 @@ export function RootComposeView(props: RootComposeViewProps) {
       </div>
     );
   }, [forkSeed, handleCancelForkDraft]);
+
+  const promptBanner = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    return (
+      <CodexCliVersionBanner
+        currentVersion={codexCliStatus.currentVersion}
+        minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
+        issue={codexCliIssue}
+        updating={runningProvider === "codex"}
+        onUpdate={handleUpdateCodexCli}
+      />
+    );
+  }, [
+    codexCliIssue,
+    codexCliStatus,
+    handleUpdateCodexCli,
+    isCodexCliVersionBlocked,
+    runningProvider,
+  ]);
 
   if (!hasSidebarNavigationSettled) {
     return (
@@ -2558,6 +2685,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         branch: branchConfig,
         worktree: worktreeConfig,
         permission: permissionConfig,
+        banner: promptBanner,
         header: promptHeader,
       }}
       project={{
@@ -2578,11 +2706,17 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
 
   if (props.surface === "popout") {
-    return <div className="w-full">{promptBox}</div>;
+    return (
+      <>
+        <div className="w-full">{promptBox}</div>
+        {providerCliInstallLogDialog}
+      </>
+    );
   }
 
   return (
     <>
+      {providerCliInstallLogDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
         contentClassName={

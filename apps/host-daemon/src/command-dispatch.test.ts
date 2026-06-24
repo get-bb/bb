@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  ProviderCliStatus,
+} from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { dispatchCommand } from "./command-dispatch.js";
@@ -281,6 +284,134 @@ describe("dispatchCommand", () => {
 
     expect(result).toEqual({});
     expect(runtime.renameThread).not.toHaveBeenCalled();
+  });
+
+  it("blocks codex thread.start when the CLI is below the minimum version", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const command: CommandOf<"thread.start"> = {
+      type: "thread.start",
+      environmentId: "env-1",
+      threadId: "thread-1",
+      workspaceContext: {
+        workspacePath: WORKSPACE_PATH,
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_1",
+      providerId: "codex",
+      requestId: "creq_unsupported_codex",
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      instructions: "Be concise.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+
+    const unsupportedCodexStatus: ProviderCliStatus = {
+      displayName: "Codex",
+      executableName: "codex",
+      executablePath: "/usr/local/bin/codex",
+      installed: true,
+      installSource: "npmGlobal",
+      currentVersion: "0.135.0",
+      latestVersion: null,
+      minimumSupportedVersion: "0.136.0",
+      npmPackageName: "@openai/codex",
+      npmGlobalPackageVersion: "0.135.0",
+      installAction: {
+        kind: "update",
+        label: "Update",
+        commandKind: "exec",
+        command: "codex update",
+      },
+      needsUpdate: false,
+      versionUnsupported: true,
+    };
+
+    await expect(
+      dispatchCommand(command, {
+        dataDir: "/tmp/bb-data",
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider: async () => unsupportedCodexStatus,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      }),
+    ).rejects.toMatchObject({
+      code: "provider_cli_unsupported_version",
+    });
+
+    expect(runtime.startThread).not.toHaveBeenCalled();
+  });
+
+  it("does not check Codex CLI status for non-Codex thread.start", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const command: CommandOf<"thread.start"> = {
+      type: "thread.start",
+      environmentId: "env-1",
+      threadId: "thread-1",
+      workspaceContext: {
+        workspacePath: WORKSPACE_PATH,
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_1",
+      providerId: "claude-code",
+      requestId: "creq_non_codex",
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: {
+        model: "claude-sonnet-4-6",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      instructions: "Be concise.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+    const getProviderCliStatusForProvider = vi.fn(async () => {
+      throw new Error("Codex CLI status should not be checked");
+    });
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      getProviderCliStatusForProvider,
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ providerThreadId: "provider-thread-1" });
+    expect(getProviderCliStatusForProvider).not.toHaveBeenCalled();
+    expect(runtime.startThread).toHaveBeenCalledOnce();
   });
 
   // Regression: a thread.start whose freshly staged skill catalog differed
