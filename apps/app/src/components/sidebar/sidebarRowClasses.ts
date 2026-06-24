@@ -73,7 +73,7 @@ export const SIDEBAR_ROW_STATIC_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground";
 
 export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
-  "bg-sidebar-border text-sidebar-foreground";
+  "bg-sidebar-border/70 text-sidebar-foreground";
 
 /**
  * Hairline that runs through an expanded project's thread list, sitting
