@@ -47,7 +47,6 @@ import {
   useThreadPendingInteractions,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
-import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -197,7 +196,6 @@ import {
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
-import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
@@ -497,25 +495,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     isFetching: threadDetailBootstrapQuery.isFetching || isFetching,
     isLoadingError,
   });
-  const threadComposerBootstrapQuery = useThreadComposerBootstrap(
-    thread?.id ?? "",
-    {
-      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-      environmentId: thread?.environmentId ?? undefined,
-      providerId: thread?.providerId,
-    },
-  );
-  const hasThreadComposerBootstrapData =
-    threadComposerBootstrapQuery.data !== undefined;
-  const hasThreadComposerBootstrapReady = resolveThreadComposerBootstrapReady({
-    hasData: hasThreadComposerBootstrapData,
-    isError: threadComposerBootstrapQuery.isError,
-    isFetching: threadComposerBootstrapQuery.isFetching,
-    isSuccess: threadComposerBootstrapQuery.isSuccess,
-  });
-  const composerHydratedDataStaleTime = hasThreadComposerBootstrapData
-    ? 10_000
-    : undefined;
   const threadOriginKind = thread?.originKind ?? thread?.childOrigin ?? null;
   const threadSourceThreadId =
     thread?.sourceThreadId ??
@@ -1977,8 +1956,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
-      composerQueriesEnabled={hasThreadComposerBootstrapReady}
-      composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}
       openThreadDiffPanel={openSecondaryPanelDiffPanel}
       projectId={projectId}

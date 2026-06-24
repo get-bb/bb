@@ -406,7 +406,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     ];
   }, [sidebarNavigationQuery.data]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
-    composerBootstrapPrefetch: isThreadView && Boolean(threadId),
     enabled: isThreadView && Boolean(threadId),
     timelinePrefetch: isThreadView && Boolean(threadId),
   });

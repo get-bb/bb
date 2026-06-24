@@ -5,7 +5,6 @@ import {
   environmentDiffPatchQueryKey,
   environmentWorkStatusQueryKey,
   systemExecutionOptionsQueryKey,
-  threadComposerBootstrapQueryKey,
 } from "./queries/query-keys";
 import { removeEnvironmentScopedQueries } from "./cache-owners/environment-cache-effects";
 
@@ -42,7 +41,7 @@ const EMPTY_EXECUTION_OPTIONS = {
 };
 
 describe("environment cache effects", () => {
-  it("removes env-scoped execution options and composer bootstrap caches on cleanup", () => {
+  it("removes env-scoped execution options caches on cleanup", () => {
     const queryClient = createCacheEffectQueryClient();
     const removedExecutionOptionsKey = scopedSystemExecutionOptionsKey({
       environmentId: "env-removed",
@@ -50,14 +49,6 @@ describe("environment cache effects", () => {
     const retainedExecutionOptionsKey = scopedSystemExecutionOptionsKey({
       environmentId: "env-retained",
     });
-    const removedComposerBootstrapKey = threadComposerBootstrapQueryKey(
-      "thread-removed",
-      "env-removed",
-    );
-    const retainedComposerBootstrapKey = threadComposerBootstrapQueryKey(
-      "thread-retained",
-      "env-retained",
-    );
     const removedWorkStatusKey = environmentWorkStatusQueryKey(
       "env-removed",
       "main",
@@ -70,16 +61,6 @@ describe("environment cache effects", () => {
       retainedExecutionOptionsKey,
       EMPTY_EXECUTION_OPTIONS,
     );
-    queryClient.setQueryData(removedComposerBootstrapKey, {
-      defaultExecutionOptions: null,
-      queuedMessages: [],
-      executionOptions: EMPTY_EXECUTION_OPTIONS,
-    });
-    queryClient.setQueryData(retainedComposerBootstrapKey, {
-      defaultExecutionOptions: null,
-      queuedMessages: [],
-      executionOptions: EMPTY_EXECUTION_OPTIONS,
-    });
     queryClient.setQueryData(removedWorkStatusKey, {});
 
     removeEnvironmentScopedQueries({
@@ -90,18 +71,10 @@ describe("environment cache effects", () => {
     expect(
       queryClient.getQueryData(removedExecutionOptionsKey),
     ).toBeUndefined();
-    expect(
-      queryClient.getQueryData(removedComposerBootstrapKey),
-    ).toBeUndefined();
     expect(queryClient.getQueryData(removedWorkStatusKey)).toBeUndefined();
     expect(queryClient.getQueryData(retainedExecutionOptionsKey)).toEqual(
       EMPTY_EXECUTION_OPTIONS,
     );
-    expect(queryClient.getQueryData(retainedComposerBootstrapKey)).toEqual({
-      defaultExecutionOptions: null,
-      queuedMessages: [],
-      executionOptions: EMPTY_EXECUTION_OPTIONS,
-    });
   });
 
   it("removes both the diff TOC and the observer-less patch cache for the torn-down environment", () => {

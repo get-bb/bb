@@ -9,7 +9,6 @@ import {
   permissionModeSchema,
   promptInputSchema,
   reasoningLevelSchema,
-  resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
   threadOriginKindSchema,
@@ -36,7 +35,6 @@ import {
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
-import { systemExecutionOptionsResponseSchema } from "./system.js";
 
 export const sendMessageModeSchema = z.enum([
   "queue-if-active",
@@ -394,23 +392,6 @@ export const threadOpenResponseSchema = z.object({
   delivered: z.number().int().nonnegative(),
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
-
-export const threadComposerBootstrapResponseSchema = z.object({
-  defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
-  queuedMessages: threadQueuedMessageListResponseSchema,
-  /**
-   * Provider/model options for the thread's composer picker. Null when the
-   * server deliberately skips resolving them — for archived or environment-less
-   * threads, whose follow-up composer locks the provider and needs no list.
-   * Null means "not resolved", distinct from a resolved-but-empty list, so
-   * callers must not treat it as a system-wide answer (e.g. don't seed the
-   * shared system-execution-options cache with it).
-   */
-  executionOptions: systemExecutionOptionsResponseSchema.nullable(),
-});
-export type ThreadComposerBootstrapResponse = z.infer<
-  typeof threadComposerBootstrapResponseSchema
->;
 
 export const threadArchiveAllResponseSchema = z.object({
   ok: z.literal(true),

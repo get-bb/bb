@@ -7,10 +7,6 @@ import type {
 import * as api from "@/lib/api";
 import { getCachedThreadListPlaceholder } from "./query-cache";
 import {
-  fetchAndHydrateThreadComposerBootstrap,
-  threadComposerBootstrapQueryKey,
-} from "../queries/thread-composer-bootstrap-query";
-import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
@@ -32,7 +28,6 @@ interface CachedThreadProjectIdArgs {
 }
 
 export interface ThreadDetailBootstrapIngestionArgs {
-  composerBootstrapPrefetch: boolean;
   queryClient: QueryClient;
   thread: ThreadWithIncludesResponse;
   timelinePrefetch: boolean;
@@ -63,7 +58,6 @@ function upsertHostList({ host, hosts }: UpsertHostListArgs): HostList {
 }
 
 export function ingestThreadDetailBootstrap({
-  composerBootstrapPrefetch,
   queryClient,
   thread,
   timelinePrefetch,
@@ -99,20 +93,6 @@ export function ingestThreadDetailBootstrap({
     });
   }
 
-  if (composerBootstrapPrefetch) {
-    const environmentId = thread.environmentId ?? null;
-    void queryClient.prefetchQuery({
-      queryKey: threadComposerBootstrapQueryKey(thread.id, environmentId),
-      queryFn: ({ signal }) =>
-        fetchAndHydrateThreadComposerBootstrap({
-          environmentId,
-          providerId: thread.providerId,
-          queryClient,
-          signal,
-          threadId: thread.id,
-        }),
-    });
-  }
 }
 
 export function getCachedThreadProjectId({

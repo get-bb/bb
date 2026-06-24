@@ -230,11 +230,7 @@ function makeThread(): ThreadWithRuntime {
   } as ThreadWithRuntime;
 }
 
-function renderPromptArea({
-  composerQueriesEnabled,
-}: {
-  composerQueriesEnabled: boolean;
-}) {
+function renderPromptArea() {
   return render(
     <ThreadDetailPromptArea
       activeBackgroundCommands={[]}
@@ -243,7 +239,6 @@ function renderPromptArea({
       canUseGitUi={false}
       childThreadsSection={null}
       composerFocusRequestNonce={0}
-      composerQueriesEnabled={composerQueriesEnabled}
       contextBannerMergeBase={null}
       environmentGoneStatus={null}
       goal={null}
@@ -281,14 +276,14 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
-  it("uses the real thread cache keys before composer bootstrap is ready", () => {
+  it("uses the real thread cache keys immediately", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
-    renderPromptArea({ composerQueriesEnabled: false });
+    renderPromptArea();
 
     expect(mocks.useThreadDefaultExecutionOptions).toHaveBeenCalledWith(
       "thr_1",
-      expect.objectContaining({ enabled: false }),
+      expect.objectContaining({ enabled: true }),
     );
     expect(mocks.useThreadPromptHistory).toHaveBeenCalledWith(
       "thr_1",

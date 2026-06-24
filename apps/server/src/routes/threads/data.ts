@@ -11,7 +11,6 @@ import {
   publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
-  type ThreadComposerBootstrapResponse,
   type ThreadTimelineQuery,
 } from "@bb/server-contract";
 import type {
@@ -59,7 +58,6 @@ import {
   getLastThreadOutput,
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
-import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
 import { findKnownAcpAgentForProviderId } from "../../services/system/known-acp-agents.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
@@ -89,59 +87,6 @@ function resolveThreadProviderDisplayName(
   return isAgentProviderId(providerId)
     ? getBuiltInAgentProviderInfo(providerId).displayName
     : undefined;
-}
-
-interface ThreadComposerExecutionOptionsSource {
-  archivedAt: number | null;
-  environmentId: string | null;
-}
-
-interface ShouldResolveThreadComposerExecutionOptionsArgs {
-  thread: ThreadComposerExecutionOptionsSource;
-}
-
-function shouldResolveThreadComposerExecutionOptions({
-  thread,
-}: ShouldResolveThreadComposerExecutionOptionsArgs): boolean {
-  return thread.archivedAt === null && thread.environmentId !== null;
-}
-
-async function buildThreadComposerBootstrapResponse(
-  deps: AppDeps,
-  threadId: string,
-): Promise<ThreadComposerBootstrapResponse> {
-  const thread = requirePublicThread(deps.db, threadId);
-  const defaultExecutionOptions =
-    (
-      await tryResolveExistingThreadExecutionPlan(deps, {
-        executionSource: "client/turn/requested",
-        input: {},
-        threadId,
-      })
-    )?.defaultView ?? null;
-  const composerEnvironmentId = shouldResolveThreadComposerExecutionOptions({
-    thread,
-  })
-    ? thread.environmentId
-    : null;
-  // Null when we deliberately skip resolution (archived / environment-less
-  // threads). Resolving hits the host via live provider.list_models
-  // RPCs, so we only pay that cost when the thread has a live environment whose
-  // composer can actually use the list. Null (not an empty object) keeps
-  // "not resolved" distinct from "resolved to nothing".
-  const executionOptions = composerEnvironmentId
-    ? await resolveSystemExecutionOptions(deps, {
-        environmentId: composerEnvironmentId,
-        providerId: thread.providerId,
-      })
-    : null;
-  return {
-    defaultExecutionOptions,
-    queuedMessages: listQueuedThreadMessages(deps.db, threadId).map(
-      toThreadQueuedMessage,
-    ),
-    executionOptions,
-  };
 }
 
 function validateFilePath(filePath: string): void {
@@ -425,12 +370,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       output: getLastThreadOutput(deps.db, context.req.param("id")),
     });
   });
-
-  get(routes.composerBootstrap, async (context) =>
-    context.json(
-      await buildThreadComposerBootstrapResponse(deps, context.req.param("id")),
-    ),
-  );
 
   get(routes.queuedMessages, (context) => {
     const threadId = context.req.param("id");

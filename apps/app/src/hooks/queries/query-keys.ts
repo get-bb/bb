@@ -25,7 +25,6 @@ export const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
-export const THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY = "threadComposerBootstrap";
 export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
 export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
@@ -169,15 +168,6 @@ export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
 export type ThreadDetailBootstrapQueryKey = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
   string,
-];
-export type ThreadComposerBootstrapQueryKey = readonly [
-  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
-  string | null,
-  string,
-];
-export type ThreadComposerBootstrapEnvironmentQueryKeyPrefix = readonly [
-  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
-  string | null,
 ];
 export type ThreadDefaultExecutionOptionsQueryKeyPrefix = readonly [
   typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
@@ -617,19 +607,6 @@ export function threadDetailBootstrapQueryKey(
   threadId: string,
 ): ThreadDetailBootstrapQueryKey {
   return [THREAD_DETAIL_BOOTSTRAP_QUERY_KEY, threadId];
-}
-
-export function threadComposerBootstrapQueryKey(
-  threadId: string,
-  environmentId: string | null,
-): ThreadComposerBootstrapQueryKey {
-  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId, threadId];
-}
-
-export function threadComposerBootstrapEnvironmentQueryKeyPrefix(
-  environmentId: string | null,
-): ThreadComposerBootstrapEnvironmentQueryKeyPrefix {
-  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId];
 }
 
 export function allThreadQueryKeyPrefix(): ThreadQueryKeyPrefix {

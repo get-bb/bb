@@ -95,8 +95,6 @@ export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
 
 interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
-  composerQueriesEnabled: boolean;
-  composerQueriesStaleTime?: number;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -177,8 +175,6 @@ interface SendQueuedMessageByIdArgs {
 
 export function ThreadDetailPromptArea({
   canUseGitUi,
-  composerQueriesEnabled,
-  composerQueriesStaleTime,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -215,8 +211,7 @@ export function ThreadDetailPromptArea({
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
     {
-      enabled: composerQueriesEnabled,
-      staleTime: composerQueriesStaleTime,
+      enabled: true,
     },
   );
   const defaultExecutionOptions = defaultExecutionOptionsQuery.data;
@@ -235,7 +230,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     {
       enabled: true,
-      staleTime: composerQueriesStaleTime,
     },
   );
   // Ref-backed lookup keeps queued-message action handlers stable across
@@ -382,7 +376,7 @@ export function ThreadDetailPromptArea({
     serviceTierSupportByProvider,
     executionInputSources,
   } = useThreadCreationOptions({
-    enabled: composerQueriesEnabled,
+    enabled: thread.archivedAt === null && thread.environmentId !== null,
     environmentId: thread.environmentId ?? undefined,
     scope: "component-local",
     resetKey: thread.id,

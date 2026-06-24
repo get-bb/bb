@@ -1314,11 +1314,6 @@ describe("server-contract clients", () => {
         param: { id: "thr_123" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/pin-order");
-    expect(
-      publicClient.threads[":id"]["composer-bootstrap"].$url({
-        param: { id: "thr_123" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/composer-bootstrap");
     expect(publicClient.system["execution-options"].$url().pathname).toBe(
       "/api/v1/system/execution-options",
     );

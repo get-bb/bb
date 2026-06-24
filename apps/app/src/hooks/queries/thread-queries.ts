@@ -86,7 +86,6 @@ export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
 export const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
-  composerBootstrapPrefetch?: boolean;
   timelinePrefetch?: boolean;
 }
 
@@ -543,7 +542,6 @@ export function useThreadDetailBootstrap(
         signal,
       );
       ingestThreadDetailBootstrap({
-        composerBootstrapPrefetch: options?.composerBootstrapPrefetch ?? false,
         queryClient,
         thread,
         timelinePrefetch: options?.timelinePrefetch ?? false,

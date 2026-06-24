@@ -11,7 +11,6 @@ import {
   environmentWorkStatusQueryKeyPrefix,
   systemExecutionOptionsEnvironmentQueryKeyPrefix,
 } from "../queries/query-keys";
-import { threadComposerBootstrapEnvironmentQueryKeyPrefix } from "../queries/thread-composer-bootstrap-query";
 import type {
   EnvironmentArg,
   OptionalEnvironmentArg,
@@ -47,9 +46,6 @@ export function removeEnvironmentScopedQueries({
   });
   queryClient.removeQueries({
     queryKey: systemExecutionOptionsEnvironmentQueryKeyPrefix(environmentId),
-  });
-  queryClient.removeQueries({
-    queryKey: threadComposerBootstrapEnvironmentQueryKeyPrefix(environmentId),
   });
 }
 

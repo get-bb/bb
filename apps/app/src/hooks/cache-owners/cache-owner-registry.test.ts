@@ -76,9 +76,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
     "threadsQueryKey",
   ],
-  "hooks/cache-owners/composer-cache-owner.ts": [
-    "threadQueuedMessagesQueryKey",
-  ],
   "hooks/cache-owners/environment-cache-effects.ts": [
     "environmentDiffFilesQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
