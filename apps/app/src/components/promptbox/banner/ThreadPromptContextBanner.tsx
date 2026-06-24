@@ -186,6 +186,18 @@ const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
 const ENVIRONMENT_GONE_ARIA_LABEL =
   "Environment is unavailable. This thread can't run any more work.";
 const PULL_REQUEST_ACTION_FILL_CLASS = "bg-background shadow-xs";
+const PULL_REQUEST_ACTION_INTERACTIVE_CLASS =
+  "text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+const PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS = cn(
+  "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs",
+  PULL_REQUEST_ACTION_FILL_CLASS,
+  PULL_REQUEST_ACTION_INTERACTIVE_CLASS,
+);
+const PULL_REQUEST_ACTION_SEGMENT_CLASS = cn(
+  "text-xs",
+  PULL_REQUEST_ACTION_INTERACTIVE_CLASS,
+  "focus-visible:z-10",
+);
 
 // Stable ids for aria-controls / aria-labelledby pairing between each
 // section's toggle button and its expanded body region.
@@ -412,10 +424,7 @@ function ThreadUnarchiveTextAction({
       type="button"
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
-      className={cn(
-        "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-        PULL_REQUEST_ACTION_FILL_CLASS,
-      )}
+      className={PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS}
     >
       {isPending ? "Unarchiving..." : "Unarchive"}
     </button>
@@ -434,10 +443,7 @@ function PullRequestReadyTextAction({
       type="button"
       onClick={onMarkReady}
       disabled={Boolean(disabled)}
-      className={cn(
-        "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-        PULL_REQUEST_ACTION_FILL_CLASS,
-      )}
+      className={PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS}
     >
       {disabled ? "Marking..." : "Mark ready"}
     </button>
@@ -479,7 +485,7 @@ function PullRequestMergeSplitButton({
         type="button"
         disabled={Boolean(disabled)}
         onClick={() => onMerge(selectedAction.method)}
-        className="px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+        className={cn("px-1.5 py-0.5", PULL_REQUEST_ACTION_SEGMENT_CLASS)}
       >
         {selectedAction.label}
       </button>
@@ -488,7 +494,10 @@ function PullRequestMergeSplitButton({
           <button
             type="button"
             disabled={Boolean(disabled)}
-            className="inline-flex items-center border-l border-border px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            className={cn(
+              "inline-flex items-center border-l border-border px-1 py-0.5 data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+              PULL_REQUEST_ACTION_SEGMENT_CLASS,
+            )}
             aria-label="Choose pull request merge method"
             title="Choose pull request merge method"
           >

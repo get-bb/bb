@@ -103,7 +103,7 @@ const BRANCH_PICKER_HEADER_BASE_CLASS_NAME =
 const BRANCH_PICKER_HEADER_STICKY_CLASS_NAME =
   "sticky top-0 z-20 -mx-1 bg-background px-3";
 const BRANCH_PICKER_CONTENT_CLASS_NAME =
-  "flex w-max min-w-0 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden p-0 md:max-h-[calc(100vh-6rem)]";
+  "flex w-full min-w-0 flex-col overflow-hidden p-0 md:w-max md:max-w-[min(18rem,calc(100vw-2rem))] md:max-h-[calc(100vh-6rem)]";
 const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
@@ -1011,7 +1011,7 @@ export function BranchPicker({
         mobileTitle={menuCopy.title ?? "Branch"}
         className={cn(
           BRANCH_PICKER_CONTENT_CLASS_NAME,
-          showOptionsSearch && "min-w-40",
+          showOptionsSearch && "md:min-w-40",
         )}
       >
         {showOptionsSearch ? (

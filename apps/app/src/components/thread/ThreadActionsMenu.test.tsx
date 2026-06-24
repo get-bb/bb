@@ -113,7 +113,7 @@ describe("ThreadActionsMenu", () => {
   it("renders icons for thread action menu items", async () => {
     await renderOpenMenu(makeThread());
 
-    expectMenuItemIcon("Mark as read", "MailOpen");
+    expectMenuItemIcon("Mark read", "MailOpen");
     expectMenuItemIcon("Pin", "Pin");
     expectMenuItemIcon("Rename", "Edit");
     expectMenuItemIcon("Archive", "Archive");

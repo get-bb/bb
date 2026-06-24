@@ -136,7 +136,12 @@ export function AppSidebar({
         // scroll to and briefly highlight that message. Omitted for title-only
         // matches, which just open the thread normally.
         item.messageSeq !== null
-          ? { state: { searchMessageSeq: item.messageSeq } }
+          ? {
+              state: {
+                searchMessageSeq: item.messageSeq,
+                searchThreadId: item.threadId,
+              },
+            }
           : undefined,
       );
       closeOnMobile();

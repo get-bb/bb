@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
@@ -19,8 +19,10 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 // isolated unit renders wrap the tree in a MemoryRouter.
 const toMarkup = (ui: ReactElement) =>
   renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
-const renderWithRouter = (ui: ReactElement) =>
-  render(<MemoryRouter>{ui}</MemoryRouter>);
+const renderWithRouter = (
+  ui: ReactElement,
+  initialEntries: ComponentProps<typeof MemoryRouter>["initialEntries"] = ["/"],
+) => render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
@@ -125,7 +127,7 @@ describe("ThreadTimelineRows actions", () => {
 
   it("passes regular user message text to add-to-chat", () => {
     const onSelectionAddToChat = vi.fn();
-    render(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -146,7 +148,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("hides user message add-to-chat when no add handler is supplied", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -205,5 +207,35 @@ describe("ThreadTimelineRows actions", () => {
       messageText: "this earlier answer",
       sourceSeqEnd: 42,
     });
+  });
+
+  it("ignores sidebar search scroll state for a different thread", () => {
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_side_chat"
+        timelineRows={[
+          conversationRow({
+            id: "side_chat_message",
+            role: "assistant",
+            text: "Side chat answer.",
+            sourceSeqStart: 12,
+            sourceSeqEnd: 12,
+            threadId: "thr_side_chat",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 });

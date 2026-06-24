@@ -17,6 +17,7 @@ import { ProjectListActionButtons } from "./ProjectList";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import {
   getSidebarThreadSearchOptionId,
+  haveSameSidebarThreadSearchNavigationItems,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
 
@@ -227,6 +228,28 @@ describe("SidebarThreadSearchPanel", () => {
     expect(rowText.indexOf("Worktree cleanup")).toBeGreaterThan(
       rowText.indexOf(snippet),
     );
+  });
+});
+
+describe("sidebar thread search navigation items", () => {
+  it("treats rows with different message matches as different items", () => {
+    const optionId = getSidebarThreadSearchOptionId("active:thr_search");
+    const baseItem: SidebarThreadSearchNavigationItem = {
+      id: "active:thr_search",
+      optionId,
+      projectId: "proj_search",
+      threadId: "thr_search",
+      messageSeq: 3,
+    };
+
+    expect(
+      haveSameSidebarThreadSearchNavigationItems([baseItem], [
+        {
+          ...baseItem,
+          messageSeq: 7,
+        },
+      ]),
+    ).toBe(false);
   });
 });
 

@@ -123,7 +123,7 @@ export function ThreadBackgroundCommandsCard({
             onClick={onToggle}
             className={activityRowClass(
               "active",
-              "flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover/50",
+              "flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
             )}
           >
             <Icon

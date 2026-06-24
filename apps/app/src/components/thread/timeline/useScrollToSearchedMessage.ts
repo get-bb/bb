@@ -10,19 +10,32 @@ interface SeqAnchoredRow {
   sourceSeqEnd: number;
 }
 
+interface SearchMessageTarget {
+  seq: number;
+  threadId: string | null;
+}
+
 const FLASH_CLASS_NAME = "bb-search-flash";
 const FLASH_DURATION_MS = 1700;
 
 // Sidebar search hands the matched message's event sequence to the thread route
-// via `navigate(path, { state: { searchMessageSeq } })`.
-function readSearchMessageSeq(state: unknown): number | null {
+// via `navigate(path, { state: { searchMessageSeq, searchThreadId } })`.
+function readSearchMessageTarget(state: unknown): SearchMessageTarget | null {
   if (
     state !== null &&
     typeof state === "object" &&
     "searchMessageSeq" in state
   ) {
     const value = (state as { searchMessageSeq: unknown }).searchMessageSeq;
-    return typeof value === "number" ? value : null;
+    if (typeof value !== "number") {
+      return null;
+    }
+    const threadIdValue = (state as { searchThreadId?: unknown })
+      .searchThreadId;
+    return {
+      seq: value,
+      threadId: typeof threadIdValue === "string" ? threadIdValue : null,
+    };
   }
   return null;
 }
@@ -37,15 +50,23 @@ function readSearchMessageSeq(state: unknown): number | null {
  */
 export function useScrollToSearchedMessage(
   rows: readonly SeqAnchoredRow[],
+  threadId: string | undefined,
 ): void {
   const location = useLocation();
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
-  const targetSeq = readSearchMessageSeq(location.state);
+  const target = readSearchMessageTarget(location.state);
+  const targetSeq = target?.seq ?? null;
+  const targetThreadId = target?.threadId ?? null;
 
   useEffect(() => {
     if (targetSeq === null || handledKeyRef.current === location.key) {
       return;
+    }
+    if (threadId !== undefined && targetThreadId !== null) {
+      if (threadId !== targetThreadId) {
+        return;
+      }
     }
     const targetRow = rows.find(
       (row) => row.sourceSeqStart <= targetSeq && targetSeq <= row.sourceSeqEnd,
@@ -94,5 +115,5 @@ export function useScrollToSearchedMessage(
       cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [bottomAnchor, location.key, rows, targetSeq]);
+  }, [bottomAnchor, location.key, rows, targetSeq, targetThreadId, threadId]);
 }

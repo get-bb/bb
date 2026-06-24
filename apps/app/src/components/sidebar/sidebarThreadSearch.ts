@@ -57,6 +57,8 @@ export function haveSameSidebarThreadSearchNavigationItems(
   }
   return left.every(
     (item, index) =>
-      item.id === right[index]?.id && item.optionId === right[index]?.optionId,
+      item.id === right[index]?.id &&
+      item.optionId === right[index]?.optionId &&
+      item.messageSeq === right[index]?.messageSeq,
   );
 }

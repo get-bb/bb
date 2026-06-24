@@ -1699,7 +1699,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
   );
-  useScrollToSearchedMessage(rows);
+  useScrollToSearchedMessage(rows, props.threadId);
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
   );
