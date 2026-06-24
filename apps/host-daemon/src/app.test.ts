@@ -454,6 +454,96 @@ describe("createHostDaemonApp", () => {
         }),
       );
       expect(listModels).toHaveBeenCalledWith({ providerId: "cursor" });
+
+      await expect(
+        app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: "provider-models-app-test-again",
+          command: {
+            type: "provider.list_models",
+            providerId: "cursor",
+          },
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+      });
+      expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1);
+      expect(listModels).toHaveBeenCalledTimes(2);
+    } finally {
+      await app.daemon.shutdown("test");
+    }
+  });
+
+  it("reuses freshly resolved startup shell env for immediate model listing", async () => {
+    const dataDir = await makeTempDir("bb-host-daemon-app-startup-env-");
+    const fetchRecorder = createFetchRecorder();
+    const logger = createLogger();
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const model = {
+      id: "codex-model",
+      model: "codex-model",
+      displayName: "Codex Model",
+      description: "Test model",
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "medium" as const,
+      isDefault: true,
+    };
+    const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
+      models: [model],
+      selectedOnlyModels: [],
+    }));
+    const resolveRuntimeShellEnv = vi.fn(async () => ({
+      PATH: "/slow-shell/bin:/usr/bin",
+      BB_SERVER_URL: "http://127.0.0.1:3334",
+    }));
+    const app = await createHostDaemonApp({
+      dataDir,
+      serverUrl: "http://127.0.0.1:3334",
+      hostKey: "host-key-app-test",
+      hostType: "persistent",
+      hostId: "host-app-test",
+      hostName: "App Test Host",
+      instanceId: "instance-app-test",
+      logger,
+      releaseLock: async () => undefined,
+      localApiConfig: null,
+      runtimeShellEnv: {
+        PATH: "/startup/bin:/usr/bin",
+        BB_SERVER_URL: "http://127.0.0.1:3334",
+      },
+      runtimeShellEnvResolvedAtMs: 1_000,
+      resolveRuntimeShellEnv,
+      nowMs: () => 1_500,
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntimeWithModelList(listModels);
+      },
+      fetchFn: fetchRecorder.fetchFn,
+      createWebSocket: createOpeningWebSocket(),
+    });
+
+    try {
+      await expect(
+        app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: "provider-models-startup-env-test",
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+          },
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+      });
+
+      expect(resolveRuntimeShellEnv).not.toHaveBeenCalled();
+      expect(runtimeOptions.current).toEqual(
+        expect.objectContaining({
+          env: {
+            PATH: "/startup/bin:/usr/bin",
+          },
+        }),
+      );
     } finally {
       await app.daemon.shutdown("test");
     }

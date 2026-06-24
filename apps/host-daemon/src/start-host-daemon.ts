@@ -194,6 +194,7 @@ export async function startHostDaemon(
         serverUrl,
       });
     const runtimeShellEnv = await resolveRuntimeShellEnv();
+    const runtimeShellEnvResolvedAtMs = Date.now();
     app = await createHostDaemonApp({
       dataDir,
       serverUrl,
@@ -213,6 +214,7 @@ export async function startHostDaemon(
       localApiConfig,
       createRuntime: options.createRuntime,
       runtimeShellEnv,
+      runtimeShellEnvResolvedAtMs,
       resolveRuntimeShellEnv,
       hostWatcher,
       onToolCall: options.onToolCall,

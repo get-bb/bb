@@ -287,6 +287,42 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("reuses known ACP agent status during burst provider discovery", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-acp-cache",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "known_acp_agents.status") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return {
+            ok: true,
+            result: {
+              agents: request.command.agents.map((agent) => ({
+                ...agent,
+                installed: false,
+                executablePath: null,
+              })),
+            },
+          };
+        },
+      });
+
+      await Promise.all([
+        listSystemProviderInfos(harness.deps, { hostId: host.id }),
+        listSystemProviderInfos(harness.deps, { hostId: host.id }),
+      ]);
+
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status"],
+      );
+    });
+  });
+
   it.each([
     {
       name: "status returns 502",

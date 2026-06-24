@@ -70,6 +70,19 @@ interface ListSystemProviderInfosResult {
   providers: ProviderInfo[];
 }
 
+interface ResolveSystemProviderInfosPlanResult
+  extends Omit<ListSystemProviderInfosResult, "providers"> {
+  providersPromise: Promise<ProviderInfo[]>;
+}
+
+interface KnownAcpAgentCacheEntry {
+  expiresAtMs: number;
+  promise: Promise<KnownAcpAgent[]>;
+}
+
+const KNOWN_ACP_AGENT_STATUS_CACHE_TTL_MS = 10_000;
+const knownAcpAgentStatusCache = new Map<string, KnownAcpAgentCacheEntry>();
+
 function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   return buildAcpProviderInfo({
     id: formatCustomAcpAgentProviderId(agent.id),
@@ -102,22 +115,20 @@ function canOmitKnownAcpAgentsForError(error: unknown): error is ApiError {
   );
 }
 
-async function listInstalledKnownAcpAgents(
+function knownAcpAgentStatusCacheKey(
+  hostId: string,
+  knownAgents: ReturnType<typeof listKnownAcpAgentExecutableQueries>,
+): string {
+  return `${hostId}:${knownAgents
+    .map((agent) => `${agent.id}:${agent.executableName}`)
+    .join(",")}`;
+}
+
+async function listInstalledKnownAcpAgentsUncached(
   deps: AppDeps,
   hostId: string,
+  knownAgents: ReturnType<typeof listKnownAcpAgentExecutableQueries>,
 ): Promise<KnownAcpAgent[]> {
-  const customProviderIds = new Set(
-    deps.config.customAcpAgents.map((agent) =>
-      formatCustomAcpAgentProviderId(agent.id),
-    ),
-  );
-  const knownAgents = listKnownAcpAgentExecutableQueries().filter(
-    (agent) => !customProviderIds.has(agent.id),
-  );
-  if (knownAgents.length === 0) {
-    return [];
-  }
-
   try {
     const status = await callHostRetryableOnlineRpc(deps, {
       hostId,
@@ -151,6 +162,46 @@ async function listInstalledKnownAcpAgents(
   }
 }
 
+async function listInstalledKnownAcpAgents(
+  deps: AppDeps,
+  hostId: string,
+): Promise<KnownAcpAgent[]> {
+  const customProviderIds = new Set(
+    deps.config.customAcpAgents.map((agent) =>
+      formatCustomAcpAgentProviderId(agent.id),
+    ),
+  );
+  const knownAgents = listKnownAcpAgentExecutableQueries().filter(
+    (agent) => !customProviderIds.has(agent.id),
+  );
+  if (knownAgents.length === 0) {
+    return [];
+  }
+
+  const cacheKey = knownAcpAgentStatusCacheKey(hostId, knownAgents);
+  const nowMs = Date.now();
+  const cached = knownAcpAgentStatusCache.get(cacheKey);
+  if (cached && cached.expiresAtMs > nowMs) {
+    return cached.promise;
+  }
+
+  const promise = listInstalledKnownAcpAgentsUncached(deps, hostId, knownAgents);
+  const entry = {
+    expiresAtMs: nowMs + KNOWN_ACP_AGENT_STATUS_CACHE_TTL_MS,
+    promise,
+  };
+  knownAcpAgentStatusCache.set(cacheKey, entry);
+
+  try {
+    return await promise;
+  } catch (error) {
+    if (knownAcpAgentStatusCache.get(cacheKey) === entry) {
+      knownAcpAgentStatusCache.delete(cacheKey);
+    }
+    throw error;
+  }
+}
+
 async function listSystemProviderInfosForHost(
   deps: AppDeps,
   hostId: string,
@@ -161,16 +212,16 @@ async function listSystemProviderInfosForHost(
   );
 }
 
-async function resolveSystemProviderInfos(
+function resolveSystemProviderInfosPlan(
   deps: AppDeps,
   query: ListSystemProviderInfosRequest = {},
-): Promise<ListSystemProviderInfosResult> {
+): ResolveSystemProviderInfosPlanResult {
   try {
     const hostId = resolveSystemLookupHostId(deps, query);
     return {
       hostId,
       hostLookupError: null,
-      providers: await listSystemProviderInfosForHost(deps, hostId),
+      providersPromise: listSystemProviderInfosForHost(deps, hostId),
     };
   } catch (error) {
     if (!canOmitKnownAcpAgentsForError(error)) {
@@ -183,12 +234,24 @@ async function resolveSystemProviderInfos(
     return {
       hostId: null,
       hostLookupError: error,
-      providers: listConfiguredSystemProviderInfos(
-        deps.config.customAcpAgents,
-        [],
+      providersPromise: Promise.resolve(
+        listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []),
       ),
     };
   }
+}
+
+async function resolveSystemProviderInfos(
+  deps: AppDeps,
+  query: ListSystemProviderInfosRequest = {},
+): Promise<ListSystemProviderInfosResult> {
+  const { hostId, hostLookupError, providersPromise } =
+    resolveSystemProviderInfosPlan(deps, query);
+  return {
+    hostId,
+    hostLookupError,
+    providers: await providersPromise,
+  };
 }
 
 export async function listSystemProviderInfos(
@@ -281,12 +344,34 @@ export async function resolveSystemExecutionOptions(
   deps: AppDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  const { hostId, hostLookupError, providers } =
-    await resolveSystemProviderInfos(deps, query);
+  const { hostId, hostLookupError, providersPromise } =
+    resolveSystemProviderInfosPlan(deps, query);
+  const configuredRequestedProvider = query.providerId
+    ? listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []).find(
+        (provider) => provider.id === query.providerId,
+      )
+    : undefined;
+  const earlyModelResultPromise =
+    hostId !== null && configuredRequestedProvider
+      ? loadSystemProviderModels(deps, {
+          hostId,
+          provider: configuredRequestedProvider,
+        })
+      : null;
+  let providers: ProviderInfo[];
+  try {
+    providers = await providersPromise;
+  } catch (error) {
+    await earlyModelResultPromise?.catch(() => undefined);
+    throw error;
+  }
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;
-  const modelsProvider = requestedProvider ?? providers[0];
+  const modelsProvider =
+    earlyModelResultPromise !== null
+      ? configuredRequestedProvider
+      : (requestedProvider ?? providers[0]);
 
   if (!modelsProvider) {
     return {
@@ -318,15 +403,47 @@ export async function resolveSystemExecutionOptions(
     };
   }
 
+  const modelResult =
+    earlyModelResultPromise !== null
+      ? await earlyModelResultPromise
+      : await loadSystemProviderModels(deps, {
+          hostId,
+          provider: modelsProvider,
+        });
+
+  const { models, selectedOnlyModels } = appendCustomModels({
+    customModels: deps.config.customModels,
+    models: modelResult.models,
+    providerId: modelsProvider.id,
+    selectedOnlyModels: modelResult.selectedOnlyModels,
+  });
+
+  return {
+    providers,
+    models,
+    selectedOnlyModels,
+    modelLoadError: modelResult.modelLoadError,
+  };
+}
+
+async function loadSystemProviderModels(
+  deps: AppDeps,
+  {
+    hostId,
+    provider,
+  }: {
+    hostId: string;
+    provider: ProviderInfo;
+  },
+): Promise<ModelListResult> {
   const customAcpAgent = findCustomAcpAgentForProviderId(
     deps.config.customAcpAgents,
-    modelsProvider.id,
+    provider.id,
   );
   const knownAcpAgent =
     customAcpAgent === undefined
-      ? findKnownAcpAgentForProviderId(modelsProvider.id)
+      ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
-  let modelResult: ModelListResult;
   try {
     const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
       deps,
@@ -335,7 +452,7 @@ export async function resolveSystemExecutionOptions(
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "provider.list_models",
-          providerId: modelsProvider.id,
+          providerId: provider.id,
           ...(customAcpAgent !== undefined
             ? { acpLaunchSpec: buildAcpLaunchSpec(customAcpAgent) }
             : knownAcpAgent !== undefined
@@ -344,7 +461,7 @@ export async function resolveSystemExecutionOptions(
         },
       },
     );
-    modelResult = {
+    return {
       models,
       selectedOnlyModels,
       modelLoadError: null,
@@ -360,33 +477,19 @@ export async function resolveSystemExecutionOptions(
       {
         err: error,
         hostId,
-        providerId: modelsProvider.id,
+        providerId: provider.id,
       },
       "Failed to resolve provider models",
     );
-    modelResult = {
+    return {
       models: [],
       selectedOnlyModels: [],
       modelLoadError: buildModelLoadError({
         error,
-        provider: modelsProvider,
+        provider,
       }),
     };
   }
-
-  const { models, selectedOnlyModels } = appendCustomModels({
-    customModels: deps.config.customModels,
-    models: modelResult.models,
-    providerId: modelsProvider.id,
-    selectedOnlyModels: modelResult.selectedOnlyModels,
-  });
-
-  return {
-    providers,
-    models,
-    selectedOnlyModels,
-    modelLoadError: modelResult.modelLoadError,
-  };
 }
 
 function buildModelLoadError({

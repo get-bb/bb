@@ -62,6 +62,14 @@ interface SessionState {
 const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
+const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
+
+type RuntimeShellEnv = NonNullable<AgentRuntimeOptions["shellEnv"]>;
+
+interface RuntimeShellEnvRefreshEntry {
+  expiresAtMs: number;
+  promise: Promise<RuntimeShellEnv>;
+}
 
 interface IdleProviderSessionReaperTimer {
   clear(): void;
@@ -106,9 +114,11 @@ export interface CreateHostDaemonAppOptions {
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
+  runtimeShellEnvResolvedAtMs?: number;
   resolveRuntimeShellEnv?: () => Promise<
     NonNullable<AgentRuntimeOptions["shellEnv"]>
   >;
+  nowMs?: () => number;
   threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
@@ -608,13 +618,49 @@ export async function createHostDaemonApp(
     },
     threadStorageRootPath,
   });
+  const nowMs = options.nowMs ?? Date.now;
+  let runtimeShellEnvRefreshEntry: RuntimeShellEnvRefreshEntry | null =
+    options.runtimeShellEnvResolvedAtMs === undefined
+      ? null
+      : {
+          expiresAtMs:
+            options.runtimeShellEnvResolvedAtMs +
+            RUNTIME_SHELL_ENV_REFRESH_TTL_MS,
+          promise: Promise.resolve(runtimeManager.getShellEnv()),
+        };
   const refreshRuntimeShellEnv = async () => {
     if (!options.resolveRuntimeShellEnv) {
       return runtimeManager.getShellEnv();
     }
-    const shellEnv = await options.resolveRuntimeShellEnv();
-    await runtimeManager.replaceBaseShellEnv(shellEnv);
-    return runtimeManager.getShellEnv();
+    const now = nowMs();
+    if (
+      runtimeShellEnvRefreshEntry &&
+      runtimeShellEnvRefreshEntry.expiresAtMs > now
+    ) {
+      return runtimeShellEnvRefreshEntry.promise;
+    }
+
+    const promise = (async () => {
+      const shellEnv = await options.resolveRuntimeShellEnv?.();
+      if (shellEnv === undefined) {
+        return runtimeManager.getShellEnv();
+      }
+      await runtimeManager.replaceBaseShellEnv(shellEnv);
+      return runtimeManager.getShellEnv();
+    })();
+    const entry = {
+      expiresAtMs: now + RUNTIME_SHELL_ENV_REFRESH_TTL_MS,
+      promise,
+    };
+    runtimeShellEnvRefreshEntry = entry;
+    try {
+      return await promise;
+    } catch (error) {
+      if (runtimeShellEnvRefreshEntry === entry) {
+        runtimeShellEnvRefreshEntry = null;
+      }
+      throw error;
+    }
   };
   const getProviderCliEnv = async () =>
     providerCliEnvFromShellEnv(await refreshRuntimeShellEnv());

@@ -53,6 +53,7 @@ export { formatModelLabel, resolvePermissionModeSelection };
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 
+const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 
 const PERMISSION_MODE_OPTIONS: PickerOption<PermissionMode>[] = [
   {
@@ -257,7 +258,7 @@ export function useThreadCreationOptions(
       ? environmentId
       : undefined;
   const executionOptionsProviderId = executionOptionsQueryEnabled
-    ? rawSelectedProviderId || undefined
+    ? rawSelectedProviderId || PRODUCT_DEFAULT_PROVIDER_ID
     : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,

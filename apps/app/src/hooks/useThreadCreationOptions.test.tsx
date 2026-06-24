@@ -212,4 +212,25 @@ describe("useThreadCreationOptions", () => {
       ]);
     });
   });
+
+  it("loads the product default provider before any persisted selection exists", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(() => useThreadCreationOptions(), { wrapper });
+
+    await waitFor(() => {
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: "codex",
+        }),
+      );
+      expect(api.getSystemExecutionOptions).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: undefined,
+        }),
+      );
+    });
+  });
 });
