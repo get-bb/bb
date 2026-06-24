@@ -650,12 +650,12 @@ export function QueuedMessagesList({
       // and a drop shadow on the tucked bottom edge bleeds out as an artifact.
       className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
-      <div className="px-1.5 pb-1 pt-2.5">
+      <div className="pb-1">
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+          className="flex w-full cursor-pointer items-center gap-1.5 px-3 pb-1 pt-2.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">
