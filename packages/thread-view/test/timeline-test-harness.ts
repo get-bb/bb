@@ -227,6 +227,7 @@ interface SystemOperationArgs extends EventFactoryRowOptions {
   operation?: string;
   operationId?: string;
   status?: string;
+  turnId?: string;
 }
 
 interface SystemThreadInterruptedArgs extends EventFactoryRowOptions {
@@ -817,7 +818,13 @@ export function createTimelineEventFactory(
       };
     },
     systemOperation(args) {
-      const base = nextThreadScopedRowBase("system-operation", args);
+      const base =
+        args.turnId !== undefined
+          ? {
+              ...nextRowBase("system-operation", args),
+              scope: turnScope(args.turnId),
+            }
+          : nextThreadScopedRowBase("system-operation", args);
       return {
         ...base,
         type: "system/operation",

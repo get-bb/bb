@@ -70,6 +70,18 @@ describe("thread event scope policy", () => {
         scope: turnScope("turn-1"),
       }),
     ).toEqual({ valid: true });
+    expect(
+      validateThreadEventScope({
+        type: "system/operation",
+        scope: threadScope(),
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      validateThreadEventScope({
+        type: "system/operation",
+        scope: turnScope("turn-1"),
+      }),
+    ).toEqual({ valid: true });
   });
 
   it("returns the canonical turn id for turn-scoped events", () => {

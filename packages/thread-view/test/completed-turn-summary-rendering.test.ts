@@ -109,6 +109,62 @@ describe("completed turn summary rendering", () => {
     expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
   });
 
+  it("keeps turn-scoped environment directory update operations inside the completed turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "move this thread to the new worktree",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted({ turnId: "turn-env-switch" }),
+        event.inputAccepted({
+          clientRequestId: request.data.requestId,
+          turnId: "turn-env-switch",
+        }),
+        event.toolCallCompleted({
+          itemId: "tool-env-switch",
+          tool: "update_environment_directory",
+          arguments: {
+            path: "/tmp/new-worktree",
+          },
+          result: "Environment directory updated to /tmp/new-worktree.",
+          turnId: "turn-env-switch",
+        }),
+        event.systemOperation({
+          message: "Updated environment directory to /tmp/new-worktree",
+          operation: "environment_directory_update",
+          operationId: "op-env-switch",
+          status: "completed",
+          turnId: "turn-env-switch",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "Moved the thread to `/tmp/new-worktree`.",
+          turnId: "turn-env-switch",
+        }),
+        event.turnCompleted({ turnId: "turn-env-switch" }),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-5",
+      "conversation:assistant",
+    ]);
+    expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);
+    expect(timeline.rows.some((row) => row.kind === "system")).toBe(false);
+
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(turnRow.summaryCount).toBe(2);
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "work:tool",
+      "system:operation",
+    ]);
+  });
+
   it("emits summary rows when every completed turn starts from accepted user input", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const firstRequest = event.clientTurnRequested({

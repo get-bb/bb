@@ -168,9 +168,9 @@ export const threadEventScopeDefinitionByType = {
       "Thread stop lifecycle event; it represents user interruption of the whole running thread.",
   },
   "system/operation": {
-    policy: "thread",
+    policy: "thread-or-turn",
     rationale:
-      "Thread-management operation event; ownership and lifecycle operations are not turn transcript content.",
+      "Thread-management operations use thread scope outside provider turns; tool-owned operations use turn scope so the operation stays with the tool call that caused it.",
   },
   "system/permissionGrant/lifecycle": { policy: "turn" },
   "system/userQuestion/lifecycle": { policy: "turn" },
