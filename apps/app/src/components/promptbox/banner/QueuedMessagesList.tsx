@@ -645,13 +645,14 @@ export function QueuedMessagesList({
       ariaLabel="Queued messages"
       // Tuck the drawer's flat, borderless bottom behind the prompt box (which
       // is `relative` + opaque, so it paints on top) so the queued list reads as
-      // coming up from behind the composer rather than floating above it. No
-      // shadow here: it tucks behind the composer rather than floating above it,
-      // and a drop shadow on the tucked bottom edge bleeds out as an artifact.
+      // coming up from behind the composer rather than floating above it. The
+      // hidden bottom spacer keeps the overlap in layout without painting side
+      // masks or a tucked bottom edge in standalone stories.
       className={cn(
-        "relative -mb-5 overflow-hidden rounded-b-none border-b-0 shadow-none",
-        isExpanded && "pb-1",
+        "relative -mb-5 overflow-hidden rounded-b-none border-b-0 pb-5 shadow-none",
+        isExpanded && "pb-6",
       )}
+      style={{ clipPath: "inset(0 0 1.25rem 0)" }}
     >
       <div>
         <button
@@ -751,14 +752,6 @@ export function QueuedMessagesList({
           ) : null}
         </div>
       ) : null}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute bottom-0 left-0 z-20 h-8 w-4 bg-background"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute bottom-0 right-0 z-20 h-8 w-4 bg-background"
-      />
     </PromptStackCard>
   );
 }
