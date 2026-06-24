@@ -257,6 +257,8 @@ const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
+const PROJECT_LIST_SECTION_ACTION_TOOLTIP_DELAY_MS = 350;
+
 interface ProjectThreadListStateArgs {
   status: ConnectionAwareQueryStatus | undefined;
   threads: ThreadListEntry[] | undefined;
@@ -547,7 +549,10 @@ function ProjectListSectionIconButton({
   );
 
   return (
-    <Tooltip>
+    <Tooltip
+      delayDuration={PROJECT_LIST_SECTION_ACTION_TOOLTIP_DELAY_MS}
+      disableHoverableContent
+    >
       <TooltipTrigger asChild>
         {disabled ? <span className="inline-flex">{button}</span> : button}
       </TooltipTrigger>
@@ -648,7 +653,10 @@ function SidebarDisplayMenuTrigger({
   tooltip: string;
 }) {
   return (
-    <Tooltip>
+    <Tooltip
+      delayDuration={PROJECT_LIST_SECTION_ACTION_TOOLTIP_DELAY_MS}
+      disableHoverableContent
+    >
       <TooltipTrigger asChild>
         <DropdownMenuTrigger asChild>
           <Button
