@@ -528,11 +528,23 @@ describe("internal event and tool-call routes", () => {
         projectId: project.id,
         environmentId: currentEnvironment.id,
       });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-existing-environment"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
 
       const response = await postToolCall({
         harness,
         sessionId: session.id,
         threadId: thread.id,
+        turnId: "turn-existing-environment",
         tool: "update_environment_directory",
         arguments: { path: "/tmp/existing-managed-worktree/" },
       });
@@ -558,8 +570,15 @@ describe("internal event and tool-call routes", () => {
         .from(events)
         .where(eq(events.threadId, thread.id))
         .all();
-      expect(storedEvents).toHaveLength(1);
-      expect(storedEvents[0]?.type).toBe("system/operation");
+      expect(storedEvents.map((event) => event.type)).toEqual([
+        "turn/started",
+        "system/operation",
+      ]);
+      expect(storedEvents[1]).toMatchObject({
+        type: "system/operation",
+        scopeKind: "turn",
+        turnId: "turn-existing-environment",
+      });
     });
   });
 
@@ -578,11 +597,23 @@ describe("internal event and tool-call routes", () => {
         projectId: project.id,
         environmentId: currentEnvironment.id,
       });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-new-environment"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
 
       const responsePromise = postToolCall({
         harness,
         sessionId: session.id,
         threadId: thread.id,
+        turnId: "turn-new-environment",
         tool: "update_environment_directory",
         arguments: { path: "/tmp/new-unmanaged-worktree" },
       });
@@ -647,8 +678,13 @@ describe("internal event and tool-call routes", () => {
         .where(eq(events.threadId, thread.id))
         .all();
       expect(storedEvents.map((event) => event.type)).toEqual([
+        "turn/started",
         "system/operation",
       ]);
+      expect(storedEvents[1]).toMatchObject({
+        scopeKind: "turn",
+        turnId: "turn-new-environment",
+      });
     });
   });
 

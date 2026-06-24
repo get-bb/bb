@@ -7,7 +7,7 @@ import {
   getThread,
   updateThread,
 } from "@bb/db";
-import { threadScope } from "@bb/domain";
+import { turnScope } from "@bb/domain";
 import type {
   DynamicTool,
   Environment,
@@ -52,6 +52,7 @@ interface HandleUpdateEnvironmentDirectoryToolCallArgs {
   currentEnvironment: Environment;
   input: unknown;
   thread: Thread;
+  turnId: string;
 }
 
 type ReadyEnvironment = Environment & { path: string; status: "ready" };
@@ -142,6 +143,7 @@ function attachReadyEnvironment(
     createdEnvironment: boolean;
     targetEnvironment: ReadyEnvironment;
     thread: Thread;
+    turnId: string;
   },
 ): AttachEnvironmentResult {
   const result = deps.db.transaction(
@@ -174,7 +176,7 @@ function attachReadyEnvironment(
         threadId: latestThread.id,
         environmentId: args.targetEnvironment.id,
         type: "system/operation",
-        scope: threadScope(),
+        scope: turnScope(args.turnId),
         data: {
           operation: "environment_directory_update",
           operationId: createEventId(),
@@ -329,6 +331,7 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     createdEnvironment,
     targetEnvironment,
     thread: args.thread,
+    turnId: args.turnId,
   });
 
   switch (attachResult.kind) {

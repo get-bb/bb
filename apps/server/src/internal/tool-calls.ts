@@ -45,6 +45,7 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
             currentEnvironment: environment,
             input: payload.arguments,
             thread,
+            turnId: payload.turnId,
           }),
         );
       }
