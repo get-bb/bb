@@ -149,7 +149,7 @@ export function ThreadBackgroundCommandsCard({
           <div
             className={activityRowClass(
               "active",
-              "flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
+              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
             )}
             aria-label={`Background command: ${primary.description}`}
           >
