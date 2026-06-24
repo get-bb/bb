@@ -78,7 +78,7 @@ export function SettingsWithControl({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-normal text-foreground">{label}</p>
         {description ? (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p className="text-xs text-subtle-foreground">{description}</p>
         ) : null}
       </div>
       <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
