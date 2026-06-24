@@ -101,6 +101,7 @@ const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
  */
 export type FollowUpBlockedReason =
   | "loading-execution-options"
+  | "loading-pending-interactions"
   | "pending-interaction"
   | "provisioning"
   | "stopping"
@@ -227,6 +228,9 @@ function FollowUpPromptBoxWithComposer({
   const isLoadingExecutionOptions =
     submitMode.kind === "blocked" &&
     submitMode.reason === "loading-execution-options";
+  const isLoadingPendingInteractions =
+    submitMode.kind === "blocked" &&
+    submitMode.reason === "loading-pending-interactions";
   const isProvisioning =
     submitMode.kind === "blocked" && submitMode.reason === "provisioning";
   const isUnavailable =
@@ -370,11 +374,13 @@ function FollowUpPromptBoxWithComposer({
                 ? "Stopping run..."
                 : isLoadingExecutionOptions
                   ? "Loading models..."
-                  : isProvisioning
-                    ? "Provisioning..."
-                    : isUnavailable
-                      ? "Unavailable"
-                      : "Submit (Enter)",
+                  : isLoadingPendingInteractions
+                    ? "Checking pending interactions..."
+                    : isProvisioning
+                      ? "Provisioning..."
+                      : isUnavailable
+                        ? "Unavailable"
+                        : "Submit (Enter)",
             isRunning: canStopRuntime,
           }}
           typeahead={typeahead}

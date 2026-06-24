@@ -501,12 +501,16 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     (thread && threadOriginKind ? thread.parentThreadId : null);
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
-  const { data: pendingInteractions = [] } = useThreadPendingInteractions(
+  const pendingInteractionsQuery = useThreadPendingInteractions(
     thread?.id ?? "",
     {
       enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
     },
   );
+  const pendingInteractions = pendingInteractionsQuery.data ?? [];
+  const pendingInteractionsInitialLoading =
+    pendingInteractionsQuery.data === undefined &&
+    (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const unreadDividerState = useThreadUnreadDividerState({
@@ -1983,6 +1987,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
+      pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}

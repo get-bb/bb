@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import {
+  archiveThread,
   claimQueuedThreadMessage,
+  createPromptHistoryEntry,
   createQueuedThreadMessageId,
   deleteQueuedThreadMessage,
   deleteHost,
@@ -11,6 +13,7 @@ import {
   getThread,
   queuedThreadMessages,
   setThreadExecutionOverride,
+  upsertProjectExecutionDefaults,
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -21,6 +24,7 @@ import {
 } from "@bb/domain";
 import {
   type TimelineRow,
+  threadComposerBootstrapResponseSchema,
   threadQueuedMessageListResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
@@ -30,6 +34,7 @@ import {
 import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -38,10 +43,12 @@ import {
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
+  seedHost,
   seedQueuedMessage,
   seedEnvironment,
   seedEvent,
   seedHostSession,
+  seedPrimaryHost,
   seedProjectWithSource,
   seedStoredEvent,
   seedThread,
@@ -2164,6 +2171,208 @@ describe("public thread data routes", () => {
           }),
         ]),
       );
+    });
+  });
+
+  it("loads legacy thread composer bootstrap state", async () => {
+    await withTestHarness(async (harness) => {
+      seedHostSession(harness.deps, {
+        id: "host-composer-default",
+      });
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-composer-thread",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const providerResponder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              {
+                id: "gpt-5.5",
+                model: "gpt-5.5",
+                displayName: "GPT-5.5",
+                description: "Frontier model",
+                supportedReasoningEfforts: [
+                  {
+                    reasoningEffort: "xhigh",
+                    description: "Extra high",
+                  },
+                ],
+                defaultReasoningEffort: "xhigh",
+                isDefault: true,
+              },
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 601 }),
+          input: [{ type: "text", text: "Accepted prompt" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-5.5",
+            serviceTier: "default",
+            reasoningLevel: "xhigh",
+            permissionMode: "workspace-write",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+      createPromptHistoryEntry(harness.deps.db, {
+        projectId: project.id,
+        threadId: thread.id,
+        scope: "thread",
+        requestSequence: 1,
+        input: textInput("Accepted prompt"),
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Queued message"),
+        model: "gpt-5.5",
+        reasoningLevel: "xhigh",
+        permissionMode: "workspace-write",
+        serviceTier: "default",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/composer-bootstrap`,
+      );
+
+      expect(response.status).toBe(200);
+      const bootstrap = threadComposerBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(bootstrap.defaultExecutionOptions).toMatchObject({
+        model: "gpt-5.5",
+        reasoningLevel: "xhigh",
+        permissionMode: "workspace-write",
+      });
+      expect(bootstrap.queuedMessages).toHaveLength(1);
+      expect(bootstrap.queuedMessages[0]?.content).toEqual(
+        textInput("Queued message"),
+      );
+      expect(bootstrap.pendingInteractions).toEqual([]);
+      expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
+        expect.arrayContaining([
+          textInput("Accepted prompt"),
+          textInput("Queued message"),
+        ]),
+      );
+      const { executionOptions } = bootstrap;
+      if (executionOptions === null) {
+        throw new Error(
+          "expected resolved executionOptions for an environment-backed thread",
+        );
+      }
+      const codexProvider = executionOptions.providers.find(
+        (provider) => provider.id === "codex",
+      );
+      expect(codexProvider).toMatchObject({
+        id: "codex",
+      });
+      expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
+      expect(
+        providerResponder.requests.map((request) => request.command),
+      ).toEqual([
+        {
+          type: "known_acp_agents.status",
+          agents: [{ id: "acp-opencode", executableName: "opencode" }],
+        },
+        { type: "provider.list_models", providerId: "codex" },
+      ]);
+    });
+  });
+
+  it("returns null composer defaults for stale project execution defaults", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-composer-stale-project-defaults",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5.5",
+        reasoningLevel: "max",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: null,
+        providerId: "codex",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/composer-bootstrap`,
+      );
+
+      expect(response.status).toBe(200);
+      const bootstrap = threadComposerBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(bootstrap.defaultExecutionOptions).toBeNull();
+      expect(bootstrap.executionOptions).toBeNull();
+    });
+  });
+
+  it("returns null composer execution options for archived threads on offline hosts", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, {
+        id: "host-composer-archived-offline",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/composer-bootstrap`,
+      );
+
+      expect(response.status).toBe(200);
+      const bootstrap = threadComposerBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(bootstrap.executionOptions).toBeNull();
     });
   });
 

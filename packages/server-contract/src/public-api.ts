@@ -111,6 +111,7 @@ import type {
   TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
   ThreadFolderMutationResponse,
@@ -647,6 +648,13 @@ export const publicApiRoutes = {
         sendMessageRequestSchema,
       ),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    /** @deprecated App code uses dedicated composer queries. */
+    composerBootstrap: defineRoute({
+      path: "/threads/:id/composer-bootstrap",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadComposerBootstrapResponse>(),
     }),
     queuedMessages: defineRoute({
       path: "/threads/:id/queued-messages",

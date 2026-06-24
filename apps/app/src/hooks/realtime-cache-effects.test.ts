@@ -19,6 +19,7 @@ import {
   projectSourceBranchesQueryKey,
   projectsQueryKey,
   sidebarNavigationQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
   threadPromptHistoryQueryKey,
@@ -759,6 +760,51 @@ describe("createRealtimeCacheEffects", () => {
     );
 
     unsubscribeStoragePreview();
+    effects.dispose();
+  });
+
+  it("refetches active thread default execution options when a thread environment changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const defaultOptionsKey = threadDefaultExecutionOptionsQueryKey("thr_1");
+    const initialDefaults = {
+      model: "gpt-5",
+      permissionMode: "readonly",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    const nextDefaults = {
+      model: "gpt-5.5",
+      permissionMode: "workspace-write",
+      reasoningLevel: "high",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    queryClient.setQueryData(defaultOptionsKey, initialDefaults);
+    const defaultOptionsQueryFn = vi.fn(async () => nextDefaults);
+    const defaultOptionsObserver = new QueryObserver(queryClient, {
+      queryKey: defaultOptionsKey,
+      queryFn: defaultOptionsQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeDefaultOptions = defaultOptionsObserver.subscribe(
+      () => {},
+    );
+    defaultOptionsQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["environment-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(defaultOptionsQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(defaultOptionsKey)).toEqual(nextDefaults);
+
+    unsubscribeDefaultOptions();
     effects.dispose();
   });
 

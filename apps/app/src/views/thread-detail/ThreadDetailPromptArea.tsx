@@ -117,6 +117,7 @@ interface ThreadDetailPromptAreaProps {
   pullRequestMergeMethod: PullRequestMergeMethod;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
+  pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   openThreadDiffPanel: () => void;
   projectId: string;
@@ -189,6 +190,7 @@ export function ThreadDetailPromptArea({
   pullRequestMergeMethod,
   isEnvironmentActionPending,
   pendingInteractions,
+  pendingInteractionsInitialLoading,
   onChangedFileClick,
   openThreadDiffPanel,
   projectId,
@@ -376,7 +378,7 @@ export function ThreadDetailPromptArea({
     serviceTierSupportByProvider,
     executionInputSources,
   } = useThreadCreationOptions({
-    enabled: thread.archivedAt === null && thread.environmentId !== null,
+    enabled: thread.archivedAt === null,
     environmentId: thread.environmentId ?? undefined,
     scope: "component-local",
     resetKey: thread.id,
@@ -430,6 +432,7 @@ export function ThreadDetailPromptArea({
     return buildFollowUpSubmitMode({
       hasPendingInteraction,
       isDefaultExecutionOptionsLoading,
+      isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
       isStopRequested,
       onStop: handleStopThread,
       runtimeDisplayStatus,
@@ -438,6 +441,7 @@ export function ThreadDetailPromptArea({
     handleStopThread,
     hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
+    pendingInteractionsInitialLoading,
     isStopRequested,
     runtimeDisplayStatus,
   ]);

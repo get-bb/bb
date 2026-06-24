@@ -78,6 +78,7 @@ import {
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemProvidersQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
   threadSearchQueryKeyPrefix,
   terminalsQueryKey,
@@ -274,6 +275,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // Thread rows render environment/worktree metadata.
       dirtyThreadDetailQueries, // Detail views use the attached environment for workspace UI.
+      dirtyThreadDefaultExecutionOptionsQueries, // Environment changes can change inherited thread defaults.
       dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
     ],
   },
@@ -586,6 +588,12 @@ function dirtyThreadDetailQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return getThreadDetailInvalidationQueryKeys({ threadId });
+}
+
+function dirtyThreadDefaultExecutionOptionsQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return threadId ? [threadDefaultExecutionOptionsQueryKey(threadId)] : [];
 }
 
 function dirtyThreadSearchQueries(): QueryKey[] {

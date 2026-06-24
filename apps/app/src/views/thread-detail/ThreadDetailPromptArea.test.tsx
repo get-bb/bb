@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import type { ThreadQueuedMessage, ThreadWithRuntime } from "@bb/domain";
+import type {
+  ResolvedThreadExecutionOptions,
+  ThreadQueuedMessage,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +12,7 @@ import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
+  defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
   promptDraft: {
     addAttachment: vi.fn(),
@@ -27,13 +32,25 @@ const mocks = vi.hoisted(() => ({
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   useThreadDefaultExecutionOptions: vi.fn(),
+  useThreadCreationOptions: vi.fn(),
   useThreadPromptHistory: vi.fn(),
   useThreadQueuedMessages: vi.fn(),
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
-  FollowUpPromptBox: ({ stack }: { stack: ReactNode }) => (
-    <div data-testid="follow-up-prompt-box">{stack}</div>
+  FollowUpPromptBox: ({
+    composer,
+    stack,
+  }: {
+    composer: { submitMode: { kind: string; reason?: string } } | null;
+    stack: ReactNode;
+  }) => (
+    <div data-testid="follow-up-prompt-box">
+      <div data-testid="submit-mode">
+        {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
+      </div>
+      {stack}
+    </div>
   ),
 }));
 
@@ -73,9 +90,12 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
   ThreadWorkflowCard: () => null,
 }));
 
-vi.mock("@/components/thread/pending-interactions/ThreadPendingInteractionBanner", () => ({
-  ThreadPendingInteractionBanner: () => null,
-}));
+vi.mock(
+  "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
+  () => ({
+    ThreadPendingInteractionBanner: () => null,
+  }),
+);
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: { error: vi.fn() },
@@ -111,33 +131,36 @@ vi.mock("@/hooks/usePromptMentions", () => ({
 }));
 
 vi.mock("@/hooks/useThreadCreationOptions", () => ({
-  useThreadCreationOptions: () => ({
-    activeModel: null,
-    executionInputSources: {},
-    hasMultipleProviders: false,
-    isLoadingModels: false,
-    modelLoadError: null,
-    modelLoadFailed: false,
-    modelOptions: [],
-    moreModelOptions: [],
-    permissionMode: "readonly",
-    permissionModeOptions: [],
-    providerOptions: [],
-    reasoningLevel: "medium",
-    reasoningOptions: [],
-    selectedModel: "gpt-5",
-    selectedProviderComposerActions: [],
-    selectedProviderDisplayName: "Codex",
-    selectedProviderId: "codex",
-    serviceTier: undefined,
-    serviceTierSupportByProvider: {},
-    setPermissionMode: vi.fn(),
-    setReasoningLevel: vi.fn(),
-    setSelectedModel: vi.fn(),
-    setServiceTier: vi.fn(),
-    supportsPermissionModeSelection: true,
-    supportsServiceTier: false,
-  }),
+  useThreadCreationOptions: (options: unknown) => {
+    mocks.useThreadCreationOptions(options);
+    return {
+      activeModel: null,
+      executionInputSources: {},
+      hasMultipleProviders: false,
+      isLoadingModels: false,
+      modelLoadError: null,
+      modelLoadFailed: false,
+      modelOptions: [],
+      moreModelOptions: [],
+      permissionMode: "readonly",
+      permissionModeOptions: [],
+      providerOptions: [],
+      reasoningLevel: "medium",
+      reasoningOptions: [],
+      selectedModel: "gpt-5",
+      selectedProviderComposerActions: [],
+      selectedProviderDisplayName: "Codex",
+      selectedProviderId: "codex",
+      serviceTier: undefined,
+      serviceTierSupportByProvider: {},
+      setPermissionMode: vi.fn(),
+      setReasoningLevel: vi.fn(),
+      setSelectedModel: vi.fn(),
+      setServiceTier: vi.fn(),
+      supportsPermissionModeSelection: true,
+      supportsServiceTier: false,
+    };
+  },
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
@@ -187,7 +210,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
   useThreadDefaultExecutionOptions: (threadId: string, options: unknown) => {
     mocks.useThreadDefaultExecutionOptions(threadId, options);
     return {
-      data: undefined,
+      data: mocks.defaultExecutionOptions,
       isError: false,
     };
   },
@@ -218,7 +241,9 @@ function makeQueuedMessage(): ThreadQueuedMessage {
   };
 }
 
-function makeThread(): ThreadWithRuntime {
+function makeThread(
+  overrides: Partial<ThreadWithRuntime> = {},
+): ThreadWithRuntime {
   return {
     archivedAt: null,
     environmentId: null,
@@ -227,10 +252,19 @@ function makeThread(): ThreadWithRuntime {
     providerId: "codex",
     runtime: { displayStatus: "idle" },
     status: "idle",
+    ...overrides,
   } as ThreadWithRuntime;
 }
 
-function renderPromptArea() {
+interface RenderPromptAreaOptions {
+  pendingInteractionsInitialLoading?: boolean;
+  thread?: ThreadWithRuntime;
+}
+
+function renderPromptArea({
+  pendingInteractionsInitialLoading = false,
+  thread = makeThread(),
+}: RenderPromptAreaOptions = {}) {
   return render(
     <ThreadDetailPromptArea
       activeBackgroundCommands={[]}
@@ -247,6 +281,7 @@ function renderPromptArea() {
       openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
       pendingInteractions={[]}
+      pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={null}
       projectId="proj_1"
       pullRequest={null}
@@ -256,7 +291,7 @@ function renderPromptArea() {
         isPending: false,
         mutateAsync: vi.fn(),
       }}
-      thread={makeThread()}
+      thread={thread}
       workspaceChangedFilesSection={null}
       workspaceStatusPending={false}
     />,
@@ -264,7 +299,9 @@ function renderPromptArea() {
 }
 
 beforeEach(() => {
+  mocks.defaultExecutionOptions = null;
   mocks.queuedMessages = [];
+  mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
   mocks.useThreadPromptHistory.mockClear();
   mocks.useThreadQueuedMessages.mockClear();
@@ -293,6 +330,32 @@ describe("ThreadDetailPromptArea", () => {
       "thr_1",
       expect.objectContaining({ enabled: true }),
     );
+    expect(mocks.useThreadCreationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        environmentId: undefined,
+        scope: "component-local",
+      }),
+    );
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
+  });
+
+  it("blocks submit while pending interactions are initially unknown", () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "readonly",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+
+    renderPromptArea({
+      pendingInteractionsInitialLoading: true,
+      thread: makeThread({ environmentId: "env_1" }),
+    });
+
+    expect(screen.getByTestId("submit-mode").textContent).toBe(
+      "blocked:loading-pending-interactions",
+    );
   });
 });
