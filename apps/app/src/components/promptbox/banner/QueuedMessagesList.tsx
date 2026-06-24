@@ -650,12 +650,12 @@ export function QueuedMessagesList({
       // instead of leaving a visible gap between the two surfaces.
       className="relative -mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
-      <div className="px-2 py-1">
+      <div className="p-2">
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">
