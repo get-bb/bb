@@ -14,10 +14,10 @@ bb is an agentic IDE that can control itself. You can seamlessly
 orchestrate all of your favorite coding agents together and have them
 programmatically use bb too.
 
-This package provides the `npx bb-app` launcher. Every surface — the web
-app, CLI, and HTTP API — is a first-class way to drive bb. Work runs in
-threads you can follow live, steer at any point, or hand off to another
-agent.
+This package provides the `npx bb-app` launcher, bundled `bb` CLI entry, and
+Node SDK export. Every surface — the web app, CLI, and HTTP API — is a
+first-class way to drive bb. Work runs in threads you can follow live, steer at
+any point, or hand off to another agent.
 
 > Note: bb is in active development. Workflows and surfaces are still evolving.
 
@@ -27,12 +27,12 @@ bb runs from npm and orchestrates coding agents you already have installed.
 
 ### Prerequisites
 
-- Node.js `22.12.0` or newer. Node `20.19.x` also works.
+- Node.js 22 LTS or newer. Node `20.19.x` is best-effort only.
 - Git.
-- At least one supported agent provider: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://developers.openai.com/codex/cli), or [Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent).
+- At least one supported agent provider: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://developers.openai.com/codex/cli), Cursor via ACP, [Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent), or another ACP-compatible agent.
 
 If you already use one of these providers, bb will pick up your existing
-credentials. If you use all three, you can mix and match per task.
+credentials. If you use multiple providers, you can mix and match per task.
 
 ### Supported host environments
 
@@ -70,6 +70,16 @@ the terminal to stop both processes and exit with status `0`.
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.
 
+## CLI
+
+The package also exposes the `bb` CLI for an already-running bb server:
+
+```bash
+npx --package bb-app bb --help
+```
+
+The CLI uses the same `BB_SERVER_URL` and bb config resolution as the SDK.
+
 ## Scripting with the SDK
 
 The package also exposes a Node SDK for scripts that drive an already-running
@@ -101,7 +111,12 @@ bb uses whichever providers you have configured. If you need to set one up:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `codex`       | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                  |
 | `claude-code` | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                   |
+| `acp-cursor`  | Install Cursor's agent CLI (`agent`) and authenticate per Cursor's docs.                                                                               |
 | `pi`          | See the [Pi coding agent docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
+
+Known ACP agents such as `opencode` can appear automatically when their
+executable is on `PATH`. Custom ACP agents are configured through
+`customAcpAgents` in `~/.bb/config.json`.
 
 ## Configuration
 
