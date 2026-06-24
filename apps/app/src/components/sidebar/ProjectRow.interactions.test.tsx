@@ -100,13 +100,14 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 function renderProjectRow(
   onToggleProjectCollapsed = vi.fn(),
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
+  isActive = false,
 ) {
   const result = render(
     <MemoryRouter>
       <ProjectRow
         project={makeProject()}
         threadListState={threadListState}
-        isActive={false}
+        isActive={isActive}
         isCollapsed={false}
         compareThreads={() => 0}
         collapsedThreadIds={new Set()}
@@ -152,9 +153,26 @@ describe("ProjectRow interactions", () => {
     expect(header).not.toBeNull();
     expect(header?.className).not.toContain("hover:bg-sidebar-accent");
 
+    const leadingIcon = container.querySelector('[aria-hidden="true"]');
+    expect(leadingIcon?.className).not.toContain("group-hover/project-row");
+
     expect(
       screen.getByRole("button", { name: "Collapse Test project" }).className,
     ).toContain("hover:bg-sidebar-accent");
+  });
+
+  it("does not paint active project headers like clickable selected rows", () => {
+    const { container } = renderProjectRow(
+      vi.fn(),
+      { status: "ready", threads: [] },
+      true,
+    );
+
+    const header = container.querySelector(".bb-sidebar-hover-actions-row");
+    expect(header).not.toBeNull();
+    expect(header?.className).not.toContain("bg-sidebar-border");
+    expect(header?.className).not.toContain("cursor-pointer");
+    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

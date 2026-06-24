@@ -96,7 +96,6 @@ import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
@@ -2129,9 +2128,8 @@ function ProjectRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
-              isActive
-                ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-                : SIDEBAR_ROW_STATIC_STATE_CLASS,
+              SIDEBAR_ROW_STATIC_STATE_CLASS,
+              isActive && "text-sidebar-foreground",
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none",
@@ -2142,7 +2140,7 @@ function ProjectRowComponent({
           >
             <span
               className={cn(
-                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
+                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground",
                 PROJECT_ROW_LEADING_SLOT_CLASS,
               )}
               aria-hidden
