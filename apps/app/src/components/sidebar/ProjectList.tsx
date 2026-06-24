@@ -858,6 +858,12 @@ interface SidebarThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
+interface SidebarAllThreadsOverflowMenuProps {
+  isCreatingFolder: boolean;
+  onNewFolder: () => void;
+  onOpenArchivedThreads: () => void;
+}
+
 // The complete Threads-section header cluster (archived menu + sort + new
 // thread). One component drives the Threads header in both project mode and the
 // folders view, so they can never drift apart. The Threads section is always the
@@ -889,6 +895,36 @@ function SidebarThreadsSectionActions({
         onNewThread={onNewThread}
       />
     </>
+  );
+}
+
+function SidebarAllThreadsOverflowMenu({
+  isCreatingFolder,
+  onNewFolder,
+  onOpenArchivedThreads,
+}: SidebarAllThreadsOverflowMenuProps) {
+  return (
+    <DropdownMenu>
+      <SidebarDisplayMenuTrigger
+        ariaLabel="All threads actions"
+        iconName="MoreHorizontal"
+        tooltip="More actions"
+      />
+      <DropdownMenuContent
+        align="end"
+        mobileTitle="All threads actions"
+        className="min-w-0"
+      >
+        <DropdownMenuItem disabled={isCreatingFolder} onSelect={onNewFolder}>
+          <Icon name="FolderPlus" aria-hidden="true" />
+          New folder
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onOpenArchivedThreads}>
+          <Icon name="Archive" aria-hidden="true" />
+          Archived threads
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1943,15 +1979,13 @@ function ProjectListComponent({
         open={projectsDisplayOptionsMenuOpen}
         onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
       />
-      <ProjectListSectionIconButton
-        ariaLabel="Archived threads"
-        title="Archived threads"
-        iconName="Archive"
-        onClick={handleOpenProjectlessArchivedThreads}
+      <SidebarAllThreadsOverflowMenu
+        isCreatingFolder={isCreateThreadFolderPending}
+        onNewFolder={handleOpenCreateFolderDialog}
+        onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreateThreadFolderPending}
-        onNewFolder={handleOpenCreateFolderDialog}
         onNewThread={handleCreateProjectlessThread}
       />
     </>
