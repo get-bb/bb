@@ -161,7 +161,7 @@ export function ThreadTodoCard({
           "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
           isExpanded
             ? "grid-rows-[1fr] border-t border-border opacity-100"
-            : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
+            : "pointer-events-none grid-rows-[0fr] opacity-0",
         )}
       >
         <div className="overflow-hidden bg-popover">
