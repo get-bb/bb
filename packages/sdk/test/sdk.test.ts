@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
+import { ThreadWaitTimeoutError } from "../src/areas/threads.js";
 import type { FetchImplementation } from "../src/response.js";
 
 interface CapturedRequest {
@@ -60,7 +61,9 @@ function jsonResponse(args: QueuedJsonResponse): Response {
   });
 }
 
-function createFetchQueue(responses: readonly QueuedJsonResponse[]): FetchQueue {
+function createFetchQueue(
+  responses: readonly QueuedJsonResponse[],
+): FetchQueue {
   const requests: CapturedRequest[] = [];
   const remaining = [...responses];
   const fetchMock: FetchImplementation = async (input, init) => {
@@ -117,9 +120,9 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await expect(
-      sdk.threads.get({ threadId: "thr_missing" }),
-    ).rejects.toThrow("HTTP 404: Thread not found");
+    await expect(sdk.threads.get({ threadId: "thr_missing" })).rejects.toThrow(
+      "HTTP 404: Thread not found",
+    );
   });
 
   it("updates environment metadata through the HTTP transport", async () => {
@@ -208,6 +211,147 @@ describe("@bb/sdk", () => {
     expect(queue.requests[0]?.method).toBe("POST");
   });
 
+  it("fills thread spawn defaults before sending a request", async () => {
+    const queue = createFetchQueue([{ body: { id: "thr_1" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      environment: {
+        type: "host",
+        hostId: "host_123",
+        workspace: { type: "unmanaged", path: null },
+      },
+      prompt: "Ship it",
+    });
+
+    expect(queue.requests[0]?.bodyText).toBe(
+      JSON.stringify({
+        projectId: "proj_123",
+        environment: {
+          type: "host",
+          hostId: "host_123",
+          workspace: { type: "unmanaged", path: null },
+        },
+        input: [{ type: "text", text: "Ship it", mentions: [] }],
+        origin: "sdk",
+        startedOnBehalfOf: null,
+        originKind: null,
+        childOrigin: null,
+      }),
+    );
+  });
+
+  it("preserves explicit thread spawn origin for CLI callers", async () => {
+    const queue = createFetchQueue([{ body: { id: "thr_1" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      origin: "cli",
+      environment: {
+        type: "host",
+        hostId: "host_123",
+        workspace: { type: "unmanaged", path: null },
+      },
+      input: [{ type: "text", text: "From CLI", mentions: [] }],
+    });
+
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}").origin).toBe("cli");
+  });
+
+  it("rejects thread spawn requests with both prompt and input", async () => {
+    const queue = createFetchQueue([]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.spawn({
+        projectId: "proj_123",
+        environment: {
+          type: "host",
+          hostId: "host_123",
+          workspace: { type: "unmanaged", path: null },
+        },
+        prompt: "Ship it",
+        // @ts-expect-error Runtime guard rejects callers that bypass the union.
+        input: [{ type: "text", text: "Duplicate", mentions: [] }],
+      }),
+    ).rejects.toThrow("Provide only one of input or prompt.");
+    expect(queue.requests).toEqual([]);
+  });
+
+  it("waits for a thread status through the shared SDK loop", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_wait", status: "active" } },
+      { body: { id: "thr_wait", status: "idle" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        threadId: "thr_wait",
+        status: "idle",
+        timeoutMs: 1_000,
+        pollIntervalMs: 1,
+      }),
+    ).resolves.toMatchObject({
+      matched: true,
+      target: { kind: "status", status: "idle" },
+      threadId: "thr_wait",
+    });
+
+    expect(queue.requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/threads/thr_wait",
+      "http://bb.test/api/v1/threads/thr_wait",
+    ]);
+  });
+
+  it("throws a typed timeout error from thread wait", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_wait", status: "active" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        threadId: "thr_wait",
+        status: "idle",
+        timeoutMs: 0,
+        pollIntervalMs: 1,
+      }),
+    ).rejects.toBeInstanceOf(ThreadWaitTimeoutError);
+  });
+
   it("stamps origin agent and createdByThreadId from BB_THREAD_ID on create", async () => {
     const previous = process.env.BB_THREAD_ID;
     process.env.BB_THREAD_ID = "thr_creator";
@@ -251,5 +395,4 @@ describe("@bb/sdk", () => {
       }
     }
   });
-
 });

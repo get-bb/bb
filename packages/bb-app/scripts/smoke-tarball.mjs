@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -61,9 +61,9 @@ function waitForProcessExit(childProcess) {
   });
 }
 
-async function runCommand({ args, command, env = {}, label }) {
+async function runCommand({ args, command, cwd = tempRoot, env = {}, label }) {
   const childProcess = spawn(command, args, {
-    cwd: tempRoot,
+    cwd,
     env: {
       ...process.env,
       ...env,
@@ -429,7 +429,71 @@ async function smokeConfigCommand(tarballPath) {
   }
 }
 
-async function smokeFullStack(tarballPath) {
+async function smokeSdkPackage(tarballPath) {
+  const sdkDir = join(tempRoot, "sdk-import");
+  await mkdir(sdkDir, { recursive: true });
+  await writeFile(
+    join(sdkDir, "package.json"),
+    JSON.stringify({ type: "module", private: true }, null, 2),
+  );
+  await runCommand({
+    args: [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      tarballPath,
+    ],
+    command: "npm",
+    cwd: sdkDir,
+    label: "install bb-app SDK smoke package",
+  });
+  await runCommand({
+    args: [
+      "--input-type=module",
+      "-e",
+      'import { BBSdk } from "bb-app"; if (typeof BBSdk !== "function") process.exit(1);',
+    ],
+    command: "node",
+    cwd: sdkDir,
+    label: "bb-app SDK JavaScript import",
+  });
+  await writeFile(
+    join(sdkDir, "sdk-smoke.ts"),
+    [
+      'import { BBSdk, BbHttpError } from "bb-app";',
+      "",
+      'const bb = new BBSdk({ baseUrl: "http://127.0.0.1:38886" });',
+      "const error: typeof BbHttpError = BbHttpError;",
+      "void bb.status.get();",
+      "void error;",
+      "",
+    ].join("\n"),
+  );
+  await runCommand({
+    args: [
+      "--yes",
+      "--package",
+      "typescript",
+      "--",
+      "tsc",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--target",
+      "ES2022",
+      "--noEmit",
+      "sdk-smoke.ts",
+    ],
+    command: "npx",
+    cwd: sdkDir,
+    label: "bb-app SDK TypeScript import",
+  });
+  return sdkDir;
+}
+
+async function smokeFullStack(tarballPath, sdkDir) {
   const dataDir = join(tempRoot, "full-stack-data");
   const serverPort = await getFreePort();
   const daemonPort = await getFreePort();
@@ -470,6 +534,23 @@ async function smokeFullStack(tarballPath) {
         BB_SERVER_URL: serverUrl,
       },
       label: "bb cli status",
+    });
+    await runCommand({
+      args: [
+        "--input-type=module",
+        "-e",
+        [
+          'import { BBSdk } from "bb-app";',
+          "const bb = new BBSdk({ baseUrl: process.env.BB_SERVER_URL });",
+          "await bb.status.get();",
+        ].join("\n"),
+      ],
+      command: "node",
+      cwd: sdkDir,
+      env: {
+        BB_SERVER_URL: serverUrl,
+      },
+      label: "bb-app SDK status",
     });
   } finally {
     await stopManagedProcess(stack);
@@ -550,7 +631,8 @@ try {
   await smokeProviderBridgeBundles(tarballPath);
   await smokeHelpCommands(tarballPath);
   await smokeConfigCommand(tarballPath);
-  await smokeFullStack(tarballPath);
+  const sdkDir = await smokeSdkPackage(tarballPath);
+  await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);
   process.stdout.write("bb-app tarball smoke passed\n");
 } finally {

@@ -95,6 +95,12 @@ export {
 };
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export { createGuideArea } from "./areas/guide.js";
+export {
+  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
+  DEFAULT_THREAD_WAIT_TIMEOUT_MS,
+  ThreadWaitTimeoutError,
+  ThreadWaitUnreachableError,
+} from "./areas/threads.js";
 export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
 export type * from "./realtime.js";
 export type * from "./areas/guide.js";

@@ -1104,6 +1104,21 @@ describe("server-contract canonical schemas", () => {
     expect(parsed.childOrigin).toBeNull();
   });
 
+  it("accepts sdk as a thread creation origin", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "sdk",
+      input: [{ type: "text", text: "Scripted start" }],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+    });
+    expect(parsed.origin).toBe("sdk");
+  });
+
   it("rejects empty input for a normal thread start", () => {
     expect(() =>
       createThreadRequestSchema.parse({

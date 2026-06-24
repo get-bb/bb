@@ -47,7 +47,12 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli", "automation"]);
+export const threadCreateOriginSchema = z.enum([
+  "app",
+  "cli",
+  "automation",
+  "sdk",
+]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;

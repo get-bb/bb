@@ -1,11 +1,15 @@
 import { access } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { cp, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   buildNodeEsmEntry,
   copyDirectory,
 } from "../../../scripts/build-utils.mjs";
 
+const execFileAsync = promisify(execFile);
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
 const workspaceRoot = resolve(packageRoot, "..", "..");
@@ -25,6 +29,49 @@ async function copyBuildOutput({ from, label, to }) {
   await copyDirectory({ from, to });
 }
 
+async function buildPublicSdkDeclarations() {
+  const typesDir = resolve(packageRoot, "dist-types");
+  await rm(typesDir, { force: true, recursive: true });
+  await execFileAsync(
+    "tsc",
+    [
+      "--declaration",
+      "--emitDeclarationOnly",
+      "--declarationMap",
+      "false",
+      "--noEmit",
+      "false",
+      "--outDir",
+      typesDir,
+      "--rootDir",
+      "src",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--target",
+      "ES2022",
+      "--strict",
+      "true",
+      "--skipLibCheck",
+      "true",
+      "--esModuleInterop",
+      "true",
+      "--customConditions",
+      "source",
+      "--types",
+      "node",
+      "src/public-sdk.ts",
+    ],
+    { cwd: packageRoot },
+  );
+  await cp(
+    resolve(typesDir, "public-sdk.d.ts"),
+    resolve(packageRoot, "dist", "index.d.ts"),
+  );
+  await rm(typesDir, { force: true, recursive: true });
+}
+
 const entrypoints = [
   ["bb-app", "bb-app.js"],
   ["bb", "bb.js"],
@@ -41,6 +88,14 @@ for (const [sourceName, outputName] of entrypoints) {
     packageRoot,
   });
 }
+
+await buildNodeEsmEntry({
+  cleanDist: false,
+  entryPoint: resolve(packageRoot, "src", "public-sdk.ts"),
+  outfile: resolve(packageRoot, "dist", "index.js"),
+  packageRoot,
+});
+await buildPublicSdkDeclarations();
 
 await copyBuildOutput({
   from: resolve(workspaceRoot, "apps", "app", "dist"),

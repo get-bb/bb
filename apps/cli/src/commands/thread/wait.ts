@@ -1,10 +1,6 @@
 import { Command } from "commander";
-import {
-  type ThreadStatus,
-  threadStatusSchema,
-  threadStatusValues,
-} from "@bb/domain";
-import { assertNever } from "@bb/core-ui";
+import { threadStatusSchema, threadStatusValues } from "@bb/domain";
+import { ThreadWaitTimeoutError, ThreadWaitUnreachableError } from "@bb/sdk";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -63,66 +59,43 @@ export function registerWaitCommand(
         const target = parseThreadWaitTarget(opts);
         const timeoutSeconds = parseThreadWaitTimeoutSeconds(opts.timeout);
         const pollIntervalMs = parseThreadWaitPollIntervalMs(opts.pollInterval);
-        const deadline = Date.now() + timeoutSeconds * 1000;
-
-        while (true) {
-          if (target.kind === "status") {
-            const thread = await sdk.threads.get({ threadId });
-            if (thread.status === target.status) {
-              if (outputJson(opts, { threadId, matched: true, target })) return;
-              console.log(
-                `Thread ${threadId} reached status ${target.status}.`,
-              );
-              return;
-            }
-            const unreachableReason = getThreadWaitUnreachableReason(
-              threadId,
-              thread.status,
-              target.status,
+        const waitArgs = {
+          threadId,
+          timeoutMs: timeoutSeconds * 1000,
+          pollIntervalMs,
+          ...(target.kind === "status"
+            ? { status: target.status }
+            : { event: target.eventType }),
+        };
+        let result: Awaited<ReturnType<typeof sdk.threads.wait>>;
+        try {
+          result = await sdk.threads.wait(waitArgs);
+        } catch (error) {
+          if (error instanceof ThreadWaitTimeoutError) {
+            throw new CliExitError(
+              error.message,
+              THREAD_WAIT_EXIT_CODE_TIMEOUT,
             );
-            if (unreachableReason) {
-              throw new CliExitError(
-                unreachableReason,
-                THREAD_WAIT_EXIT_CODE_UNREACHABLE,
-              );
-            }
-
-            if (Date.now() >= deadline) {
-              throw new CliExitError(
-                `Timed out waiting for thread ${threadId} to reach status ${target.status}.`,
-                THREAD_WAIT_EXIT_CODE_TIMEOUT,
-              );
-            }
-
-            await sleep(pollIntervalMs);
-          } else {
-            const remainingMs = Math.max(0, deadline - Date.now());
-            const waitMs = Math.floor(Math.min(remainingMs, 30_000));
-
-            const matched = await sdk.threads.events.wait({
-              threadId,
-              type: target.eventType,
-              waitMs: String(waitMs),
-            });
-
-            if (matched === null) {
-              if (Date.now() >= deadline) {
-                throw new CliExitError(
-                  `Timed out waiting for thread ${threadId} event ${target.eventType}.`,
-                  THREAD_WAIT_EXIT_CODE_TIMEOUT,
-                );
-              }
-              await sleep(pollIntervalMs);
-              continue;
-            }
-
-            if (outputJson(opts, { threadId, matched: true, target })) return;
-            console.log(
-              `Thread ${threadId} observed event ${target.eventType} at seq ${matched.seq}.`,
-            );
-            return;
           }
+          if (error instanceof ThreadWaitUnreachableError) {
+            throw new CliExitError(
+              error.message,
+              THREAD_WAIT_EXIT_CODE_UNREACHABLE,
+            );
+          }
+          throw error;
         }
+
+        if (outputJson(opts, { threadId, matched: true, target })) return;
+        if (!("event" in result)) {
+          console.log(
+            `Thread ${threadId} reached status ${result.target.status}.`,
+          );
+          return;
+        }
+        console.log(
+          `Thread ${threadId} observed event ${result.target.eventType} at seq ${result.event.seq}.`,
+        );
       }),
     );
 }
@@ -155,35 +128,4 @@ function parseThreadWaitTarget(
     kind: "event",
     eventType: opts.event ?? "",
   };
-}
-
-function getThreadWaitUnreachableReason(
-  threadId: string,
-  currentStatus: ThreadStatus,
-  targetStatus: ThreadStatus,
-): string | undefined {
-  if (currentStatus === targetStatus || targetStatus !== "idle") {
-    return undefined;
-  }
-
-  switch (currentStatus) {
-    case "error":
-      return (
-        `Thread ${threadId} is in status error and will not reach idle by waiting alone. ` +
-        `Inspect it with 'bb thread show ${threadId}' and recover by sending a follow-up.`
-      );
-    case "starting":
-    case "idle":
-    case "active":
-    // A stopping thread is winding down toward a settled state; it can still
-    // reach idle by waiting (the stop settles to idle on completion).
-    case "stopping":
-      return undefined;
-    default:
-      return assertNever(currentStatus);
-  }
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
 }

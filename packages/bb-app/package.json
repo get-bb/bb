@@ -21,6 +21,16 @@
     "directory": "packages/bb-app"
   },
   "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/public-sdk.ts",
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
   "os": [
     "darwin",
     "linux"
@@ -65,6 +75,7 @@
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
+    "@bb/sdk": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.0",

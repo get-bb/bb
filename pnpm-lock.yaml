@@ -791,6 +791,9 @@ importers:
       '@bb/config':
         specifier: workspace:*
         version: link:../config
+      '@bb/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig

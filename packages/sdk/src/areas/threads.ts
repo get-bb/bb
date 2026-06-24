@@ -1,6 +1,8 @@
 import {
   parseThreadEventRow,
+  type PromptInput,
   type PendingInteractionResolution,
+  type ThreadStatus,
 } from "@bb/domain";
 import type {
   CloseTerminalRequest,
@@ -21,6 +23,9 @@ import type {
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+
+export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 30_000;
+export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
   archived?: boolean;
@@ -78,18 +83,12 @@ export type ThreadTerminalCloseResult = PublicApiOutput<
   "/terminals/:terminalId/close",
   "$post"
 >;
-export type ThreadTerminalCreateResult = PublicApiOutput<
-  "/terminals",
-  "$post"
->;
+export type ThreadTerminalCreateResult = PublicApiOutput<"/terminals", "$post">;
 export type ThreadTerminalInputResult = PublicApiOutput<
   "/terminals/:terminalId/input",
   "$post"
 >;
-export type ThreadTerminalListResult = PublicApiOutput<
-  "/terminals",
-  "$get"
->;
+export type ThreadTerminalListResult = PublicApiOutput<"/terminals", "$get">;
 export type ThreadTerminalOutputResult = PublicApiOutput<
   "/terminals/:terminalId/output",
   "$get"
@@ -107,7 +106,27 @@ export type ThreadUnarchiveResult = PublicApiOutput<
   "$post"
 >;
 
-export interface ThreadSpawnArgs extends CreateThreadRequest {}
+export interface ThreadSpawnBaseArgs extends Omit<
+  CreateThreadRequest,
+  "childOrigin" | "input" | "origin" | "originKind" | "startedOnBehalfOf"
+> {
+  childOrigin?: CreateThreadRequest["childOrigin"];
+  origin?: CreateThreadRequest["origin"];
+  originKind?: CreateThreadRequest["originKind"];
+  startedOnBehalfOf?: CreateThreadRequest["startedOnBehalfOf"];
+}
+
+export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
+  (
+    | {
+        input: CreateThreadRequest["input"];
+        prompt?: never;
+      }
+    | {
+        input?: never;
+        prompt: string;
+      }
+  );
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
   threadId: string;
@@ -139,6 +158,7 @@ export interface ThreadEventsListArgs {
 }
 
 export interface ThreadEventWaitArgs {
+  afterSeq?: string;
   threadId: string;
   type: string;
   waitMs: string;
@@ -156,8 +176,10 @@ export interface ThreadTerminalListArgs {
   threadId: string;
 }
 
-export interface ThreadTerminalCreateArgs
-  extends Omit<CreateTerminalRequest, "target"> {
+export interface ThreadTerminalCreateArgs extends Omit<
+  CreateTerminalRequest,
+  "target"
+> {
   threadId: string;
 }
 
@@ -191,6 +213,65 @@ export interface ThreadInteractionGetArgs extends ThreadInteractionListArgs {
 
 export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
   resolution: PendingInteractionResolution;
+}
+
+export type ThreadWaitTarget =
+  | { kind: "status"; status: ThreadStatus }
+  | { kind: "event"; eventType: string };
+
+export interface ThreadWaitArgs {
+  event?: string;
+  pollIntervalMs?: number;
+  status?: ThreadStatus;
+  threadId: string;
+  timeoutMs?: number;
+}
+
+export type ThreadWaitResult =
+  | {
+      event: NonNullable<ThreadEventWaitResult>;
+      matched: true;
+      target: Extract<ThreadWaitTarget, { kind: "event" }>;
+      threadId: string;
+    }
+  | {
+      matched: true;
+      target: Extract<ThreadWaitTarget, { kind: "status" }>;
+      thread: ThreadGetResult;
+      threadId: string;
+    };
+
+export class ThreadWaitTimeoutError extends Error {
+  readonly target: ThreadWaitTarget;
+  readonly threadId: string;
+
+  constructor(args: { target: ThreadWaitTarget; threadId: string }) {
+    super(formatThreadWaitTimeoutMessage(args));
+    this.name = "ThreadWaitTimeoutError";
+    this.target = args.target;
+    this.threadId = args.threadId;
+  }
+}
+
+export class ThreadWaitUnreachableError extends Error {
+  readonly currentStatus: ThreadStatus;
+  readonly target: Extract<ThreadWaitTarget, { kind: "status" }>;
+  readonly threadId: string;
+
+  constructor(args: {
+    currentStatus: ThreadStatus;
+    target: Extract<ThreadWaitTarget, { kind: "status" }>;
+    threadId: string;
+  }) {
+    super(
+      `Thread ${args.threadId} is in status ${args.currentStatus} and will not reach idle by waiting alone. ` +
+        `Inspect it with 'bb thread show ${args.threadId}' and recover by sending a follow-up.`,
+    );
+    this.name = "ThreadWaitUnreachableError";
+    this.currentStatus = args.currentStatus;
+    this.target = args.target;
+    this.threadId = args.threadId;
+  }
 }
 
 export interface ThreadInteractionsArea {
@@ -234,6 +315,7 @@ export interface ThreadsArea {
   unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
   unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
+  wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
@@ -269,6 +351,36 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
   };
 }
 
+function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
+  if (input.input !== undefined && input.prompt !== undefined) {
+    throw new Error("Provide only one of input or prompt.");
+  }
+  if (input.input !== undefined) {
+    return input.input;
+  }
+  return [{ type: "text", text: input.prompt, mentions: [] }];
+}
+
+function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
+  const {
+    childOrigin,
+    input: _input,
+    origin,
+    originKind,
+    prompt: _prompt,
+    startedOnBehalfOf,
+    ...request
+  } = args;
+  return {
+    ...request,
+    input: spawnInput(args),
+    origin: origin ?? "sdk",
+    startedOnBehalfOf: startedOnBehalfOf ?? null,
+    originKind: originKind ?? null,
+    childOrigin: childOrigin ?? null,
+  };
+}
+
 function eventsListQuery(args: ThreadEventsListArgs): ThreadEventsQuery {
   return {
     ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
@@ -278,6 +390,7 @@ function eventsListQuery(args: ThreadEventsListArgs): ThreadEventsQuery {
 
 function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   return {
+    ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
     type: args.type,
     waitMs: args.waitMs,
   };
@@ -313,6 +426,68 @@ function terminalOutputQuery(
       ? { limitChunks: args.limitChunks }
       : {}),
   };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
+  const hasStatus = args.status !== undefined;
+  const hasEvent = args.event !== undefined;
+  if (hasStatus && hasEvent) {
+    throw new Error("Provide only one of status or event.");
+  }
+  if (hasEvent) {
+    return { kind: "event", eventType: args.event ?? "" };
+  }
+  return { kind: "status", status: args.status ?? "idle" };
+}
+
+function validateThreadWaitArgs(args: ThreadWaitArgs): {
+  pollIntervalMs: number;
+  target: ThreadWaitTarget;
+  timeoutMs: number;
+} {
+  const timeoutMs = args.timeoutMs ?? DEFAULT_THREAD_WAIT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new RangeError(
+      "Timeout must be a non-negative number of milliseconds.",
+    );
+  }
+  const pollIntervalMs =
+    args.pollIntervalMs ?? DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS;
+  if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 1) {
+    throw new RangeError(
+      "Poll interval must be a positive integer number of milliseconds.",
+    );
+  }
+  return {
+    pollIntervalMs,
+    target: resolveThreadWaitTarget(args),
+    timeoutMs,
+  };
+}
+
+function formatThreadWaitTimeoutMessage(args: {
+  target: ThreadWaitTarget;
+  threadId: string;
+}): string {
+  if (args.target.kind === "status") {
+    return `Timed out waiting for thread ${args.threadId} to reach status ${args.target.status}.`;
+  }
+  return `Timed out waiting for thread ${args.threadId} event ${args.target.eventType}.`;
+}
+
+function isThreadWaitTargetUnreachable(
+  currentStatus: ThreadStatus,
+  target: ThreadWaitTarget,
+): target is Extract<ThreadWaitTarget, { kind: "status" }> {
+  return (
+    target.kind === "status" &&
+    target.status === "idle" &&
+    currentStatus === "error"
+  );
 }
 
 export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
@@ -509,7 +684,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async spawn(input) {
       return transport.readJson(
         transport.api.v1.threads.$post({
-          json: input,
+          json: spawnJson(input),
         }),
       );
     },
@@ -552,6 +727,62 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           json: updateJson(input),
         }),
       );
+    },
+    async wait(input) {
+      const { pollIntervalMs, target, timeoutMs } =
+        validateThreadWaitArgs(input);
+      const deadline = Date.now() + timeoutMs;
+      while (true) {
+        if (target.kind === "status") {
+          const thread = await getThread({ threadId: input.threadId });
+          if (thread.status === target.status) {
+            return {
+              matched: true,
+              target,
+              thread,
+              threadId: input.threadId,
+            };
+          }
+          if (isThreadWaitTargetUnreachable(thread.status, target)) {
+            throw new ThreadWaitUnreachableError({
+              currentStatus: thread.status,
+              target,
+              threadId: input.threadId,
+            });
+          }
+          if (Date.now() >= deadline) {
+            throw new ThreadWaitTimeoutError({
+              target,
+              threadId: input.threadId,
+            });
+          }
+          await sleep(pollIntervalMs);
+          continue;
+        }
+
+        const remainingMs = Math.max(0, deadline - Date.now());
+        const waitMs = Math.floor(Math.min(remainingMs, 30_000));
+        const event = await events.wait({
+          threadId: input.threadId,
+          type: target.eventType,
+          waitMs: String(waitMs),
+        });
+        if (event !== null) {
+          return {
+            event,
+            matched: true,
+            target,
+            threadId: input.threadId,
+          };
+        }
+        if (Date.now() >= deadline) {
+          throw new ThreadWaitTimeoutError({
+            target,
+            threadId: input.threadId,
+          });
+        }
+        await sleep(pollIntervalMs);
+      }
     },
   };
 }

@@ -75,6 +75,10 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                           |
 | [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                           |
 
+`bb-app` also exposes a Node scripting SDK:
+`import { BBSdk } from "bb-app"`. See
+[`packages/bb-app`](./packages/bb-app/README.md#scripting-with-the-sdk).
+
 ## Development
 
 Use the development loop when working on bb itself:

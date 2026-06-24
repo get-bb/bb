@@ -70,6 +70,29 @@ the terminal to stop both processes and exit with status `0`.
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.
 
+## Scripting with the SDK
+
+The package also exposes a Node SDK for scripts that drive an already-running
+bb server:
+
+```ts
+import { BBSdk } from "bb-app";
+
+const bb = new BBSdk();
+const thread = await bb.threads.spawn({
+  projectId: "proj_personal",
+  environment: { type: "host", workspace: { type: "personal" } },
+  prompt: "Summarize my active bb work.",
+});
+await bb.threads.wait({ threadId: String(thread.id), status: "idle" });
+console.log(await bb.threads.output({ threadId: String(thread.id) }));
+```
+
+`new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
+CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
+targets. Scripts launched by bb already receive `BB_SERVER_URL` and
+`BB_THREAD_ID` in their environment.
+
 ## Provider Credentials
 
 bb uses whichever providers you have configured. If you need to set one up:
