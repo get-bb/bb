@@ -650,11 +650,11 @@ export function QueuedMessagesList({
       className={cn(
         "relative overflow-hidden shadow-none",
         // Expanded drawers tuck their flat, borderless bottom behind the prompt
-        // box. Collapsed drawers stay short and fully rounded while cancelling
-        // the stack gap before the prompt box.
+        // box. Collapsed drawers use the same flat bottom edge, but without the
+        // expanded-only padding that made the collapsed state too tall.
         isExpanded
           ? "-mb-3 rounded-b-none border-b-0 pb-3"
-          : "-mb-2",
+          : "-mb-2 rounded-b-none border-b-0",
       )}
     >
       <div className={PROMPT_STACK_COMPACT_INLAY_INSET_CLASS}>
