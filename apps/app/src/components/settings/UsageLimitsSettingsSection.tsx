@@ -3,7 +3,6 @@ import type {
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
 import {
   Tooltip,
@@ -25,13 +24,14 @@ const PROVIDERS: ProviderConfig[] = [
     key: "codex",
     name: "Codex",
     signInHint: "Run `codex` to sign in and see your usage.",
-    expiredHint: "Your Codex session expired. Run `codex`, then refresh.",
+    expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
   {
     key: "claudeCode",
     name: "Claude Code",
     signInHint: "Run `claude` to sign in and see your usage.",
-    expiredHint: "Your Claude session expired. Run `claude`, then refresh.",
+    expiredHint:
+      "Your Claude session expired. Run `claude`, then reload usage.",
   },
 ];
 
@@ -160,7 +160,7 @@ function ProviderUsageBody({
     return (
       <p className="text-xs text-muted-foreground">
         Couldn&apos;t load usage right now. Make sure bb&apos;s host is
-        connected, then refresh.
+        connected, then reload usage.
       </p>
     );
   }
@@ -218,22 +218,21 @@ export function UsageLimitsSettingsSectionContent({
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              size="icon"
-              className="size-8"
+              size="sm"
+              className="h-7 px-2 text-xs"
               disabled={isFetching}
               onClick={onRefresh}
               title={undefined}
               aria-label={
-                isFetching ? "Refreshing usage limits" : "Refresh usage limits"
+                isFetching
+                  ? "Reloading usage data"
+                  : "Reload usage data"
               }
             >
-              <Icon
-                name="RotateCcw"
-                className={cn(isFetching && "animate-spin")}
-              />
+              {isFetching ? "Reloading..." : "Reload"}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Refresh usage limits</TooltipContent>
+          <TooltipContent side="bottom">Reload usage data</TooltipContent>
         </Tooltip>
       }
     >

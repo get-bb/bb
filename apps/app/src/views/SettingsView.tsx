@@ -202,6 +202,8 @@ const SETTINGS_DROPDOWN_CONTENT_CLASS =
 
 const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette for this workspace. Ask me for the palette name and visual direction, then create `.bb/theme/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
+const PALETTE_SETTING_DESCRIPTION =
+  "Palettes change bb's colors across the app. Choose a built-in palette, load a local .bb theme, or create one from chat.";
 
 // Renders the favicon glyph itself in the candidate color by using the
 // favicon image as a CSS mask, so the preview matches the resulting tab icon.
@@ -228,6 +230,7 @@ export function FaviconColorSettingsControl({
   return (
     <SettingsWithControl
       label="Favicon color"
+      labelBadge="dev-only"
       description="Tint browser tabs to tell instances apart."
     >
       <DropdownMenu>
@@ -425,7 +428,7 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL =
-  "Rich text formatting in the prompt box";
+  "Markdown formatting in prompt box";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -484,10 +487,7 @@ export function RichTextEditingSettingsControl({
   onEnabledChange,
 }: RichTextEditingSettingsControlProps) {
   return (
-    <SettingsWithControl
-      label={RICH_TEXT_EDITING_SETTING_LABEL}
-      description="Use Markdown formatting while typing."
-    >
+    <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
       <Switch
         checked={enabled}
         onCheckedChange={onEnabledChange}
@@ -560,72 +560,77 @@ export function GeneralSettingsSection({
           </DropdownMenu>
         </SettingsWithControl>
 
-        <SettingsWithControl
-          label="Palette"
-          description="Pick a built-in or local .bb theme."
-        >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
-                aria-label="Palette"
-                disabled={appearanceDisabled}
+        <div className="border-l border-border pl-3">
+          <SettingsWithControl
+            label="Palette"
+            description={PALETTE_SETTING_DESCRIPTION}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+                  aria-label="Palette"
+                  disabled={appearanceDisabled}
+                >
+                  <span className="min-w-0 truncate">
+                    {appPaletteLabel(appearance)}
+                  </span>
+                  <Icon
+                    name="ChevronDown"
+                    className="size-3.5 text-muted-foreground"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className={SETTINGS_DROPDOWN_CONTENT_CLASS}
               >
-                <span className="min-w-0 truncate">
-                  {appPaletteLabel(appearance)}
-                </span>
-                <Icon
-                  name="ChevronDown"
-                  className="size-3.5 text-muted-foreground"
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className={SETTINGS_DROPDOWN_CONTENT_CLASS}
-            >
-              {builtInThemes.map((entry) => (
-                <DropdownMenuItem
-                  key={entry.id}
-                  onSelect={() => onAppearanceThemeChange(entry.id)}
-                >
-                  {entry.name}
+                {builtInThemes.map((entry) => (
+                  <DropdownMenuItem
+                    key={entry.id}
+                    onSelect={() => onAppearanceThemeChange(entry.id)}
+                  >
+                    {entry.name}
+                    <Icon
+                      name="Check"
+                      className={cn(
+                        "ml-auto",
+                        appearance.themeId !== entry.id && "opacity-0",
+                        COARSE_POINTER_ICON_SIZE_CLASS,
+                      )}
+                    />
+                  </DropdownMenuItem>
+                ))}
+                {customThemes.map((name) => (
+                  <DropdownMenuItem
+                    key={`custom:${name}`}
+                    onSelect={() => onAppearanceThemeChange(name)}
+                  >
+                    {name}
+                    <Icon
+                      name="Check"
+                      className={cn(
+                        "ml-auto",
+                        appearance.themeId !== name && "opacity-0",
+                        COARSE_POINTER_ICON_SIZE_CLASS,
+                      )}
+                    />
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onCreatePalette}>
                   <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== entry.id && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
+                    name="Plus"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
                   />
+                  Create
                 </DropdownMenuItem>
-              ))}
-              {customThemes.map((name) => (
-                <DropdownMenuItem
-                  key={`custom:${name}`}
-                  onSelect={() => onAppearanceThemeChange(name)}
-                >
-                  {name}
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== name && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onCreatePalette}>
-                <Icon name="Plus" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-                Create
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SettingsWithControl>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SettingsWithControl>
+        </div>
 
         <FaviconColorSettingsControl
           disabled={appearanceDisabled}
