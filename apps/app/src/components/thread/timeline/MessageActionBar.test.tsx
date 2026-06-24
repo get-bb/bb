@@ -34,9 +34,11 @@ describe("MessageActionBar", () => {
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Send to main thread" }),
-    );
+    const button = screen.getByRole("button", {
+      name: "Send to main thread",
+    });
+    expect(button.className).toContain("cursor-pointer");
+    fireEvent.click(button);
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
@@ -98,6 +100,7 @@ describe("MessageActionBar", () => {
     const overflowTrigger = screen.getByRole("button", {
       name: "Message actions",
     });
+    expect(overflowTrigger.className).toContain("cursor-pointer");
     expect(overflowTrigger.className).toContain("hidden");
     expect(overflowTrigger.className).toContain(
       "max-md:pointer-coarse:inline-flex",
