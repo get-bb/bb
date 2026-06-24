@@ -59,6 +59,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Plan prompt action, todo prompt-stack card header",
   Loading: "Loading03 thread row working spinner",
+  Mail: "Mark unread thread action",
+  MailOpen: "Mark read thread action",
   Maximize2: "Enter zen mode (prompt expand), open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
@@ -71,6 +73,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   PanelRight:
     "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
+  Pin: "Pin thread action",
+  PinOff: "Unpin thread action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
   Repeat: "Loop prompt action",
   RotateCcw:

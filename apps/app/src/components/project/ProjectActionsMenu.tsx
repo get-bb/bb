@@ -3,7 +3,7 @@ import type { ProjectResponse } from "@bb/server-contract";
 import type { MouseEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   ContextMenu,
@@ -51,6 +51,7 @@ interface ProjectActionsMenuItemsProps extends ProjectActionsMenuBaseProps {
 interface ProjectActionMenuItemProps {
   children: ReactNode;
   className?: string;
+  icon: IconName;
   onSelect?: (event: Event) => void;
   surface: ProjectActionsMenuSurface;
 }
@@ -66,20 +67,28 @@ function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
 function ProjectActionMenuItem({
   children,
   className,
+  icon,
   onSelect,
   surface,
 }: ProjectActionMenuItemProps) {
+  const content = (
+    <>
+      <Icon name={icon} aria-hidden="true" />
+      {children}
+    </>
+  );
+
   if (surface === "context") {
     return (
       <ContextMenuItem className={className} onSelect={onSelect}>
-        {children}
+        {content}
       </ContextMenuItem>
     );
   }
 
   return (
     <DropdownMenuItem className={className} onSelect={onSelect}>
-      {children}
+      {content}
     </DropdownMenuItem>
   );
 }
@@ -110,6 +119,7 @@ function ProjectActionsMenuItems({
     <>
       <ProjectActionMenuItem
         surface={surface}
+        icon="Settings"
         onSelect={() => {
           navigate(getProjectSettingsRoutePath(project.id));
         }}
@@ -118,6 +128,7 @@ function ProjectActionsMenuItems({
       </ProjectActionMenuItem>
       <ProjectActionMenuItem
         surface={surface}
+        icon="Archive"
         onSelect={() => {
           navigate(getProjectArchivedRoutePath(project.id));
         }}
@@ -127,6 +138,7 @@ function ProjectActionsMenuItems({
       <ProjectActionMenuSeparator surface={surface} />
       <ProjectActionMenuItem
         surface={surface}
+        icon="Edit"
         onSelect={() => {
           requestRename(project);
         }}
@@ -136,6 +148,7 @@ function ProjectActionsMenuItems({
       {showAddLocalPath ? (
         <ProjectActionMenuItem
           surface={surface}
+          icon="FolderPlus"
           onSelect={() => {
             requestAddLocalPath(project);
           }}
@@ -145,6 +158,7 @@ function ProjectActionsMenuItems({
       ) : null}
       <ProjectActionMenuItem
         surface={surface}
+        icon="Trash2"
         className="text-destructive focus:text-destructive"
         onSelect={() => {
           requestDelete(project);

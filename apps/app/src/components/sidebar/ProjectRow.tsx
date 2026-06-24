@@ -1064,6 +1064,7 @@ function EnvironmentThreadGroupHeaderActions({
         <DropdownMenuContent align="end">
           {onCreateNewThread ? (
             <DropdownMenuItem onSelect={onCreateNewThread}>
+              <Icon name="MessageSquarePlus" aria-hidden="true" />
               New thread
             </DropdownMenuItem>
           ) : null}
@@ -1073,6 +1074,7 @@ function EnvironmentThreadGroupHeaderActions({
                 onRenameEnvironment();
               }}
             >
+              <Icon name="Edit" aria-hidden="true" />
               Rename
             </DropdownMenuItem>
           ) : null}
@@ -1087,6 +1089,7 @@ function EnvironmentThreadGroupHeaderActions({
                 onArchiveThreads();
               }}
             >
+              <Icon name="Archive" aria-hidden="true" />
               Archive worktree
             </DropdownMenuItem>
           ) : null}

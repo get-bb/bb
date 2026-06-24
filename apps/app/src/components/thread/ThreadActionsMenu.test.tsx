@@ -59,6 +59,11 @@ async function renderOpenMenu(thread: Thread) {
   return onOpenChange;
 }
 
+function expectMenuItemIcon(label: string, iconName: string) {
+  const menuItem = screen.getByRole("menuitem", { name: label });
+  expect(menuItem.querySelector(`[data-icon="${iconName}"]`)).not.toBeNull();
+}
+
 describe("ThreadActionsMenu", () => {
   afterEach(() => {
     cleanup();
@@ -103,5 +108,15 @@ describe("ThreadActionsMenu", () => {
 
     expect(action).toHaveBeenCalledWith(thread);
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("renders icons for thread action menu items", async () => {
+    await renderOpenMenu(makeThread());
+
+    expectMenuItemIcon("Mark as read", "MailOpen");
+    expectMenuItemIcon("Pin", "Pin");
+    expectMenuItemIcon("Rename", "Edit");
+    expectMenuItemIcon("Archive", "Archive");
+    expectMenuItemIcon("Delete", "Trash2");
   });
 });

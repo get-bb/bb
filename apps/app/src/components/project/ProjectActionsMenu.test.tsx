@@ -47,6 +47,11 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+function expectMenuItemIcon(label: string, iconName: string) {
+  const menuItem = screen.getByRole("menuitem", { name: label });
+  expect(menuItem.querySelector(`[data-icon="${iconName}"]`)).not.toBeNull();
+}
+
 describe("ProjectActionsMenu", () => {
   afterEach(() => {
     cleanup();
@@ -117,5 +122,27 @@ describe("ProjectActionsMenu", () => {
     await waitFor(() => {
       expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
     });
+  });
+
+  it("renders icons for project action menu items", async () => {
+    const project = makeProject();
+
+    render(
+      <MemoryRouter>
+        <ProjectActionsMenu project={project} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+
+    await screen.findByRole("menuitem", { name: "Project settings" });
+
+    expectMenuItemIcon("Project settings", "Settings");
+    expectMenuItemIcon("Archived threads", "Archive");
+    expectMenuItemIcon("Rename", "Edit");
+    expectMenuItemIcon("Remove", "Trash2");
   });
 });
