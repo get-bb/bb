@@ -12,7 +12,9 @@
  */
 
 import { execFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync, realpathSync } from "node:fs";
+import { createServer, type Server, type Socket } from "node:net";
 import {
   dirname,
   extname,
@@ -27,6 +29,8 @@ import { z } from "zod";
 import type { AvailableModel, PromptInput } from "@bb/domain";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
 import {
+  decodeToolCallResponsePayload,
+  type BridgeJsonRpcResponse,
   decodeBridgeJsonRpcResponse,
   jsonRpcEnvelopeSchema,
 } from "../../shared/bridge-tool-calls.js";
@@ -80,6 +84,11 @@ import {
   type AcpNativeReasoningSupport,
   type AgentModelCatalog,
 } from "./model-catalog.js";
+import {
+  buildAcpMcpServerConfig,
+  runAcpDynamicToolMcpServer,
+  type AcpMcpServerConfig,
+} from "./tool-proxy-mcp.js";
 
 // ---------------------------------------------------------------------------
 // Session state
@@ -118,9 +127,10 @@ const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
 const bbThreadIdByProviderThreadId = new Map<string, string>();
 const pendingRuntimeRequests = new Map<
   number,
-  (decision: "allow_once" | "allow_for_session" | "deny" | null) => void
+  (response: BridgeJsonRpcResponse) => void
 >();
 let runtimeRequestIdCounter = 0;
+let dynamicToolBridgePromise: Promise<AcpDynamicToolBridge> | null = null;
 
 // Runtime waits on thread/stop until the agent settles the cancelled prompt or
 // this timeout forces disposal. Stop remains a best-effort success boundary.
@@ -171,6 +181,160 @@ function sendNotification(
   send({ jsonrpc: "2.0", method, params });
 }
 
+function sendRuntimeRequest(
+  method: string,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  runtimeRequestIdCounter += 1;
+  const requestId = runtimeRequestIdCounter;
+  const responsePromise = new Promise<unknown>(
+    (resolveResponse, rejectResponse) => {
+      pendingRuntimeRequests.set(requestId, (response) => {
+        if ("error" in response) {
+          rejectResponse(
+            new Error(response.error.message ?? "Runtime request failed"),
+          );
+          return;
+        }
+        resolveResponse(response.result);
+      });
+    },
+  );
+  send({
+    jsonrpc: "2.0",
+    id: requestId,
+    method,
+    params,
+  });
+  return responsePromise;
+}
+
+function resolveBridgeProcessArgsForMcpServer(): string[] {
+  const entryPoint = process.argv[1]
+    ? resolve(process.argv[1])
+    : fileURLToPath(import.meta.url);
+  return [...process.execArgv, entryPoint, "--mcp-stdio"];
+}
+
+async function forwardDynamicToolCall(args: {
+  arguments: Record<string, unknown>;
+  callId: string;
+  threadId: string;
+  tool: string;
+}): Promise<
+  | { ok: true; content: string; isError?: boolean }
+  | { ok: false; error: string }
+> {
+  const session = sessionsByBbThreadId.get(args.threadId);
+  if (!session || !session.providerThreadId || session.stopping) {
+    return { ok: false, error: "No active ACP session for dynamic tool call." };
+  }
+
+  try {
+    const result = await sendRuntimeRequest("item/tool/call", {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: null,
+      callId: args.callId,
+      tool: args.tool,
+      arguments: args.arguments,
+    });
+    return { ok: true, ...decodeToolCallResponsePayload(result) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function handleDynamicToolBridgeSocket(
+  bridge: AcpDynamicToolBridge,
+  socket: Socket,
+): void {
+  let buffer = "";
+  socket.setEncoding("utf8");
+  socket.on("data", (chunk) => {
+    buffer += chunk;
+    const newlineIndex = buffer.indexOf("\n");
+    if (newlineIndex === -1) {
+      return;
+    }
+    const line = buffer.slice(0, newlineIndex);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      socket.end(`${JSON.stringify({ ok: false, error: "Invalid JSON" })}\n`);
+      return;
+    }
+    const request = dynamicToolBridgeRequestSchema.safeParse(parsed);
+    if (!request.success || request.data.token !== bridge.token) {
+      socket.end(
+        `${JSON.stringify({ ok: false, error: "Invalid dynamic tool request" })}\n`,
+      );
+      return;
+    }
+    void forwardDynamicToolCall(request.data).then((response) => {
+      socket.end(`${JSON.stringify(response)}\n`);
+    });
+  });
+}
+
+async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
+  if (dynamicToolBridgePromise) {
+    return dynamicToolBridgePromise;
+  }
+
+  dynamicToolBridgePromise = new Promise((resolveBridge, rejectBridge) => {
+    const host = "127.0.0.1";
+    const server = createServer((socket) => {
+      void dynamicToolBridgePromise?.then((bridge) => {
+        handleDynamicToolBridgeSocket(bridge, socket);
+      });
+    });
+    server.once("error", rejectBridge);
+    server.listen(0, host, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        rejectBridge(
+          new Error("ACP dynamic tool bridge did not bind a TCP port"),
+        );
+        return;
+      }
+      resolveBridge({
+        host,
+        port: address.port,
+        server,
+        token: randomBytes(32).toString("hex"),
+      });
+    });
+  });
+
+  return dynamicToolBridgePromise;
+}
+
+async function buildSessionMcpServers(
+  params: AcpBridgeThreadStartParams,
+): Promise<AcpMcpServerConfig[]> {
+  const dynamicTools = params.dynamicTools ?? [];
+  if (dynamicTools.length === 0) {
+    return [];
+  }
+  const bridge = await ensureDynamicToolBridge();
+  return [
+    buildAcpMcpServerConfig({
+      bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
+      command: process.execPath,
+      dynamicTools,
+      host: bridge.host,
+      port: bridge.port,
+      threadId: params.threadId,
+      token: bridge.token,
+    }),
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Model catalog — parsed from the agent CLI's list command, with the
 // synthetic "Agent default" entry as the resilience fallback
@@ -196,6 +360,21 @@ const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
 const ACP_NATIVE_REASONING_DISCOVERY_MODEL_LIMIT = 50;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
+
+interface AcpDynamicToolBridge {
+  host: string;
+  port: number;
+  server: Server;
+  token: string;
+}
+
+const dynamicToolBridgeRequestSchema = z.object({
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  callId: z.string().min(1),
+  threadId: z.string().min(1),
+  token: z.string().min(1),
+  tool: z.string().min(1),
+});
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
@@ -767,43 +946,46 @@ function handlePermissionRequest(
   }
 
   session.pendingPermissions.add(pending);
-  runtimeRequestIdCounter += 1;
-  const requestId = runtimeRequestIdCounter;
-  pendingRuntimeRequests.set(requestId, (decision) => {
-    if (!session.pendingPermissions.delete(pending)) {
-      // Already settled as cancelled (stop/cancel raced the user's decision).
-      return;
-    }
-    respondPermission(pending, decision);
-  });
 
   const toolCall = parsed.data.toolCall;
   const rawInputCommand = acpRawInputCommandSchema.safeParse(
     toolCall?.rawInput,
   );
-  send({
-    jsonrpc: "2.0",
-    id: requestId,
-    method: ACP_PERMISSION_REQUEST_METHOD,
-    params: {
-      threadId: session.bbThreadId,
-      providerThreadId: session.providerThreadId,
-      turnId: null,
-      ...(toolCall?.toolCallId
-        ? {
-            toolCall: {
-              toolCallId: toolCall.toolCallId,
-              ...(toolCall.title ? { title: toolCall.title } : {}),
-              ...(toolCall.kind ? { kind: toolCall.kind } : {}),
-              ...(rawInputCommand.success
-                ? { command: rawInputCommand.data.command }
-                : {}),
-            },
-          }
-        : {}),
-      options: parsed.data.options,
-    },
-  });
+  void sendRuntimeRequest(ACP_PERMISSION_REQUEST_METHOD, {
+    threadId: session.bbThreadId,
+    providerThreadId: session.providerThreadId,
+    turnId: null,
+    ...(toolCall?.toolCallId
+      ? {
+          toolCall: {
+            toolCallId: toolCall.toolCallId,
+            ...(toolCall.title ? { title: toolCall.title } : {}),
+            ...(toolCall.kind ? { kind: toolCall.kind } : {}),
+            ...(rawInputCommand.success
+              ? { command: rawInputCommand.data.command }
+              : {}),
+          },
+        }
+      : {}),
+    options: parsed.data.options,
+  })
+    .then((result) => {
+      if (!session.pendingPermissions.delete(pending)) {
+        // Already settled as cancelled (stop/cancel raced the user's decision).
+        return;
+      }
+      const decision = acpPermissionResponseSchema.safeParse(result);
+      respondPermission(
+        pending,
+        decision.success ? decision.data.decision : null,
+      );
+    })
+    .catch(() => {
+      if (!session.pendingPermissions.delete(pending)) {
+        return;
+      }
+      respondPermission(pending, null);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1024,6 +1206,7 @@ async function startAgentSession(
       initializeResult.agentCapabilities?.promptCapabilities?.image ?? false;
     const supportsLoadSession =
       initializeResult.agentCapabilities?.loadSession ?? false;
+    const mcpServers = await buildSessionMcpServers(params);
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
@@ -1036,7 +1219,7 @@ async function startAgentSession(
           params: {
             sessionId: request.params.providerThreadId,
             cwd: params.cwd,
-            mcpServers: [],
+            mcpServers,
           },
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
         });
@@ -1053,7 +1236,7 @@ async function startAgentSession(
     if (sessionId === undefined) {
       const newSession = await connection.request({
         method: "session/new",
-        params: { cwd: params.cwd, mcpServers: [] },
+        params: { cwd: params.cwd, mcpServers },
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
@@ -1359,12 +1542,7 @@ export function handleLine(line: string): void {
     const pending = pendingRuntimeRequests.get(response.id);
     if (pending) {
       pendingRuntimeRequests.delete(response.id);
-      if ("error" in response) {
-        pending(null);
-      } else {
-        const decision = acpPermissionResponseSchema.safeParse(response.result);
-        pending(decision.success ? decision.data.decision : null);
-      }
+      pending(response);
       return;
     }
   }
@@ -1388,6 +1566,16 @@ async function stopAllSessions(): Promise<void> {
       stopSession(session),
     ),
   );
+  const dynamicToolBridge = dynamicToolBridgePromise
+    ? await dynamicToolBridgePromise.catch(() => null)
+    : null;
+  await new Promise<void>((resolveClose) => {
+    if (!dynamicToolBridge) {
+      resolveClose();
+      return;
+    }
+    dynamicToolBridge.server.close(() => resolveClose());
+  });
 }
 
 function isMainModule(): boolean {
@@ -1406,13 +1594,17 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
-  const rl = createInterface({ input: process.stdin, terminal: false });
-  rl.on("line", handleLine);
-  rl.on("close", () => {
-    // Stdin close is a process shutdown boundary; cancel and reap the agent
-    // subprocesses before the bridge exits so none outlive the daemon.
-    void stopAllSessions().finally(() => {
-      process.exit(0);
+  if (process.argv.includes("--mcp-stdio")) {
+    runAcpDynamicToolMcpServer();
+  } else {
+    const rl = createInterface({ input: process.stdin, terminal: false });
+    rl.on("line", handleLine);
+    rl.on("close", () => {
+      // Stdin close is a process shutdown boundary; cancel and reap the agent
+      // subprocesses before the bridge exits so none outlive the daemon.
+      void stopAllSessions().finally(() => {
+        process.exit(0);
+      });
     });
-  });
+  }
 }

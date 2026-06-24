@@ -1,5 +1,4 @@
 import path from "node:path";
-import { isAcpProviderId } from "@bb/agent-providers";
 import { getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -92,11 +91,7 @@ function requireWorkspacePath(
   return environment.path;
 }
 
-function resolveDynamicTools(thread: Thread): DynamicTool[] {
-  if (isAcpProviderId(thread.providerId)) {
-    return [];
-  }
-
+function resolveDynamicTools(): DynamicTool[] {
   return [UPDATE_ENVIRONMENT_DIRECTORY_TOOL];
 }
 
@@ -148,7 +143,7 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.logger,
     deps.config.dataDir,
   );
-  const dynamicTools = resolveDynamicTools(args.thread);
+  const dynamicTools = resolveDynamicTools();
   const workspaceAgentInstructions = readWorkspaceAgentInstructions(
     deps.logger,
     workspacePath,

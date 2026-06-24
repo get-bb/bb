@@ -8,6 +8,7 @@
  */
 
 import {
+  dynamicToolSchema,
   permissionEscalationSchema,
   permissionModeSchema,
   promptInputSchema,
@@ -105,6 +106,7 @@ const acpBridgeSessionParamsSchema = z.object({
   envVars: z.record(z.string(), z.string()).optional(),
   /** Server-owned instructions; prepended to the session's first prompt. */
   instructions: z.string().optional(),
+  dynamicTools: z.array(dynamicToolSchema).optional(),
 });
 
 export const acpBridgeThreadStartParamsSchema = acpBridgeSessionParamsSchema;

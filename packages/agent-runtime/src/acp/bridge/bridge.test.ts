@@ -5,16 +5,19 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DynamicTool } from "@bb/domain";
 import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
   type CapturedBridgeJsonRpcOutput,
 } from "../../test/bridge-json-rpc-test-helpers.js";
 import { handleLine } from "./bridge.js";
+import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
 
 const FAKE_AGENT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -87,6 +90,7 @@ interface StartThreadArgs {
   envVars?: Record<string, string>;
   instructions?: string;
   agent?: { command: string; args: string[] };
+  dynamicTools?: DynamicTool[];
   modelSelection?:
     | {
         listCommand: { command: string; args: string[] };
@@ -119,6 +123,7 @@ async function startThread(args?: StartThreadArgs): Promise<{
     workspaceWriteRoots: [workspaceDir],
     ...(args?.envVars ? { envVars: args.envVars } : {}),
     ...(args?.instructions ? { instructions: args.instructions } : {}),
+    ...(args?.dynamicTools ? { dynamicTools: args.dynamicTools } : {}),
   });
   const response = await waitForResponse(id);
   if (response.error) {
@@ -180,6 +185,67 @@ function agentMessageTexts(): string[] {
       return [];
     }
     return [content.text];
+  });
+}
+
+function callDynamicToolBridge(args: {
+  callId: string;
+  host: string;
+  port: number;
+  threadId: string;
+  token: string;
+  tool: string;
+  toolArguments: Record<string, unknown>;
+}): Promise<unknown> {
+  return new Promise((resolveCall, rejectCall) => {
+    const socket = createConnection({ host: args.host, port: args.port });
+    let buffer = "";
+    let settled = false;
+    const rejectOnce = (error: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      rejectCall(error);
+    };
+    socket.setEncoding("utf8");
+    socket.on("connect", () => {
+      socket.write(
+        `${JSON.stringify({
+          arguments: args.toolArguments,
+          callId: args.callId,
+          threadId: args.threadId,
+          token: args.token,
+          tool: args.tool,
+        })}\n`,
+      );
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const newlineIndex = buffer.indexOf("\n");
+      if (newlineIndex === -1) {
+        return;
+      }
+      const line = buffer.slice(0, newlineIndex);
+      socket.end();
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        resolveCall(JSON.parse(line));
+      } catch (error) {
+        rejectCall(error);
+      }
+    });
+    socket.on("error", rejectOnce);
+    socket.on("end", () => {
+      if (!settled) {
+        rejectOnce(
+          new Error("Dynamic tool bridge socket closed without a response"),
+        );
+      }
+    });
   });
 }
 
@@ -702,6 +768,125 @@ describe("acp bridge", () => {
     });
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(agentMessageTexts()).toContain("echo:hello there");
+  });
+
+  it("passes dynamic tools to ACP sessions as an MCP server", async () => {
+    const { providerThreadId } = await startThread({
+      dynamicTools: [
+        {
+          name: "update_environment_directory",
+          description: "Move this thread to another environment directory.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-mcp-servers", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain(
+      `mcp-servers:${ACP_BRIDGE_MCP_SERVER_NAME}`,
+    );
+  });
+
+  it("forwards ACP dynamic tool calls through the runtime tool-call contract", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dynamicTools: [
+        {
+          name: "update_environment_directory",
+          description: "Move this thread to another environment directory.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    const configPrefix = "mcp-server-config:";
+    const configText = agentMessageTexts().find((text) =>
+      text.startsWith(configPrefix),
+    );
+    if (!configText) {
+      throw new Error("Fake ACP agent did not report MCP server config");
+    }
+    const [mcpServerConfig] = JSON.parse(
+      configText.slice(configPrefix.length),
+    ) as { env: { name: string; value: string }[]; name: string }[];
+    if (!mcpServerConfig) {
+      throw new Error("Fake ACP agent reported no MCP server config");
+    }
+    expect(mcpServerConfig?.name).toBe(ACP_BRIDGE_MCP_SERVER_NAME);
+    const env = new Map(
+      mcpServerConfig.env.map(({ name, value }) => [name, value]),
+    );
+    const host = env.get("BB_ACP_DYNAMIC_TOOL_HOST");
+    const port = Number(env.get("BB_ACP_DYNAMIC_TOOL_PORT"));
+    const threadId = env.get("BB_ACP_DYNAMIC_TOOL_THREAD_ID");
+    const token = env.get("BB_ACP_DYNAMIC_TOOL_TOKEN");
+    if (!host || !Number.isInteger(port) || !threadId || !token) {
+      throw new Error("MCP server config is missing dynamic tool bridge env");
+    }
+
+    const bridgeCall = callDynamicToolBridge({
+      callId: "test-dynamic-tool-call",
+      host,
+      port,
+      threadId,
+      token,
+      tool: "update_environment_directory",
+      toolArguments: { path: "/tmp/next-worktree" },
+    });
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "item/tool/call" && message.id !== undefined,
+        ),
+      "forwarded dynamic tool call",
+    );
+    expect(forwarded.params).toMatchObject({
+      arguments: { path: "/tmp/next-worktree" },
+      providerThreadId,
+      threadId: bbThreadId,
+      tool: "update_environment_directory",
+      turnId: null,
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          success: true,
+          contentItems: [
+            { type: "inputText", text: "environment directory updated" },
+          ],
+        },
+      }),
+    );
+
+    await expect(bridgeCall).resolves.toEqual({
+      content: "environment directory updated",
+      isError: false,
+      ok: true,
+    });
   });
 
   it("prepends instructions to the first prompt only", async () => {

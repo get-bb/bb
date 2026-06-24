@@ -1133,11 +1133,6 @@ export function createAcpProviderAdapter(
       { type: "thread/start" | "thread/resume" }
     >,
   ): Record<string, unknown> {
-    if (command.dynamicTools && command.dynamicTools.length > 0) {
-      throw new Error(
-        `Provider "${profile.providerId}" does not support dynamic tools.`,
-      );
-    }
     const instructions = command.options.instructions?.trim();
     const cwd = profile.cwd ?? command.cwd;
     const envVars = {
@@ -1157,6 +1152,9 @@ export function createAcpProviderAdapter(
       workspaceWriteRoots: [cwd, ...additionalWorkspaceWriteRoots],
       ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
       ...(instructions ? { instructions } : {}),
+      ...(command.dynamicTools && command.dynamicTools.length > 0
+        ? { dynamicTools: command.dynamicTools }
+        : {}),
     };
   }
 

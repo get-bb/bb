@@ -175,8 +175,12 @@ describe("thread runtime config", () => {
           thread,
         });
         expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(startCommand.dynamicTools).toEqual([]);
-        expect(startCommand.instructions).not.toContain(
+        expect(startCommand.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(startCommand.instructions).toContain(
           "update_environment_directory",
         );
 
@@ -193,8 +197,12 @@ describe("thread runtime config", () => {
         );
         expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
         expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.dynamicTools).toEqual([]);
-        expect(submitCommand.resumeContext.instructions).not.toContain(
+        expect(submitCommand.resumeContext.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(submitCommand.resumeContext.instructions).toContain(
           "update_environment_directory",
         );
       },
@@ -251,8 +259,12 @@ describe("thread runtime config", () => {
         thread,
       });
       expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
-      expect(startCommand.dynamicTools).toEqual([]);
-      expect(startCommand.instructions).not.toContain(
+      expect(startCommand.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(startCommand.instructions).toContain(
         "update_environment_directory",
       );
 
@@ -269,8 +281,12 @@ describe("thread runtime config", () => {
       );
       expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
       expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
-      expect(submitCommand.resumeContext.dynamicTools).toEqual([]);
-      expect(submitCommand.resumeContext.instructions).not.toContain(
+      expect(submitCommand.resumeContext.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(submitCommand.resumeContext.instructions).toContain(
         "update_environment_directory",
       );
     });

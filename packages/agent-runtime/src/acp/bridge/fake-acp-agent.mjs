@@ -27,8 +27,7 @@ const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
-const setConfigModelError =
-  process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
+const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
@@ -41,6 +40,7 @@ let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 const pendingClientRequests = new Map();
+let currentMcpServers = [];
 
 const effortsByModel = new Map([
   ["fake/strong", ["none", "low", "medium", "high", "xhigh"]],
@@ -161,6 +161,12 @@ function promptText(prompt) {
     .join("\n");
 }
 
+function captureMcpServers(message) {
+  currentMcpServers = Array.isArray(message.params?.mcpServers)
+    ? message.params.mcpServers
+    : [];
+}
+
 async function handlePrompt(message) {
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
@@ -230,6 +236,16 @@ async function handlePrompt(message) {
         `electron-run-as-node:${process.env.ELECTRON_RUN_AS_NODE ?? "missing"}`,
       ),
     );
+  } else if (text.includes("echo-mcp-servers")) {
+    const names = currentMcpServers
+      .map((server) => server?.name)
+      .filter((name) => typeof name === "string")
+      .join(",");
+    notifyUpdate(messageChunk(`mcp-servers:${names}`));
+  } else if (text.includes("echo-mcp-server-config")) {
+    notifyUpdate(
+      messageChunk(`mcp-server-config:${JSON.stringify(currentMcpServers)}`),
+    );
   } else {
     notifyUpdate(messageChunk(`echo:${text}`));
   }
@@ -263,6 +279,7 @@ async function handleMessage(message) {
       });
       return;
     case "session/new":
+      captureMcpServers(message);
       send({
         jsonrpc: "2.0",
         id: message.id,
@@ -274,6 +291,7 @@ async function handleMessage(message) {
       return;
     case "session/load":
       if (loadSession) {
+        captureMcpServers(message);
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
       } else {
         send({

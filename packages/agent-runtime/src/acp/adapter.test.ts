@@ -176,20 +176,30 @@ describe("acp adapter command plans", () => {
     ).toBe("noop");
   });
 
-  it("rejects dynamic tools", () => {
+  it("passes dynamic tools to the bridge", () => {
     const adapter = createAdapter();
-    expect(() =>
+    const dynamicTool = {
+      name: "ask",
+      description: "ask",
+      inputSchema: { type: "object" },
+    };
+
+    expect(
       adapter.buildCommandPlan({
         type: "thread/start",
         threadId: "thread-1",
         cwd: "/workspace",
         options: fullProviderExecutionContext,
         instructionMode: "append",
-        dynamicTools: [
-          { name: "ask", description: "ask", inputSchema: { type: "object" } },
-        ],
+        dynamicTools: [dynamicTool],
       }),
-    ).toThrow(/does not support dynamic tools/);
+    ).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        dynamicTools: [dynamicTool],
+      },
+    });
   });
 });
 
