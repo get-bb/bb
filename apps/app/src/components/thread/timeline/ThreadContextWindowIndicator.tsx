@@ -14,6 +14,8 @@ export interface ThreadContextWindowIndicatorProps {
   defaultOpen?: boolean;
 }
 
+const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
+
 export function ThreadContextWindowIndicator({
   usage,
   className,
@@ -24,7 +26,10 @@ export function ThreadContextWindowIndicator({
     triggerHoverProps,
     contentHoverProps,
     handleOpenChange,
-  } = useHoverPopover();
+  } = useHoverPopover({
+    closeDelayMs: CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS,
+    hoverableContent: false,
+  });
   const open = defaultOpen || hoverOpen;
 
   const usedPercent = calculateContextWindowUsagePercent(usage);
@@ -52,7 +57,7 @@ export function ThreadContextWindowIndicator({
           type="button"
           {...triggerHoverProps}
           className={cn(
-            "inline-flex size-6 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "-m-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             className,
           )}
           aria-label={`Context window ${usedPercent}% used`}

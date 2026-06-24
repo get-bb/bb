@@ -10,6 +10,7 @@ interface HoverPopoverHandlers {
 
 interface UseHoverPopoverOptions {
   closeDelayMs?: number;
+  hoverableContent?: boolean;
 }
 
 interface UseHoverPopoverResult {
@@ -21,14 +22,26 @@ interface UseHoverPopoverResult {
 
 const DEFAULT_CLOSE_DELAY_MS = 160;
 const noop = () => undefined;
+const preventAutoFocus = (event: Event) => {
+  event.preventDefault();
+};
 
 const EMPTY_HOVER_PROPS: HoverPopoverHandlers = {
   onPointerEnter: noop,
   onPointerLeave: noop,
 };
 
+const NON_HOVERABLE_CONTENT_PROPS: HoverPopoverHandlers = {
+  onPointerEnter: noop,
+  onPointerLeave: noop,
+  // Hover-driven popovers should not steal or restore focus.
+  onOpenAutoFocus: preventAutoFocus,
+  onCloseAutoFocus: preventAutoFocus,
+};
+
 export function useHoverPopover({
   closeDelayMs = DEFAULT_CLOSE_DELAY_MS,
+  hoverableContent = true,
 }: UseHoverPopoverOptions = {}): UseHoverPopoverResult {
   const isPointerCoarse = usePointerCoarse();
   const [open, setOpen] = useState(false);
@@ -100,21 +113,19 @@ export function useHoverPopover({
 
   const contentHoverProps = isPointerCoarse
     ? EMPTY_HOVER_PROPS
-    : {
-        onPointerEnter: () => {
-          setIsPointerOverContent(true);
-        },
-        onPointerLeave: () => {
-          setIsPointerOverContent(false);
-        },
-        // Hover-driven popovers should not steal or restore focus.
-        onOpenAutoFocus: (event: Event) => {
-          event.preventDefault();
-        },
-        onCloseAutoFocus: (event: Event) => {
-          event.preventDefault();
-        },
-      };
+    : hoverableContent
+      ? {
+          onPointerEnter: () => {
+            setIsPointerOverContent(true);
+          },
+          onPointerLeave: () => {
+            setIsPointerOverContent(false);
+          },
+          // Hover-driven popovers should not steal or restore focus.
+          onOpenAutoFocus: preventAutoFocus,
+          onCloseAutoFocus: preventAutoFocus,
+        }
+      : NON_HOVERABLE_CONTENT_PROPS;
 
   return {
     open,
