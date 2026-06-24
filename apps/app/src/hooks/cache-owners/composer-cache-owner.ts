@@ -1,10 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadComposerBootstrapResponse } from "@bb/server-contract";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
-import {
-  threadPromptHistoryQueryKey,
-  threadQueuedMessagesQueryKey,
-} from "../queries/query-keys";
+import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 import { seedSystemExecutionOptionsCache } from "./system-cache-effects";
 
 interface ThreadComposerBootstrapHydrationArgs {
@@ -43,10 +40,6 @@ export function hydrateThreadComposerBootstrap({
       currentQueuedMessages === undefined || !hasActiveQueuedMessagesOwner
         ? bootstrap.queuedMessages
         : currentQueuedMessages,
-  );
-  queryClient.setQueryData(
-    threadPromptHistoryQueryKey(threadId),
-    bootstrap.promptHistory,
   );
   // Only seed the SHARED system-execution-options cache when the server
   // actually resolved options. Null means "not resolved" (archived /

@@ -292,7 +292,7 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(mocks.useThreadPromptHistory).toHaveBeenCalledWith(
       "thr_1",
-      expect.objectContaining({ enabled: false }),
+      expect.objectContaining({ enabled: true }),
     );
     expect(mocks.useThreadQueuedMessages).toHaveBeenCalledWith(
       "thr_1",

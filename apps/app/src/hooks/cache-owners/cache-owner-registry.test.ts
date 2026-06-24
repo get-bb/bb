@@ -77,7 +77,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/composer-cache-owner.ts": [
-    "threadPromptHistoryQueryKey",
     "threadQueuedMessagesQueryKey",
   ],
   "hooks/cache-owners/environment-cache-effects.ts": [

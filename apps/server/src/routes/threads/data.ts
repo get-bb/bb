@@ -141,10 +141,6 @@ async function buildThreadComposerBootstrapResponse(
       toThreadQueuedMessage,
     ),
     executionOptions,
-    promptHistory: listThreadPromptHistory(deps, {
-      threadId,
-      limit: PROMPT_HISTORY_ENTRY_LIMIT,
-    }),
   };
 }
 

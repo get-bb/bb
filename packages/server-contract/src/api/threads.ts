@@ -36,7 +36,6 @@ import {
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
-import { promptHistoryResponseSchema } from "./projects.js";
 import { systemExecutionOptionsResponseSchema } from "./system.js";
 
 export const sendMessageModeSchema = z.enum([
@@ -408,7 +407,6 @@ export const threadComposerBootstrapResponseSchema = z.object({
    * shared system-execution-options cache with it).
    */
   executionOptions: systemExecutionOptionsResponseSchema.nullable(),
-  promptHistory: promptHistoryResponseSchema,
 });
 export type ThreadComposerBootstrapResponse = z.infer<
   typeof threadComposerBootstrapResponseSchema

@@ -55,7 +55,6 @@ const NULL_EXECUTION_BOOTSTRAP: ThreadComposerBootstrapResponse = {
   defaultExecutionOptions: null,
   queuedMessages: [],
   executionOptions: null,
-  promptHistory: [],
 };
 
 describe("composer cache owner", () => {
@@ -142,8 +141,8 @@ describe("composer cache owner", () => {
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
     ).toEqual([]);
     expect(
-      queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
-    ).toEqual([]);
+      queryClient.getQueryState(threadPromptHistoryQueryKey("thread-1")),
+    ).toBeUndefined();
     expect(
       queryClient.getQueryState(threadPendingInteractionsQueryKey("thread-1")),
     ).toBeUndefined();

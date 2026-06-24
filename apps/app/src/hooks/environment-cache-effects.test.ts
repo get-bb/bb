@@ -74,13 +74,11 @@ describe("environment cache effects", () => {
       defaultExecutionOptions: null,
       queuedMessages: [],
       executionOptions: EMPTY_EXECUTION_OPTIONS,
-      promptHistory: [],
     });
     queryClient.setQueryData(retainedComposerBootstrapKey, {
       defaultExecutionOptions: null,
       queuedMessages: [],
       executionOptions: EMPTY_EXECUTION_OPTIONS,
-      promptHistory: [],
     });
     queryClient.setQueryData(removedWorkStatusKey, {});
 
@@ -103,7 +101,6 @@ describe("environment cache effects", () => {
       defaultExecutionOptions: null,
       queuedMessages: [],
       executionOptions: EMPTY_EXECUTION_OPTIONS,
-      promptHistory: [],
     });
   });
 

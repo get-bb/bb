@@ -2269,6 +2269,7 @@ describe("public thread data routes", () => {
       expect(response.status).toBe(200);
       const rawBootstrap = await readJson(response);
       expect(rawBootstrap).not.toHaveProperty("pendingInteractions");
+      expect(rawBootstrap).not.toHaveProperty("promptHistory");
       const bootstrap = threadComposerBootstrapResponseSchema.parse(
         rawBootstrap,
       );
@@ -2293,12 +2294,6 @@ describe("public thread data routes", () => {
       expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
       expect(bootstrap.queuedMessages[0]?.content).toEqual(
         textInput("Queued message"),
-      );
-      expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
-        expect.arrayContaining([
-          textInput("Accepted prompt"),
-          textInput("Queued message"),
-        ]),
       );
       expect(
         providerResponder.requests.map((request) => request.command),

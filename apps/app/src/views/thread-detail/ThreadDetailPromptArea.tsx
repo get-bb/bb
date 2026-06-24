@@ -277,8 +277,7 @@ export function ThreadDetailPromptArea({
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     thread.id,
     {
-      enabled: composerQueriesEnabled,
-      staleTime: composerQueriesStaleTime,
+      enabled: true,
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
