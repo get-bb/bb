@@ -8,7 +8,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -44,6 +43,9 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const SIDEBAR_FOOTER_ACTION_CLASS = "w-auto shrink-0";
+const SIDEBAR_FOOTER_ACTION_LABEL_CLASS =
+  "group-data-[collapsible=icon]:hidden";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -324,18 +326,25 @@ export function AppSidebar({
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
-          <SidebarMenu className="flex-row items-center">
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild aria-label="Settings">
+          <SidebarMenu className="flex-row items-center gap-1">
+            <SidebarMenuItem className="min-w-0">
+              <SidebarMenuButton
+                asChild
+                aria-label="Settings"
+                tooltip="Settings"
+                className={SIDEBAR_FOOTER_ACTION_CLASS}
+              >
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
-                  <span>Settings</span>
+                  <span className={SIDEBAR_FOOTER_ACTION_LABEL_CLASS}>
+                    Settings
+                  </span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
+            <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
-                className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
+                className={SIDEBAR_FOOTER_ACTION_CLASS}
                 tooltip="Send feedback"
                 aria-label="Send feedback"
                 onClick={() => {
@@ -344,6 +353,9 @@ export function AppSidebar({
                 }}
               >
                 <Icon name="ChatFeedback" />
+                <span className={SIDEBAR_FOOTER_ACTION_LABEL_CLASS}>
+                  Feedback
+                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
