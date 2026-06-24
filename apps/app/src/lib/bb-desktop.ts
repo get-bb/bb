@@ -59,17 +59,15 @@ export const CHROME_ROW_HEIGHT_CLASS = "h-[48px]";
 // row and vertically centered so its contents share the titlebar axis.
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
-// macOS renders the traffic-light cluster ~2 CSS px BELOW the chrome row's
-// geometric center: a native window screenshot (Retina 2x) measures the light
-// centers at y≈51.5 device px (≈25.8 CSS) while the renderer chrome box-centers
-// at 24. Box-centering alone (CDP y=24) therefore looks ~2 px high next to the
-// native lights. This nudges the top-of-window chrome down onto the lights'
-// axis. It is the single knob for the collapse trigger, the route-history
-// arrows, and the page/thread header content, and is applied ONLY under macOS
-// desktop chrome — the web build has no traffic lights and stays row-centered.
-// 2 CSS px = 4 device px at 2x, so the shift stays crisp (no sub-pixel blur).
+// macOS native traffic lights and Chromium-rendered chrome land on slightly
+// different visual axes. A Retina screenshot of the desktop titlebar measures
+// the light centers and the sidebar trigger about 2 device px apart with a 2px
+// nudge, so use the smaller crisp shift here: 1 CSS px = 2 device px at 2x.
+// This is the single knob for the collapse trigger, the route-history arrows,
+// and the page/thread header content, and is applied only under macOS desktop
+// chrome. The web build has no traffic lights and stays row-centered.
 export const MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS =
-  "[transform:translateY(2px)]";
+  "[transform:translateY(1px)]";
 
 export type BbDesktopInfoResult = BbDesktopApi | null;
 
