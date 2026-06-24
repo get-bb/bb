@@ -729,9 +729,10 @@ function startPopoutConfigSync(serverUrl: string): void {
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
-  applicationWindowWebContentsIds.add(browserWindow.webContents.id);
+  const webContentsId = browserWindow.webContents.id;
+  applicationWindowWebContentsIds.add(webContentsId);
   browserWindow.on("closed", () => {
-    applicationWindowWebContentsIds.delete(browserWindow.webContents.id);
+    applicationWindowWebContentsIds.delete(webContentsId);
   });
 }
 
