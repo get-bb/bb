@@ -91,6 +91,10 @@ export type EnvironmentDiffFileResult = PublicApiOutput<
   "$get"
 >;
 export type EnvironmentGetResult = PublicApiOutput<"/environments/:id", "$get">;
+export type EnvironmentPullRequestResult = PublicApiOutput<
+  "/environments/:id/pull-request",
+  "$get"
+>;
 export type EnvironmentSquashMergeResult = Extract<
   EnvironmentActionResult,
   { action: "squash_merge" }
@@ -112,6 +116,9 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentDiffBranchesResult>;
   diffFile(args: EnvironmentDiffFileArgs): Promise<EnvironmentDiffFileResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
+  pullRequest(
+    args: EnvironmentGetArgs,
+  ): Promise<EnvironmentPullRequestResult>;
   squashMerge(
     args: EnvironmentSquashMergeArgs,
   ): Promise<EnvironmentSquashMergeResult>;
@@ -236,6 +243,13 @@ export function createEnvironmentsArea(
         }),
       );
       return environmentSchema.parse(body);
+    },
+    async pullRequest(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"]["pull-request"].$get({
+          param: { id: input.environmentId },
+        }),
+      );
     },
     async squashMerge(input) {
       const body = await transport.readJson(

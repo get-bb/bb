@@ -158,6 +158,30 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("routes environment pull request calls through the HTTP transport", async () => {
+    const response = { pullRequest: null };
+    const queue = createFetchQueue([{ body: response }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.environments.pullRequest({ environmentId: "env_pr" }),
+    ).resolves.toEqual(response);
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/environments/env_pr/pull-request",
+      },
+    ]);
+  });
+
   it("updates environment metadata through the HTTP transport", async () => {
     const environment = makeEnvironment({
       id: "env_update",

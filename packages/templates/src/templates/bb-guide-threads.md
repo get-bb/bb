@@ -38,7 +38,7 @@ Listing:
 
 Inspecting:
 
-  bb thread show [id]                      Show thread details
+  bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
     --work-status                          Include git working-tree status
     --git-diff                             Include git diff
@@ -47,9 +47,7 @@ Inspecting:
     --diff-merge-base <branch>             Override merge-base branch for diff
     --merge-base-branches                  List available merge-base branches
 
-  bb thread metadata [id]                  Show thread metadata
-    --self                                 Target current thread
-    --json                                 Print structured metadata
+  Shows pull request status for the attached environment branch when available.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
