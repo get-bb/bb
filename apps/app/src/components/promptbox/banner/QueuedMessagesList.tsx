@@ -646,13 +646,13 @@ export function QueuedMessagesList({
       // Tuck the drawer's flat, borderless bottom behind the prompt box (which
       // is `relative` + opaque, so it paints on top) so the queued list reads as
       // coming up from behind the composer rather than floating above it. The
-      // hidden bottom spacer keeps the overlap in layout without painting side
-      // masks or a tucked bottom edge in standalone stories.
+      // bottom spacer gives the prompt box enough overlap to cover the drawer
+      // edge in production, while standalone stories still keep the drawer's
+      // full visual depth.
       className={cn(
         "relative -mb-5 overflow-hidden rounded-b-none border-b-0 pb-5 shadow-none",
         isExpanded && "pb-6",
       )}
-      style={{ clipPath: "inset(0 0 1.25rem 0)" }}
     >
       <div>
         <button
