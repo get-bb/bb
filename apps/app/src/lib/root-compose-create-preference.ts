@@ -5,7 +5,7 @@ import { createJsonLocalStorage } from "./browser-storage";
 export const NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY =
   "bb.root-compose.navigate-after-create";
 
-export const NAVIGATE_TO_THREAD_AFTER_CREATE_DEFAULT = false;
+export const NAVIGATE_TO_THREAD_AFTER_CREATE_DEFAULT = true;
 
 const navigateToThreadAfterCreateStorage = createJsonLocalStorage<boolean>();
 
