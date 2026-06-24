@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import {
   closeSession,
@@ -67,6 +68,11 @@ async function postToolCall(args: {
       arguments: args.arguments,
     }),
   });
+}
+
+async function flushDeferredChildThreadNotifications(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+  await sleep(2_100);
 }
 
 describe("internal event and tool-call routes", () => {
@@ -419,6 +425,150 @@ describe("internal event and tool-call routes", () => {
           .all()
           .filter((row) => row.type === "client/turn/requested"),
       ).toEqual([]);
+    });
+  });
+
+  it("does not activate an idle thread for a delegated child turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              scope: turnScope("delegated-child-turn"),
+              parentToolCallId: "call-delegate-agent",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              scope: turnScope("delegated-child-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("idle");
+    });
+  });
+
+  it("does not notify a parent when a child thread nested turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "active",
+      });
+      seedEvent(harness.deps, {
+        threadId: parentThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-parent-thread",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("parent-root-turn"),
+        data: {
+          providerThreadId: "provider-parent-thread",
+        },
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: parentThread.id,
+        providerId: "codex",
+        status: "active",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/started",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-root-turn"),
+            },
+          },
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/started",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-nested-turn"),
+              parentToolCallId: "call-nested-agent",
+            },
+          },
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/completed",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-nested-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await flushDeferredChildThreadNotifications();
+
+      expect(
+        harness.db
+          .select()
+          .from(threads)
+          .where(eq(threads.id, childThread.id))
+          .get()?.status,
+      ).toBe("active");
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, parentThread.id))
+          .all()
+          .map((row) => row.type),
+      ).toEqual(["turn/started"]);
     });
   });
 

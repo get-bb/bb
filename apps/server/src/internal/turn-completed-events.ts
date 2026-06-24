@@ -18,6 +18,7 @@ import {
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 
 interface ApplyTurnCompletedEventResult {
+  isRootTurnCompletion: boolean;
   nextStatus: ThreadStatus | null;
   thread: ReturnType<typeof getThread>;
 }
@@ -40,20 +41,19 @@ export function applyTurnCompletedEvent(
 ): ApplyTurnCompletedEventResult {
   const thread = getThread(deps.db, payload.threadId);
   if (!thread) {
-    return { nextStatus: null, thread: null };
+    return { isRootTurnCompletion: false, nextStatus: null, thread: null };
   }
 
   const turnId = requireThreadEventScopeTurnId({
     type: payload.type,
     scope: payload.scope,
   });
-  if (
-    !hasRootStoredTurnStarted(deps.db, {
-      threadId: payload.threadId,
-      turnId,
-    })
-  ) {
-    return { nextStatus: null, thread };
+  const isRootTurnCompletion = hasRootStoredTurnStarted(deps.db, {
+    threadId: payload.threadId,
+    turnId,
+  });
+  if (!isRootTurnCompletion) {
+    return { isRootTurnCompletion, nextStatus: null, thread };
   }
 
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
@@ -77,7 +77,7 @@ export function applyTurnCompletedEvent(
     closeAutomationRunForSettledThread(deps, payload);
   }
 
-  return { nextStatus, thread };
+  return { isRootTurnCompletion, nextStatus, thread };
 }
 
 /**
