@@ -324,9 +324,11 @@ export function registerShowCommand(
           return;
         }
 
-        printThreadStatus(statusPayload, environmentInfo);
-
-        printPullRequest(fetchedPullRequest);
+        printThreadStatus(
+          statusPayload,
+          environmentInfo,
+          fetchedPullRequest,
+        );
 
         printPendingTodos(pendingTodos);
 
@@ -473,6 +475,7 @@ export function registerShowCommand(
 function printThreadStatus(
   payload: ThreadStatusPayload,
   environmentInfo: ThreadEnvironmentInfo | null,
+  pullRequest: FetchedPullRequest | null,
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);
@@ -492,51 +495,53 @@ function printThreadStatus(
   }
   if (environmentInfo) {
     printEnvironmentInfo(environmentInfo);
+    printEnvironmentPullRequest(pullRequest);
   } else if (thread.environmentId) {
     console.log(`  Environment: ${thread.environmentId}`);
+    printEnvironmentPullRequest(pullRequest);
   }
   console.log(`  Created: ${new Date(thread.createdAt).toLocaleString()}`);
   console.log(`  Updated: ${new Date(thread.updatedAt).toLocaleString()}`);
 }
 
-function printPullRequest(pullRequest: FetchedPullRequest | null): void {
+function printEnvironmentPullRequest(
+  pullRequest: FetchedPullRequest | null,
+): void {
   if (!pullRequest) {
     return;
   }
 
-  console.log("");
   if (pullRequest.status === "unavailable") {
-    console.log("Pull request: unavailable");
+    console.log("    Pull request: unavailable");
     if (pullRequest.message) {
-      console.log(`  ${pullRequest.message}`);
+      console.log(`      ${pullRequest.message}`);
     }
     return;
   }
 
   if (pullRequest.status === "none") {
-    console.log("Pull request: none");
+    console.log("    Pull request: none");
     return;
   }
 
   const pr = pullRequest.pullRequest;
   if (!pr) {
-    console.log("Pull request: none");
+    console.log("    Pull request: none");
     return;
   }
-  console.log("Pull request:");
-  console.log(`  PR:        #${pr.number} ${pr.state} - ${pr.title}`);
-  console.log(`  URL:       ${pr.url}`);
-  console.log(`  Branch:    ${pr.headRefName} -> ${pr.baseRefName}`);
-  console.log(`  Attention: ${pr.attention}`);
+  console.log(`    Pull request: #${pr.number} ${pr.state} - ${pr.title}`);
+  console.log(`    URL:          ${pr.url}`);
+  console.log(`    Branch:       ${pr.headRefName} -> ${pr.baseRefName}`);
+  console.log(`    Attention:    ${pr.attention}`);
   console.log(
-    `  Checks:    ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
+    `    Checks:       ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
       `${pr.checks.failedCount} failed, ${pr.checks.pendingCount} pending, ` +
       `${pr.checks.totalCount} total)`,
   );
   console.log(
-    `  Review:    ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
+    `    Review:       ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
   );
-  console.log(`  Merge:     ${pr.mergeability.state}`);
+  console.log(`    Merge:        ${pr.mergeability.state}`);
 }
 
 function resolveThreadTimelineTextFormat(

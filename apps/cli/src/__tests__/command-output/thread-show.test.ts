@@ -352,13 +352,20 @@ describe("bb thread show command output", () => {
       param: { id: "env-show-pr" },
     });
     const output = collectLogLines(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("Pull request:");
+    expect(output.indexOf("Environment:")).toBeLessThan(
+      output.indexOf("Pull request:"),
+    );
+    expect(output).toContain(
+      "Pull request: #42 open - Show pull requests in thread show",
+    );
     expect(output).toContain("#42 open - Show pull requests in thread show");
     expect(output).toContain("https://github.com/example/bb/pull/42");
-    expect(output).toContain("Branch:    bb/thread-show-pr -> main");
-    expect(output).toContain("Checks:    passing (3 passed, 0 failed, 0 pending, 3 total)");
-    expect(output).toContain("Review:    review_required (1 requested)");
-    expect(output).toContain("Merge:     mergeable");
+    expect(output).toContain("Branch:       bb/thread-show-pr -> main");
+    expect(output).toContain(
+      "Checks:       passing (3 passed, 0 failed, 0 pending, 3 total)",
+    );
+    expect(output).toContain("Review:       review_required (1 requested)");
+    expect(output).toContain("Merge:        mergeable");
   });
 
   it("bb thread show --json includes pull request details", async () => {
