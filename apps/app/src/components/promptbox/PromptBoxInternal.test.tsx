@@ -301,6 +301,36 @@ describe("PromptBoxInternal controlled value sync", () => {
       [],
     );
   });
+
+  it("places focus-end insertion below an added quote", async () => {
+    const onChange = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    const baseProps = createPromptBoxProps({
+      onChange,
+      promptBoxRef,
+      value: "",
+      focusEndKey: 0,
+    });
+    const view = render(<PromptBoxInternal {...baseProps} />);
+
+    view.rerender(
+      <PromptBoxInternal
+        {...baseProps}
+        value={"> selected text\n"}
+        focusEndKey={1}
+      />,
+    );
+
+    await waitForPromptFocus();
+    await act(async () => {
+      promptBoxRef.current?.insertTextAtCursor("reply");
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      "> selected text\n\nreply",
+      [],
+    );
+  });
 });
 
 describe("PromptBoxInternal zen mode layout", () => {

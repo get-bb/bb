@@ -2,6 +2,7 @@ import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
   useCallback,
@@ -920,6 +921,14 @@ export function suppressPromptEditorAnchorActivation(event: Event): boolean {
   return true;
 }
 
+function focusEditorAtEnd(editor: Editor): void {
+  const transaction = editor.state.tr
+    .setSelection(TextSelection.atEnd(editor.state.doc))
+    .scrollIntoView();
+  editor.view.dispatch(transaction);
+  editor.view.focus();
+}
+
 export function PromptBoxInternal({
   id,
   value,
@@ -1310,7 +1319,7 @@ export function PromptBoxInternal({
     if (shouldAvoidSoftKeyboardAutofocus) return;
     if (!editor) return;
 
-    editor.commands.focus("end");
+    focusEditorAtEnd(editor);
     scheduleRevealEditorSelection();
   }, [
     editor,
@@ -1367,7 +1376,7 @@ export function PromptBoxInternal({
     if (focusEndKey === lastFocusEndKeyRef.current) return;
     if (!editor) return;
     lastFocusEndKeyRef.current = focusEndKey;
-    editor.commands.focus("end");
+    focusEditorAtEnd(editor);
     scheduleRevealEditorSelection();
   }, [editor, focusEndKey, scheduleRevealEditorSelection]);
 
@@ -1704,7 +1713,7 @@ export function PromptBoxInternal({
   const focusEnd = useCallback(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed) return;
-    currentEditor.commands.focus("end");
+    focusEditorAtEnd(currentEditor);
     scheduleRevealEditorSelection();
   }, [scheduleRevealEditorSelection]);
 
@@ -1962,7 +1971,7 @@ export function PromptBoxInternal({
           return;
         }
 
-        currentEditor.commands.focus("end");
+        focusEditorAtEnd(currentEditor);
         syncTriggerState(currentEditor);
         scheduleRevealEditorSelection();
       });
@@ -2006,7 +2015,7 @@ export function PromptBoxInternal({
       if (!currentEditor || currentEditor.isDestroyed) return;
 
       event.preventDefault();
-      currentEditor.commands.focus("end");
+      focusEditorAtEnd(currentEditor);
       scheduleRevealEditorSelection();
     },
     [scheduleRevealEditorSelection],
