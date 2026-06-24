@@ -399,7 +399,10 @@ async function applyEventEffects(
             });
           }
         }
-        if (event.status === "completed") {
+        if (
+          event.status === "completed" &&
+          turnCompleted.nextStatus === "idle"
+        ) {
           followUps.push({
             kind: "queued-message-auto-send",
             threadId: entry.threadId,

@@ -292,16 +292,27 @@ describe("thread event pruning", () => {
         threadId: thread.id,
         endingSequence: 305,
       });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        scope: turnScope("turn-1"),
+        sequence: 306,
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        data: {
+          providerThreadId: "provider-thread-1",
+        },
+      });
       seedResolvedAssistantMessage(harness, {
         threadId: thread.id,
         itemId: "msg-1",
-        deltaSequences: [306, 307],
-        completedSequence: 308,
+        deltaSequences: [307, 308],
+        completedSequence: 309,
       });
       seedStoredEvent(harness.deps, {
         threadId: thread.id,
         scope: turnScope("turn-1"),
-        sequence: 309,
+        sequence: 310,
         type: "turn/completed",
         itemId: null,
         itemKind: null,
@@ -324,13 +335,13 @@ describe("thread event pruning", () => {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(10);
+      ).toBe(11);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
           type: "item/agentMessage/delta",
         }),
-      ).toEqual([306]);
+      ).toEqual([307]);
     });
   });
 

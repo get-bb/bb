@@ -2,11 +2,13 @@ import {
   closeAutomationRun,
   getRunningAutomationRunByThread,
   getThread,
+  hasRootStoredTurnStarted,
 } from "@bb/db";
-import type {
-  ThreadEvent,
-  ThreadLifecycleEvent,
-  ThreadStatus,
+import {
+  requireThreadEventScopeTurnId,
+  type ThreadEvent,
+  type ThreadLifecycleEvent,
+  type ThreadStatus,
 } from "@bb/domain";
 import type { AppDeps } from "../types.js";
 import {
@@ -39,6 +41,19 @@ export function applyTurnCompletedEvent(
   const thread = getThread(deps.db, payload.threadId);
   if (!thread) {
     return { nextStatus: null, thread: null };
+  }
+
+  const turnId = requireThreadEventScopeTurnId({
+    type: payload.type,
+    scope: payload.scope,
+  });
+  if (
+    !hasRootStoredTurnStarted(deps.db, {
+      threadId: payload.threadId,
+      turnId,
+    })
+  ) {
+    return { nextStatus: null, thread };
   }
 
   const outcome = applyLoggedThreadLifecycleEvent(deps, {

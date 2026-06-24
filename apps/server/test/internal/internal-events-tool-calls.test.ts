@@ -5,6 +5,7 @@ import {
   getEnvironment,
   getThread,
   listEnvironments,
+  listQueuedThreadMessages,
   threads,
 } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
@@ -311,6 +312,113 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
+    });
+  });
+
+  it("keeps active root turns queueable when a delegated child turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "active",
+      });
+
+      const eventResponse = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("root-turn"),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("delegated-child-turn"),
+              parentToolCallId: "call-delegate-agent",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("delegated-child-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(eventResponse.status).toBe(200);
+      await expect(readJson(eventResponse)).resolves.toMatchObject({
+        acceptedEvents: [
+          { eventIndex: 0, threadId: thread.id },
+          { eventIndex: 1, threadId: thread.id },
+          { eventIndex: 2, threadId: thread.id },
+        ],
+        rejectedEvents: [],
+      });
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("active");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Follow up after child turn" }],
+            mode: "queue-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+
+      expect(sendResponse.status).toBe(200);
+      await expect(readJson(sendResponse)).resolves.toEqual({ ok: true });
+      const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
+      expect(queuedRows).toHaveLength(1);
+      expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
+        {
+          mentions: [],
+          text: "Follow up after child turn",
+          type: "text",
+        },
+      ]);
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all()
+          .filter((row) => row.type === "client/turn/requested"),
+      ).toEqual([]);
     });
   });
 

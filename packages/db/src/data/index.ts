@@ -243,6 +243,7 @@ export {
   findStoredClientTurnRequestSequenceByRequestId,
   findStoredEventRow,
   getActiveStoredTurnId,
+  hasRootStoredTurnStarted,
   hasStoredTurnStarted,
   getLastStoredProviderThreadId,
   getStoredProviderThreadIdAtOrBeforeSequence,
