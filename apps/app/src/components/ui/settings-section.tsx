@@ -76,7 +76,7 @@ export function SettingsWithControl({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="text-sm font-normal text-foreground">{label}</p>
         {description ? (
           <p className="text-xs text-muted-foreground">{description}</p>
         ) : null}

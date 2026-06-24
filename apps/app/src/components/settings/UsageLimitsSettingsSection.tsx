@@ -129,7 +129,7 @@ function ProviderUsageBlock({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-foreground">{config.name}</h3>
+        <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
         {planLabel ? (
           <span className="text-xs text-muted-foreground">{planLabel}</span>
         ) : null}
