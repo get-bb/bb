@@ -122,7 +122,7 @@ import {
   type SidebarSectionId,
   type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
-import { countVisibleExpandedFolders, folderAncestorKeys } from "./folderPath";
+import { folderAncestorKeys } from "./folderPath";
 import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
@@ -1559,9 +1559,7 @@ function ProjectListComponent({
   );
   const [sortDirection] = useAtom(sidebarSortDirectionAtom);
   const isFolderOrganizationMode = organizationMode === "chronological";
-  const [collapsedFolderList, setCollapsedFolderList] = useAtom(
-    sidebarCollapsedFoldersAtom,
-  );
+  const [, setCollapsedFolderList] = useAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       getSidebarThreadComparator({
@@ -1797,43 +1795,6 @@ function ProjectListComponent({
     ],
   );
 
-  const collapsedFolderKeys = useMemo(
-    () => new Set(collapsedFolderList),
-    [collapsedFolderList],
-  );
-  // Sparse sidebar — exactly one open project/folder container — renders row
-  // actions inline; any denser and they reveal on hover so the list stays calm.
-  const sidebarActionsInline = useMemo(() => {
-    const projectsVisible =
-      visibleSidebarSectionOrder.includes("projects") &&
-      !collapsedSidebarSectionIds.has("projects");
-    const threadsVisible =
-      visibleSidebarSectionOrder.includes("threads") &&
-      !collapsedSidebarSectionIds.has("threads");
-    const expandedProjects = projectsVisible
-      ? renderedProjects.reduce(
-          (total, project) =>
-            collapsedProjectIds.has(project.id) ? total : total + 1,
-          0,
-        )
-      : 0;
-    const expandedFolders = threadsVisible
-      ? countVisibleExpandedFolders(
-          chronologicalFolderPaths,
-          CHRONOLOGICAL_CONTAINER_ID,
-          collapsedFolderKeys,
-        )
-      : 0;
-    return expandedProjects + expandedFolders === 1;
-  }, [
-    chronologicalFolderPaths,
-    collapsedFolderKeys,
-    collapsedProjectIds,
-    collapsedSidebarSectionIds,
-    renderedProjects,
-    visibleSidebarSectionOrder,
-  ]);
-
   const toggleProjectCollapsed = useCallback<ToggleCollapsedId>(
     (projectId) => {
       setCollapsedProjectIdList((current) => {
@@ -1989,8 +1950,6 @@ function ProjectListComponent({
       ) : null}
     </>
   );
-  const projectsSectionActionsAlwaysVisible =
-    projectsState.status === "ready" && renderedProjects.length === 0;
   const folderSectionActions = (
     <>
       <SidebarDisplayOptionsActions
@@ -2038,7 +1997,7 @@ function ProjectListComponent({
           label="Folders"
           actions={folderSectionActions}
           actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-          actionsMobileAlways
+          actionsAlwaysVisible
         >
           {content}
         </TopLevelSidebarSection>
@@ -2145,12 +2104,7 @@ function ProjectListComponent({
           items={visibleSidebarSectionOrder}
           strategy={verticalListSortingStrategy}
         >
-          <div
-            className="space-y-4"
-            data-sidebar-actions-inline={
-              sidebarActionsInline ? "true" : undefined
-            }
-          >
+          <div className="space-y-4">
             {visibleSidebarSectionOrder.map((sectionId) =>
               sectionId === "pinned" ? (
                 <SortableSidebarSection
@@ -2172,7 +2126,7 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
                   actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-                  actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
+                  actionsAlwaysVisible
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
                     onToggleCollapsed: () =>
