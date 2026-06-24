@@ -22,8 +22,8 @@ import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
   PromptStackCard,
-  PROMPT_STACK_INLAY_HEADER_CLASS,
   PROMPT_STACK_INLAY_INSET_CLASS,
+  PROMPT_STACK_INLAY_SEGMENT_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import {
@@ -660,8 +660,9 @@ export function QueuedMessagesList({
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
           className={cn(
-            PROMPT_STACK_INLAY_HEADER_CLASS,
-            "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "flex w-full min-w-0 items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            PROMPT_STACK_INLAY_SEGMENT_CLASS,
+            "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground",
           )}
         >
           <span className="opacity-70">Queued</span>
