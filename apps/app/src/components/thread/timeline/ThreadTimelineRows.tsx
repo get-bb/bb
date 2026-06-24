@@ -1757,6 +1757,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     },
     [onSelectionAddToChat],
   );
+  const selectionAddToChatHandler =
+    onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
   const handleSelectionReplyInSideChat = useCallback(
     (selection: MessageProseSelection) => {
       onSelectionReplyInSideChat?.({
@@ -1774,7 +1776,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onForkMessage: props.onForkMessage,
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
-      onSelectionAddToChat: handleSelectionAddToChat,
+      onSelectionAddToChat: selectionAddToChatHandler,
       reportProseSelection,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
@@ -1796,7 +1798,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onForkMessage,
       props.onSideChatMessage,
       props.onSendToMainMessage,
-      handleSelectionAddToChat,
+      selectionAddToChatHandler,
       reportProseSelection,
       props.threadChildOrigin,
       props.onOpenLink,
@@ -1843,7 +1845,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         {hasSelectionActions ? (
           <TimelineSelectionMenu
             selection={activeSelection}
-            onAddToChat={handleSelectionAddToChat}
+            onAddToChat={selectionAddToChatHandler}
             onReplyInSideChat={handleSelectionReplyInSideChat}
             onDismiss={dismissSelection}
           />

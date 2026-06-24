@@ -2,9 +2,12 @@ import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import { renderTemplate } from "@bb/templates";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
-import { appendQuoteToDraftText } from "@/lib/prompt-draft";
+import {
+  StoryDraftPromptBox,
+  useStoryPromptDraft,
+} from "@/components/thread/timeline/StoryDraftPromptBox";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -30,23 +33,6 @@ function TimelineStage({
       }`}
     >
       {children}
-    </div>
-  );
-}
-
-function appendStoryQuote(draftText: string, quotedText: string): string {
-  return appendQuoteToDraftText(
-    { text: draftText, mentions: [], attachments: [] },
-    quotedText,
-  ).text;
-}
-
-function DraftQuotePreview({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <div className="mt-3 rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
-      <div className="mb-1 font-medium text-foreground">Draft quote</div>
-      <pre className="whitespace-pre-wrap font-mono">{text}</pre>
     </div>
   );
 }
@@ -529,13 +515,33 @@ const mentionedMessageMentions: PromptTextMention[] = [
 ];
 
 export function Overview() {
-  const [draftText, setDraftText] = useState("");
-  const handleAddToChat = (text: string) => {
-    setDraftText((current) => appendStoryQuote(current, text));
-  };
+  const promptDraft = useStoryPromptDraft();
+  const handleAddToChat = promptDraft.addQuote;
 
   return (
     <StoryCard>
+      <StoryRow
+        label="short (hover)"
+        hint="production behavior — hover or focus the message to reveal actions"
+      >
+        <TimelineStage>
+          <ConversationMessageContent
+            role="user"
+            childOrigin={null}
+            initiator="user"
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderChildOrigin={null}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text="Walk me through how ThreadDetailView wires the prompt context banner."
+            attachments={null}
+            mentions={[]}
+            turnRequest={acceptedMessage}
+            onAddToChat={handleAddToChat}
+          />
+        </TimelineStage>
+      </StoryRow>
       <StoryRow label="short">
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
@@ -690,9 +696,9 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="add to chat result"
-        hint="click Add to chat under any regular user message"
+        hint="click Add to chat under any regular user message, then type below the quote"
       >
-        <DraftQuotePreview text={draftText} />
+        <StoryDraftPromptBox draft={promptDraft} />
       </StoryRow>
       <StoryRow
         label="agent-initiated"

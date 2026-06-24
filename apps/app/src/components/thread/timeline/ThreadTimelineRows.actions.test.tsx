@@ -135,6 +135,24 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 
+  it("hides user message add-to-chat when no add handler is supplied", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "No add-to-chat handler here.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Copy message"');
+    expect(markup).not.toContain('aria-label="Add to chat"');
+  });
+
   it("passes the selected assistant row branch point to side-chat replies", async () => {
     const onSelectionReplyInSideChat = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -170,6 +188,7 @@ describe("ThreadTimelineRows actions", () => {
         screen.getByRole("button", { name: "Reply in side chat" }),
       ).toBeTruthy(),
     );
+    expect(screen.queryByRole("button", { name: "Add to chat" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
 
     expect(onSelectionReplyInSideChat).toHaveBeenCalledWith({

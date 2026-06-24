@@ -1,9 +1,12 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
-import { appendQuoteToDraftText } from "@/lib/prompt-draft";
+import {
+  StoryDraftPromptBox,
+  useStoryPromptDraft,
+} from "@/components/thread/timeline/StoryDraftPromptBox";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -40,23 +43,6 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 // keeps the story self-contained while still showing the interactive style.
 const resolveMentionLink = () => () => {};
 
-function appendStoryQuote(draftText: string, quotedText: string): string {
-  return appendQuoteToDraftText(
-    { text: draftText, mentions: [], attachments: [] },
-    quotedText,
-  ).text;
-}
-
-function DraftQuotePreview({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <div className="rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
-      <div className="mb-1 font-medium text-foreground">Draft quote</div>
-      <pre className="whitespace-pre-wrap font-mono">{text}</pre>
-    </div>
-  );
-}
-
 const acceptedMessage: TimelineConversationTurnRequest = {
   kind: "message",
   status: "accepted",
@@ -76,13 +62,15 @@ function UserMessage({
   text,
   mentions = [],
   onAddToChat,
+  revealMessageActions = false,
 }: {
   text: string;
   mentions?: readonly PromptTextMention[];
   onAddToChat?: (text: string) => void;
+  revealMessageActions?: boolean;
 }) {
   return (
-    <TimelineStage revealMessageActions={onAddToChat !== undefined}>
+    <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
         role="user"
         initiator="user"
@@ -166,16 +154,14 @@ const LONG_BODY = [
 ].join("\n");
 
 export function Overview() {
-  const [draftText, setDraftText] = useState("");
-  const handleAddToChat = (text: string) => {
-    setDraftText((current) => appendStoryQuote(current, text));
-  };
+  const promptDraft = useStoryPromptDraft();
+  const handleAddToChat = promptDraft.addQuote;
 
   return (
     <StoryCard>
       <StoryRow
-        label="formatting"
-        hint="headings, bold/italic, inline code, ordered + unordered lists"
+        label="formatting (hover)"
+        hint="production behavior — hover or focus the message to reveal actions"
       >
         <UserMessage text={FORMATTING_BODY} onAddToChat={handleAddToChat} />
       </StoryRow>
@@ -187,25 +173,34 @@ export function Overview() {
           text={MENTIONS_BODY}
           mentions={MENTIONS}
           onAddToChat={handleAddToChat}
+          revealMessageActions
         />
       </StoryRow>
       <StoryRow
         label="blockquote"
         hint="`> ` lines render as a native markdown blockquote + reply paragraph"
       >
-        <UserMessage text={QUOTE_BODY} onAddToChat={handleAddToChat} />
+        <UserMessage
+          text={QUOTE_BODY}
+          onAddToChat={handleAddToChat}
+          revealMessageActions
+        />
       </StoryRow>
       <StoryRow
         label="long (collapsible)"
         hint="clamped to ~15 lines with a Show more / Show less toggle"
       >
-        <UserMessage text={LONG_BODY} onAddToChat={handleAddToChat} />
+        <UserMessage
+          text={LONG_BODY}
+          onAddToChat={handleAddToChat}
+          revealMessageActions
+        />
       </StoryRow>
       <StoryRow
         label="add to chat result"
-        hint="click Add to chat under any markdown user message"
+        hint="click Add to chat under any markdown user message, then type below the quote"
       >
-        <DraftQuotePreview text={draftText} />
+        <StoryDraftPromptBox draft={promptDraft} />
       </StoryRow>
     </StoryCard>
   );
