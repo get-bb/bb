@@ -25,6 +25,15 @@ type WorkflowAgentDisplayState = WorkflowAgentSnapshot["state"] | "interrupted";
 
 const PROMPT_STACK_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const PROMPT_STACK_ACTIVE_ICON_CLASS = "text-foreground";
+const WORKFLOW_AGENT_STATS_COLUMNS = [
+  ["model", "Model"],
+  ["tokens", "Tokens"],
+  ["toolCalls", "Tool calls"],
+  ["time", "Time"],
+] as const;
+
+type WorkflowAgentStatsCell = (typeof WORKFLOW_AGENT_STATS_COLUMNS)[number][0];
+type WorkflowAgentStatsCells = Record<WorkflowAgentStatsCell, string>;
 
 function deriveAgentDisplayState(
   agent: WorkflowAgentSnapshot,
@@ -170,6 +179,26 @@ function buildAgentStats(
   return parts.join(" · ");
 }
 
+function buildAgentStatsCells(
+  agent: WorkflowAgentSnapshot,
+): WorkflowAgentStatsCells {
+  return {
+    model: shortModelName(agent.model),
+    tokens:
+      agent.tokens !== undefined && agent.tokens > 0
+        ? formatCompactTokens(agent.tokens)
+        : "",
+    toolCalls:
+      agent.toolCalls !== undefined && agent.toolCalls > 0
+        ? `${agent.toolCalls}`
+        : "",
+    time:
+      agent.durationMs !== undefined
+        ? formatCompactDuration(agent.durationMs)
+        : "",
+  };
+}
+
 function activityStateForAgent(
   displayState: WorkflowAgentDisplayState,
 ): ActivityRowState {
@@ -211,38 +240,61 @@ function promptStackActivityIconClass(
 function WorkflowAgentLine({
   agent,
   promptStack = false,
+  showStats = true,
   workflowSettled,
 }: {
   agent: WorkflowAgentSnapshot;
   promptStack?: boolean;
+  showStats?: boolean;
   workflowSettled: boolean;
 }) {
   const displayState = deriveAgentDisplayState(agent, workflowSettled);
   const activityState = activityStateForAgent(displayState);
   const stats = buildAgentStats(agent, displayState);
+  const agentLabel = (
+    <div className="flex min-w-0 items-center gap-2">
+      <WorkflowAgentStateIcon
+        state={displayState}
+        className={promptStackActivityIconClass(activityState)}
+      />
+      <span
+        className={activityTextClass(
+          activityState,
+          "min-w-0 flex-1 truncate text-xs",
+        )}
+        title={agent.label}
+      >
+        {agent.label}
+      </span>
+    </div>
+  );
   if (promptStack) {
+    if (!showStats) {
+      return (
+        <div
+          className={promptStackActivityRowClass(
+            activityState,
+            "flex min-h-7 w-full min-w-0 flex-col justify-center text-xs",
+          )}
+        >
+          {agentLabel}
+          {displayState === "failed" && agent.error ? (
+            <span className="ml-5 mt-0.5 block min-w-0 truncate text-xs text-destructive/80">
+              — {agent.error}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
     return (
       <div
         className={promptStackActivityRowClass(
           activityState,
-          "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-agent-stats-column,15rem)] items-center gap-4 text-xs",
+          "grid min-h-7 w-full min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-agent-stats-column,15rem)] items-center gap-4 text-xs",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <WorkflowAgentStateIcon
-            state={displayState}
-            className={promptStackActivityIconClass(activityState)}
-          />
-          <span
-            className={activityTextClass(
-              activityState,
-              "min-w-0 flex-1 truncate text-xs",
-            )}
-            title={agent.label}
-          >
-            {agent.label}
-          </span>
-        </div>
+        {agentLabel}
         <span
           className={activityMetaClass(
             activityState,
@@ -281,6 +333,78 @@ function WorkflowAgentLine({
           — {agent.error}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function WorkflowAgentStatsTable({
+  agents,
+  showHeader,
+  workflowSettled,
+}: {
+  agents: readonly WorkflowAgentSnapshot[];
+  showHeader: boolean;
+  workflowSettled: boolean;
+}) {
+  if (agents.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="ml-auto w-full min-w-0 overflow-hidden rounded-md border border-border/60 bg-background/40">
+      <table className="w-full table-fixed border-collapse text-left text-[11px] leading-5">
+        {showHeader ? (
+          <thead className="bg-muted/30 text-[10px] font-medium text-subtle-foreground">
+            <tr>
+              {WORKFLOW_AGENT_STATS_COLUMNS.map(([key, label]) => (
+                <th
+                  key={key}
+                  scope="col"
+                  className="h-7 border-r border-border/60 px-2 py-0 text-left font-medium last:border-r-0"
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        ) : null}
+        <tbody>
+          {agents.map((agent, rowIndex) => {
+            const displayState = deriveAgentDisplayState(
+              agent,
+              workflowSettled,
+            );
+            const activityState = activityStateForAgent(displayState);
+            const cells = buildAgentStatsCells(agent);
+            const statsTitle = WORKFLOW_AGENT_STATS_COLUMNS.map(
+              ([key, label]) => (cells[key] ? `${label}: ${cells[key]}` : null),
+            )
+              .filter((part): part is string => part !== null)
+              .join(", ");
+
+            return (
+              <tr key={agent.index} className="h-7" title={statsTitle}>
+                {WORKFLOW_AGENT_STATS_COLUMNS.map(([key]) => (
+                  <td
+                    key={key}
+                    className={cn(
+                      "h-7 border-r border-border/60 px-2 py-0 align-middle last:border-r-0",
+                      (showHeader || rowIndex > 0) &&
+                        "border-t border-border/60",
+                      activityMetaClass(
+                        activityState,
+                        "truncate whitespace-nowrap",
+                      ),
+                    )}
+                  >
+                    {cells[key]}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -435,6 +559,7 @@ function CollapsiblePhaseSection({
   isActive,
   onToggle,
   promptStack,
+  showStatsHeader,
   workflowSettled,
 }: {
   group: WorkflowPhaseGroup;
@@ -447,6 +572,7 @@ function CollapsiblePhaseSection({
   isActive: boolean;
   onToggle: () => void;
   promptStack: boolean;
+  showStatsHeader: boolean;
   workflowSettled: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -472,13 +598,36 @@ function CollapsiblePhaseSection({
       key={agent.index}
       agent={agent}
       promptStack={promptStack}
+      showStats={!promptStack}
       workflowSettled={workflowSettled}
     />
   ));
 
   // Phase-less trailing agents have no header to collapse under.
   if (!group.phase) {
-    return <div ref={ref}>{agentLines}</div>;
+    if (!promptStack) {
+      return <div ref={ref}>{agentLines}</div>;
+    }
+    return (
+      <div
+        ref={ref}
+        className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-agent-stats-column)] gap-x-4 [--workflow-agent-stats-column:min(32rem,42%)]"
+      >
+        <div
+          className={cn(
+            "flex min-w-0 flex-col pl-5",
+            showStatsHeader && "pt-7",
+          )}
+        >
+          {agentLines}
+        </div>
+        <WorkflowAgentStatsTable
+          agents={group.agents}
+          showHeader={showStatsHeader}
+          workflowSettled={workflowSettled}
+        />
+      </div>
+    );
   }
 
   const progress = phaseProgressLabel(group.agents);
@@ -568,14 +717,25 @@ function CollapsiblePhaseSection({
         </span>
       </button>
       {expanded ? (
-        <div
-          className={cn(
-            promptStack &&
-              "mt-1 space-y-1 pl-5 [--workflow-agent-stats-column:min(32rem,42%)]",
-          )}
-        >
-          {agentLines}
-        </div>
+        promptStack ? (
+          <div className="mt-1 grid w-full min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-agent-stats-column)] gap-x-4 [--workflow-agent-stats-column:min(32rem,42%)]">
+            <div
+              className={cn(
+                "flex min-w-0 flex-col pl-5",
+                showStatsHeader && "pt-7",
+              )}
+            >
+              {agentLines}
+            </div>
+            <WorkflowAgentStatsTable
+              agents={group.agents}
+              showHeader={showStatsHeader}
+              workflowSettled={workflowSettled}
+            />
+          </div>
+        ) : (
+          <div>{agentLines}</div>
+        )
       ) : null}
     </div>
   );
@@ -610,19 +770,32 @@ function CollapsiblePhaseGroups({
       next.set(key, !wasExpanded);
       return next;
     });
+  const firstVisibleStatsGroup = promptStack
+    ? groups.find((group) => {
+        const key = groupKey(group);
+        const visible = !group.phase || isExpanded(key);
+        return visible && group.agents.length > 0;
+      })
+    : undefined;
+  const firstVisibleStatsGroupKey = firstVisibleStatsGroup
+    ? groupKey(firstVisibleStatsGroup)
+    : null;
 
   return (
     <>
       {groups.map((group) => {
         const key = groupKey(group);
+        const expanded = isExpanded(key);
+        const showStatsHeader = key === firstVisibleStatsGroupKey;
         return (
           <CollapsiblePhaseSection
             key={key}
             group={group}
-            expanded={isExpanded(key)}
+            expanded={expanded}
             isActive={key === activeKey}
             onToggle={() => toggle(key)}
             promptStack={promptStack}
+            showStatsHeader={showStatsHeader}
             workflowSettled={workflowSettled}
           />
         );
