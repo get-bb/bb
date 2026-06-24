@@ -2006,7 +2006,7 @@ function ProjectListComponent({
       {folderDeleteDialog.target ? (
         <ConfirmDeleteDialogContent
           title="Remove folder?"
-          description={`Remove "${folderDeleteDialog.target.name}" and clear it from its threads? This cannot be undone.`}
+          description={`Remove "${folderDeleteDialog.target.name}"? Its threads will stay in Threads without a folder.`}
           confirmLabel="Remove folder"
           pending={isDeleteThreadFolderPending}
           onConfirm={handleConfirmRemoveThreadFolder}
