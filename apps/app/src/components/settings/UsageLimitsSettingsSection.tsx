@@ -3,6 +3,7 @@ import type {
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
 import {
   Tooltip,
@@ -217,9 +218,9 @@ export function UsageLimitsSettingsSectionContent({
         <Tooltip delayDuration={300} disableHoverableContent>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
+              variant="ghost"
+              size="icon"
+              className="-mt-1 size-7 text-muted-foreground hover:text-foreground"
               disabled={isFetching}
               onClick={onRefresh}
               title={undefined}
@@ -229,7 +230,10 @@ export function UsageLimitsSettingsSectionContent({
                   : "Reload usage data"
               }
             >
-              {isFetching ? "Reloading..." : "Reload"}
+              <Icon
+                name="RotateCcw"
+                className={cn("size-3.5", isFetching && "animate-spin")}
+              />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">Reload usage data</TooltipContent>
