@@ -23,20 +23,10 @@ export default {
 
 function TimelineStage({
   children,
-  revealMessageActions = false,
 }: {
   children: ReactNode;
-  revealMessageActions?: boolean;
 }) {
-  return (
-    <div
-      className={`w-full max-w-[760px] ${
-        revealMessageActions ? "[&_button]:opacity-100" : ""
-      }`}
-    >
-      {children}
-    </div>
-  );
+  return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
 function appendStoryQuote(draftText: string, quotedText: string): string {
@@ -1012,7 +1002,7 @@ export function Conversation() {
         label="interleaved thread"
         hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent"
       >
-        <TimelineStage revealMessageActions>
+        <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
             threadRuntimeDisplayStatus="active"
