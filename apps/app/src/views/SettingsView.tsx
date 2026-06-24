@@ -936,7 +936,7 @@ export function SettingsView() {
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-8">
+      <div className="mx-auto w-full max-w-3xl space-y-10">
         <GeneralSettingsSection
           appearance={appearance}
           appearanceDisabled={

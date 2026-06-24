@@ -220,7 +220,7 @@ export function UsageLimitsSettingsSectionContent({
             <Button
               variant="ghost"
               size="icon"
-              className="-mt-1 size-7 text-muted-foreground hover:text-foreground"
+              className="size-7 text-muted-foreground hover:text-foreground"
               disabled={isFetching}
               onClick={onRefresh}
               title={undefined}
