@@ -10,7 +10,6 @@ import { SidebarStickyStack } from "@/components/ui/sidebar.js";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   ChronologicalThreadTree,
-  ProjectThreadTree,
   type ProjectThreadListState,
 } from "./ProjectRow";
 import {
@@ -124,34 +123,6 @@ function projectTree(
   threads: readonly ThreadListEntry[],
 ): ProjectThreadListState {
   return { status: "ready", threads: [...threads] };
-}
-
-function ProjectTree({ threads }: { threads: readonly ThreadListEntry[] }) {
-  return (
-    <ProjectThreadTree
-      projectId={PROJECT_ID}
-      threadListState={projectTree(threads)}
-      compareThreads={compareStandardThreads}
-      folders={STORY_FOLDERS}
-      collapsedThreadIds={new Set()}
-      collapsedEnvironmentIds={new Set()}
-      variant="section"
-      onToggleThreadCollapsed={noop}
-      onToggleEnvironmentCollapsed={noop}
-    />
-  );
-}
-
-export function ProjectFolders() {
-  return (
-    <StoryCard>
-      <StoryRow label="project" hint="flat folders group project threads">
-        <SidebarStage>
-          <ProjectTree threads={folderThreads} />
-        </SidebarStage>
-      </StoryRow>
-    </StoryCard>
-  );
 }
 
 export function ChronologicalFolders() {

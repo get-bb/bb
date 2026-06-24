@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
-import { getSidebarThreadComparator } from "./ProjectList";
-import type { ProjectThreadItem, ThreadComparator } from "./projectThreadGroups";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  getSelectedThreadSidebarExpansion,
+  getSidebarThreadComparator,
+} from "./ProjectList";
+import {
+  CHRONOLOGICAL_CONTAINER_ID,
+  type ProjectThreadItem,
+  type ThreadComparator,
+} from "./projectThreadGroups";
 
 function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return {
@@ -131,5 +138,57 @@ describe("getSidebarThreadComparator", () => {
       );
       expect(itemSign).toBe(leafSign);
     }
+  });
+});
+
+describe("getSelectedThreadSidebarExpansion", () => {
+  it("expands the personal threads section in project mode", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        isFolderOrganizationMode: false,
+        isPinned: false,
+        selectedThread: thread({ projectId: PERSONAL_PROJECT_ID }),
+      }),
+    ).toEqual({ sidebarSectionId: "threads" });
+  });
+
+  it("expands the owning project in project mode", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        isFolderOrganizationMode: false,
+        isPinned: false,
+        selectedThread: thread({ projectId: "proj_app" }),
+      }),
+    ).toEqual({ projectId: "proj_app", sidebarSectionId: "projects" });
+  });
+
+  it("expands the threads section for unfiled project threads in folders mode", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        isFolderOrganizationMode: true,
+        isPinned: false,
+        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+      }),
+    ).toEqual({ sidebarSectionId: "threads" });
+  });
+
+  it("expands the containing folder for foldered threads in folders mode", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        isFolderOrganizationMode: true,
+        isPinned: false,
+        selectedThread: thread({ folderId: "fld_work", projectId: "proj_app" }),
+      }),
+    ).toEqual({ folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work` });
+  });
+
+  it("does not expand non-pinned sections for pinned threads", () => {
+    expect(
+      getSelectedThreadSidebarExpansion({
+        isFolderOrganizationMode: true,
+        isPinned: true,
+        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+      }),
+    ).toEqual({});
   });
 });

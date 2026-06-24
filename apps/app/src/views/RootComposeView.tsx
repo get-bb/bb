@@ -195,7 +195,7 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
-function readFolderIdFromLocationState(state: unknown): string | null {
+export function readFolderIdFromLocationState(state: unknown): string | null {
   if (typeof state !== "object" || state === null) {
     return null;
   }
@@ -204,6 +204,29 @@ function readFolderIdFromLocationState(state: unknown): string | null {
   }
   const folderId = state.folderId.trim();
   return folderId.length > 0 ? folderId : null;
+}
+
+export type RootComposeFolderTarget =
+  | { kind: "clear" }
+  | { folderId: string; kind: "set" };
+
+export function readRootComposeFolderTargetFromLocationState(
+  state: unknown,
+): RootComposeFolderTarget | null {
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+
+  if ("folderId" in state) {
+    const folderId = readFolderIdFromLocationState(state);
+    return folderId ? { folderId, kind: "set" } : { kind: "clear" };
+  }
+
+  if ("focusPrompt" in state && state.focusPrompt === true) {
+    return { kind: "clear" };
+  }
+
+  return null;
 }
 
 type RootComposeViewProps =
@@ -382,6 +405,14 @@ function readForkThreadCreateSeedFromLocationState(
     sourceThreadId: value.sourceThreadId,
     sourceThreadTitle: value.sourceThreadTitle.trim(),
   };
+}
+
+export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
+  return (
+    readRootComposeFolderTargetFromLocationState(state) !== null ||
+    readReuseEnvironmentIdFromLocationState(state) !== null ||
+    readForkThreadCreateSeedFromLocationState(state) !== null
+  );
 }
 
 // react-router's location.state is freeform unknown — narrow it here at the
@@ -655,9 +686,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
-  useEffect(() => {
-    setRootComposeFolderId(readFolderIdFromLocationState(location.state));
-  }, [location.key, location.state]);
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
@@ -756,13 +784,23 @@ export function RootComposeView(props: RootComposeViewProps) {
   // thread/environment. This is single-use — clear location.state after applying
   // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
+    const folderTarget = readRootComposeFolderTargetFromLocationState(
+      location.state,
+    );
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
       location.state,
     );
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
       location.state,
     );
-    if (reuseEnvironmentId === null && nextForkSeed === null) return;
+    if (!hasSingleUseRootComposeTargetState(location.state)) {
+      return;
+    }
+    if (folderTarget?.kind === "set") {
+      setRootComposeFolderId(folderTarget.folderId);
+    } else if (folderTarget?.kind === "clear") {
+      setRootComposeFolderId(null);
+    }
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
     }

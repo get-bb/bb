@@ -29,3 +29,10 @@ export function isSqliteUniqueConstraintOnColumns(
     error.message.includes(args.indexName)
   );
 }
+
+export function isSqliteForeignKeyConstraint(error: Error): boolean {
+  return (
+    getSqliteErrorCode(error) === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+    error.message.includes("FOREIGN KEY constraint failed")
+  );
+}

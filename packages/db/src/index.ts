@@ -29,7 +29,10 @@ export {
 } from "./ids.js";
 
 export { migrate } from "./migrate.js";
-export { isSqliteUniqueConstraintOnColumns } from "./sqlite-errors.js";
+export {
+  isSqliteForeignKeyConstraint,
+  isSqliteUniqueConstraintOnColumns,
+} from "./sqlite-errors.js";
 export type {
   FutureAppliedMigration,
   FutureAppliedMigrationWarningFields,

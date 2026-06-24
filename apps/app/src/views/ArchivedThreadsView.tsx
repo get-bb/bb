@@ -12,9 +12,39 @@ import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import {
+  sidebarOrganizationModeAtom,
+  type SidebarOrganizationMode,
+} from "@/components/sidebar/sidebarCollapsedAtoms";
 
 type ArchivedThreadPillLabel = "child";
+
+export interface ArchivedThreadViewFilters {
+  folderId?: string;
+  projectId?: string;
+  unfiled?: true;
+}
+
+export function buildArchivedThreadViewFilters({
+  folderId,
+  projectId,
+  sidebarOrganizationMode,
+}: {
+  folderId: string | undefined;
+  projectId: string | undefined;
+  sidebarOrganizationMode: SidebarOrganizationMode;
+}): ArchivedThreadViewFilters {
+  const isGlobalFoldersMode =
+    projectId === PERSONAL_PROJECT_ID &&
+    sidebarOrganizationMode === "chronological";
+  const archivedProjectId =
+    folderId || isGlobalFoldersMode ? undefined : projectId;
+  return {
+    projectId: archivedProjectId,
+    ...(folderId ? { folderId } : {}),
+    ...(!folderId && isGlobalFoldersMode ? { unfiled: true as const } : {}),
+  };
+}
 
 function getArchivedThreadPillLabel(
   thread: ThreadListEntry,
@@ -34,19 +64,13 @@ export function ArchivedThreadsView() {
   const [searchParams] = useSearchParams();
   const sidebarOrganizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const folderId = searchParams.get("folderId") ?? undefined;
-  const isGlobalFoldersMode =
-    projectId === PERSONAL_PROJECT_ID &&
-    sidebarOrganizationMode === "chronological";
-  const archivedProjectId =
-    folderId || isGlobalFoldersMode ? undefined : projectId;
-  // The loose archived list mirrors the current sidebar scope: in project mode
-  // it is personal-only; in Folders mode it is cross-project loose threads.
-  const restrictToLoose = !folderId && projectId === PERSONAL_PROJECT_ID;
-  const archivedThreadsQuery = useArchivedThreads({
-    projectId: archivedProjectId,
-    ...(folderId ? { folderId } : {}),
-    ...(restrictToLoose ? { unfiled: true } : {}),
-  });
+  const archivedThreadsQuery = useArchivedThreads(
+    buildArchivedThreadViewFilters({
+      folderId,
+      projectId,
+      sidebarOrganizationMode,
+    }),
+  );
   const unarchiveThread = useUnarchiveThread();
 
   const archivedThreads = useMemo(() => {

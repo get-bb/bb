@@ -269,6 +269,18 @@ interface ToggleCollapsedIdListArgs {
   id: string;
 }
 
+interface SelectedThreadSidebarExpansionArgs {
+  isFolderOrganizationMode: boolean;
+  isPinned: boolean;
+  selectedThread: ThreadListEntry;
+}
+
+interface SelectedThreadSidebarExpansion {
+  folderKey?: string;
+  projectId?: string;
+  sidebarSectionId?: CollapsibleSidebarSectionId;
+}
+
 type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
@@ -325,6 +337,33 @@ function removeCollapsedIds<T extends string>(
     return false;
   });
   return removed ? next : current;
+}
+
+export function getSelectedThreadSidebarExpansion({
+  isFolderOrganizationMode,
+  isPinned,
+  selectedThread,
+}: SelectedThreadSidebarExpansionArgs): SelectedThreadSidebarExpansion {
+  if (isPinned) {
+    return {};
+  }
+
+  if (isFolderOrganizationMode) {
+    const folderKey = folderKeyForThreadFolder(
+      CHRONOLOGICAL_CONTAINER_ID,
+      selectedThread.folderId,
+    );
+    return folderKey ? { folderKey } : { sidebarSectionId: "threads" };
+  }
+
+  if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
+    return { sidebarSectionId: "threads" };
+  }
+
+  return {
+    projectId: selectedThread.projectId,
+    sidebarSectionId: "projects",
+  };
 }
 
 function isSidebarSectionId(value: string): value is SidebarSectionId {
@@ -1688,39 +1727,31 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
-    // Also un-collapse the folder hiding the selected thread in the
-    // cross-project Folders view.
     const isPinned =
       pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-    if (isFolderOrganizationMode && !isPinned) {
-      const folderKey = folderKeyForThreadFolder(
-        CHRONOLOGICAL_CONTAINER_ID,
-        selectedThread.folderId,
+    const expansion = getSelectedThreadSidebarExpansion({
+      isFolderOrganizationMode,
+      isPinned,
+      selectedThread,
+    });
+    if (expansion.folderKey) {
+      const folderKey = expansion.folderKey;
+      setCollapsedFolderList((current) =>
+        removeCollapsedIds(current, new Set([folderKey])),
       );
-      if (folderKey) {
-        setCollapsedFolderList((current) =>
-          removeCollapsedIds(current, new Set([folderKey])),
-        );
-      }
     }
-
-    if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
-      return;
+    if (expansion.projectId) {
+      const projectId = expansion.projectId;
+      setCollapsedProjectIdList((current) =>
+        removeCollapsedIds(current, new Set([projectId])),
+      );
     }
-
-    if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
+    if (expansion.sidebarSectionId) {
+      const sidebarSectionId = expansion.sidebarSectionId;
       setCollapsedSidebarSectionIdList((current) =>
-        removeCollapsedIds(current, new Set(["threads"])),
+        removeCollapsedIds(current, new Set([sidebarSectionId])),
       );
-      return;
     }
-
-    setCollapsedProjectIdList((current) =>
-      removeCollapsedIds(current, new Set([selectedThread.projectId])),
-    );
-    setCollapsedSidebarSectionIdList((current) =>
-      removeCollapsedIds(current, new Set(["projects"])),
-    );
   }, [
     isFolderOrganizationMode,
     pinnedSidebarState.effectivePinnedThreadIds,

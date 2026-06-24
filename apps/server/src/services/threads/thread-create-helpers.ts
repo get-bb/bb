@@ -1,9 +1,12 @@
 import {
   createThread,
+  getThreadFolderById,
   getProjectSourceByHost,
   getProject,
   getThread,
+  isSqliteForeignKeyConstraint,
 } from "@bb/db";
+import type { DbNotifier } from "@bb/db";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LocalPathProjectSource } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
@@ -152,25 +155,42 @@ export function buildEnvironmentProvisionCommand(
 }
 
 export function createThreadRecord(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db"> & { hub: DbNotifier },
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
     status?: "starting";
   },
 ) {
-  return createThread(deps.db, deps.hub, {
-    projectId: args.request.projectId,
-    environmentId: args.environmentId,
-    providerId: args.request.providerId,
-    title: args.request.title ?? null,
-    titleFallback: args.request.titleFallback,
-    folderId: args.request.folderId ?? null,
-    parentThreadId: args.request.parentThreadId ?? null,
-    sourceThreadId: args.request.sourceThreadId ?? null,
-    originKind: args.request.originKind ?? args.request.childOrigin,
-    status: args.status ?? "starting",
-  });
+  const folderId = args.request.folderId ?? null;
+  if (folderId !== null && !getThreadFolderById(deps.db, folderId)) {
+    throw new ApiError(404, "folder_not_found", "Folder not found");
+  }
+
+  try {
+    return createThread(deps.db, deps.hub, {
+      projectId: args.request.projectId,
+      environmentId: args.environmentId,
+      providerId: args.request.providerId,
+      title: args.request.title ?? null,
+      titleFallback: args.request.titleFallback,
+      folderId,
+      parentThreadId: args.request.parentThreadId ?? null,
+      sourceThreadId: args.request.sourceThreadId ?? null,
+      originKind: args.request.originKind ?? args.request.childOrigin,
+      status: args.status ?? "starting",
+    });
+  } catch (error) {
+    if (
+      folderId !== null &&
+      error instanceof Error &&
+      isSqliteForeignKeyConstraint(error) &&
+      !getThreadFolderById(deps.db, folderId)
+    ) {
+      throw new ApiError(404, "folder_not_found", "Folder not found");
+    }
+    throw error;
+  }
 }
 
 export function getThreadSafe(deps: Pick<AppDeps, "db">, threadId: string) {
