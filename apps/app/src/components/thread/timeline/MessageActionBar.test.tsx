@@ -50,7 +50,9 @@ describe("MessageActionBar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    expect(button.className).toContain("cursor-pointer");
+    fireEvent.click(button);
     expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
   });
 

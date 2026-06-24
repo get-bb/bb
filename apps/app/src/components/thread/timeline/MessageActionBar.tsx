@@ -49,7 +49,7 @@ interface MessageOverflowAction {
 // an action button reveals the bar). The fork/side-chat buttons mirror
 // CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
+  "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
