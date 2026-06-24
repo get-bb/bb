@@ -295,7 +295,7 @@ describe("createPopoutWindowManager", () => {
     expect(browserWindow?.focused).toBe(true);
   });
 
-  it("waits for first paint readiness before showing the first summon", async () => {
+  it("shows a selected thread after load even if ready-to-show does not fire", async () => {
     const manager = createPopoutWindowManager({
       appUrl: "http://127.0.0.1:38886",
       preloadPath: "/tmp/preload.cjs",
@@ -304,19 +304,21 @@ describe("createPopoutWindowManager", () => {
     });
 
     manager.warm();
-    const showPromise = manager.toggle();
+    const showPromise = manager.setThread({
+      projectId: "proj_a",
+      threadId: "thr_a",
+    });
     const browserWindow = electronMock.createdWindows[0];
     browserWindow?.emitDidFinishLoad();
     browserWindow?.resolveLoadUrl();
-    await Promise.resolve();
-
-    expect(browserWindow?.shown).toBe(false);
-
-    browserWindow?.emitReadyToShow();
     await showPromise;
 
     expect(browserWindow?.shown).toBe(true);
     expect(browserWindow?.focused).toBe(true);
+    expect(browserWindow?.webContents.sentMessages).toContainEqual({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a" },
+    });
   });
 
   it("destroys a warmed popout when the manager is destroyed", () => {
