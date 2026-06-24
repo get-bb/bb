@@ -125,39 +125,6 @@ describe("@bb/sdk", () => {
     );
   });
 
-  it("routes thread metadata calls through the HTTP transport", async () => {
-    const metadata = {
-      thread: {
-        id: "thr_meta",
-      },
-      environment: null,
-      spawn: null,
-      timestamps: null,
-      eventMetadata: null,
-      pullRequest: null,
-    };
-    const queue = createFetchQueue([{ body: metadata }]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    await expect(
-      sdk.threads.metadata({ threadId: "thr_meta" }),
-    ).resolves.toEqual(metadata);
-
-    expect(queue.requests).toEqual([
-      {
-        bodyText: undefined,
-        method: "GET",
-        url: "http://bb.test/api/v1/threads/thr_meta/metadata",
-      },
-    ]);
-  });
-
   it("routes environment pull request calls through the HTTP transport", async () => {
     const response = { pullRequest: null };
     const queue = createFetchQueue([{ body: response }]);

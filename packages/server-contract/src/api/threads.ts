@@ -12,8 +12,6 @@ import {
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
-  threadPullRequestSchema,
-  threadTurnInitiatorSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -22,7 +20,6 @@ import {
   threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
-  turnRequestTargetSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
 import {
@@ -300,90 +297,6 @@ export const threadWithIncludesResponseSchema = threadResponseSchema.extend({
 });
 export type ThreadWithIncludesResponse = z.infer<
   typeof threadWithIncludesResponseSchema
->;
-
-export const threadMetadataSpawnSchema = z
-  .object({
-    eventSeq: z.number().int().positive().nullable(),
-    requestedAt: z.number().int().nonnegative().nullable(),
-    source: z.enum(["spawn", "tell"]).nullable(),
-    initiator: threadTurnInitiatorSchema.nullable(),
-    senderThreadId: z.string().nullable(),
-    target: turnRequestTargetSchema.nullable(),
-    requestMethod: z.enum(["thread/start", "turn/start"]).nullable(),
-    execution: resolvedThreadExecutionOptionsSchema.nullable(),
-  })
-  .strict();
-export type ThreadMetadataSpawn = z.infer<typeof threadMetadataSpawnSchema>;
-
-export const threadMetadataTimestampsSchema = z
-  .object({
-    createdAt: z.number().int().nonnegative(),
-    updatedAt: z.number().int().nonnegative(),
-    archivedAt: z.number().int().nonnegative().nullable(),
-    pinnedAt: z.number().int().nonnegative().nullable(),
-    firstEventAt: z.number().int().nonnegative().nullable(),
-    lastEventAt: z.number().int().nonnegative().nullable(),
-  })
-  .strict();
-export type ThreadMetadataTimestamps = z.infer<
-  typeof threadMetadataTimestampsSchema
->;
-
-export const threadEventMetadataCategorySchema = z
-  .object({
-    source: z.string().min(1),
-    eventType: z.string().min(1),
-    eventCount: z.number().int().nonnegative(),
-    metadataObjectCount: z.number().int().nonnegative(),
-    keys: z.array(z.string()),
-  })
-  .strict();
-export type ThreadEventMetadataCategory = z.infer<
-  typeof threadEventMetadataCategorySchema
->;
-
-export const threadEventMetadataSummarySchema = z
-  .object({
-    totalEventCount: z.number().int().nonnegative(),
-    eventsWithMetadataCount: z.number().int().nonnegative(),
-    metadataObjectCount: z.number().int().nonnegative(),
-    categories: z.array(threadEventMetadataCategorySchema),
-  })
-  .strict();
-export type ThreadEventMetadataSummary = z.infer<
-  typeof threadEventMetadataSummarySchema
->;
-
-export const threadMetadataPullRequestSchema = z
-  .object({
-    status: z.enum([
-      "available",
-      "not_found",
-      "not_applicable",
-      "unavailable",
-    ]),
-    source: z.literal("environment-branch").nullable(),
-    pullRequest: threadPullRequestSchema.nullable(),
-    message: z.string().nullable(),
-  })
-  .strict();
-export type ThreadMetadataPullRequest = z.infer<
-  typeof threadMetadataPullRequestSchema
->;
-
-export const threadMetadataResponseSchema = z
-  .object({
-    thread: threadResponseSchema,
-    environment: environmentSchema.nullable(),
-    spawn: threadMetadataSpawnSchema,
-    timestamps: threadMetadataTimestampsSchema,
-    eventMetadata: threadEventMetadataSummarySchema,
-    pullRequest: threadMetadataPullRequestSchema,
-  })
-  .strict();
-export type ThreadMetadataResponse = z.infer<
-  typeof threadMetadataResponseSchema
 >;
 
 export const threadPendingInteractionsResponseSchema = z.array(

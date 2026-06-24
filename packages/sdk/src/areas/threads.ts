@@ -63,10 +63,6 @@ export type ThreadEventsListResult = PublicApiOutput<
   "/threads/:id/events",
   "$get"
 >;
-export type ThreadMetadataResult = PublicApiOutput<
-  "/threads/:id/metadata",
-  "$get"
->;
 export type ThreadEventWaitResult = PublicApiOutput<
   "/threads/:id/events/wait",
   "$get"
@@ -308,7 +304,6 @@ export interface ThreadsArea {
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
-  metadata(args: ThreadStatusArgs): Promise<ThreadMetadataResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
@@ -649,13 +644,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async list(input) {
       return transport.readJson(
         transport.api.v1.threads.$get({ query: listQuery(input) }),
-      );
-    },
-    async metadata(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].metadata.$get({
-          param: { id: input.threadId },
-        }),
       );
     },
     async output(input) {

@@ -19,7 +19,6 @@ import {
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
-  type GitHostPullRequest,
   threadQueuedMessageSchema,
   threadScope,
   threadSchema,
@@ -28,7 +27,6 @@ import {
 import {
   type TimelineRow,
   threadComposerBootstrapResponseSchema,
-  threadMetadataResponseSchema,
   threadQueuedMessageListResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
@@ -86,27 +84,6 @@ const clientTurnRequestedDataSchema = z.object({
 });
 
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
-
-function rawPullRequest(
-  overrides: Partial<GitHostPullRequest> = {},
-): GitHostPullRequest {
-  return {
-    number: 42,
-    title: "Ship metadata",
-    state: "OPEN",
-    url: "https://github.com/example/repo/pull/42",
-    isDraft: false,
-    baseRefName: "main",
-    headRefName: "bb/metadata",
-    updatedAt: "2026-06-24T12:00:00.000Z",
-    checks: [],
-    reviewDecision: null,
-    reviewRequestCount: 0,
-    mergeStateStatus: "CLEAN",
-    mergeable: "MERGEABLE",
-    ...overrides,
-  };
-}
 
 describe("public thread data routes", () => {
   it("rejects contradictory folder and unfiled thread list filters", async () => {
@@ -211,198 +188,6 @@ describe("public thread data routes", () => {
         `/api/v1/threads/${thread.id}?include=environment,timeline`,
       );
       expect(response.status).toBe(400);
-    });
-  });
-
-  it("returns thread metadata from thread fields, events, environment, and pull request lookup", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-thread-metadata",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        branchName: "bb/metadata",
-        path: "/tmp/thread-metadata",
-      });
-      const parent = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        title: "Parent thread",
-      });
-      const source = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        title: "Source thread",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-        title: "Metadata thread",
-        parentThreadId: parent.id,
-        sourceThreadId: source.id,
-        originKind: "fork",
-      });
-
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        createdAt: 1_800_000_001_000,
-        type: "client/turn/requested",
-        scope: threadScope(),
-        data: {
-          direction: "outbound",
-          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-          input: [
-            {
-              type: "text",
-              text: "Inspect metadata",
-            },
-          ],
-          target: { kind: "thread-start" },
-          execution: {
-            model: "gpt-5.5",
-            serviceTier: "fast",
-            reasoningLevel: "xhigh",
-            permissionMode: "workspace-write",
-            source: "client/turn/requested",
-          },
-          initiator: "user",
-          senderThreadId: null,
-          request: {
-            method: "thread/start",
-            params: {},
-          },
-          source: "spawn",
-        },
-      });
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 2,
-        createdAt: 1_800_000_002_000,
-        type: "system/operation",
-        scope: threadScope(),
-        data: {
-          operation: "ownership",
-          status: "completed",
-          message: "Parent assigned",
-          operationId: "op-parent",
-          metadata: {
-            action: "assign",
-            nextParentThreadId: parent.id,
-          },
-        },
-      });
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 3,
-        createdAt: 1_800_000_003_000,
-        type: "system/thread-provisioning",
-        scope: threadScope(),
-        data: {
-          provisioningId: "prov-thread-metadata",
-          status: "completed",
-          environmentId: environment.id,
-          entries: [
-            {
-              type: "step",
-              key: "checkout",
-              text: "Checked out branch",
-              metadata: {
-                branchName: "bb/metadata",
-              },
-            },
-            {
-              type: "step",
-              key: "install",
-              text: "Installed dependencies",
-            },
-          ],
-        },
-      });
-
-      const responsePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/metadata`,
-      );
-      const pullRequestCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "workspace.pull_request" &&
-          command.environmentId === environment.id,
-      );
-      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
-        pullRequest: rawPullRequest(),
-      });
-
-      const response = await responsePromise;
-      expect(response.status).toBe(200);
-      const metadata = threadMetadataResponseSchema.parse(
-        await readJson(response),
-      );
-
-      expect(metadata.thread).toMatchObject({
-        id: thread.id,
-        title: "Metadata thread",
-        status: "idle",
-        providerId: "codex",
-        parentThreadId: null,
-        sourceThreadId: source.id,
-        originKind: "fork",
-      });
-      expect(metadata.environment?.id).toBe(environment.id);
-      expect(metadata.environment?.branchName).toBe("bb/metadata");
-      expect(metadata.environment?.path).toBe("/tmp/thread-metadata");
-      expect(metadata.spawn).toMatchObject({
-        eventSeq: 1,
-        requestedAt: 1_800_000_001_000,
-        source: "spawn",
-        initiator: "user",
-        requestMethod: "thread/start",
-        execution: {
-          model: "gpt-5.5",
-          serviceTier: "fast",
-          reasoningLevel: "xhigh",
-          permissionMode: "workspace-write",
-        },
-      });
-      expect(metadata.eventMetadata).toEqual({
-        totalEventCount: 3,
-        eventsWithMetadataCount: 2,
-        metadataObjectCount: 2,
-        categories: [
-          {
-            source: "system/operation.data.metadata",
-            eventType: "system/operation",
-            eventCount: 1,
-            metadataObjectCount: 1,
-            keys: ["action", "nextParentThreadId"],
-          },
-          {
-            source: "system/thread-provisioning.data.entries[].metadata",
-            eventType: "system/thread-provisioning",
-            eventCount: 1,
-            metadataObjectCount: 1,
-            keys: ["branchName"],
-          },
-        ],
-      });
-      expect(metadata.pullRequest).toMatchObject({
-        status: "available",
-        source: "environment-branch",
-        pullRequest: {
-          number: 42,
-          title: "Ship metadata",
-          state: "open",
-          url: "https://github.com/example/repo/pull/42",
-        },
-      });
     });
   });
 
