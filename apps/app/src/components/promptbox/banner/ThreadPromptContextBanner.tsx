@@ -381,10 +381,17 @@ function ChildThreadsBody({
   );
 }
 
-function BannerActionSlot({ children }: { children: ReactNode }) {
+function BannerActionSlot({
+  children,
+  hideInCompact = false,
+}: {
+  children: ReactNode;
+  hideInCompact?: boolean;
+}) {
   return (
     <div
       className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+      data-promptbox-hide-compact={hideInCompact ? "" : undefined}
       data-promptbox-hide-tiny=""
     >
       {children}
@@ -770,7 +777,7 @@ export function ThreadPromptContextBanner({
       : { options: [], remoteOptions: [] };
   const segmentAction =
     hasSingleVisibleSegment && showGit && gitSection.mergeBase ? (
-      <BannerActionSlot>
+      <BannerActionSlot hideInCompact>
         <Icon
           name="GitMerge"
           className="size-3.5 shrink-0"

@@ -657,7 +657,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="git — merge-base picker"
-        hint="git is the only segment, so the merge-base action is pinned to the far right. It still carries data-promptbox-hide-compact."
+        hint="git is the only segment, so the merge-base action is pinned to the far right on wide rows and hidden at the compact breakpoint."
       >
         <Row section={committedSection} />
       </StoryRow>

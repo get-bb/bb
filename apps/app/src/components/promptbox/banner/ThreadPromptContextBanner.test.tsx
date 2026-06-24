@@ -45,6 +45,7 @@ const pullRequestFixture: ThreadPullRequest = {
 
 function makeGitSection(
   kind: ThreadPromptGitSection["changedFiles"]["kind"] = "uncommitted",
+  mergeBase: ThreadPromptGitSection["mergeBase"] = null,
 ): ThreadPromptGitSection {
   return {
     changedFiles: {
@@ -58,7 +59,7 @@ function makeGitSection(
         files: [changedFile],
       },
     },
-    mergeBase: null,
+    mergeBase,
     onPromptBannerFileClick: noop,
   };
 }
@@ -359,6 +360,30 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Uncommitted");
     expect(markup).toContain('data-promptbox-hide-compact="">Uncommitted');
     expect(markup).toContain('data-promptbox-compact-label="">1 file');
+  });
+
+  it("hides the standalone merge-base action at the compact breakpoint", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={makeGitSection("committed", {
+          branch: "origin/very-long-feature-base-branch",
+          onChange: noop,
+        })}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Merge base");
+    expect(markup).toContain("origin/very-long-feature-base-branch");
+    expect(markup).toContain("data-promptbox-hide-compact");
+    expect(markup).toContain("data-promptbox-hide-tiny");
   });
 
   it("keeps the pull request action visible beside other context segments", () => {
