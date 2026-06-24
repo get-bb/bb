@@ -41,7 +41,7 @@ export function ThreadPromptModeCard({
           aria-controls={BODY_ID}
           aria-label="Plan"
           onClick={onToggle}
-          className="flex w-full min-w-0 items-center gap-1.5 min-h-8 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+          className="flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
           <Icon
             name="ListTodo"
@@ -66,7 +66,7 @@ export function ThreadPromptModeCard({
             aria-label="Exit plan mode"
             title="Exit plan mode"
             onClick={onExitPlanMode}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
           >
             <Icon name="X" className="size-3.5" aria-hidden="true" />
           </button>

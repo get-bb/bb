@@ -187,7 +187,7 @@ const ENVIRONMENT_GONE_ARIA_LABEL =
   "Environment is unavailable. This thread can't run any more work.";
 const PULL_REQUEST_ACTION_FILL_CLASS = "bg-background shadow-xs";
 const PULL_REQUEST_ACTION_INTERACTIVE_CLASS =
-  "text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+  "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
 const PULL_REQUEST_ACTION_TEXT_BUTTON_CLASS = cn(
   "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs",
   PULL_REQUEST_ACTION_FILL_CLASS,
@@ -260,7 +260,7 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
+        "flex cursor-pointer items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the

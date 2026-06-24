@@ -157,7 +157,7 @@ export function ThreadTodoCard({
           aria-controls={BODY_ID}
           aria-label={`To-do list: ${summary.aria}`}
           onClick={onToggle}
-          className="flex w-full min-w-0 items-center gap-1.5 min-h-8 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+          className="flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
           <Icon
             name="ListTodo"
