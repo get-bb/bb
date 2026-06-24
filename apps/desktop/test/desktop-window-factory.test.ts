@@ -51,6 +51,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
     [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
+  public readonly zoomFactors: number[] = [];
 
   constructor(id: number) {
     this.id = id;
@@ -68,6 +69,10 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void {
     this.windowOpenHandler = handler;
+  }
+
+  setZoomFactor(factor: number): void {
+    this.zoomFactors.push(factor);
   }
 }
 
@@ -232,6 +237,8 @@ describe("desktop window factory", () => {
     });
     expect(createdWindows[0]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
+    expect(createdWindows[0]?.webContents.zoomFactors).toEqual([1]);
+    expect(createdWindows[1]?.webContents.zoomFactors).toEqual([1]);
     expect(runtimeSupervisorInvocations).toBe(1);
 
     await factory.persistOpenWindows();
