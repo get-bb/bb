@@ -59,12 +59,14 @@ export function SettingsRow({ children }: SettingsRowProps) {
 
 export interface SettingsWithControlProps {
   label: string;
+  labelBadge?: string;
   description?: string;
   children: ReactNode;
 }
 
 export function SettingsWithControl({
   label,
+  labelBadge,
   description,
   children,
 }: SettingsWithControlProps) {
@@ -76,7 +78,16 @@ export function SettingsWithControl({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-normal text-foreground">{label}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="min-w-0 text-sm font-normal text-foreground">
+            {label}
+          </p>
+          {labelBadge ? (
+            <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-subtle-foreground">
+              {labelBadge}
+            </span>
+          ) : null}
+        </div>
         {description ? (
           <p className="text-xs text-subtle-foreground">{description}</p>
         ) : null}

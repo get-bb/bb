@@ -216,7 +216,7 @@ export function FaviconColorSettingsControl({
   return (
     <SettingsWithControl
       label="Favicon color"
-      description="Tint the browser tab icon to tell instances apart."
+      description="Tint browser tabs to tell instances apart."
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -431,7 +431,7 @@ export function InAppBrowserLinkSettingsControl({
   return (
     <SettingsWithControl
       label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      description="Open http and https links from bb in the in-app browser panel instead of your default browser."
+      description="Open web links inside bb."
     >
       <Switch
         checked={enabled}
@@ -449,7 +449,8 @@ export function RewriteLocalhostLinksSettingsControl({
   return (
     <SettingsWithControl
       label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      description="When a rendered Markdown link points to localhost or 127.0.0.1, keep the displayed text unchanged but point the link to this page's hostname."
+      labelBadge="dev-only"
+      description="Point localhost links at this host."
     >
       <Switch
         checked={enabled}
@@ -467,7 +468,7 @@ export function RichTextEditingSettingsControl({
   return (
     <SettingsWithControl
       label={RICH_TEXT_EDITING_SETTING_LABEL}
-      description="Format the prompt box with Markdown as you type — headings, lists, bold, italic, and inline code. When off, the prompt box stays plain text."
+      description="Use Markdown formatting while typing."
     >
       <Switch
         checked={enabled}
@@ -539,7 +540,7 @@ export function GeneralSettingsSection({
 
         <SettingsWithControl
           label="Palette"
-          description="Applies to the whole app. Add a custom theme by creating .bb/theme/<name>/theme.css, then pick it here or with the bb theme CLI."
+          description="Pick a built-in or local .bb theme."
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -825,7 +826,8 @@ export function ExperimentsSettingsSection({
       <div className="space-y-4">
         <SettingsWithControl
           label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-          description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
+          labelBadge="dev-only"
+          description="Route Claude Code through CLI-style traffic."
         >
           <Switch
             checked={claudeCodeMockCliTrafficEnabled}
@@ -837,7 +839,7 @@ export function ExperimentsSettingsSection({
 
         <SettingsWithControl
           label={POPOUT_CHAT_EXPERIMENT_LABEL}
-          description="Summon a compact, always-on-top chat with a global hotkey. Desktop app only."
+          description="Open compact desktop chat with a hotkey."
         >
           <div className="flex items-center gap-2">
             {!desktopShellAvailable ? (
@@ -858,7 +860,7 @@ export function ExperimentsSettingsSection({
           <div className="border-l border-border pl-3">
             <SettingsWithControl
               label={POPOUT_CHAT_HOTKEY_LABEL}
-              description="Press the chip and type a new combination."
+              description="Record the popout chat shortcut."
             >
               <HotkeyRecorder
                 disabled={disabled || !desktopShellAvailable}
