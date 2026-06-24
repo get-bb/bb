@@ -107,17 +107,16 @@ targets. Scripts launched by bb already receive `BB_SERVER_URL` and
 
 bb uses whichever providers you have configured. Common providers:
 
-| Provider         | Notes        |
-| ---------------- | ------------ |
-| `codex`          | Codex CLI    |
-| `claude-code`    | Claude Code  |
-| `cursor`[^acp]   | Cursor agent |
-| `pi`             | Pi agent     |
-| `opencode`[^acp] | opencode     |
+| Provider      | Setup                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `codex`       | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                  |
+| `claude-code` | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                   |
+| `acp-cursor`  | Install Cursor's agent CLI (`agent`) and authenticate per Cursor's docs.                                                                               |
+| `pi`          | See the [Pi coding agent docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
 
-[^acp]:
-    Cursor, opencode, and other ACP-compatible agents run through bb's ACP
-    provider support.
+Known ACP agents such as `opencode` can appear automatically when their
+executable is on `PATH`. Custom ACP agents are configured through
+`customAcpAgents` in `~/.bb/config.json`.
 
 ## Configuration
 
