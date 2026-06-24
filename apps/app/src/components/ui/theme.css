@@ -46,6 +46,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-surface-recessed: var(--surface-recessed);
+  --color-surface-recessed-solid: var(--surface-recessed-solid);
   --color-surface-raised: var(--surface-raised);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
@@ -378,6 +379,9 @@
   /* Inset panel tints on the ink ramp: recessed a clear sunken step, raised a
    * faint lift, both translucent so they read on card or page alike. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
+     queued-list scroll fades) that must not double the translucent tint. */
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
@@ -558,6 +562,9 @@
   --ring: var(--primary);
   /* Same model as light; ink is light here, so these lift the dark canvas. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
+     queued-list scroll fades) that must not double the translucent tint. */
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(

@@ -730,14 +730,14 @@ export function QueuedMessagesList({
             <div
               aria-hidden
               data-queued-messages-fade="above"
-              className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface-recessed to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface-recessed-solid to-transparent"
             />
           ) : null}
           {belowOverflow ? (
             <div
               aria-hidden
               data-queued-messages-fade="below"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface-recessed to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface-recessed-solid to-transparent"
             />
           ) : null}
         </div>
