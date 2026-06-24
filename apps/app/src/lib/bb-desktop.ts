@@ -11,23 +11,23 @@ import type {
 // coordinates, not app typography.
 //
 // Two reserve steps, one target — the leading content lands just right of the
-// pinned sidebar trigger (`left: 82px`), not merely past the lights:
-//  - RESERVE (`padding-left: 82px`): the full reserve, applied directly by a surface whose
+// pinned sidebar trigger (`left: 84px`), not merely past the lights:
+//  - RESERVE (`padding-left: 84px`): the full reserve, applied directly by a surface whose
 //    left padding replaces its base inset. The secondary-panel header uses it —
 //    it sits right of the 36px conversation rail, so the trigger overhangs the
 //    header's left edge and the leading tab has to clear the trigger, not just
 //    the lights.
-//  - COLLAPSED_HEADER_RESERVE (`padding-left: 102px`): the page header folds the
-//    whole pinned-trigger footprint into a single left padding: the 82px
-//    clear-the-lights step less the header's own `px-4` (82 − 16 = 66) lands at
+//  - COLLAPSED_HEADER_RESERVE (`padding-left: 104px`): the page header folds the
+//    whole pinned-trigger footprint into a single left padding: the 84px
+//    clear-the-lights step less the header's own `px-4` (84 − 16 = 68) lands at
 //    the trigger's left edge, plus the trigger's own width (28px) and the
-//    `gap-2` after it (8px) = 102px, so the leading content sits just right of
+//    `gap-2` after it (8px) = 104px, so the leading content sits just right of
 //    the trigger. It is one padding rather than padding + a spacer element so it
 //    can transition in lockstep with the sidebar slide — otherwise it snaps on
 //    and off instantly while the inset animates and the header jumps on toggle.
-export const MACOS_TRAFFIC_LIGHT_RESERVE_CLASS = "pl-[82px]";
-export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[82px]";
-export const MACOS_COLLAPSED_HEADER_RESERVE_CLASS = "pl-[102px]";
+export const MACOS_TRAFFIC_LIGHT_RESERVE_CLASS = "pl-[84px]";
+export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
+export const MACOS_COLLAPSED_HEADER_RESERVE_CLASS = "pl-[104px]";
 
 // Browser-chrome analogs of the macOS reserve above. The web build has no
 // traffic lights, so it pins the sidebar toggle flush at the app's top-left with
