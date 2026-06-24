@@ -1997,19 +1997,13 @@ export const ChronologicalFolderThreadSections = memo(
         <ThreadTreeLoadingSkeleton />
       ) : folderItems.length > 0 ? (
         renderItems(folderItems)
-      ) : (
+      ) : threadListState.status === "unavailable" ? (
         <EmptyState
-          message={
-            threadListState.status === "unavailable"
-              ? "Folders unavailable"
-              : "No folders"
-          }
-          icon="Folder"
+          message="Folders unavailable"
           className={getProjectThreadTreeEmptyStateClassName("section")}
-          iconClassName="size-3.5 text-subtle-foreground/50"
           messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
         />
-      );
+      ) : null;
     // A thread dragged out of a folder previews its landing in the loose list
     // with the same inserted placeholder folders use (hiding the empty state so
     // the placeholder reads as the drop slot when the loose list is empty).
