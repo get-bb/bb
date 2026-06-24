@@ -2,8 +2,9 @@ import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import { renderTemplate } from "@bb/templates";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import { appendQuoteToDraftText } from "@/lib/prompt-draft";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -15,10 +16,39 @@ export default {
 // doesn't reflect what users see.
 interface TimelineStageProps {
   children: ReactNode;
+  revealMessageActions?: boolean;
 }
 
-function TimelineStage({ children }: TimelineStageProps) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+function TimelineStage({
+  children,
+  revealMessageActions = false,
+}: TimelineStageProps) {
+  return (
+    <div
+      className={`w-full max-w-[760px] ${
+        revealMessageActions ? "[&_button]:opacity-100" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function appendStoryQuote(draftText: string, quotedText: string): string {
+  return appendQuoteToDraftText(
+    { text: draftText, mentions: [], attachments: [] },
+    quotedText,
+  ).text;
+}
+
+function DraftQuotePreview({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <div className="mt-3 rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+      <div className="mb-1 font-medium text-foreground">Draft quote</div>
+      <pre className="whitespace-pre-wrap font-mono">{text}</pre>
+    </div>
+  );
 }
 
 // Resolves placecats URLs (which are already absolute) and falls through for
@@ -499,10 +529,15 @@ const mentionedMessageMentions: PromptTextMention[] = [
 ];
 
 export function Overview() {
+  const [draftText, setDraftText] = useState("");
+  const handleAddToChat = (text: string) => {
+    setDraftText((current) => appendStoryQuote(current, text));
+  };
+
   return (
     <StoryCard>
       <StoryRow label="short">
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -516,6 +551,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
@@ -523,7 +559,7 @@ export function Overview() {
         label="mentions"
         hint="thread mentions link; file mentions are display-only pills with full-path hover"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -538,6 +574,7 @@ export function Overview() {
             mentions={mentionedMessageMentions}
             projectId="proj_bb"
             turnRequest={acceptedMessage}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
@@ -545,7 +582,7 @@ export function Overview() {
         label="long"
         hint="multi-line markdown with code fence + bullets"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -559,6 +596,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
@@ -566,7 +604,7 @@ export function Overview() {
         label="pending"
         hint="turnRequest.kind = steer, status = pending — interruption mid-turn"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -580,6 +618,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={pendingSteer}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
@@ -587,7 +626,7 @@ export function Overview() {
         label="accepted steer"
         hint="steer that the runtime has acknowledged and folded into the turn"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -601,11 +640,12 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedSteer}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow label="with image" hint="single localImage attachment">
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -620,6 +660,7 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
       </StoryRow>
@@ -627,7 +668,7 @@ export function Overview() {
         label="with images and mixed attachments"
         hint="2 local images + 1 web image + 1 local file"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
             childOrigin={null}
@@ -643,8 +684,15 @@ export function Overview() {
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
             onOpenLocalFileLink={() => false}
+            onAddToChat={handleAddToChat}
           />
         </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="add to chat result"
+        hint="click Add to chat under any regular user message"
+      >
+        <DraftQuotePreview text={draftText} />
       </StoryRow>
       <StoryRow
         label="agent-initiated"

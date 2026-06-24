@@ -3,7 +3,9 @@ import type {
   TimelineRowStatus,
   TimelineToolWorkRow,
 } from "@bb/server-contract";
+import { useState, type ReactNode } from "react";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
+import { appendQuoteToDraftText } from "@/lib/prompt-draft";
 import {
   commandRow,
   conversationRow,
@@ -19,8 +21,39 @@ export default {
   title: "thread/timeline/rows/Bundle Summary",
 };
 
-function TimelineStage({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+function TimelineStage({
+  children,
+  revealMessageActions = false,
+}: {
+  children: ReactNode;
+  revealMessageActions?: boolean;
+}) {
+  return (
+    <div
+      className={`w-full max-w-[760px] ${
+        revealMessageActions ? "[&_button]:opacity-100" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function appendStoryQuote(draftText: string, quotedText: string): string {
+  return appendQuoteToDraftText(
+    { text: draftText, mentions: [], attachments: [] },
+    quotedText,
+  ).text;
+}
+
+function DraftQuotePreview({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <div className="mt-3 rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+      <div className="mb-1 font-medium text-foreground">Draft quote</div>
+      <pre className="whitespace-pre-wrap font-mono">{text}</pre>
+    </div>
+  );
 }
 
 const baseProps = {
@@ -968,18 +1001,25 @@ const interleavedConversationRows: TimelineRow[] = [
 ];
 
 export function Conversation() {
+  const [draftText, setDraftText] = useState("");
+  const handleAddToChat = (text: string) => {
+    setDraftText((current) => appendStoryQuote(current, text));
+  };
+
   return (
     <StoryCard>
       <StoryRow
         label="interleaved thread"
         hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent"
       >
-        <TimelineStage>
+        <TimelineStage revealMessageActions>
           <ThreadTimelineRows
             {...baseProps}
             threadRuntimeDisplayStatus="active"
+            onSelectionAddToChat={handleAddToChat}
             timelineRows={interleavedConversationRows}
           />
+          <DraftQuotePreview text={draftText} />
         </TimelineStage>
       </StoryRow>
     </StoryCard>

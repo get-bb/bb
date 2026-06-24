@@ -1,8 +1,9 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import { appendQuoteToDraftText } from "@/lib/prompt-draft";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -11,8 +12,22 @@ export default {
 
 // ThreadTimelinePane caps content at 760px; match it so the bubble reflects
 // production width.
-function TimelineStage({ children }: { children: ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+function TimelineStage({
+  children,
+  revealMessageActions = false,
+}: {
+  children: ReactNode;
+  revealMessageActions?: boolean;
+}) {
+  return (
+    <div
+      className={`w-full max-w-[760px] ${
+        revealMessageActions ? "[&_button]:opacity-100" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
 }
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
@@ -24,7 +39,23 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 // File/command pills render interactive when a click action resolves; a no-op
 // keeps the story self-contained while still showing the interactive style.
 const resolveMentionLink = () => () => {};
-const addToChat = () => undefined;
+
+function appendStoryQuote(draftText: string, quotedText: string): string {
+  return appendQuoteToDraftText(
+    { text: draftText, mentions: [], attachments: [] },
+    quotedText,
+  ).text;
+}
+
+function DraftQuotePreview({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <div className="rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+      <div className="mb-1 font-medium text-foreground">Draft quote</div>
+      <pre className="whitespace-pre-wrap font-mono">{text}</pre>
+    </div>
+  );
+}
 
 const acceptedMessage: TimelineConversationTurnRequest = {
   kind: "message",
@@ -44,12 +75,14 @@ function mentionAt(
 function UserMessage({
   text,
   mentions = [],
+  onAddToChat,
 }: {
   text: string;
   mentions?: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
 }) {
   return (
-    <TimelineStage>
+    <TimelineStage revealMessageActions={onAddToChat !== undefined}>
       <ConversationMessageContent
         role="user"
         initiator="user"
@@ -59,7 +92,7 @@ function UserMessage({
         senderChildOrigin={null}
         resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}
-        onAddToChat={addToChat}
+        onAddToChat={onAddToChat}
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}
@@ -133,31 +166,46 @@ const LONG_BODY = [
 ].join("\n");
 
 export function Overview() {
+  const [draftText, setDraftText] = useState("");
+  const handleAddToChat = (text: string) => {
+    setDraftText((current) => appendStoryQuote(current, text));
+  };
+
   return (
     <StoryCard>
       <StoryRow
         label="formatting"
         hint="headings, bold/italic, inline code, ordered + unordered lists"
       >
-        <UserMessage text={FORMATTING_BODY} />
+        <UserMessage text={FORMATTING_BODY} onAddToChat={handleAddToChat} />
       </StoryRow>
       <StoryRow
         label="mentions"
         hint="thread (linked), file (interactive), and slash-command pills inside markdown"
       >
-        <UserMessage text={MENTIONS_BODY} mentions={MENTIONS} />
+        <UserMessage
+          text={MENTIONS_BODY}
+          mentions={MENTIONS}
+          onAddToChat={handleAddToChat}
+        />
       </StoryRow>
       <StoryRow
         label="blockquote"
         hint="`> ` lines render as a native markdown blockquote + reply paragraph"
       >
-        <UserMessage text={QUOTE_BODY} />
+        <UserMessage text={QUOTE_BODY} onAddToChat={handleAddToChat} />
       </StoryRow>
       <StoryRow
         label="long (collapsible)"
         hint="clamped to ~15 lines with a Show more / Show less toggle"
       >
-        <UserMessage text={LONG_BODY} />
+        <UserMessage text={LONG_BODY} onAddToChat={handleAddToChat} />
+      </StoryRow>
+      <StoryRow
+        label="add to chat result"
+        hint="click Add to chat under any markdown user message"
+      >
+        <DraftQuotePreview text={draftText} />
       </StoryRow>
     </StoryCard>
   );
