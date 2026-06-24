@@ -567,7 +567,7 @@ export function settleEnvironmentProvisionCommandResult(
 ): CommandResultSideEffectsResult {
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
-  if (!initiator) {
+  if (!initiator && !args.report.ok) {
     const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
       args.deps,
       {
@@ -583,7 +583,6 @@ export function settleEnvironmentProvisionCommandResult(
     }
     return emptyCommandResultSideEffects();
   }
-  const environmentProvisioningId = initiator.provisioningId;
 
   const boundThreads = args.deps.db
     .select()
@@ -621,6 +620,10 @@ export function settleEnvironmentProvisionCommandResult(
     args.deps.hub.notifyEnvironment(args.command.environmentId, [
       "work-status-changed",
     ]);
+    if (!initiator) {
+      return emptyCommandResultSideEffects();
+    }
+    const environmentProvisioningId = initiator.provisioningId;
 
     const cwdBranchEntries = buildCwdBranchEntries({
       path: args.report.result.path,
@@ -727,6 +730,10 @@ export function settleEnvironmentProvisionCommandResult(
     return { postCommitActions };
   }
 
+  if (!initiator) {
+    return emptyCommandResultSideEffects();
+  }
+  const environmentProvisioningId = initiator.provisioningId;
   const failureHandled = recordEnvironmentProvisioningFailureInTransaction(
     args.deps,
     {

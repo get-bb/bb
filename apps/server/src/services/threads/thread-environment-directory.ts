@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   createEnvironment,
-  createEnvironmentProvisioningId,
   createEventId,
   findEnvironmentByHostPath,
   getEnvironment,
@@ -225,10 +224,7 @@ async function provisionUnmanagedEnvironmentForPath(
     workspaceProvisionType: "unmanaged",
     environmentId: environment.id,
     hostId: args.currentEnvironment.hostId,
-    initiator: {
-      threadId: args.thread.id,
-      provisioningId: createEnvironmentProvisioningId(),
-    },
+    initiator: null,
     path: args.path,
   });
 

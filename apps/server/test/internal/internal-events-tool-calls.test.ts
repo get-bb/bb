@@ -591,12 +591,12 @@ describe("internal event and tool-call routes", () => {
         ({ command }) =>
           command.type === "environment.provision" &&
           command.workspaceProvisionType === "unmanaged" &&
-          command.path === "/tmp/new-unmanaged-worktree" &&
-          command.initiator?.threadId === thread.id,
+          command.path === "/tmp/new-unmanaged-worktree",
       );
       if (provisionCommand.command.type !== "environment.provision") {
         throw new Error("Expected environment.provision command");
       }
+      expect(provisionCommand.command.initiator).toBeNull();
 
       await reportQueuedCommandSuccess(harness, provisionCommand, {
         path: "/tmp/new-unmanaged-worktree",
@@ -641,6 +641,14 @@ describe("internal event and tool-call routes", () => {
         isGitRepo: true,
         isWorktree: true,
       });
+      const storedEvents = harness.db
+        .select()
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .all();
+      expect(storedEvents.map((event) => event.type)).toEqual([
+        "system/operation",
+      ]);
     });
   });
 
