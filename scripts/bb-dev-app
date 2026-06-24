@@ -91,17 +91,18 @@ usage() {
   cat <<'EOF'
 Usage:
   By default these start only the source dev server (web frontend, server, host
-  daemon). Pass --desktop to also launch the Electron desktop shell.
+  daemon) and print the URL without opening a browser. Pass --open to open the
+  browser after startup. Pass --desktop to also launch the Electron desktop shell.
 
-  scripts/bb-dev-app main [--no-open] [--desktop]
+  scripts/bb-dev-app main [--open] [--desktop]
       Fetch origin/main, switch this checkout to main, fast-forward, then start
       the source dev server (and the desktop shell with --desktop).
 
-  scripts/bb-dev-app branch <branch> [--no-open] [--desktop]
+  scripts/bb-dev-app branch <branch> [--open] [--desktop]
       Switch this checkout to a local branch, or create it from origin/<branch>,
       then start the source dev server (and the desktop shell with --desktop).
 
-  scripts/bb-dev-app current [--no-open] [--desktop]
+  scripts/bb-dev-app current [--open] [--desktop]
       Start the source dev server for the current branch (and the desktop shell
       with --desktop).
 
@@ -288,7 +289,7 @@ switch_to_main() {
 switch_to_branch() {
   local branch="$1"
   [[ -n "${branch}" ]] || die "Branch name is required"
-  [[ "${branch}" != "--no-open" ]] || die "Branch name is required"
+  [[ "${branch}" != "--open" ]] || die "Branch name is required"
 
   stop_dev_app
   handle_dirty_work_before_branch_switch
@@ -432,13 +433,13 @@ main() {
 
   local command="${1:-}"
   (( $# > 0 )) && shift
-  local open_after_start="1"
+  local open_after_start="0"
   local start_desktop_app="0"
   local positional=()
   local arg
   for arg in "$@"; do
     case "${arg}" in
-      --no-open) open_after_start="0" ;;
+      --open) open_after_start="1" ;;
       --desktop) start_desktop_app="1" ;;
       *) positional+=("${arg}") ;;
     esac

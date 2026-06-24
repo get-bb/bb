@@ -82,7 +82,7 @@ Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helpi
 - `scripts/bb-dev-app stop` stops the launcher-managed dev server and desktop.
 - `scripts/bb-dev-app logs dev` and `scripts/bb-dev-app logs desktop` follow logs.
 
-By default the launcher starts only the dev server (web frontend, server, host daemon). Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
+By default the launcher starts only the dev server (web frontend, server, host daemon) and prints the URL without opening a browser. Pass `--open` to open the browser after startup. Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
 
 Branch switches intentionally keep dirty work in this checkout; git will stop if a local file would be overwritten. Set `BB_DEV_APP_STASH_DIRTY=1` for a one-off launch that stashes first.
 
