@@ -82,6 +82,23 @@ export function Overview() {
         </Stage>
       </StoryRow>
       <StoryRow
+        label="organized by folder"
+        hint="title + folder (when Organize by = Folders) instead of project"
+      >
+        <Stage>
+          <ThreadSearchResultRow
+            id="row-folder"
+            isActive={false}
+            matches={[]}
+            onActive={noop}
+            onSelect={noop}
+            projectName="bb"
+            folderLabel="Infra › CI"
+            thread={recentThread}
+          />
+        </Stage>
+      </StoryRow>
+      <StoryRow
         label="title match"
         hint="matched term highlighted in the title"
       >

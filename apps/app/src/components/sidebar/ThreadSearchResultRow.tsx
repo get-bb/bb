@@ -32,6 +32,12 @@ interface ThreadSearchResultRowProps {
   onActive: () => void;
   onSelect: () => void;
   projectName: string | undefined;
+  /**
+   * Pre-formatted folder path (e.g. "Infra › CI") shown in place of the project
+   * when the sidebar is organized by folder. The caller derives it from the
+   * thread's folder + the Organize-by setting; absent → falls back to project.
+   */
+  folderLabel?: string | null;
   thread: ThreadListEntry;
 }
 
@@ -112,6 +118,7 @@ function ThreadSearchResultRowComponent({
   onActive,
   onSelect,
   projectName,
+  folderLabel,
   thread,
 }: ThreadSearchResultRowProps) {
   const rowRef = useRef<HTMLButtonElement | null>(null);
@@ -132,6 +139,9 @@ function ThreadSearchResultRowComponent({
     thread.projectId !== PERSONAL_PROJECT_ID && projectName
       ? projectName
       : null;
+  // Folder takes the project's place on the metadata line when the sidebar is
+  // organized by folder (the caller supplies a folderLabel only then).
+  const contextLabel = folderLabel ?? projectMetadata;
   const relativeTime = formatRelativeTime({
     timestamp: thread.updatedAt,
     now: Date.now(),
@@ -190,15 +200,15 @@ function ThreadSearchResultRowComponent({
           </span>
         ) : (
           <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-            {projectMetadata ? (
+            {contextLabel ? (
               <>
                 <span className="flex min-w-0 items-center gap-1">
                   <Icon
-                    name="FolderGit"
+                    name="Folder"
                     className="size-3.5 shrink-0"
                     aria-hidden="true"
                   />
-                  <span className="min-w-0 truncate">{projectMetadata}</span>
+                  <span className="min-w-0 truncate">{contextLabel}</span>
                 </span>
                 <span className="shrink-0 opacity-60">·</span>
               </>
