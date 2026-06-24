@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
   PromptStackCard,
+  PROMPT_STACK_COMPACT_INLAY_INSET_CLASS,
+  PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS,
   PROMPT_STACK_INLAY_INSET_CLASS,
   PROMPT_STACK_INLAY_SEGMENT_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
@@ -654,14 +656,22 @@ export function QueuedMessagesList({
       // instead of leaving a visible gap between the two surfaces.
       className="relative -mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
-      <div className={PROMPT_STACK_INLAY_INSET_CLASS}>
+      <div
+        className={
+          isExpanded
+            ? PROMPT_STACK_INLAY_INSET_CLASS
+            : PROMPT_STACK_COMPACT_INLAY_INSET_CLASS
+        }
+      >
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
           className={cn(
             "flex w-full min-w-0 items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            PROMPT_STACK_INLAY_SEGMENT_CLASS,
+            isExpanded
+              ? PROMPT_STACK_INLAY_SEGMENT_CLASS
+              : PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS,
             "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground",
           )}
         >
