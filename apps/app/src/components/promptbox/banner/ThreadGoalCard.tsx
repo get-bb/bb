@@ -2,7 +2,6 @@ import type { ThreadTimelineGoal } from "@bb/domain";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
-  activityMetaClass,
   activityRowClass,
   activityTextClass,
 } from "@/components/ui/activity-row-styles";
@@ -49,8 +48,8 @@ const TOGGLE_ID = "thread-goal-card-toggle";
 /**
  * Collapsible goal card for the prompt stack above the composer. Surfaces the
  * provider's current durable objective (Codex `thread/goal/*` events projected
- * onto the timeline). Collapsed: objective. Expanded: full objective +
- * token/time usage. Mirrors the ThreadPromptContextBanner section chrome. Only
+ * onto the timeline). Collapsed: goal state. Expanded: full objective +
+ * token/time usage. Mirrors the ThreadPromptModeCard header/body split. Only
  * rendered while the goal is active — once the provider marks it complete (or
  * paused / budget-limited) it drops out of the prompt stack.
  */
@@ -63,7 +62,6 @@ export function ThreadGoalCard({
     return null;
   }
   const objective = goal.objective.trim();
-  const hasObjective = objective.length > 0;
   return (
     <PromptStackCard
       ariaLabel="Goal"
@@ -85,28 +83,14 @@ export function ThreadGoalCard({
             className={activityIconClass("active", "size-3.5 shrink-0")}
             aria-hidden="true"
           />
-          {hasObjective ? (
-            <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-              <span className={activityMetaClass("active", "shrink-0")}>
-                Goal:
-              </span>
-              <span
-                className={activityTextClass("active", "min-w-0 truncate")}
-                title={objective}
-              >
-                {objective}
-              </span>
-            </span>
-          ) : (
-            <span
-              className={activityTextClass(
-                "active",
-                "min-w-0 flex-1 truncate text-left",
-              )}
-            >
-              Goal
-            </span>
-          )}
+          <span
+            className={activityTextClass(
+              "active",
+              "min-w-0 flex-1 truncate text-left",
+            )}
+          >
+            Goal
+          </span>
           <Icon
             name="ChevronDown"
             className={cn(
@@ -133,7 +117,7 @@ export function ThreadGoalCard({
         <div className="overflow-hidden bg-popover">
           <div className="space-y-2 px-3 pb-2.5 pt-2">
             <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
-              {goal.objective}
+              {objective.length > 0 ? objective : "No goal objective."}
             </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
