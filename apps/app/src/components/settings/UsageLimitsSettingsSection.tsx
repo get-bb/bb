@@ -134,7 +134,7 @@ function ProviderUsageBlock({
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
         {planLabel ? (
@@ -182,7 +182,7 @@ function ProviderUsageBody({
         );
       }
       return (
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           {usage.windows.map((window) => (
             <UsageWindowRow key={window.label} window={window} />
           ))}
@@ -242,7 +242,7 @@ export function UsageLimitsSettingsSectionContent({
     >
       <div className="divide-y divide-border">
         {PROVIDERS.map((config) => (
-          <div key={config.key} className="py-3 first:pt-0 last:pb-0">
+          <div key={config.key} className="py-3.5 first:pt-0 last:pb-0">
             <ProviderUsageBlock
               config={config}
               usage={usage[config.key]}

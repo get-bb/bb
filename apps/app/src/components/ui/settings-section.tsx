@@ -15,22 +15,24 @@ export function SettingsSection({
   title,
 }: SettingsSectionProps) {
   return (
-    <section className="space-y-2">
+    <section className="space-y-3">
       <div
         className={cn(
-          "flex justify-between gap-3",
+          "flex justify-between gap-4",
           description ? "items-start" : "items-center",
         )}
       >
         <div>
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           {description ? (
-            <p className="text-xs text-muted-foreground">{description}</p>
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {description}
+            </p>
           ) : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
         {children}
       </div>
     </section>
@@ -51,7 +53,7 @@ export interface SettingsRowProps {
 
 export function SettingsRow({ children }: SettingsRowProps) {
   return (
-    <div className="flex items-center gap-3 py-2 text-sm first:pt-0 last:pb-0">
+    <div className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
       {children}
     </div>
   );
@@ -73,7 +75,7 @@ export function SettingsWithControl({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-4",
+        "flex flex-col gap-2.5 sm:flex-row sm:justify-between sm:gap-5",
         description ? "sm:items-start" : "sm:items-center",
       )}
     >
@@ -89,7 +91,9 @@ export function SettingsWithControl({
           ) : null}
         </div>
         {description ? (
-          <p className="text-xs text-subtle-foreground/80">{description}</p>
+          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            {description}
+          </p>
         ) : null}
       </div>
       <div className="shrink-0 sm:flex sm:justify-end">{children}</div>

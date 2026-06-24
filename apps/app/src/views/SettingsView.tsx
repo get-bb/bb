@@ -405,7 +405,7 @@ export function LocalOpenTargetSettingsSection({
 
   return (
     <SettingsSection title="File Preferences">
-      <div className="space-y-4">
+      <div className="space-y-5">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
           onTargetChange={onDirectoryTargetChange}
@@ -519,7 +519,7 @@ export function GeneralSettingsSection({
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
-      <div className="space-y-4">
+      <div className="space-y-5">
         <SettingsWithControl label="Theme">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -855,7 +855,7 @@ export function ExperimentsSettingsSection({
       title="Experiments"
       description="Early features that are off by default. Opt in to try them."
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         <SettingsWithControl
           label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
           labelBadge="dev-only"
@@ -936,7 +936,7 @@ export function SettingsView() {
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-3xl space-y-8">
         <GeneralSettingsSection
           appearance={appearance}
           appearanceDisabled={
