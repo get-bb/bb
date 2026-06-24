@@ -196,7 +196,7 @@ const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
 const ENVIRONMENT_GONE_ARIA_LABEL =
   "Environment is unavailable. This thread can't run any more work.";
-const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-none";
+const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
 const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
   "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
 const PROMPT_BANNER_ACTION_BUTTON_CLASS = cn(
