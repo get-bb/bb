@@ -6,7 +6,7 @@ import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display"
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
-const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} transition-colors hover:bg-state-hover hover:text-foreground`;
+const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
 
 export interface ThreadEnvironmentSummaryProps {
   /** Display name of the thread's project, shown alongside the environment. */
@@ -112,7 +112,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           aria-label="Create new thread in this worktree"
           title="New thread in this worktree"
           onClick={onCreateNewThreadInWorktree}
-          className="-ml-1 inline-flex shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+          className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
         >
           <Icon name="MessageSquarePlus" className="size-4" />
         </button>
