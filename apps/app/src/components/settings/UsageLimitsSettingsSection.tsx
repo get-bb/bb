@@ -3,7 +3,13 @@ import type {
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSystemUsageLimits } from "@/hooks/queries/system-queries";
 import { cn } from "@/lib/utils";
 
@@ -208,14 +214,27 @@ export function UsageLimitsSettingsSectionContent({
       title="Usage limits"
       description="Your Codex and Claude Code subscription usage."
       action={
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isFetching}
-          onClick={onRefresh}
-        >
-          {isFetching ? "Refreshing…" : "Refresh"}
-        </Button>
+        <Tooltip delayDuration={300} disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              disabled={isFetching}
+              onClick={onRefresh}
+              title={undefined}
+              aria-label={
+                isFetching ? "Refreshing usage limits" : "Refresh usage limits"
+              }
+            >
+              <Icon
+                name="RotateCcw"
+                className={cn(isFetching && "animate-spin")}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Refresh usage limits</TooltipContent>
+        </Tooltip>
       }
     >
       <div className="divide-y divide-border">
