@@ -15,7 +15,7 @@ interface WorkspaceCommandTargetPath {
   workspaceProvisionType: WorkspaceProvisionType;
 }
 
-interface WorkspaceCommandTarget {
+export interface WorkspaceCommandTarget {
   environmentId: string;
   hostId: string;
   workspaceContext: WorkspaceContext;

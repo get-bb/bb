@@ -1,6 +1,5 @@
 import path from "node:path";
 import { updateEnvironmentMetadata } from "@bb/db";
-import { recordEnvironmentCurrentBranch } from "@bb/db/internal-environment-lifecycle";
 import {
   type GitBranchRefClassification,
   resolveEnvironmentWorkspaceDisplayKind,
@@ -40,6 +39,7 @@ import {
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
+import { callEnvironmentWorkspaceStatus } from "../services/environments/workspace-status.js";
 import { assembleThreadPullRequest } from "../services/environments/pull-request.js";
 import {
   requireAvailableWorkspaceDiff,
@@ -271,10 +271,6 @@ function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
   return requireWorkspaceCommandTarget(environment);
 }
 
-function normalizeObservedDefaultBranch(defaultBranch: string): string | null {
-  return defaultBranch.length > 0 ? defaultBranch : null;
-}
-
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   const { get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -329,17 +325,12 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       });
     }
     const target = requireWorkspaceCommandTarget(environment);
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "workspace.status",
-        environmentId: target.environmentId,
-        workspaceContext: target.workspaceContext,
-        ...(query.mergeBaseBranch
-          ? { mergeBaseBranch: query.mergeBaseBranch }
-          : {}),
-      },
+    const result = await callEnvironmentWorkspaceStatus(deps, {
+      environment,
+      target,
+      ...(query.mergeBaseBranch
+        ? { mergeBaseBranch: query.mergeBaseBranch }
+        : {}),
     });
     if (result.outcome === "unavailable") {
       return context.json({
@@ -347,12 +338,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         failure: result.failure,
       });
     }
-    recordEnvironmentCurrentBranch(deps.db, deps.hub, environment.id, {
-      branchName: result.workspaceStatus.branch.currentBranch,
-      defaultBranch: normalizeObservedDefaultBranch(
-        result.workspaceStatus.branch.defaultBranch,
-      ),
-    });
     return context.json({
       outcome: "available",
       workspace: result.workspaceStatus,
@@ -624,14 +609,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         const { workspaceContext } = target;
 
         const [statusResult, diffResult] = await Promise.all([
-          callHostRetryableOnlineRpc(deps, {
-            hostId: target.hostId,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-            command: {
-              type: "workspace.status",
-              environmentId: target.environmentId,
-              workspaceContext,
-            },
+          callEnvironmentWorkspaceStatus(deps, {
+            environment,
+            target,
           }),
           callHostRetryableOnlineRpc(deps, {
             hostId: target.hostId,
@@ -691,14 +671,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         const { workspaceContext } = target;
         const targetBranch = payload.options.mergeBaseBranch;
 
-        const statusResult = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "workspace.status",
-            environmentId: target.environmentId,
-            workspaceContext,
-          },
+        const statusResult = await callEnvironmentWorkspaceStatus(deps, {
+          environment,
+          target,
         });
         const workspaceStatus = requireAvailableWorkspaceStatus(statusResult);
 
