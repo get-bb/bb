@@ -142,6 +142,7 @@ import {
 import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
@@ -177,6 +178,9 @@ import {
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
+// Fill the scroll area and center the no-projects welcome both axes.
+const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
+  "min-h-full flex-1 items-center justify-center pb-12";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
@@ -636,6 +640,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
+  // The no-projects welcome replaces the composer until the user opts in; once
+  // they pick "New thread" we reveal the composer for the rest of the session.
+  const [startedComposing, setStartedComposing] = useState(false);
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
@@ -2288,6 +2295,26 @@ export function RootComposeView(props: RootComposeViewProps) {
     ],
   );
   const isForkDraft = forkSeed !== null;
+  const showEmptyWelcome =
+    props.surface === "page" &&
+    !isForkDraft &&
+    !startedComposing &&
+    projects !== undefined &&
+    projects.length === 0;
+  const handleStartComposing = useCallback(
+    (prefill?: string) => {
+      if (prefill) {
+        promptDraft.setTextAndMentions(prefill, []);
+      }
+      setStartedComposing(true);
+    },
+    [promptDraft],
+  );
+  // Focus the composer once it mounts in place of the welcome screen.
+  useEffect(() => {
+    if (!startedComposing) return;
+    promptBoxRef.current?.focusEnd();
+  }, [startedComposing]);
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
@@ -2498,7 +2525,11 @@ export function RootComposeView(props: RootComposeViewProps) {
     <>
       {rootPanelToggle}
       <RootComposeSecondaryContent
-        contentClassName={ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS}
+        contentClassName={
+          showEmptyWelcome
+            ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+            : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+        }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,
@@ -2529,13 +2560,25 @@ export function RootComposeView(props: RootComposeViewProps) {
           onPanelChange: handleSecondaryPanelChange,
         }}
       >
-        {promptBox}
-        <RootComposeMobileRecents
-          highlightedThreadId={lastCreatedThreadId}
-          projectNamesById={mobileRecentProjectNamesById}
-          showCreatingRow={createThread.isPending}
-          threads={mobileRecentThreads}
-        />
+        {showEmptyWelcome ? (
+          <RootComposeEmptyWelcome
+            onCompose={handleStartComposing}
+            onAddProject={quickCreateProject.openCreateDialog}
+            addProjectDisabled={
+              !quickCreateProject.isAvailable || quickCreateProject.isCreating
+            }
+          />
+        ) : (
+          <>
+            {promptBox}
+            <RootComposeMobileRecents
+              highlightedThreadId={lastCreatedThreadId}
+              projectNamesById={mobileRecentProjectNamesById}
+              showCreatingRow={createThread.isPending}
+              threads={mobileRecentThreads}
+            />
+          </>
+        )}
       </RootComposeSecondaryContent>
     </>
   );

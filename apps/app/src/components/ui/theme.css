@@ -743,6 +743,16 @@ body.sidebar-resizing [data-sidebar="panel"] {
     mask-size: 200% 100%;
     animation: shine-mask 2s linear infinite;
   }
+
+  /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent
+     applies the specular gloss filter, which derives the moving highlight from
+     this glyph's alpha — so the mark themes itself and carries no baked-in
+     reflection patches. */
+  .bb-mark-fill {
+    -webkit-mask: url(/bb-mark.svg) center / contain no-repeat;
+    mask: url(/bb-mark.svg) center / contain no-repeat;
+    background-color: var(--foreground);
+  }
 }
 
 @keyframes shine {
