@@ -214,12 +214,6 @@ interface SidebarSortOptionsMenuProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-interface SidebarThreadActionsMenuProps {
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  onOpenArchivedThreads?: () => void;
-}
-
 interface ProjectListNavigationLoadingRowProps {
   textWidthClassName: string;
 }
@@ -819,46 +813,6 @@ export function SidebarSortOptionsMenu({
   );
 }
 
-function SidebarThreadActionsMenu({
-  open,
-  onOpenChange,
-  onOpenArchivedThreads,
-}: SidebarThreadActionsMenuProps) {
-  if (!onOpenArchivedThreads) {
-    return null;
-  }
-
-  return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Threads actions"
-          title={undefined}
-          className={cn(
-            "rounded-md p-0 text-muted-foreground",
-            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          )}
-        >
-          <Icon
-            name="MoreHorizontal"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" mobileTitle="Threads actions">
-        <DropdownMenuItem onSelect={onOpenArchivedThreads}>
-          <Icon name="Archive" aria-hidden="true" />
-          View archive
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 interface SidebarDisplayOptionsActionsProps {
   open: SidebarDisplayOptionsMenuKind | null;
   onOpenChange: (menu: SidebarDisplayOptionsMenuKind, open: boolean) => void;
@@ -891,8 +845,6 @@ interface SidebarThreadsSectionActionsProps {
     menu: SidebarDisplayOptionsMenuKind,
     open: boolean,
   ) => void;
-  isActionsMenuOpen: boolean;
-  onActionsMenuOpenChange: (open: boolean) => void;
   onOpenArchivedThreads?: () => void;
   isCreatingFolder: boolean;
   onNewThread: () => void;
@@ -906,19 +858,20 @@ interface SidebarThreadsSectionActionsProps {
 function SidebarThreadsSectionActions({
   displayOptionsOpen,
   onDisplayOptionsOpenChange,
-  isActionsMenuOpen,
-  onActionsMenuOpenChange,
   onOpenArchivedThreads,
   isCreatingFolder,
   onNewThread,
 }: SidebarThreadsSectionActionsProps) {
   return (
     <>
-      <SidebarThreadActionsMenu
-        open={isActionsMenuOpen}
-        onOpenChange={onActionsMenuOpenChange}
-        onOpenArchivedThreads={onOpenArchivedThreads}
-      />
+      {onOpenArchivedThreads ? (
+        <ProjectListSectionIconButton
+          ariaLabel="View archive"
+          title="View archive"
+          iconName="Archive"
+          onClick={onOpenArchivedThreads}
+        />
+      ) : null}
       <SidebarSortOptionsMenu
         open={displayOptionsOpen === "sort"}
         onOpenChange={(next) => onDisplayOptionsOpenChange("sort", next)}
@@ -1546,33 +1499,22 @@ function ProjectListComponent({
   );
   const [projectsDisplayOptionsMenuOpen, setProjectsDisplayOptionsMenuOpen] =
     useState<SidebarDisplayOptionsMenuKind | null>(null);
-  const [isThreadsActionsMenuOpen, setIsThreadsActionsMenuOpen] =
-    useState(false);
   const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
     useState<SidebarDisplayOptionsMenuKind | null>(null);
   const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
     (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
       setProjectsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
-        setIsThreadsActionsMenuOpen(false);
         setThreadsDisplayOptionsMenuOpen(null);
       }
     },
     [],
   );
-  const handleThreadsActionsMenuOpenChange = useCallback((open: boolean) => {
-    setIsThreadsActionsMenuOpen(open);
-    if (open) {
-      setProjectsDisplayOptionsMenuOpen(null);
-      setThreadsDisplayOptionsMenuOpen(null);
-    }
-  }, []);
   const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
     (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
       setThreadsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setProjectsDisplayOptionsMenuOpen(null);
-        setIsThreadsActionsMenuOpen(false);
       }
     },
     [],
@@ -1992,8 +1934,6 @@ function ProjectListComponent({
     <SidebarThreadsSectionActions
       displayOptionsOpen={threadsDisplayOptionsMenuOpen}
       onDisplayOptionsOpenChange={handleThreadsDisplayOptionsMenuOpenChange}
-      isActionsMenuOpen={isThreadsActionsMenuOpen}
-      onActionsMenuOpenChange={handleThreadsActionsMenuOpenChange}
       onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       isCreatingFolder={isCreateThreadFolderPending}
       onNewThread={handleCreateProjectlessThread}
@@ -2028,9 +1968,7 @@ function ProjectListComponent({
         <TopLevelSidebarSection
           label="Threads"
           actions={threadsSectionActions}
-          actionsOpen={
-            isThreadsActionsMenuOpen || threadsDisplayOptionsMenuOpen !== null
-          }
+          actionsOpen={threadsDisplayOptionsMenuOpen !== null}
           actionsMobileAlways
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
@@ -2169,10 +2107,7 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
-                  actionsOpen={
-                    isThreadsActionsMenuOpen ||
-                    threadsDisplayOptionsMenuOpen !== null
-                  }
+                  actionsOpen={threadsDisplayOptionsMenuOpen !== null}
                   actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("threads"),
