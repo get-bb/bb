@@ -645,14 +645,10 @@ export function QueuedMessagesList({
       ariaLabel="Queued messages"
       // Tuck the drawer's flat, borderless bottom behind the prompt box (which
       // is `relative` + opaque, so it paints on top) so the queued list reads as
-      // coming up from behind the composer rather than floating above it. The
-      // bottom spacer gives the prompt box enough overlap to cover the drawer
-      // edge in production, while standalone stories still keep the drawer's
-      // full visual depth.
-      className={cn(
-        "relative -mb-5 overflow-hidden rounded-b-none border-b-0 pb-5 shadow-none",
-        isExpanded && "pb-6",
-      )}
+      // coming up from behind the composer rather than floating above it.
+      // Match main's tuck distance so the prompt box sits on top of the drawer
+      // instead of leaving a visible gap between the two surfaces.
+      className="relative -mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
       <div>
         <button
