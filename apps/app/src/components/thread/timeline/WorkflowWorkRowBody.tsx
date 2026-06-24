@@ -225,7 +225,7 @@ function WorkflowAgentLine({
       <div
         className={promptStackActivityRowClass(
           activityState,
-          "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_minmax(9rem,15rem)] items-center gap-2 text-xs",
+          "grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_minmax(9rem,15rem)] items-center gap-2 text-xs",
         )}
       >
         <WorkflowAgentStateIcon
