@@ -874,8 +874,8 @@ function SidebarThreadsSectionActions({
     <>
       {onOpenArchivedThreads ? (
         <ProjectListSectionIconButton
-          ariaLabel="View archive"
-          title="View archive"
+          ariaLabel="Archived threads"
+          title="Archived threads"
           iconName="Archive"
           onClick={onOpenArchivedThreads}
         />

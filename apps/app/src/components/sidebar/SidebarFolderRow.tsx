@@ -216,7 +216,7 @@ function SidebarFolderRowComponent({
                 {onViewArchivedThreads ? (
                   <DropdownMenuItem onSelect={onViewArchivedThreads}>
                     <Icon name="Archive" aria-hidden="true" />
-                    View archive
+                    Archived threads
                   </DropdownMenuItem>
                 ) : null}
                 {onViewArchivedThreads && (onRename || onRemove) ? (
