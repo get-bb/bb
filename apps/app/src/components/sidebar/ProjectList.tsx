@@ -1009,7 +1009,7 @@ function TopLevelSidebarSection({
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
-          {/* Reserve room for up to four section action buttons on the right;
+          {/* Reserve room for the compact section action cluster on the right;
               coarse pointers need a little more. */}
           {collapseControl ? (
             <button
@@ -1937,6 +1937,25 @@ function ProjectListComponent({
       />
     </>
   );
+  const allThreadsSectionActions = (
+    <>
+      <SidebarDisplayOptionsActions
+        open={projectsDisplayOptionsMenuOpen}
+        onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
+      />
+      <ProjectListSectionIconButton
+        ariaLabel="Archived threads"
+        title="Archived threads"
+        iconName="Archive"
+        onClick={handleOpenProjectlessArchivedThreads}
+      />
+      <ProjectListThreadsSectionActions
+        isCreatingFolder={isCreateThreadFolderPending}
+        onNewFolder={handleOpenCreateFolderDialog}
+        onNewThread={handleCreateProjectlessThread}
+      />
+    </>
+  );
   // One Threads-header cluster shared by project mode and the folders view.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
@@ -1962,6 +1981,20 @@ function ProjectListComponent({
       onRemoveFolder={handleRemoveThreadFolder}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+      renderAllThreadsSection={(content) => (
+        <TopLevelSidebarSection
+          label="All threads"
+          actions={allThreadsSectionActions}
+          actionsOpen={projectsDisplayOptionsMenuOpen !== null}
+          actionsAlwaysVisible
+          collapseControl={{
+            isCollapsed: collapsedSidebarSectionIds.has("threads"),
+            onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
+          }}
+        >
+          {content}
+        </TopLevelSidebarSection>
+      )}
       renderFoldersSection={(content) => (
         <TopLevelSidebarSection
           label="Folders"

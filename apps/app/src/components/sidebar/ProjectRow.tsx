@@ -179,6 +179,7 @@ export interface ChronologicalThreadTreeProps {
 }
 
 export interface ChronologicalFolderThreadSectionsProps extends ChronologicalThreadTreeProps {
+  renderAllThreadsSection: (content: ReactNode) => ReactNode;
   renderFoldersSection: (content: ReactNode) => ReactNode;
   renderThreadsSection: (content: ReactNode) => ReactNode;
 }
@@ -1947,6 +1948,7 @@ export const ChronologicalFolderThreadSections = memo(
     onRemoveFolder,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
+    renderAllThreadsSection,
     renderFoldersSection,
     renderThreadsSection,
   }: ChronologicalFolderThreadSectionsProps) {
@@ -1970,6 +1972,7 @@ export const ChronologicalFolderThreadSections = memo(
       rootItems,
     });
     const folderItems = rootItems.filter((item) => item.kind === "folder");
+    const hasFolders = folderItems.length > 0;
     const looseItems = rootItems.filter((item) => item.kind !== "folder");
 
     // No sortableParentKey: the outer ManualSortableList below provides the
@@ -2052,8 +2055,14 @@ export const ChronologicalFolderThreadSections = memo(
         manualSort={manualSort}
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
-        {renderFoldersSection(foldersContent)}
-        {renderThreadsSection(threadsContent)}
+        {hasFolders ? (
+          <>
+            {renderFoldersSection(foldersContent)}
+            {renderThreadsSection(threadsContent)}
+          </>
+        ) : (
+          renderAllThreadsSection(threadsContent)
+        )}
       </ManualSortableList>
     );
 
