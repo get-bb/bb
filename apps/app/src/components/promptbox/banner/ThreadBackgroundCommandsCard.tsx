@@ -98,7 +98,7 @@ export function ThreadBackgroundCommandsCard({
             aria-controls={BODY_ID}
             aria-label={`Background commands: ${primary.description}`}
             onClick={onToggle}
-            className="flex w-full min-w-0 items-center gap-1.5 rounded px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+            className="flex w-full min-w-0 items-center gap-1.5 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-state-hover"
           >
             <Icon
               name="Terminal"
