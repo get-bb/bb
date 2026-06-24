@@ -113,6 +113,28 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain('aria-label="Copy message"');
   });
 
+  it("passes regular user message text to add-to-chat", () => {
+    const onSelectionAddToChat = vi.fn();
+    render(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "  Quote this user prompt.  ",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith(
+      "Quote this user prompt.",
+    );
+  });
+
   it("passes the selected assistant row branch point to side-chat replies", async () => {
     const onSelectionReplyInSideChat = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 interface MessageActionBarProps {
   messageText: string;
   alignment: "start" | "end";
+  onAddToChat?: (text: string) => void;
   onFork?: () => void;
   onSideChat?: () => void;
   /**
@@ -31,7 +32,12 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "Fork" | "SideChat" | "ArrowTurnBackward";
+  icon:
+    | "Copy"
+    | "MessageSquarePlus"
+    | "Fork"
+    | "SideChat"
+    | "ArrowTurnBackward";
   label: string;
   onSelect: () => void;
   disabled?: boolean;
@@ -66,12 +72,14 @@ export function findMessageActionTooltipCollisionBoundary(
 export function MessageActionBar({
   messageText,
   alignment,
+  onAddToChat,
   onFork,
   onSideChat,
   onSendToMain,
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
+  const hasAddToChat = hasCopy && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] =
     useState<HTMLElement | undefined>();
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -88,6 +96,15 @@ export function MessageActionBar({
                 errorMessage: "Failed to copy",
               });
             },
+          },
+        ]
+      : []),
+    ...(hasAddToChat
+      ? [
+          {
+            icon: "MessageSquarePlus" as const,
+            label: "Add to chat",
+            onSelect: () => onAddToChat(messageText),
           },
         ]
       : []),
@@ -122,7 +139,7 @@ export function MessageActionBar({
       : []),
   ];
 
-  if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
+  if (!hasCopy && !hasAddToChat && !onFork && !onSideChat && !onSendToMain) {
     return null;
   }
 
@@ -151,6 +168,23 @@ export function MessageActionBar({
             </TooltipTrigger>
             <TooltipContent collisionBoundary={collisionBoundary}>
               Copy message
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {hasAddToChat ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                onClick={() => onAddToChat(messageText)}
+                aria-label="Add to chat"
+              >
+                <Icon name="MessageSquarePlus" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent collisionBoundary={collisionBoundary}>
+              Add to chat
             </TooltipContent>
           </Tooltip>
         ) : null}

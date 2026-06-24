@@ -64,6 +64,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -153,6 +154,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -306,6 +308,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -422,7 +425,11 @@ function UserConversationMessage({
         </div>
         {messageText ? (
           <div className="mt-1 flex justify-end">
-            <MessageActionBar messageText={messageText} alignment="end" />
+            <MessageActionBar
+              messageText={messageText}
+              alignment="end"
+              onAddToChat={onAddToChat}
+            />
           </div>
         ) : null}
       </div>
@@ -538,6 +545,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        onAddToChat={props.onAddToChat}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}

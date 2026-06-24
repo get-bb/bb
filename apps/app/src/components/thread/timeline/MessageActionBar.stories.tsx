@@ -33,6 +33,15 @@ export function Overview() {
             />
           </HoverRevealStage>
         </StoryRow>
+        <StoryRow label="user message" hint="Copy + Add to chat">
+          <HoverRevealStage>
+            <MessageActionBar
+              messageText="A user message you can quote into the composer."
+              alignment="end"
+              onAddToChat={noop}
+            />
+          </HoverRevealStage>
+        </StoryRow>
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
             <MessageActionBar

@@ -24,6 +24,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 // File/command pills render interactive when a click action resolves; a no-op
 // keeps the story self-contained while still showing the interactive style.
 const resolveMentionLink = () => () => {};
+const addToChat = () => undefined;
 
 const acceptedMessage: TimelineConversationTurnRequest = {
   kind: "message",
@@ -58,6 +59,7 @@ function UserMessage({
         senderChildOrigin={null}
         resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}
+        onAddToChat={addToChat}
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}

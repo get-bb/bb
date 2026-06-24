@@ -40,6 +40,20 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
+  it("renders add-to-chat as an icon action and passes the message text", () => {
+    const onAddToChat = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="Quote this message."
+        alignment="end"
+        onAddToChat={onAddToChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
+  });
+
   it("omits the send-to-main action when no handler is supplied", () => {
     render(
       <MessageActionBar messageText="An answer." alignment="start" />,
