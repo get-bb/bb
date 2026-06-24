@@ -14,7 +14,6 @@ function createMonitorHarness(
   usage: HostDaemonResourceUsage,
   options: { inotifyInstanceWarnThreshold?: number } = {},
 ) {
-  const debug = vi.fn();
   const warn = vi.fn();
   const timer: CapturedTimer = {
     callback: () => undefined,
@@ -22,7 +21,7 @@ function createMonitorHarness(
     unrefed: false,
   };
   const monitor = startHostDaemonHealthMonitor({
-    logger: { debug, warn },
+    logger: { warn },
     getWatchCounts: () => ({ workspaceWatches: 3, threadStorageTargets: 5 }),
     readResourceUsage: () => usage,
     inotifyInstanceWarnThreshold: options.inotifyInstanceWarnThreshold,
@@ -38,46 +37,36 @@ function createMonitorHarness(
       };
     },
   });
-  return { debug, warn, timer, monitor };
+  return { warn, timer, monitor };
 }
 
 describe("startHostDaemonHealthMonitor", () => {
-  it("debug-logs resource and watch metrics on each tick", () => {
-    const { debug, timer } = createMonitorHarness({
-      rssBytes: 123,
-      openFds: 42,
-      inotifyInstances: 1,
-      threads: 11,
-    });
-
-    timer.callback();
-
-    expect(debug).toHaveBeenCalledWith(
+  it("warns with resource and watch metrics when inotify count is high", () => {
+    const { warn, timer } = createMonitorHarness(
       {
         rssBytes: 123,
         openFds: 42,
-        inotifyInstances: 1,
+        inotifyInstances: 17,
         threads: 11,
-        workspaceWatches: 3,
-        threadStorageTargets: 5,
       },
-      "Host daemon health",
-    );
-  });
-
-  it("warns when the inotify instance count indicates leaked watchers", () => {
-    const { warn, timer } = createMonitorHarness(
-      { rssBytes: 1, openFds: 200, inotifyInstances: 17, threads: 40 },
       { inotifyInstanceWarnThreshold: 8 },
     );
 
     timer.callback();
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatchObject({
-      inotifyInstances: 17,
-      warnThreshold: 8,
-    });
+    expect(warn).toHaveBeenCalledWith(
+      {
+        rssBytes: 123,
+        openFds: 42,
+        inotifyInstances: 17,
+        threads: 11,
+        workspaceWatches: 3,
+        threadStorageTargets: 5,
+        warnThreshold: 8,
+      },
+      "Host daemon inotify instance count is high; filesystem watchers are likely leaking (dead backends after poll interruptions)",
+    );
   });
 
   it("does not warn when the inotify count is healthy or unavailable", () => {
@@ -89,14 +78,13 @@ describe("startHostDaemonHealthMonitor", () => {
     expect(healthy.warn).not.toHaveBeenCalled();
 
     const unavailable = createMonitorHarness({
-      rssBytes: 1,
+      rssBytes: 123,
       openFds: null,
       inotifyInstances: null,
       threads: null,
     });
     unavailable.timer.callback();
     expect(unavailable.warn).not.toHaveBeenCalled();
-    expect(unavailable.debug).toHaveBeenCalledTimes(1);
   });
 
   it("stops the interval timer on stop()", () => {

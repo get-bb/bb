@@ -2,8 +2,8 @@ import fs from "node:fs";
 import type { HostDaemonLogger } from "./logger.js";
 
 /**
- * Periodically debug-logs host-daemon resource and watch metrics so a leak or wedge
- * is visible in the logs after the fact instead of needing a live post-mortem.
+ * Periodically checks host-daemon resource and watch metrics so a leak or wedge
+ * emits an actionable warning instead of needing a live post-mortem.
  *
  * The headline signal is the inotify instance count. `@parcel/watcher` shares a
  * single inotify backend across every watched path, so a healthy daemon needs
@@ -39,7 +39,7 @@ export interface HostDaemonResourceUsage {
 }
 
 interface HostDaemonHealthMonitorOptions {
-  logger: Pick<HostDaemonLogger, "debug" | "warn">;
+  logger: Pick<HostDaemonLogger, "warn">;
   getWatchCounts: () => HostDaemonWatchCounts;
   readResourceUsage?: () => HostDaemonResourceUsage;
   setIntervalFn?: HostDaemonHealthMonitorIntervalFn;
@@ -111,24 +111,19 @@ export function startHostDaemonHealthMonitor(
 
   const timer = setIntervalFn(() => {
     const usage = readResourceUsage();
-    const watchCounts = options.getWatchCounts();
-    const fields = {
-      rssBytes: usage.rssBytes,
-      openFds: usage.openFds,
-      inotifyInstances: usage.inotifyInstances,
-      threads: usage.threads,
-      workspaceWatches: watchCounts.workspaceWatches,
-      threadStorageTargets: watchCounts.threadStorageTargets,
-    };
-    options.logger.debug(fields, "Host daemon health");
     if (
       usage.inotifyInstances !== null &&
       usage.inotifyInstances > inotifyInstanceWarnThreshold
     ) {
+      const watchCounts = options.getWatchCounts();
       options.logger.warn(
         {
+          rssBytes: usage.rssBytes,
+          openFds: usage.openFds,
           inotifyInstances: usage.inotifyInstances,
           threads: usage.threads,
+          workspaceWatches: watchCounts.workspaceWatches,
+          threadStorageTargets: watchCounts.threadStorageTargets,
           warnThreshold: inotifyInstanceWarnThreshold,
         },
         "Host daemon inotify instance count is high; filesystem watchers are likely leaking (dead backends after poll interruptions)",
