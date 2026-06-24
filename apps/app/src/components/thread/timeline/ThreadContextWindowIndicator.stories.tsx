@@ -23,78 +23,68 @@ const approachingLimit = usage(166_000); // 83% — warning
 const critical = usage(192_000); // 96% — destructive
 const estimated = usage(150_000, true); // 75% — warning, "Estimated" label
 
-// The ring trigger across fill levels. Hover any ring to open the usage menu
-// (see the `UsageMenu` stories for the menu rendered open).
-export function Overview() {
-  return (
-    <StoryCard>
-      <StoryRow label="Low (18%)" hint="muted ring — hover for the usage menu">
-        <ThreadContextWindowIndicator usage={low} />
-      </StoryRow>
-      <StoryRow label="Moderate (55%)" hint="muted ring">
-        <ThreadContextWindowIndicator usage={moderate} />
-      </StoryRow>
-      <StoryRow label="Approaching limit (83%)" hint="warning tone">
-        <ThreadContextWindowIndicator usage={approachingLimit} />
-      </StoryRow>
-      <StoryRow label="Critical (96%)" hint="destructive tone">
-        <ThreadContextWindowIndicator usage={critical} />
-      </StoryRow>
-      <StoryRow
-        label="Estimated (75%)"
-        hint='menu label reads "Estimated context"'
-      >
-        <ThreadContextWindowIndicator usage={estimated} />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-// The usage menu opened (normally hover-triggered): a labeled header, a tone-
-// colored usage bar, and the token / remaining line. Bottom-aligned with room
-// above because the popover anchors to the top of the trigger.
-function MenuStage({
-  usage: u,
+// The popover anchors to the top of the ring, so bottom-align the trigger and
+// leave headroom above for the open menu.
+function OpenMenuRow({
   label,
   hint,
+  usage: u,
 }: {
-  usage: ThreadContextWindowUsage;
   label: string;
   hint: string;
+  usage: ThreadContextWindowUsage;
 }) {
   return (
-    <StoryCard>
-      <StoryRow label={label} hint={hint}>
-        <div className="flex min-h-[220px] items-end justify-center p-10">
-          <ThreadContextWindowIndicator usage={u} defaultOpen />
-        </div>
-      </StoryRow>
-    </StoryCard>
+    <StoryRow label={label} hint={hint}>
+      <div className="flex min-h-[200px] items-end justify-center p-10">
+        <ThreadContextWindowIndicator usage={u} defaultOpen />
+      </div>
+    </StoryRow>
   );
 }
 
-export function UsageMenu() {
+// Everything in one place: the ring trigger across fill levels (hover any to
+// open its menu), then the usage menu rendered open at each tone.
+export function Overview() {
   return (
-    <MenuStage
-      usage={approachingLimit}
-      label="Approaching limit (83%)"
-      hint="warning tone — labeled header, usage bar, token / remaining line"
-    />
-  );
-}
-
-export function UsageMenuCritical() {
-  return (
-    <MenuStage usage={critical} label="Critical (96%)" hint="destructive tone" />
-  );
-}
-
-export function UsageMenuEstimated() {
-  return (
-    <MenuStage
-      usage={estimated}
-      label="Estimated (75%)"
-      hint='menu header reads "Estimated context"'
-    />
+    <>
+      <StoryCard>
+        <StoryRow label="Low (18%)" hint="muted ring — hover for the usage menu">
+          <ThreadContextWindowIndicator usage={low} />
+        </StoryRow>
+        <StoryRow label="Moderate (55%)" hint="muted ring">
+          <ThreadContextWindowIndicator usage={moderate} />
+        </StoryRow>
+        <StoryRow label="Approaching limit (83%)" hint="warning tone">
+          <ThreadContextWindowIndicator usage={approachingLimit} />
+        </StoryRow>
+        <StoryRow label="Critical (96%)" hint="destructive tone">
+          <ThreadContextWindowIndicator usage={critical} />
+        </StoryRow>
+        <StoryRow
+          label="Estimated (75%)"
+          hint='menu label reads "Estimated context"'
+        >
+          <ThreadContextWindowIndicator usage={estimated} />
+        </StoryRow>
+      </StoryCard>
+      <StoryCard>
+        <OpenMenuRow
+          label="Usage menu — approaching (83%)"
+          hint="warning tone — labeled header, usage bar, tokens / % left"
+          usage={approachingLimit}
+        />
+        <OpenMenuRow
+          label="Usage menu — critical (96%)"
+          hint="destructive tone"
+          usage={critical}
+        />
+        <OpenMenuRow
+          label="Usage menu — estimated (75%)"
+          hint='header reads "Estimated context"'
+          usage={estimated}
+        />
+      </StoryCard>
+    </>
   );
 }
