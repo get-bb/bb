@@ -75,14 +75,6 @@ interface ResolveSystemProviderInfosPlanResult
   providersPromise: Promise<ProviderInfo[]>;
 }
 
-interface KnownAcpAgentCacheEntry {
-  expiresAtMs: number;
-  promise: Promise<KnownAcpAgent[]>;
-}
-
-const KNOWN_ACP_AGENT_STATUS_CACHE_TTL_MS = 10_000;
-const knownAcpAgentStatusCache = new Map<string, KnownAcpAgentCacheEntry>();
-
 function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   return buildAcpProviderInfo({
     id: formatCustomAcpAgentProviderId(agent.id),
@@ -115,20 +107,22 @@ function canOmitKnownAcpAgentsForError(error: unknown): error is ApiError {
   );
 }
 
-function knownAcpAgentStatusCacheKey(
-  hostId: string,
-  knownAgents: ReturnType<typeof listKnownAcpAgentExecutableQueries>,
-): string {
-  return `${hostId}:${knownAgents
-    .map((agent) => `${agent.id}:${agent.executableName}`)
-    .join(",")}`;
-}
-
-async function listInstalledKnownAcpAgentsUncached(
+async function listInstalledKnownAcpAgents(
   deps: AppDeps,
   hostId: string,
-  knownAgents: ReturnType<typeof listKnownAcpAgentExecutableQueries>,
 ): Promise<KnownAcpAgent[]> {
+  const customProviderIds = new Set(
+    deps.config.customAcpAgents.map((agent) =>
+      formatCustomAcpAgentProviderId(agent.id),
+    ),
+  );
+  const knownAgents = listKnownAcpAgentExecutableQueries().filter(
+    (agent) => !customProviderIds.has(agent.id),
+  );
+  if (knownAgents.length === 0) {
+    return [];
+  }
+
   try {
     const status = await callHostRetryableOnlineRpc(deps, {
       hostId,
@@ -159,46 +153,6 @@ async function listInstalledKnownAcpAgentsUncached(
       "Failed to resolve known ACP agent status",
     );
     return [];
-  }
-}
-
-async function listInstalledKnownAcpAgents(
-  deps: AppDeps,
-  hostId: string,
-): Promise<KnownAcpAgent[]> {
-  const customProviderIds = new Set(
-    deps.config.customAcpAgents.map((agent) =>
-      formatCustomAcpAgentProviderId(agent.id),
-    ),
-  );
-  const knownAgents = listKnownAcpAgentExecutableQueries().filter(
-    (agent) => !customProviderIds.has(agent.id),
-  );
-  if (knownAgents.length === 0) {
-    return [];
-  }
-
-  const cacheKey = knownAcpAgentStatusCacheKey(hostId, knownAgents);
-  const nowMs = Date.now();
-  const cached = knownAcpAgentStatusCache.get(cacheKey);
-  if (cached && cached.expiresAtMs > nowMs) {
-    return cached.promise;
-  }
-
-  const promise = listInstalledKnownAcpAgentsUncached(deps, hostId, knownAgents);
-  const entry = {
-    expiresAtMs: nowMs + KNOWN_ACP_AGENT_STATUS_CACHE_TTL_MS,
-    promise,
-  };
-  knownAcpAgentStatusCache.set(cacheKey, entry);
-
-  try {
-    return await promise;
-  } catch (error) {
-    if (knownAcpAgentStatusCache.get(cacheKey) === entry) {
-      knownAcpAgentStatusCache.delete(cacheKey);
-    }
-    throw error;
   }
 }
 
