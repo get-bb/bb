@@ -400,24 +400,30 @@
     var(--primary) 35%,
     transparent
   );
-  /* Prompt mention pills (light): a near-flat off-white chip with a quiet
-   * top-down surface step, soft border, and light shadow. The icon is a simple
-   * near-black outline glyph (near-white in dark mode). */
+  /* Prompt mention pills (light): a near-flat chip with a quiet top-down surface
+   * step, soft border, and light shadow. Every face/line derives from the
+   * --canvas/--ink anchors (label and icon are the ink itself) so a custom
+   * palette tints the pill along with the rest of the UI instead of stranding a
+   * neutral-gray chip — the shadow stays a faint neutral drop. */
   --pill-surface: linear-gradient(
     to bottom,
-    oklch(0.97 0 0),
-    oklch(0.968 0 0)
+    color-mix(in oklch, var(--ink) 4.4%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 4.7%, var(--canvas))
   );
   --pill-surface-border: var(--border);
-  --pill-foreground: oklch(0.28 0 0);
-  --pill-icon: oklch(0.2 0 0);
+  --pill-foreground: var(--ink);
+  --pill-icon: var(--ink);
   --pill-shadow: 0 1px 1px 0 oklch(0.2 0 0 / 0.02);
   --pill-surface-selected: linear-gradient(
     to bottom,
-    oklch(0.92 0 0),
-    oklch(0.912 0 0)
+    color-mix(in oklch, var(--ink) 11.8%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 13%, var(--canvas))
   );
-  --pill-surface-selected-border: oklch(0.87 0 0);
+  --pill-surface-selected-border: color-mix(
+    in oklch,
+    var(--ink) 19.2%,
+    var(--canvas)
+  );
   --sidebar: color-mix(in oklch, var(--ink) 2.2%, var(--canvas));
   --sidebar-foreground: var(--ink);
   --sidebar-accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
@@ -584,23 +590,29 @@
     transparent
   );
   /* Prompt mention pills (dark): a raised graphite chip a few steps lighter than
-   * the canvas with a light label and a near-white icon glyph. Mirrors the light
-   * block's token set so the pill is fully theme-dependent. */
+   * the canvas with a light label and icon glyph. Mirrors the light block:
+   * every face/line derives from the --canvas/--ink anchors (label and icon are
+   * the ink itself) so a custom palette tints the pill instead of stranding a
+   * neutral-gray chip — the shadow stays a faint neutral drop. */
   --pill-surface: linear-gradient(
     to bottom,
-    oklch(0.275 0 0),
-    oklch(0.268 0 0)
+    color-mix(in oklch, var(--ink) 13%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 11.9%, var(--canvas))
   );
   --pill-surface-border: var(--border);
-  --pill-foreground: oklch(0.86 0 0);
-  --pill-icon: oklch(0.88 0 0);
+  --pill-foreground: var(--ink);
+  --pill-icon: var(--ink);
   --pill-shadow: 0 1px 1px 0 oklch(0 0 0 / 0.08);
   --pill-surface-selected: linear-gradient(
     to bottom,
-    oklch(0.322 0 0),
-    oklch(0.31 0 0)
+    color-mix(in oklch, var(--ink) 20.7%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 18.7%, var(--canvas))
   );
-  --pill-surface-selected-border: oklch(0.35 0 0);
+  --pill-surface-selected-border: color-mix(
+    in oklch,
+    var(--ink) 25.2%,
+    var(--canvas)
+  );
   --sidebar: color-mix(in oklch, var(--ink) 4.3%, var(--canvas));
   --sidebar-foreground: var(--ink);
   --sidebar-accent: color-mix(in oklch, var(--ink) 12%, var(--canvas));

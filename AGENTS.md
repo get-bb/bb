@@ -45,6 +45,7 @@
 - Use existing shared primitives when they already fit. Do not create a new shared primitive from a single use.
 - Avoid adding a second rendering path for the same concept. Remove an old path only when the current change directly replaces it.
 - Prefer sanctioned typography tokens over arbitrary `text-[Npx]` classes.
+- Derive theme color tokens from the `--canvas`/`--ink` anchors (`color-mix(in oklch, var(--ink) N%, var(--canvas))`) or from another derived token — never hand-set an `oklch(L 0 0)` literal. Achromatic literals don't follow custom palettes (Nord, Dracula, …), which re-anchor only `--canvas`/`--ink`, so a hardcoded token strands a neutral-gray element in an otherwise tinted UI. Mix opaque steps `in oklch`; mix translucent steps (a `transparent` pole) `in oklab` so the hue survives. `apps/app/src/components/ui/theme.css` is the source of truth and `theme.test.ts` guards it.
 
 ## Build And Typecheck
 
