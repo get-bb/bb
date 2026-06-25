@@ -11,6 +11,7 @@ import type {
 } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { TabPill } from "@/components/ui/tab-pill.js";
 import { useAutoGrow } from "@/hooks/useAutoGrow";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
@@ -156,6 +157,7 @@ function QuestionInputBlock({
   onShortcutSubmit,
 }: QuestionInputBlockProps) {
   const freeTextRef = useRef<HTMLTextAreaElement>(null);
+  const isPointerCoarse = usePointerCoarse();
   const resizeFreeTextArea = useAutoGrow(freeTextRef, {
     minHeight: USER_QUESTION_FREE_TEXT_MIN_HEIGHT,
     maxHeight: USER_QUESTION_FREE_TEXT_MAX_HEIGHT,
@@ -220,7 +222,7 @@ function QuestionInputBlock({
           aria-label={freeTextLabel}
           value={state.otherText}
           rows={1}
-          autoFocus
+          autoFocus={!isPointerCoarse}
           autoComplete="off"
           onChange={(event) => {
             onFreeTextChange(event.target.value);

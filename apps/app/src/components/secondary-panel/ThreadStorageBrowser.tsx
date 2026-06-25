@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { Input } from "@/components/ui/input.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
@@ -90,12 +91,13 @@ export function ThreadStorageBrowser({
   } = controller;
   const preferredTheme = usePreferredTheme();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const isPointerCoarse = usePointerCoarse();
 
   useEffect(() => {
-    if (isSearchOpen) {
+    if (isSearchOpen && !isPointerCoarse) {
       searchInputRef.current?.focus();
     }
-  }, [isSearchOpen]);
+  }, [isPointerCoarse, isSearchOpen]);
 
   const fileTreeHostStyle = useMemo<FileTreeHostStyle>(
     () => ({

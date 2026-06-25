@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -85,15 +86,18 @@ export function AppSidebar({
   const [threadSearchNavigationItems, setThreadSearchNavigationItems] =
     useState<readonly SidebarThreadSearchNavigationItem[]>([]);
   const threadSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const isPointerCoarse = usePointerCoarse();
   const threadSearchActiveDescendantId =
     threadSearchNavigationItems[threadSearchActiveIndex]?.optionId;
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   const focusThreadSearchInput = useCallback(() => {
+    if (isPointerCoarse) return;
+
     window.requestAnimationFrame(() => {
       threadSearchInputRef.current?.focus();
     });
-  }, []);
+  }, [isPointerCoarse]);
 
   const handleThreadSearchActivate = useCallback(() => {
     setIsThreadSearchActive(true);

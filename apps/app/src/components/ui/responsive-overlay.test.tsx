@@ -7,6 +7,7 @@ import type {
 } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { POINTER_COARSE_QUERY } from "./hooks/use-pointer-coarse";
 import { ResponsiveDrawerShell } from "./responsive-overlay";
 
 type CapturedAnimationEnd = (args: {
@@ -16,6 +17,7 @@ type CapturedAnimationEnd = (args: {
 
 const drawerContentState = vi.hoisted(() => ({
   fireAnimationEnd: undefined as CapturedAnimationEnd | undefined,
+  fireOpenAutoFocus: undefined as ((event: Event) => void) | undefined,
 }));
 
 vi.mock("./drawer.js", async () => {
@@ -24,23 +26,27 @@ vi.mock("./drawer.js", async () => {
   const Drawer = ({ children }: { children: ReactNode }) =>
     React.createElement("div", { "data-testid": "drawer" }, children);
 
-  const DrawerContent = React.forwardRef<
-    HTMLDivElement,
-    HTMLAttributes<HTMLDivElement>
-  >(({ children, onAnimationEnd, ...props }, ref) => {
-    drawerContentState.fireAnimationEnd = ({ currentTarget, target }) => {
-      onAnimationEnd?.({
-        currentTarget,
-        target,
-      } as ReactAnimationEvent<HTMLDivElement>);
-    };
+  interface MockDrawerContentProps extends HTMLAttributes<HTMLDivElement> {
+    onOpenAutoFocus?: (event: Event) => void;
+  }
 
-    return React.createElement(
-      "div",
-      { ...props, ref, "data-testid": "drawer-content" },
-      children,
-    );
-  });
+  const DrawerContent = React.forwardRef<HTMLDivElement, MockDrawerContentProps>(
+    ({ children, onAnimationEnd, onOpenAutoFocus, ...props }, ref) => {
+      drawerContentState.fireAnimationEnd = ({ currentTarget, target }) => {
+        onAnimationEnd?.({
+          currentTarget,
+          target,
+        } as ReactAnimationEvent<HTMLDivElement>);
+      };
+      drawerContentState.fireOpenAutoFocus = onOpenAutoFocus;
+
+      return React.createElement(
+        "div",
+        { ...props, ref, "data-testid": "drawer-content" },
+        children,
+      );
+    },
+  );
   DrawerContent.displayName = "MockDrawerContent";
 
   const DrawerTitle = ({
@@ -56,6 +62,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   drawerContentState.fireAnimationEnd = undefined;
+  drawerContentState.fireOpenAutoFocus = undefined;
 });
 
 function fireDrawerContentAnimationEnd(target: EventTarget) {
@@ -67,6 +74,29 @@ function fireDrawerContentAnimationEnd(target: EventTarget) {
     currentTarget: screen.getByTestId("drawer-content"),
     target,
   });
+}
+
+function mockPointerCoarse(matches: boolean) {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY && matches,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function fireDrawerOpenAutoFocus(): Event {
+  const fireOpenAutoFocus = drawerContentState.fireOpenAutoFocus;
+  if (fireOpenAutoFocus === undefined) {
+    throw new Error("DrawerContent did not receive an autofocus handler");
+  }
+  const event = new Event("openAutoFocus", { cancelable: true });
+  fireOpenAutoFocus(event);
+  return event;
 }
 
 describe("ResponsiveDrawerShell", () => {
@@ -107,5 +137,29 @@ describe("ResponsiveDrawerShell", () => {
     fireDrawerContentAnimationEnd(screen.getByTestId("drawer-content"));
     expect(onContentAnimationEnd).toHaveBeenCalledTimes(1);
     expect(onContentAnimationEnd).toHaveBeenCalledWith(false);
+  });
+
+  it("prevents drawer open autofocus on coarse pointers", () => {
+    mockPointerCoarse(true);
+
+    render(
+      <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
+        <input aria-label="Search" />
+      </ResponsiveDrawerShell>,
+    );
+
+    expect(fireDrawerOpenAutoFocus().defaultPrevented).toBe(true);
+  });
+
+  it("allows drawer open autofocus on fine pointers", () => {
+    mockPointerCoarse(false);
+
+    render(
+      <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
+        <input aria-label="Search" />
+      </ResponsiveDrawerShell>,
+    );
+
+    expect(fireDrawerOpenAutoFocus().defaultPrevented).toBe(false);
   });
 });

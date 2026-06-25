@@ -10,6 +10,7 @@ import {
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
+import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
 
 // ---------------------------------------------------------------------------
 // Shared context value for responsive overlays (dropdown menus, popovers)
@@ -240,6 +241,7 @@ export function ResponsiveDrawerShell({
 }: ResponsiveDrawerShellProps) {
   const parentDrawerDepth = React.useContext(ResponsiveDrawerDepthContext);
   const drawerContentRef = React.useRef<HTMLDivElement>(null);
+  const isPointerCoarse = usePointerCoarse();
   const isNestedDrawer = parentDrawerDepth > 0;
   const shouldRepositionInputs = repositionInputs ?? !isNestedDrawer;
   const resetClosingKeyboardState = React.useCallback(() => {
@@ -265,6 +267,14 @@ export function ResponsiveDrawerShell({
       },
       [onContentAnimationEnd, open],
     );
+  const handleOpenAutoFocus = React.useCallback(
+    (event: Event) => {
+      if (isPointerCoarse) {
+        event.preventDefault();
+      }
+    },
+    [isPointerCoarse],
+  );
   const previousOpenRef = React.useRef(open);
 
   React.useLayoutEffect(() => {
@@ -286,6 +296,7 @@ export function ResponsiveDrawerShell({
         ref={drawerContentRef}
         className={contentClassName}
         onAnimationEnd={handleContentAnimationEnd}
+        onOpenAutoFocus={handleOpenAutoFocus}
       >
         <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
           {srLabel !== undefined ? (

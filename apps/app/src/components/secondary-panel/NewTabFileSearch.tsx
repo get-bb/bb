@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import {
@@ -484,6 +485,7 @@ export function NewTabFileSearch({
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
+  const isPointerCoarse = usePointerCoarse();
   const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isRecentExpanded, setIsRecentExpanded] = useState(false);
@@ -550,6 +552,8 @@ export function NewTabFileSearch({
   );
 
   useEffect(() => {
+    if (isPointerCoarse) return;
+
     // Focus synchronously, then again on the next frame to win the focus race
     // against the panel/tab content mounting in the same commit, which can
     // otherwise pull focus away from the input.
@@ -558,7 +562,7 @@ export function NewTabFileSearch({
       inputRef.current?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusRequest]);
+  }, [focusRequest, isPointerCoarse]);
 
   useEffect(() => {
     setActiveIndex(navigableEntries.length > 0 ? 0 : -1);

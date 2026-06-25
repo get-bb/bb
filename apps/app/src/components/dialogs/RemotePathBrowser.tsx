@@ -3,6 +3,7 @@ import { normalizeProjectPathInput } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { Input } from "@/components/ui/input.js";
 import { useHostDirectory } from "@/hooks/queries/host-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -63,6 +64,7 @@ export function RemotePathBrowser({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const isPointerCoarse = usePointerCoarse();
   const { data, isError, error, isPlaceholderData } = useHostDirectory(
     hostId,
     currentPath,
@@ -77,8 +79,8 @@ export function RemotePathBrowser({
   }, [directory, onDirectoryChange]);
 
   useEffect(() => {
-    if (isEditing) editInputRef.current?.focus();
-  }, [isEditing]);
+    if (isEditing && !isPointerCoarse) editInputRef.current?.focus();
+  }, [isEditing, isPointerCoarse]);
 
   const openEditor = () => {
     setEditValue(directory ?? "");

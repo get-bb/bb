@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 
 export type ProjectPathDialogTarget =
   | {
@@ -141,6 +142,7 @@ export function ProjectPathDialogContent({
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
+  const isPointerCoarse = usePointerCoarse();
   // No-host fallback only: the browser owns the path when a host is present.
   const [manualPath, setManualPath] = useState(
     target.kind === "update" ? target.currentPath : "",
@@ -221,7 +223,7 @@ export function ProjectPathDialogContent({
             id={inputId}
             aria-label="Project path"
             value={manualPath}
-            autoFocus
+            autoFocus={!isPointerCoarse}
             disabled={pending}
             placeholder={placeholder}
             onChange={(event) => {

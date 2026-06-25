@@ -15,6 +15,7 @@ import {
   COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { Input } from "@/components/ui/input.js";
 import { blurActiveKeyboardInputWithin } from "@/components/ui/overlay-trigger.js";
 import {
@@ -730,6 +731,7 @@ export function BranchPicker({
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const isCompactViewport = useIsCompactViewport();
+  const isPointerCoarse = usePointerCoarse();
   const selectedCheckoutIntent = resolveCheckoutIntent({
     isCreatingNew,
     value,
@@ -924,7 +926,7 @@ export function BranchPicker({
   }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
 
   useEffect(() => {
-    if (!open || !showOptionsSearch || isCompactViewport) {
+    if (!open || !showOptionsSearch || isCompactViewport || isPointerCoarse) {
       return;
     }
 
@@ -935,7 +937,7 @@ export function BranchPicker({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [isCompactViewport, open, showOptionsSearch]);
+  }, [isCompactViewport, isPointerCoarse, open, showOptionsSearch]);
 
   return (
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
