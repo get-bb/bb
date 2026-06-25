@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   getTemplateMetadata,
@@ -7,7 +10,25 @@ import {
   type TemplateVariables,
 } from "../src/index.js";
 
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+
 describe("@bb/templates", () => {
+  it("keeps generated templates in sync with source templates", () => {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(packageRoot, "scripts", "generate-templates.mjs"), "--check"],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  });
+
   it("lists template metadata", () => {
     const templates = listTemplates();
     expect(

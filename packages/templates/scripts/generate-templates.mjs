@@ -189,5 +189,23 @@ ${templateVariablesBlock}
 export type TemplateId = keyof TemplateVariables;
 `;
 
+if (process.argv.includes("--check")) {
+  const currentOutput = await readFile(outputPath, "utf8").catch((error) => {
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "ENOENT") {
+        return null;
+      }
+    }
+    throw error;
+  });
+  if (currentOutput !== output) {
+    console.error(
+      "Generated templates are out of date. Run `node packages/templates/scripts/generate-templates.mjs`.",
+    );
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, output, "utf8");
