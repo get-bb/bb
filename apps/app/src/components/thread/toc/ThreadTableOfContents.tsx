@@ -1,5 +1,4 @@
 import {
-  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -14,7 +13,7 @@ import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOv
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { cn } from "@/lib/utils";
 
-interface TocItem {
+export interface TocItem {
   id: string;
   label: string;
   role: "user" | "assistant";
@@ -32,6 +31,7 @@ interface ThreadTableOfContentsProps {
 }
 
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
+const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -110,17 +110,20 @@ function useConversationTocItems(timelineRows: readonly TimelineRow[]) {
   }, [timelineRows]);
 }
 
-function useThreadTocVisible(
-  rootRef: RefObject<HTMLDivElement | null>,
-): boolean {
+function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
   );
 
   useEffect(() => {
     const host =
-      rootRef.current?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
-    if (!host || typeof ResizeObserver === "undefined") {
+      rootElement?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
+    if (typeof ResizeObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    if (!host) {
+      setVisible(false);
       return;
     }
 
@@ -141,7 +144,7 @@ function useThreadTocVisible(
       if (frame !== null) window.cancelAnimationFrame(frame);
       resizeObserver.disconnect();
     };
-  }, [rootRef]);
+  }, [rootElement]);
 
   return visible;
 }
@@ -167,7 +170,16 @@ function findTimelineRowElement(
   );
 }
 
-function findActiveItemIds({
+function isScrollElementNearBottom(scrollElement: HTMLElement): boolean {
+  return (
+    scrollElement.scrollHeight -
+      scrollElement.clientHeight -
+      scrollElement.scrollTop <=
+    TOC_BOTTOM_ACTIVE_THRESHOLD_PX
+  );
+}
+
+export function findActiveItemIds({
   agentItems,
   scrollElement,
   userItems,
@@ -182,11 +194,14 @@ function findActiveItemIds({
   const scrollRect = scrollElement.getBoundingClientRect();
   const scrollTop = scrollRect.top;
   const scrollBottom = scrollRect.bottom;
+  const isNearBottom = isScrollElementNearBottom(scrollElement);
   const rolesById = new Map<string, TocTab>();
   for (const item of userItems) rolesById.set(item.id, "user");
   for (const item of agentItems) rolesById.set(item.id, "agent");
   let nearestUser: { id: string; distance: number } | null = null;
   let nearestAgent: { id: string; distance: number } | null = null;
+  let lastVisibleUserId: string | null = null;
+  let lastVisibleAgentId: string | null = null;
 
   for (const row of findTimelineRowElements(scrollElement)) {
     const rowId = row.dataset.timelineRowId;
@@ -194,7 +209,15 @@ function findActiveItemIds({
     const role = rolesById.get(rowId);
     if (!role) continue;
     const rect = row.getBoundingClientRect();
-    if (rect.top >= scrollBottom) continue;
+    if (rect.bottom <= scrollTop || rect.top >= scrollBottom) continue;
+    if (isNearBottom) {
+      if (role === "user") {
+        lastVisibleUserId = rowId;
+      } else {
+        lastVisibleAgentId = rowId;
+      }
+      continue;
+    }
     const distance =
       rect.top <= scrollTop
         ? Math.max(0, scrollTop - rect.bottom)
@@ -209,6 +232,10 @@ function findActiveItemIds({
     }
   }
 
+  if (isNearBottom) {
+    return { agent: lastVisibleAgentId, user: lastVisibleUserId };
+  }
+
   return { agent: nearestAgent?.id ?? null, user: nearestUser?.id ?? null };
 }
 
@@ -217,8 +244,8 @@ export function ThreadTableOfContents({
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
   const { agentItems, userItems } = useConversationTocItems(timelineRows);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const tocVisible = useThreadTocVisible(rootRef);
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
+  const tocVisible = useThreadTocVisible(rootElement);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TocTab>("user");
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
@@ -327,7 +354,7 @@ export function ThreadTableOfContents({
 
   return (
     <div
-      ref={rootRef}
+      ref={setRootElement}
       data-thread-toc=""
       className="group/toc relative w-8"
       onMouseEnter={() => setOpen(true)}
