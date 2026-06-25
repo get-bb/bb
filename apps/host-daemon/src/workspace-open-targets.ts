@@ -4,12 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import type {
-  WorkspaceOpenTarget,
-  WorkspaceOpenTargetCapabilities,
-  WorkspaceOpenTargetIcon,
-  WorkspaceOpenTargetId,
-  WorkspaceOpenTargetKind,
+import {
+  WORKSPACE_OPEN_TARGET_ICON_DATA_URL_MAX_LENGTH,
+  type WorkspaceOpenTarget,
+  type WorkspaceOpenTargetCapabilities,
+  type WorkspaceOpenTargetIcon,
+  type WorkspaceOpenTargetId,
+  type WorkspaceOpenTargetKind,
 } from "@bb/host-daemon-contract";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
@@ -17,6 +18,7 @@ const execFileAsync = promisify(execFile);
 const DESKTOP_APP_TARGET_ID_PREFIX = "desktop-app:";
 const MAC_APP_TARGET_ID_PREFIX = "mac-app:";
 const MAC_FILE_APPLICATION_DISCOVERY_LIMIT = 5;
+const MAC_APPLICATION_ICON_MAX_SIZE_PX = 64;
 const MAC_APPLICATIONS_FOR_FILE_SCRIPT = `
 function run(argv) {
   ObjC.import("AppKit");
@@ -1511,6 +1513,8 @@ async function resolveMacApplicationIconDataUrl(
   const pngPath = path.join(tempDir, "icon.png");
   try {
     await runtime.execFile("sips", [
+      "-Z",
+      String(MAC_APPLICATION_ICON_MAX_SIZE_PX),
       "-s",
       "format",
       "png",
@@ -1519,7 +1523,10 @@ async function resolveMacApplicationIconDataUrl(
       pngPath,
     ]);
     const iconBytes = await fs.readFile(pngPath);
-    return `data:image/png;base64,${iconBytes.toString("base64")}`;
+    const dataUrl = `data:image/png;base64,${iconBytes.toString("base64")}`;
+    return dataUrl.length > WORKSPACE_OPEN_TARGET_ICON_DATA_URL_MAX_LENGTH
+      ? null
+      : dataUrl;
   } catch {
     return null;
   } finally {

@@ -899,6 +899,9 @@ describe("workspace open targets", () => {
         label: "WebStorm",
       });
       expect(calls.some((call) => call.file === "sips")).toBe(true);
+      expect(calls.find((call) => call.file === "sips")?.args).toEqual(
+        expect.arrayContaining(["-Z", "64"]),
+      );
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -960,6 +963,59 @@ describe("workspace open targets", () => {
         label: "VS Code",
       });
       expect(calls.some((call) => call.file === "sips")).toBe(true);
+      expect(calls.find((call) => call.file === "sips")?.args).toEqual(
+        expect.arrayContaining(["-Z", "64"]),
+      );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("falls back when app-provided icons exceed the contract size limit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-open-target-icon-"));
+    const appPath = path.join(root, "Visual Studio Code.app");
+    await mkdir(appPath, { recursive: true });
+    const execFile: ExecFileHandler = async (file, commandArgs) => {
+      if (file === "mdfind") {
+        return commandArgs.join(" ").includes("com.microsoft.VSCode")
+          ? { stdout: `${appPath}\n` }
+          : { stdout: "" };
+      }
+      if (file === "plutil") {
+        const key = commandArgs[1];
+        if (key === "CFBundleIdentifier") {
+          return { stdout: "com.microsoft.VSCode\n" };
+        }
+        if (key === "CFBundleDisplayName" || key === "CFBundleName") {
+          return { stdout: "Code\n" };
+        }
+        if (key === "CFBundleIconFile") {
+          return { stdout: "Code\n" };
+        }
+        return { stdout: "" };
+      }
+      if (file === "sips") {
+        const outputPath = commandArgs.at(-1);
+        if (outputPath) {
+          await writeFile(outputPath, "x".repeat(200_000));
+        }
+        return { stdout: "" };
+      }
+      if (file === "which") {
+        throw new Error("Executable not found");
+      }
+      return { stdout: "" };
+    };
+
+    try {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({ execFile }),
+      );
+
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        icon: { kind: "builtin", name: "vscode" },
+        label: "VS Code",
+      });
     } finally {
       await rm(root, { force: true, recursive: true });
     }

@@ -38,6 +38,8 @@ export type WorkspaceOpenTargetKind = z.infer<
   typeof workspaceOpenTargetKindSchema
 >;
 
+export const WORKSPACE_OPEN_TARGET_ICON_DATA_URL_MAX_LENGTH = 200_000;
+
 export const workspaceOpenTargetIconSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -48,7 +50,11 @@ export const workspaceOpenTargetIconSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("data-url"),
-      dataUrl: z.string().trim().startsWith("data:image/").max(200_000),
+      dataUrl: z
+        .string()
+        .trim()
+        .startsWith("data:image/")
+        .max(WORKSPACE_OPEN_TARGET_ICON_DATA_URL_MAX_LENGTH),
     })
     .strict(),
   z
