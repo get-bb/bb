@@ -61,4 +61,23 @@ describe("TopLevelSidebarSection", () => {
       ),
     ).not.toBeNull();
   });
+
+  it("can keep section actions visible on mobile", () => {
+    render(
+      <TopLevelSidebarSection
+        label="All Threads"
+        actions={<button type="button">Organize by</button>}
+        actionsMobileAlways
+      >
+        <div>Section body</div>
+      </TopLevelSidebarSection>,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Organize by" })
+        .closest(".bb-sidebar-hover-actions")
+        ?.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+  });
 });

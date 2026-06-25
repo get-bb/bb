@@ -2081,6 +2081,7 @@ function ProjectListComponent({
             projectsDisplayOptionsMenuOpen !== null ||
             allThreadsOverflowMenuOpen
           }
+          actionsMobileAlways
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
             onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
