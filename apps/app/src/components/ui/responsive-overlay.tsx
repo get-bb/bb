@@ -23,12 +23,26 @@ export interface ResponsiveOverlayContextValue {
 }
 
 const ResponsiveDrawerDepthContext = React.createContext(0);
+const SONNER_TOASTER_SELECTOR = "[data-sonner-toaster]";
+
+type DrawerContentPointerDownOutsideEvent = Parameters<
+  NonNullable<
+    React.ComponentPropsWithoutRef<typeof DrawerContent>["onPointerDownOutside"]
+  >
+>[0];
 
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
   drawerElement.style.height = "";
   drawerElement.style.bottom = "";
+}
+
+function isSonnerToasterPointerTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(SONNER_TOASTER_SELECTOR) !== null
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +289,14 @@ export function ResponsiveDrawerShell({
     },
     [isPointerCoarse],
   );
+  const handlePointerDownOutside = React.useCallback(
+    (event: DrawerContentPointerDownOutsideEvent) => {
+      if (isSonnerToasterPointerTarget(event.detail.originalEvent.target)) {
+        event.preventDefault();
+      }
+    },
+    [],
+  );
   const previousOpenRef = React.useRef(open);
 
   React.useLayoutEffect(() => {
@@ -297,6 +319,7 @@ export function ResponsiveDrawerShell({
         className={contentClassName}
         onAnimationEnd={handleContentAnimationEnd}
         onOpenAutoFocus={handleOpenAutoFocus}
+        onPointerDownOutside={handlePointerDownOutside}
       >
         <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
           {srLabel !== undefined ? (

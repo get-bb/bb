@@ -14,10 +14,14 @@ type CapturedAnimationEnd = (args: {
   currentTarget: HTMLElement;
   target: EventTarget;
 }) => void;
+type CapturedPointerDownOutside = (
+  event: CustomEvent<{ originalEvent: Event }>,
+) => void;
 
 const drawerContentState = vi.hoisted(() => ({
   fireAnimationEnd: undefined as CapturedAnimationEnd | undefined,
   fireOpenAutoFocus: undefined as ((event: Event) => void) | undefined,
+  firePointerDownOutside: undefined as CapturedPointerDownOutside | undefined,
 }));
 
 vi.mock("./drawer.js", async () => {
@@ -28,10 +32,20 @@ vi.mock("./drawer.js", async () => {
 
   interface MockDrawerContentProps extends HTMLAttributes<HTMLDivElement> {
     onOpenAutoFocus?: (event: Event) => void;
+    onPointerDownOutside?: CapturedPointerDownOutside;
   }
 
   const DrawerContent = React.forwardRef<HTMLDivElement, MockDrawerContentProps>(
-    ({ children, onAnimationEnd, onOpenAutoFocus, ...props }, ref) => {
+    (
+      {
+        children,
+        onAnimationEnd,
+        onOpenAutoFocus,
+        onPointerDownOutside,
+        ...props
+      },
+      ref,
+    ) => {
       drawerContentState.fireAnimationEnd = ({ currentTarget, target }) => {
         onAnimationEnd?.({
           currentTarget,
@@ -39,6 +53,7 @@ vi.mock("./drawer.js", async () => {
         } as ReactAnimationEvent<HTMLDivElement>);
       };
       drawerContentState.fireOpenAutoFocus = onOpenAutoFocus;
+      drawerContentState.firePointerDownOutside = onPointerDownOutside;
 
       return React.createElement(
         "div",
@@ -63,6 +78,7 @@ afterEach(() => {
   vi.clearAllMocks();
   drawerContentState.fireAnimationEnd = undefined;
   drawerContentState.fireOpenAutoFocus = undefined;
+  drawerContentState.firePointerDownOutside = undefined;
 });
 
 function fireDrawerContentAnimationEnd(target: EventTarget) {
@@ -96,6 +112,28 @@ function fireDrawerOpenAutoFocus(): Event {
   }
   const event = new Event("openAutoFocus", { cancelable: true });
   fireOpenAutoFocus(event);
+  return event;
+}
+
+function fireDrawerPointerDownOutside(
+  originalTarget: HTMLElement,
+): CustomEvent<{ originalEvent: Event }> {
+  const firePointerDownOutside = drawerContentState.firePointerDownOutside;
+  if (firePointerDownOutside === undefined) {
+    throw new Error(
+      "DrawerContent did not receive a pointer down outside handler",
+    );
+  }
+  const originalEvent = new Event("pointerdown", {
+    bubbles: true,
+    cancelable: true,
+  });
+  originalTarget.dispatchEvent(originalEvent);
+  const event = new CustomEvent("pointerDownOutside", {
+    cancelable: true,
+    detail: { originalEvent },
+  });
+  firePointerDownOutside(event);
   return event;
 }
 
@@ -161,5 +199,46 @@ describe("ResponsiveDrawerShell", () => {
     );
 
     expect(fireDrawerOpenAutoFocus().defaultPrevented).toBe(false);
+  });
+
+  it("prevents drawer outside dismissal for Sonner toast interactions", () => {
+    render(
+      <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
+        <div />
+      </ResponsiveDrawerShell>,
+    );
+
+    const toaster = document.createElement("ol");
+    toaster.setAttribute("data-sonner-toaster", "");
+    const toastAction = document.createElement("button");
+    toaster.appendChild(toastAction);
+    document.body.appendChild(toaster);
+
+    try {
+      expect(fireDrawerPointerDownOutside(toastAction).defaultPrevented).toBe(
+        true,
+      );
+    } finally {
+      toaster.remove();
+    }
+  });
+
+  it("allows ordinary outside pointer interactions to dismiss the drawer", () => {
+    render(
+      <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
+        <div />
+      </ResponsiveDrawerShell>,
+    );
+
+    const outsideButton = document.createElement("button");
+    document.body.appendChild(outsideButton);
+
+    try {
+      expect(
+        fireDrawerPointerDownOutside(outsideButton).defaultPrevented,
+      ).toBe(false);
+    } finally {
+      outsideButton.remove();
+    }
   });
 });
