@@ -109,12 +109,6 @@ vi.mock("@pierre/diffs/react", async () => {
 
 vi.mock("@/lib/clipboard", () => clipboardMock);
 
-async function openFilePreviewActionsMenu() {
-  const trigger = screen.getByRole("button", { name: "File preview actions" });
-  fireEvent.pointerDown(trigger, { button: 0 });
-  return screen.findByRole("menuitem", { name: "Copy raw file" });
-}
-
 describe("FilePreview", () => {
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
@@ -131,6 +125,7 @@ describe("FilePreview", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it("rerenders the code view when the Pierre worker pool advances", async () => {
@@ -247,7 +242,7 @@ describe("FilePreview", () => {
     });
   });
 
-  it("renders a compact file preview actions menu in the header", async () => {
+  it("renders compact direct file preview header controls", () => {
     render(
       <FilePreview
         path="apps/app/src/lib/thread-read-state.ts"
@@ -263,23 +258,21 @@ describe("FilePreview", () => {
       />,
     );
 
-    const actionsButton = screen.getByRole("button", {
-      name: "File preview actions",
+    expect(
+      screen.queryByRole("button", { name: "File preview actions" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy file contents" })).not.toBe(
+      null,
+    );
+
+    const wrapButton = screen.getByRole("button", {
+      name: "Wrap lines",
     });
 
-    expect(actionsButton.className).toContain("h-5");
-    expect(actionsButton.className).toContain("w-5");
-    expect(actionsButton.className).toContain("[&_svg]:size-3");
-
-    await openFilePreviewActionsMenu();
-    expect(
-      screen
-        .getByRole("menuitemcheckbox", { name: "Wrap" })
-        .getAttribute("aria-checked"),
-    ).toBe("false");
-    expect(
-      screen.getByRole("menuitem", { name: "Copy raw file" }),
-    ).not.toBeNull();
+    expect(wrapButton.className).toContain("h-5");
+    expect(wrapButton.className).toContain("w-5");
+    expect(wrapButton.className).toContain("[&_svg]:size-3");
+    expect(wrapButton.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("lets source previews grow to content height so the sticky header stays bounded by the full file", () => {
@@ -308,7 +301,7 @@ describe("FilePreview", () => {
     ).toBe(true);
   });
 
-  it("toggles source line wrap from the file preview actions menu", async () => {
+  it("toggles source line wrap from the header button", async () => {
     render(
       <FilePreview
         path="apps/app/src/lib/thread-read-state.ts"
@@ -324,23 +317,24 @@ describe("FilePreview", () => {
       />,
     );
 
-    await openFilePreviewActionsMenu();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Wrap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrap lines" }));
     await waitFor(() => {
       expect(
-        screen.queryByRole("menuitemcheckbox", { name: "Wrap" }),
-      ).toBeNull();
+        screen
+          .getByRole("button", { name: "Disable line wrap" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
     });
 
-    await openFilePreviewActionsMenu();
+    fireEvent.click(screen.getByRole("button", { name: "Disable line wrap" }));
     expect(
       screen
-        .getByRole("menuitemcheckbox", { name: "Wrap" })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
+        .getByRole("button", { name: "Wrap lines" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
-  it("copies loaded raw file contents from the file preview actions menu", async () => {
+  it("copies loaded markdown contents from the header copy button", async () => {
     render(
       <FilePreview
         path="docs/right-panel/README.md"
@@ -356,8 +350,7 @@ describe("FilePreview", () => {
       />,
     );
 
-    await openFilePreviewActionsMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy raw file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy markdown" }));
 
     await waitFor(() => {
       expect(clipboardMock.copyToClipboardWithToast).toHaveBeenCalledWith(
@@ -368,6 +361,90 @@ describe("FilePreview", () => {
         },
       );
     });
+  });
+
+  it("copies the file path with a toast when clicking the header path", async () => {
+    render(
+      <FilePreview
+        path="docs/right-panel/README.md"
+        copyPath="/Users/tester/project/docs/right-panel/README.md"
+        state={{
+          kind: "ready",
+          file: {
+            name: "README.md",
+            contents: "# Preview\n\nRaw markdown.",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy file path" }));
+
+    await waitFor(() => {
+      expect(clipboardMock.copyToClipboardWithToast).toHaveBeenCalledWith(
+        "/Users/tester/project/docs/right-panel/README.md",
+        {
+          errorMessage: "Failed to copy file path",
+          successMessage: "File path copied",
+        },
+      );
+    });
+  });
+
+  it("shows a tooltip for the file path", async () => {
+    render(
+      <FilePreview
+        path="docs/right-panel/README.md"
+        copyPath="/Users/tester/project/docs/right-panel/README.md"
+        state={{
+          kind: "ready",
+          file: {
+            name: "README.md",
+            contents: "# Preview\n\nRaw markdown.",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: true,
+        }}
+      />,
+    );
+
+    fireEvent.pointerMove(
+      screen.getByRole("button", { name: "Copy file path" }),
+      { pointerType: "mouse" },
+    );
+
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Copy file path",
+    );
+  });
+
+  it("shows a tooltip for the external editor button", async () => {
+    render(
+      <FilePreview
+        path="docs/right-panel/README.md"
+        onOpenInEditor={vi.fn()}
+        state={{
+          kind: "ready",
+          file: {
+            name: "README.md",
+            contents: "# Preview\n\nRaw markdown.",
+          },
+          lineRange: null,
+          showMarkdownModeToggle: true,
+        }}
+      />,
+    );
+
+    fireEvent.pointerMove(
+      screen.getByRole("button", { name: "Open in editor" }),
+      { pointerType: "mouse" },
+    );
+
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Open in editor",
+    );
   });
 
   it("does not show the file preview actions menu for non-text previews", () => {

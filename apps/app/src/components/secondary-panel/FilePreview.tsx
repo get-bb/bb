@@ -15,18 +15,17 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { CopyButton } from "@/components/ui/copy-button.js";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -116,11 +115,15 @@ interface FilePreviewHeaderProps {
   onViewModeChange: (mode: FilePreviewViewMode) => void;
 }
 
-interface FilePreviewActionsMenuProps {
-  rawContents: string | null;
+interface FilePreviewLineWrapButtonProps {
   showLineOverflowToggle: boolean;
   lineOverflowMode: CodeOverflowMode;
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
+}
+
+interface FilePreviewPathProps {
+  path: string;
+  copyPath: string | null;
 }
 
 interface MarkdownFilePreviewProps {
@@ -231,6 +234,20 @@ function getToggleAriaLabel(kind: FilePreviewToggleKind): string {
 
 function getRawToggleTitle(kind: FilePreviewToggleKind): string {
   return kind === "html" ? "HTML source" : "Markdown source";
+}
+
+function getFileContentsCopyLabel(kind: FilePreviewToggleKind | null): string {
+  if (kind === "markdown") {
+    return "Copy markdown";
+  }
+  if (kind === "html") {
+    return "Copy HTML source";
+  }
+  return "Copy file contents";
+}
+
+function getLineWrapToggleLabel(lineOverflowMode: CodeOverflowMode): string {
+  return lineOverflowMode === "wrap" ? "Disable line wrap" : "Wrap lines";
 }
 
 function getFilePreviewLineRange(
@@ -441,8 +458,8 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
-  const showActionsMenu = showLineOverflowToggle || rawContents !== null;
-  const showHeaderControls = showActionsMenu || toggleKind !== null;
+  const showHeaderControls = showLineOverflowToggle || toggleKind !== null;
+  const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
   return (
     // The wrapper carries an opaque `bg-background` base so the translucent
@@ -455,15 +472,7 @@ function FilePreviewHeader({
             name="File"
             className="size-3.5 shrink-0 text-subtle-foreground"
           />
-          <TruncateStart
-            className={cn(
-              "min-w-0 font-mono font-medium leading-5 text-file-accent",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-            title={path}
-          >
-            {path}
-          </TruncateStart>
+          <FilePreviewPath path={path} copyPath={copyPath} />
           {statusLabel === null ? null : (
             <span
               className={cn(
@@ -474,27 +483,42 @@ function FilePreviewHeader({
               ({statusLabel})
             </span>
           )}
-          {copyPath === null ? null : (
-            <CopyButton
-              text={copyPath}
-              label="Copy file path"
-              className="shrink-0 rounded-md hover:bg-state-hover hover:text-foreground"
-            />
-          )}
-          {onOpenInEditor ? (
-            <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
-          ) : null}
+          <TooltipProvider delayDuration={300}>
+            {rawContents === null ? null : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <CopyButton
+                    text={rawContents}
+                    label={copyFileContentsLabel}
+                    title={undefined}
+                    className="shrink-0 rounded-md hover:bg-state-hover hover:text-foreground"
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {copyFileContentsLabel}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {onOpenInEditor ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <OpenInEditorButton
+                    onClick={() => onOpenInEditor(path)}
+                    title={null}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in editor</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </TooltipProvider>
         </div>
         {showHeaderControls ? (
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {showActionsMenu ? (
-              <FilePreviewActionsMenu
-                rawContents={rawContents}
-                showLineOverflowToggle={showLineOverflowToggle}
-                lineOverflowMode={lineOverflowMode}
-                onLineOverflowModeChange={onLineOverflowModeChange}
-              />
-            ) : null}
+            <FilePreviewLineWrapButton
+              showLineOverflowToggle={showLineOverflowToggle}
+              lineOverflowMode={lineOverflowMode}
+              onLineOverflowModeChange={onLineOverflowModeChange}
+            />
             {toggleKind !== null ? (
               <div
                 className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
@@ -538,59 +562,79 @@ function FilePreviewHeader({
   );
 }
 
-function FilePreviewActionsMenu({
-  rawContents,
-  showLineOverflowToggle,
-  lineOverflowMode,
-  onLineOverflowModeChange,
-}: FilePreviewActionsMenuProps) {
+function FilePreviewPath({ path, copyPath }: FilePreviewPathProps) {
+  const copyTarget = copyPath ?? path;
+  const label = "Copy file path";
+  const className = cn(
+    "min-w-0 font-mono font-medium leading-5 text-file-accent",
+    COARSE_POINTER_TEXT_SM_CLASS,
+  );
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
-            "text-muted-foreground",
-          )}
-          aria-label="File preview actions"
-          title="File preview actions"
-        >
-          <Icon name="MoreHorizontal" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="File preview actions"
-        className="w-44"
-      >
-        {showLineOverflowToggle ? (
-          <DropdownMenuCheckboxItem
-            checked={lineOverflowMode === "wrap"}
-            onCheckedChange={(checked) =>
-              onLineOverflowModeChange(checked ? "wrap" : "scroll")
-            }
-            textValue="Wrap"
-          >
-            Wrap
-          </DropdownMenuCheckboxItem>
-        ) : null}
-        {rawContents === null ? null : (
-          <DropdownMenuItem
-            onSelect={() => {
-              void copyToClipboardWithToast(rawContents, {
-                successMessage: null,
-                errorMessage: "Failed to copy",
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              className,
+              "cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            )}
+            aria-label={label}
+            onClick={() => {
+              void copyToClipboardWithToast(copyTarget, {
+                successMessage: "File path copied",
+                errorMessage: "Failed to copy file path",
               });
             }}
           >
-            Copy raw file
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <TruncateStart>{path}</TruncateStart>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function FilePreviewLineWrapButton({
+  showLineOverflowToggle,
+  lineOverflowMode,
+  onLineOverflowModeChange,
+}: FilePreviewLineWrapButtonProps) {
+  if (!showLineOverflowToggle) {
+    return null;
+  }
+
+  const label = getLineWrapToggleLabel(lineOverflowMode);
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+              "text-muted-foreground",
+            )}
+            aria-label={label}
+            aria-pressed={lineOverflowMode === "wrap"}
+            title={undefined}
+            onClick={() => {
+              onLineOverflowModeChange(
+                lineOverflowMode === "wrap" ? "scroll" : "wrap",
+              );
+            }}
+          >
+            <Icon name="TextWrap" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

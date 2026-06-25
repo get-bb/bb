@@ -112,6 +112,11 @@ const DIAGRAM_PATH = "docs/right-panel/preview-flow.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
 const SCREENSHOT_PATH = "docs/screenshots/right-panel.svg";
+const STORY_WORKSPACE_ROOT = "/Users/alex/Code/bb";
+
+function copyPathFor(path: string) {
+  return `${STORY_WORKSPACE_ROOT}/${path}`;
+}
 
 const SAMPLE_IMAGE_URL =
   "data:image/svg+xml;utf8," +
@@ -141,11 +146,12 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="markdown file"
-        hint="Header shows path + Preview/Raw toggle; body renders with react-markdown + GFM"
+        hint="Header shows a copyable path, direct markdown-copy icon, open-in-editor icon, and Preview/Raw toggle"
       >
         <PreviewStage>
           <FilePreview
             path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{
               kind: "ready",
@@ -158,11 +164,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="markdown file with Mermaid"
-        hint="Preview mode renders the Mermaid diagram with open/zoom controls; Raw keeps the original fence"
+        hint="Preview mode renders the Mermaid diagram; the header copy icon copies the original markdown"
       >
         <PreviewStage>
           <FilePreview
             path={DIAGRAM_PATH}
+            copyPath={copyPathFor(DIAGRAM_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{
               kind: "ready",
@@ -175,11 +182,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="typescript / react file"
-        hint="No markdown toggle for code files; Pierre File highlights via Shiki"
+        hint="Code previews use direct content-copy and line-wrap controls without an overflow menu"
       >
         <PreviewStage>
           <FilePreview
             path={BUTTON_PATH}
+            copyPath={copyPathFor(BUTTON_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{
               kind: "ready",
@@ -201,6 +209,7 @@ export function Overview() {
         <PreviewStage>
           <FilePreview
             path={DELETED_BUTTON_PATH}
+            copyPath={copyPathFor(DELETED_BUTTON_PATH)}
             onOpenInEditor={noopOpenInEditor}
             statusLabel="deleted"
             state={{
@@ -218,11 +227,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="image file"
-        hint="Image previews render inside the same header chrome (path, copy, open-in-editor)"
+        hint="Image previews keep the same copyable path and open-in-editor header chrome"
       >
         <PreviewStage>
           <FilePreview
             path={SCREENSHOT_PATH}
+            copyPath={copyPathFor(SCREENSHOT_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "image", url: SAMPLE_IMAGE_URL }}
           />
@@ -235,6 +245,7 @@ export function Overview() {
         <PreviewStage>
           <FilePreview
             path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "empty" }}
           />
@@ -247,6 +258,7 @@ export function Overview() {
         <PreviewStage>
           <FilePreview
             path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "not-found" }}
           />
@@ -259,6 +271,7 @@ export function Overview() {
         <PreviewStage>
           <FilePreview
             path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "error" }}
           />
@@ -271,6 +284,7 @@ export function Overview() {
         <PreviewStage>
           <FilePreview
             path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "loading" }}
           />
