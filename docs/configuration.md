@@ -184,8 +184,10 @@ npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
 The data directory is the root directory for all bb-managed state: the SQLite
-database, logs, host identity, and thread storage. It defaults to `~/.bb/` for
-the packaged app. The `pnpm dev` source launcher derives an isolated data
+database, logs, host identity, thread storage, custom themes (`theme/`), and the
+user-editable UI source (`ui/`, see `bb ui` in the bb-cli skill — gated behind the
+"UI forking" experiment under Settings → Experiments, off by default). It defaults to
+`~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your
 home directory, plus a short hash suffix. Use `--data-dir` to point packaged-app

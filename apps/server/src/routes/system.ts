@@ -51,6 +51,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
+      dataDir: deps.config.dataDir,
     };
   }
 

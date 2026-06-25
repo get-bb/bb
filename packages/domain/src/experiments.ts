@@ -84,6 +84,12 @@ export const experimentsSchema = z.object({
     .min(1)
     .max(ELECTRON_ACCELERATOR_MAX_LENGTH)
     .refine(isValidElectronAccelerator),
+  /**
+   * UI forking: lets `bb ui` fork, edit, build, and live-reload the frontend
+   * itself. Off by default — when off the `bb ui` commands are disabled and the
+   * shipped UI is always served, even if a fork was built earlier.
+   */
+  uiForking: z.boolean(),
 });
 export type Experiments = z.infer<typeof experimentsSchema>;
 
@@ -91,4 +97,5 @@ export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
+  uiForking: false,
 };

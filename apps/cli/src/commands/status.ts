@@ -15,6 +15,7 @@ import {
 import { printPendingTodos } from "./thread/pending-todos.js";
 
 interface StatusPayload {
+  dataDir: string | null;
   project: { id: string; name: string } | null;
   thread: {
     id: string;
@@ -53,6 +54,7 @@ export function registerStatusCommand(
         const context = getContext();
 
         const payload: StatusPayload = {
+          dataDir: null,
           project: null,
           thread: null,
           childThreads: null,
@@ -60,6 +62,21 @@ export function registerStatusCommand(
         };
 
         let serverAvailable = false;
+
+        // Best-effort: the data dir comes from system config (where ui/, theme/,
+        // and the DB live). Works without any project/thread context.
+        try {
+          const response = await fetch(`${getUrl()}/api/v1/system/config`);
+          if (response.ok) {
+            const config = (await response.json()) as { dataDir?: unknown };
+            if (typeof config.dataDir === "string") {
+              payload.dataDir = config.dataDir;
+              serverAvailable = true;
+            }
+          }
+        } catch {
+          // Server unreachable — leave dataDir null.
+        }
 
         // Try to fetch enriched data from the server
         if (context.projectId || context.threadId) {
@@ -155,6 +172,11 @@ export function registerStatusCommand(
           console.log(`Thread: ${context.threadId}`);
         } else {
           console.log("Thread: (not set)");
+        }
+
+        if (payload.dataDir) {
+          console.log("");
+          console.log(`Data dir: ${payload.dataDir}`);
         }
 
         if (!context.projectId && !context.threadId) {

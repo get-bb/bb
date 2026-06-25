@@ -718,6 +718,7 @@ describe("thread runtime config", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
+        uiForking: false,
       });
 
       expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({

@@ -250,8 +250,15 @@ function ExperimentsStory({
           popoutChatHotkey,
         }))
       }
+      onUiForkingEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          uiForking: enabled,
+        }))
+      }
       popoutChatEnabled={state.experiments.popoutChat}
       popoutChatHotkey={state.experiments.popoutChatHotkey}
+      uiForkingEnabled={state.experiments.uiForking}
     />
   );
 }

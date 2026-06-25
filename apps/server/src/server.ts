@@ -8,6 +8,7 @@ import {
   buildLocalAppOrigins,
   type BuildLocalAppOriginsArgs,
 } from "@bb/config/local-app-origins";
+import { getExperiments } from "@bb/db";
 import type { AppDeps, ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
@@ -19,6 +20,9 @@ import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerUiRoutes } from "./routes/ui.js";
+import { createUiSourceService } from "./services/ui-source/ui-source.js";
+import { injectRecoveryShim } from "./services/ui-source/recovery-shim.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -83,6 +87,16 @@ function normalizeInternalAuthPath(path: string): string {
 interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
+  /**
+   * Directory holding the shipped app source (with vite.ui.config.ts), used to
+   * seed and build the user-editable UI source. When set, the `/api/v1/ui/*`
+   * routes are enabled and static serving can swap to the built UI source.
+   */
+  appDir?: string;
+  /** Directory holding the @bb/* packages as source (defaults to <appDir>/../../packages). */
+  packagesSourceDir?: string;
+  /** Fetch the shipped source before seeding (packaged install clones the release tag). */
+  ensureUiSource?: () => Promise<{ ok: boolean; log: string }>;
 }
 
 interface StaticResponseHeadersArgs {
@@ -253,6 +267,21 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
+  const uiSource = options?.appDir
+    ? createUiSourceService({
+        dataDir: deps.config.dataDir,
+        appDir: options.appDir,
+        packagesSourceDir: options.packagesSourceDir,
+        ensureSource: options.ensureUiSource,
+        hub: deps.hub,
+        logger: deps.logger,
+        version: deps.config.appVersion,
+        isEnabled: () => getExperiments(deps.db).uiForking,
+      })
+    : undefined;
+  if (uiSource) {
+    registerUiRoutes(publicApi, deps, uiSource);
+  }
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -334,7 +363,7 @@ export function createApp(
   }
 
   if (options?.staticDir) {
-    const root = resolve(options.staticDir);
+    const shippedRoot = resolve(options.staticDir);
     const MIME: Record<string, string> = {
       ".html": "text/html",
       ".js": "application/javascript",
@@ -350,6 +379,11 @@ export function createApp(
     };
 
     app.get("*", async (context) => {
+      // Per request, serve from the built UI source when it is active, else the
+      // shipped UI. Falls back to shipped if the UI source dist is missing.
+      const root = uiSource
+        ? uiSource.resolveActiveRoot(shippedRoot)
+        : shippedRoot;
       const urlPath =
         context.req.path === "/" ? "/index.html" : context.req.path;
       const filePath = join(root, urlPath);
@@ -359,9 +393,17 @@ export function createApp(
       try {
         const fileStat = await stat(filePath);
         if (fileStat.isFile()) {
-          const content = await readFile(filePath);
           const contentType =
             MIME[extname(filePath)] ?? "application/octet-stream";
+          // Inject the recovery shim into every served HTML document so the
+          // reload/escape-hatch survives any UI-source breakage.
+          if (contentType === "text/html") {
+            const html = injectRecoveryShim(await readFile(filePath, "utf8"));
+            return new Response(html, {
+              headers: createStaticResponseHeaders({ contentType, urlPath }),
+            });
+          }
+          const content = await readFile(filePath);
           return new Response(content, {
             headers: createStaticResponseHeaders({ contentType, urlPath }),
           });
@@ -369,7 +411,9 @@ export function createApp(
       } catch {
         // File not found — fall through to SPA fallback
       }
-      const indexHtml = await readFile(join(root, "index.html"));
+      const indexHtml = injectRecoveryShim(
+        await readFile(join(root, "index.html"), "utf8"),
+      );
       return new Response(indexHtml, {
         headers: createStaticResponseHeaders({
           contentType: "text/html",

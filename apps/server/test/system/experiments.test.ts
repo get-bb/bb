@@ -15,6 +15,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
+        uiForking: false,
       });
     });
   });
@@ -28,6 +29,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
+          uiForking: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -35,11 +37,13 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        uiForking: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        uiForking: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -49,6 +53,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        uiForking: true,
       });
     });
   });

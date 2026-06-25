@@ -13,12 +13,14 @@ const unavailableSystemConfig: SystemConfigResponse = {
     claudeCodeMockCliTraffic: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
+    uiForking: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,
+  dataDir: "",
 };
 
 type SystemConfigLoadStatus = "failed" | "succeeded" | null;

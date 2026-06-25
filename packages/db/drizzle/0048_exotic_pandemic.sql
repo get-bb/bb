@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` ADD `ui_forking` integer DEFAULT false NOT NULL;

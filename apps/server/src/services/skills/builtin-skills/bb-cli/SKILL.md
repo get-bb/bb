@@ -209,3 +209,62 @@ properties. Set the two anchors `--canvas`/`--ink` (most of the UI derives from
 them by mixing ink into canvas), the `--primary` accent, the secondary text tiers
 (`--muted-foreground` etc.), and the semantic colors (`--destructive`,
 `--success`, …). Ship one file with a `:root, .light` block and a `.dark` block.
+
+## Modifying the App UI
+
+`bb ui` lets you reshape the bb frontend itself — not just colors, but layout,
+copy, components, and behavior. It works from **any chat**: `bb ui fork` to start,
+edit the source on disk, then `bb ui apply` to rebuild and live-reload every
+window.
+
+- **Enable it first.** UI forking is an experiment, off by default. Turn on
+  **"UI forking"** under Settings → Experiments. Until then, `bb ui` commands are
+  disabled and the shipped UI is always served (`bb ui status` says so).
+- **`bb ui fork` creates your editable copy** of the frontend at `<bb-data-dir>/ui`
+  (the packaged app uses `~/.bb/ui`) and switches to it. It is a self-contained
+  Vite + React + Tailwind workspace — `src/`, `index.html`, `public/`,
+  `package.json`. The first `fork` seeds it (installs + builds — slower, a minute
+  or so); after that, edits are fast.
+- **Add dependencies freely:** add a package to `package.json`, and `bb ui apply`
+  runs `pnpm install` and rebuilds.
+- **`bb ui prod` is the known-good fallback.** It switches back to the shipped UI
+  instantly; your fork stays on disk. This is the escape hatch if an edit breaks
+  the app — it works even when the UI is broken, because it runs server-side.
+- **Builds are gated.** A build that fails to compile is never served: the live
+  UI stays on the last good build and `bb ui apply` returns the build errors so
+  you can fix and retry.
+- **Type feedback.** `bb ui fork`/`apply` also run a scoped `tsc --noEmit` over
+  your source (tests excluded) and print any type errors. It is advisory — the
+  build still serves (Vite strips types) — but it catches type mistakes the build
+  won't, so fix them.
+- **Where it takes effect:** `bb ui` swaps what the **server** serves, so it
+  applies to the packaged app and any production server build. Under `pnpm dev`
+  the frontend is served by Vite, so `bb ui apply` still builds but the running
+  dev page keeps coming from Vite (use Vite's own HMR there).
+
+Workflow for a UI change:
+
+1. `bb ui fork` — create your editable copy and switch to it (first run seeds it).
+   `fork` and `status` print the **fork dir** (its absolute path) — that is where
+   you edit.
+2. Edit files under that fork dir (`<bb-data-dir>/ui`, e.g. `~/.bb/ui` in the
+   packaged app): change `src/` for the UI and `package.json` to add deps. This
+   is the real frontend source.
+3. `bb ui apply` — rebuild and live-reload every window. On a build error, read
+   the printed log, fix the source, and run it again.
+4. `bb ui prod` to switch back to the shipped UI, or `bb ui fork --reset` to throw
+   your edits away and start fresh.
+
+Commands:
+
+- `bb ui status` — which UI is active (`prod` / `fork`) and the last build state.
+- `bb ui fork [--reset]` — create your fork and switch to it (first run seeds;
+  `--reset` discards edits and re-seeds).
+- `bb ui apply` — rebuild your fork after editing and reload connected clients.
+- `bb ui prod` — switch back to the shipped UI (your fork stays on disk).
+- `bb ui update` — rebase your fork onto a newer shipped UI after a bb update. A
+  clean rebase rebuilds and serves automatically. On conflict it falls back to
+  the shipped UI and reports the files to fix; resolve them and run
+  `bb ui update --continue` (or `bb ui update --abort`).
+
+Add `--json` to any `bb ui` command for machine-readable output.

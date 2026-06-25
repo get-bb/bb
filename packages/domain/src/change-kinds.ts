@@ -52,7 +52,11 @@ export const HOST_CHANGE_KINDS = [
 ] as const;
 export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 
-export const SYSTEM_CHANGE_KINDS = ["config-changed"] as const;
+export const SYSTEM_CHANGE_KINDS = [
+  "config-changed",
+  "ui-reloaded",
+  "ui-status-changed",
+] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 
 export const threadChangeKindSchema = z.enum(THREAD_CHANGE_KINDS);

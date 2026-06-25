@@ -213,6 +213,12 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
   dropThreadFolderSchema(db);
+  // system_experiments predates thread search, so the table itself isn't
+  // rewound — but its ui_forking column (added by 0048) is, so the forward
+  // re-migrate can re-add it.
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN ui_forking")
+    .run();
 }
 
 function requirePublishedMigrationWhen(tag: string): number {

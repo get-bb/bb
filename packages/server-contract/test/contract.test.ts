@@ -1013,7 +1013,11 @@ describe("server-contract canonical schemas", () => {
       "automations-changed",
       "automation-runs-changed",
     ]);
-    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed"]);
+    expect(SYSTEM_CHANGE_KINDS).toEqual([
+      "config-changed",
+      "ui-reloaded",
+      "ui-status-changed",
+    ]);
   });
 
   it("keeps only intentional optional request fields", () => {

@@ -86,6 +86,8 @@ export const systemConfigResponseSchema = z.object({
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),
+  /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */
+  dataDir: z.string(),
 });
 export type SystemConfigResponse = z.infer<typeof systemConfigResponseSchema>;
 

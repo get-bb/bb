@@ -132,11 +132,16 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
-  it("maps every realtime system change to at least one dirty handler", () => {
+  it("maps every cache-affecting system change to a dirty handler; ui-reloaded is reload-only", () => {
     for (const changeKind of SYSTEM_CHANGE_KINDS) {
-      expect(
-        REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
+      const dirty = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]?.dirty ?? [];
+      if (changeKind === "ui-reloaded") {
+        // Live reload after a UI-source rebuild is owned by the server-injected
+        // recovery shim, not the cache layer, so this kind has no dirty handlers.
+        expect(dirty.length).toBe(0);
+      } else {
+        expect(dirty.length).toBeGreaterThan(0);
+      }
     }
   });
 
