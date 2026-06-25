@@ -177,8 +177,8 @@ These reset commands prompt for confirmation before deleting anything.
 
 | Component       | Role                                                                                                                                                                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Server**      | Central hub. Stores all state in a SQLite database, exposes an HTTP API, and pushes change notifications over WebSocket. Stateless itself — the DB is the source of truth. Routes work to hosts by queuing commands.                                                           |
-| **Host daemon** | Runs on the local machine. Connects to the server, picks up commands, provisions workspaces, runs agent provider processes, and streams events back. Exposes a local HTTP API for the app and CLI to do machine-local things (open editor, pick folders, check daemon status). |
+| **Server**      | Central hub. Stores all state in a SQLite database, exposes an HTTP API, and pushes change notifications over WebSocket. Stateless itself — the DB is the source of truth. Routes work to hosts over the active daemon WebSocket.                                           |
+| **Host daemon** | Runs on the local machine. Connects to the server, handles host RPC requests, provisions workspaces, runs agent provider processes, and posts events back. Exposes a local HTTP API for the app and CLI to do machine-local things (open editor, pick folders, check daemon status). |
 | **App**         | Web UI for inspecting projects and threads, following progress, and steering work.                                                                                                                                                                                             |
 | **CLI** (`bb`)  | First-class interface for both users and agents. Same capabilities as the app, scriptable.                                                                                                                                                                                     |
 
@@ -194,7 +194,7 @@ The core entities and how they relate:
 
 **Host** — a long-lived daemon identity for the machine that runs work. bb currently supports one primary local host; the host boundary remains in the data model for future expansion.
 
-**Commands and events** — the server talks to daemons by queuing commands (provision an environment, start a thread, stop a thread). Daemons report back by posting events. This is an asynchronous command/event protocol — the server queues work, the daemon picks it up, results flow back as events.
+**Commands and events** — the server talks to daemons over the active daemon WebSocket with host RPC requests. Lifecycle work such as provisioning an environment, starting a thread, or stopping a thread can run asynchronously from the API caller's perspective, and the server settles command side effects when the daemon returns an RPC result. Daemons separately post provider and thread progress as event batches.
 
 ### Contracts and boundaries
 
