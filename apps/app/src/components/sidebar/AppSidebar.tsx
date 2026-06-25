@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
+import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -43,8 +44,10 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
-const SIDEBAR_FOOTER_ACTION_CLASS =
-  "size-8 w-8 justify-center p-0 text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80";
+const SIDEBAR_FOOTER_ACTION_CLASS = cn(
+  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
+  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+);
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
