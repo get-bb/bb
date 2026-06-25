@@ -2562,6 +2562,96 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("keeps ACP thread composer defaults when provider discovery is degraded", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-composer-acp-degraded",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const providerResponder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (
+            request.command.type === "known_acp_agents.status" ||
+            request.command.type === "provider.list_models"
+          ) {
+            return {
+              ok: false,
+              errorCode: "command_failed",
+              errorMessage: "Runtime shutting down",
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "acp-cursor",
+        model: "composer-2.5",
+        reasoningLevel: "medium",
+        permissionMode: "readonly",
+        serviceTier: "default",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-opencode",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "New review comments on the PR",
+        model: "zai-coding-plan/glm-5.2",
+        permissionMode: "workspace-write",
+        providerThreadId: "ses_opencode",
+        reasoningLevel: "medium",
+        threadId: thread.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/composer-bootstrap`,
+      );
+
+      expect(response.status).toBe(200);
+      const bootstrap = threadComposerBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(bootstrap.defaultExecutionOptions).toMatchObject({
+        model: "zai-coding-plan/glm-5.2",
+        permissionMode: "workspace-write",
+        reasoningLevel: "medium",
+      });
+      const { executionOptions } = bootstrap;
+      if (executionOptions === null) {
+        throw new Error(
+          "expected degraded executionOptions for an environment-backed ACP thread",
+        );
+      }
+      expect(
+        executionOptions.providers.some(
+          (provider) => provider.id === "acp-opencode",
+        ),
+      ).toBe(true);
+      expect(executionOptions.modelLoadError).toMatchObject({
+        providerId: "acp-opencode",
+      });
+      expect(
+        providerResponder.requests.map((request) => request.command.type),
+      ).toEqual(["known_acp_agents.status", "provider.list_models"]);
+      expect(providerResponder.requests[1]?.command).toMatchObject({
+        type: "provider.list_models",
+        providerId: "acp-opencode",
+      });
+    });
+  });
+
   it("returns null composer defaults for stale project execution defaults", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

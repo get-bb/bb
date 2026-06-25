@@ -101,6 +101,22 @@ function listConfiguredSystemProviderInfos(
   return providers;
 }
 
+function includeRequestedKnownAcpProvider(
+  providers: ProviderInfo[],
+  providerId: string | undefined,
+): ProviderInfo[] {
+  if (
+    providerId === undefined ||
+    providers.some((provider) => provider.id === providerId)
+  ) {
+    return providers;
+  }
+  const knownAgent = findKnownAcpAgentForProviderId(providerId);
+  return knownAgent === undefined
+    ? providers
+    : [...providers, buildKnownAcpProviderInfo(knownAgent)];
+}
+
 function canOmitKnownAcpAgentsForError(error: unknown): error is ApiError {
   return (
     error instanceof ApiError && (error.status === 502 || error.status === 504)
@@ -319,6 +335,7 @@ export async function resolveSystemExecutionOptions(
     await earlyModelResultPromise?.catch(() => undefined);
     throw error;
   }
+  providers = includeRequestedKnownAcpProvider(providers, query.providerId);
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;
