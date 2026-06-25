@@ -49,6 +49,7 @@ export interface EventProjectionState {
 
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
+  contextOnlyToolCallIds?: ReadonlySet<string>;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 

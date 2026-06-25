@@ -19,10 +19,12 @@ import {
   listContextWindowUsageRows,
   listRecentStoredEventRows,
   listStoredClientTurnRequestIdsInRange,
+  listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
+  listStoredToolCallRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
@@ -177,6 +179,7 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 
 interface TimelineEventRowSelection {
   acceptedClientRequestContextRows: StoredEventRow[];
+  contextOnlyToolCallIds: Set<string>;
   paginationPage: ThreadTimelinePageRequest;
   responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
@@ -186,6 +189,11 @@ interface TimelineEventRowSelection {
 interface TimelineWindowRowsArgs {
   rows: readonly StoredEventRow[];
   threadId: string;
+}
+
+interface TimelineWindowParentedRowsResult {
+  contextOnlyToolCallIds: Set<string>;
+  rows: StoredEventRow[];
 }
 
 interface SelectAcceptedClientRequestContextRowsArgs {
@@ -352,6 +360,124 @@ function mergeStoredEventRowsById(
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseStoredEventData(row: StoredEventRow): Record<string, unknown> {
+  return asRecord(JSON.parse(row.data)) ?? {};
+}
+
+function getStoredEventParentToolCallId(
+  row: StoredEventRow,
+): string | undefined {
+  const data = parseStoredEventData(row);
+  const item = asRecord(data.item);
+  const itemParentToolCallId = item?.parentToolCallId;
+  if (
+    typeof itemParentToolCallId === "string" &&
+    itemParentToolCallId.length > 0
+  ) {
+    return itemParentToolCallId;
+  }
+
+  const eventParentToolCallId = data.parentToolCallId;
+  return typeof eventParentToolCallId === "string" &&
+    eventParentToolCallId.length > 0
+    ? eventParentToolCallId
+    : undefined;
+}
+
+function collectStoredToolCallItemIds(
+  rows: readonly StoredEventRow[],
+): string[] {
+  const itemIds = new Set<string>();
+  for (const row of rows) {
+    if (row.itemKind !== "toolCall" || row.itemId === null) {
+      continue;
+    }
+    itemIds.add(row.itemId);
+  }
+  return [...itemIds];
+}
+
+function collectStoredParentToolCallIds(
+  rows: readonly StoredEventRow[],
+): string[] {
+  const parentToolCallIds = new Set<string>();
+  for (const row of rows) {
+    const parentToolCallId = getStoredEventParentToolCallId(row);
+    if (parentToolCallId) {
+      parentToolCallIds.add(parentToolCallId);
+    }
+  }
+  return [...parentToolCallIds];
+}
+
+function ensureTimelineWindowParentedRows(
+  db: DbConnection,
+  args: TimelineWindowRowsArgs,
+): TimelineWindowParentedRowsResult {
+  let rows = [...args.rows];
+  const rowIds = new Set(rows.map((row) => row.id));
+  const visibleToolCallIds = new Set(collectStoredToolCallItemIds(rows));
+  const fetchedChildToolCallIds = new Set<string>();
+
+  while (true) {
+    const toolCallIdsToFetch = [...visibleToolCallIds].filter(
+      (toolCallId) => !fetchedChildToolCallIds.has(toolCallId),
+    );
+    if (toolCallIdsToFetch.length === 0) {
+      break;
+    }
+    for (const toolCallId of toolCallIdsToFetch) {
+      fetchedChildToolCallIds.add(toolCallId);
+    }
+
+    const childRows = listStoredEventRowsByParentToolCallIds(db, {
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      parentToolCallIds: toolCallIdsToFetch,
+      threadId: args.threadId,
+    });
+    const newChildRows = childRows.filter((row) => !rowIds.has(row.id));
+    if (newChildRows.length === 0) {
+      continue;
+    }
+    for (const row of newChildRows) {
+      rowIds.add(row.id);
+      if (row.itemKind === "toolCall" && row.itemId !== null) {
+        visibleToolCallIds.add(row.itemId);
+      }
+    }
+    rows = mergeStoredEventRowsById([...rows, ...newChildRows]);
+  }
+
+  const contextOnlyToolCallIds = new Set<string>();
+  const missingParentToolCallIds = collectStoredParentToolCallIds(rows).filter(
+    (parentToolCallId) => !visibleToolCallIds.has(parentToolCallId),
+  );
+  const parentRows = listStoredToolCallRowsByItemIds(db, {
+    itemIds: missingParentToolCallIds,
+    threadId: args.threadId,
+  });
+  const newParentRows = parentRows.filter((row) => !rowIds.has(row.id));
+  for (const row of parentRows) {
+    if (row.itemId !== null && !visibleToolCallIds.has(row.itemId)) {
+      contextOnlyToolCallIds.add(row.itemId);
+    }
+  }
+
+  return {
+    contextOnlyToolCallIds,
+    rows:
+      newParentRows.length > 0
+        ? mergeStoredEventRowsById([...newParentRows, ...rows])
+        : rows,
+  };
+}
+
 function selectAcceptedClientRequestContextRows(
   db: DbConnection,
   args: SelectAcceptedClientRequestContextRowsArgs,
@@ -449,6 +575,7 @@ function selectFullTimelineEventRows(
 ): TimelineEventRowSelection {
   return {
     acceptedClientRequestContextRows: [],
+    contextOnlyToolCallIds: new Set(),
     paginationPage: page,
     responsePageKind: page.kind,
     rows: listRecentStoredEventRows(db, {
@@ -683,9 +810,22 @@ function selectStandardTimelineEventRows(
           contextRows: [],
           rows: selectedRows,
         };
+  const selectedRowsWithParentedContext = ensureTimelineWindowParentedRows(db, {
+    threadId: thread.id,
+    rows: selectedRowsWithContext.rows,
+  });
+  const selectedRowsWithParentedTurnStarts = ensureTimelineWindowTurnStartedRows(
+    db,
+    {
+      threadId: thread.id,
+      rows: selectedRowsWithParentedContext.rows,
+    },
+  );
 
   return {
     acceptedClientRequestContextRows: selectedRowsWithContext.contextRows,
+    contextOnlyToolCallIds:
+      selectedRowsWithParentedContext.contextOnlyToolCallIds,
     paginationPage:
       page.kind === "older"
         ? page
@@ -694,7 +834,7 @@ function selectStandardTimelineEventRows(
             segmentLimit: page.segmentLimit,
           },
     responsePageKind: page.kind,
-    rows: selectedRowsWithContext.rows,
+    rows: selectedRowsWithParentedTurnStarts,
     strategy:
       sequenceStart === 0 && beforeSequence === undefined
         ? "full"
@@ -873,6 +1013,7 @@ function buildThreadTimelineInternal(
         events: decodedEvents,
         options: {
           ...commonProjectionOptions,
+          contextOnlyToolCallIds: eventSelection.contextOnlyToolCallIds,
           includeNestedRows,
           providerId: thread.providerId,
           turnMessageDetail: includeNestedRows ? "full" : "summary",

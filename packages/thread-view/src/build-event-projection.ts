@@ -124,6 +124,7 @@ interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
   activeWorkflow: EventProjectionWorkflowMessage | null;
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
+  contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
@@ -884,6 +885,8 @@ function buildDetailedProjection(
       activeWorkflow: args.activeWorkflow,
       activeBackgroundCommands: args.activeBackgroundCommands,
     },
+  }, {
+    contextOnlyToolCallIds: args.contextOnlyToolCallIds,
   });
   return applyProjectionTurnMessageDetail(
     semanticProjection,
@@ -907,6 +910,7 @@ function buildFullEventProjection(
     activeThinking: flatProjection.activeThinking,
     activeWorkflow: flatProjection.activeWorkflow,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -941,6 +945,7 @@ export function buildEventProjectionEntries(
     activeThinking: null,
     activeWorkflow: flatProjection.activeWorkflow,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,

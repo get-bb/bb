@@ -62,6 +62,7 @@ import { buildTimelineErrorDisplay } from "./error-display.js";
 export type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
+  contextOnlyToolCallIds?: ReadonlySet<string>;
   includeDebugRawEvents: boolean;
   includeProviderUnhandledOperations: boolean;
   /**
@@ -1181,6 +1182,7 @@ export function buildThreadTimelineFromEvents(
     includeDebugRawEvents: args.options.includeDebugRawEvents,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
+    contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,

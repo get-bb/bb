@@ -37,6 +37,10 @@ interface TurnMessageContext {
 
 type SemanticMessageContext = StandaloneMessageContext | TurnMessageContext;
 
+interface NormalizeEventProjectionOptions {
+  contextOnlyToolCallIds?: ReadonlySet<string>;
+}
+
 function getStartedAt(message: MessageTimingSource): number {
   return message.startedAt ?? message.createdAt;
 }
@@ -248,9 +252,15 @@ class SemanticProjectionBuilder {
     string,
     SemanticMessageContext[]
   >();
+  private readonly contextOnlyToolCallIds: ReadonlySet<string>;
   private readonly rootContexts: SemanticMessageContext[];
 
-  constructor(contexts: SemanticMessageContext[]) {
+  constructor(
+    contexts: SemanticMessageContext[],
+    options: NormalizeEventProjectionOptions = {},
+  ) {
+    this.contextOnlyToolCallIds =
+      options.contextOnlyToolCallIds ?? new Set<string>();
     const delegationCallIds = new Set(
       contexts
         .map((context) => context.message)
@@ -271,7 +281,24 @@ class SemanticProjectionBuilder {
     }
 
     this.rootContexts = contexts.filter(
-      (context) => !this.attachedMessageIds.has(context.message.id),
+      (context) =>
+        !this.attachedMessageIds.has(context.message.id) &&
+        !this.isRootSuppressedContext(context),
+    );
+  }
+
+  private isContextOnlyToolCall(context: SemanticMessageContext): boolean {
+    return (
+      (context.message.kind === "delegation" ||
+        context.message.kind === "tool-call") &&
+      this.contextOnlyToolCallIds.has(context.message.callId)
+    );
+  }
+
+  private isRootSuppressedContext(context: SemanticMessageContext): boolean {
+    return (
+      this.isContextOnlyToolCall(context) ||
+      context.message.parentToolCallId !== undefined
     );
   }
 
@@ -367,9 +394,11 @@ class SemanticProjectionBuilder {
 
 export function normalizeEventProjection(
   projection: EventProjection,
+  options: NormalizeEventProjectionOptions = {},
 ): EventProjection {
   const normalizedProjection = new SemanticProjectionBuilder(
     collectProjectionMessageContexts(projection),
+    options,
   ).buildRootProjection();
   return {
     ...normalizedProjection,

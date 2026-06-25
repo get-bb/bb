@@ -742,6 +742,17 @@ export interface ListStoredEventRowsInRangeArgs {
   threadId: string;
 }
 
+export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  excludedTypes?: readonly ThreadEventType[];
+  parentToolCallIds: readonly string[];
+  threadId: string;
+}
+
+export interface ListStoredToolCallRowsByItemIdsArgs {
+  itemIds: readonly string[];
+  threadId: string;
+}
+
 export interface ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs {
   afterSequence: number;
   clientRequestIds: readonly ClientTurnRequestId[];
@@ -937,6 +948,64 @@ export function listStoredEventRowsInRange(
         eq(events.threadId, args.threadId),
         gte(events.sequence, args.seqStart),
         lte(events.sequence, args.seqEnd),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredEventRowsByParentToolCallIds(
+  db: DbConnection,
+  args: ListStoredEventRowsByParentToolCallIdsArgs,
+): StoredEventRow[] {
+  const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
+    (parentToolCallId) => parentToolCallId.length > 0,
+  );
+  if (parentToolCallIds.length === 0) {
+    return [];
+  }
+
+  const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
+  const itemParentToolCallId = sql<string>`json_extract(${events.data}, '$.item.parentToolCallId')`;
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    or(
+      inArray(eventParentToolCallId, parentToolCallIds),
+      inArray(itemParentToolCallId, parentToolCallIds),
+    )!,
+  ];
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredToolCallRowsByItemIds(
+  db: DbConnection,
+  args: ListStoredToolCallRowsByItemIdsArgs,
+): StoredEventRow[] {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.itemId, itemIds),
+        eq(events.itemKind, "toolCall"),
+        inArray(events.type, ["item/started", "item/completed"]),
       ),
     )
     .orderBy(events.sequence)
