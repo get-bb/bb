@@ -402,7 +402,7 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="rounded-xl border border-border-seam/30 bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <div className="rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}

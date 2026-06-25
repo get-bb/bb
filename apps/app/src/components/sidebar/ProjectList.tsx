@@ -899,6 +899,8 @@ interface SidebarThreadsSectionActionsProps {
 
 interface SidebarAllThreadsOverflowMenuProps {
   isCreatingFolder: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onNewFolder: () => void;
   onOpenArchivedThreads: () => void;
 }
@@ -939,19 +941,21 @@ function SidebarThreadsSectionActions({
 
 function SidebarAllThreadsOverflowMenu({
   isCreatingFolder,
+  open,
+  onOpenChange,
   onNewFolder,
   onOpenArchivedThreads,
 }: SidebarAllThreadsOverflowMenuProps) {
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel="All threads actions"
+        ariaLabel="All Threads actions"
         iconName="MoreHorizontal"
         tooltip="More actions"
       />
       <DropdownMenuContent
         align="end"
-        mobileTitle="All threads actions"
+        mobileTitle="All Threads actions"
         className="min-w-0"
       >
         <DropdownMenuItem disabled={isCreatingFolder} onSelect={onNewFolder}>
@@ -1591,11 +1595,14 @@ function ProjectListComponent({
     useState<SidebarDisplayOptionsMenuKind | null>(null);
   const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
     useState<SidebarDisplayOptionsMenuKind | null>(null);
+  const [allThreadsOverflowMenuOpen, setAllThreadsOverflowMenuOpen] =
+    useState(false);
   const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
     (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
       setProjectsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setThreadsDisplayOptionsMenuOpen(null);
+        setAllThreadsOverflowMenuOpen(false);
       }
     },
     [],
@@ -1605,6 +1612,17 @@ function ProjectListComponent({
       setThreadsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setProjectsDisplayOptionsMenuOpen(null);
+        setAllThreadsOverflowMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleAllThreadsOverflowMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setAllThreadsOverflowMenuOpen(open);
+      if (open) {
+        setProjectsDisplayOptionsMenuOpen(null);
+        setThreadsDisplayOptionsMenuOpen(null);
       }
     },
     [],
@@ -2019,6 +2037,8 @@ function ProjectListComponent({
       />
       <SidebarAllThreadsOverflowMenu
         isCreatingFolder={isCreateThreadFolderPending}
+        open={allThreadsOverflowMenuOpen}
+        onOpenChange={handleAllThreadsOverflowMenuOpenChange}
         onNewFolder={handleOpenCreateFolderDialog}
         onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
@@ -2055,9 +2075,12 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
       renderAllThreadsSection={(content) => (
         <TopLevelSidebarSection
-          label="All threads"
+          label="All Threads"
           actions={allThreadsSectionActions}
-          actionsOpen={projectsDisplayOptionsMenuOpen !== null}
+          actionsOpen={
+            projectsDisplayOptionsMenuOpen !== null ||
+            allThreadsOverflowMenuOpen
+          }
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
             onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
