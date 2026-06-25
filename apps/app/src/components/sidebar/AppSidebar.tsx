@@ -43,7 +43,8 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
-const SIDEBAR_FOOTER_ACTION_CLASS = "w-auto min-w-0";
+const SIDEBAR_FOOTER_ACTION_CLASS =
+  "w-auto min-w-0 font-normal text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80";
 const SIDEBAR_FOOTER_ACTION_LABEL_CLASS =
   "group-data-[collapsible=icon]:hidden";
 
