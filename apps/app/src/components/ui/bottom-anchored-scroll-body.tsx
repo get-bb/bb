@@ -779,7 +779,7 @@ export function BottomAnchoredScrollBody({
         {scrollOverlay ? (
           <div
             data-scroll-overlay=""
-            className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-start justify-start px-3 pt-3"
+            className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-center justify-end px-3 py-3"
           >
             <div className="pointer-events-auto">{scrollOverlay}</div>
           </div>
