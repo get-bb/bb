@@ -786,7 +786,7 @@ export function SidebarGroupOptionsMenu({
           }}
         />
         <SidebarGroupMenuOption
-          label="Folders"
+          label="Manually"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
