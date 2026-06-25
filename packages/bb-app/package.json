@@ -28,7 +28,8 @@
       "node": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./dist/bb-app.js": "./dist/bb-app.js"
   },
   "types": "./dist/index.d.ts",
   "os": [
