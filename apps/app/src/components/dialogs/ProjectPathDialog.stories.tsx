@@ -42,6 +42,7 @@ export function Overview() {
             target={createTarget}
             pending={false}
             platform="darwin"
+            hostId={null}
             hostName="Sawyer's MacBook"
             onSubmit={noop}
           />
@@ -56,6 +57,7 @@ export function Overview() {
             target={updateTarget}
             pending={false}
             platform="darwin"
+            hostId={null}
             hostName="Sawyer's MacBook"
             onSubmit={noop}
           />
@@ -70,6 +72,7 @@ export function Overview() {
             target={addSourceTarget}
             pending={false}
             platform="darwin"
+            hostId={null}
             hostName="Sawyer's MacBook"
             onSubmit={noop}
           />
@@ -84,6 +87,7 @@ export function Overview() {
             target={createTarget}
             pending={false}
             platform="wsl"
+            hostId={null}
             hostName="Sawyer's MacBook"
             onSubmit={noop}
           />
@@ -98,6 +102,7 @@ export function Overview() {
             target={createTarget}
             pending={false}
             platform={null}
+            hostId={null}
             hostName={null}
             onSubmit={noop}
           />
@@ -109,6 +114,7 @@ export function Overview() {
             target={updateTarget}
             pending
             platform="darwin"
+            hostId={null}
             hostName="Sawyer's MacBook"
             onSubmit={noop}
           />

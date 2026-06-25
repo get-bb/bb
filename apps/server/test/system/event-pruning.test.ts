@@ -292,16 +292,27 @@ describe("thread event pruning", () => {
         threadId: thread.id,
         endingSequence: 305,
       });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        scope: turnScope("turn-1"),
+        sequence: 306,
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        data: {
+          providerThreadId: "provider-thread-1",
+        },
+      });
       seedResolvedAssistantMessage(harness, {
         threadId: thread.id,
         itemId: "msg-1",
-        deltaSequences: [306, 307],
-        completedSequence: 308,
+        deltaSequences: [307, 308],
+        completedSequence: 309,
       });
       seedStoredEvent(harness.deps, {
         threadId: thread.id,
         scope: turnScope("turn-1"),
-        sequence: 309,
+        sequence: 310,
         type: "turn/completed",
         itemId: null,
         itemKind: null,
@@ -324,13 +335,65 @@ describe("thread event pruning", () => {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(10);
+      ).toBe(11);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
           type: "item/agentMessage/delta",
         }),
-      ).toEqual([306]);
+      ).toEqual([307]);
+    });
+  });
+
+  it("identifies root completions even when the thread is already settled", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        scope: turnScope("turn-1"),
+        sequence: 1,
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        data: {
+          providerThreadId: "provider-thread-1",
+        },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "turn/completed",
+        itemId: null,
+        itemKind: null,
+        data: {
+          status: "completed",
+        },
+      });
+
+      const result = applyTurnCompletedEvent(harness.deps, {
+        type: "turn/completed",
+        threadId: thread.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      });
+
+      expect(result.isRootTurnCompletion).toBe(true);
+      expect(result.nextStatus).toBeNull();
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });
 

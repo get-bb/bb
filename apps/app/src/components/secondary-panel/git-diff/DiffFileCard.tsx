@@ -326,6 +326,7 @@ function DiffFileCardBody({
     <DiffFileCardRenderedBody
       entry={entry}
       parsedFile={parsedFile}
+      patchText={patchState.truncated ? undefined : patchState.patch}
       diffViewOptions={diffViewOptions}
       truncated={patchState.truncated ?? false}
       onOpenFilePreview={onOpenFilePreview}
@@ -337,6 +338,7 @@ function DiffFileCardBody({
 interface DiffFileCardRenderedBodyProps {
   entry: DiffFileEntry;
   parsedFile: ParsedGitDiffFile;
+  patchText?: string;
   diffViewOptions: Record<string, string | boolean | number>;
   truncated: boolean;
   onOpenFilePreview?: (path: string) => void;
@@ -353,6 +355,7 @@ interface DiffFileCardRenderedBodyProps {
 function DiffFileCardRenderedBody({
   entry,
   parsedFile,
+  patchText,
   diffViewOptions,
   truncated,
   onOpenFilePreview,
@@ -363,6 +366,7 @@ function DiffFileCardRenderedBody({
     changeKind: entry.changeKind,
     isRendering: false,
     onRequestFileContents,
+    patchText,
   });
   return (
     <>

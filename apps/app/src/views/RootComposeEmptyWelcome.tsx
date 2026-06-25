@@ -79,7 +79,8 @@ export function RootComposeEmptyWelcome({
           map, and feSpecularLighting lit by a moving point light produces a
           glint that follows the surface curvature (and travels) the way light
           actually reflects — far less "stuck-on" than a flat sweeping band. The
-          highlight is clipped to the glyph and added over it. */}
+          highlight is clipped just inside the glyph and added over it so the
+          light does not brighten antialiased outer-edge pixels. */}
       <svg aria-hidden className="absolute h-0 w-0" focusable="false">
         <defs>
           <filter
@@ -117,9 +118,15 @@ export function RootComposeEmptyWelcome({
                 )}
               </fePointLight>
             </feSpecularLighting>
+            <feMorphology
+              in="SourceAlpha"
+              operator="erode"
+              radius="0.75"
+              result="innerAlpha"
+            />
             <feComposite
               in="spec"
-              in2="SourceAlpha"
+              in2="innerAlpha"
               operator="in"
               result="specClip"
             />

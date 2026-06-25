@@ -188,6 +188,7 @@ export function ProjectSettingsView() {
         target={localSourcePicker.projectPathDialog.target}
         pending={localSourcePickerPending}
         platform={localSourcePicker.platform}
+        hostId={localSourcePicker.hostId}
         hostName={localSourcePicker.hostName}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}

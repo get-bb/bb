@@ -12,6 +12,7 @@ import {
 
 export const HOSTS_QUERY_KEY = "hosts";
 export const HOST_QUERY_KEY = "host";
+export const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
 export const PROJECTS_QUERY_KEY = "projects";
 export const PROJECT_PATHS_QUERY_KEY = "projectPaths";
 export const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
@@ -92,6 +93,11 @@ export type HostsQueryKey = readonly [typeof HOSTS_QUERY_KEY];
 export type HostQueryId = string | null | undefined;
 export type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 export type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
+export type HostDirectoryQueryKey = readonly [
+  typeof HOST_DIRECTORY_QUERY_KEY,
+  HostQueryId,
+  string | null,
+];
 export type ProjectsQueryKey = readonly [typeof PROJECTS_QUERY_KEY];
 export type AllProjectPathsQueryKeyPrefix = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
@@ -455,6 +461,13 @@ export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
 
 export function allHostQueryKeyPrefix(): AllHostQueryKeyPrefix {
   return [HOST_QUERY_KEY];
+}
+
+export function hostDirectoryQueryKey(
+  hostId: HostQueryId,
+  path: string | null,
+): HostDirectoryQueryKey {
+  return [HOST_DIRECTORY_QUERY_KEY, hostId, path];
 }
 
 export function projectsQueryKey(): ProjectsQueryKey {

@@ -197,6 +197,12 @@ type EventEffectFollowUp =
   | ParentTurnNotificationFollowUp
   | QueuedMessageAutoSendFollowUp;
 
+function isRootTurnStartedEvent(
+  event: Extract<HostDaemonEventEnvelope["event"], { type: "turn/started" }>,
+): boolean {
+  return !event.parentToolCallId;
+}
+
 function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
   providerThreadId: string | null;
 } {
@@ -350,6 +356,9 @@ async function applyEventEffects(
         if (hasThreadAlreadyStartedRun(deps, entry.threadId)) {
           continue;
         }
+        if (!isRootTurnStartedEvent(event)) {
+          continue;
+        }
         applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.started" },
           threadId: entry.threadId,
@@ -377,6 +386,7 @@ async function applyEventEffects(
         });
         if (
           turnCompleted.thread &&
+          turnCompleted.isRootTurnCompletion &&
           // Forks / side chats are user-initiated branches, not agent-delegated
           // sub-tasks, so a completed turn must not post a "child finished"
           // notification back into their parent thread.
@@ -399,7 +409,10 @@ async function applyEventEffects(
             });
           }
         }
-        if (event.status === "completed") {
+        if (
+          event.status === "completed" &&
+          turnCompleted.nextStatus === "idle"
+        ) {
           followUps.push({
             kind: "queued-message-auto-send",
             threadId: entry.threadId,

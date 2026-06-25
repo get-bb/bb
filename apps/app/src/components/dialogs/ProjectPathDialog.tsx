@@ -6,8 +6,16 @@ import {
 } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
+import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
 
 export type ProjectPathDialogTarget =
   | {
@@ -34,6 +42,7 @@ interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;
+  hostId: string | null;
   hostName: string | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: ProjectPathDialogSubmitHandler;
@@ -43,6 +52,7 @@ export function ProjectPathDialog({
   target,
   pending = false,
   platform,
+  hostId,
   hostName,
   onOpenChange,
   onSubmit,
@@ -56,6 +66,7 @@ export function ProjectPathDialog({
             target={target}
             pending={pending}
             platform={platform}
+            hostId={hostId}
             hostName={hostName}
             onSubmit={onSubmit}
           />
@@ -69,6 +80,7 @@ export interface ProjectPathDialogContentProps {
   target: ProjectPathDialogTarget;
   pending: boolean;
   platform: HostPlatform | null;
+  hostId: string | null;
   hostName: string | null;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
@@ -124,32 +136,48 @@ export function ProjectPathDialogContent({
   target,
   pending,
   platform,
+  hostId,
   hostName,
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
-  const [pathValue, setPathValue] = useState(
+  // No-host fallback only: the browser owns the path when a host is present.
+  const [manualPath, setManualPath] = useState(
     target.kind === "update" ? target.currentPath : "",
+  );
+  const [browserDirectory, setBrowserDirectory] = useState<string | null>(
+    target.kind === "update" ? target.currentPath : null,
   );
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
   );
-  const derivedProjectName = deriveProjectNameFromPath(pathValue);
   const copy = getPlatformCopy(platform, hostName);
   const placeholder =
     target.kind === "update"
       ? target.currentPath || copy.placeholder
       : copy.placeholder;
 
+  const selectedPath = hostId
+    ? browserDirectory
+    : normalizeProjectPathInput(manualPath) || null;
+  const derivedProjectName = selectedPath
+    ? deriveProjectNameFromPath(selectedPath)
+    : "";
+
   useEffect(() => {
     setValidationMessage(null);
-  }, [pathValue]);
+  }, [selectedPath]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
 
-    const normalizedPath = normalizeProjectPathInput(pathValue);
+    if (!selectedPath) {
+      setValidationMessage("Choose a project folder.");
+      return;
+    }
+
+    const normalizedPath = normalizeProjectPathInput(selectedPath);
     const pathValidationMessage =
       getProjectPathValidationMessage(normalizedPath);
     if (pathValidationMessage) {
@@ -172,35 +200,53 @@ export function ProjectPathDialogContent({
     <>
       <DialogHeader>
         <DialogTitle>{getDialogTitle(target.kind)}</DialogTitle>
-        <DialogDescription>{copy.description}</DialogDescription>
+        <DialogDescription>
+          {hostId
+            ? `Browse to the project folder${
+                hostName ? ` on ${hostName}` : ""
+              }, or edit the path directly.`
+            : copy.description}
+        </DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
+        {hostId ? (
+          <RemotePathBrowser
+            hostId={hostId}
+            initialPath={target.kind === "update" ? target.currentPath : null}
+            onDirectoryChange={setBrowserDirectory}
+            disabled={pending}
+          />
+        ) : (
           <Input
             id={inputId}
             aria-label="Project path"
-            value={pathValue}
+            value={manualPath}
             autoFocus
             disabled={pending}
             placeholder={placeholder}
             onChange={(event) => {
-              setPathValue(event.target.value);
+              setManualPath(event.target.value);
             }}
           />
-          {target.kind === "create" && derivedProjectName ? (
-            <p className="text-sm text-muted-foreground">
-              Project name:{" "}
-              <span className="font-medium text-foreground">
-                {derivedProjectName}
-              </span>
-            </p>
-          ) : null}
-          {validationMessage ? (
-            <p className="text-sm text-destructive">{validationMessage}</p>
-          ) : null}
-        </div>
+        )}
+        {(derivedProjectName && target.kind === "create") ||
+        validationMessage ? (
+          <div className="space-y-1">
+            {target.kind === "create" && derivedProjectName ? (
+              <p className="text-sm text-muted-foreground">
+                Project name:{" "}
+                <span className="font-medium text-foreground">
+                  {derivedProjectName}
+                </span>
+              </p>
+            ) : null}
+            {validationMessage ? (
+              <p className="text-sm text-destructive">{validationMessage}</p>
+            ) : null}
+          </div>
+        ) : null}
         <DialogFooter>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending || !selectedPath}>
             {getDialogSubmitLabel(target.kind)}
           </Button>
         </DialogFooter>

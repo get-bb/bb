@@ -64,6 +64,7 @@ interface MacApplicationOpenTargetDefinition {
   builtIn: boolean;
   lineOpenCommand?: MacLineOpenCommandDefinition;
   openMode: "application";
+  pathOpenCommand?: MacPathOpenCommandDefinition;
 }
 
 type MacWorkspaceOpenTargetDefinition =
@@ -91,6 +92,11 @@ interface BuildMacLineOpenArgs {
 interface MacLineOpenCommandDefinition {
   executable: string;
   toArgs: (args: BuildMacLineOpenArgs) => string[];
+}
+
+interface MacPathOpenCommandDefinition {
+  executable: string;
+  toArgs: (path: string) => string[];
 }
 
 interface ResolveMacOpenInvocationArgs {
@@ -140,6 +146,10 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
       lineOpenCommand: {
         executable: "code",
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
+      },
+      pathOpenCommand: {
+        executable: "code",
+        toArgs: (path) => [path],
       },
     },
   },
@@ -526,6 +536,33 @@ async function maybeResolveMacLineOpenInvocation(
   };
 }
 
+async function maybeResolveMacPathOpenInvocation(
+  args: ResolveMacOpenInvocationArgs,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation | null> {
+  if (args.definition.macos.openMode === "default-app") {
+    return null;
+  }
+
+  const pathOpenCommand = args.definition.macos.pathOpenCommand;
+  if (!pathOpenCommand) {
+    return null;
+  }
+
+  if (!(await isExecutableAvailable(pathOpenCommand.executable, runtime))) {
+    return null;
+  }
+
+  const openPath = resolveTargetOpenPath({
+    definition: args.definition,
+    existingPath: args.existingPath,
+  });
+  return {
+    file: pathOpenCommand.executable,
+    args: pathOpenCommand.toArgs(openPath),
+  };
+}
+
 async function resolveMacOpenInvocation(
   args: ResolveMacOpenInvocationArgs,
   runtime: WorkspaceOpenTargetRuntime,
@@ -536,6 +573,14 @@ async function resolveMacOpenInvocation(
   );
   if (lineOpenInvocation) {
     return lineOpenInvocation;
+  }
+
+  const pathOpenInvocation = await maybeResolveMacPathOpenInvocation(
+    args,
+    runtime,
+  );
+  if (pathOpenInvocation) {
+    return pathOpenInvocation;
   }
 
   const openPath = resolveTargetOpenPath({

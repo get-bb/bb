@@ -19,6 +19,7 @@ import {
 import { listHostBranches } from "./command-handlers/host-branches.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
+  browseHostDirectory,
   listHostFiles,
   listHostPaths,
   readHostFile,
@@ -223,6 +224,7 @@ const commandHandlers: CommandHandlerMap = {
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.browse_directory": browseHostDirectory,
   "host.list_commands": listHostCommands,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,

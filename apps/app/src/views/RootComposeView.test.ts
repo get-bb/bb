@@ -20,6 +20,7 @@ import {
   readInitialPromptFromLocationState,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposePanelThreadId,
+  shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 
@@ -252,6 +253,22 @@ describe("hasSingleUseRootComposeTargetState", () => {
 
   it("ignores non-target state", () => {
     expect(hasSingleUseRootComposeTargetState(null)).toBe(false);
+  });
+});
+
+describe("shouldStartComposingFromLocationState", () => {
+  it("treats sidebar new-thread focus navigation as a compose request", () => {
+    expect(shouldStartComposingFromLocationState({ focusPrompt: true })).toBe(
+      true,
+    );
+  });
+
+  it("ignores non-focus navigation state", () => {
+    expect(shouldStartComposingFromLocationState(null)).toBe(false);
+    expect(shouldStartComposingFromLocationState({})).toBe(false);
+    expect(
+      shouldStartComposingFromLocationState({ focusPrompt: false }),
+    ).toBe(false);
   });
 });
 

@@ -212,6 +212,35 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("uses the VS Code CLI for workspace opens when available", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.microsoft.VSCode"],
+      availableExecutables: ["code"],
+      calls,
+    });
+
+    try {
+      await openPathInTargetWithRuntime(
+        {
+          lineNumber: null,
+          path: workspacePath,
+          targetId: "vscode",
+        },
+        createRuntime({ execFile }),
+      );
+
+      expect(calls.find((call) => call.file === "code")).toEqual({
+        file: "code",
+        args: [workspacePath],
+      });
+      expect(calls.some((call) => call.file === "open")).toBe(false);
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
   it("rejects missing paths", async () => {
     await expect(
       openPathInTargetWithRuntime(

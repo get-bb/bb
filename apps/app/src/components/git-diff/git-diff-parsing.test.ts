@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
+  enrichGitDiffFileForContext,
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
   getOpenableGitDiffPath,
@@ -64,6 +65,31 @@ const RENAME_ONLY_DIFF = [
   "",
 ].join("\n");
 
+const OLD_CONTEXT_CONTENT = Array.from(
+  { length: 10 },
+  (_, index) => `line ${index + 1}`,
+).join("\n");
+
+const NEW_CONTEXT_CONTENT = Array.from({ length: 10 }, (_, index) => {
+  if (index === 1) return "line two";
+  if (index === 7) return "line eight";
+  return `line ${index + 1}`;
+}).join("\n");
+
+const MULTI_HUNK_DIFF = [
+  "diff --git a/src/context.ts b/src/context.ts",
+  "index 1111111..2222222 100644",
+  "--- a/src/context.ts",
+  "+++ b/src/context.ts",
+  "@@ -2 +2 @@",
+  "-line 2",
+  "+line two",
+  "@@ -8 +8 @@",
+  "-line 8",
+  "+line eight",
+  "",
+].join("\n");
+
 describe("threadDetailGitDiff", () => {
   it("normalizes the openable path and label from a renamed file's sides", () => {
     const [file] = parseGitDiffFiles(SAMPLE_DIFF);
@@ -119,4 +145,45 @@ describe("threadDetailGitDiff", () => {
     );
   });
 
+  it("reparses a patch with full file contents so diff context can expand", () => {
+    const [file] = parseGitDiffFiles(MULTI_HUNK_DIFF);
+    expect(file).toBeDefined();
+    if (!file) throw new Error("expected parsed file");
+
+    expect(file.isPartial).toBe(true);
+    expect(file.additionLines).toEqual(["line two\n", "line eight\n"]);
+
+    const enrichedFile = enrichGitDiffFileForContext({
+      fileDiff: file,
+      oldFile: {
+        name: "src/context.ts",
+        contents: `${OLD_CONTEXT_CONTENT}\n`,
+      },
+      newFile: {
+        name: "src/context.ts",
+        contents: `${NEW_CONTEXT_CONTENT}\n`,
+      },
+      patchText: MULTI_HUNK_DIFF,
+    });
+
+    expect(enrichedFile.isPartial).toBe(false);
+    expect(enrichedFile.deletionLines).toHaveLength(10);
+    expect(enrichedFile.additionLines).toHaveLength(10);
+    expect(enrichedFile.deletionLines[7]).toBe("line 8\n");
+    expect(enrichedFile.additionLines[7]).toBe("line eight\n");
+
+    const firstHunk = enrichedFile.hunks[0];
+    const secondHunk = enrichedFile.hunks[1];
+    expect(firstHunk).toBeDefined();
+    expect(secondHunk).toBeDefined();
+    if (!firstHunk || !secondHunk) {
+      throw new Error("expected two hunks");
+    }
+
+    expect(firstHunk.additionLineIndex).toBe(1);
+    expect(firstHunk.deletionLineIndex).toBe(1);
+    expect(secondHunk.additionLineIndex).toBe(7);
+    expect(secondHunk.deletionLineIndex).toBe(7);
+    expect(secondHunk.collapsedBefore).toBe(5);
+  });
 });

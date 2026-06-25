@@ -35,6 +35,7 @@ import type {
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
+  HostDirectoryListing,
   TerminalListResponse,
   CreateThreadRequest,
   CreateTerminalRequest,
@@ -1362,6 +1363,32 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
 export async function getHost(id: string, signal?: AbortSignal): Promise<Host> {
   return request<Host>(
     apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
+  );
+}
+
+interface BrowseHostDirectoryArgs {
+  hostId: string;
+  /** Absolute directory to list; omit to list the host's home directory. */
+  path?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Single-level directory listing for the interactive path browser. Used when
+ * picking a project path on a host whose native folder picker is unavailable
+ * (e.g. a remote device). Each navigation step is one shallow read.
+ */
+export async function browseHostDirectory(
+  args: BrowseHostDirectoryArgs,
+): Promise<HostDirectoryListing> {
+  return request<HostDirectoryListing>(
+    apiClient.hosts[":id"].directory.$get(
+      {
+        param: { id: args.hostId },
+        query: args.path ? { path: args.path } : {},
+      },
+      requestOptions(args.signal),
+    ),
   );
 }
 

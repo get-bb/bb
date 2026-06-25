@@ -1,4 +1,8 @@
-import { parsePatchFiles } from "@pierre/diffs";
+import {
+  parsePatchFiles,
+  processFile,
+  type FileContents,
+} from "@pierre/diffs";
 import type { GitDiffFileChangeKind } from "@bb/server-contract";
 
 export type ParsedGitDiffFile = ReturnType<
@@ -22,6 +26,38 @@ export function parseGitDiffFiles(
   } catch {
     return [];
   }
+}
+
+export interface GitDiffContextEnrichmentInput {
+  fileDiff: ParsedGitDiffFile;
+  oldFile: FileContents;
+  newFile: FileContents;
+  patchText?: string;
+}
+
+/**
+ * Reparses a card's raw file patch with both full file sides attached. The
+ * diff renderer only exposes expand-context controls when `isPartial` is false
+ * and `additionLines` / `deletionLines` contain complete file contents.
+ */
+export function enrichGitDiffFileForContext({
+  fileDiff,
+  oldFile,
+  newFile,
+  patchText,
+}: GitDiffContextEnrichmentInput): ParsedGitDiffFile {
+  if (!patchText) return fileDiff;
+
+  return (
+    processFile(patchText, {
+      oldFile,
+      newFile,
+      cacheKey:
+        fileDiff.cacheKey === undefined
+          ? undefined
+          : `${fileDiff.cacheKey}:context`,
+    }) ?? fileDiff
+  );
 }
 
 export function summarizeGitDiff(

@@ -18,6 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton.js";
 import {
   formatGitDiffFileLabel,
+  enrichGitDiffFileForContext,
   isImageGitDiffFile,
   normalizeGitDiffPath,
   type GitDiffFileChangeKind,
@@ -61,19 +62,6 @@ const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
   containIntrinsicSize: "0 600px",
 };
 
-// `parseDiffFromFile` in @pierre/diffs splits file contents on this exact regex
-// (positive lookbehind on \n) and tags the resulting arrays onto the parsed
-// file as `oldLines` / `newLines`. The hunks renderer reads those arrays to know
-// what's "expandable" between hunks. We do the same tagging directly on our
-// parsed fileDiff once contents load — no need to make the library re-parse from
-// scratch.
-const SPLIT_WITH_NEWLINES = /(?<=\n)/u;
-
-interface EnrichedFileDiff extends ParsedGitDiffFile {
-  oldLines: string[];
-  newLines: string[];
-}
-
 type DiffFileContentSource =
   | { kind: "empty"; path: string }
   | { kind: "request"; path: string; side: "old" | "new" };
@@ -87,7 +75,7 @@ interface DiffFileContentPlan {
 type DiffFileEnrichmentState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; oldLines: string[]; newLines: string[] }
+  | { status: "ready"; fileDiff: ParsedGitDiffFile }
   | {
       status: "ready-image";
       oldImageUrl: string | null;
@@ -101,6 +89,7 @@ type DiffFileEnrichmentState =
 function buildDiffFileContentPlan(
   fileDiff: ParsedGitDiffFile,
   changeKind: GitDiffFileChangeKind,
+  patchText: string | undefined,
 ): DiffFileContentPlan {
   const currentPath = normalizeGitDiffPath(fileDiff.name) ?? fileDiff.name;
   const previousPath = normalizeGitDiffPath(fileDiff.prevName) ?? currentPath;
@@ -130,6 +119,9 @@ function buildDiffFileContentPlan(
       describeDiffFileContentSource(oldSource),
       describeDiffFileContentSource(newSource),
       hunkIdentity,
+      patchText ?? "",
+      fileDiff.deletionLines.join(""),
+      fileDiff.additionLines.join(""),
     ].join(":"),
     old: oldSource,
     new: newSource,
@@ -153,11 +145,6 @@ function resolveDiffFileContentSource(
     });
   }
   return fetcher(source.path, source.side);
-}
-
-function splitFileContentsForDiffContext(file: FileContents): string[] {
-  if (file.contents.length === 0) return [];
-  return file.contents.split(SPLIT_WITH_NEWLINES);
 }
 
 /**
@@ -197,12 +184,14 @@ export interface UseGitDiffCardBodyArgs {
   /** When true, holds the body at a skeleton (queued render slots). */
   isRendering: boolean;
   onRequestFileContents: RequestDiffFileContents | undefined;
+  /** Raw per-file patch text, used to reparse with full old/new contents. */
+  patchText?: string;
 }
 
 export interface GitDiffCardBodyState {
   bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
-  enrichedFileDiff: EnrichedFileDiff | ParsedGitDiffFile;
+  enrichedFileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
   isImageCard: boolean;
   shouldGateDeletedDiff: boolean;
@@ -225,6 +214,7 @@ export function useGitDiffCardBody({
   changeKind,
   isRendering,
   onRequestFileContents,
+  patchText,
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
   const isDeletedFile = changeKind === "deleted";
   const isImageCard = isImagePreviewCard(fileDiff, onRequestFileContents);
@@ -233,8 +223,8 @@ export function useGitDiffCardBody({
     [fileDiff],
   );
   const fileContentPlan = useMemo(
-    () => buildDiffFileContentPlan(fileDiff, changeKind),
-    [fileDiff, changeKind],
+    () => buildDiffFileContentPlan(fileDiff, changeKind, patchText),
+    [fileDiff, changeKind, patchText],
   );
   const { ref: bodySentinelRef, isIntersecting: isBodyVisible } =
     useIntersectionObserver({
@@ -317,8 +307,12 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "ready";
         setEnrichment({
           status: "ready",
-          oldLines: splitFileContentsForDiffContext(oldResult.file),
-          newLines: splitFileContentsForDiffContext(newResult.file),
+          fileDiff: enrichGitDiffFileForContext({
+            fileDiff,
+            oldFile: oldResult.file,
+            newFile: newResult.file,
+            patchText,
+          }),
         });
       })
       .catch(() => {
@@ -333,15 +327,11 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "idle";
       }
     };
-  }, [fileContentPlan, shouldRenderDiffView]);
+  }, [fileContentPlan, fileDiff, patchText, shouldRenderDiffView]);
 
-  const enrichedFileDiff = useMemo<EnrichedFileDiff | ParsedGitDiffFile>(() => {
+  const enrichedFileDiff = useMemo<ParsedGitDiffFile>(() => {
     if (enrichment.status !== "ready") return fileDiff;
-    return {
-      ...fileDiff,
-      oldLines: enrichment.oldLines,
-      newLines: enrichment.newLines,
-    };
+    return enrichment.fileDiff;
   }, [fileDiff, enrichment]);
 
   const loadDeletedDiff = useCallback(() => {
