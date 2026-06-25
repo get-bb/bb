@@ -411,8 +411,9 @@ function shouldUseExplicitEventParentToolCallId({
     return true;
   }
   return (
-    typeof eventTurnId === "string" &&
-    state.delegationTurnIdsByCallId.get(parentToolCallId) === eventTurnId
+    typeof eventTurnId !== "string" ||
+    state.suppressedAcceptedRootParentToolCallIdsByTurnId.get(eventTurnId) !==
+      parentToolCallId
   );
 }
 
@@ -468,6 +469,16 @@ function buildFlatProjectionData(
       typeof eventTurnId === "string" &&
       acceptedRootClientTurnIds.has(eventTurnId);
     const decodedEventParentToolCallId = getEventParentToolCallId(decoded);
+    if (
+      decoded.type === "turn/started" &&
+      isAcceptedRootClientTurn &&
+      decodedEventParentToolCallId
+    ) {
+      state.suppressedAcceptedRootParentToolCallIdsByTurnId.set(
+        eventTurnId,
+        decodedEventParentToolCallId,
+      );
+    }
     const explicitEventParentToolCallId =
       shouldUseExplicitEventParentToolCallId({
         eventTurnId,

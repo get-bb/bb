@@ -1286,6 +1286,131 @@ describe("timeline CLI rendering snapshots", () => {
     );
   });
 
+  it("nests explicit Claude subagent messages from later accepted root turns", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const startRequest = event.clientTurnRequested({
+      target: { kind: "thread-start" },
+      text: "Start an echo subagent.",
+    });
+    const events: TimelineFixtureEvent[] = [
+      startRequest,
+      event.turnStarted(),
+      event.inputAccepted({
+        clientRequestId: startRequest.data.requestId,
+      }),
+      event.toolCallStarted({
+        itemId: "toolu_agent_1",
+        tool: "Agent",
+        arguments: {
+          prompt: "Echo messages.",
+          run_in_background: true,
+        },
+      }),
+      event.toolCallCompleted({
+        itemId: "toolu_agent_1",
+        tool: "Agent",
+        arguments: {
+          prompt: "Echo messages.",
+          run_in_background: true,
+        },
+        result: "Async agent launched successfully.",
+      }),
+      event.assistantCompleted({
+        itemId: "subagent-ready",
+        parentToolCallId: "toolu_agent_1",
+        text: "READY",
+      }),
+      event.turnCompleted(),
+    ];
+    const sendRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Send HELLO to the echo subagent.",
+    });
+    events.push(
+      sendRequest,
+      event.turnStarted({ turnId: "turn-2" }),
+      event.inputAccepted({
+        clientRequestId: sendRequest.data.requestId,
+        turnId: "turn-2",
+      }),
+      event.toolCallStarted({
+        itemId: "toolu_send_1",
+        tool: "SendMessage",
+        turnId: "turn-2",
+        arguments: {
+          content: "HELLO",
+          recipient: "subagent-1",
+        },
+      }),
+      event.toolCallCompleted({
+        itemId: "toolu_send_1",
+        tool: "SendMessage",
+        turnId: "turn-2",
+        arguments: {
+          content: "HELLO",
+          recipient: "subagent-1",
+        },
+        result: "Message sent.",
+      }),
+      event.assistantCompleted({
+        itemId: "subagent-hello",
+        parentToolCallId: "toolu_agent_1",
+        text: "HELLO",
+        turnId: "turn-2",
+      }),
+      event.assistantCompleted({
+        itemId: "main-after-send",
+        text: "Sent HELLO.",
+        turnId: "turn-2",
+      }),
+    );
+    const timeline = renderActiveTimeline(events);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const sendTurn = timeline.rows.find(
+      (row): row is Extract<TimelineRow, { kind: "turn" }> =>
+        row.kind === "turn" && row.turnId === "turn-2",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "READY",
+          turnId: "turn-1",
+        }),
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "HELLO",
+          turnId: "turn-2",
+        }),
+      ]),
+    );
+    expect(
+      flattenTimelineRows(sendTurn?.children ?? []).some(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "assistant" &&
+          row.text === "HELLO",
+      ),
+    ).toBe(false);
+  });
+
   it("does not attach later human turns to Codex same-provider receiver delegations", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",

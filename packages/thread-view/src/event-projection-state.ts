@@ -84,6 +84,7 @@ export interface ProjectionState
   delegationParentToolCallIdsByProviderThreadId: Map<string, string>;
   delegationParentToolCallIdsByTurnId: Map<string, string>;
   delegationTurnIdsByCallId: Map<string, string>;
+  suppressedAcceptedRootParentToolCallIdsByTurnId: Map<string, string>;
   pendingDelegationTurnLinksByProviderThreadId: Map<
     string,
     PendingDelegationTurnLink[]
@@ -108,6 +109,7 @@ export function createProjectionState(): ProjectionState {
     delegationParentToolCallIdsByProviderThreadId: new Map(),
     delegationParentToolCallIdsByTurnId: new Map(),
     delegationTurnIdsByCallId: new Map(),
+    suppressedAcceptedRootParentToolCallIdsByTurnId: new Map(),
     pendingDelegationTurnLinksByProviderThreadId: new Map(),
     delegatedTurnLinkCallIds: new Set(),
     toolActivity: createToolActivityState(),
