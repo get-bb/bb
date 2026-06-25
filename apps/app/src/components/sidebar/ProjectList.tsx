@@ -138,6 +138,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
@@ -674,6 +675,7 @@ function SidebarGroupMenuOption({
 
 interface SidebarSortMenuOptionProps {
   direction: SidebarSortDirection;
+  keepOpenOnSelect: boolean;
   label: string;
   selected: boolean;
   sort: SidebarChronologicalSort;
@@ -723,6 +725,7 @@ function SidebarDisplayMenuTrigger({
 
 function SidebarSortMenuOption({
   direction,
+  keepOpenOnSelect,
   label,
   selected,
   sort,
@@ -731,7 +734,9 @@ function SidebarSortMenuOption({
   return (
     <DropdownMenuItem
       onSelect={(event) => {
-        event.preventDefault();
+        if (keepOpenOnSelect) {
+          event.preventDefault();
+        }
         onToggle(sort);
       }}
       className="flex items-center justify-between gap-3"
@@ -758,6 +763,7 @@ export function SidebarGroupOptionsMenu({
   open,
   onOpenChange,
 }: SidebarGroupOptionsMenuProps) {
+  const isCompactViewport = useIsCompactViewport();
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
   );
@@ -781,7 +787,9 @@ export function SidebarGroupOptionsMenu({
           label="Projects"
           selected={organizationMode === "project"}
           onSelect={(event) => {
-            event.preventDefault();
+            if (!isCompactViewport || organizationMode === "project") {
+              event.preventDefault();
+            }
             setOrganizationMode("project");
           }}
         />
@@ -789,7 +797,9 @@ export function SidebarGroupOptionsMenu({
           label="Manually"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
-            event.preventDefault();
+            if (!isCompactViewport || organizationMode === "chronological") {
+              event.preventDefault();
+            }
             setOrganizationMode("chronological");
           }}
         />
@@ -802,6 +812,7 @@ export function SidebarSortOptionsMenu({
   open,
   onOpenChange,
 }: SidebarSortOptionsMenuProps) {
+  const isCompactViewport = useIsCompactViewport();
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
@@ -839,6 +850,7 @@ export function SidebarSortOptionsMenu({
           sort="updated"
           selected={selectedSort === "updated"}
           direction={sortDirection}
+          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
@@ -846,6 +858,7 @@ export function SidebarSortOptionsMenu({
           sort="created"
           selected={selectedSort === "created"}
           direction={sortDirection}
+          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
@@ -853,6 +866,7 @@ export function SidebarSortOptionsMenu({
           sort="alpha"
           selected={selectedSort === "alpha"}
           direction={sortDirection}
+          keepOpenOnSelect={!isCompactViewport}
           onToggle={handleSortToggle}
         />
       </DropdownMenuContent>
