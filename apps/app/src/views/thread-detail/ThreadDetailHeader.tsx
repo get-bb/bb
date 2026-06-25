@@ -61,7 +61,7 @@ export function ThreadDetailHeader({
 
   const center = (
     <>
-      <p className="min-w-0 truncate text-sm font-semibold">{threadTitle}</p>
+      <p className="min-w-0 truncate text-sm font-medium">{threadTitle}</p>
       {childPillLabel ? (
         <Pill variant="outline" size="sm">
           {childPillLabel}

@@ -2072,7 +2072,7 @@ function ProjectListComponent({
           label="Folders"
           actions={folderSectionActions}
           actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-          actionsAlwaysVisible
+          actionsMobileAlways
         >
           {content}
         </TopLevelSidebarSection>
@@ -2203,7 +2203,7 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
                   actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-                  actionsAlwaysVisible
+                  actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
                     onToggleCollapsed: () =>
