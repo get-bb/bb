@@ -15,18 +15,18 @@ class ResizeObserverMock implements ResizeObserver {
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
 
-function userConversationRow(): TimelineRow {
+function userConversationRow(index = 1): TimelineRow {
   return {
-    id: "row_user_1",
+    id: `row_user_${index}`,
     threadId: "thr_toc_test",
-    turnId: "turn_1",
-    sourceSeqStart: 1,
-    sourceSeqEnd: 1,
-    startedAt: 1,
-    createdAt: 1,
+    turnId: `turn_${index}`,
+    sourceSeqStart: index,
+    sourceSeqEnd: index,
+    startedAt: index,
+    createdAt: index,
     kind: "conversation",
     role: "user",
-    text: "Loaded after client-side navigation",
+    text: `Loaded after client-side navigation ${index}`,
     attachments: null,
     initiator: "user",
     senderThreadId: null,
@@ -142,12 +142,42 @@ describe("ThreadTableOfContents", () => {
 
     expect(screen.queryByText("Your messages")).toBeNull();
 
-    view.rerender(<TocHost timelineRows={[userConversationRow()]} />);
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          userConversationRow(1),
+          userConversationRow(2),
+          userConversationRow(3),
+        ]}
+      />,
+    );
 
     expect(await screen.findByText("Your messages")).not.toBeNull();
     expect(
-      screen.getByText("Loaded after client-side navigation"),
+      screen.getByText("Loaded after client-side navigation 1"),
     ).not.toBeNull();
+  });
+
+  it("stays hidden until there are at least three user messages", () => {
+    const view = render(
+      <TocHost
+        timelineRows={[userConversationRow(1), userConversationRow(2)]}
+      />,
+    );
+
+    expect(screen.queryByText("Your messages")).toBeNull();
+
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          userConversationRow(1),
+          userConversationRow(2),
+          userConversationRow(3),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText("Your messages")).not.toBeNull();
   });
 
   it("tracks the conversation item nearest the viewport top away from bottom", () => {

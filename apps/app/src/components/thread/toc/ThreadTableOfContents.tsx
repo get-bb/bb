@@ -32,6 +32,8 @@ interface ThreadTableOfContentsProps {
 
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
 const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
+// Only worth showing once the conversation has enough user turns to navigate.
+const TOC_MIN_USER_MESSAGES = 3;
 
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -350,7 +352,7 @@ export function ThreadTableOfContents({
     [bottomAnchor],
   );
 
-  if (userItems.length === 0 && agentItems.length === 0) return null;
+  if (userItems.length < TOC_MIN_USER_MESSAGES) return null;
 
   return (
     <div
