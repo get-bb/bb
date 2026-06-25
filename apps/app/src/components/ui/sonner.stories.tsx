@@ -146,6 +146,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
       title: "Codex CLI not installed",
       description: "Install Codex so bb can start Codex sessions.",
       primaryActionLabel: "Install",
+      secondaryActionLabel: "Dismiss",
     },
   },
   {

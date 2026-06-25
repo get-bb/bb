@@ -147,13 +147,6 @@ export function ProviderCliHealthToasts() {
 
       shownFingerprintsRef.current.add(issue.fingerprint);
       if (hasProviderCliAction(issue)) {
-        const dismissAction =
-          issue.action.kind === "update"
-            ? {
-                label: "Dismiss",
-                onClick: () => dismissIssue(issue),
-              }
-            : undefined;
         appToast.warning(issue.title, {
           id: issue.toastId,
           description: issue.description,
@@ -162,7 +155,10 @@ export function ProviderCliHealthToasts() {
             label: issue.action.label,
             onClick: () => startInstall(issue),
           },
-          ...(dismissAction ? { cancel: dismissAction } : {}),
+          cancel: {
+            label: "Dismiss",
+            onClick: () => dismissIssue(issue),
+          },
         });
       } else {
         appToast.warning(issue.title, {
