@@ -434,7 +434,7 @@ function BannerActionSlot({
 }) {
   return (
     <div
-      className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+      className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground"
       data-promptbox-hide-compact={hideInCompact ? "" : undefined}
       data-promptbox-hide-tiny=""
     >
