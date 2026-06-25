@@ -509,6 +509,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
     "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
+  "hostDaemonOnlineRpcCommandSchema.additionalSkillsRootPaths":
+    "host.list_commands includes inherited skill roots only for managed dev-app worktrees; ordinary instances scan data-dir and built-in skills.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
