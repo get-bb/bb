@@ -4,6 +4,7 @@ import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { pickHostFolder } from "@/lib/api";
 import type {
   ProjectPathDialogSubmitHandler,
   ProjectPathDialogTarget,
@@ -32,36 +33,46 @@ export interface LocalPathPickerController {
 }
 
 export interface PathPickerHost {
+  canUseNativeFolderPicker: boolean;
+  clientHostId: string | null;
   hostId: string | null;
   hostName: string | null;
 }
 
 /**
  * The host that path-entry flows (create project, add/update source) target.
- * The loopback daemon only answers on the machine running bb, but the server
- * knows the host work runs on from any device. Fall back to the connected
- * primary host so remote devices can register host paths via the manual
- * dialog. bb is single-host, so when both resolve they name the same host.
+ * The target is the connected work host. The local daemon is only used to
+ * decide whether a native picker can be shown on the same physical machine.
  */
 export function usePathPickerHost(): PathPickerHost {
-  const { localDaemonHostId } = useHostDaemon();
+  const { localDaemonHostId, supportsNativeFolderPicker } = useHostDaemon();
   const primaryHost = usePrimaryHost();
 
   const connectedPrimaryHostId =
     primaryHost?.status === "connected" ? primaryHost.id : null;
-  const hostId = localDaemonHostId ?? connectedPrimaryHostId;
+  const hostId = connectedPrimaryHostId ?? localDaemonHostId;
   const hostName =
     primaryHost && primaryHost.id === hostId ? primaryHost.name : null;
+  const canUseNativeFolderPicker =
+    supportsNativeFolderPicker &&
+    localDaemonHostId !== null &&
+    hostId === localDaemonHostId;
 
-  return { hostId, hostName };
+  return {
+    canUseNativeFolderPicker,
+    clientHostId: localDaemonHostId,
+    hostId,
+    hostName,
+  };
 }
 
 export function useLocalPathPicker({
   isPending,
   submit,
 }: UseLocalPathPickerOptions): LocalPathPickerController {
-  const { pickFolder, platform } = useHostDaemon();
-  const { hostId, hostName } = usePathPickerHost();
+  const { platform } = useHostDaemon();
+  const { canUseNativeFolderPicker, clientHostId, hostId, hostName } =
+    usePathPickerHost();
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();
   const closeDialog = projectPathDialog.onClose;
 
@@ -77,9 +88,15 @@ export function useLocalPathPicker({
     (target: ProjectPathDialogTarget) => {
       if (isPending || !hostId) return;
 
-      if (pickFolder) {
+      if (canUseNativeFolderPicker && clientHostId !== null) {
         void (async () => {
-          const selectedPath = await pickFolder();
+          let selectedPath: string | null;
+          try {
+            selectedPath = await pickHostFolder(hostId, clientHostId);
+          } catch {
+            projectPathDialog.onOpen(target);
+            return;
+          }
           if (!selectedPath) return;
           submitPath(normalizeProjectPathInput(selectedPath), target);
         })();
@@ -88,7 +105,14 @@ export function useLocalPathPicker({
 
       projectPathDialog.onOpen(target);
     },
-    [hostId, isPending, pickFolder, projectPathDialog, submitPath],
+    [
+      canUseNativeFolderPicker,
+      clientHostId,
+      hostId,
+      isPending,
+      projectPathDialog,
+      submitPath,
+    ],
   );
 
   const submitProjectPath = useCallback<ProjectPathDialogSubmitHandler>(

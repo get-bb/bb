@@ -24,6 +24,7 @@ import {
   noRequest,
   optionalQueryRequest,
   queryRequest,
+  textResponse,
   type ApiSchemaFromRouteDescriptors,
 } from "@bb/hono-typed-routes";
 import type {
@@ -73,6 +74,13 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostPickFolderRequest,
+  HostPickFolderResponse,
+  HostPathsExistRequest,
+  HostPathsExistResponse,
+  HostProviderCliInstallEvent,
+  HostProviderCliInstallRequest,
+  HostProviderCliStatusResponse,
   ProjectAttachmentContentQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
@@ -174,6 +182,9 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostPickFolderRequestSchema,
+  hostPathsExistRequestSchema,
+  hostProviderCliInstallRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
@@ -390,6 +401,36 @@ export const publicApiRoutes = {
         hostDirectoryQuerySchema,
       ),
       response: jsonResponse<HostDirectoryListing>(),
+    }),
+    pathsExist: defineRoute({
+      path: "/hosts/:id/paths/exist",
+      method: "post",
+      request: jsonRequest<PathId, HostPathsExistRequest>(
+        hostPathsExistRequestSchema,
+      ),
+      response: jsonResponse<HostPathsExistResponse>(),
+    }),
+    pickFolder: defineRoute({
+      path: "/hosts/:id/pick-folder",
+      method: "post",
+      request: jsonRequest<PathId, HostPickFolderRequest>(
+        hostPickFolderRequestSchema,
+      ),
+      response: jsonResponse<HostPickFolderResponse>(),
+    }),
+    providerCliStatus: defineRoute({
+      path: "/hosts/:id/provider-clis/status",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostProviderCliStatusResponse>(),
+    }),
+    providerCliInstall: defineRoute({
+      path: "/hosts/:id/provider-clis/install",
+      method: "post",
+      request: jsonRequest<PathId, HostProviderCliInstallRequest>(
+        hostProviderCliInstallRequestSchema,
+      ),
+      response: textResponse<HostProviderCliInstallEvent>(),
     }),
   },
 

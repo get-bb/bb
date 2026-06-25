@@ -18,8 +18,8 @@ import {
   allThreadStoragePathsQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
   allThreadTimelineTurnSummaryDetailsQueryKeyPrefix,
+  hostPathExistenceQueryKeyPrefix,
   hostsQueryKey,
-  localPathExistenceQueryKeyPrefix,
   projectsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
@@ -121,7 +121,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     // it), so it is intentionally absent from this list.
     allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
-    localPathExistenceQueryKeyPrefix(),
+    hostPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
   ];

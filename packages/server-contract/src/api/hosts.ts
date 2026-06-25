@@ -1,4 +1,18 @@
 import { z } from "zod";
+import {
+  pathsExistRequestSchema,
+  pathsExistResponseSchema,
+  pickFolderResponseSchema,
+  providerCliInstallEventSchema,
+  providerCliInstallRequestSchema,
+  providerCliStatusResponseSchema,
+  type PathsExistRequest,
+  type PathsExistResponse,
+  type PickFolderResponse,
+  type ProviderCliInstallEvent,
+  type ProviderCliInstallRequest,
+  type ProviderCliStatusResponse,
+} from "@bb/host-daemon-contract";
 
 /**
  * Query for `GET /hosts/:id/directory`, the interactive path browser's
@@ -26,3 +40,30 @@ export const hostDirectoryListingSchema = z.object({
   entries: z.array(hostDirectoryEntrySchema),
 });
 export type HostDirectoryListing = z.infer<typeof hostDirectoryListingSchema>;
+
+export const hostPathsExistRequestSchema = pathsExistRequestSchema;
+export type HostPathsExistRequest = PathsExistRequest;
+
+export const hostPathsExistResponseSchema = pathsExistResponseSchema;
+export type HostPathsExistResponse = PathsExistResponse;
+
+export const hostPickFolderRequestSchema = z
+  .object({
+    clientHostId: z.string().min(1),
+  })
+  .strict();
+export type HostPickFolderRequest = z.infer<typeof hostPickFolderRequestSchema>;
+
+export const hostPickFolderResponseSchema = pickFolderResponseSchema;
+export type HostPickFolderResponse = PickFolderResponse;
+
+export const hostProviderCliStatusResponseSchema =
+  providerCliStatusResponseSchema;
+export type HostProviderCliStatusResponse = ProviderCliStatusResponse;
+
+export const hostProviderCliInstallRequestSchema =
+  providerCliInstallRequestSchema;
+export type HostProviderCliInstallRequest = ProviderCliInstallRequest;
+
+export const hostProviderCliInstallEventSchema = providerCliInstallEventSchema;
+export type HostProviderCliInstallEvent = ProviderCliInstallEvent;

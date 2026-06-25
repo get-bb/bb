@@ -23,8 +23,8 @@ import {
   useUpdateLocalProjectSource,
 } from "@/hooks/mutations/project-mutations";
 import {
-  isLocalPathMissing,
-  useLocalPathExistence,
+  isHostPathMissing,
+  useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import {
   useLocalPathPicker,
@@ -113,10 +113,10 @@ export function ProjectSettingsView() {
       )
       .map((source) => source.path);
   }, [pickerHostId, sources]);
-  // Existence probing needs the loopback daemon; useLocalPathExistence
-  // disables itself when the daemon is unreachable, so remote devices simply
-  // skip the missing-path warning.
-  const pathExistence = useLocalPathExistence(pickerHostSourcePaths);
+  const pathExistence = useHostPathExistence(
+    pickerHostId,
+    pickerHostSourcePaths,
+  );
 
   const showAddLocalSourceButton =
     pickerHostId != null &&
@@ -158,7 +158,7 @@ export function ProjectSettingsView() {
                     source.hostId === pickerHostId;
                   const isInvalid =
                     isPickerHostSource &&
-                    isLocalPathMissing(pathExistence, source.path);
+                    isHostPathMissing(pathExistence, source.path);
                   return (
                     <ProjectSourceRow
                       key={source.id}

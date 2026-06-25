@@ -42,10 +42,10 @@ import {
   useUpdateThreadFolder,
 } from "@/hooks/mutations/thread-folder-mutations";
 import {
-  isLocalPathMissing,
-  useLocalPathExistence,
+  isHostPathMissing,
+  useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   getFolderArchivedRoutePath,
@@ -1352,16 +1352,18 @@ function ProjectListComponent({
       sidebarNavigationQuery.error,
     ),
   });
-  const { localDaemonHostId } = useHostDaemon();
+  const primaryHost = usePrimaryHost();
+  const workHostId =
+    primaryHost?.status === "connected" ? primaryHost.id : null;
   const { threadId: selectedThreadId } = useRouteState();
 
   const localSourceTargets = useMemo(() => {
-    if (!localDaemonHostId || !projects) return [];
+    if (!workHostId || !projects) return [];
     const targets: LocalSourcePathTarget[] = [];
     for (const project of projects) {
       const source = findLocalPathProjectSourceForHost(
         project.sources,
-        localDaemonHostId,
+        workHostId,
       );
       if (source) {
         targets.push({
@@ -1371,7 +1373,7 @@ function ProjectListComponent({
       }
     }
     return targets;
-  }, [localDaemonHostId, projects]);
+  }, [workHostId, projects]);
 
   const localSourcePathsByProjectId = useMemo(() => {
     const pathsByProjectId = new Map<string, string>();
@@ -1382,10 +1384,10 @@ function ProjectListComponent({
   }, [localSourceTargets]);
 
   const localPaths = useMemo(() => {
-    if (!localDaemonHostId) return [];
+    if (!workHostId) return [];
     return localSourceTargets.map((target) => target.path);
-  }, [localDaemonHostId, localSourceTargets]);
-  const pathExistence = useLocalPathExistence(localPaths);
+  }, [workHostId, localSourceTargets]);
+  const pathExistence = useHostPathExistence(workHostId, localPaths);
   const { isPending: isProjectReorderPending, mutate: reorderProjectMutate } =
     useReorderProject();
   const {
@@ -1847,7 +1849,7 @@ function ProjectListComponent({
           threadListStatesByProjectId.get(project.id) ??
           EMPTY_PROJECT_THREAD_LIST_STATE,
         isActive: false,
-        isLocalPathInvalid: isLocalPathMissing(
+        isLocalPathInvalid: isHostPathMissing(
           pathExistence,
           localSourcePathsByProjectId.get(project.id),
         ),

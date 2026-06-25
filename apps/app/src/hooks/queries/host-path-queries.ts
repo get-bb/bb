@@ -1,38 +1,30 @@
 import { useMemo } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { checkPathsExist } from "@/lib/api-host-daemon";
-import {
-  hostDaemonPortAtom,
-  localHostDaemonHostIdAtom,
-} from "@/lib/system-config-atoms";
-import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
-import { localPathExistenceQueryKey } from "./query-keys";
+import { checkHostPathsExist } from "@/lib/api";
+import { hostPathExistenceQueryKey } from "./query-keys";
 
-export type LocalPathExistence = Record<string, boolean>;
+export type HostPathExistence = Record<string, boolean>;
 
 /**
- * Probe the local host daemon to check whether each given path still exists
- * on disk. Returns `{}` while loading / unavailable; the consumer should
- * treat a missing entry as "unknown", not "exists".
+ * Probe the selected work host to check whether each given path still exists
+ * on disk. Returns `{}` while loading / unavailable; the consumer should treat
+ * a missing entry as "unknown", not "exists".
  */
-export function useLocalPathExistence(
+export function useHostPathExistence(
+  hostId: string | null,
   paths: readonly string[],
-): LocalPathExistence {
-  const localDaemonHostId = useAsyncAtomValue(localHostDaemonHostIdAtom, null);
-  const daemonPort = useAsyncAtomValue(hostDaemonPortAtom, null);
-
+): HostPathExistence {
   const sortedPaths = useMemo(() => {
     if (paths.length === 0) return [];
     return [...new Set(paths)].sort();
   }, [paths]);
-
-  const enabled =
-    localDaemonHostId != null && daemonPort != null && sortedPaths.length > 0;
+  const enabledHostId = hostId !== null && sortedPaths.length > 0 ? hostId : null;
 
   const query = useQuery({
-    queryKey: localPathExistenceQueryKey(localDaemonHostId ?? "", sortedPaths),
-    queryFn: enabled
-      ? ({ signal }) => checkPathsExist(daemonPort, sortedPaths, signal)
+    queryKey: hostPathExistenceQueryKey(hostId, sortedPaths),
+    queryFn: enabledHostId
+      ? ({ signal }) =>
+          checkHostPathsExist(enabledHostId, sortedPaths, signal)
       : skipToken,
     staleTime: 10_000,
   });
@@ -45,8 +37,8 @@ export function useLocalPathExistence(
  * daemon. Loading, errors, and unknown paths all return false so the UI
  * doesn't flash a destructive warning for transient state.
  */
-export function isLocalPathMissing(
-  existence: LocalPathExistence,
+export function isHostPathMissing(
+  existence: HostPathExistence,
   path: string | null | undefined,
 ): boolean {
   if (path == null) return false;

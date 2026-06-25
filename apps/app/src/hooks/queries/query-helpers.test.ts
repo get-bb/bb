@@ -54,8 +54,8 @@ describe("requireEnabledQueryArg", () => {
     expect(
       requireEnabledQueryArg({
         value: 0,
-        hookName: "useLocalProviderCliStatus",
-        argName: "daemonPort",
+        hookName: "useCount",
+        argName: "count",
       }),
     ).toBe(0);
   });

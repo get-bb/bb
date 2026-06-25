@@ -44,6 +44,15 @@ export type OpenInTargetHandler = (
   request: OpenInTargetRequest,
 ) => Promise<void>;
 
+/**
+ * Browser-reachable local HTTP API for colocated setups.
+ *
+ * Route ownership is documented in `@bb/host-daemon-contract/src/local.ts`.
+ * Some routes describe the UI/client machine, while others describe the
+ * work-host machine. Remote-client support should route work-host operations
+ * through the server and connected work host daemon instead of adding them to a
+ * client helper.
+ */
 export interface StartLocalApiServerOptions {
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;

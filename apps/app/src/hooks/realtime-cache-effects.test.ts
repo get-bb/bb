@@ -13,7 +13,7 @@ import {
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
   environmentWorkStatusQueryKey,
-  localPathExistenceQueryKey,
+  hostPathExistenceQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
@@ -1239,7 +1239,7 @@ describe("createRealtimeCacheEffects", () => {
   it("invalidates project source dependent queries for the changed project", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const projectsKey = projectsQueryKey();
-    const localPathKey = localPathExistenceQueryKey("host-1", [
+    const localPathKey = hostPathExistenceQueryKey("host-1", [
       "/workspace/project",
     ]);
     const firstProjectPathsKey = projectPathsQueryKey(

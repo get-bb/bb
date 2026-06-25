@@ -9,7 +9,7 @@ import {
   allThreadQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
   allThreadTimelineTurnSummaryDetailsQueryKeyPrefix,
-  localPathExistenceQueryKeyPrefix,
+  hostPathExistenceQueryKeyPrefix,
   projectPathsQueryKeyPrefix,
   projectPromptHistoryQueryKey,
   projectPromptHistoryQueryKeyPrefix,
@@ -62,7 +62,7 @@ export function getProjectSourceDependentInvalidationQueryKeys({
   const sharedKeys: QueryKey[] = [
     projectsQueryKey(),
     sidebarNavigationQueryKey(),
-    localPathExistenceQueryKeyPrefix(),
+    hostPathExistenceQueryKeyPrefix(),
   ];
   if (!projectId) {
     return [

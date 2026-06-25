@@ -1,4 +1,6 @@
-import type {
+import {
+  providerCliInstallEventSchema,
+  type ProviderCliInstallEvent,
   HostDaemonCommand,
   HostDaemonCommandResult,
   HostDaemonOnlineRpcCommand,
@@ -9,6 +11,7 @@ import type {
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
+  type CommandOf,
   requireExistingEnvironment,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
@@ -20,6 +23,7 @@ import { listHostBranches } from "./command-handlers/host-branches.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   browseHostDirectory,
+  checkHostPathsExist,
   listHostFiles,
   listHostPaths,
   readHostFile,
@@ -27,13 +31,19 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
+import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
 import { runScript } from "./command-handlers/run-script.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
 import { getProviderUsage } from "./provider-usage.js";
-import { getKnownAcpAgentsStatus } from "./provider-cli-health.js";
+import {
+  getKnownAcpAgentsStatus,
+  getProviderCliStatus,
+  ProviderCliInstallInProgressError,
+  streamProviderCliInstall,
+} from "./provider-cli-health.js";
 import {
   ensureThreadRuntime,
   startThread,
@@ -75,6 +85,88 @@ function throwExpectedWorkspacePathNotFoundOrRethrow(error: unknown): never {
     throw new ExpectedCommandDispatchError(error.code, error.message);
   }
   throw error;
+}
+
+function providerCliEnvFromShellEnv(
+  shellEnv: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
+}
+
+function handleProviderCliInstallEventLine(
+  line: string,
+  events: ProviderCliInstallEvent[],
+): void {
+  const trimmedLine = line.trim();
+  if (trimmedLine.length === 0) {
+    return;
+  }
+  events.push(providerCliInstallEventSchema.parse(JSON.parse(trimmedLine)));
+}
+
+function collectProviderCliInstallEventLines(
+  buffer: string,
+  events: ProviderCliInstallEvent[],
+): string {
+  const lines = buffer.split(/\r?\n/u);
+  const lastLine = lines.pop();
+  for (const line of lines) {
+    handleProviderCliInstallEventLine(line, events);
+  }
+  return lastLine ?? "";
+}
+
+async function readProviderCliInstallEvents(
+  stream: ReadableStream<Uint8Array>,
+): Promise<ProviderCliInstallEvent[]> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const events: ProviderCliInstallEvent[] = [];
+  let buffer = "";
+
+  while (true) {
+    const result = await reader.read();
+    if (result.done) {
+      break;
+    }
+    buffer += decoder.decode(result.value, { stream: true });
+    buffer = collectProviderCliInstallEventLines(buffer, events);
+  }
+
+  buffer += decoder.decode();
+  handleProviderCliInstallEventLine(buffer, events);
+  return events;
+}
+
+async function installProviderCliOnHost(
+  command: CommandOf<"provider_cli.install">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonOnlineRpcResult<"provider_cli.install">> {
+  try {
+    const env = providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv());
+    return {
+      events: await readProviderCliInstallEvents(
+        streamProviderCliInstall({
+          provider: command.provider,
+          actionKind: command.actionKind,
+          env,
+        }),
+      ),
+    };
+  } catch (error) {
+    if (error instanceof ProviderCliInstallInProgressError) {
+      return {
+        events: [
+          {
+            type: "error",
+            provider: command.provider,
+            message: error.message,
+          },
+        ],
+      };
+    }
+    throw error;
+  }
 }
 
 const commandHandlers: CommandHandlerMap = {
@@ -225,6 +317,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.browse_directory": browseHostDirectory,
+  "host.paths_exist": checkHostPathsExist,
+  "host.pick_folder": pickHostFolder,
   "host.list_commands": listHostCommands,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
@@ -240,6 +334,11 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "known_acp_agents.status": async (command) =>
     getKnownAcpAgentsStatus({ agents: command.agents }),
   "provider.usage": async () => getProviderUsage(),
+  "provider_cli.status": async (_command, options) =>
+    getProviderCliStatus({
+      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
+    }),
+  "provider_cli.install": installProviderCliOnHost,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

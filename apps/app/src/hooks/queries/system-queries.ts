@@ -8,10 +8,9 @@ import type {
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
-import { fetchProviderCliStatus } from "@/lib/api-host-daemon";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
-  localProviderCliStatusQueryKey,
+  hostProviderCliStatusQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
@@ -105,27 +104,27 @@ export function useSystemVersion(options?: QueryOptions) {
   });
 }
 
-export interface UseLocalProviderCliStatusArgs {
-  daemonPort: number | null;
+export interface UseHostProviderCliStatusArgs {
+  hostId: string | null;
   enabled?: boolean;
 }
 
-export function useLocalProviderCliStatus({
-  daemonPort,
+export function useHostProviderCliStatus({
+  hostId,
   enabled,
-}: UseLocalProviderCliStatusArgs) {
+}: UseHostProviderCliStatusArgs) {
   return useQuery<ProviderCliStatusResponse>({
-    queryKey: localProviderCliStatusQueryKey(daemonPort),
+    queryKey: hostProviderCliStatusQueryKey(hostId),
     queryFn: ({ signal }) =>
-      fetchProviderCliStatus(
+      api.fetchHostProviderCliStatus(
         requireEnabledQueryArg({
-          value: daemonPort,
-          hookName: "useLocalProviderCliStatus",
-          argName: "daemonPort",
+          value: hostId,
+          hookName: "useHostProviderCliStatus",
+          argName: "hostId",
         }),
         signal,
       ),
-    enabled: (enabled ?? true) && daemonPort !== null,
+    enabled: (enabled ?? true) && hostId !== null,
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,

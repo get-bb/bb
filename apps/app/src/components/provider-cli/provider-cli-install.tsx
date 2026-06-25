@@ -11,7 +11,7 @@ import { ProviderCliInstallLogDialog } from "@/components/dialogs/ProviderCliIns
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { AppToastCommandDescription } from "@/components/ui/app-toast-descriptions";
-import { installProviderCli } from "@/lib/api-host-daemon";
+import { installHostProviderCli } from "@/lib/api";
 
 type ProviderCliInstallCompletedEvent = Extract<
   ProviderCliInstallEvent,
@@ -46,7 +46,7 @@ interface GetProviderCliTitleParams {
 }
 
 interface UseProviderCliInstallRunnerArgs {
-  daemonPort: number | null;
+  hostId: string | null;
   onStatusUpdated?: () => void;
 }
 
@@ -219,7 +219,7 @@ function showProviderCliInstallFailureToast({
 }
 
 export function useProviderCliInstallRunner({
-  daemonPort,
+  hostId,
   onStatusUpdated,
 }: UseProviderCliInstallRunnerArgs) {
   const runningProviderRef = useRef<ProviderCliKey | null>(null);
@@ -236,9 +236,9 @@ export function useProviderCliInstallRunner({
   const startInstall = useCallback(
     (issue: ProviderCliActionableIssue) => {
       const action = issue.action;
-      if (daemonPort === null) {
-        appToast.error("Host daemon unavailable", {
-          description: "Start bb again and retry the provider CLI setup.",
+      if (hostId === null) {
+        appToast.error("Work host unavailable", {
+          description: "Reconnect the bb host and retry the provider CLI setup.",
         });
         return;
       }
@@ -262,8 +262,8 @@ export function useProviderCliInstallRunner({
         description: <AppToastCommandDescription command={action.command} />,
       });
 
-      void installProviderCli({
-        port: daemonPort,
+      void installHostProviderCli({
+        hostId,
         request: {
           provider: issue.provider,
           actionKind: action.kind,
@@ -341,7 +341,7 @@ export function useProviderCliInstallRunner({
           }
         });
     },
-    [daemonPort, onStatusUpdated],
+    [hostId, onStatusUpdated],
   );
 
   return {

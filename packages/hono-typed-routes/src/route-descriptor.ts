@@ -175,6 +175,14 @@ export function binaryResponse<Output>(): RouteResponseDescriptor<
   return { status: 200, format: "binary" };
 }
 
+export function textResponse<Output>(): RouteResponseDescriptor<
+  Output,
+  200,
+  "text"
+> {
+  return { status: 200, format: "text" };
+}
+
 export function noRequest<Input = EmptyInput>(): NoRouteRequest<Input> {
   return { source: "none" };
 }

@@ -23,8 +23,16 @@ import {
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
 import { z } from "zod";
+import {
+  pathsExistRequestSchema,
+  pathsExistResponseSchema,
+  pickFolderResponseSchema,
+  providerCliInstallEventSchema,
+  providerCliInstallRequestSchema,
+  providerCliStatusResponseSchema,
+} from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 44 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 45 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -434,6 +442,18 @@ const hostBrowseDirectoryCommandSchema = z.object({
   // the daemon resolves — a remote caller has no way to know the host's home.
   path: z.string().min(1).optional(),
 });
+
+const hostPathsExistCommandSchema = pathsExistRequestSchema
+  .extend({
+    type: z.literal("host.paths_exist"),
+  })
+  .strict();
+
+const hostPickFolderCommandSchema = z
+  .object({
+    type: z.literal("host.pick_folder"),
+  })
+  .strict();
 
 export const directoryEntrySchema = z.object({
   kind: hostPathEntryKindSchema,
@@ -961,6 +981,22 @@ const providerUsageCommandSchema = z
   .object({ type: z.literal("provider.usage") })
   .strict();
 
+const providerCliStatusCommandSchema = z
+  .object({ type: z.literal("provider_cli.status") })
+  .strict();
+
+const providerCliInstallCommandSchema = providerCliInstallRequestSchema
+  .extend({
+    type: z.literal("provider_cli.install"),
+  })
+  .strict();
+
+const providerCliInstallResultSchema = z
+  .object({
+    events: z.array(providerCliInstallEventSchema),
+  })
+  .strict();
+
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
 type HostDaemonFlushEventsBeforeResult = boolean | "when-initiated";
@@ -1177,6 +1213,24 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "host.paths_exist": defineHostDaemonCommandDescriptor({
+    type: "host.paths_exist",
+    schema: hostPathsExistCommandSchema,
+    resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.pick_folder": defineHostDaemonCommandDescriptor({
+    type: "host.pick_folder",
+    schema: hostPickFolderCommandSchema,
+    resultSchema: pickFolderResponseSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "host.list_commands": defineHostDaemonCommandDescriptor({
     type: "host.list_commands",
     schema: hostListCommandsCommandSchema,
@@ -1246,6 +1300,24 @@ export const hostDaemonCommandRegistry = {
     resultSchema: providerUsageResponseSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider_cli.status": defineHostDaemonCommandDescriptor({
+    type: "provider_cli.status",
+    schema: providerCliStatusCommandSchema,
+    resultSchema: providerCliStatusResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider_cli.install": defineHostDaemonCommandDescriptor({
+    type: "provider_cli.install",
+    schema: providerCliInstallCommandSchema,
+    resultSchema: providerCliInstallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

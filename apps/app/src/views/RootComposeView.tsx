@@ -80,8 +80,7 @@ import {
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
-  useLocalProviderCliStatus,
-  useSystemConfig,
+  useHostProviderCliStatus,
 } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
@@ -151,7 +150,6 @@ import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
-import { isLoopbackOrigin } from "@/lib/system-config-atoms";
 import { RootComposeSecondaryContent } from "./RootComposeSecondaryContent";
 import {
   buildRootComposeBranchUiState,
@@ -1044,13 +1042,9 @@ export function RootComposeView(props: RootComposeViewProps) {
 
     promptDraft.setDraft(restoredDraft);
   });
-  const providerCliSystemConfig = useSystemConfig();
-  const providerCliDaemonPort = isLoopbackOrigin()
-    ? (providerCliSystemConfig.data?.hostDaemonPort ?? null)
-    : null;
-  const providerCliStatus = useLocalProviderCliStatus({
-    daemonPort: providerCliDaemonPort,
-    enabled: providerCliDaemonPort !== null,
+  const providerCliStatus = useHostProviderCliStatus({
+    hostId: primaryHostId,
+    enabled: primaryHostId !== null,
   });
   const refetchProviderCliStatus = providerCliStatus.refetch;
   const {
@@ -1058,7 +1052,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     runningProvider,
     startInstall,
   } = useProviderCliInstallRunner({
-    daemonPort: providerCliDaemonPort,
+    hostId: primaryHostId,
     onStatusUpdated: () => {
       void refetchProviderCliStatus();
     },

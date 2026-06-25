@@ -183,6 +183,15 @@ export async function browseHostDirectory(
   };
 }
 
+export async function checkHostPathsExist(
+  command: CommandOf<"host.paths_exist">,
+): Promise<HostDaemonOnlineRpcResult<"host.paths_exist">> {
+  const entries = await Promise.all(
+    command.paths.map(async (path) => [path, await pathExists(path)] as const),
+  );
+  return { existence: Object.fromEntries(entries) };
+}
+
 export async function readHostFile(
   command: CommandOf<"host.read_file">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_file">> {
@@ -230,4 +239,18 @@ export async function readHostRelativeFile(
     relativePath: command.path,
     dotfiles: command.dotfiles,
   });
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await fs.stat(path);
+    return true;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT") || isFsErrorWithCode(error, "ENOTDIR")) {
+      return false;
+    }
+    // Permission denied / loops / etc. — we can't tell, but the entry exists
+    // enough to error on, so don't claim it's missing.
+    return true;
+  }
 }

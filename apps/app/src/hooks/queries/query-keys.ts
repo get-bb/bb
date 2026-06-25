@@ -58,9 +58,9 @@ export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
-export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
+export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
-export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
+export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const AUTOMATIONS_QUERY_KEY = "automations";
 export const AUTOMATION_DETAIL_QUERY_KEY = "automationDetail";
 export const AUTOMATION_RUNS_QUERY_KEY = "automationRuns";
@@ -415,9 +415,9 @@ export type SystemProvidersQueryKey = readonly [
 ];
 export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
-export type LocalProviderCliStatusQueryKey = readonly [
-  typeof LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY,
-  number | null,
+export type HostProviderCliStatusQueryKey = readonly [
+  typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
+  string | null,
 ];
 export type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
@@ -434,13 +434,13 @@ export type SystemExecutionOptionsEnvironmentQueryKeyPrefix = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
   string | null,
 ];
-export type LocalPathExistenceQueryKey = readonly [
-  typeof LOCAL_PATH_EXISTENCE_QUERY_KEY,
-  string,
+export type HostPathExistenceQueryKey = readonly [
+  typeof HOST_PATH_EXISTENCE_QUERY_KEY,
+  string | null,
   readonly string[],
 ];
-export type LocalPathExistenceQueryKeyPrefix = readonly [
-  typeof LOCAL_PATH_EXISTENCE_QUERY_KEY,
+export type HostPathExistenceQueryKeyPrefix = readonly [
+  typeof HOST_PATH_EXISTENCE_QUERY_KEY,
 ];
 export type AutomationsQueryKey = readonly [typeof AUTOMATIONS_QUERY_KEY];
 export type AutomationDetailQueryKey = readonly [
@@ -1014,10 +1014,10 @@ export function systemVersionQueryKey(): SystemVersionQueryKey {
   return [SYSTEM_VERSION_QUERY_KEY];
 }
 
-export function localProviderCliStatusQueryKey(
-  daemonPort: number | null,
-): LocalProviderCliStatusQueryKey {
-  return [LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY, daemonPort];
+export function hostProviderCliStatusQueryKey(
+  hostId: string | null,
+): HostProviderCliStatusQueryKey {
+  return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
 }
 
 export function systemUsageLimitsQueryKey(): SystemUsageLimitsQueryKey {
@@ -1046,15 +1046,15 @@ export function systemExecutionOptionsEnvironmentQueryKeyPrefix(
   return [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY, environmentId];
 }
 
-export function localPathExistenceQueryKey(
-  hostId: string,
+export function hostPathExistenceQueryKey(
+  hostId: string | null,
   paths: readonly string[],
-): LocalPathExistenceQueryKey {
-  return [LOCAL_PATH_EXISTENCE_QUERY_KEY, hostId, paths];
+): HostPathExistenceQueryKey {
+  return [HOST_PATH_EXISTENCE_QUERY_KEY, hostId, paths];
 }
 
-export function localPathExistenceQueryKeyPrefix(): LocalPathExistenceQueryKeyPrefix {
-  return [LOCAL_PATH_EXISTENCE_QUERY_KEY];
+export function hostPathExistenceQueryKeyPrefix(): HostPathExistenceQueryKeyPrefix {
+  return [HOST_PATH_EXISTENCE_QUERY_KEY];
 }
 
 export function automationsQueryKey(): AutomationsQueryKey {

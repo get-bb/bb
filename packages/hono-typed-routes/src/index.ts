@@ -22,5 +22,6 @@ export {
   noRequest,
   optionalQueryRequest,
   queryRequest,
+  textResponse,
 } from "./route-descriptor.js";
 export { typedRoutes } from "./typed-routes.js";

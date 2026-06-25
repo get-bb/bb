@@ -178,6 +178,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { kind: "file", name: "README.md", path: "/home/me/project/README.md" },
     ],
   },
+  "host.paths_exist": {
+    existence: {
+      "/home/me/project": true,
+      "/home/me/missing": false,
+    },
+  },
+  "host.pick_folder": {
+    path: "/home/me/project",
+  },
   "host.list_commands": {
     commands: [
       {
@@ -272,6 +281,79 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       ],
     },
     claudeCode: { status: "unauthenticated" },
+  },
+  "provider_cli.status": {
+    codex: {
+      displayName: "Codex",
+      executableName: "codex",
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      latestVersion: "0.136.0",
+      minimumSupportedVersion: "0.136.0",
+      npmPackageName: "@openai/codex",
+      npmGlobalPackageVersion: null,
+      installAction: {
+        kind: "install",
+        label: "Install",
+        commandKind: "exec",
+        command: "npm install -g @openai/codex@latest",
+      },
+      needsUpdate: false,
+      versionUnsupported: false,
+    },
+    claudeCode: {
+      displayName: "Claude Code",
+      executableName: "claude",
+      executablePath: "/opt/homebrew/bin/claude",
+      installed: true,
+      installSource: "external",
+      currentVersion: "1.0.0",
+      latestVersion: null,
+      minimumSupportedVersion: null,
+      npmPackageName: null,
+      npmGlobalPackageVersion: null,
+      installAction: null,
+      needsUpdate: false,
+      versionUnsupported: false,
+    },
+    cursor: {
+      displayName: "Cursor",
+      executableName: "cursor-agent",
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      latestVersion: null,
+      minimumSupportedVersion: null,
+      npmPackageName: "@cursor/agent",
+      npmGlobalPackageVersion: null,
+      installAction: {
+        kind: "install",
+        label: "Install",
+        commandKind: "shell",
+        command: "curl https://cursor.com/install | bash",
+      },
+      needsUpdate: false,
+      versionUnsupported: false,
+    },
+  },
+  "provider_cli.install": {
+    events: [
+      {
+        type: "started",
+        provider: "codex",
+        command: "npm install -g @openai/codex@latest",
+      },
+      {
+        type: "completed",
+        provider: "codex",
+        exitCode: 0,
+        signal: null,
+        success: true,
+      },
+    ],
   },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
@@ -2155,7 +2237,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(44);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(45);
   });
 
   it("parses valid session open and event batch payloads", () => {
