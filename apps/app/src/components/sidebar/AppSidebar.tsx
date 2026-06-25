@@ -44,9 +44,7 @@ import {
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS =
-  "w-auto min-w-0 font-normal text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80";
-const SIDEBAR_FOOTER_ACTION_LABEL_CLASS =
-  "group-data-[collapsible=icon]:hidden";
+  "size-8 w-8 justify-center p-0 text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -332,21 +330,19 @@ export function AppSidebar({
               <SidebarMenuButton
                 asChild
                 aria-label="Settings"
-                tooltip="Settings"
+                tooltip={{ children: "Settings", hidden: false, side: "top" }}
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
               >
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
-                  <span className={SIDEBAR_FOOTER_ACTION_LABEL_CLASS}>
-                    Settings
-                  </span>
+                  <span className="sr-only">Settings</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
-                tooltip="Send feedback"
+                tooltip={{ children: "Feedback", hidden: false, side: "top" }}
                 aria-label="Send feedback"
                 onClick={() => {
                   closeOnMobile();
@@ -354,9 +350,7 @@ export function AppSidebar({
                 }}
               >
                 <Icon name="ChatFeedback" />
-                <span className={SIDEBAR_FOOTER_ACTION_LABEL_CLASS}>
-                  Feedback
-                </span>
+                <span className="sr-only">Feedback</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
