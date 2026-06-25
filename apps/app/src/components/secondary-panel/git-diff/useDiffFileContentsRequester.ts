@@ -111,7 +111,8 @@ function buildDiffFileTarget(
 }
 
 // Browser-renderable raster image MIME types. Mirrors the extension allowlist
-// in `isImageGitDiffFile` (SVG is text, so it diffs as hunks, not a preview).
+// in `isImageGitDiffFile`. SVG remains a text result; the card converts that
+// text into a preview data URL while keeping the raw diff toggle available.
 const PREVIEWABLE_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   "image/avif",
   "image/bmp",
@@ -125,10 +126,11 @@ const PREVIEWABLE_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * Map a `/diff/file` response into the card's `DiffFileContentsResult`. UTF-8
- * content becomes a `text` side @pierre/diffs can expand context from. A base64
- * blob with a browser-renderable image MIME type becomes an `image` side the
- * card previews inline (with its byte size for the header `+/-` delta). Anything
- * else (binary, non-image) yields `null` so the card leaves that side blank.
+ * content becomes a `text` side @pierre/diffs can expand context from and, for
+ * SVG files, preview inline. A base64 blob with a browser-renderable image MIME
+ * type becomes an `image` side the card previews inline (with its byte size for
+ * the header `+/-` delta). Anything else (binary, non-image) yields `null` so
+ * the card leaves that side blank.
  */
 function toDiffFileContentsResult(
   path: string,

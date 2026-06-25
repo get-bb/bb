@@ -14,12 +14,14 @@ import { Button } from "@/components/ui/button.js";
 import {
   getWrappedImageIndex,
   ImageLightbox,
+  IMAGE_TRANSPARENCY_CHECKER_STYLE,
 } from "@/components/ui/image-lightbox.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import {
   formatGitDiffFileLabel,
   enrichGitDiffFileForContext,
   isImageGitDiffFile,
+  isSvgGitDiffFile,
   normalizeGitDiffPath,
   type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
@@ -50,6 +52,8 @@ export interface DiffImageSizeStat {
   addedBytes: number | null;
   removedBytes: number | null;
 }
+
+export type GitDiffCardSvgDisplayMode = "preview" | "raw";
 
 const GIT_DIFF_CARD_VIEW_STYLE = {
   "--diffs-font-size": "12px",
@@ -82,6 +86,12 @@ type DiffFileEnrichmentState =
       newImageUrl: string | null;
       oldSizeBytes: number | null;
       newSizeBytes: number | null;
+    }
+  | {
+      status: "ready-svg";
+      fileDiff: ParsedGitDiffFile;
+      oldImageUrl: string | null;
+      newImageUrl: string | null;
     }
   | { status: "unavailable" }
   | { status: "error" };
@@ -167,6 +177,23 @@ function isImagePreviewCard(
   );
 }
 
+function isSvgPreviewCard(
+  fileDiff: ParsedGitDiffFile,
+  onRequestFileContents: RequestDiffFileContents | undefined,
+): boolean {
+  return (
+    fileDiff.type !== "rename-pure" &&
+    onRequestFileContents !== undefined &&
+    isSvgGitDiffFile(fileDiff)
+  );
+}
+
+function svgTextToDataUrl(contents: string): string | null {
+  const trimmedContents = contents.trim();
+  if (trimmedContents.length === 0) return null;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmedContents)}`;
+}
+
 function getImageSizeStat(
   enrichment: DiffFileEnrichmentState,
   changeKind: GitDiffFileChangeKind,
@@ -194,6 +221,7 @@ export interface GitDiffCardBodyState {
   enrichedFileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
   isImageCard: boolean;
+  isSvgPreviewCard: boolean;
   shouldGateDeletedDiff: boolean;
   shouldRenderDiffView: boolean;
   loadDeletedDiff: () => void;
@@ -218,6 +246,7 @@ export function useGitDiffCardBody({
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
   const isDeletedFile = changeKind === "deleted";
   const isImageCard = isImagePreviewCard(fileDiff, onRequestFileContents);
+  const isSvgCard = isSvgPreviewCard(fileDiff, onRequestFileContents);
   const fileDiffLabel = useMemo(
     () => formatGitDiffFileLabel(fileDiff),
     [fileDiff],
@@ -252,18 +281,18 @@ export function useGitDiffCardBody({
     enrichmentStatusRef.current = "idle";
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
-  }, [fileContentPlan.identity]);
+  }, [fileContentPlan.identity, isImageCard, isSvgCard]);
   useEffect(() => {
     if (isBodyVisible) {
       setHasBodyEnteredViewport(true);
     }
   }, [isBodyVisible]);
   // The deleted-file gate defers the expensive text-diff renderer (and the old
-  // file fetch behind it) until the user asks for it. Image previews have no
-  // such renderer, so they load on viewport entry like added/modified images, so
-  // the header size and preview appear without a "Load diff" step.
+  // file fetch behind it) until the user asks for it. Image/SVG previews load
+  // on viewport entry like added/modified images, so the header size and
+  // preview appear without a "Load diff" step.
   const shouldGateDeletedDiff =
-    isDeletedFile && !isImageCard && !hasLoadedDeletedDiff;
+    isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
   const shouldRenderDiffView =
     hasBodyEnteredViewport && !isRendering && !shouldGateDeletedDiff;
   // Fire the fetch once the diff view is actually renderable. Effect deps
@@ -304,15 +333,26 @@ export function useGitDiffCardBody({
           setEnrichment({ status: "unavailable" });
           return;
         }
+        const enrichedFileDiff = enrichGitDiffFileForContext({
+          fileDiff,
+          oldFile: oldResult.file,
+          newFile: newResult.file,
+          patchText,
+        });
+        if (isSvgCard) {
+          enrichmentStatusRef.current = "ready-svg";
+          setEnrichment({
+            status: "ready-svg",
+            fileDiff: enrichedFileDiff,
+            oldImageUrl: svgTextToDataUrl(oldResult.file.contents),
+            newImageUrl: svgTextToDataUrl(newResult.file.contents),
+          });
+          return;
+        }
         enrichmentStatusRef.current = "ready";
         setEnrichment({
           status: "ready",
-          fileDiff: enrichGitDiffFileForContext({
-            fileDiff,
-            oldFile: oldResult.file,
-            newFile: newResult.file,
-            patchText,
-          }),
+          fileDiff: enrichedFileDiff,
         });
       })
       .catch(() => {
@@ -327,10 +367,12 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "idle";
       }
     };
-  }, [fileContentPlan, fileDiff, patchText, shouldRenderDiffView]);
+  }, [fileContentPlan, fileDiff, isSvgCard, patchText, shouldRenderDiffView]);
 
   const enrichedFileDiff = useMemo<ParsedGitDiffFile>(() => {
-    if (enrichment.status !== "ready") return fileDiff;
+    if (enrichment.status !== "ready" && enrichment.status !== "ready-svg") {
+      return fileDiff;
+    }
     return enrichment.fileDiff;
   }, [fileDiff, enrichment]);
 
@@ -349,6 +391,7 @@ export function useGitDiffCardBody({
     enrichedFileDiff,
     fileDiffLabel,
     isImageCard,
+    isSvgPreviewCard: isSvgCard,
     shouldGateDeletedDiff,
     shouldRenderDiffView,
     loadDeletedDiff,
@@ -404,11 +447,28 @@ function getGitDiffCardImageAlt(
 interface GitDiffCardImageBodyProps {
   enrichment: DiffFileEnrichmentState;
   fileDiffLabel: string;
+  fitToFrame?: boolean;
+}
+
+function getGitDiffCardImageUrls(
+  enrichment: DiffFileEnrichmentState,
+): { oldImageUrl: string | null; newImageUrl: string | null } | null {
+  if (
+    enrichment.status !== "ready-image" &&
+    enrichment.status !== "ready-svg"
+  ) {
+    return null;
+  }
+  return {
+    oldImageUrl: enrichment.oldImageUrl,
+    newImageUrl: enrichment.newImageUrl,
+  };
 }
 
 function GitDiffCardImageBody({
   enrichment,
   fileDiffLabel,
+  fitToFrame = false,
 }: GitDiffCardImageBodyProps) {
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
@@ -416,7 +476,8 @@ function GitDiffCardImageBody({
   if (enrichment.status === "idle" || enrichment.status === "loading") {
     return <GitDiffCardBodySkeleton />;
   }
-  if (enrichment.status !== "ready-image") {
+  const imageUrls = getGitDiffCardImageUrls(enrichment);
+  if (imageUrls === null) {
     return (
       <div className="px-3 py-3 text-xs text-muted-foreground">
         No preview available for this image.
@@ -424,9 +485,16 @@ function GitDiffCardImageBody({
     );
   }
   const imageSides = buildGitDiffCardImageSides(
-    enrichment.oldImageUrl,
-    enrichment.newImageUrl,
+    imageUrls.oldImageUrl,
+    imageUrls.newImageUrl,
   );
+  if (imageSides.length === 0) {
+    return (
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        No preview available for this image.
+      </div>
+    );
+  }
   const expandedImageSide =
     expandedImageIndex === null ? undefined : imageSides[expandedImageIndex];
   const stepExpandedImage = (direction: "previous" | "next") => {
@@ -442,18 +510,35 @@ function GitDiffCardImageBody({
   };
   return (
     <>
-      <div className="flex items-start gap-3 px-3 py-3">
+      <div
+        className={
+          fitToFrame
+            ? imageSides.length > 1
+              ? "grid grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-2"
+              : "grid grid-cols-1 gap-3 px-3 py-3"
+            : "flex items-start gap-3 px-3 py-3"
+        }
+      >
         {imageSides.map((side, index) => (
           <figure key={side.url} className="min-w-0">
             <button
               type="button"
-              className="block max-w-full cursor-zoom-in"
+              className={
+                fitToFrame
+                  ? "flex h-64 w-full cursor-zoom-in items-center justify-center rounded-md border border-border bg-surface-recessed p-3"
+                  : "block max-w-full cursor-zoom-in"
+              }
               onClick={() => setExpandedImageIndex(index)}
             >
               <img
                 src={side.url}
                 alt={getGitDiffCardImageAlt(fileDiffLabel, side)}
-                className="block max-h-80 max-w-full rounded-md border border-border object-contain"
+                style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+                className={
+                  fitToFrame
+                    ? "block h-full w-full object-contain"
+                    : "block max-h-80 max-w-full rounded-md border border-border object-contain"
+                }
               />
             </button>
             {side.caption !== null ? (
@@ -481,9 +566,57 @@ function GitDiffCardImageBody({
   );
 }
 
+interface GitDiffCardRawDiffBodyProps {
+  fileDiff: ParsedGitDiffFile;
+  fileDiffOptions: Record<string, string | boolean | number>;
+}
+
+function GitDiffCardRawDiffBody({
+  fileDiff,
+  fileDiffOptions,
+}: GitDiffCardRawDiffBodyProps) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
+        <DiffView fileDiff={fileDiff} options={fileDiffOptions} />
+      </div>
+    </div>
+  );
+}
+
+interface GitDiffCardSvgBodyProps {
+  displayMode: GitDiffCardSvgDisplayMode;
+  enrichment: DiffFileEnrichmentState;
+  fileDiff: ParsedGitDiffFile;
+  fileDiffLabel: string;
+  fileDiffOptions: Record<string, string | boolean | number>;
+}
+
+function GitDiffCardSvgBody({
+  displayMode,
+  enrichment,
+  fileDiff,
+  fileDiffLabel,
+  fileDiffOptions,
+}: GitDiffCardSvgBodyProps) {
+  return displayMode === "preview" ? (
+    <GitDiffCardImageBody
+      enrichment={enrichment}
+      fileDiffLabel={fileDiffLabel}
+      fitToFrame
+    />
+  ) : (
+    <GitDiffCardRawDiffBody
+      fileDiff={fileDiff}
+      fileDiffOptions={fileDiffOptions}
+    />
+  );
+}
+
 export interface GitDiffCardBodyProps {
   state: GitDiffCardBodyState;
   diffViewOptions: Record<string, string | boolean | number>;
+  svgDisplayMode: GitDiffCardSvgDisplayMode;
   /**
    * Whether the surrounding card reserves a collapse-chevron gutter. The deleted
    * file message aligns to that gutter so its text lines up with the diff body.
@@ -495,14 +628,15 @@ export interface GitDiffCardBodyProps {
  * The single shared diff-card body for both the timeline ({@link GitDiffCard})
  * and the diff tab (`DiffFileCard`). It renders the lazily-enriched
  * `@pierre/diffs` `FileDiff` (with context expansion), the deleted-file load
- * gate, the in-viewport render skeleton, and — for binary image changes — the
- * inline `<img>` preview with its lightbox. The data layer lives in
- * {@link useGitDiffCardBody}; both callers feed its result in as `state` so the
- * card can also read the image header stat synchronously.
+ * gate, the in-viewport render skeleton, and inline `<img>` previews for binary
+ * image changes or SVGs. The data layer lives in {@link useGitDiffCardBody};
+ * both callers feed its result in as `state` so the card can also read the image
+ * header stat synchronously.
  */
 export function GitDiffCardBody({
   state,
   diffViewOptions,
+  svgDisplayMode,
   reservesCollapseGutter,
 }: GitDiffCardBodyProps) {
   const {
@@ -511,6 +645,7 @@ export function GitDiffCardBody({
     enrichedFileDiff,
     fileDiffLabel,
     isImageCard,
+    isSvgPreviewCard,
     shouldGateDeletedDiff,
     shouldRenderDiffView,
     loadDeletedDiff,
@@ -551,12 +686,19 @@ export function GitDiffCardBody({
           enrichment={enrichment}
           fileDiffLabel={fileDiffLabel}
         />
+      ) : isSvgPreviewCard ? (
+        <GitDiffCardSvgBody
+          displayMode={svgDisplayMode}
+          enrichment={enrichment}
+          fileDiff={enrichedFileDiff}
+          fileDiffLabel={fileDiffLabel}
+          fileDiffOptions={fileDiffOptions}
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
-            <DiffView fileDiff={enrichedFileDiff} options={fileDiffOptions} />
-          </div>
-        </div>
+        <GitDiffCardRawDiffBody
+          fileDiff={enrichedFileDiff}
+          fileDiffOptions={fileDiffOptions}
+        />
       )}
     </div>
   );

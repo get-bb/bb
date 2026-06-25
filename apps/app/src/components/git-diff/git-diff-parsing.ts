@@ -1,8 +1,4 @@
-import {
-  parsePatchFiles,
-  processFile,
-  type FileContents,
-} from "@pierre/diffs";
+import { parsePatchFiles, processFile, type FileContents } from "@pierre/diffs";
 import type { GitDiffFileChangeKind } from "@bb/server-contract";
 
 export type ParsedGitDiffFile = ReturnType<
@@ -149,10 +145,10 @@ export function normalizeGitDiffPath(
   return trimmedPath && trimmedPath.length > 0 ? trimmedPath : undefined;
 }
 
-// Browser-renderable raster formats only. SVG is deliberately absent. SVG
-// diffs arrive as regular text hunks, which are more informative than a
-// rendered preview. TIFF/HEIC are absent because `<img>` can't render them
-// in every browser we support.
+// Browser-renderable raster formats only. SVG diffs arrive as regular text
+// hunks, so SVG preview support is handled separately and keeps a raw toggle.
+// TIFF/HEIC are absent because `<img>` can't render them in every browser we
+// support.
 const IMAGE_GIT_DIFF_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   "avif",
   "bmp",
@@ -170,6 +166,11 @@ export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
   return (
     extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
   );
+}
+
+export function isSvgGitDiffFile(file: ParsedGitDiffFile): boolean {
+  const path = normalizeGitDiffPath(file.name) ?? file.name;
+  return path.toLowerCase().endsWith(".svg");
 }
 
 function getGitDiffPathAliases(path: string | undefined): string[] {

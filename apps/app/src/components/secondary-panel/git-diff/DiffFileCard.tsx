@@ -1,17 +1,20 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import type { DiffFileEntry } from "@bb/server-contract";
 import {
   GitDiffCardBody,
   useGitDiffCardBody,
+  type GitDiffCardSvgDisplayMode,
   type RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import {
   GitDiffCardHeader,
+  GitDiffCardRawToggle,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
 } from "@/components/git-diff/GitDiffCardHeader";
 import {
+  isSvgGitDiffFile,
   parseGitDiffFiles,
   type ParsedGitDiffFile,
 } from "@/components/git-diff/git-diff-parsing";
@@ -129,10 +132,7 @@ export const DiffFileCard = memo(function DiffFileCard({
   onOpenFilePreview,
   onRequestFileContents,
 }: DiffFileCardProps) {
-  const headerModel = useMemo(
-    () => buildDiffEntryHeaderModel(entry),
-    [entry],
-  );
+  const headerModel = useMemo(() => buildDiffEntryHeaderModel(entry), [entry]);
   // The single file's patch, parsed only once it has loaded. The patch hook
   // returns whole-file patch text; we parse just this file (not a blob).
   const parsedFile = useMemo<ParsedGitDiffFile | null>(() => {
@@ -141,8 +141,24 @@ export const DiffFileCard = memo(function DiffFileCard({
     }
     return parseGitDiffFiles(patchState.patch)[0] ?? null;
   }, [patchState.patch, patchState.status]);
+  const [svgDisplayMode, setSvgDisplayMode] =
+    useState<GitDiffCardSvgDisplayMode>("preview");
+  useEffect(() => {
+    setSvgDisplayMode("preview");
+  }, [entry.path, entry.previousPath, patchState.patch]);
+  const toggleSvgDisplayMode = () => {
+    setSvgDisplayMode((currentMode) =>
+      currentMode === "preview" ? "raw" : "preview",
+    );
+  };
   const changedLines = entry.additions + entry.deletions;
   const isBodyHidden = isCollapsed;
+  const supportsSvgRawToggle =
+    !isBodyHidden &&
+    parsedFile !== null &&
+    parsedFile.type !== "rename-pure" &&
+    onRequestFileContents !== undefined &&
+    isSvgGitDiffFile(parsedFile);
 
   // Detect when this card's sticky header is pinned to the panel top: a
   // zero-height sentinel sits just above the header, so once it scrolls out of
@@ -185,6 +201,15 @@ export const DiffFileCard = memo(function DiffFileCard({
           isCollapsed={isCollapsed}
           onToggleCollapsed={onToggleCollapsed}
           hasChanges
+          actionSlot={
+            supportsSvgRawToggle ? (
+              <GitDiffCardRawToggle
+                fileLabel={headerModel.label}
+                isRaw={svgDisplayMode === "raw"}
+                onToggle={toggleSvgDisplayMode}
+              />
+            ) : undefined
+          }
         />
       </div>
       {isBodyHidden ? null : (
@@ -194,6 +219,7 @@ export const DiffFileCard = memo(function DiffFileCard({
           diffViewOptions={diffViewOptions}
           parsedFile={parsedFile}
           patchState={patchState}
+          svgDisplayMode={svgDisplayMode}
           onLoadPatch={onLoadPatch}
           onRetry={onRetry}
           onOpenFilePreview={onOpenFilePreview}
@@ -210,6 +236,7 @@ interface DiffFileCardBodyProps {
   diffViewOptions: Record<string, string | boolean | number>;
   parsedFile: ParsedGitDiffFile | null;
   patchState: DiffPatchState;
+  svgDisplayMode: GitDiffCardSvgDisplayMode;
   onLoadPatch: () => void;
   onRetry: () => void;
   onOpenFilePreview?: (path: string) => void;
@@ -225,6 +252,7 @@ function DiffFileCardBody({
   diffViewOptions,
   parsedFile,
   patchState,
+  svgDisplayMode,
   onLoadPatch,
   onRetry,
   onOpenFilePreview,
@@ -328,6 +356,7 @@ function DiffFileCardBody({
       parsedFile={parsedFile}
       patchText={patchState.truncated ? undefined : patchState.patch}
       diffViewOptions={diffViewOptions}
+      svgDisplayMode={svgDisplayMode}
       truncated={patchState.truncated ?? false}
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
@@ -340,6 +369,7 @@ interface DiffFileCardRenderedBodyProps {
   parsedFile: ParsedGitDiffFile;
   patchText?: string;
   diffViewOptions: Record<string, string | boolean | number>;
+  svgDisplayMode: GitDiffCardSvgDisplayMode;
   truncated: boolean;
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
@@ -357,6 +387,7 @@ function DiffFileCardRenderedBody({
   parsedFile,
   patchText,
   diffViewOptions,
+  svgDisplayMode,
   truncated,
   onOpenFilePreview,
   onRequestFileContents,
@@ -373,6 +404,7 @@ function DiffFileCardRenderedBody({
       <GitDiffCardBody
         state={bodyState}
         diffViewOptions={diffViewOptions}
+        svgDisplayMode={svgDisplayMode}
         reservesCollapseGutter
       />
       {truncated ? (

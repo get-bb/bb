@@ -1,14 +1,16 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { cn } from "@/lib/utils";
 import {
   GitDiffCardBody,
   useGitDiffCardBody,
+  type GitDiffCardSvgDisplayMode,
   type RequestDiffFileContents,
 } from "./GitDiffCardBody";
 import {
   GitDiffCardHeader,
   GitDiffCardImageSizeStat,
+  GitDiffCardRawToggle,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
 } from "./GitDiffCardHeader";
@@ -123,6 +125,16 @@ export const GitDiffCard = memo(function GitDiffCard({
     isRendering,
     onRequestFileContents,
   });
+  const [svgDisplayMode, setSvgDisplayMode] =
+    useState<GitDiffCardSvgDisplayMode>("preview");
+  useEffect(() => {
+    setSvgDisplayMode("preview");
+  }, [fileDiff]);
+  const toggleSvgDisplayMode = () => {
+    setSvgDisplayMode((currentMode) =>
+      currentMode === "preview" ? "raw" : "preview",
+    );
+  };
   // Pure renames + identical content land here with zero hunks; nothing for the
   // body to show, so force-collapse and disable the chevron. Image preview cards
   // have a body despite their zero hunks.
@@ -176,12 +188,22 @@ export const GitDiffCard = memo(function GitDiffCard({
               )
             ) : undefined
           }
+          actionSlot={
+            bodyState.isSvgPreviewCard && !isBodyHidden ? (
+              <GitDiffCardRawToggle
+                fileLabel={bodyState.fileDiffLabel}
+                isRaw={svgDisplayMode === "raw"}
+                onToggle={toggleSvgDisplayMode}
+              />
+            ) : undefined
+          }
         />
       </div>
       {!isBodyHidden ? (
         <GitDiffCardBody
           state={bodyState}
           diffViewOptions={diffViewOptions}
+          svgDisplayMode={svgDisplayMode}
           reservesCollapseGutter={supportsCollapse}
         />
       ) : null}

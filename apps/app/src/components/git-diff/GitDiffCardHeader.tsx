@@ -55,6 +55,8 @@ export interface GitDiffCardHeaderProps {
    * swap has no line counts to tally.
    */
   statSlot?: ReactNode;
+  /** Small controls rendered beside the stats, such as the SVG raw toggle. */
+  actionSlot?: ReactNode;
 }
 
 const BYTES_PER_UNIT = 1024;
@@ -96,6 +98,34 @@ export function GitDiffCardImageSizeStat({
   );
 }
 
+export interface GitDiffCardRawToggleProps {
+  fileLabel: string;
+  isRaw: boolean;
+  onToggle: () => void;
+}
+
+export function GitDiffCardRawToggle({
+  fileLabel,
+  isRaw,
+  onToggle,
+}: GitDiffCardRawToggleProps) {
+  const label = isRaw
+    ? `Show image preview for ${fileLabel}`
+    : `Show raw SVG diff for ${fileLabel}`;
+  return (
+    <button
+      type="button"
+      className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-pressed:bg-state-active aria-pressed:text-foreground"
+      onClick={onToggle}
+      aria-label={label}
+      aria-pressed={isRaw}
+      title={label}
+    >
+      <Icon name="Code" aria-hidden className="size-3.5" />
+    </button>
+  );
+}
+
 /**
  * Returns the old/new path pair to render as a `from -> to` rename affordance,
  * or null when the file is not a rename/copy. Renames and copies both carry a
@@ -124,6 +154,7 @@ export function GitDiffCardHeader({
   onToggleCollapsed,
   hasChanges,
   statSlot,
+  actionSlot,
 }: GitDiffCardHeaderProps) {
   const isAddedFile = model.changeKind === "added";
   const isDeletedFile = model.changeKind === "deleted";
@@ -226,6 +257,7 @@ export function GitDiffCardHeader({
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1">
+        {actionSlot}
         {statSlot ?? (
           <DiffStatsTally
             insertions={headerInsertions}

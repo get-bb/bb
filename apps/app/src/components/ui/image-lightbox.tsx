@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { Button } from "./button.js";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "./dialog.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -10,6 +10,17 @@ export const imageLightboxKeyActionValues = [
 ] as const;
 export type ImageLightboxKeyAction =
   (typeof imageLightboxKeyActionValues)[number];
+
+const IMAGE_TRANSPARENCY_CHECKER_BASE =
+  "color-mix(in oklch, var(--ink) 5%, var(--canvas))";
+const IMAGE_TRANSPARENCY_CHECKER_MARK =
+  "color-mix(in oklch, var(--ink) 14%, var(--canvas))";
+
+export const IMAGE_TRANSPARENCY_CHECKER_STYLE: CSSProperties = {
+  backgroundColor: IMAGE_TRANSPARENCY_CHECKER_BASE,
+  backgroundImage: `conic-gradient(${IMAGE_TRANSPARENCY_CHECKER_MARK} 25%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0 50%, ${IMAGE_TRANSPARENCY_CHECKER_MARK} 0 75%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0)`,
+  backgroundSize: "16px 16px",
+};
 
 export interface ImageLightboxKeyActionInput {
   event: Pick<
@@ -140,6 +151,7 @@ export function ImageLightbox({
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
+        aria-describedby={undefined}
         className="left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center border-none bg-transparent p-0 shadow-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 sm:rounded-none [&>button]:hidden"
         onClick={(event) => {
           if (event.target === event.currentTarget) {
@@ -151,7 +163,8 @@ export function ImageLightbox({
         <img
           src={imageSrc}
           alt={imageAlt}
-          className="max-h-[82vh] max-w-[90vw] rounded bg-background object-contain"
+          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+          className="max-h-[82vh] max-w-[90vw] rounded object-contain"
         />
 
         {hasNavigation ? (
