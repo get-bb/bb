@@ -392,6 +392,29 @@ function consumePendingDelegationTurnLink(
   return undefined;
 }
 
+function shouldUseExplicitEventParentToolCallId({
+  eventTurnId,
+  isAcceptedRootClientTurn,
+  parentToolCallId,
+  state,
+}: {
+  eventTurnId: string | undefined;
+  isAcceptedRootClientTurn: boolean;
+  parentToolCallId: string | undefined;
+  state: ProjectionState;
+}): boolean {
+  if (!parentToolCallId) {
+    return false;
+  }
+  if (!isAcceptedRootClientTurn) {
+    return true;
+  }
+  return (
+    typeof eventTurnId === "string" &&
+    state.delegationTurnIdsByCallId.get(parentToolCallId) === eventTurnId
+  );
+}
+
 function getCompactionTurnFinalization(
   decoded: ThreadEvent,
 ): CompactionTurnFinalization | undefined {
@@ -443,9 +466,16 @@ function buildFlatProjectionData(
     const isAcceptedRootClientTurn =
       typeof eventTurnId === "string" &&
       acceptedRootClientTurnIds.has(eventTurnId);
-    const explicitEventParentToolCallId = isAcceptedRootClientTurn
-      ? undefined
-      : getEventParentToolCallId(decoded);
+    const decodedEventParentToolCallId = getEventParentToolCallId(decoded);
+    const explicitEventParentToolCallId =
+      shouldUseExplicitEventParentToolCallId({
+        eventTurnId,
+        isAcceptedRootClientTurn,
+        parentToolCallId: decodedEventParentToolCallId,
+        state,
+      })
+        ? decodedEventParentToolCallId
+        : undefined;
 
     if (decoded.type === "turn/started") {
       const turnId = requireThreadEventScopeTurnId({
@@ -476,7 +506,7 @@ function buildFlatProjectionData(
     }
 
     const eventParentToolCallId = isAcceptedRootClientTurn
-      ? undefined
+      ? explicitEventParentToolCallId
       : (explicitEventParentToolCallId ??
         (eventTurnId
           ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
@@ -628,6 +658,12 @@ function buildFlatProjectionData(
       const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
       const toolCallSenderThreadId = getToolCallSenderThreadId(decoded);
       if (toolCallEvent.kind !== "output") {
+        if (toolCallEvent.call.kind === "delegation" && eventTurnId) {
+          state.delegationTurnIdsByCallId.set(
+            toolCallEvent.call.callId,
+            eventTurnId,
+          );
+        }
         if (
           !toolCallEvent.call.parentToolCallId &&
           toolCallName &&

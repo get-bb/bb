@@ -1202,6 +1202,90 @@ describe("timeline CLI rendering snapshots", () => {
     });
   });
 
+  it("nests explicit Claude subagent messages inside accepted root turns", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const startRequest = event.clientTurnRequested({
+      target: { kind: "thread-start" },
+      text: "Run a Claude Code subagent.",
+    });
+    const timeline = renderActiveTimeline([
+      startRequest,
+      event.turnStarted(),
+      event.inputAccepted({
+        clientRequestId: startRequest.data.requestId,
+      }),
+      event.toolCallStarted({
+        itemId: "toolu_agent_1",
+        tool: "Agent",
+        arguments: {
+          prompt: "Reply with FIRST_SUBAGENT_OUTPUT.",
+          subagent_type: "general-purpose",
+        },
+      }),
+      event.toolCallCompleted({
+        itemId: "toolu_agent_1",
+        tool: "Agent",
+        arguments: {
+          prompt: "Reply with FIRST_SUBAGENT_OUTPUT.",
+          subagent_type: "general-purpose",
+        },
+        result: "FIRST_SUBAGENT_OUTPUT",
+      }),
+      event.assistantCompleted({
+        itemId: "subagent-message-1",
+        parentToolCallId: "toolu_agent_1",
+        text: "SECOND_SUBAGENT_OUTPUT",
+      }),
+      event.assistantCompleted({
+        itemId: "main-assistant-1",
+        text: "MAIN_DONE_AFTER_SENDMESSAGE",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const topLevelSubagentOutput = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.text === "SECOND_SUBAGENT_OUTPUT",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "SECOND_SUBAGENT_OUTPUT",
+          turnId: "turn-1",
+        }),
+      ]),
+    );
+    expect(topLevelSubagentOutput).toBeUndefined();
+    expect(timeline.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "MAIN_DONE_AFTER_SENDMESSAGE",
+          turnId: "turn-1",
+        }),
+      ]),
+    );
+  });
+
   it("does not attach later human turns to Codex same-provider receiver delegations", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
