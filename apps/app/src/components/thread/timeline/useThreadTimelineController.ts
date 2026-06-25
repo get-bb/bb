@@ -4,6 +4,8 @@ import type {
   TimelinePaginationCursor,
   TimelineRow,
 } from "@bb/server-contract";
+import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
+import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
 import * as api from "@/lib/api";
 
@@ -494,6 +496,25 @@ export function useThreadTimelineController({
     surfaceKey,
     threadId,
   ]);
+  const timelineRows =
+    loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
+      ? loadedTimeline.rows
+      : (latestTimeline?.rows ?? []);
+  const timelineQueryState = useConnectionAwareQueryState({
+    hasResolvedData:
+      latestTimelineQuery.data !== undefined || timelineRows.length > 0,
+    isFetching: latestTimelineQuery.isFetching,
+    isLoadingError: latestTimelineQuery.isLoadingError,
+    isRecoverableLoadingError: isTransientReadError(latestTimelineQuery.error),
+  });
+  const timelineLoading =
+    latestTimelineQuery.isLoading ||
+    (timelineQueryState.status === "loading" && timelineRows.length === 0) ||
+    (latestTimelineQuery.isFetching && timelineRows.length === 0);
+  const timelineError =
+    timelineLoading || timelineQueryState.status !== "unavailable"
+      ? null
+      : latestTimelineQuery.error;
 
   return {
     activePromptMode: latestTimeline?.activePromptMode ?? null,
@@ -506,11 +527,8 @@ export function useThreadTimelineController({
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     pendingTodos: latestTimeline?.pendingTodos ?? null,
-    timelineError: latestTimelineQuery.error,
-    timelineLoading: latestTimelineQuery.isLoading,
-    timelineRows:
-      loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
-        ? loadedTimeline.rows
-        : (latestTimeline?.rows ?? []),
+    timelineError,
+    timelineLoading,
+    timelineRows,
   };
 }

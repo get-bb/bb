@@ -31,6 +31,7 @@ import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
 } from "@/hooks/queries/connection-aware-query-state";
+import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
@@ -1349,6 +1350,9 @@ function ProjectListComponent({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
     isLoadingError: sidebarNavigationQuery.isLoadingError,
+    isRecoverableLoadingError: isTransientReadError(
+      sidebarNavigationQuery.error,
+    ),
   });
   const { localDaemonHostId } = useHostDaemon();
   const { threadId: selectedThreadId } = useRouteState();

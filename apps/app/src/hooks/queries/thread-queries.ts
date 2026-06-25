@@ -48,6 +48,8 @@ import {
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
+  shouldRetryTransientReadQuery,
+  TRANSIENT_READ_RETRY_DELAY_MS,
 } from "./query-helpers";
 import {
   archivedThreadsListQueryKey,
@@ -505,6 +507,8 @@ export function useThread(id: string, options?: QueryOptions) {
     enabled,
     staleTime: 5_000,
     refetchOnMount: options?.refetchOnMount ?? true,
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
       liftThreadListPlaceholder(
@@ -550,6 +554,8 @@ export function useThreadDetailBootstrap(
     },
     enabled,
     staleTime: Infinity,
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
   });
 }
 
@@ -786,6 +792,8 @@ export function useThreadTimeline(
     ...(options?.staleTime === undefined
       ? {}
       : { staleTime: options.staleTime }),
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadTimelinePlaceholder(
         previousData,

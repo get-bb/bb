@@ -36,7 +36,8 @@ import {
   resolveThreadTimelinePlaceholder,
 } from "./query-placeholders";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { HttpError } from "@/lib/api";
+import { isTransientReadError, requireEnabledQueryArg } from "./query-helpers";
 
 describe("requireEnabledQueryArg", () => {
   it("returns the value when present", () => {
@@ -67,6 +68,22 @@ describe("requireEnabledQueryArg", () => {
         argName: "thread id",
       }),
     ).toThrow("useThread: thread id is required when query is enabled");
+  });
+});
+
+describe("isTransientReadError", () => {
+  it("matches browser transport failures but not HTTP responses", () => {
+    expect(isTransientReadError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isTransientReadError(new TypeError("Load failed"))).toBe(true);
+    expect(isTransientReadError({ name: "AbortError" })).toBe(true);
+    expect(
+      isTransientReadError(
+        new HttpError({ status: 404, message: "Not found" }),
+      ),
+    ).toBe(false);
+    expect(isTransientReadError(new Error("Unexpected parse error"))).toBe(
+      false,
+    );
   });
 });
 

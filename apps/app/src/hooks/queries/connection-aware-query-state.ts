@@ -15,6 +15,7 @@ export interface ConnectionAwareQuerySnapshot {
   hasResolvedData: boolean;
   isFetching: boolean;
   isLoadingError: boolean;
+  isRecoverableLoadingError?: boolean;
 }
 
 export interface ConnectionAwareQueryStateArgs
@@ -34,6 +35,7 @@ export function getConnectionAwareQueryState({
   hasResolvedData,
   isFetching,
   isLoadingError,
+  isRecoverableLoadingError = false,
   serverConnectionState,
   connectionGracePeriodElapsed,
 }: ConnectionAwareQueryStateArgs): ConnectionAwareQueryState {
@@ -46,6 +48,15 @@ export function getConnectionAwareQueryState({
     isLoadingError &&
     serverConnectionState !== "connected" &&
     !connectionGracePeriodElapsed
+  ) {
+    return { status: "loading" };
+  }
+
+  if (
+    !hasResolvedData &&
+    isLoadingError &&
+    isRecoverableLoadingError &&
+    (serverConnectionState === "connected" || !connectionGracePeriodElapsed)
   ) {
     return { status: "loading" };
   }
@@ -83,6 +94,7 @@ export function useConnectionAwareQueryState({
   hasResolvedData,
   isFetching,
   isLoadingError,
+  isRecoverableLoadingError,
 }: UseConnectionAwareQueryStateArgs): ConnectionAwareQueryState {
   const serverConnectionState = useServerConnectionState();
   const connectionGracePeriodElapsed = useServerConnectionGracePeriodElapsed();
@@ -93,6 +105,7 @@ export function useConnectionAwareQueryState({
         hasResolvedData,
         isFetching,
         isLoadingError,
+        isRecoverableLoadingError,
         serverConnectionState,
         connectionGracePeriodElapsed,
       }),
@@ -100,6 +113,7 @@ export function useConnectionAwareQueryState({
       hasResolvedData,
       isFetching,
       isLoadingError,
+      isRecoverableLoadingError,
       serverConnectionState,
       connectionGracePeriodElapsed,
     ],

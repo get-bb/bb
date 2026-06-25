@@ -55,6 +55,26 @@ describe("getConnectionAwareQueryState", () => {
       {
         args: {
           ...baseArgs,
+          isLoadingError: true,
+          isRecoverableLoadingError: true,
+          serverConnectionState: "connected",
+          connectionGracePeriodElapsed: false,
+        },
+        status: "loading",
+      },
+      {
+        args: {
+          ...baseArgs,
+          isLoadingError: true,
+          isRecoverableLoadingError: true,
+          serverConnectionState: "reconnecting",
+          connectionGracePeriodElapsed: true,
+        },
+        status: "unavailable",
+      },
+      {
+        args: {
+          ...baseArgs,
           hasResolvedData: true,
           serverConnectionState: "connected",
         },

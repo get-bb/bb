@@ -9,6 +9,10 @@ import {
   showMutationErrorToast,
 } from "./mutation-errors";
 import { cancelActiveQueryFetchesForBrowserSuspend } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
+import {
+  shouldRetryTransientReadQuery,
+  TRANSIENT_READ_RETRY_DELAY_MS,
+} from "@/hooks/queries/query-helpers";
 
 export interface CreateAppQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
@@ -105,7 +109,8 @@ export function createAppQueryClient(
       queries: {
         staleTime: 2000,
         refetchOnWindowFocus: true,
-        retry: 0,
+        retry: shouldRetryTransientReadQuery,
+        retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
         ...defaultOptions?.queries,
       },
     },
