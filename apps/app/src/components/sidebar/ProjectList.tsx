@@ -778,7 +778,7 @@ export function SidebarGroupOptionsMenu({
           Organize by
         </DropdownMenuLabel>
         <SidebarGroupMenuOption
-          label="Project"
+          label="Projects"
           selected={organizationMode === "project"}
           onSelect={(event) => {
             event.preventDefault();
@@ -786,7 +786,7 @@ export function SidebarGroupOptionsMenu({
           }}
         />
         <SidebarGroupMenuOption
-          label="Folders"
+          label="Manually"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
