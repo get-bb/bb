@@ -14,6 +14,8 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
+  hasPromptBranchSelectionChanged,
+  hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
   mergeMissingPromptDraftAttachments,
   readFolderIdFromLocationState,
@@ -403,6 +405,45 @@ describe("restorePromptDraftAfterOptionChange", () => {
         preservedDraft: draft,
       }),
     ).toBeNull();
+  });
+});
+
+describe("hasPromptOptionValueChanged", () => {
+  it("treats unchanged prompt option values as no-ops", () => {
+    expect(hasPromptOptionValueChanged("codex", "codex")).toBe(false);
+    expect(hasPromptOptionValueChanged(undefined, undefined)).toBe(false);
+  });
+
+  it("detects changed prompt option values", () => {
+    expect(hasPromptOptionValueChanged("codex", "claude")).toBe(true);
+    expect(hasPromptOptionValueChanged(undefined, "auto")).toBe(true);
+  });
+});
+
+describe("hasPromptBranchSelectionChanged", () => {
+  it("treats the same branch selection as a no-op", () => {
+    expect(
+      hasPromptBranchSelectionChanged(
+        { name: "main", isNew: false },
+        { name: "main", isNew: false },
+      ),
+    ).toBe(false);
+    expect(hasPromptBranchSelectionChanged(null, null)).toBe(false);
+  });
+
+  it("detects changed branch selections", () => {
+    expect(
+      hasPromptBranchSelectionChanged(
+        { name: "main", isNew: false },
+        { name: "main", isNew: true },
+      ),
+    ).toBe(true);
+    expect(
+      hasPromptBranchSelectionChanged({ name: "main", isNew: false }, null),
+    ).toBe(true);
+    expect(
+      hasPromptBranchSelectionChanged(null, { name: "develop", isNew: false }),
+    ).toBe(true);
   });
 });
 

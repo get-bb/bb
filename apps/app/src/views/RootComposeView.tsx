@@ -157,7 +157,10 @@ import {
   buildRootComposeBranchUiState,
   type RootComposeBranchEnvironmentMode,
 } from "./root-compose-branch-ui";
-import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
+import {
+  resolveRootComposeThreadEnvironment,
+  type RootComposeSelectedBranch,
+} from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
@@ -275,6 +278,26 @@ export function restorePromptDraftAfterOptionChange({
   }
 
   return changed ? restoredDraft : null;
+}
+
+export function hasPromptOptionValueChanged<T>(
+  currentValue: T,
+  nextValue: T,
+): boolean {
+  return !Object.is(currentValue, nextValue);
+}
+
+export function hasPromptBranchSelectionChanged(
+  currentBranch: RootComposeSelectedBranch | null,
+  nextBranch: RootComposeSelectedBranch | null,
+): boolean {
+  if (currentBranch === null || nextBranch === null) {
+    return currentBranch !== nextBranch;
+  }
+  return (
+    currentBranch.name !== nextBranch.name ||
+    currentBranch.isNew !== nextBranch.isNew
+  );
 }
 
 interface LegacyProjectComposeRedirectProps {
@@ -934,45 +957,76 @@ export function RootComposeView(props: RootComposeViewProps) {
   }, [promptDraft]);
   const handleSelectedProviderIdChange = useCallback(
     (nextProviderId: string) => {
+      if (!hasPromptOptionValueChanged(selectedProviderId, nextProviderId)) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setSelectedProviderId(nextProviderId);
     },
-    [setSelectedProviderId, snapshotPromptDraftBeforeOptionChange],
+    [
+      selectedProviderId,
+      setSelectedProviderId,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   const handleSelectedModelChange = useCallback(
     (nextModel: string) => {
+      if (!hasPromptOptionValueChanged(selectedModel, nextModel)) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setSelectedModel(nextModel);
     },
-    [setSelectedModel, snapshotPromptDraftBeforeOptionChange],
+    [selectedModel, setSelectedModel, snapshotPromptDraftBeforeOptionChange],
   );
   const handleServiceTierChange = useCallback(
     (nextServiceTier: ServiceTier | undefined) => {
+      if (!hasPromptOptionValueChanged(serviceTier, nextServiceTier)) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setServiceTier(nextServiceTier);
     },
-    [setServiceTier, snapshotPromptDraftBeforeOptionChange],
+    [serviceTier, setServiceTier, snapshotPromptDraftBeforeOptionChange],
   );
   const handleReasoningLevelChange = useCallback(
     (nextReasoningLevel: ReasoningLevel) => {
+      if (!hasPromptOptionValueChanged(reasoningLevel, nextReasoningLevel)) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setReasoningLevel(nextReasoningLevel);
     },
-    [setReasoningLevel, snapshotPromptDraftBeforeOptionChange],
+    [reasoningLevel, setReasoningLevel, snapshotPromptDraftBeforeOptionChange],
   );
   const handlePermissionModeChange = useCallback(
     (nextPermissionMode: PermissionMode) => {
+      if (!hasPromptOptionValueChanged(permissionMode, nextPermissionMode)) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setPermissionMode(nextPermissionMode);
     },
-    [setPermissionMode, snapshotPromptDraftBeforeOptionChange],
+    [permissionMode, setPermissionMode, snapshotPromptDraftBeforeOptionChange],
   );
   const handleEnvironmentSelectionValueChange = useCallback(
     (nextEnvironmentValue: string) => {
+      if (
+        !hasPromptOptionValueChanged(
+          environmentSelectionValue,
+          nextEnvironmentValue,
+        )
+      ) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       setEnvironmentSelectionValue(nextEnvironmentValue);
     },
-    [setEnvironmentSelectionValue, snapshotPromptDraftBeforeOptionChange],
+    [
+      environmentSelectionValue,
+      setEnvironmentSelectionValue,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   useEffect(() => {
     const preservedDraft = promptOptionDraftSnapshotRef.current;
@@ -1166,6 +1220,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     environmentValue: effectiveEnvironmentValue,
     projectId,
   });
+  const canChangeBranchSelection =
+    projectId !== undefined && effectiveEnvironmentValue !== "";
   const selectedBranchName = selectedBranch?.name ?? "";
   const hostBranchesQuery = useProjectSourceBranches(
     projectId,
@@ -1258,25 +1314,86 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const handlePromptBoxBranchChange = useCallback(
     (branch: string) => {
+      const nextBranch: RootComposeSelectedBranch = {
+        name: branch,
+        isNew: false,
+      };
+      if (
+        !canChangeBranchSelection ||
+        !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
+      ) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       handleBranchChange(branch);
     },
-    [handleBranchChange, snapshotPromptDraftBeforeOptionChange],
+    [
+      canChangeBranchSelection,
+      handleBranchChange,
+      selectedBranch,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   const handlePromptBoxClearBranch = useCallback(() => {
+    if (
+      !canChangeBranchSelection ||
+      !hasPromptBranchSelectionChanged(selectedBranch, null)
+    ) {
+      return;
+    }
     snapshotPromptDraftBeforeOptionChange();
     handleClearBranch();
-  }, [handleClearBranch, snapshotPromptDraftBeforeOptionChange]);
+  }, [
+    canChangeBranchSelection,
+    handleClearBranch,
+    selectedBranch,
+    snapshotPromptDraftBeforeOptionChange,
+  ]);
   const handlePromptBoxCreateBranchFromSeed = useCallback(() => {
+    const branchName = selectedBranch?.name ?? branchSelectionSeed;
+    const nextBranch =
+      branchName === null
+        ? null
+        : {
+            name: branchName,
+            isNew: true,
+          };
+    if (
+      !canChangeBranchSelection ||
+      !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
+    ) {
+      return;
+    }
     snapshotPromptDraftBeforeOptionChange();
     handleCreateBranchFromSeed();
-  }, [handleCreateBranchFromSeed, snapshotPromptDraftBeforeOptionChange]);
+  }, [
+    branchSelectionSeed,
+    canChangeBranchSelection,
+    handleCreateBranchFromSeed,
+    selectedBranch,
+    snapshotPromptDraftBeforeOptionChange,
+  ]);
   const handlePromptBoxCreateBranchFrom = useCallback(
     (branch: string) => {
+      const nextBranch: RootComposeSelectedBranch = {
+        name: branch,
+        isNew: true,
+      };
+      if (
+        !canChangeBranchSelection ||
+        !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
+      ) {
+        return;
+      }
       snapshotPromptDraftBeforeOptionChange();
       handleCreateBranchFrom(branch);
     },
-    [handleCreateBranchFrom, snapshotPromptDraftBeforeOptionChange],
+    [
+      canChangeBranchSelection,
+      handleCreateBranchFrom,
+      selectedBranch,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
 
   const selectedEnvironment = useMemo(
