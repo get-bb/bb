@@ -2,10 +2,14 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
 import type { MessageProseSelection } from "./SelectableMessageProse";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function makeSelection(
   overrides: Partial<MessageProseSelection> = {},
@@ -16,6 +20,19 @@ function makeSelection(
     sourceSeqEnd: 12,
     ...overrides,
   };
+}
+
+function mockCompactViewport() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === COMPACT_VIEWPORT_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
 }
 
 describe("TimelineSelectionMenu", () => {
@@ -73,6 +90,20 @@ describe("TimelineSelectionMenu", () => {
     );
 
     expect(document.body.querySelector('[data-side="bottom"]')).toBeTruthy();
+  });
+
+  it("stays anchored instead of rendering as a compact viewport drawer", () => {
+    mockCompactViewport();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection({ anchorSide: "top" })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
+    expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
   });
 
   it("passes the selection branch point to side-chat replies", () => {

@@ -84,6 +84,7 @@ import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import {
   collectSearchedMessageAncestorRowIds,
   readSearchMessageTarget,
@@ -1794,11 +1795,22 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   // `null` (only emitted by a message that previously had a selection) clears it.
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const onSelectionReplyInSideChat = props.onSelectionReplyInSideChat;
+  const isPointerCoarse = usePointerCoarse();
   const hasSelectionActions =
-    onSelectionAddToChat !== undefined ||
-    onSelectionReplyInSideChat !== undefined;
+    !isPointerCoarse &&
+    (onSelectionAddToChat !== undefined ||
+      onSelectionReplyInSideChat !== undefined);
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
+  useEffect(() => {
+    if (!isPointerCoarse || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      setActiveSelection(null);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [isPointerCoarse]);
   // Only hand a reporter to the messages when an action exists; otherwise the
   // wrapper stays inert and the floating menu never mounts.
   const reportProseSelection = useMemo<

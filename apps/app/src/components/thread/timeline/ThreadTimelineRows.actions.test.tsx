@@ -12,6 +12,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
@@ -181,6 +183,27 @@ function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   } as unknown as Selection);
 }
 
+function mockSelectionMenuMedia({
+  isCompactViewport = false,
+  isPointerCoarse = false,
+}: {
+  isCompactViewport?: boolean;
+  isPointerCoarse?: boolean;
+} = {}) {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches:
+      (query === COMPACT_VIEWPORT_QUERY && isCompactViewport) ||
+      (query === POINTER_COARSE_QUERY && isPointerCoarse),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -343,6 +366,83 @@ describe("ThreadTimelineRows actions", () => {
       messageText: "this earlier answer",
       sourceSeqEnd: 42,
     });
+  });
+
+  it("does not show the floating selection menu on coarse pointers", async () => {
+    mockSelectionMenuMedia({ isPointerCoarse: true });
+    const onSelectionAddToChat = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "Mobile selection should use native controls.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+    const textNode = screen.getByText(
+      "Mobile selection should use native controls.",
+    ).firstChild;
+    expect(textNode).not.toBeNull();
+    mockWindowSelection({
+      node: textNode!,
+      text: "native controls",
+    });
+
+    await act(async () => {
+      fireEvent(document, new Event("selectionchange"));
+    });
+
+    expect(screen.queryByRole("button", { name: "Add to chat" })).toBeNull();
+    expect(onSelectionAddToChat).not.toHaveBeenCalled();
+  });
+
+  it("keeps the floating selection menu on compact fine-pointer viewports", async () => {
+    mockSelectionMenuMedia({ isCompactViewport: true });
+    const onSelectionAddToChat = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "Compact fine pointer keeps the floating selection menu.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+    const textNode = screen.getByText(
+      "Compact fine pointer keeps the floating selection menu.",
+    ).firstChild;
+    expect(textNode).not.toBeNull();
+    mockWindowSelection({
+      node: textNode!,
+      text: "floating selection menu",
+    });
+
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy(),
+    );
   });
 
   it("ignores sidebar search scroll state for a different thread", () => {

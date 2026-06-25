@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
-import { cn } from "@/lib/utils";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "../../ui/icon.js";
-import { Popover, PopoverAnchor, PopoverContent } from "../../ui/popover.js";
 import { preventOverlayTriggerSelection } from "../../ui/overlay-trigger.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
@@ -10,6 +9,8 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 // affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
   "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+const SELECTION_MENU_CONTENT_CLASS =
+  "z-50 flex w-auto items-center gap-0.5 rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
 
 interface SelectionAction {
   icon: IconName;
@@ -123,7 +124,7 @@ export function TimelineSelectionMenu({
   const anchorSide = selection.anchorSide ?? "top";
 
   return (
-    <Popover
+    <PopoverPrimitive.Root
       open
       onOpenChange={(next) => {
         if (!next) onDismiss();
@@ -133,7 +134,7 @@ export function TimelineSelectionMenu({
         Zero-size anchor pinned to the pointer release point and gesture side,
         falling back to the selection rect.
       */}
-      <PopoverAnchor asChild>
+      <PopoverPrimitive.Anchor asChild>
         <div
           ref={anchorRef}
           aria-hidden="true"
@@ -145,32 +146,31 @@ export function TimelineSelectionMenu({
             height: 0,
           }}
         />
-      </PopoverAnchor>
-      <PopoverContent
-        side={anchorSide}
-        align="center"
-        sideOffset={6}
-        collisionBoundary={collisionBoundary}
-        collisionPadding={8}
-        mobileTitle="Selection actions"
-        // Tight, horizontal, content-width row — override the default wide
-        // popover padding/width.
-        className={cn(
-          "flex w-auto items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md",
-        )}
-        mobileClassName="flex items-center justify-center gap-2"
-        onEscapeKeyDown={() => onDismiss()}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-      >
-        {actions.map((action, index) => (
-          <div key={action.label} className="flex items-center">
-            {index > 0 ? (
-              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
-            ) : null}
-            <ActionButton action={action} selection={selection} />
-          </div>
-        ))}
-      </PopoverContent>
-    </Popover>
+      </PopoverPrimitive.Anchor>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side={anchorSide}
+          align="center"
+          sideOffset={6}
+          collisionBoundary={collisionBoundary}
+          collisionPadding={8}
+          className={SELECTION_MENU_CONTENT_CLASS}
+          onEscapeKeyDown={() => onDismiss()}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          {actions.map((action, index) => (
+            <div key={action.label} className="flex items-center">
+              {index > 0 ? (
+                <span
+                  aria-hidden="true"
+                  className="mx-0.5 h-4 w-px bg-border"
+                />
+              ) : null}
+              <ActionButton action={action} selection={selection} />
+            </div>
+          ))}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }

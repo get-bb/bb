@@ -112,13 +112,11 @@ export function Overview() {
 }
 
 export function CompactViewport() {
-  // On a compact viewport the Popover renders as a bottom drawer (see
-  // responsive-overlay). Narrow the Ladle canvas below ~640px to observe it.
   return (
     <StoryCard>
       <StoryRow
-        label="Compact (drawer)"
-        hint="Resize the canvas below ~640px to see the bottom drawer"
+        label="Compact viewport"
+        hint="The selection menu remains anchored instead of becoming a drawer"
       >
         <div className="w-[360px]">
           <AgentMessageWithMenu selected="drop the legacy field" />
