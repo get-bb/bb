@@ -10,6 +10,8 @@ import { useScrollOverflowState } from "./useScrollOverflowState.js";
 
 export interface TimelineDetailScrollProps {
   size: DetailScrollSize;
+  /** Hide the outer x-axis when a child owns horizontal scrolling. */
+  overflowX?: "auto" | "hidden";
   /**
    * When true, the scroll container sticks to the bottom as `contentKey`
    * changes — for incremental streams (command/tool output, growing bundle).
@@ -45,6 +47,7 @@ export interface TimelineDetailScrollProps {
 // flips off without remounting.
 export function TimelineDetailScroll({
   size,
+  overflowX = "auto",
   streaming = false,
   contentKey,
   className,
@@ -86,7 +89,8 @@ export function TimelineDetailScroll({
         onWheel={sticky.onWheel}
         data-detail-scroll-area={size}
         className={cn(
-          "min-w-0 overflow-auto",
+          "min-w-0 overflow-y-auto",
+          overflowX === "auto" ? "overflow-x-auto" : "overflow-x-hidden",
           maxHeightClassName,
           scrollClassName,
         )}

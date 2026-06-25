@@ -48,6 +48,27 @@ const toolSearchTool: TimelineRow = toolRow({
   durationMs: 105,
 });
 
+const longOutputTool: TimelineRow = toolRow({
+  id: "thr_tool_long_output:tool:toolu_long_output",
+  threadId: "thr_tool_long_output",
+  turnId: "turn_tool_long_output_1",
+  sourceSeqStart: 762,
+  sourceSeqEnd: 763,
+  startedAt: 1776880212000,
+  createdAt: 1776880212100,
+  status: "completed",
+  callId: "toolu_long_output",
+  toolName: "ToolSearch",
+  toolArgs: {
+    query: "select:LongOutput",
+    max_results: 1,
+  },
+  output: `Matched tool: LongOutput\nresult_id=${"0123456789abcdef".repeat(20)}`,
+  approvalStatus: null,
+  activityIntents: [],
+  durationMs: 100,
+});
+
 // thr_bj3p5vk9py, seq 13, turn 019de9bd-c299-7053-b11d-11b1f40e8b83 —
 // parent thread sending an introductory notify_user. Free-form text
 // arg, "Notification delivered" result.
@@ -381,6 +402,18 @@ export function Overview() {
             {...baseProps}
             initialExpanded={new Set([toolSearchTool.id])}
             timelineRows={[toolSearchTool]}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="ToolSearch — long output line"
+        hint="output scrolls horizontally without moving the divider"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows
+            {...baseProps}
+            initialExpanded={new Set([longOutputTool.id])}
+            timelineRows={[longOutputTool]}
           />
         </TimelineStage>
       </StoryRow>
