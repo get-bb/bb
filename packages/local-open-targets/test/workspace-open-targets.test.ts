@@ -6,7 +6,7 @@ import {
   listWorkspaceOpenTargetsWithRuntime,
   openPathInTargetWithRuntime,
   type WorkspaceOpenTargetRuntime,
-} from "./workspace-open-targets.js";
+} from "../src/index.js";
 
 type ExecFileHandler = WorkspaceOpenTargetRuntime["execFile"];
 

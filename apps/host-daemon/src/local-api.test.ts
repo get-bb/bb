@@ -14,7 +14,7 @@ import {
   type LocalApiServer,
 } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
-import { WorkspaceOpenTargetError } from "./workspace-open-targets.js";
+import { WorkspaceOpenTargetError } from "@bb/local-open-targets";
 
 describe("local API server", () => {
   let server: LocalApiServer | null = null;

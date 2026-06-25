@@ -28,6 +28,7 @@
     "@bb/domain": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
+    "@bb/local-open-targets": "workspace:*",
     "@bb/host-watcher": "workspace:*",
     "@bb/host-workspace": "workspace:*",
     "@bb/logger": "workspace:*",

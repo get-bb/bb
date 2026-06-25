@@ -29,17 +29,17 @@ import {
   type WorkspaceOpenTarget,
   type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { HTTPException } from "hono/http-exception";
-import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   listWorkspaceOpenTargets,
   openPathInTarget,
   type OpenPathInTargetArgs,
   WorkspaceOpenTargetError,
-} from "./workspace-open-targets.js";
+} from "@bb/local-open-targets";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
+import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   getProviderCliStatus,
   ProviderCliInstallInProgressError,

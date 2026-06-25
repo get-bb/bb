@@ -416,6 +416,9 @@ importers:
       '@bb/host-workspace':
         specifier: workspace:*
         version: link:../../packages/host-workspace
+      '@bb/local-open-targets':
+        specifier: workspace:*
+        version: link:../../packages/local-open-targets
       '@bb/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -1026,6 +1029,31 @@ importers:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+
+  packages/local-open-targets:
+    dependencies:
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(typescript@5.9.3))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.2))
 
   packages/logger:
     dependencies:
