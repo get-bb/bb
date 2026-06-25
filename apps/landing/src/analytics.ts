@@ -23,6 +23,10 @@ export type LandingEvent =
   | {
       name: "landing_cli_command_copied";
       properties: { placement: CtaPlacement; command: string };
+    }
+  | {
+      name: "landing_email_subscribed";
+      properties: { placement: CtaPlacement };
     };
 
 let client: PostHog | null = null;

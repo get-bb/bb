@@ -2307,8 +2307,102 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: 12px;
 }
 
-.footer {
+/* ── Email signup ───────────────────────────────────────────────── */
+
+/* A slim, secondary strip — deliberately lighter than the closer above it so
+   the two don't read as the same centered band twice. */
+.subscribe {
   border-top: 1px solid var(--border-soft);
+  padding: 44px 0;
+  text-align: center;
+}
+
+.subscribe-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.subscribe p {
+  color: var(--dim);
+  margin-top: 5px;
+  font-size: 14px;
+}
+
+.subscribe-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 18px auto 0;
+  max-width: 440px;
+}
+
+.subscribe-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 10px 14px;
+  font-size: 14.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.subscribe-input::placeholder {
+  color: var(--subtle);
+}
+
+.subscribe-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.subscribe-input[aria-invalid="true"] {
+  border-color: var(--del);
+}
+
+.subscribe-btn {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.subscribe-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+/* The validation message takes the full width so it sits under the row. */
+.subscribe-error {
+  flex-basis: 100%;
+  color: var(--del);
+  font-size: 13.5px;
+}
+
+.subscribe-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.subscribe-done-ic {
+  width: 18px;
+  height: 18px;
+  color: var(--ok);
+  flex-shrink: 0;
+}
+
+.footer {
   padding: 32px 0 52px;
   display: flex;
   justify-content: space-between;

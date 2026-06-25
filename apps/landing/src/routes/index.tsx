@@ -28,7 +28,7 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
 import bbIcon from "../assets/bb-icon.png";
@@ -36,7 +36,7 @@ import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, CursorIcon, OpenAiIcon, PiIcon } from "../icons";
 import type { CtaPlacement } from "../site";
-import { CLI_COMMAND, GITHUB_URL, downloadMacosHref } from "../site";
+import { CLI_COMMAND, GITHUB_URL, SUBSCRIBE_PATH, downloadMacosHref } from "../site";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -162,6 +162,92 @@ function InstallOptions({ placement }: { placement: CtaPlacement }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/* ── Email signup ─────────────────────────────────────────────────── */
+
+type SubscribeStatus = "idle" | "submitting" | "success" | "error";
+
+// Email capture that POSTs to the first-party /api/subscribe Worker route,
+// which adds the address to the bb marketing audience in Resend. JS-enhanced:
+// it submits inline and swaps to a confirmation rather than navigating.
+function EmailSignup({ placement }: { placement: CtaPlacement }) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<SubscribeStatus>("idle");
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (status === "submitting") {
+      return;
+    }
+    setStatus("submitting");
+    setError("");
+    try {
+      const response = await fetch(SUBSCRIBE_PATH, {
+        body: JSON.stringify({ email }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setError(body.error ?? "Something went wrong. Try again.");
+        setStatus("error");
+        return;
+      }
+      trackLandingEvent({ name: "landing_email_subscribed", properties: { placement } });
+      setStatus("success");
+    } catch {
+      setError("Could not reach the server. Try again.");
+      setStatus("error");
+    }
+  };
+
+  if (status === "success") {
+    return (
+      <p className="subscribe-done" role="status">
+        <HugeiconsIcon icon={CheckmarkCircle02Icon} className="subscribe-done-ic" />
+        You&rsquo;re on the list. We&rsquo;ll be in touch.
+      </p>
+    );
+  }
+
+  return (
+    <form className="subscribe-form" onSubmit={submit} noValidate>
+      <input
+        className="subscribe-input"
+        type="email"
+        name="email"
+        inputMode="email"
+        autoComplete="email"
+        required
+        placeholder="you@example.com"
+        aria-label="Email address"
+        aria-invalid={status === "error"}
+        value={email}
+        onChange={(event) => {
+          setEmail(event.target.value);
+          if (status === "error") {
+            setStatus("idle");
+          }
+        }}
+      />
+      <button
+        type="submit"
+        className="btn btn-primary subscribe-btn"
+        disabled={status === "submitting"}
+      >
+        {status === "submitting" ? "Subscribing…" : "Subscribe"}
+      </button>
+      {status === "error" ? (
+        <span className="subscribe-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </form>
   );
 }
 
@@ -1547,7 +1633,7 @@ function LandingPage() {
       </section>
 
       <section className="closer" data-reveal>
-        <h2 className="sec-title">Start your first loop.</h2>
+        <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
         <InstallOptions placement="closer" />
         <div className="cta-row cta-row-secondary">
@@ -1555,6 +1641,12 @@ function LandingPage() {
             View on GitHub
           </GitHubLink>
         </div>
+      </section>
+
+      <section className="subscribe" data-reveal>
+        <h2 className="subscribe-title">Stay in the loop.</h2>
+        <p>Product updates and what we&rsquo;re building next. No spam.</p>
+        <EmailSignup placement="footer" />
       </section>
 
       <footer className="footer">

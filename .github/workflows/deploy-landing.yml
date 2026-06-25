@@ -69,6 +69,17 @@ jobs:
           fi
           printf '%s' "$LANDING_POSTHOG_KEY" | pnpm --filter @bb/landing exec wrangler secret put LANDING_POSTHOG_KEY
 
+      - name: Sync landing email signup secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "RESEND_API_KEY is required for the landing email signup."
+            exit 1
+          fi
+          printf '%s' "$RESEND_API_KEY" | pnpm --filter @bb/landing exec wrangler secret put RESEND_API_KEY
+
       - name: Deploy landing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
