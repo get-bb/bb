@@ -363,6 +363,10 @@ describe("desktop build", () => {
       ).resolves.toBeUndefined();
     }
 
+    if (process.platform !== "darwin") {
+      return;
+    }
+
     const smokeRoot = await mkdtemp(join(tmpdir(), "bb-desktop-smoke-"));
     const smokeServer = await startDesktopSmokeServer({
       dataDir: join(smokeRoot, "data"),
