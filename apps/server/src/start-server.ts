@@ -58,6 +58,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     featureFlags: serverConfig.featureFlags,
     hostDaemonPort: serverConfig.BB_HOST_DAEMON_PORT,
+    inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
     inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
     openAiApiKey: serverConfig.OPENAI_API_KEY,

@@ -1,3 +1,4 @@
+import { delimiter } from "node:path";
 import { defaultFeatureFlags, hostTypeSchema, type HostType } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
@@ -53,6 +54,13 @@ export function parseOptionalTrimmedStringEnvValue(
 
 function parseStringEnvValue(args: EnvVarParseArgs): string {
   return args.value;
+}
+
+function parsePathListEnvValue(args: EnvVarParseArgs): string[] {
+  return args.value
+    .split(delimiter)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 function parseNonEmptyStringEnvValue(args: EnvVarParseArgs): string {
@@ -214,6 +222,13 @@ export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
     "Directory containing the bb CLI executable to inject into runtime shells",
   name: "BB_CLI_DIR",
   parse: parseOptionalTrimmedStringEnvValue,
+});
+
+export const BB_INHERITED_SKILLS_ROOTS_ENV = defineEnvVar<string[]>({
+  description:
+    "Development-only path list of inherited bb skill roots for managed worktree dev apps",
+  name: "BB_INHERITED_SKILLS_ROOTS",
+  parse: parsePathListEnvValue,
 });
 
 export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({

@@ -57,6 +57,7 @@ async function discoverClaude(
       providerId: "claude-code",
       cwd,
       builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [],
       dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
@@ -73,6 +74,7 @@ async function discoverCodex(
       providerId: "codex",
       cwd,
       builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [],
       dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
@@ -860,6 +862,35 @@ describe("discoverProviderCommands (codex)", () => {
     });
   });
 
+  it("discovers inherited bb skills as user-origin codex skills", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const inheritedSkillsRootPath = path.join(tempRoot, "inherited-skills");
+    await writeFileEnsuringDir(
+      path.join(inheritedSkillsRootPath, "stories", "SKILL.md"),
+      "---\nname: stories\ndescription: Show Ladle stories\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "codex",
+        cwd: fixture.cwd,
+        builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+        additionalSkillsRootPaths: [inheritedSkillsRootPath],
+        dataDir: fixture.dataDir,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(byName(commands, "stories")).toEqual({
+      name: "stories",
+      source: "skill",
+      origin: "user",
+      description: "Show Ladle stories",
+      argumentHint: null,
+    });
+  });
+
   it("parses project and user codex skills with correct origins", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
@@ -1092,6 +1123,7 @@ describe("resolveCommandScanRoots", () => {
       providerId: "pi",
       cwd: fixture.cwd,
       builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [],
       dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,

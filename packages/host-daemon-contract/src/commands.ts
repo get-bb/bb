@@ -458,6 +458,7 @@ const hostListCommandsCommandSchema = z.object({
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
   builtinSkillsRootPath: z.string().min(1),
+  additionalSkillsRootPaths: z.array(z.string().min(1)).optional(),
 });
 
 /**

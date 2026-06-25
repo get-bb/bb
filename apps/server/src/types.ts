@@ -32,6 +32,7 @@ export interface ServerRuntimeConfig {
   dataDir: string;
   featureFlags: FeatureFlags;
   hostDaemonPort: number;
+  inheritedSkillsRootPaths: string[];
   inferenceModel: string;
   isDevelopment: boolean;
   openAiApiKey: string;

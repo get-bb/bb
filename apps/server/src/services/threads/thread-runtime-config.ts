@@ -135,6 +135,7 @@ export async function resolveThreadRuntimeCommandConfig(
 
   const { workspaceProvisionType } = args.environment;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
+    additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths,
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),

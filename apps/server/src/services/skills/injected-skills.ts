@@ -30,6 +30,7 @@ const skillFrontmatterSchema = z
   .passthrough();
 
 export interface ResolveInjectedSkillSourcesArgs {
+  additionalSkillsRootPaths?: readonly string[];
   builtinSkillsRootPath: string;
   dataDir: string;
   projectSkillsRootPath?: string;
@@ -272,6 +273,11 @@ interface ExcludeOverriddenBuiltinsArgs {
   userSources: readonly HostDaemonInjectedSkillSource[];
 }
 
+interface ExcludeOverriddenLowerPriorityUserSourcesArgs {
+  higherPrioritySources: readonly HostDaemonInjectedSkillSource[];
+  lowerPrioritySources: readonly HostDaemonInjectedSkillSource[];
+}
+
 /**
  * A data-dir skill that reuses a built-in skill's name overrides the built-in
  * copy, even when user sources later collide each other out: a user touching a
@@ -294,6 +300,28 @@ function excludeOverriddenBuiltins(
         sourceRootPath: source.sourceRootPath,
       },
       "Built-in injected skill overridden by user skill",
+    );
+    return false;
+  });
+}
+
+function excludeOverriddenLowerPriorityUserSources(
+  logger: ServerLogger,
+  args: ExcludeOverriddenLowerPriorityUserSourcesArgs,
+): HostDaemonInjectedSkillSource[] {
+  const higherPriorityNames = new Set(
+    args.higherPrioritySources.map((source) => source.name),
+  );
+  return args.lowerPrioritySources.filter((source) => {
+    if (!higherPriorityNames.has(source.name)) {
+      return true;
+    }
+    logger.info(
+      {
+        name: source.name,
+        sourceRootPath: source.sourceRootPath,
+      },
+      "Inherited injected skill overridden by data-dir skill",
     );
     return false;
   });
@@ -361,8 +389,22 @@ export function resolveInjectedSkillSources(
     skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
     sourceType: "data-dir",
   });
+  const inheritedSources = (args.additionalSkillsRootPaths ?? []).flatMap(
+    (skillsRootPath) =>
+      readSkillsRoot({
+        logger,
+        skillsRootPath,
+        sourceType: "data-dir",
+      }),
+  );
 
-  const userSources = dataDirSources;
+  const userSources = [
+    ...dataDirSources,
+    ...excludeOverriddenLowerPriorityUserSources(logger, {
+      higherPrioritySources: dataDirSources,
+      lowerPrioritySources: inheritedSources,
+    }),
+  ];
   const activeBuiltinSources = excludeOverriddenBuiltins(logger, {
     builtinSources,
     userSources,

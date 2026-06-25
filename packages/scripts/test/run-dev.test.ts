@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveDevInstanceConfig, toDevProcessEnv } from "@bb/config/runtime";
+import {
+  resolveDevInstanceConfig,
+  resolveInheritedDevSkillsRootPaths,
+  toDevProcessEnv,
+} from "@bb/config/runtime";
 import { createDevTurboCommand } from "../src/commands/run-dev.js";
 import { migrateLegacyDevData } from "../src/lib/legacy-dev-data-migration.js";
 import {
@@ -93,6 +97,36 @@ describe("run-dev", () => {
     expect(env.BB_SERVER_URL).toBe(config.serverUrl);
     expect(env.BB_HOST_DAEMON_PORT).toBe(String(config.ports.hostDaemonPort));
     expect(env.BB_DEV_APP_PORT).toBe(String(config.ports.appPort));
+  });
+
+  it("inherits parent bb skills for managed worktree dev apps", () => {
+    const repoRoot =
+      "/Users/tester/.bb-dev/code-bb-abc123/worktrees/env_feature/bb";
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot,
+    });
+
+    expect(resolveInheritedDevSkillsRootPaths({ repoRoot })).toEqual([
+      "/Users/tester/.bb-dev/code-bb-abc123/skills",
+    ]);
+    expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
+      BB_INHERITED_SKILLS_ROOTS:
+        "/Users/tester/.bb-dev/code-bb-abc123/skills",
+    });
+  });
+
+  it("does not inherit bb skills for ordinary checkout dev apps", () => {
+    const repoRoot = "/Users/tester/src/bb";
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot,
+    });
+
+    expect(resolveInheritedDevSkillsRootPaths({ repoRoot })).toEqual([]);
+    expect(
+      toDevProcessEnv({ baseEnv: {}, config }).BB_INHERITED_SKILLS_ROOTS,
+    ).toBeUndefined();
   });
 
   it("strips parent thread context from dev child processes", () => {

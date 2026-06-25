@@ -208,6 +208,50 @@ describe("public project command typeahead route", () => {
     });
   });
 
+  it("passes inherited skills roots to command discovery", async () => {
+    await withTestHarness(
+      {
+        inheritedSkillsRootPaths: ["/tmp/bb-parent-skills"],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-commands-inherited-skills",
+        });
+        seedPrimaryHost(harness.deps, host.id);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/inherited-skills-project",
+        });
+        const stub = registerCommandRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          commands: [
+            skill("stories", "user", {
+              description: "Show Ladle story links",
+            }),
+          ],
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=&query=stories`,
+        );
+
+        expect(response.status).toBe(200);
+        const body = commandListResponseSchema.parse(await readJson(response));
+        expect(body.commands.map((command) => command.name)).toEqual([
+          "stories",
+        ]);
+        expect(stub.requests[0]?.command).toEqual({
+          type: "host.list_commands",
+          providerId: "codex",
+          cwd: "/tmp/inherited-skills-project",
+          builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
+          additionalSkillsRootPaths: ["/tmp/bb-parent-skills"],
+        });
+      },
+    );
+  });
+
   it("matches namespaced skills by their direct skill name", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

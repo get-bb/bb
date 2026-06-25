@@ -211,6 +211,47 @@ describe("injected skill source discovery", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("adds inherited skills as lower-priority user skills", async () => {
+    const dataDir = await makeTempDir();
+    const inheritedSkillsRootPath = path.join(dataDir, "inherited-skills");
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    const inheritedSkillRoot = await writeSkill({
+      rootPath: inheritedSkillsRootPath,
+      name: "stories",
+      description: "Inherited stories skill.",
+    });
+    const dataDirSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "review-loop",
+      description: "Data-dir review skill.",
+    });
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      additionalSkillsRootPaths: [inheritedSkillsRootPath],
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "data-dir",
+        name: "review-loop",
+        description: "Data-dir review skill.",
+        sourceRootPath: dataDirSkillRoot,
+        skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
+      },
+      {
+        sourceType: "data-dir",
+        name: "stories",
+        description: "Inherited stories skill.",
+        sourceRootPath: inheritedSkillRoot,
+        skillFilePath: path.join(inheritedSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
   it("lets a data-dir skill override a built-in skill with the same name", async () => {
     const dataDir = await makeTempDir();
     const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
@@ -244,6 +285,45 @@ describe("injected skill source discovery", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         message: "Built-in injected skill overridden by user skill",
+      }),
+    ]);
+  });
+
+  it("lets a data-dir skill override an inherited skill with the same name", async () => {
+    const dataDir = await makeTempDir();
+    const inheritedSkillsRootPath = path.join(dataDir, "inherited-skills");
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    await writeSkill({
+      rootPath: inheritedSkillsRootPath,
+      name: "stories",
+      description: "Inherited stories skill.",
+    });
+    const overrideSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "stories",
+      description: "Local stories skill.",
+    });
+    const { logger, infos, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      additionalSkillsRootPaths: [inheritedSkillsRootPath],
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "data-dir",
+        name: "stories",
+        description: "Local stories skill.",
+        sourceRootPath: overrideSkillRoot,
+        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+    expect(infos).toEqual([
+      expect.objectContaining({
+        message: "Inherited injected skill overridden by data-dir skill",
       }),
     ]);
   });

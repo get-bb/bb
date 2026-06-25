@@ -12,6 +12,7 @@ import {
   BB_APP_VERSION_ENV,
   BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS_ENV,
   BB_EXTERNAL_URL_ENV,
+  BB_INHERITED_SKILLS_ROOTS_ENV,
   BB_INFERENCE_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_TELEMETRY_ENV,
@@ -40,6 +41,7 @@ export interface ServerConfig
   BB_DEV_APP_PORT?: number;
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
+  BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
   BB_POSTHOG_API_KEY: string;
   BB_TELEMETRY: boolean;
@@ -111,6 +113,12 @@ export function loadServerConfig(
       homeDir: loader.context.homeDir,
       mode: loader.mode,
       repoRoot: args.repoRoot,
+    }),
+    BB_INHERITED_SKILLS_ROOTS: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: [],
+      definition: BB_INHERITED_SKILLS_ROOTS_ENV,
+      env: loader.env,
     }),
     BB_INFERENCE: readEnvVarWithDefault({
       context: loader.context,

@@ -624,6 +624,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         providerId: query.provider,
         cwd: workspace.cwd,
         builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
+        ...(deps.config.inheritedSkillsRootPaths.length > 0
+          ? { additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths }
+          : {}),
       },
     });
     return context.json(

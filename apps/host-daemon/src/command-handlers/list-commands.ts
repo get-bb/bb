@@ -19,6 +19,8 @@ export interface CommandRootResolution {
   cwd: string | null;
   /** Built-in bb skills bundled with the server. */
   builtinSkillsRootPath: string;
+  /** Additional bb skill roots inherited by managed dev app instances. */
+  additionalSkillsRootPaths: readonly string[];
   /** bb data directory containing user-installed bb skills. */
   dataDir: string;
   /** Claude user-home base (`os.homedir()`). */
@@ -1097,6 +1099,15 @@ export function resolveCommandScanRoots(
       source: "skill",
       origin: "user",
     });
+    for (const rootPath of resolution.additionalSkillsRootPaths) {
+      roots.push({
+        rootPath,
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      });
+    }
     roots.push({
       rootPath: resolution.builtinSkillsRootPath,
       shape: "skill",
@@ -1154,6 +1165,15 @@ export function resolveCommandScanRoots(
       source: "skill",
       origin: "user",
     });
+    for (const rootPath of resolution.additionalSkillsRootPaths) {
+      roots.push({
+        rootPath,
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      });
+    }
     roots.push({
       rootPath: resolution.builtinSkillsRootPath,
       shape: "skill",
@@ -1191,6 +1211,7 @@ export async function listHostCommands(
   const roots = await resolveProviderCommandScanRoots({
     cwd: command.cwd,
     builtinSkillsRootPath: command.builtinSkillsRootPath,
+    additionalSkillsRootPaths: command.additionalSkillsRootPaths ?? [],
     dataDir: options.dataDir,
     homeDir,
     codexHome: resolveCodexHome(homeDir),

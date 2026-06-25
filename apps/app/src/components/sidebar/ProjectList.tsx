@@ -2058,7 +2058,6 @@ function ProjectListComponent({
           label="All threads"
           actions={allThreadsSectionActions}
           actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-          actionsAlwaysVisible
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
             onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),

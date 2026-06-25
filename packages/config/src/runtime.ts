@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
 export type BbRuntimeMode = "dev" | "prod";
 
@@ -26,6 +26,10 @@ export interface ResolveDevInstanceConfigArgs {
 export interface DevProcessEnvArgs {
   baseEnv: NodeJS.ProcessEnv;
   config: DevInstanceConfig;
+}
+
+export interface ResolveInheritedDevSkillsRootPathsArgs {
+  repoRoot: string;
 }
 
 export interface ParseDataDirEnvValueArgs {
@@ -87,6 +91,8 @@ const DEV_PROCESS_STRIPPED_ENV_KEYS: readonly string[] = [
   "BB_THREAD_ID",
   "BB_THREAD_STORAGE",
 ];
+
+const MANAGED_WORKTREE_DIR_NAME = "worktrees";
 
 function createRepoRootHash(repoRootPath: string): string {
   return createHash("sha256").update(repoRootPath).digest("hex");
@@ -205,6 +211,23 @@ export function resolveCurrentDevInstanceConfig(
   });
 }
 
+export function resolveInheritedDevSkillsRootPaths(
+  args: ResolveInheritedDevSkillsRootPathsArgs,
+): string[] {
+  const segments = resolve(args.repoRoot).split(/[\\/]+/u);
+  const worktreesIndex = segments.lastIndexOf(MANAGED_WORKTREE_DIR_NAME);
+  if (worktreesIndex <= 0) {
+    return [];
+  }
+
+  const parentDataDir = segments.slice(0, worktreesIndex).join("/");
+  if (parentDataDir.length === 0) {
+    return [];
+  }
+
+  return [join(parentDataDir, "skills")];
+}
+
 export function resolveRuntimeDataDir(args: ResolveRuntimeDataDirArgs): string {
   if (args.env.BB_DATA_DIR !== undefined) {
     return parseDataDirEnvValue({
@@ -270,11 +293,17 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
   for (const key of DEV_PROCESS_STRIPPED_ENV_KEYS) {
     delete env[key];
   }
+  const inheritedSkillsRootPaths = resolveInheritedDevSkillsRootPaths({
+    repoRoot: args.config.repoRoot,
+  });
   return {
     ...env,
     BB_DATA_DIR: args.config.dataDir,
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
     BB_HOST_DAEMON_PORT: String(args.config.ports.hostDaemonPort),
+    ...(inheritedSkillsRootPaths.length > 0
+      ? { BB_INHERITED_SKILLS_ROOTS: inheritedSkillsRootPaths.join(delimiter) }
+      : {}),
     BB_SERVER_PORT: String(args.config.ports.serverPort),
     BB_SERVER_URL: args.config.serverUrl,
     NODE_ENV: "development",

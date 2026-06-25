@@ -69,6 +69,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     dataDir: "/tmp/bb-test",
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 38887,
+    inheritedSkillsRootPaths: [],
     inferenceModel: "openai/gpt-4o-mini",
     isDevelopment: false,
     openAiApiKey: "ambient-openai-key",

@@ -131,6 +131,7 @@ export async function createTestAppHarness(
     dataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,
+    inheritedSkillsRootPaths: [],
     inferenceModel: "test/mock-model",
     isDevelopment: true,
     openAiApiKey: "test-openai-key",
