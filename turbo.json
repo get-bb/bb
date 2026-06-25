@@ -130,6 +130,13 @@
         "*"
       ]
     },
+    "@bb/desktop#smoke:packaged": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "*"
+      ]
+    },
     "@bb/desktop#dev": {
       "dependsOn": [
         "bb-app#build"

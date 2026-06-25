@@ -69,6 +69,7 @@ pnpm exec turbo run dev --filter=@bb/desktop
 
 ```bash
 pnpm exec turbo run desktop:build --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged --filter=@bb/desktop
 ```
 
 Artifacts are written under `apps/desktop/release/`. The desktop build is
