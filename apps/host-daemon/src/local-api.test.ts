@@ -126,8 +126,8 @@ describe("local API server", () => {
         hostId: "host-1",
         localApiConfig: createLocalApiConfig(),
         serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
+        serverPort: 3334,
+        devAppPort: 5173,
         getConnected: () => true,
       });
       const client = createHostDaemonLocalClient(
@@ -167,8 +167,8 @@ describe("local API server", () => {
         hostId: "host-1",
         localApiConfig: createLocalApiConfig(),
         serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
+        serverPort: 3334,
+        devAppPort: 5173,
         getConnected: () => true,
       });
       const client = createHostDaemonLocalClient(
@@ -266,9 +266,13 @@ describe("local API server", () => {
       `http://localhost:${server.port}`,
     );
 
-    const targetsResponse = await client["workspace-open-targets"].$get();
+    const targetsResponse = await client["workspace-open-targets"].$get({
+      query: {},
+    });
     await client["open-in-target"].$post({
       json: {
+        context: { kind: "local" },
+        columnNumber: null,
         lineNumber: null,
         path: workspacePath,
         targetId: "vscode",
@@ -276,13 +280,145 @@ describe("local API server", () => {
     });
 
     expect(await targetsResponse.json()).toEqual({ targets });
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledWith({});
     expect(openInTarget).toHaveBeenCalledWith({
+      context: { kind: "local" },
+      columnNumber: null,
       lineNumber: null,
       path: workspacePath,
       targetId: "vscode",
     });
 
     await rm(workspacePath, { recursive: true, force: true });
+  });
+
+  it("allows configured remote origins and resolves remote SSH open requests", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-helper-"));
+    await writeFile(
+      path.join(dataDir, "client-helper.json"),
+      JSON.stringify({
+        servers: {
+          "https://remote-bb.example.test": {
+            hosts: {
+              host_remote: {
+                sshAuthority: "devbox",
+              },
+            },
+          },
+        },
+      }),
+      "utf8",
+    );
+    const openInTarget = vi.fn(async () => undefined);
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        hostId: "host-1",
+        localApiConfig: createLocalApiConfig(),
+        serverUrl: "http://server.test",
+        serverPort: 3334,
+        devAppPort: 5173,
+        getConnected: () => true,
+        openInTarget,
+      });
+      const client = createHostDaemonLocalClient(
+        `http://localhost:${server.port}`,
+      );
+
+      const corsResponse = await fetch(
+        `http://localhost:${server.port}/workspace-open-targets?path=/tmp/file.ts`,
+        {
+          headers: {
+            Origin: "https://remote-bb.example.test",
+          },
+        },
+      );
+      expect(corsResponse.headers.get("access-control-allow-origin")).toBe(
+        "https://remote-bb.example.test",
+      );
+
+      const response = await client["open-in-target"].$post({
+        json: {
+          context: {
+            kind: "remote-ssh",
+            serverOrigin: "https://remote-bb.example.test/projects/proj_1",
+            hostId: "host_remote",
+          },
+          columnNumber: 4,
+          lineNumber: 10,
+          path: "/home/me/project/src/file.ts",
+          targetId: "vscode",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(openInTarget).toHaveBeenCalledWith({
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://remote-bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: 4,
+        lineNumber: 10,
+        path: "/home/me/project/src/file.ts",
+        targetId: "vscode",
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns setup guidance for remote SSH opens without a mapping", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-helper-"));
+    await writeFile(
+      path.join(dataDir, "client-helper.json"),
+      JSON.stringify({
+        servers: {
+          "https://remote-bb.example.test": {
+            hosts: {},
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        hostId: "host-1",
+        localApiConfig: createLocalApiConfig(),
+        serverUrl: "http://server.test",
+        serverPort: 3334,
+        devAppPort: 5173,
+        getConnected: () => true,
+      });
+      const client = createHostDaemonLocalClient(
+        `http://localhost:${server.port}`,
+      );
+
+      const response = await client["open-in-target"].$post({
+        json: {
+          context: {
+            kind: "remote-ssh",
+            serverOrigin: "https://remote-bb.example.test",
+            hostId: "host_missing",
+          },
+          columnNumber: null,
+          lineNumber: null,
+          path: "/home/me/project",
+          targetId: "vscode",
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain(
+        "bb-app client-helper ssh-alias set https://remote-bb.example.test host_missing",
+      );
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("translates workspace opener errors to bad requests", async () => {
@@ -307,6 +443,8 @@ describe("local API server", () => {
 
     const response = await client["open-in-target"].$post({
       json: {
+        context: { kind: "local" },
+        columnNumber: null,
         lineNumber: null,
         path: "/tmp/workspace",
         targetId: "vscode",
@@ -315,6 +453,8 @@ describe("local API server", () => {
 
     expect(response.status).toBe(400);
     expect(openInTarget).toHaveBeenCalledWith({
+      context: { kind: "local" },
+      columnNumber: null,
       lineNumber: null,
       path: "/tmp/workspace",
       targetId: "vscode",

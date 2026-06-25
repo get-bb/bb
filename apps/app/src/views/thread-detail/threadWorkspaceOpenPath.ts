@@ -1,4 +1,5 @@
 import type { Environment, WorkspaceFileStatus } from "@bb/domain";
+import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import type {
   EnvironmentFilePreviewSource,
@@ -10,6 +11,11 @@ interface ResolveThreadWorkspaceOpenPathArgs {
   canOpenWorkspace: boolean;
   environment: Environment | null | undefined;
   hasWorkspaceOpenTargets: boolean;
+}
+
+interface ResolveEnvironmentOpenContextArgs {
+  environment: Environment | null | undefined;
+  serverOrigin: string;
   threadEnvironmentIsLocal: boolean;
 }
 
@@ -117,6 +123,22 @@ export function resolveThreadWorkspacePreviewRootPath(
   return args.environment?.path ?? null;
 }
 
+export function resolveEnvironmentOpenContext(
+  args: ResolveEnvironmentOpenContextArgs,
+): OpenInTargetContext | null {
+  if (!args.environment) {
+    return null;
+  }
+  if (args.threadEnvironmentIsLocal) {
+    return { kind: "local" };
+  }
+  return {
+    kind: "remote-ssh",
+    serverOrigin: args.serverOrigin,
+    hostId: args.environment.hostId,
+  };
+}
+
 export function resolveThreadWorkspaceOpenPath(
   args: ResolveThreadWorkspaceOpenPathArgs,
 ): string | null {
@@ -124,8 +146,5 @@ export function resolveThreadWorkspaceOpenPath(
     return null;
   }
 
-  return resolveThreadLocalWorkspaceRootPath({
-    environment: args.environment,
-    threadEnvironmentIsLocal: args.threadEnvironmentIsLocal,
-  });
+  return args.environment?.path ?? null;
 }

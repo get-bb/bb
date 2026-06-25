@@ -15,14 +15,24 @@ interface ExecFileCall {
   file: string;
 }
 
+interface AvailableMacApplication {
+  appPath: string;
+  bundleId: string;
+  displayName?: string;
+}
+
 interface CreateAvailableExecFileArgs {
+  availableMacApplications?: AvailableMacApplication[];
   availableBundleIdSubstrings?: string[];
   availableExecutables?: string[];
   calls?: ExecFileCall[];
+  fileAssociatedMacApplications?: AvailableMacApplication[];
 }
 
 interface CreateRuntimeArgs {
   applicationDirectories?: string[];
+  desktopFileDirectories?: string[];
+  env?: NodeJS.ProcessEnv;
   execFile?: ExecFileHandler;
   platform?: NodeJS.Platform;
 }
@@ -32,7 +42,16 @@ function createRuntime(
 ): WorkspaceOpenTargetRuntime {
   return {
     applicationDirectories: args.applicationDirectories ?? [],
-    execFile: args.execFile ?? (async () => ({ stdout: "" })),
+    desktopFileDirectories: args.desktopFileDirectories ?? [],
+    execFile:
+      args.execFile ??
+      (async (file) => {
+        if (file === "which") {
+          throw new Error("Executable not found");
+        }
+        return { stdout: "" };
+      }),
+    env: args.env,
     platform: args.platform ?? "darwin",
   };
 }
@@ -41,18 +60,67 @@ function createAvailableExecFile(
   args: CreateAvailableExecFileArgs = {},
 ): ExecFileHandler {
   const availableBundleIdSubstrings = args.availableBundleIdSubstrings ?? [];
+  const availableMacApplications: AvailableMacApplication[] = [
+    ...(args.availableMacApplications ?? []),
+    ...availableBundleIdSubstrings.map((bundleId) => ({
+      appPath: `/Applications/${bundleId}.app`,
+      bundleId,
+    })),
+  ];
   const availableExecutables = args.availableExecutables ?? [];
+  const fileAssociatedMacApplications =
+    args.fileAssociatedMacApplications ?? [];
 
   return async (file, commandArgs) => {
     args.calls?.push({ file, args: commandArgs });
 
     if (file === "mdfind") {
+      if (commandArgs.join(" ").includes("kMDItemContentType")) {
+        return {
+          stdout: `${availableMacApplications
+            .map((application) => application.appPath)
+            .join("\n")}\n`,
+        };
+      }
       return {
-        stdout: availableBundleIdSubstrings.some((bundleId) =>
-          commandArgs.join(" ").includes(bundleId),
-        )
-          ? "/Applications/Available.app\n"
-          : "",
+        stdout:
+          availableMacApplications
+            .filter((application) =>
+              commandArgs.join(" ").includes(application.bundleId),
+            )
+            .map((application) => application.appPath)
+            .join("\n") || "",
+      };
+    }
+
+    if (file === "plutil") {
+      const key = commandArgs[1];
+      const plistPath = commandArgs.at(-1) ?? "";
+      const application = availableMacApplications.find((candidate) =>
+        plistPath.startsWith(path.join(candidate.appPath, "Contents")),
+      );
+      if (!application) {
+        return { stdout: "" };
+      }
+      if (key === "CFBundleIdentifier") {
+        return { stdout: `${application.bundleId}\n` };
+      }
+      if (key === "CFBundleDisplayName" || key === "CFBundleName") {
+        return {
+          stdout: `${application.displayName ?? path.basename(application.appPath, ".app")}\n`,
+        };
+      }
+      return { stdout: "" };
+    }
+
+    if (file === "osascript" && commandArgs.includes("JavaScript")) {
+      return {
+        stdout: JSON.stringify(
+          fileAssociatedMacApplications.map((application) => ({
+            appPath: application.appPath,
+            bundleId: application.bundleId,
+          })),
+        ),
       };
     }
 
@@ -78,11 +146,387 @@ describe("workspace open targets", () => {
       listWorkspaceOpenTargetsWithRuntime(
         createRuntime({
           execFile,
-          platform: "linux",
+          platform: "freebsd",
         }),
       ),
     ).resolves.toEqual([]);
     expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("discovers Linux platform targets and editor CLIs from PATH", async () => {
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableExecutables: ["code", "xdg-open", "x-terminal-emulator"],
+        }),
+        platform: "linux",
+      }),
+    );
+
+    expect(targets.map((target) => target.id)).toEqual([
+      "vscode",
+      "default-app",
+      "file-manager",
+      "terminal",
+    ]);
+    expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: true,
+        openFileAtLine: true,
+      },
+      kind: "editor",
+      label: "VS Code",
+    });
+    expect(
+      targets.find((target) => target.id === "file-manager"),
+    ).toMatchObject({
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: false,
+        openFileAtLine: false,
+      },
+      kind: "file-manager",
+      label: "File Manager",
+    });
+  });
+
+  it("discovers Linux desktop apps outside app-specific adapters", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-desktop-apps-"));
+    const desktopDirectory = path.join(root, "applications");
+    await mkdir(desktopDirectory, { recursive: true });
+    await writeFile(
+      path.join(desktopDirectory, "mockedit.desktop"),
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Mock Edit",
+        "Exec=mockedit --open %f",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(desktopDirectory, "hidden.desktop"),
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Hidden App",
+        "NoDisplay=true",
+        "Exec=hidden %f",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          desktopFileDirectories: [desktopDirectory],
+          platform: "linux",
+        }),
+      );
+
+      expect(targets).toEqual([
+        {
+          capabilities: {
+            openDirectory: true,
+            openFile: true,
+            openFileAtColumn: false,
+            openFileAtLine: false,
+          },
+          icon: { kind: "symbol", name: "app" },
+          id: "desktop-app:mockedit",
+          kind: "native-app",
+          label: "Mock Edit",
+        },
+      ]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("discovers WSL default app and file manager integrations", async () => {
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        env: { WSL_DISTRO_NAME: "Ubuntu" },
+        execFile: createAvailableExecFile({
+          availableExecutables: ["explorer.exe", "wslview"],
+        }),
+        platform: "linux",
+      }),
+    );
+
+    expect(targets.map((target) => target.id)).toEqual([
+      "default-app",
+      "file-manager",
+    ]);
+    expect(targets.find((target) => target.id === "default-app")).toMatchObject(
+      {
+        label: "Default App",
+        kind: "default-app",
+      },
+    );
+    expect(
+      targets.find((target) => target.id === "file-manager"),
+    ).toMatchObject({
+      label: "File Manager",
+      kind: "file-manager",
+    });
+  });
+
+  it("returns no targets for unsupported win32 runtime", async () => {
+    const execFile = vi.fn(async () => ({ stdout: "" }));
+
+    await expect(
+      listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          execFile,
+          platform: "win32",
+        }),
+      ),
+    ).resolves.toEqual([]);
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("opens WSL paths with the configured default app bridge", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["wslview"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "default-app",
+        },
+        createRuntime({
+          env: { WSL_DISTRO_NAME: "Ubuntu" },
+          execFile,
+          platform: "linux",
+        }),
+      );
+
+      expect(calls.find((call) => call.file === "wslview")).toEqual({
+        file: "wslview",
+        args: [filePath],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens WSL paths with the file manager bridge through the Linux runtime", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["explorer.exe"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "file-manager",
+        },
+        createRuntime({
+          env: { WSL_DISTRO_NAME: "Ubuntu" },
+          execFile,
+          platform: "linux",
+        }),
+      );
+
+      expect(calls.find((call) => call.file === "explorer.exe")).toEqual({
+        file: "explorer.exe",
+        args: [path.dirname(filePath)],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects unsupported non-Linux open requests", async () => {
+    await expect(
+      openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: "/tmp/workspace",
+          targetId: "default-app",
+        },
+        createRuntime({ platform: "win32" }),
+      ),
+    ).rejects.toMatchObject({
+      code: "unsupported_platform",
+    });
+  });
+
+  it("opens Linux files with discovered editor CLIs", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["code"],
+      calls,
+    });
+
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "vscode",
+        },
+        createRuntime({ execFile, platform: "linux" }),
+      );
+
+      expect(calls.find((call) => call.file === "code")).toEqual({
+        file: "code",
+        args: ["-g", `${filePath}:15:6`],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens Linux desktop app targets from desktop Exec entries", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-desktop-open-"));
+    const desktopDirectory = path.join(root, "applications");
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(desktopDirectory, { recursive: true });
+      await mkdir(workspacePath, { recursive: true });
+      await writeFile(filePath, "# Notes\n");
+      await writeFile(
+        path.join(desktopDirectory, "mockedit.desktop"),
+        [
+          "[Desktop Entry]",
+          "Type=Application",
+          "Name=Mock Edit",
+          "Exec=mockedit --open %f",
+          "",
+        ].join("\n"),
+      );
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "desktop-app:mockedit",
+        },
+        createRuntime({
+          desktopFileDirectories: [desktopDirectory],
+          execFile,
+          platform: "linux",
+        }),
+      );
+
+      expect(calls.find((call) => call.file === "mockedit")).toEqual({
+        file: "mockedit",
+        args: ["--open", filePath],
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("opens Linux paths with the platform default app", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["xdg-open"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "default-app",
+        },
+        createRuntime({ execFile, platform: "linux" }),
+      );
+
+      expect(calls.find((call) => call.file === "xdg-open")).toEqual({
+        file: "xdg-open",
+        args: [filePath],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens remote SSH paths in a Linux terminal", async () => {
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["ssh", "x-terminal-emulator"],
+      calls,
+    });
+
+    await openPathInTargetWithRuntime(
+      {
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: 8,
+        lineNumber: 42,
+        path: "/home/me/project/src/file.ts",
+        targetId: "terminal",
+      },
+      createRuntime({ execFile, platform: "linux" }),
+    );
+
+    const terminalCall = calls.find(
+      (call) => call.file === "x-terminal-emulator",
+    );
+    expect(terminalCall).toBeDefined();
+    expect(terminalCall?.args.slice(0, 5)).toEqual([
+      "-e",
+      "ssh",
+      "-t",
+      "--",
+      "devbox",
+    ]);
+    expect(terminalCall?.args.at(-1)).toContain("/home/me/project/src/file.ts");
+    expect(terminalCall?.args.at(-1)).toContain("42");
+    expect(terminalCall?.args.at(-1)).toContain("8");
   });
 
   it("discovers built-in targets and bundle-id matches", async () => {
@@ -108,10 +552,33 @@ describe("workspace open targets", () => {
       capabilities: {
         openDirectory: true,
         openFile: true,
+        openFileAtColumn: false,
         openFileAtLine: false,
       },
+      icon: { kind: "symbol", name: "default-app" },
       id: "default-app",
+      kind: "default-app",
       label: "Default App",
+    });
+    expect(targets.find((target) => target.id === "terminal")).toMatchObject({
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: true,
+        openFileAtLine: true,
+      },
+      id: "terminal",
+      label: "Terminal",
+    });
+    expect(targets.find((target) => target.id === "finder")).toMatchObject({
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: false,
+        openFileAtLine: false,
+      },
+      id: "finder",
+      label: "Finder",
     });
     expect(
       calls.some((call) => call.args.join(" ").includes("com.apple.finder")),
@@ -132,6 +599,8 @@ describe("workspace open targets", () => {
 
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: 3,
           lineNumber: 12,
           path: filePath,
           targetId: "default-app",
@@ -144,6 +613,38 @@ describe("workspace open targets", () => {
         args: ["--", filePath],
       });
       expect(calls.some((call) => call.file === "which")).toBe(false);
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("reveals files in Finder", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["open"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "finder",
+        },
+        createRuntime({ execFile }),
+      );
+
+      expect(calls.find((call) => call.file === "open")).toEqual({
+        file: "open",
+        args: ["-R", filePath],
+      });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
@@ -185,6 +686,285 @@ describe("workspace open targets", () => {
     expect(targets.map((target) => target.id)).toContain("antigravity");
   });
 
+  it("discovers Windsurf with the current bundle id", async () => {
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.exafunction.windsurf"],
+    });
+
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile,
+      }),
+    );
+
+    expect(targets.find((target) => target.id === "windsurf")).toMatchObject({
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: true,
+        openFileAtLine: true,
+      },
+      icon: { kind: "builtin", name: "windsurf" },
+      kind: "editor",
+      label: "Windsurf",
+    });
+  });
+
+  it("discovers generic macOS apps from file-specific LaunchServices results", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const mockEditPath = "/Applications/MockEdit.app";
+    const zedPath = "/Applications/Zed.app";
+    const execFile: ExecFileHandler = async (file, commandArgs) => {
+      if (file === "mdfind") {
+        const query = commandArgs.join(" ");
+        if (query.includes("kMDItemContentType")) {
+          return { stdout: `${mockEditPath}\n${zedPath}\n` };
+        }
+        if (query.includes("dev.zed.Zed")) {
+          return { stdout: `${zedPath}\n` };
+        }
+        return { stdout: "" };
+      }
+      if (file === "osascript" && commandArgs.includes("JavaScript")) {
+        return {
+          stdout: JSON.stringify([
+            { appPath: mockEditPath, bundleId: "com.example.MockEdit" },
+            { appPath: zedPath, bundleId: "dev.zed.Zed" },
+          ]),
+        };
+      }
+      if (file === "plutil") {
+        const key = commandArgs[1];
+        const plistPath = commandArgs.at(-1) ?? "";
+        if (plistPath.includes("MockEdit.app")) {
+          if (key === "CFBundleIdentifier") {
+            return { stdout: "com.example.MockEdit\n" };
+          }
+          if (key === "CFBundleDisplayName") {
+            return { stdout: "Mock Edit\n" };
+          }
+          return { stdout: "" };
+        }
+        if (plistPath.includes("Zed.app")) {
+          if (key === "CFBundleIdentifier") {
+            return { stdout: "dev.zed.Zed\n" };
+          }
+          if (key === "CFBundleDisplayName") {
+            return { stdout: "Zed\n" };
+          }
+        }
+      }
+      if (file === "which") {
+        throw new Error("Executable not found");
+      }
+      return { stdout: "" };
+    };
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      const globalTargets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({ execFile }),
+      );
+      expect(globalTargets.find((target) => target.id === "zed")).toBeDefined();
+      expect(
+        globalTargets.find(
+          (target) => target.id === "mac-app:com.example.MockEdit",
+        ),
+      ).toBeUndefined();
+
+      const fileTargets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({ execFile }),
+        { path: filePath },
+      );
+
+      expect(fileTargets.find((target) => target.id === "zed")).toBeDefined();
+      expect(
+        fileTargets.find((target) => target.id === "mac-app:dev.zed.Zed"),
+      ).toBeUndefined();
+      expect(
+        fileTargets.find(
+          (target) => target.id === "mac-app:com.example.MockEdit",
+        ),
+      ).toMatchObject({
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: false,
+          openFileAtLine: false,
+        },
+        icon: { kind: "symbol", name: "app" },
+        kind: "native-app",
+        label: "Mock Edit",
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens generic macOS app targets by bundle id", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile: ExecFileHandler = async (file, commandArgs) => {
+      calls.push({ file, args: commandArgs });
+      if (file === "mdfind") {
+        return commandArgs.join(" ").includes("com.example.MockEdit")
+          ? { stdout: "/Applications/MockEdit.app\n" }
+          : { stdout: "" };
+      }
+      if (file === "which") {
+        throw new Error("Executable not found");
+      }
+      return { stdout: "" };
+    };
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: filePath,
+          targetId: "mac-app:com.example.MockEdit",
+        },
+        createRuntime({ execFile }),
+      );
+
+      expect(calls.find((call) => call.file === "open")).toEqual({
+        file: "open",
+        args: ["-b", "com.example.MockEdit", "--", filePath],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("uses app-provided icons for discovered targets without built-in icons", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-open-target-icon-"));
+    const appPath = path.join(root, "WebStorm.app");
+    const calls: ExecFileCall[] = [];
+    await mkdir(appPath, { recursive: true });
+    const execFile: ExecFileHandler = async (file, commandArgs) => {
+      calls.push({ file, args: commandArgs });
+      if (file === "mdfind") {
+        if (commandArgs.join(" ").includes("kMDItemContentType")) {
+          return { stdout: `${appPath}\n` };
+        }
+        return {
+          stdout: commandArgs.join(" ").includes("com.jetbrains.WebStorm")
+            ? `${appPath}\n`
+            : "",
+        };
+      }
+      if (file === "plutil") {
+        const key = commandArgs[1];
+        if (key === "CFBundleIdentifier") {
+          return { stdout: "com.jetbrains.WebStorm\n" };
+        }
+        if (key === "CFBundleDisplayName" || key === "CFBundleName") {
+          return { stdout: "WebStorm\n" };
+        }
+        if (key === "CFBundleIconFile") {
+          return { stdout: "webstorm\n" };
+        }
+        return { stdout: "" };
+      }
+      if (file === "sips") {
+        const outputPath = commandArgs.at(-1);
+        if (outputPath) {
+          await writeFile(outputPath, "fake-png");
+        }
+        return { stdout: "" };
+      }
+      if (file === "which") {
+        throw new Error("Executable not found");
+      }
+      return { stdout: "" };
+    };
+
+    try {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({ execFile }),
+      );
+
+      expect(targets.find((target) => target.id === "webstorm")).toMatchObject({
+        icon: {
+          kind: "data-url",
+          dataUrl: "data:image/png;base64,ZmFrZS1wbmc=",
+        },
+        label: "WebStorm",
+      });
+      expect(calls.some((call) => call.file === "sips")).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("prefers app-provided icons for discovered known app targets", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-open-target-icon-"));
+    const appPath = path.join(root, "Visual Studio Code.app");
+    const calls: ExecFileCall[] = [];
+    await mkdir(appPath, { recursive: true });
+    const execFile: ExecFileHandler = async (file, commandArgs) => {
+      calls.push({ file, args: commandArgs });
+      if (file === "mdfind") {
+        if (commandArgs.join(" ").includes("kMDItemContentType")) {
+          return { stdout: `${appPath}\n` };
+        }
+        return {
+          stdout: commandArgs.join(" ").includes("com.microsoft.VSCode")
+            ? `${appPath}\n`
+            : "",
+        };
+      }
+      if (file === "plutil") {
+        const key = commandArgs[1];
+        if (key === "CFBundleIdentifier") {
+          return { stdout: "com.microsoft.VSCode\n" };
+        }
+        if (key === "CFBundleDisplayName" || key === "CFBundleName") {
+          return { stdout: "Code\n" };
+        }
+        if (key === "CFBundleIconFile") {
+          return { stdout: "Code\n" };
+        }
+        return { stdout: "" };
+      }
+      if (file === "sips") {
+        const outputPath = commandArgs.at(-1);
+        if (outputPath) {
+          await writeFile(outputPath, "vscode-png");
+        }
+        return { stdout: "" };
+      }
+      if (file === "which") {
+        throw new Error("Executable not found");
+      }
+      return { stdout: "" };
+    };
+
+    try {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({ execFile }),
+      );
+
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        icon: {
+          kind: "data-url",
+          dataUrl: "data:image/png;base64,dnNjb2RlLXBuZw==",
+        },
+        label: "VS Code",
+      });
+      expect(calls.some((call) => call.file === "sips")).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("opens the workspace with an argument separator before the path", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const calls: ExecFileCall[] = [];
@@ -196,6 +976,8 @@ describe("workspace open targets", () => {
     try {
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: null,
           lineNumber: null,
           path: workspacePath,
           targetId: "zed",
@@ -224,6 +1006,8 @@ describe("workspace open targets", () => {
     try {
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: null,
           lineNumber: null,
           path: workspacePath,
           targetId: "vscode",
@@ -241,10 +1025,252 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("advertises VS Code remote SSH support only when the CLI is available", async () => {
+    const withCli = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableBundleIdSubstrings: ["com.microsoft.VSCode"],
+          availableExecutables: ["code"],
+        }),
+      }),
+    );
+    expect(withCli.find((target) => target.id === "vscode")).toMatchObject({
+      remoteSshCapabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtLine: true,
+      },
+    });
+
+    const withoutCli = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableBundleIdSubstrings: ["com.microsoft.VSCode"],
+        }),
+      }),
+    );
+    expect(
+      withoutCli.find((target) => target.id === "vscode")
+        ?.remoteSshCapabilities,
+    ).toBeUndefined();
+  });
+
+  it("advertises terminal remote SSH support only when osascript and ssh are available", async () => {
+    const withLauncher = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableExecutables: ["osascript", "ssh"],
+        }),
+      }),
+    );
+    expect(
+      withLauncher.find((target) => target.id === "terminal"),
+    ).toMatchObject({
+      remoteSshCapabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtLine: true,
+      },
+    });
+
+    const withoutLauncher = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile(),
+      }),
+    );
+    expect(
+      withoutLauncher.find((target) => target.id === "terminal")
+        ?.remoteSshCapabilities,
+    ).toBeUndefined();
+
+    const withoutSsh = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableExecutables: ["osascript"],
+        }),
+      }),
+    );
+    expect(
+      withoutSsh.find((target) => target.id === "terminal")
+        ?.remoteSshCapabilities,
+    ).toBeUndefined();
+  });
+
+  it("opens remote SSH paths with VS Code without local path checks", async () => {
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.microsoft.VSCode"],
+      availableExecutables: ["code"],
+      calls,
+    });
+
+    await openPathInTargetWithRuntime(
+      {
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: 9,
+        lineNumber: 42,
+        path: "/home/me/missing-on-client.ts",
+        targetId: "vscode",
+      },
+      createRuntime({ execFile }),
+    );
+
+    expect(calls.find((call) => call.file === "code")).toEqual({
+      file: "code",
+      args: [
+        "--remote",
+        "ssh-remote+devbox",
+        "-g",
+        "/home/me/missing-on-client.ts:42:9",
+      ],
+    });
+  });
+
+  it("opens remote SSH paths in Terminal with a remote editor script", async () => {
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["osascript", "ssh"],
+      calls,
+    });
+
+    await openPathInTargetWithRuntime(
+      {
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: 8,
+        lineNumber: 42,
+        path: "/home/me/project/src/file.ts",
+        targetId: "terminal",
+      },
+      createRuntime({ execFile }),
+    );
+
+    const osascriptCall = calls.find((call) => call.file === "osascript");
+    expect(osascriptCall).toBeDefined();
+    const script = osascriptCall?.args.join("\n") ?? "";
+    expect(script).toContain('tell application "Terminal" to do script');
+    expect(script).toContain("ssh");
+    expect(script).toContain("devbox");
+    expect(script).toContain("/home/me/project/src/file.ts");
+    expect(script).toContain("line=");
+    expect(script).toContain("42");
+    expect(script).toContain("column=");
+    expect(script).toContain("8");
+    expect(script).toContain("VISUAL");
+    expect(script).toContain("EDITOR");
+  });
+
+  it("opens remote SSH paths in Ghostty by passing ssh args to the app", async () => {
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
+      availableExecutables: ["open", "ssh"],
+      calls,
+    });
+
+    await openPathInTargetWithRuntime(
+      {
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: null,
+        lineNumber: null,
+        path: "/home/me/project",
+        targetId: "ghostty",
+      },
+      createRuntime({ execFile }),
+    );
+
+    expect(calls.find((call) => call.file === "open")).toEqual({
+      file: "open",
+      args: [
+        "-na",
+        "Ghostty",
+        "--args",
+        "-e",
+        "ssh",
+        "-t",
+        "--",
+        "devbox",
+        expect.stringContaining("/home/me/project"),
+      ],
+    });
+  });
+
+  it("opens remote SSH paths in Zed with SSH URIs", async () => {
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["dev.zed.Zed"],
+      availableExecutables: ["zed"],
+      calls,
+    });
+
+    await openPathInTargetWithRuntime(
+      {
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+          sshAuthority: "devbox",
+        },
+        columnNumber: 3,
+        lineNumber: 7,
+        path: "/home/me/project/src/file with spaces.ts",
+        targetId: "zed",
+      },
+      createRuntime({ execFile }),
+    );
+
+    expect(calls.find((call) => call.file === "zed")).toEqual({
+      file: "zed",
+      args: ["ssh://devbox/home/me/project/src/file%20with%20spaces.ts:7:3"],
+    });
+  });
+
+  it("rejects remote SSH opens for targets without remote support", async () => {
+    await expect(
+      openPathInTargetWithRuntime(
+        {
+          context: {
+            kind: "remote-ssh",
+            serverOrigin: "https://bb.example.test",
+            hostId: "host_remote",
+            sshAuthority: "devbox",
+          },
+          columnNumber: null,
+          lineNumber: null,
+          path: "/home/me/project",
+          targetId: "sublime-text",
+        },
+        createRuntime({
+          execFile: createAvailableExecFile({
+            availableBundleIdSubstrings: ["com.sublimetext.4"],
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "remote_target_unsupported",
+    });
+  });
+
   it("rejects missing paths", async () => {
     await expect(
       openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: null,
           lineNumber: null,
           path: path.join(tmpdir(), "bb-missing-workspace"),
           targetId: "zed",
@@ -260,7 +1286,7 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("opens terminal targets at the containing directory for files", async () => {
+  it("opens local files in Terminal with a local editor script", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
@@ -272,6 +1298,8 @@ describe("workspace open targets", () => {
 
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: 4,
           lineNumber: 22,
           path: filePath,
           targetId: "terminal",
@@ -279,9 +1307,59 @@ describe("workspace open targets", () => {
         createRuntime({ execFile }),
       );
 
+      const osascriptCall = calls.find((call) => call.file === "osascript");
+      expect(osascriptCall).toBeDefined();
+      const script = osascriptCall?.args.join("\n") ?? "";
+      expect(script).toContain('tell application "Terminal" to do script');
+      expect(script).toContain("/bin/sh");
+      expect(script).toContain(filePath);
+      expect(script).toContain("line=");
+      expect(script).toContain("22");
+      expect(script).toContain("column=");
+      expect(script).toContain("4");
+      expect(script).toContain("VISUAL");
+      expect(script).toContain("EDITOR");
+      expect(script).not.toContain("ssh");
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens local files in Ghostty by passing a local editor script to the app", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
+      calls,
+    });
+
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 4,
+          lineNumber: 22,
+          path: filePath,
+          targetId: "ghostty",
+        },
+        createRuntime({ execFile }),
+      );
+
       expect(calls.find((call) => call.file === "open")).toEqual({
         file: "open",
-        args: ["-a", "Terminal", "--", path.dirname(filePath)],
+        args: [
+          "-na",
+          "Ghostty",
+          "--args",
+          "-e",
+          "/bin/sh",
+          "-lc",
+          expect.stringContaining(filePath),
+        ],
       });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -304,6 +1382,8 @@ describe("workspace open targets", () => {
 
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: 6,
           lineNumber: 15,
           path: filePath,
           targetId: "cursor",
@@ -313,7 +1393,42 @@ describe("workspace open targets", () => {
 
       expect(calls.find((call) => call.file === "cursor")).toEqual({
         file: "cursor",
-        args: ["-g", `${filePath}:15`],
+        args: ["-g", `${filePath}:15:6`],
+      });
+      expect(calls.some((call) => call.file === "open")).toBe(false);
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("uses Windsurf line and column direct-editor commands when available", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.exafunction.windsurf"],
+      availableExecutables: ["windsurf"],
+      calls,
+    });
+
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "windsurf",
+        },
+        createRuntime({ execFile }),
+      );
+
+      expect(calls.find((call) => call.file === "windsurf")).toEqual({
+        file: "windsurf",
+        args: ["-g", `${filePath}:15:6`],
       });
       expect(calls.some((call) => call.file === "open")).toBe(false);
     } finally {
@@ -336,6 +1451,8 @@ describe("workspace open targets", () => {
 
       await openPathInTargetWithRuntime(
         {
+          context: { kind: "local" },
+          columnNumber: 6,
           lineNumber: 15,
           path: filePath,
           targetId: "cursor",
@@ -359,6 +1476,8 @@ describe("workspace open targets", () => {
       await expect(
         openPathInTargetWithRuntime(
           {
+            context: { kind: "local" },
+            columnNumber: null,
             lineNumber: null,
             path: workspacePath,
             targetId: "vscode",
@@ -380,11 +1499,13 @@ describe("workspace open targets", () => {
       await expect(
         openPathInTargetWithRuntime(
           {
+            context: { kind: "local" },
+            columnNumber: null,
             lineNumber: null,
             path: workspacePath,
             targetId: "vscode",
           },
-          createRuntime({ platform: "linux" }),
+          createRuntime({ platform: "freebsd" }),
         ),
       ).rejects.toMatchObject({
         code: "unsupported_platform",

@@ -1,4 +1,8 @@
-import type { WorkspaceOpenTargetId } from "@bb/host-daemon-contract";
+import type {
+  WorkspaceOpenTarget,
+  WorkspaceOpenTargetIcon as WorkspaceOpenTargetIconValue,
+  WorkspaceOpenTargetId,
+} from "@bb/host-daemon-contract";
 import antigravityIcon from "@/assets/workspace-open-target-icons/antigravity.png";
 import cursorIcon from "@/assets/workspace-open-target-icons/cursor.png";
 import finderIcon from "@/assets/workspace-open-target-icons/finder.png";
@@ -12,11 +16,9 @@ import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
 import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
+import { getWorkspaceOpenTargetFallbackIcon } from "./workspace-open-target-display";
 
-const WORKSPACE_OPEN_TARGET_ICONS: Record<
-  Exclude<WorkspaceOpenTargetId, "default-app">,
-  string
-> = {
+const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   antigravity: antigravityIcon,
   cursor: cursorIcon,
   finder: finderIcon,
@@ -32,32 +34,70 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<
 
 export interface WorkspaceOpenTargetIconProps {
   className?: string;
-  targetId: WorkspaceOpenTargetId;
+  target?: Pick<WorkspaceOpenTarget, "icon" | "id">;
+  targetId?: WorkspaceOpenTargetId;
+}
+
+function resolveIcon(
+  props: WorkspaceOpenTargetIconProps,
+): WorkspaceOpenTargetIconValue {
+  if (props.target?.icon) {
+    return props.target.icon;
+  }
+  return getWorkspaceOpenTargetFallbackIcon(
+    props.target?.id ?? props.targetId ?? "",
+  );
 }
 
 export function WorkspaceOpenTargetIcon({
   className = "size-4",
-  targetId,
+  ...props
 }: WorkspaceOpenTargetIconProps) {
-  if (targetId === "default-app") {
+  const icon = resolveIcon(props);
+
+  if (icon.kind === "data-url") {
     return (
-      <span
-        className={cn(
-          className,
-          "flex shrink-0 items-center justify-center text-muted-foreground",
-        )}
-      >
-        <Icon name="ExternalLink" className="!size-3.5" aria-hidden />
-      </span>
+      <img
+        alt=""
+        className={cn(className, "shrink-0 rounded-sm")}
+        draggable={false}
+        src={icon.dataUrl}
+      />
     );
   }
 
+  if (icon.kind === "builtin") {
+    const iconSrc = WORKSPACE_OPEN_TARGET_ICONS[icon.name];
+    if (iconSrc) {
+      return (
+        <img
+          alt=""
+          className={cn(className, "shrink-0 rounded-sm")}
+          draggable={false}
+          src={iconSrc}
+        />
+      );
+    }
+  }
+
+  const symbolName = icon.kind === "symbol" ? icon.name : "app";
+  const iconName =
+    symbolName === "file-manager"
+      ? "Folder"
+      : symbolName === "terminal"
+        ? "Terminal"
+        : symbolName === "default-app"
+          ? "ExternalLink"
+          : "AppWindow";
+
   return (
-    <img
-      alt=""
-      className={cn(className, "shrink-0 rounded-sm")}
-      draggable={false}
-      src={WORKSPACE_OPEN_TARGET_ICONS[targetId]}
-    />
+    <span
+      className={cn(
+        className,
+        "flex shrink-0 items-center justify-center text-muted-foreground",
+      )}
+    >
+      <Icon name={iconName} className="!size-3.5" aria-hidden />
+    </span>
   );
 }

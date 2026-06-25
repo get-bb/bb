@@ -7,6 +7,7 @@ import type { WorkspaceChangedFilesSection } from "@/components/workspace/worksp
 import { describe, expect, it } from "vitest";
 import {
   resolveWorkspaceChangedFileOpenTarget,
+  resolveEnvironmentOpenContext,
   resolveThreadLocalWorkspaceRootPath,
   resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
@@ -64,18 +65,38 @@ function makeWorkspaceChangedFilesSection(
 }
 
 describe("resolveThreadWorkspaceOpenPath", () => {
+  it("resolves local and remote editor contexts", () => {
+    expect(
+      resolveEnvironmentOpenContext({
+        environment: makeEnvironment({ hostId: "host-local" }),
+        serverOrigin: "https://bb.example.test",
+        threadEnvironmentIsLocal: true,
+      }),
+    ).toEqual({ kind: "local" });
+    expect(
+      resolveEnvironmentOpenContext({
+        environment: makeEnvironment({ hostId: "host-remote" }),
+        serverOrigin: "https://bb.example.test",
+        threadEnvironmentIsLocal: false,
+      }),
+    ).toEqual({
+      kind: "remote-ssh",
+      serverOrigin: "https://bb.example.test",
+      hostId: "host-remote",
+    });
+  });
+
   it("returns the ready local environment path when the capability is available", () => {
     expect(
       resolveThreadWorkspaceOpenPath({
         canOpenWorkspace: true,
         environment: makeEnvironment(),
         hasWorkspaceOpenTargets: true,
-        threadEnvironmentIsLocal: true,
       }),
     ).toBe("/tmp/workspace");
   });
 
-  it("hides when local workspace open preconditions are missing", () => {
+  it("hides when workspace open preconditions are missing", () => {
     expect(
       resolveThreadLocalWorkspaceRootPath({
         environment: makeEnvironment(),
@@ -87,15 +108,13 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         canOpenWorkspace: true,
         environment: makeEnvironment(),
         hasWorkspaceOpenTargets: true,
-        threadEnvironmentIsLocal: false,
       }),
-    ).toBeNull();
+    ).toBe("/tmp/workspace");
     expect(
       resolveThreadWorkspaceOpenPath({
         canOpenWorkspace: true,
         environment: makeEnvironment({ path: null }),
         hasWorkspaceOpenTargets: true,
-        threadEnvironmentIsLocal: true,
       }),
     ).toBeNull();
     expect(
@@ -103,7 +122,6 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         canOpenWorkspace: false,
         environment: makeEnvironment(),
         hasWorkspaceOpenTargets: true,
-        threadEnvironmentIsLocal: true,
       }),
     ).toBeNull();
     expect(
@@ -111,7 +129,6 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         canOpenWorkspace: true,
         environment: makeEnvironment(),
         hasWorkspaceOpenTargets: false,
-        threadEnvironmentIsLocal: true,
       }),
     ).toBeNull();
   });
@@ -142,7 +159,6 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         canOpenWorkspace: true,
         environment: makeEnvironment({ status: "destroyed" }),
         hasWorkspaceOpenTargets: true,
-        threadEnvironmentIsLocal: true,
       }),
     ).toBe("/tmp/workspace");
   });

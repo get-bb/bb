@@ -631,20 +631,44 @@ describe("host-daemon local schemas", () => {
   it("parses workspace open target routes", () => {
     expect(
       contract.workspaceOpenTargetSchema.parse({
-        id: "vscode",
-        label: "VS Code",
+        id: "custom:my-editor",
+        label: "My Editor",
+        kind: "editor",
+        icon: {
+          kind: "builtin",
+          name: "vscode",
+        },
         capabilities: {
           openDirectory: true,
           openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+        remoteSshCapabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
           openFileAtLine: true,
         },
       }),
     ).toEqual({
-      id: "vscode",
-      label: "VS Code",
+      id: "custom:my-editor",
+      label: "My Editor",
+      kind: "editor",
+      icon: {
+        kind: "builtin",
+        name: "vscode",
+      },
       capabilities: {
         openDirectory: true,
         openFile: true,
+        openFileAtColumn: true,
+        openFileAtLine: true,
+      },
+      remoteSshCapabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtColumn: true,
         openFileAtLine: true,
       },
     });
@@ -720,17 +744,58 @@ describe("host-daemon local schemas", () => {
         targetId: "zed",
       }),
     ).toEqual({
+      context: { kind: "local" },
+      columnNumber: null,
       lineNumber: 12,
       path: "/tmp/workspace",
       targetId: "zed",
+    });
+
+    expect(
+      contract.openInTargetRequestSchema.parse({
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "https://bb.example.test",
+          hostId: "host_remote",
+        },
+        lineNumber: 12,
+        path: "/home/me/project/file.ts",
+        targetId: "vscode",
+      }),
+    ).toEqual({
+      context: {
+        kind: "remote-ssh",
+        serverOrigin: "https://bb.example.test",
+        hostId: "host_remote",
+      },
+      columnNumber: null,
+      lineNumber: 12,
+      path: "/home/me/project/file.ts",
+      targetId: "vscode",
     });
   });
 
   it("rejects malformed workspace open payloads", () => {
     expect(() =>
       contract.workspaceOpenTargetSchema.parse({
-        id: "unknown-editor",
+        id: "",
         label: "Unknown",
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtLine: true,
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      contract.workspaceOpenTargetSchema.parse({
+        id: "custom:bad-icon",
+        label: "Bad Icon",
+        icon: {
+          kind: "data-url",
+          dataUrl: "https://example.test/icon.png",
+        },
         capabilities: {
           openDirectory: true,
           openFile: true,
@@ -768,6 +833,28 @@ describe("host-daemon local schemas", () => {
         lineNumber: 0,
         path: "/tmp/workspace",
         targetId: "zed",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      contract.openInTargetRequestSchema.parse({
+        columnNumber: 0,
+        lineNumber: 1,
+        path: "/tmp/workspace",
+        targetId: "zed",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      contract.openInTargetRequestSchema.parse({
+        context: {
+          kind: "remote-ssh",
+          serverOrigin: "not a url",
+          hostId: "host_remote",
+        },
+        lineNumber: 1,
+        path: "/tmp/workspace",
+        targetId: "vscode",
       }),
     ).toThrow();
   });

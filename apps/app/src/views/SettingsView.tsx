@@ -341,7 +341,9 @@ function LocalOpenTargetPreferenceControl({
             <span className="flex min-w-0 items-center gap-2">
               {selectedTargetId ? (
                 <WorkspaceOpenTargetIcon
-                  targetId={selectedTargetId}
+                  {...(resolvedTarget
+                    ? { target: resolvedTarget }
+                    : { targetId: selectedTargetId })}
                   className="size-5"
                 />
               ) : null}
@@ -371,7 +373,7 @@ function LocalOpenTargetPreferenceControl({
                 onSelect={() => onTargetChange(target.id)}
               >
                 <WorkspaceOpenTargetIcon
-                  targetId={target.id}
+                  target={target}
                   className="size-5"
                 />
                 <span className="min-w-0 truncate">{target.label}</span>

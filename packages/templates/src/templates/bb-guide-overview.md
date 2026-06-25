@@ -31,6 +31,11 @@ To make a repo work with bb worktrees, run `bb guide environments` for the
 repo-level `.bb-env-setup.sh` setup hook. Run `bb guide agent-configuration` for
 the data-dir and workspace files that customize agent behavior.
 
+For remote app usage from another machine, `bb-app client-helper ssh-alias`
+stores local editor SSH mappings in `<dataDir>/client-helper.json`. The mapping
+is local to the machine showing the UI and lets the local helper open remote
+work-host files in VS Code Remote-SSH.
+
 Run `bb guide <chapter>` for command details:
 
   threads              Spawning, inspecting, messaging, and managing threads

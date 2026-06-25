@@ -59,9 +59,12 @@ export async function fetchHostId(port: number): Promise<string | null> {
 
 export async function fetchWorkspaceOpenTargets(
   port: number,
+  options: { path?: string } = {},
 ): Promise<WorkspaceOpenTarget[]> {
   const daemon = getHostDaemonClient(port);
-  const res = await daemon["workspace-open-targets"].$get();
+  const res = await daemon["workspace-open-targets"].$get({
+    query: options.path === undefined ? {} : { path: options.path },
+  });
   const status = Number(res.status);
   if (status === 404) {
     return [];

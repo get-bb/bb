@@ -1,14 +1,16 @@
 import { useCallback, useMemo } from "react";
 import type {
+  OpenInTargetContext,
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import {
-  isWorkspaceDirectoryOpenTarget,
-  isWorkspaceFileOpenTarget,
+  resolvePreferredWorkspaceOpenFileTarget,
   resolvePreferredWorkspaceOpenTarget,
+  supportsWorkspaceOpenTargetCapability,
   type StoredWorkspaceOpenTargetPreference,
+  type WorkspaceOpenTargetContextKind,
   useFileOpenTargetPreference,
   useWorkspaceOpenTargetPreference,
 } from "@/lib/workspace-open-target-preference";
@@ -24,9 +26,11 @@ const LOCAL_NO_DIRECTORY_OPEN_TARGETS_DESCRIPTION =
 
 export interface UseLocalOpenTargetsArgs {
   enabled: boolean;
+  openContext?: OpenInTargetContext;
 }
 
 export interface OpenLocalPathRequest {
+  columnNumber?: number | null;
   lineNumber: number | null;
   path: string;
 }
@@ -73,11 +77,19 @@ interface DispatchOpenFailureToastArgs {
 }
 
 interface SupportedLineNumberArgs {
+  columnNumber: number | null;
+  contextKind: WorkspaceOpenTargetContextKind;
   lineNumber: number | null;
   target: WorkspaceOpenTarget;
 }
 
+interface SupportedLocation {
+  columnNumber: number | null;
+  lineNumber: number | null;
+}
+
 interface UseOpenTargetResolutionArgs {
+  contextKind: WorkspaceOpenTargetContextKind;
   preferredDirectoryTargetId: StoredWorkspaceOpenTargetPreference;
   preferredFileTargetId: StoredWorkspaceOpenTargetPreference;
   workspaceOpenTargets: WorkspaceOpenTarget[];
@@ -109,16 +121,41 @@ function dispatchOpenFailureToast(args: DispatchOpenFailureToastArgs): void {
   });
 }
 
-function getSupportedLineNumber(args: SupportedLineNumberArgs): number | null {
-  return args.target.capabilities.openFileAtLine ? args.lineNumber : null;
+function getSupportedLocation(
+  args: SupportedLineNumberArgs,
+): SupportedLocation {
+  const lineNumber = supportsWorkspaceOpenTargetCapability({
+    capability: "openFileAtLine",
+    contextKind: args.contextKind,
+    target: args.target,
+  })
+    ? args.lineNumber
+    : null;
+  const columnNumber =
+    lineNumber !== null &&
+    supportsWorkspaceOpenTargetCapability({
+      capability: "openFileAtColumn",
+      contextKind: args.contextKind,
+      target: args.target,
+    })
+      ? args.columnNumber
+      : null;
+  return { columnNumber, lineNumber };
 }
 
 function useOpenTargetResolution(
   args: UseOpenTargetResolutionArgs,
 ): OpenTargetResolution {
   const directoryOpenTargets = useMemo(
-    () => args.workspaceOpenTargets.filter(isWorkspaceDirectoryOpenTarget),
-    [args.workspaceOpenTargets],
+    () =>
+      args.workspaceOpenTargets.filter((target) =>
+        supportsWorkspaceOpenTargetCapability({
+          capability: "openDirectory",
+          contextKind: args.contextKind,
+          target,
+        }),
+      ),
+    [args.contextKind, args.workspaceOpenTargets],
   );
   // Resolve locally from the already-gated `workspaceOpenTargets` so that
   // callers passing `enabled: false` don't trigger a daemon fetch via the
@@ -127,19 +164,21 @@ function useOpenTargetResolution(
     () =>
       resolvePreferredWorkspaceOpenTarget({
         capability: "openDirectory",
+        contextKind: args.contextKind,
         preferredTargetId: args.preferredDirectoryTargetId,
         targets: directoryOpenTargets,
       }),
-    [args.preferredDirectoryTargetId, directoryOpenTargets],
+    [args.contextKind, args.preferredDirectoryTargetId, directoryOpenTargets],
   );
   const preferredFileTarget = useMemo(
     () =>
       resolvePreferredWorkspaceOpenTarget({
         capability: "openFile",
+        contextKind: args.contextKind,
         preferredTargetId: args.preferredFileTargetId,
         targets: args.workspaceOpenTargets,
       }),
-    [args.preferredFileTargetId, args.workspaceOpenTargets],
+    [args.contextKind, args.preferredFileTargetId, args.workspaceOpenTargets],
   );
 
   return {
@@ -152,8 +191,14 @@ function useOpenTargetResolution(
 export function useLocalOpenTargets(
   args: UseLocalOpenTargetsArgs,
 ): UseLocalOpenTargetsResult {
+  const openContext = args.openContext ?? { kind: "local" };
+  const contextKind = openContext.kind;
   const { hasDaemon } = useHostDaemon();
-  const { openWorkspace, workspaceOpenTargets } = useWorkspaceOpenTargets(args);
+  const {
+    fetchWorkspaceOpenTargetsForPath,
+    openWorkspace,
+    workspaceOpenTargets,
+  } = useWorkspaceOpenTargets(args);
   const [preferredDirectoryTargetId, setPreferredDirectoryTargetId] =
     useWorkspaceOpenTargetPreference();
   const [preferredFileTargetId, setPreferredFileTargetId] =
@@ -163,20 +208,33 @@ export function useLocalOpenTargets(
     preferredDirectoryTarget,
     preferredFileTarget,
   } = useOpenTargetResolution({
+    contextKind,
     preferredDirectoryTargetId,
     preferredFileTargetId,
     workspaceOpenTargets,
   });
   const rememberPreferredOpenTarget = useCallback(
     (target: WorkspaceOpenTarget) => {
-      if (isWorkspaceDirectoryOpenTarget(target)) {
+      if (
+        supportsWorkspaceOpenTargetCapability({
+          capability: "openDirectory",
+          contextKind,
+          target,
+        })
+      ) {
         setPreferredDirectoryTargetId(target.id);
       }
-      if (isWorkspaceFileOpenTarget(target)) {
+      if (
+        supportsWorkspaceOpenTargetCapability({
+          capability: "openFile",
+          contextKind,
+          target,
+        })
+      ) {
         setPreferredFileTargetId(target.id);
       }
     },
-    [setPreferredDirectoryTargetId, setPreferredFileTargetId],
+    [contextKind, setPreferredDirectoryTargetId, setPreferredFileTargetId],
   );
 
   const openPathInAvailableTarget = useCallback(
@@ -196,11 +254,16 @@ export function useLocalOpenTargets(
       }
 
       try {
+        const location = getSupportedLocation({
+          columnNumber: request.columnNumber ?? null,
+          contextKind,
+          lineNumber: request.lineNumber,
+          target: request.target,
+        });
         await openWorkspace({
-          lineNumber: getSupportedLineNumber({
-            lineNumber: request.lineNumber,
-            target: request.target,
-          }),
+          columnNumber: location.columnNumber,
+          context: openContext,
+          lineNumber: location.lineNumber,
           path: request.path,
           targetId: request.target.id,
         });
@@ -213,7 +276,9 @@ export function useLocalOpenTargets(
     },
     [
       hasDaemon,
+      contextKind,
       openWorkspace,
+      openContext,
       rememberPreferredOpenTarget,
     ],
   );
@@ -234,6 +299,7 @@ export function useLocalOpenTargets(
       }
 
       return openPathInAvailableTarget({
+        columnNumber: request.columnNumber ?? null,
         lineNumber: request.lineNumber,
         path: request.path,
         rememberTarget: request.rememberTarget,
@@ -241,11 +307,7 @@ export function useLocalOpenTargets(
         targetKind: "directory-open-target",
       });
     },
-    [
-      directoryOpenTargets,
-      hasDaemon,
-      openPathInAvailableTarget,
-    ],
+    [directoryOpenTargets, hasDaemon, openPathInAvailableTarget],
   );
 
   const openPathInPreferredDirectoryTarget = useCallback(
@@ -261,6 +323,7 @@ export function useLocalOpenTargets(
       }
 
       return openPathInAvailableTarget({
+        columnNumber: request.columnNumber ?? null,
         lineNumber: request.lineNumber,
         path: request.path,
         rememberTarget: false,
@@ -268,15 +331,25 @@ export function useLocalOpenTargets(
         targetKind: "directory-open-target",
       });
     },
-    [
-      hasDaemon,
-      openPathInAvailableTarget,
-      preferredDirectoryTarget,
-    ],
+    [hasDaemon, openPathInAvailableTarget, preferredDirectoryTarget],
   );
   const openPathInPreferredFileTarget = useCallback(
     async (request: OpenPathInPreferredTargetArgs) => {
-      if (!preferredFileTarget) {
+      const fileTargets =
+        contextKind === "local" && fetchWorkspaceOpenTargetsForPath !== null
+          ? await fetchWorkspaceOpenTargetsForPath(request.path).catch(
+              () => workspaceOpenTargets,
+            )
+          : workspaceOpenTargets;
+      const target = resolvePreferredWorkspaceOpenFileTarget({
+        contextKind,
+        lineNumber: request.lineNumber,
+        path: request.path,
+        preferredTargetId: preferredFileTargetId,
+        targets: fileTargets,
+      });
+
+      if (!target) {
         dispatchOpenFailureToast({
           description: getOpenUnavailableDescription({
             hasDaemon,
@@ -287,17 +360,21 @@ export function useLocalOpenTargets(
       }
 
       return openPathInAvailableTarget({
+        columnNumber: request.columnNumber ?? null,
         lineNumber: request.lineNumber,
         path: request.path,
         rememberTarget: false,
-        target: preferredFileTarget,
+        target,
         targetKind: "file-open-target",
       });
     },
     [
+      contextKind,
+      fetchWorkspaceOpenTargetsForPath,
       hasDaemon,
       openPathInAvailableTarget,
-      preferredFileTarget,
+      preferredFileTargetId,
+      workspaceOpenTargets,
     ],
   );
 

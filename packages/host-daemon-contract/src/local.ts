@@ -11,36 +11,64 @@ export const DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH = "/health";
 export const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 export const DEFAULT_HOST_DAEMON_LOCAL_HEALTH_VALUE = "ok";
 
-export const workspaceOpenTargetIdValues = [
-  "default-app",
-  "vscode",
-  "cursor",
-  "sublime-text",
-  "zed",
-  "windsurf",
-  "antigravity",
-  "finder",
-  "terminal",
-  "iterm2",
-  "ghostty",
-  "xcode",
-] as const;
-export const workspaceOpenTargetIdSchema = z.enum(workspaceOpenTargetIdValues);
+export const workspaceOpenTargetIdSchema = z.string().trim().min(1).max(200);
 export type WorkspaceOpenTargetId = z.infer<typeof workspaceOpenTargetIdSchema>;
 
 export const workspaceOpenTargetCapabilitiesSchema = z.object({
   openDirectory: z.boolean(),
   openFile: z.boolean(),
   openFileAtLine: z.boolean(),
+  openFileAtColumn: z.boolean().optional(),
 });
 export type WorkspaceOpenTargetCapabilities = z.infer<
   typeof workspaceOpenTargetCapabilitiesSchema
 >;
 
+export const workspaceOpenTargetKindValues = [
+  "editor",
+  "file-manager",
+  "terminal",
+  "default-app",
+  "native-app",
+] as const;
+export const workspaceOpenTargetKindSchema = z.enum(
+  workspaceOpenTargetKindValues,
+);
+export type WorkspaceOpenTargetKind = z.infer<
+  typeof workspaceOpenTargetKindSchema
+>;
+
+export const workspaceOpenTargetIconSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("builtin"),
+      name: z.string().trim().min(1).max(100),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("data-url"),
+      dataUrl: z.string().trim().startsWith("data:image/").max(200_000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("symbol"),
+      name: z.enum(["default-app", "file-manager", "terminal", "app"]),
+    })
+    .strict(),
+]);
+export type WorkspaceOpenTargetIcon = z.infer<
+  typeof workspaceOpenTargetIconSchema
+>;
+
 export const workspaceOpenTargetSchema = z.object({
   id: workspaceOpenTargetIdSchema,
   label: z.string().min(1),
+  kind: workspaceOpenTargetKindSchema.optional(),
+  icon: workspaceOpenTargetIconSchema.optional(),
   capabilities: workspaceOpenTargetCapabilitiesSchema,
+  remoteSshCapabilities: workspaceOpenTargetCapabilitiesSchema.optional(),
 });
 export type WorkspaceOpenTarget = z.infer<typeof workspaceOpenTargetSchema>;
 
@@ -51,10 +79,40 @@ export type WorkspaceOpenTargetsResponse = z.infer<
   typeof workspaceOpenTargetsResponseSchema
 >;
 
+export const workspaceOpenTargetsQuerySchema = z.object({
+  path: z.string().min(1).optional(),
+});
+export type WorkspaceOpenTargetsQuery = z.infer<
+  typeof workspaceOpenTargetsQuerySchema
+>;
+
 const openTargetPathSchema = z.string().min(1);
 const openTargetLineNumberSchema = z.number().int().positive().nullable();
+const openTargetColumnNumberSchema = z.number().int().positive().nullable();
+
+export const openInTargetLocalContextSchema = z
+  .object({
+    kind: z.literal("local"),
+  })
+  .strict();
+
+export const openInTargetRemoteSshContextSchema = z
+  .object({
+    kind: z.literal("remote-ssh"),
+    serverOrigin: z.string().url(),
+    hostId: z.string().min(1),
+  })
+  .strict();
+
+export const openInTargetContextSchema = z.discriminatedUnion("kind", [
+  openInTargetLocalContextSchema,
+  openInTargetRemoteSshContextSchema,
+]);
+export type OpenInTargetContext = z.infer<typeof openInTargetContextSchema>;
 
 export const openInTargetRequestSchema = z.object({
+  context: openInTargetContextSchema.default({ kind: "local" }),
+  columnNumber: openTargetColumnNumberSchema.default(null),
   lineNumber: openTargetLineNumberSchema,
   path: openTargetPathSchema,
   targetId: workspaceOpenTargetIdSchema,
@@ -247,7 +305,10 @@ export type HostDaemonLocalSchema = {
   };
   /** client-helper: discover editor/app launch targets on the UI machine. */
   "/workspace-open-targets": {
-    $get: Endpoint<EmptyInput, WorkspaceOpenTargetsResponse>;
+    $get: Endpoint<
+      { query?: WorkspaceOpenTargetsQuery },
+      WorkspaceOpenTargetsResponse
+    >;
   };
   /** client-helper: open a path in an editor/app on the UI machine. */
   "/open-in-target": {

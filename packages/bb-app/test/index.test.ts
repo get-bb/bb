@@ -492,6 +492,22 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("resolves client helper commands", () => {
+    expect(
+      resolveBbAppCommand([
+        "client-helper",
+        "ssh-alias",
+        "set",
+        "https://bb.example.test",
+        "host_1",
+        "devbox",
+      ]),
+    ).toEqual({
+      args: ["ssh-alias", "set", "https://bb.example.test", "host_1", "devbox"],
+      kind: "client-helper",
+    });
+  });
+
   it("prints help for help requests", () => {
     expect(resolveBbAppCommand(["--help"])).toEqual({ kind: "help" });
     expect(resolveBbAppCommand(["help"])).toEqual({ kind: "help" });
@@ -517,9 +533,22 @@ describe("bb-app launcher", () => {
         help: false,
         hostDaemonPort: "48887",
         hostType: "persistent",
+        json: false,
         serverUrl: "https://bb.example.test",
       },
       positionals: ["host-daemon", "join"],
+    });
+  });
+
+  it("parses the json launcher flag", () => {
+    expect(
+      parseLauncherArgs(["client-helper", "ssh-alias", "list", "--json"]),
+    ).toEqual({
+      options: {
+        help: false,
+        json: true,
+      },
+      positionals: ["client-helper", "ssh-alias", "list"],
     });
   });
 
@@ -692,6 +721,54 @@ describe("bb-app launcher", () => {
     );
     expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+  });
+
+  it("stores client helper SSH aliases from the client-helper command", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-client-helper-command-"));
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "client-helper",
+      "ssh-alias",
+      "set",
+      "https://bb.example.test/projects/proj_1",
+      "host_1",
+      "devbox",
+    ]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "client-helper.json"), "utf8")),
+    ).toEqual({
+      servers: {
+        "https://bb.example.test": {
+          hosts: {
+            host_1: {
+              sshAuthority: "devbox",
+            },
+          },
+        },
+      },
+    });
+    expect(statSync(join(dataDir, "client-helper.json")).mode & 0o777).toBe(
+      0o600,
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "client-helper",
+      "ssh-alias",
+      "remove",
+      "https://bb.example.test",
+      "host_1",
+    ]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "client-helper.json"), "utf8")),
+    ).toEqual({
+      servers: {},
+    });
   });
 
   it("preserves customModels across managed config writes", async () => {

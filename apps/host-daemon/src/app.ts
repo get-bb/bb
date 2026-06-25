@@ -788,6 +788,7 @@ export async function createHostDaemonApp(
 
   const localApi = options.localApiConfig
     ? await startLocalApiServer({
+        dataDir: options.dataDir,
         hostId: options.hostId,
         localApiConfig: options.localApiConfig,
         serverUrl: options.serverUrl,

@@ -6,6 +6,13 @@ import {
   buildLocalAppOrigins,
   type BuildLocalAppOriginsArgs,
 } from "@bb/config/local-app-origins";
+import {
+  formatClientHelperConfigPath,
+  normalizeClientHelperServerOrigin,
+  parseClientHelperConfig,
+  resolveClientHelperSshAuthority,
+  type ClientHelperConfig,
+} from "@bb/config/client-helper-config";
 import { assignIfDefined } from "@bb/config/objects";
 import {
   healthResponseSchema,
@@ -15,10 +22,12 @@ import {
   providerCliInstallRequestSchema,
   providerCliStatusResponseSchema,
   typedRoutes,
+  workspaceOpenTargetsQuerySchema,
   type HostDaemonLocalSchema,
   type HostPlatform,
   type OpenInTargetRequest,
   type WorkspaceOpenTarget,
+  type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { Hono } from "hono";
@@ -28,6 +37,7 @@ import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   listWorkspaceOpenTargets,
   openPathInTarget,
+  type OpenPathInTargetArgs,
   WorkspaceOpenTargetError,
 } from "./workspace-open-targets.js";
 import {
@@ -37,11 +47,11 @@ import {
 } from "./provider-cli-health.js";
 
 const execFileAsync = promisify(execFile);
-export type WorkspaceOpenTargetListHandler = () => Promise<
-  WorkspaceOpenTarget[]
->;
+export type WorkspaceOpenTargetListHandler = (
+  query: WorkspaceOpenTargetsQuery,
+) => Promise<WorkspaceOpenTarget[]>;
 export type OpenInTargetHandler = (
-  request: OpenInTargetRequest,
+  request: OpenPathInTargetArgs,
 ) => Promise<void>;
 
 /**
@@ -54,6 +64,7 @@ export type OpenInTargetHandler = (
  * client helper.
  */
 export interface StartLocalApiServerOptions {
+  dataDir?: string;
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;
   serverUrl: string;
@@ -86,6 +97,118 @@ export interface ResolveNativeFolderPickerOptions {
   platform?: NodeJS.Platform;
 }
 
+interface ClientHelperConfigLoader {
+  load(): Promise<ClientHelperConfig>;
+}
+
+interface ResolveOpenPathInTargetArgs {
+  configLoader: ClientHelperConfigLoader;
+  request: OpenInTargetRequest;
+}
+
+const CLIENT_HELPER_CONFIG_CACHE_TTL_MS = 1_000;
+const EMPTY_CLIENT_HELPER_CONFIG: ClientHelperConfig = { servers: {} };
+
+function createClientHelperConfigLoader(
+  dataDir: string | undefined,
+  nowMs: () => number = Date.now,
+): ClientHelperConfigLoader {
+  let cache: {
+    expiresAtMs: number;
+    promise: Promise<ClientHelperConfig>;
+  } | null = null;
+
+  return {
+    async load(): Promise<ClientHelperConfig> {
+      if (dataDir === undefined) {
+        return EMPTY_CLIENT_HELPER_CONFIG;
+      }
+      const now = nowMs();
+      if (cache !== null && cache.expiresAtMs > now) {
+        return cache.promise;
+      }
+      cache = {
+        expiresAtMs: now + CLIENT_HELPER_CONFIG_CACHE_TTL_MS,
+        promise: readClientHelperConfig(dataDir),
+      };
+      return cache.promise;
+    },
+  };
+}
+
+async function readClientHelperConfig(
+  dataDir: string,
+): Promise<ClientHelperConfig> {
+  try {
+    return parseClientHelperConfig(
+      JSON.parse(
+        await fs.readFile(formatClientHelperConfigPath(dataDir), "utf8"),
+      ),
+    );
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return EMPTY_CLIENT_HELPER_CONFIG;
+    }
+    throw error;
+  }
+}
+
+async function isConfiguredClientHelperOrigin(
+  origin: string,
+  configLoader: ClientHelperConfigLoader,
+): Promise<boolean> {
+  try {
+    const serverOrigin = normalizeClientHelperServerOrigin(origin);
+    const config = await configLoader.load();
+    return config.servers[serverOrigin] !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveOpenPathInTargetArgs({
+  configLoader,
+  request,
+}: ResolveOpenPathInTargetArgs): Promise<OpenPathInTargetArgs> {
+  if (request.context.kind === "local") {
+    return {
+      columnNumber: request.columnNumber,
+      context: { kind: "local" },
+      lineNumber: request.lineNumber,
+      path: request.path,
+      targetId: request.targetId,
+    };
+  }
+
+  const serverOrigin = normalizeClientHelperServerOrigin(
+    request.context.serverOrigin,
+  );
+  const config = await configLoader.load();
+  const sshAuthority = resolveClientHelperSshAuthority(config, {
+    serverOrigin,
+    hostId: request.context.hostId,
+  });
+  if (sshAuthority === null) {
+    throw new WorkspaceOpenTargetError({
+      code: "remote_mapping_missing",
+      message: `No SSH mapping configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client-helper ssh-alias set ${serverOrigin} ${request.context.hostId} <ssh-authority>`,
+    });
+  }
+
+  return {
+    columnNumber: request.columnNumber,
+    context: {
+      kind: "remote-ssh",
+      serverOrigin,
+      hostId: request.context.hostId,
+      sshAuthority,
+    },
+    lineNumber: request.lineNumber,
+    path: request.path,
+    targetId: request.targetId,
+  };
+}
+
 export function resolveNativeFolderPicker(
   options: ResolveNativeFolderPickerOptions,
 ): FolderPickerHandler | null {
@@ -114,6 +237,9 @@ export async function startLocalApiServer(
   options: StartLocalApiServerOptions,
 ): Promise<LocalApiServer> {
   const app = new Hono();
+  const clientHelperConfigLoader = createClientHelperConfigLoader(
+    options.dataDir,
+  );
   const originArgs: BuildLocalAppOriginsArgs = {
     serverPort: options.serverPort,
   };
@@ -131,9 +257,16 @@ export async function startLocalApiServer(
   app.use(
     "*",
     cors({
-      origin: (origin, context) => {
+      origin: async (origin, context) => {
         const requestOrigin = new URL(context.req.url).origin;
-        if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
+        if (
+          origin === requestOrigin ||
+          allowedCorsOrigins.has(origin) ||
+          (await isConfiguredClientHelperOrigin(
+            origin,
+            clientHelperConfigLoader,
+          ))
+        ) {
           return origin;
         }
         return null;
@@ -222,17 +355,25 @@ export async function startLocalApiServer(
     return c.json({ existence: Object.fromEntries(entries) });
   });
 
-  get("/workspace-open-targets", async (c) =>
-    c.json({
-      targets: await (
-        options.listWorkspaceOpenTargets ?? listWorkspaceOpenTargets
-      )(),
-    }),
+  get(
+    "/workspace-open-targets",
+    workspaceOpenTargetsQuerySchema,
+    async (c, query) =>
+      c.json({
+        targets: await (
+          options.listWorkspaceOpenTargets ?? listWorkspaceOpenTargets
+        )(query),
+      }),
   );
 
   post("/open-in-target", openInTargetRequestSchema, async (c, payload) => {
     try {
-      await (options.openInTarget ?? openPathInTarget)(payload);
+      await (options.openInTarget ?? openPathInTarget)(
+        await resolveOpenPathInTargetArgs({
+          configLoader: clientHelperConfigLoader,
+          request: payload,
+        }),
+      );
     } catch (error) {
       if (error instanceof WorkspaceOpenTargetError) {
         throw new HTTPException(400, { message: error.message });

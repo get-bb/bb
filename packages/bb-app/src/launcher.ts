@@ -29,6 +29,12 @@ import {
   type BbAppManagedEnvFile,
 } from "@bb/config/bb-app-managed-config";
 import {
+  formatClientHelperConfigPath,
+  normalizeClientHelperServerOrigin,
+  parseClientHelperConfig,
+  type ClientHelperConfig,
+} from "@bb/config/client-helper-config";
+import {
   validateInferenceModel,
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
@@ -55,9 +61,12 @@ const MANAGED_PROCESS_RESTART_RETRY_DELAY_MS = 1_000;
 const START_COMMAND = "start";
 const HOST_DAEMON_COMMAND = "host-daemon";
 const HOST_DAEMON_JOIN_COMMAND = "join";
+const CLIENT_HELPER_COMMAND = "client-helper";
+const CLIENT_HELPER_SSH_ALIAS_COMMAND = "ssh-alias";
 const CONFIG_COMMAND = "config";
 const ENV_COMMAND = "env";
 const SET_COMMAND = "set";
+const REMOVE_COMMAND = "remove";
 const CONFIG_UNSET_COMMAND = "unset";
 const CONFIG_LIST_COMMAND = "list";
 const CONFIG_REFRESH_COMMAND = "refresh";
@@ -170,6 +179,11 @@ export interface HostDaemonCommand {
   kind: "host-daemon";
 }
 
+export interface ClientHelperCommand {
+  args: string[];
+  kind: "client-helper";
+}
+
 export interface ConfigCommand {
   args: string[];
   kind: "config";
@@ -197,6 +211,7 @@ export interface LauncherCliOptions {
   hostId?: string;
   hostType?: string;
   joinCode?: string;
+  json?: boolean;
   serverPort?: string;
   serverUrl?: string;
 }
@@ -235,6 +250,7 @@ type ResolveWaitForProcessExitWithTimeout = (
   result: WaitForProcessExitWithTimeoutResult,
 ) => void;
 type BbAppCommand =
+  | ClientHelperCommand
   | ConfigCommand
   | EnvCommand
   | HelpCommand
@@ -429,6 +445,11 @@ interface WriteManagedEnvFileArgs {
   dataDir: string;
 }
 
+interface WriteClientHelperConfigFileArgs {
+  config: ClientHelperConfig;
+  dataDir: string;
+}
+
 interface ResolveServerUrlArgs {
   config: ManagedConfig;
   defaultServerUrl: string;
@@ -460,6 +481,12 @@ interface RunEnvCommandArgs {
   args: string[];
   dataDir: string;
   serverUrl: string;
+}
+
+interface RunClientHelperCommandArgs {
+  args: string[];
+  dataDir: string;
+  json: boolean;
 }
 
 interface RefreshRunningServerConfigArgs {
@@ -553,7 +580,7 @@ function supportedConfigKeysText(): string {
 }
 
 function createDefaultLauncherOptions(): LauncherCliOptions {
-  return { help: false };
+  return { help: false, json: false };
 }
 
 function trimToUndefined(value: string | undefined): string | undefined {
@@ -603,11 +630,13 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "server-port": { type: "string" },
       "server-url": { type: "string" },
       help: { short: "h", type: "boolean" },
+      json: { type: "boolean" },
       server: { type: "string" },
     },
   });
   const options: LauncherCliOptions = {
     help: readBooleanOption(parsed.values.help),
+    json: readBooleanOption(parsed.values.json),
   };
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
@@ -772,10 +801,7 @@ async function readManagedConfigForWrite(
     const parsedConfig = parseBbAppManagedConfig(parsedJson, {
       logger: launcherConfigWarningLogger,
     });
-    if (
-      isJsonObject(parsedJson) &&
-      Array.isArray(parsedJson.customAcpAgents)
-    ) {
+    if (isJsonObject(parsedJson) && Array.isArray(parsedJson.customAcpAgents)) {
       return {
         ...parsedConfig,
         customAcpAgents: parsedJson.customAcpAgents,
@@ -819,6 +845,33 @@ async function readManagedEnvFile(
     }
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return {};
+    }
+    throw error;
+  }
+}
+
+async function readClientHelperConfig(
+  args: ResolveManagedConfigArgs,
+): Promise<ClientHelperConfig> {
+  try {
+    const rawConfig = await readFile(
+      formatClientHelperConfigPath(args.dataDir),
+      "utf8",
+    );
+    return parseClientHelperConfig(JSON.parse(rawConfig));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `Invalid client-helper config JSON at ${formatClientHelperConfigPath(args.dataDir)}`,
+      );
+    }
+    if (error instanceof z.ZodError) {
+      throw new Error(
+        `Invalid client-helper config at ${formatClientHelperConfigPath(args.dataDir)}: ${error.message}`,
+      );
+    }
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return { servers: {} };
     }
     throw error;
   }
@@ -997,6 +1050,28 @@ async function writeManagedEnvFile(
   }
 }
 
+async function writeClientHelperConfigFile(
+  args: WriteClientHelperConfigFileArgs,
+): Promise<void> {
+  await mkdir(args.dataDir, { recursive: true });
+  const configPath = formatClientHelperConfigPath(args.dataDir);
+  const tempPath = join(
+    args.dataDir,
+    `.client-helper.json.${process.pid}.${randomUUID()}.tmp`,
+  );
+
+  try {
+    await writeFile(tempPath, `${JSON.stringify(args.config, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(tempPath, configPath);
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
+}
+
 const BB_APP_VERSION_DEV_FALLBACK = "0.0.0-dev";
 
 export function readBbAppPackageVersion(packageRoot: string): string {
@@ -1147,6 +1222,13 @@ export function resolveBbAppCommand(args: string[]): BbAppCommand {
     };
   }
 
+  if (args[0] === CLIENT_HELPER_COMMAND) {
+    return {
+      args: args.slice(1),
+      kind: "client-helper",
+    };
+  }
+
   if (args[0] === CONFIG_COMMAND) {
     return {
       args: args.slice(1),
@@ -1200,6 +1282,19 @@ Usage:
 
 Env file:
   ${formatBbAppEnvPath(dataDir)}
+`);
+}
+
+function printClientHelperHelp(dataDir: string): void {
+  process.stdout.write(`bb-app client-helper
+
+Usage:
+  bb-app client-helper ssh-alias list [--json]
+  bb-app client-helper ssh-alias set <server-origin> <host-id> <ssh-authority>
+  bb-app client-helper ssh-alias remove <server-origin> <host-id>
+
+Config file:
+  ${formatClientHelperConfigPath(dataDir)}
 `);
 }
 
@@ -1302,9 +1397,7 @@ function formatManagedConfig(config: ManagedConfig): string {
       `customModels[${index}]=${customModel.providerId}:${customModel.model}`,
     );
   }
-  for (const [index, customAgent] of (
-    config.customAcpAgents ?? []
-  ).entries()) {
+  for (const [index, customAgent] of (config.customAcpAgents ?? []).entries()) {
     lines.push(
       `customAcpAgents[${index}]=${formatCustomAcpAgentProviderId(customAgent.id)}:${customAgent.command}`,
     );
@@ -1322,6 +1415,73 @@ function formatManagedEnv(config: ManagedEnvFile): string {
     return "No bb-app env set.\n";
   }
   return `${keys.map((key) => `${key}=<set>`).join("\n")}\n`;
+}
+
+function setClientHelperSshAlias(
+  config: ClientHelperConfig,
+  rawServerOrigin: string,
+  hostId: string,
+  sshAuthority: string,
+): ClientHelperConfig {
+  const serverOrigin = normalizeClientHelperServerOrigin(rawServerOrigin);
+  const nextConfig: ClientHelperConfig = {
+    servers: {
+      ...config.servers,
+    },
+  };
+  const serverConfig = nextConfig.servers[serverOrigin] ?? { hosts: {} };
+  nextConfig.servers[serverOrigin] = {
+    hosts: {
+      ...serverConfig.hosts,
+      [hostId]: { sshAuthority },
+    },
+  };
+  return parseClientHelperConfig(nextConfig);
+}
+
+function removeClientHelperSshAlias(
+  config: ClientHelperConfig,
+  rawServerOrigin: string,
+  hostId: string,
+): ClientHelperConfig {
+  const serverOrigin = normalizeClientHelperServerOrigin(rawServerOrigin);
+  const serverConfig = config.servers[serverOrigin];
+  if (serverConfig === undefined) {
+    return config;
+  }
+  const nextHosts = { ...serverConfig.hosts };
+  delete nextHosts[hostId];
+  const nextServers = { ...config.servers };
+  if (Object.keys(nextHosts).length === 0) {
+    delete nextServers[serverOrigin];
+  } else {
+    nextServers[serverOrigin] = { hosts: nextHosts };
+  }
+  return { servers: nextServers };
+}
+
+function formatClientHelperSshAliases(
+  config: ClientHelperConfig,
+  json: boolean,
+): string {
+  if (json) {
+    return `${JSON.stringify(config, null, 2)}\n`;
+  }
+
+  const lines: string[] = [];
+  for (const serverOrigin of Object.keys(config.servers).sort()) {
+    const hosts = config.servers[serverOrigin]?.hosts ?? {};
+    for (const hostId of Object.keys(hosts).sort()) {
+      const sshAuthority = hosts[hostId]?.sshAuthority;
+      if (sshAuthority !== undefined) {
+        lines.push(`${serverOrigin} ${hostId} ${sshAuthority}`);
+      }
+    }
+  }
+
+  return lines.length > 0
+    ? `${lines.join("\n")}\n`
+    : "No client-helper SSH aliases set.\n";
 }
 
 async function refreshRunningServerConfig(
@@ -1486,6 +1646,100 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
   });
   process.stdout.write(`Set ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`);
   await refreshRunningServerConfigAfterWrite(args.serverUrl);
+}
+
+async function runClientHelperCommand(
+  args: RunClientHelperCommandArgs,
+): Promise<void> {
+  const commandArgs = args.args;
+  if (
+    commandArgs.length === 0 ||
+    (commandArgs.length === 1 &&
+      (commandArgs[0] === "help" ||
+        commandArgs[0] === "--help" ||
+        commandArgs[0] === "-h"))
+  ) {
+    printClientHelperHelp(args.dataDir);
+    return;
+  }
+
+  if (commandArgs[0] !== CLIENT_HELPER_SSH_ALIAS_COMMAND) {
+    throw new Error(
+      `Unsupported bb-app client-helper command "${commandArgs[0]}". Use "ssh-alias".`,
+    );
+  }
+
+  const subcommand = commandArgs[1];
+  if (subcommand === CONFIG_LIST_COMMAND || subcommand === undefined) {
+    if (commandArgs.length > 2) {
+      throw new Error("Usage: bb-app client-helper ssh-alias list [--json]");
+    }
+    process.stdout.write(
+      formatClientHelperSshAliases(
+        await readClientHelperConfig({ dataDir: args.dataDir }),
+        args.json,
+      ),
+    );
+    return;
+  }
+
+  if (subcommand === SET_COMMAND) {
+    if (commandArgs.length !== 5) {
+      throw new Error(
+        "Usage: bb-app client-helper ssh-alias set <server-origin> <host-id> <ssh-authority>",
+      );
+    }
+    const hostId = commandArgs[3].trim();
+    if (hostId.length === 0) {
+      throw new Error("Host ID must not be empty");
+    }
+    const sshAuthority = commandArgs[4].trim();
+    if (sshAuthority.length === 0) {
+      throw new Error("SSH authority must not be empty");
+    }
+    const nextConfig = setClientHelperSshAlias(
+      await readClientHelperConfig({ dataDir: args.dataDir }),
+      commandArgs[2],
+      hostId,
+      sshAuthority,
+    );
+    await writeClientHelperConfigFile({
+      config: nextConfig,
+      dataDir: args.dataDir,
+    });
+    process.stdout.write(
+      `Set client-helper SSH alias in ${formatClientHelperConfigPath(args.dataDir)}\n`,
+    );
+    return;
+  }
+
+  if (subcommand === REMOVE_COMMAND) {
+    if (commandArgs.length !== 4) {
+      throw new Error(
+        "Usage: bb-app client-helper ssh-alias remove <server-origin> <host-id>",
+      );
+    }
+    const hostId = commandArgs[3].trim();
+    if (hostId.length === 0) {
+      throw new Error("Host ID must not be empty");
+    }
+    await writeClientHelperConfigFile({
+      config: removeClientHelperSshAlias(
+        await readClientHelperConfig({ dataDir: args.dataDir }),
+        commandArgs[2],
+        hostId,
+      ),
+      dataDir: args.dataDir,
+    });
+    process.stdout.write(
+      `Removed client-helper SSH alias from ${formatClientHelperConfigPath(args.dataDir)}\n`,
+    );
+    return;
+  }
+
+  throw new Error(
+    `Unsupported bb-app client-helper ssh-alias command "${subcommand}". Use list, set, or remove.`,
+  );
 }
 
 function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
@@ -2199,6 +2453,7 @@ Usage:
   bb-app config set <key> <value>
   bb-app config refresh
   bb-app env set <key> <value>
+  bb-app client-helper ssh-alias set <server-origin> <host-id> <ssh-authority>
   bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
   bb-app host-daemon join --server-url <url>
 
@@ -2457,6 +2712,15 @@ export async function runBbApp(
       args: command.args,
       dataDir: runtime.context.dataDir,
       serverUrl: runtime.context.serverUrl,
+    });
+    return;
+  }
+
+  if (command.kind === "client-helper") {
+    await runClientHelperCommand({
+      args: command.args,
+      dataDir: runtime.context.dataDir,
+      json: parsedArgs.options.json === true,
     });
     return;
   }

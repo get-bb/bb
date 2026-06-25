@@ -9,7 +9,10 @@ import {
   localHostDaemonReachableAtom,
   localWorkspaceOpenTargetsAtom,
 } from "@/lib/system-config-atoms";
-import { openInTarget as daemonOpenInTarget } from "@/lib/api-host-daemon";
+import {
+  fetchWorkspaceOpenTargets,
+  openInTarget as daemonOpenInTarget,
+} from "@/lib/api-host-daemon";
 import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 
 const disabledLocalHostDaemonReachableAtom = atom(false);
@@ -22,6 +25,9 @@ export interface UseWorkspaceOpenTargetsArgs {
 }
 
 export interface UseWorkspaceOpenTargetsResult {
+  fetchWorkspaceOpenTargetsForPath:
+    | ((path: string) => Promise<WorkspaceOpenTarget[]>)
+    | null;
   openWorkspace: ((request: OpenInTargetRequest) => Promise<void>) | null;
   workspaceOpenTargets: WorkspaceOpenTarget[];
 }
@@ -64,7 +70,16 @@ export function useWorkspaceOpenTargets(
     workspaceOpenTargets.length,
   ]);
 
+  const fetchWorkspaceOpenTargetsForPath = useMemo(() => {
+    if (!args.enabled || !localHostDaemonReachable || !daemonPort) {
+      return null;
+    }
+    const port = daemonPort;
+    return (path: string) => fetchWorkspaceOpenTargets(port, { path });
+  }, [args.enabled, localHostDaemonReachable, daemonPort]);
+
   return {
+    fetchWorkspaceOpenTargetsForPath,
     openWorkspace,
     workspaceOpenTargets,
   };

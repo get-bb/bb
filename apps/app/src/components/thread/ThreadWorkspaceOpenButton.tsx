@@ -53,7 +53,7 @@ export function ThreadWorkspaceOpenButton({
     },
     content: (
       <WorkspaceOpenTargetIcon
-        targetId={preferredTarget.id}
+        target={preferredTarget}
         className="size-5"
       />
     ),
@@ -65,7 +65,7 @@ export function ThreadWorkspaceOpenButton({
     },
     content: (
       <>
-        <WorkspaceOpenTargetIcon targetId={target.id} className="size-5" />
+        <WorkspaceOpenTargetIcon target={target} className="size-5" />
         <span className="min-w-0 flex-1">{target.label}</span>
       </>
     ),

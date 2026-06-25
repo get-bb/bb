@@ -157,8 +157,8 @@ import {
 } from "./threadTerminalTabs";
 import {
   buildOpenInEditorHandler,
+  resolveEnvironmentOpenContext,
   resolveWorkspaceChangedFileOpenTarget,
-  resolveThreadLocalWorkspaceRootPath,
   resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
@@ -1391,12 +1391,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     }),
     [threadEnvironmentIsLocal],
   );
-  const localWorkspaceRootPath = resolveThreadLocalWorkspaceRootPath({
-    environment,
-    threadEnvironmentIsLocal,
-  });
   const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
     environment,
+  });
+  const threadOpenContext = resolveEnvironmentOpenContext({
+    environment,
+    serverOrigin: window.location.origin,
+    threadEnvironmentIsLocal,
   });
   const {
     canOpenPreferredDirectoryTarget,
@@ -1407,7 +1408,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openPathInPreferredFileTarget,
     preferredDirectoryTarget,
   } = useLocalOpenTargets({
-    enabled: threadEnvironmentIsLocal,
+    enabled: threadOpenContext !== null,
+    ...(threadOpenContext ? { openContext: threadOpenContext } : {}),
   });
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
@@ -1672,34 +1674,33 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const handleOpenFileInEditor = useMemo(
     () =>
       buildOpenInEditorHandler({
-        rootPath: localWorkspaceRootPath,
+        rootPath: workspacePreviewRootPath,
         canOpenPreferredTarget: canOpenPreferredFileTarget,
         openInPreferredTarget: openPathInPreferredFileTarget,
       }),
     [
       canOpenPreferredFileTarget,
-      localWorkspaceRootPath,
       openPathInPreferredFileTarget,
+      workspacePreviewRootPath,
     ],
   );
   const handleOpenStorageFileInEditor = useMemo(
     () =>
       buildOpenInEditorHandler({
-        rootPath: threadEnvironmentIsLocal ? threadStorageRootPath : null,
+        rootPath: threadStorageRootPath,
         canOpenPreferredTarget: canOpenPreferredFileTarget,
         openInPreferredTarget: openPathInPreferredFileTarget,
       }),
     [
       canOpenPreferredFileTarget,
       openPathInPreferredFileTarget,
-      threadEnvironmentIsLocal,
       threadStorageRootPath,
     ],
   );
   const handleOpenHostFileInEditor = useMemo<
     OpenInEditorHandler | undefined
   >(() => {
-    if (!threadEnvironmentIsLocal || !canOpenPreferredFileTarget) {
+    if (!canOpenPreferredFileTarget) {
       return undefined;
     }
     return (path) => {
@@ -1714,7 +1715,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeHostFileLineRange,
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
-    threadEnvironmentIsLocal,
   ]);
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
@@ -1886,7 +1886,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     canOpenWorkspace: canOpenPreferredDirectoryTarget,
     environment,
     hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
-    threadEnvironmentIsLocal,
   });
   const workspaceOpenButton =
     workspaceOpenPath && preferredDirectoryTarget ? (

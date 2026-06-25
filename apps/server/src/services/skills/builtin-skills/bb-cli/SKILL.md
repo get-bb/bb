@@ -20,6 +20,15 @@ message agents, or inspect projects, providers, and environments.
 - To make a repo work with bb worktrees, run `bb guide environments`. It
   documents the repo-level `.bb-env-setup.sh` setup hook.
 
+## Remote Client Helper
+
+- `bb-app client-helper ssh-alias set <server-origin> <host-id> <ssh-authority>`
+  configures the local helper to open files from a remote bb server in VS Code
+  Remote-SSH.
+- These mappings live on the client machine in `<dataDir>/client-helper.json`;
+  the remote server does not read them.
+- Use `bb-app client-helper ssh-alias list --json` to inspect mappings.
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject
