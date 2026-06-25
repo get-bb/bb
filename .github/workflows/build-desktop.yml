@@ -113,6 +113,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
 
+      - name: Smoke test packaged desktop app
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
       - name: Generate desktop version feed
         run: pnpm --dir apps/desktop run desktop:version-feed
 

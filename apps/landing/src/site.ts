@@ -2,6 +2,9 @@ export const GITHUB_URL = "https://github.com/ymichael/bb";
 export const DOWNLOAD_MACOS_URL =
   "https://github.com/ymichael/bb/releases/tag/desktop-latest";
 export const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
+/** First-party endpoint that adds an email to the bb marketing audience.
+ *  Handled by the Worker (see worker.ts), not a prerendered asset. */
+export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 
 /** Where on the page a CTA lives, for click-through comparison. */

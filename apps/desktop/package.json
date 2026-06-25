@@ -16,6 +16,7 @@
     "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
     "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir --arm64",
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
+    "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
