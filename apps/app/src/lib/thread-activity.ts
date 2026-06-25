@@ -31,8 +31,11 @@ export function isBusyThread(
  * The signals a collapsed parent row surfaces on behalf of its hidden children.
  * A collapsed row renders these through its single trailing status glyph, using
  * the same priority as a leaf row: failed unread work is loudest, then pending
- * user input, then unread success, then working. Expanded rows show their own
- * status, since the children are then visible with their own glyphs.
+ * user input, then workflow work, then unread success, then generic runtime
+ * work. Expanded rows show their own status, since the children are then
+ * visible with their own glyphs. Workflow work is tracked separately from
+ * runtime work so the sidebar can use the same workflow-specific signal as the
+ * prompt banner instead of collapsing it into a generic spinner.
  */
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
@@ -82,13 +85,21 @@ export function getCollapsedChildActivity(
       pending = true;
       continue;
     }
-    if (isRuntimeBusyThread(thread)) {
+    const childRuntimeWorking = isRuntimeBusyThread(thread);
+    const childWorkflowActive = hasActiveWorkflowActivity(thread);
+    if (childRuntimeWorking) {
       runtimeWorking = true;
       working = true;
-    } else if (hasActiveWorkflowActivity(thread)) {
+    }
+    if (childWorkflowActive) {
       workflow = true;
       working = true;
-    } else if (isUnreadDoneThread(thread)) {
+    }
+    if (
+      !childRuntimeWorking &&
+      !childWorkflowActive &&
+      isUnreadDoneThread(thread)
+    ) {
       unread = true;
       if (thread.status === "error") {
         unreadError = true;

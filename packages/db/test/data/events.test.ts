@@ -3074,6 +3074,7 @@ describe("events", () => {
       itemStatus: string;
       taskStatus: string;
       taskType: string;
+      skipTranscript?: boolean;
     }) =>
       JSON.stringify({
         item: {
@@ -3083,7 +3084,7 @@ describe("events", () => {
           description: "fixture background task",
           status: args.itemStatus,
           taskStatus: args.taskStatus,
-          skipTranscript: false,
+          skipTranscript: args.skipTranscript ?? false,
         },
       });
 
@@ -3170,6 +3171,21 @@ describe("events", () => {
           itemStatus: "completed",
           taskStatus: "completed",
           taskType: LOCAL_WORKFLOW_TASK_TYPE,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-skip-transcript",
+        itemKind: "backgroundTask",
+        data: taskData({
+          itemId: "task:wf-skip-transcript",
+          itemStatus: "pending",
+          taskStatus: "running",
+          taskType: LOCAL_WORKFLOW_TASK_TYPE,
+          skipTranscript: true,
         }),
       },
     ]);

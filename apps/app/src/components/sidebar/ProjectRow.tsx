@@ -1120,8 +1120,8 @@ function EnvironmentThreadGroupHeader({
   const displayName = environmentName || branchName || "Worktree";
   const iconName: IconName = "FolderGit";
   // Collapsed: the header speaks for its hidden children through one status
-  // glyph (pending > working > unread). Expanded: the children show their own
-  // glyphs, and the synthetic header has no status of its own.
+  // glyph. Expanded: the children show their own glyphs, and the synthetic
+  // header has no status of its own.
   const showRollupGlyph =
     isCollapsed &&
     (childActivity.pending || childActivity.working || childActivity.unread);
@@ -1185,9 +1185,7 @@ function EnvironmentThreadGroupHeader({
             <ThreadStatusGlyph
               hasPendingInteraction={childActivity.pending}
               isBusy={childActivity.runtimeWorking}
-              isWorkflowActive={
-                !childActivity.runtimeWorking && childActivity.workflow
-              }
+              isWorkflowActive={childActivity.workflow}
               showUnreadBadge={childActivity.unread}
               unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />

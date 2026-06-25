@@ -1374,6 +1374,10 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       AND json_extract(active_event.data, '$.item.status') = 'pending'
       AND json_extract(active_event.data, '$.item.taskType') =
         ${LOCAL_WORKFLOW_TASK_TYPE}
+      AND COALESCE(
+        json_extract(active_event.data, '$.item.skipTranscript'),
+        0
+      ) = 0
     GROUP BY active_event.thread_id
     ORDER BY active_event.thread_id
   `);

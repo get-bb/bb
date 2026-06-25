@@ -206,7 +206,11 @@ export function ThreadStatusGlyph({
     return (
       <Icon
         name="Workflow"
-        className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
         aria-label="Workflow running"
       />
     );
@@ -296,9 +300,7 @@ function ThreadRowComponent({
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
   const threadWorkflowActive =
-    !threadRuntimeBusy &&
-    !hasPendingInteraction &&
-    hasActiveWorkflowActivity(thread);
+    !hasPendingInteraction && hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge =
     !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
@@ -326,7 +328,7 @@ function ThreadRowComponent({
     ? threadRuntimeBusy || childActivity.runtimeWorking
     : threadRuntimeBusy;
   const trailingIsWorkflowActive = hasHiddenChildren
-    ? !trailingRuntimeBusy && (threadWorkflowActive || childActivity.workflow)
+    ? threadWorkflowActive || childActivity.workflow
     : threadWorkflowActive;
   const trailingIsBusy = trailingRuntimeBusy;
   const trailingShowUnreadBadge = hasHiddenChildren

@@ -233,6 +233,23 @@ describe("thread-activity", () => {
       });
     });
 
+    it("keeps workflow activity visible when the same child also has runtime work", () => {
+      const workflowAndRuntimeChild = makeChild({
+        activity: { activeWorkflowCount: 1 },
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        status: "active",
+      });
+
+      expect(getCollapsedChildActivity([workflowAndRuntimeChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: true,
+        workflow: true,
+        unread: false,
+        unreadError: false,
+      });
+    });
+
     it("never flags 'unread' for parented children", () => {
       const unreadButParented = makeChild({
         latestAttentionAt: 20,

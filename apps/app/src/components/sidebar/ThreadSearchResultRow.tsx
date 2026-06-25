@@ -136,9 +136,7 @@ function ThreadSearchResultRowComponent({
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
   const threadWorkflowActive =
-    !threadRuntimeBusy &&
-    !hasPendingInteraction &&
-    hasActiveWorkflowActivity(thread);
+    !hasPendingInteraction && hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.

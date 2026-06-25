@@ -101,6 +101,7 @@ function renderProjectRow(
   onToggleProjectCollapsed = vi.fn(),
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
   isActive = false,
+  collapsedEnvironmentIds: Set<string> = new Set(),
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -112,7 +113,7 @@ function renderProjectRow(
         isCollapsed={false}
         compareThreads={() => 0}
         collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={new Set()}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
         isLocalPathInvalid={false}
         onToggleProjectCollapsed={onToggleProjectCollapsed}
         onToggleThreadCollapsed={vi.fn()}
@@ -215,6 +216,47 @@ describe("ProjectRow interactions", () => {
       }),
     );
     expect(onToggleEnvironmentCollapsed).toHaveBeenCalledWith("env_test");
+  });
+
+  it("shows workflow rollup instead of the generic spinner for collapsed worktree workflow activity", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            id: "thr_worktree_workflow",
+            status: "active",
+            environmentId: "env_test",
+            environmentName: "Feature workspace",
+            environmentBranchName: "feat/menu-close",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+            activity: { activeWorkflowCount: 1 },
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+          }),
+          makeThread({
+            id: "thr_worktree_sibling",
+            environmentId: "env_test",
+            environmentName: "Feature workspace",
+            environmentBranchName: "feat/menu-close",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
+      },
+      false,
+      new Set(["env_test"]),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Expand Feature workspace threads",
+      }),
+    ).not.toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

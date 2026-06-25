@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -113,7 +114,7 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
-  it("shows a workflow glyph for an idle thread with an active workflow", () => {
+  it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
     renderThreadRow({
       thread: createThread({
         title: "Workflow thread",
@@ -121,11 +122,14 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    const workflowIcon = screen.getByLabelText("Workflow running");
+    const workflowIconClasses = Array.from(workflowIcon.classList);
+    expect(workflowIconClasses).toContain("animate-shine-icon");
+    expect(workflowIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
-  it("keeps the spinner for active runtime work even with an active workflow", () => {
+  it("shows the workflow glyph for active workflow work even while runtime work is active", () => {
     renderThreadRow({
       thread: createThread({
         title: "Active workflow thread",
@@ -138,8 +142,8 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
   it("renders an already-unread successful thread as a settled dot on initial load", () => {
