@@ -2,7 +2,7 @@
 
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
-client-helper SSH mappings under `~/.bb/client-helper.json`.
+client SSH mappings under `~/.bb/client.json`.
 
 Use `bb-app config` for non-secret bb settings:
 
@@ -26,13 +26,13 @@ npx bb-app env unset OPENAI_API_KEY
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 
-Use `bb-app client-helper ssh-alias` to let a local helper open files from a
+Use `bb-app client ssh-alias` to let a local helper open files from a
 remote bb server in VS Code Remote-SSH:
 
 ```bash
-npx bb-app client-helper ssh-alias set https://bb.example.test host_abc devbox
-npx bb-app client-helper ssh-alias list
-npx bb-app client-helper ssh-alias remove https://bb.example.test host_abc
+npx bb-app client ssh-alias set https://bb.example.test devbox
+npx bb-app client ssh-alias list
+npx bb-app client ssh-alias remove https://bb.example.test
 ```
 
 ## Precedence
@@ -40,7 +40,7 @@ npx bb-app client-helper ssh-alias remove https://bb.example.test host_abc
 Configuration is resolved in this order:
 
 1. Explicit launcher flags, such as `--data-dir` or `--server-port`.
-2. Persistent `bb-app config`, `bb-app env`, and client-helper values.
+2. Persistent `bb-app config`, `bb-app env`, and client values.
 3. Ambient shell environment.
 4. Built-in defaults.
 
@@ -85,11 +85,11 @@ provider env keys only when opting into a non-Codex provider route.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon.
 
-## Client Helper SSH Aliases
+## Client SSH Aliases
 
-`~/.bb/client-helper.json` is local to the machine showing the UI. It maps a
-remote server origin plus work-host ID to an SSH authority known to the local
-machine. The remote server does not read this file.
+`~/.bb/client.json` is local to the machine showing the UI. The CLI resolves the
+remote server's host ID and stores a mapping from that server/work-host to an SSH
+authority known to the local machine. The remote server does not read this file.
 
 Example:
 

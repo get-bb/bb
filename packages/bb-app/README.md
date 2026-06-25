@@ -131,12 +131,12 @@ npx bb-app config list
 npx bb-app config refresh
 ```
 
-Use `bb-app client-helper ssh-alias` to configure local editor opens for remote
-bb servers under `~/.bb/client-helper.json`:
+Use `bb-app client ssh-alias` to configure local editor opens for remote
+bb servers under `~/.bb/client.json`:
 
 ```bash
-npx bb-app client-helper ssh-alias set https://bb.example.test host_abc devbox
-npx bb-app client-helper ssh-alias list
+npx bb-app client ssh-alias set https://bb.example.test devbox
+npx bb-app client ssh-alias list
 ```
 
 Use `bb-app env` for provider credentials under `~/.bb/env.json`:

@@ -98,10 +98,10 @@
       "types": "./src/bb-app-managed-config.ts",
       "default": "./src/bb-app-managed-config.ts"
     },
-    "./client-helper-config": {
-      "source": "./src/client-helper-config.ts",
-      "types": "./src/client-helper-config.ts",
-      "default": "./src/client-helper-config.ts"
+    "./client-config": {
+      "source": "./src/client-config.ts",
+      "types": "./src/client-config.ts",
+      "default": "./src/client-config.ts"
     },
     "./skill-storage-paths": {
       "source": "./src/skill-storage-paths.ts",

@@ -293,9 +293,9 @@ describe("local API server", () => {
   });
 
   it("allows configured remote origins and resolves remote SSH open requests", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-helper-"));
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-config-"));
     await writeFile(
-      path.join(dataDir, "client-helper.json"),
+      path.join(dataDir, "client.json"),
       JSON.stringify({
         servers: {
           "https://remote-bb.example.test": {
@@ -371,9 +371,9 @@ describe("local API server", () => {
   });
 
   it("returns setup guidance for remote SSH opens without a mapping", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-helper-"));
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-config-"));
     await writeFile(
-      path.join(dataDir, "client-helper.json"),
+      path.join(dataDir, "client.json"),
       JSON.stringify({
         servers: {
           "https://remote-bb.example.test": {
@@ -414,7 +414,7 @@ describe("local API server", () => {
 
       expect(response.status).toBe(400);
       expect(await response.text()).toContain(
-        "bb-app client-helper ssh-alias set https://remote-bb.example.test host_missing",
+        "bb-app client ssh-alias set https://remote-bb.example.test <ssh-authority>",
       );
     } finally {
       await rm(dataDir, { recursive: true, force: true });

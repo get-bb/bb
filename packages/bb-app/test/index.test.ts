@@ -65,6 +65,12 @@ interface ConfigReloadTestServer {
   url: string;
 }
 
+interface HostListTestServer {
+  close(): Promise<void>;
+  requests(): string[];
+  url: string;
+}
+
 interface ConfigReloadRequest {
   host: string | undefined;
   method: string | undefined;
@@ -360,6 +366,55 @@ async function startConfigReloadTestServer(): Promise<ConfigReloadTestServer> {
   };
 }
 
+async function startHostListTestServer(
+  hosts: unknown[],
+): Promise<HostListTestServer> {
+  const requests: string[] = [];
+  const server = createServer(
+    (request: IncomingMessage, response: ServerResponse) => {
+      requests.push(`${request.method ?? ""} ${request.url ?? ""}`);
+      if (request.method === "GET" && request.url === "/api/v1/hosts") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(hosts));
+        return;
+      }
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ code: "not_found", message: "Not found" }));
+    },
+  );
+
+  await new Promise<void>((resolvePromise, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      resolvePromise();
+    });
+  });
+
+  const address = server.address();
+  if (typeof address === "string" || address === null) {
+    throw new Error("Expected test server to listen on a TCP port");
+  }
+  const addressInfo: AddressInfo = address;
+
+  return {
+    async close(): Promise<void> {
+      await new Promise<void>((resolvePromise, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolvePromise();
+        });
+      });
+    },
+    requests(): string[] {
+      return [...requests];
+    },
+    url: `http://127.0.0.1:${addressInfo.port}`,
+  };
+}
+
 function readPackageMetadata(): PackageMetadata {
   const testDir = dirname(fileURLToPath(import.meta.url));
   return packageMetadataSchema.parse(
@@ -492,19 +547,18 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("resolves client helper commands", () => {
+  it("resolves client commands", () => {
     expect(
       resolveBbAppCommand([
-        "client-helper",
+        "client",
         "ssh-alias",
         "set",
         "https://bb.example.test",
-        "host_1",
         "devbox",
       ]),
     ).toEqual({
-      args: ["ssh-alias", "set", "https://bb.example.test", "host_1", "devbox"],
-      kind: "client-helper",
+      args: ["ssh-alias", "set", "https://bb.example.test", "devbox"],
+      kind: "client",
     });
   });
 
@@ -542,13 +596,13 @@ describe("bb-app launcher", () => {
 
   it("parses the json launcher flag", () => {
     expect(
-      parseLauncherArgs(["client-helper", "ssh-alias", "list", "--json"]),
+      parseLauncherArgs(["client", "ssh-alias", "list", "--json"]),
     ).toEqual({
       options: {
         help: false,
         json: true,
       },
-      positionals: ["client-helper", "ssh-alias", "list"],
+      positionals: ["client", "ssh-alias", "list"],
     });
   });
 
@@ -723,52 +777,60 @@ describe("bb-app launcher", () => {
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
-  it("stores client helper SSH aliases from the client-helper command", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-client-helper-command-"));
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "client-helper",
-      "ssh-alias",
-      "set",
-      "https://bb.example.test/projects/proj_1",
-      "host_1",
-      "devbox",
+  it("stores client SSH aliases from the client command", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-client-command-"));
+    const server = await startHostListTestServer([
+      {
+        id: "host_1",
+        name: "mbp-intel",
+        status: "connected",
+      },
     ]);
 
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "client-helper.json"), "utf8")),
-    ).toEqual({
-      servers: {
-        "https://bb.example.test": {
-          hosts: {
-            host_1: {
-              sshAuthority: "devbox",
+    try {
+      await runBbApp([
+        "--data-dir",
+        dataDir,
+        "client",
+        "ssh-alias",
+        "set",
+        `${server.url}/projects/proj_1`,
+        "mbp-intel",
+      ]);
+
+      expect(server.requests()).toContain("GET /api/v1/hosts");
+      expect(
+        JSON.parse(readFileSync(join(dataDir, "client.json"), "utf8")),
+      ).toEqual({
+        servers: {
+          [server.url]: {
+            hosts: {
+              host_1: {
+                sshAuthority: "mbp-intel",
+              },
             },
           },
         },
-      },
-    });
-    expect(statSync(join(dataDir, "client-helper.json")).mode & 0o777).toBe(
-      0o600,
-    );
+      });
+      expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(0o600);
 
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "client-helper",
-      "ssh-alias",
-      "remove",
-      "https://bb.example.test",
-      "host_1",
-    ]);
+      await runBbApp([
+        "--data-dir",
+        dataDir,
+        "client",
+        "ssh-alias",
+        "remove",
+        server.url,
+      ]);
 
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "client-helper.json"), "utf8")),
-    ).toEqual({
-      servers: {},
-    });
+      expect(
+        JSON.parse(readFileSync(join(dataDir, "client.json"), "utf8")),
+      ).toEqual({
+        servers: {},
+      });
+    } finally {
+      await server.close();
+    }
   });
 
   it("preserves customModels across managed config writes", async () => {

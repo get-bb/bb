@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatClientHelperConfigPath,
-  listClientHelperServerOrigins,
-  normalizeClientHelperServerOrigin,
-  parseClientHelperConfig,
-  resolveClientHelperSshAuthority,
-} from "../src/client-helper-config.js";
+  formatClientConfigPath,
+  listClientServerOrigins,
+  normalizeClientServerOrigin,
+  parseClientConfig,
+  resolveClientSshAuthority,
+} from "../src/client-config.js";
 
-describe("client helper config", () => {
+describe("client config", () => {
   it("normalizes server URLs to origins", () => {
-    const config = parseClientHelperConfig({
+    const config = parseClientConfig({
       servers: {
         "https://bb.example.test/projects/proj_1": {
           hosts: {
@@ -21,11 +21,11 @@ describe("client helper config", () => {
       },
     });
 
-    expect(listClientHelperServerOrigins(config)).toEqual([
+    expect(listClientServerOrigins(config)).toEqual([
       "https://bb.example.test",
     ]);
     expect(
-      resolveClientHelperSshAuthority(config, {
+      resolveClientSshAuthority(config, {
         serverOrigin: "https://bb.example.test/thread/thr_1",
         hostId: "host_1",
       }),
@@ -33,7 +33,7 @@ describe("client helper config", () => {
   });
 
   it("returns null when no SSH authority is configured for a host", () => {
-    const config = parseClientHelperConfig({
+    const config = parseClientConfig({
       servers: {
         "https://bb.example.test": {
           hosts: {
@@ -46,7 +46,7 @@ describe("client helper config", () => {
     });
 
     expect(
-      resolveClientHelperSshAuthority(config, {
+      resolveClientSshAuthority(config, {
         serverOrigin: "https://bb.example.test",
         hostId: "host_2",
       }),
@@ -55,7 +55,7 @@ describe("client helper config", () => {
 
   it("rejects duplicate server origins after normalization", () => {
     expect(() =>
-      parseClientHelperConfig({
+      parseClientConfig({
         servers: {
           "https://bb.example.test/a": {
             hosts: {},
@@ -69,11 +69,11 @@ describe("client helper config", () => {
   });
 
   it("rejects invalid server origins and SSH authorities", () => {
-    expect(() => normalizeClientHelperServerOrigin("not a url")).toThrow(
+    expect(() => normalizeClientServerOrigin("not a url")).toThrow(
       /Invalid server origin/u,
     );
     expect(() =>
-      parseClientHelperConfig({
+      parseClientConfig({
         servers: {
           "https://bb.example.test": {
             hosts: {
@@ -88,8 +88,8 @@ describe("client helper config", () => {
   });
 
   it("formats the config path under the data dir", () => {
-    expect(formatClientHelperConfigPath("/tmp/bb-data")).toBe(
-      "/tmp/bb-data/client-helper.json",
+    expect(formatClientConfigPath("/tmp/bb-data")).toBe(
+      "/tmp/bb-data/client.json",
     );
   });
 });

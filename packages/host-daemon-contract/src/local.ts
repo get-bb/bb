@@ -297,7 +297,7 @@ export type ProviderCliInstallEvent = z.infer<
  * This API predates remote-client support and currently mixes two ownership
  * classes:
  *
- * - client-helper routes: actions about the machine showing the UI, such as
+ * - client-machine-local routes: actions about the machine showing the UI, such as
  *   local editor discovery and launch
  * - work-host routes: actions about the machine running bb work, such as path
  *   checks and provider CLI health
@@ -309,14 +309,14 @@ export type HostDaemonLocalSchema = {
   [DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH]: {
     $get: Endpoint<EmptyInput, HealthResponse>;
   };
-  /** client-helper: discover editor/app launch targets on the UI machine. */
+  /** client-machine-local: discover editor/app launch targets on the UI machine. */
   "/workspace-open-targets": {
     $get: Endpoint<
       { query?: WorkspaceOpenTargetsQuery },
       WorkspaceOpenTargetsResponse
     >;
   };
-  /** client-helper: open a path in an editor/app on the UI machine. */
+  /** client-machine-local: open a path in an editor/app on the UI machine. */
   "/open-in-target": {
     $post: Endpoint<{ json: OpenInTargetRequest }, Record<string, never>>;
   };

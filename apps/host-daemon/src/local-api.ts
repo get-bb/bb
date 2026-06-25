@@ -7,12 +7,12 @@ import {
   type BuildLocalAppOriginsArgs,
 } from "@bb/config/local-app-origins";
 import {
-  formatClientHelperConfigPath,
-  normalizeClientHelperServerOrigin,
-  parseClientHelperConfig,
-  resolveClientHelperSshAuthority,
-  type ClientHelperConfig,
-} from "@bb/config/client-helper-config";
+  formatClientConfigPath,
+  normalizeClientServerOrigin,
+  parseClientConfig,
+  resolveClientSshAuthority,
+  type ClientConfig,
+} from "@bb/config/client-config";
 import { assignIfDefined } from "@bb/config/objects";
 import {
   healthResponseSchema,
@@ -61,7 +61,7 @@ export type OpenInTargetHandler = (
  * Some routes describe the UI/client machine, while others describe the
  * work-host machine. Remote-client support should route work-host operations
  * through the server and connected work host daemon instead of adding them to a
- * client helper.
+ * client.
  */
 export interface StartLocalApiServerOptions {
   dataDir?: string;
@@ -97,68 +97,68 @@ export interface ResolveNativeFolderPickerOptions {
   platform?: NodeJS.Platform;
 }
 
-interface ClientHelperConfigLoader {
-  load(): Promise<ClientHelperConfig>;
+interface ClientConfigLoader {
+  load(): Promise<ClientConfig>;
 }
 
 interface ResolveOpenPathInTargetArgs {
-  configLoader: ClientHelperConfigLoader;
+  configLoader: ClientConfigLoader;
   request: OpenInTargetRequest;
 }
 
-const CLIENT_HELPER_CONFIG_CACHE_TTL_MS = 1_000;
-const EMPTY_CLIENT_HELPER_CONFIG: ClientHelperConfig = { servers: {} };
+const CLIENT_CONFIG_CACHE_TTL_MS = 1_000;
+const EMPTY_CLIENT_CONFIG: ClientConfig = { servers: {} };
 
-function createClientHelperConfigLoader(
+function isNoEntryError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function createClientConfigLoader(
   dataDir: string | undefined,
   nowMs: () => number = Date.now,
-): ClientHelperConfigLoader {
+): ClientConfigLoader {
   let cache: {
     expiresAtMs: number;
-    promise: Promise<ClientHelperConfig>;
+    promise: Promise<ClientConfig>;
   } | null = null;
 
   return {
-    async load(): Promise<ClientHelperConfig> {
+    async load(): Promise<ClientConfig> {
       if (dataDir === undefined) {
-        return EMPTY_CLIENT_HELPER_CONFIG;
+        return EMPTY_CLIENT_CONFIG;
       }
       const now = nowMs();
       if (cache !== null && cache.expiresAtMs > now) {
         return cache.promise;
       }
       cache = {
-        expiresAtMs: now + CLIENT_HELPER_CONFIG_CACHE_TTL_MS,
-        promise: readClientHelperConfig(dataDir),
+        expiresAtMs: now + CLIENT_CONFIG_CACHE_TTL_MS,
+        promise: readClientConfig(dataDir),
       };
       return cache.promise;
     },
   };
 }
 
-async function readClientHelperConfig(
-  dataDir: string,
-): Promise<ClientHelperConfig> {
+async function readClientConfig(dataDir: string): Promise<ClientConfig> {
   try {
-    return parseClientHelperConfig(
-      JSON.parse(
-        await fs.readFile(formatClientHelperConfigPath(dataDir), "utf8"),
-      ),
+    return parseClientConfig(
+      JSON.parse(await fs.readFile(formatClientConfigPath(dataDir), "utf8")),
     );
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return EMPTY_CLIENT_HELPER_CONFIG;
+    if (!isNoEntryError(error)) {
+      throw error;
     }
-    throw error;
+    return EMPTY_CLIENT_CONFIG;
   }
 }
 
-async function isConfiguredClientHelperOrigin(
+async function isConfiguredClientOrigin(
   origin: string,
-  configLoader: ClientHelperConfigLoader,
+  configLoader: ClientConfigLoader,
 ): Promise<boolean> {
   try {
-    const serverOrigin = normalizeClientHelperServerOrigin(origin);
+    const serverOrigin = normalizeClientServerOrigin(origin);
     const config = await configLoader.load();
     return config.servers[serverOrigin] !== undefined;
   } catch {
@@ -180,18 +180,18 @@ async function resolveOpenPathInTargetArgs({
     };
   }
 
-  const serverOrigin = normalizeClientHelperServerOrigin(
+  const serverOrigin = normalizeClientServerOrigin(
     request.context.serverOrigin,
   );
   const config = await configLoader.load();
-  const sshAuthority = resolveClientHelperSshAuthority(config, {
+  const sshAuthority = resolveClientSshAuthority(config, {
     serverOrigin,
     hostId: request.context.hostId,
   });
   if (sshAuthority === null) {
     throw new WorkspaceOpenTargetError({
       code: "remote_mapping_missing",
-      message: `No SSH mapping configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client-helper ssh-alias set ${serverOrigin} ${request.context.hostId} <ssh-authority>`,
+      message: `No SSH mapping configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-alias set ${serverOrigin} <ssh-authority>`,
     });
   }
 
@@ -237,9 +237,7 @@ export async function startLocalApiServer(
   options: StartLocalApiServerOptions,
 ): Promise<LocalApiServer> {
   const app = new Hono();
-  const clientHelperConfigLoader = createClientHelperConfigLoader(
-    options.dataDir,
-  );
+  const clientConfigLoader = createClientConfigLoader(options.dataDir);
   const originArgs: BuildLocalAppOriginsArgs = {
     serverPort: options.serverPort,
   };
@@ -262,10 +260,7 @@ export async function startLocalApiServer(
         if (
           origin === requestOrigin ||
           allowedCorsOrigins.has(origin) ||
-          (await isConfiguredClientHelperOrigin(
-            origin,
-            clientHelperConfigLoader,
-          ))
+          (await isConfiguredClientOrigin(origin, clientConfigLoader))
         ) {
           return origin;
         }
@@ -370,7 +365,7 @@ export async function startLocalApiServer(
     try {
       await (options.openInTarget ?? openPathInTarget)(
         await resolveOpenPathInTargetArgs({
-          configLoader: clientHelperConfigLoader,
+          configLoader: clientConfigLoader,
           request: payload,
         }),
       );

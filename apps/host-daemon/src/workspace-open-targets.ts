@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 const DESKTOP_APP_TARGET_ID_PREFIX = "desktop-app:";
 const MAC_APP_TARGET_ID_PREFIX = "mac-app:";
 const MAC_FILE_APPLICATION_DISCOVERY_LIMIT = 5;
-const MAC_APPLICATION_ICON_MAX_SIZE_PX = 64;
+const MAC_APPLICATION_ICON_THUMBNAIL_SIZE_PX = 32;
 const MAC_APPLICATIONS_FOR_FILE_SCRIPT = `
 function run(argv) {
   ObjC.import("AppKit");
@@ -1510,17 +1510,15 @@ async function resolveMacApplicationIconDataUrl(
   const tempDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "bb-open-target-icon-"),
   );
-  const pngPath = path.join(tempDir, "icon.png");
+  const pngPath = path.join(tempDir, `${path.basename(iconPath)}.png`);
   try {
-    await runtime.execFile("sips", [
-      "-Z",
-      String(MAC_APPLICATION_ICON_MAX_SIZE_PX),
+    await runtime.execFile("qlmanage", [
+      "-t",
       "-s",
-      "format",
-      "png",
+      String(MAC_APPLICATION_ICON_THUMBNAIL_SIZE_PX),
+      "-o",
+      tempDir,
       iconPath,
-      "--out",
-      pngPath,
     ]);
     const iconBytes = await fs.readFile(pngPath);
     const dataUrl = `data:image/png;base64,${iconBytes.toString("base64")}`;

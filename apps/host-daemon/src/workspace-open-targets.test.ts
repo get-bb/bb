@@ -873,10 +873,14 @@ describe("workspace open targets", () => {
         }
         return { stdout: "" };
       }
-      if (file === "sips") {
-        const outputPath = commandArgs.at(-1);
-        if (outputPath) {
-          await writeFile(outputPath, "fake-png");
+      if (file === "qlmanage") {
+        const outputDir = commandArgs[commandArgs.indexOf("-o") + 1];
+        const inputPath = commandArgs.at(-1);
+        if (outputDir && inputPath) {
+          await writeFile(
+            path.join(outputDir, `${path.basename(inputPath)}.png`),
+            "fake-png",
+          );
         }
         return { stdout: "" };
       }
@@ -898,9 +902,9 @@ describe("workspace open targets", () => {
         },
         label: "WebStorm",
       });
-      expect(calls.some((call) => call.file === "sips")).toBe(true);
-      expect(calls.find((call) => call.file === "sips")?.args).toEqual(
-        expect.arrayContaining(["-Z", "64"]),
+      expect(calls.some((call) => call.file === "qlmanage")).toBe(true);
+      expect(calls.find((call) => call.file === "qlmanage")?.args).toEqual(
+        expect.arrayContaining(["-t", "-s", "32"]),
       );
     } finally {
       await rm(root, { force: true, recursive: true });
@@ -937,10 +941,14 @@ describe("workspace open targets", () => {
         }
         return { stdout: "" };
       }
-      if (file === "sips") {
-        const outputPath = commandArgs.at(-1);
-        if (outputPath) {
-          await writeFile(outputPath, "vscode-png");
+      if (file === "qlmanage") {
+        const outputDir = commandArgs[commandArgs.indexOf("-o") + 1];
+        const inputPath = commandArgs.at(-1);
+        if (outputDir && inputPath) {
+          await writeFile(
+            path.join(outputDir, `${path.basename(inputPath)}.png`),
+            "vscode-png",
+          );
         }
         return { stdout: "" };
       }
@@ -962,9 +970,9 @@ describe("workspace open targets", () => {
         },
         label: "VS Code",
       });
-      expect(calls.some((call) => call.file === "sips")).toBe(true);
-      expect(calls.find((call) => call.file === "sips")?.args).toEqual(
-        expect.arrayContaining(["-Z", "64"]),
+      expect(calls.some((call) => call.file === "qlmanage")).toBe(true);
+      expect(calls.find((call) => call.file === "qlmanage")?.args).toEqual(
+        expect.arrayContaining(["-t", "-s", "32"]),
       );
     } finally {
       await rm(root, { force: true, recursive: true });
@@ -994,10 +1002,14 @@ describe("workspace open targets", () => {
         }
         return { stdout: "" };
       }
-      if (file === "sips") {
-        const outputPath = commandArgs.at(-1);
-        if (outputPath) {
-          await writeFile(outputPath, "x".repeat(200_000));
+      if (file === "qlmanage") {
+        const outputDir = commandArgs[commandArgs.indexOf("-o") + 1];
+        const inputPath = commandArgs.at(-1);
+        if (outputDir && inputPath) {
+          await writeFile(
+            path.join(outputDir, `${path.basename(inputPath)}.png`),
+            "x".repeat(200_000),
+          );
         }
         return { stdout: "" };
       }
