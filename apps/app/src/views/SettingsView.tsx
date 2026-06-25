@@ -874,7 +874,7 @@ export function ExperimentsSettingsSection({
 
         <SettingsWithControl
           label={UI_FORKING_EXPERIMENT_LABEL}
-          description="Let the bb CLI (bb ui) fork, edit, and live-reload the app's own frontend. Off keeps the shipped UI."
+          description="Let the bb CLI (bb ui) fork, edit, and live-reload the app's own frontend. This feature is unstable, and your forks will probably break in the future. Off keeps the shipped UI."
         >
           <Switch
             checked={uiForkingEnabled}
