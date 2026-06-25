@@ -230,7 +230,6 @@ export function FaviconColorSettingsControl({
   return (
     <SettingsWithControl
       label="Favicon color"
-      labelBadge="dev-only"
       description="Tint browser tabs to tell instances apart."
     >
       <DropdownMenu>
@@ -470,7 +469,6 @@ export function RewriteLocalhostLinksSettingsControl({
   return (
     <SettingsWithControl
       label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      labelBadge="dev-only"
       description="Point localhost links at this host."
     >
       <Switch
