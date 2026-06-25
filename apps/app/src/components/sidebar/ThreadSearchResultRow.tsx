@@ -82,7 +82,7 @@ function HighlightedText({ ranges, text }: HighlightedTextProps) {
     nodes.push(
       <mark
         key={`${range.start}:${range.end}`}
-        className="rounded-sm bg-sidebar-accent px-0 text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-border)]"
+        className="rounded-sm bg-[var(--sidebar-search-match)] px-0 text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-search-match-border)]"
       >
         {text.slice(range.start, range.end)}
       </mark>,

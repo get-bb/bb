@@ -429,6 +429,13 @@
   --sidebar-accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  /* Search-match highlight: a manilla-folder tint over the canvas. Chromatic on
+     purpose (the neutral ramp can't make beige) and mixed with the canvas so it
+     tracks custom palettes instead of stranding a fixed swatch. Mix in oklab, not
+     oklch: in the polar space the achromatic canvas drags the manilla hue toward
+     0° and the result comes out salmon — oklab carries the hue through. */
+  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 76%);
+  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 60%);
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
@@ -618,6 +625,10 @@
   --sidebar-accent: color-mix(in oklch, var(--ink) 12%, var(--canvas));
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: color-mix(in oklch, var(--ink) 18.1%, var(--canvas));
+  /* Search-match highlight: see the light block (oklab mix, same hue caveat).
+     Mixed with the (dark) canvas so the manilla reads as a muted tan. */
+  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 80%);
+  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 67%);
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
