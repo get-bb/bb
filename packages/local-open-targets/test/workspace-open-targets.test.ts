@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   listWorkspaceOpenTargetsWithRuntime,
@@ -652,6 +653,169 @@ describe("workspace open targets", () => {
       });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens BBEdit and Emacs through macOS application open instead of editor CLIs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const applicationsDirectory = path.join(root, "Applications");
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(path.join(applicationsDirectory, "BBEdit.app"), {
+        recursive: true,
+      });
+      await mkdir(path.join(applicationsDirectory, "Emacs.app"), {
+        recursive: true,
+      });
+      await mkdir(workspacePath, { recursive: true });
+      await writeFile(filePath, "# Notes\n");
+
+      for (const target of [
+        { appName: "BBEdit", cli: "bbedit", targetId: "bbedit" },
+        { appName: "Emacs", cli: "emacsclient", targetId: "emacs" },
+      ]) {
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: target.targetId,
+          },
+          createRuntime({
+            applicationDirectories: [applicationsDirectory],
+            execFile,
+          }),
+        );
+
+        expect(calls.some((call) => call.file === target.cli)).toBe(false);
+        expect(
+          calls.find(
+            (call) =>
+              call.file === "open" && call.args[1] === target.appName,
+          ),
+        ).toEqual({
+          file: "open",
+          args: ["-a", target.appName, "--", filePath],
+        });
+      }
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("opens TextMate locations through txmt URLs with column support", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const applicationsDirectory = path.join(root, "Applications");
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["open"],
+      calls,
+    });
+
+    try {
+      await mkdir(path.join(applicationsDirectory, "TextMate.app"), {
+        recursive: true,
+      });
+      await mkdir(workspacePath, { recursive: true });
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "textmate",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(calls.some((call) => call.file === "mate")).toBe(false);
+      const openCall = calls.find(
+        (call) => call.file === "open" && call.args[1] === "TextMate",
+      );
+      expect(openCall?.args.slice(0, 2)).toEqual(["-a", "TextMate"]);
+      const textMateUri = new URL(openCall?.args[2] ?? "");
+      expect(textMateUri.protocol).toBe("txmt:");
+      expect(textMateUri.searchParams.get("url")).toBe(
+        pathToFileURL(filePath).toString(),
+      );
+      expect(textMateUri.searchParams.get("line")).toBe("15");
+      expect(textMateUri.searchParams.get("column")).toBe("6");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("advertises and uses column support for IntelliJ IDEA", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-intellij-idea-"));
+    const applicationsDirectory = path.join(root, "Applications");
+    const intellijAppPath = path.join(applicationsDirectory, "IntelliJ IDEA.app");
+    const intellijExecutable = path.join(
+      intellijAppPath,
+      "Contents",
+      "MacOS",
+      "idea",
+    );
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(path.dirname(intellijExecutable), { recursive: true });
+      await writeFile(intellijExecutable, "");
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(targets.find((target) => target.id === "intellij-idea"))
+        .toMatchObject({
+          capabilities: {
+            openDirectory: true,
+            openFile: true,
+            openFileAtColumn: true,
+            openFileAtLine: true,
+          },
+          label: "IntelliJ IDEA",
+        });
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "intellij-idea",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === intellijExecutable)).toEqual({
+        file: intellijExecutable,
+        args: ["--line", "15", "--column", "6", filePath],
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
     }
   });
 

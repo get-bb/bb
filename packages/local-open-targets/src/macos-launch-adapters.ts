@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
@@ -56,6 +57,16 @@ function formatZedRemoteSshUri(args: BuildMacRemoteSshOpenArgs): string {
   return args.columnNumber === null
     ? `${uri}:${args.lineNumber}`
     : `${uri}:${args.lineNumber}:${args.columnNumber}`;
+}
+
+function formatTextMateOpenUri(args: BuildMacLineOpenArgs): string {
+  const uri = new URL("txmt://open/");
+  uri.searchParams.set("url", pathToFileURL(args.path).toString());
+  uri.searchParams.set("line", String(args.lineNumber));
+  if (args.columnNumber !== null) {
+    uri.searchParams.set("column", String(args.columnNumber));
+  }
+  return uri.toString();
 }
 
 function buildCursorCliEnv(
@@ -403,7 +414,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: BASIC_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "bbedit",
     kind: "editor",
@@ -414,19 +425,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "BBEdit",
       bundleIds: ["com.barebones.bbedit"],
       builtIn: false,
-      lineOpenCommand: {
-        executable: "bbedit",
-        supportsColumn: false,
-        toArgs: (args) => [`+${args.lineNumber}`, args.path],
-      },
-      pathOpenCommand: {
-        executable: "bbedit",
-        toArgs: (path) => [path],
-      },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "textmate",
     kind: "editor",
@@ -438,18 +440,14 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       bundleIds: ["com.macromates.TextMate"],
       builtIn: false,
       lineOpenCommand: {
-        executable: "mate",
-        supportsColumn: false,
-        toArgs: (args) => ["--line", String(args.lineNumber), args.path],
-      },
-      pathOpenCommand: {
-        executable: "mate",
-        toArgs: (path) => [path],
+        executable: "open",
+        supportsColumn: true,
+        toArgs: (args) => ["-a", "TextMate", formatTextMateOpenUri(args)],
       },
     },
   },
   {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    capabilities: BASIC_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "emacs",
     kind: "editor",
@@ -460,24 +458,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Emacs",
       bundleIds: ["org.gnu.Emacs"],
       builtIn: false,
-      lineOpenCommand: {
-        executable: "emacsclient",
-        supportsColumn: true,
-        toArgs: (args) => [
-          args.columnNumber === null
-            ? `+${args.lineNumber}`
-            : `+${args.lineNumber}:${args.columnNumber}`,
-          args.path,
-        ],
-      },
-      pathOpenCommand: {
-        executable: "emacsclient",
-        toArgs: (path) => [path],
-      },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "intellij-idea",
     kind: "editor",
