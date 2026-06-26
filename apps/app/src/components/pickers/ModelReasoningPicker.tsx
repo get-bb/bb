@@ -1,4 +1,13 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEventHandler,
+  type PointerEventHandler,
+  type ReactNode,
+} from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
 import { stripModelBrandPrefix } from "./model-brand-prefix";
@@ -13,10 +22,17 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover.js";
 import { Switch } from "@/components/ui/switch.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+import {
+  MENU_ITEM_LAST_HOVERED_CLASS,
+  MenuHoverProvider,
+  useMenuItemHover,
+} from "@/components/ui/menu-item-hover.js";
 import { cn } from "@/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
@@ -136,6 +152,7 @@ export function ModelReasoningPicker({
   );
   // "More models" expansion is per-open: it resets when the popover closes.
   const [showMoreModels, setShowMoreModels] = useState(false);
+  const [moreModelsOpen, setMoreModelsOpen] = useState(false);
 
   const activeProviderId = previewProviderId ?? selectedProviderId;
 
@@ -214,22 +231,23 @@ export function ModelReasoningPicker({
         : model.displayName || model.model,
     }));
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
-  const previewMoreModelOptions = useMemo((): readonly PickerOption<string>[] => {
-    if (!isPreviewing) return moreModelOptions;
-    const models = previewQuery.data?.selectedOnlyModels;
-    if (!models || models.length === 0) return [];
-    return models.map((model) => ({
-      value: model.model,
-      label: formatModelLabel
-        ? formatModelLabel(model.displayName || model.model)
-        : model.displayName || model.model,
-    }));
-  }, [
-    isPreviewing,
-    moreModelOptions,
-    previewQuery.data?.selectedOnlyModels,
-    formatModelLabel,
-  ]);
+  const previewMoreModelOptions =
+    useMemo((): readonly PickerOption<string>[] => {
+      if (!isPreviewing) return moreModelOptions;
+      const models = previewQuery.data?.selectedOnlyModels;
+      if (!models || models.length === 0) return [];
+      return models.map((model) => ({
+        value: model.model,
+        label: formatModelLabel
+          ? formatModelLabel(model.displayName || model.model)
+          : model.displayName || model.model,
+      }));
+    }, [
+      isPreviewing,
+      moreModelOptions,
+      previewQuery.data?.selectedOnlyModels,
+      formatModelLabel,
+    ]);
   // While previewing, the reasoning levels belong to the previewed provider's
   // default model (each provider exposes its own set), so the section reflects
   // the tab on screen rather than the committed model.
@@ -239,20 +257,21 @@ export function ModelReasoningPicker({
     if (!models || models.length === 0) return undefined;
     return models.find((model) => model.isDefault) ?? models[0];
   }, [isPreviewing, previewQuery.data?.models]);
-  const previewReasoningOptions = useMemo((): readonly PickerOption<ReasoningLevel>[] => {
-    if (!previewDefaultModel) return [];
-    const seen = new Set<ReasoningLevel>();
-    const options: PickerOption<ReasoningLevel>[] = [];
-    for (const effort of previewDefaultModel.supportedReasoningEfforts) {
-      if (seen.has(effort.reasoningEffort)) continue;
-      seen.add(effort.reasoningEffort);
-      options.push({
-        value: effort.reasoningEffort,
-        label: REASONING_LABELS[effort.reasoningEffort],
-      });
-    }
-    return options;
-  }, [previewDefaultModel]);
+  const previewReasoningOptions =
+    useMemo((): readonly PickerOption<ReasoningLevel>[] => {
+      if (!previewDefaultModel) return [];
+      const seen = new Set<ReasoningLevel>();
+      const options: PickerOption<ReasoningLevel>[] = [];
+      for (const effort of previewDefaultModel.supportedReasoningEfforts) {
+        if (seen.has(effort.reasoningEffort)) continue;
+        seen.add(effort.reasoningEffort);
+        options.push({
+          value: effort.reasoningEffort,
+          label: REASONING_LABELS[effort.reasoningEffort],
+        });
+      }
+      return options;
+    }, [previewDefaultModel]);
   const activeReasoningOptions = isPreviewing
     ? previewReasoningOptions
     : reasoningOptions;
@@ -309,12 +328,19 @@ export function ModelReasoningPicker({
       ? hasActiveModelOptions && !activeModelIsLoading
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    setOpen(nextOpen);
-    if (!nextOpen) {
-      setPreviewProviderId(null);
-      setShowMoreModels(false);
-    }
+  // Reset the per-open browse state (previewed tab + "More models" expansion).
+  // This runs when the popover content UNMOUNTS — i.e. after the close
+  // animation finishes — not synchronously on close. Resetting on close would
+  // snap the visible tab back to the committed provider mid-animation; deferring
+  // it to unmount keeps the closing dropdown showing whatever was on screen.
+  const resetBrowseState = useCallback(() => {
+    setPreviewProviderId(null);
+    setShowMoreModels(false);
+    setMoreModelsOpen(false);
+  }, []);
+
+  const openSub = useCallback(() => {
+    setMoreModelsOpen(true);
   }, []);
 
   const handleModelSelect = useCallback(
@@ -326,6 +352,7 @@ export function ModelReasoningPicker({
         onSelectedProviderChange?.(previewProviderId!);
       }
       onModelChange(model);
+      setMoreModelsOpen(false);
       setOpen(false);
       setPreviewProviderId(null);
     },
@@ -346,6 +373,7 @@ export function ModelReasoningPicker({
       // value commits and closes.
       setOpen(false);
       setPreviewProviderId(null);
+      setMoreModelsOpen(false);
     },
     [
       isPreviewing,
@@ -383,6 +411,7 @@ export function ModelReasoningPicker({
       className={cn(
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
+        LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
         disabled && "cursor-default disabled:opacity-100",
         className,
@@ -434,13 +463,14 @@ export function ModelReasoningPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange} modal={modal}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align="start"
         mobileTitle="Model"
         className="flex w-52 flex-col p-0 max-md:w-full max-md:max-w-none"
       >
+        <ResetBrowseStateOnUnmount onReset={resetBrowseState} />
         {/* Provider icon tabs */}
         {showProviderTabs ? (
           <div
@@ -469,7 +499,8 @@ export function ModelReasoningPicker({
                     }
                   }}
                   className={cn(
-                    "flex items-center justify-center border-b-2 transition-colors focus-visible:outline-none",
+                    "flex items-center justify-center border-b-2 focus-visible:outline-none",
+                    LIST_HOVER_TRANSITION,
                     COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
                     isActive
                       ? "border-foreground text-foreground"
@@ -494,122 +525,152 @@ export function ModelReasoningPicker({
           </div>
         ) : null}
 
-        {/* Model list */}
-        <div
-          className={cn(
-            "overflow-y-auto px-1 pb-1 pt-0",
-            !isCompactViewport &&
-              "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
-          )}
-        >
-          {isShowingModelError ? null : (
-            <MenuSectionLabel>Model</MenuSectionLabel>
-          )}
-          {activeModelIsLoading ? (
-            <div
-              className={cn(
-                "px-2 text-xs text-muted-foreground",
-                isCompactViewport ? "py-2" : "py-[0.3125rem]",
-              )}
-            >
-              Loading models…
-            </div>
-          ) : hasActiveModelOptions ? (
-            <>
-              {activeModelOptions.map((option) => (
-                <MenuRowButton
-                  key={option.value}
-                  // The menu always reflects the provider whose models it lists
-                  // (either committed or previewed) — strip with `activeProviderId`.
-                  label={stripModelBrandPrefix(option.label, activeProviderId)}
-                  selected={!isPreviewing && option.value === modelValue}
-                  onClick={() => handleModelSelect(option.value)}
-                />
-              ))}
-              {activeMoreModelOptions.length > 0 ? (
-                <MoreModelsToggleRow
-                  expanded={showMoreModels}
-                  onToggle={() => setShowMoreModels((current) => !current)}
-                />
-              ) : null}
-              {showMoreModels
-                ? activeMoreModelOptions.map((option) => (
-                    <MenuRowButton
-                      key={option.value}
-                      label={stripModelBrandPrefix(
-                        option.label,
-                        activeProviderId,
-                      )}
-                      selected={!isPreviewing && option.value === modelValue}
-                      onClick={() => handleModelSelect(option.value)}
+        <MenuHoverProvider>
+          {/* Model list — keyed by the active provider so each provider mounts a
+            fresh subtree. Rows are keyed by model id, but reusing one subtree
+            across provider switches was observed to leave the previous
+            provider's rows on screen; remounting per provider guarantees the
+            list always matches the active tab. */}
+          <div
+            key={activeProviderId || "no-provider"}
+            className={cn(
+              "overflow-y-auto px-1 pb-1 pt-0",
+              !isCompactViewport &&
+                "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
+            )}
+          >
+            {isShowingModelError ? null : (
+              <MenuSectionLabel>Model</MenuSectionLabel>
+            )}
+            {activeModelIsLoading ? (
+              <div
+                className={cn(
+                  "px-2 text-xs text-muted-foreground",
+                  isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                )}
+              >
+                Loading models…
+              </div>
+            ) : hasActiveModelOptions ? (
+              <>
+                {activeModelOptions.map((option) => (
+                  <MenuRowButton
+                    key={option.value}
+                    // The menu always reflects the provider whose models it lists
+                    // (either committed or previewed) — strip with `activeProviderId`.
+                    label={stripModelBrandPrefix(
+                      option.label,
+                      activeProviderId,
+                    )}
+                    selected={!isPreviewing && option.value === modelValue}
+                    onClick={() => handleModelSelect(option.value)}
+                  />
+                ))}
+                {activeMoreModelOptions.length > 0 ? (
+                  isCompactViewport ? (
+                    <>
+                      <MoreModelsToggleRow
+                        expanded={showMoreModels}
+                        onToggle={() =>
+                          setShowMoreModels((current) => !current)
+                        }
+                      />
+                      {showMoreModels
+                        ? activeMoreModelOptions.map((option) => (
+                            <MenuRowButton
+                              key={option.value}
+                              label={stripModelBrandPrefix(
+                                option.label,
+                                activeProviderId,
+                              )}
+                              selected={
+                                !isPreviewing && option.value === modelValue
+                              }
+                              onClick={() => handleModelSelect(option.value)}
+                            />
+                          ))
+                        : null}
+                    </>
+                  ) : (
+                    <MoreModelsSubmenu
+                      open={moreModelsOpen}
+                      onOpenChange={setMoreModelsOpen}
+                      openSub={openSub}
+                      activeProviderId={activeProviderId}
+                      isPreviewing={isPreviewing}
+                      modelValue={modelValue}
+                      options={activeMoreModelOptions}
+                      onSelect={handleModelSelect}
                     />
-                  ))
-                : null}
-            </>
-          ) : (
-            <div
-              className={cn(
-                "px-2 text-xs leading-relaxed text-muted-foreground",
-                isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
-              )}
-              title={activeModelLoadErrorMessage ?? undefined}
-            >
-              {activeModelLoadErrorMatches && activeModelLoadError ? (
-                <ModelLoadErrorMessage
-                  error={activeModelLoadError}
-                  providerLabel={activeProviderLabel}
-                />
-              ) : activeModelLoadFailed ? (
-                activeModelFailureMessage
-              ) : (
-                "No models available"
-              )}
-            </div>
-          )}
-        </div>
+                  )
+                ) : null}
+              </>
+            ) : (
+              <div
+                className={cn(
+                  "px-2 text-xs leading-relaxed text-muted-foreground",
+                  isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
+                )}
+                title={activeModelLoadErrorMessage ?? undefined}
+              >
+                {activeModelLoadErrorMatches && activeModelLoadError ? (
+                  <ModelLoadErrorMessage
+                    error={activeModelLoadError}
+                    providerLabel={activeProviderLabel}
+                  />
+                ) : activeModelLoadFailed ? (
+                  activeModelFailureMessage
+                ) : (
+                  "No models available"
+                )}
+              </div>
+            )}
+          </div>
 
-        {/* Reasoning section — the committed model's levels, or (while
+          {/* Reasoning section — the committed model's levels, or (while
             previewing) the previewed provider's default-model levels. Like the
             model list, nothing is checked during preview until committed. */}
-        {showReasoningSection ? (
-          <>
-            <div className="border-t border-border" />
-            <div className="px-1 pb-1 pt-0">
-              <MenuSectionLabel>Reasoning</MenuSectionLabel>
-              {activeReasoningOptions.map((option) => (
-                <MenuRowButton
-                  key={option.value}
-                  label={option.label}
-                  selected={!isPreviewing && option.value === reasoningValue}
-                  onClick={() => handleReasoningSelect(option.value)}
-                />
-              ))}
-            </div>
-          </>
-        ) : null}
-
-        {/* Fast mode toggle */}
-        {effectiveShowFastModeToggle ? (
-          <>
-            <div className="border-t border-border" />
-            <div className="p-1">
-              <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
-                <span className="flex min-w-0 items-center gap-2">
-                  <Icon
-                    name="Zap"
-                    className="size-4 fill-current text-muted-foreground"
+          {showReasoningSection ? (
+            <>
+              <div className="border-t border-border" />
+              <div className="px-1 pb-1 pt-0">
+                <MenuSectionLabel>Reasoning</MenuSectionLabel>
+                {activeReasoningOptions.map((option) => (
+                  <MenuRowButton
+                    key={option.value}
+                    label={option.label}
+                    selected={!isPreviewing && option.value === reasoningValue}
+                    onClick={() => handleReasoningSelect(option.value)}
                   />
-                  <span>Fast mode</span>
-                </span>
-                <Switch
-                  checked={fastModeEnabled}
-                  onCheckedChange={onFastModeChange}
-                  aria-label="Fast mode"
-                />
+                ))}
               </div>
-            </div>
-          </>
-        ) : null}
+            </>
+          ) : null}
+
+          {/* Fast mode toggle */}
+          {effectiveShowFastModeToggle ? (
+            <>
+              <div className="border-t border-border" />
+              <div className="p-1">
+                <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Icon
+                      name="Zap"
+                      className="size-4 fill-current text-muted-foreground"
+                    />
+                    <span>Fast mode</span>
+                  </span>
+                  <Switch
+                    checked={fastModeEnabled}
+                    onCheckedChange={onFastModeChange}
+                    aria-label="Fast mode"
+                    className={LIST_HOVER_TRANSITION}
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
+        </MenuHoverProvider>
       </PopoverContent>
     </Popover>
   );
@@ -632,16 +693,21 @@ function MenuSectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-// Disclosure row for the collapsed secondary model pool. Same row metrics as
-// MenuRowButton so the list reads as one column; muted to read as an
-// affordance rather than a model.
 function MoreModelsToggleRow({
   expanded,
   onToggle,
+  onPointerEnter: callerPointerEnter,
+  onKeyDown: callerKeyDown,
 }: {
   expanded: boolean;
   onToggle: () => void;
+  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
+  const { hoverProps } = useMenuItemHover({
+    onPointerEnter: callerPointerEnter,
+    onKeyDown: callerKeyDown,
+  });
   const isCompactViewport = useIsCompactViewport();
   return (
     <button
@@ -649,9 +715,12 @@ function MoreModelsToggleRow({
       onClick={onToggle}
       aria-expanded={expanded}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground",
+        "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
+        LIST_HOVER_TRANSITION,
+        MENU_ITEM_LAST_HOVERED_CLASS,
         isCompactViewport ? "py-2" : "py-[0.3125rem]",
       )}
+      {...hoverProps}
     >
       <span>{expanded ? "Fewer models" : "More models"}</span>
       <Icon
@@ -662,15 +731,145 @@ function MoreModelsToggleRow({
   );
 }
 
+function MoreModelsSubmenu({
+  open,
+  onOpenChange,
+  openSub,
+  activeProviderId,
+  isPreviewing,
+  modelValue,
+  options,
+  onSelect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  openSub: () => void;
+  activeProviderId: string;
+  isPreviewing: boolean;
+  modelValue: string;
+  options: readonly PickerOption<string>[];
+  onSelect: (value: string) => void;
+}) {
+  const { isLastHovered, hoverProps } = useMenuItemHover();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const focusFirstSubItem = useCallback(() => {
+    window.setTimeout(() => {
+      contentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    }, 0);
+  }, []);
+
+  // Close the moment the pointer moves to a sibling row — i.e. this trigger is
+  // no longer the menu's last-hovered item. No close-delay, so the trigger tile
+  // and the submenu clear at 0ms. While the pointer is inside the submenu the
+  // trigger stays the MAIN menu's last-hovered item (the submenu items have
+  // their own hover scope), so this does not fire and the submenu stays open.
+  useEffect(() => {
+    if (open && !isLastHovered) {
+      onOpenChange(false);
+    }
+  }, [open, isLastHovered, onOpenChange]);
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverAnchor asChild>
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={openSub}
+          onPointerEnter={(event) => {
+            hoverProps.onPointerEnter(event);
+            openSub();
+          }}
+          onKeyDown={(event) => {
+            hoverProps.onKeyDown(event);
+
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "Spacebar" ||
+              event.key === "ArrowRight"
+            ) {
+              event.preventDefault();
+              openSub();
+              focusFirstSubItem();
+              return;
+            }
+
+            if (event.key === "Escape" || event.key === "ArrowLeft") {
+              event.preventDefault();
+              onOpenChange(false);
+            }
+          }}
+          className={cn(
+            "relative flex w-full cursor-default select-none items-center gap-1 rounded-sm px-2 py-[0.3125rem] text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground",
+            LIST_HOVER_TRANSITION,
+            MENU_ITEM_LAST_HOVERED_CLASS,
+          )}
+          data-last-hovered={hoverProps["data-last-hovered"]}
+        >
+          <span>More models</span>
+          <Icon name="ChevronRight" className="size-3.5 shrink-0" />
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        ref={contentRef}
+        side="right"
+        align="start"
+        sideOffset={6}
+        className="flex w-52 flex-col p-1 data-[state=closed]:animate-none"
+        onKeyDown={(event) => {
+          if (event.key === "Escape" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            onOpenChange(false);
+            triggerRef.current?.focus();
+          }
+        }}
+      >
+        <MenuHoverProvider>
+          {options.map((option) => (
+            <MenuRowButton
+              key={option.value}
+              label={stripModelBrandPrefix(option.label, activeProviderId)}
+              selected={!isPreviewing && option.value === modelValue}
+              onClick={() => onSelect(option.value)}
+            />
+          ))}
+        </MenuHoverProvider>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Renders nothing; exists only to fire `onReset` when it unmounts. Mounted
+// inside PopoverContent, so its unmount coincides with the popover fully
+// closing (after the exit animation), which is when the browse state should
+// reset — not during the visible close. Kept stable via a ref so a re-render
+// never triggers a spurious reset.
+function ResetBrowseStateOnUnmount({ onReset }: { onReset: () => void }) {
+  useEffect(() => onReset, [onReset]);
+  return null;
+}
+
 function MenuRowButton({
   label,
   selected,
   onClick,
+  onPointerEnter: callerPointerEnter,
+  onKeyDown: callerKeyDown,
 }: {
   label: string;
   selected: boolean;
   onClick: () => void;
+  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
+  const { hoverProps } = useMenuItemHover({
+    onPointerEnter: callerPointerEnter,
+    onKeyDown: callerKeyDown,
+  });
   const isCompactViewport = useIsCompactViewport();
   const { base, tag } = splitModelLabelTag(label);
   return (
@@ -678,9 +877,12 @@ function MenuRowButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none transition-colors hover:bg-state-hover hover:text-foreground",
+        "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
+        LIST_HOVER_TRANSITION,
+        MENU_ITEM_LAST_HOVERED_CLASS,
         isCompactViewport ? "py-2" : "py-[0.3125rem]",
       )}
+      {...hoverProps}
     >
       <span className="truncate" title={label}>
         {base}
