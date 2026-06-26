@@ -1,5 +1,6 @@
 /* shadcn/ui-derived */
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Drawer as DrawerPrimitive } from "vaul";
@@ -28,6 +29,9 @@ const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
+const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `transform ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
+const SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
@@ -53,11 +57,6 @@ type SidebarInsetSwipeSession = {
   isDragging: boolean;
 };
 
-type SidebarMobileDrag = {
-  progress: number;
-  settling: boolean;
-};
-
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
   "--sidebar-width-mobile": SIDEBAR_WIDTH_MOBILE,
 };
@@ -72,6 +71,84 @@ function getSidebarMobilePanelWidth(): number {
 
 function clampSidebarMobileSwipeProgress(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function getSidebarMobileMotionNodes(): {
+  panel: HTMLElement | null;
+  backdrop: HTMLElement | null;
+} {
+  if (typeof document === "undefined") {
+    return { panel: null, backdrop: null };
+  }
+
+  const panel = document.querySelector(
+    '[data-sidebar="panel"][data-vaul-drawer-direction]',
+  );
+  const backdrop = document.querySelector("[data-sidebar-mobile-backdrop]");
+
+  return {
+    panel: panel instanceof HTMLElement ? panel : null,
+    backdrop: backdrop instanceof HTMLElement ? backdrop : null,
+  };
+}
+
+function getSidebarMobilePanelTransform(
+  progress: number,
+  side: "left" | "right",
+): string {
+  const hiddenPercent = (1 - progress) * 100;
+  return side === "left"
+    ? `translate3d(-${hiddenPercent}%, 0, 0)`
+    : `translate3d(${hiddenPercent}%, 0, 0)`;
+}
+
+function applySidebarMobileDragStyles({
+  progress,
+  settling,
+}: {
+  progress: number;
+  settling: boolean;
+}) {
+  const { panel, backdrop } = getSidebarMobileMotionNodes();
+  const side = panel?.dataset.side === "right" ? "right" : "left";
+
+  if (panel !== null) {
+    panel.setAttribute("data-vaul-animate", "false");
+    panel.style.transform = getSidebarMobilePanelTransform(progress, side);
+    panel.style.transition = settling
+      ? SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION
+      : "none";
+  }
+
+  if (backdrop !== null) {
+    backdrop.setAttribute("data-vaul-animate", "false");
+    backdrop.style.opacity = String(progress);
+    backdrop.style.transition = settling
+      ? SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION
+      : "none";
+  }
+}
+
+function clearSidebarMobileDragAttributes() {
+  const { panel, backdrop } = getSidebarMobileMotionNodes();
+  panel?.removeAttribute("data-vaul-animate");
+  backdrop?.removeAttribute("data-vaul-animate");
+}
+
+function clearSidebarMobileDragStyles() {
+  const { panel, backdrop } = getSidebarMobileMotionNodes();
+
+  if (panel !== null) {
+    panel.removeAttribute("data-vaul-animate");
+    panel.style.transform = "";
+    panel.style.transition = "";
+  }
+
+  if (backdrop !== null) {
+    backdrop.removeAttribute("data-vaul-animate");
+    backdrop.style.opacity = "";
+    backdrop.style.transition = "";
+  }
 }
 
 function createSidebarInsetSwipeSession({
@@ -135,9 +212,7 @@ function isInsideHorizontalScrollRegion(target: Element): boolean {
       return true;
     }
     if (
-      element.matches(
-        '[data-sidebar="inset"], [data-sidebar-mobile-backdrop]',
-      )
+      element.matches('[data-sidebar="inset"], [data-sidebar-mobile-backdrop]')
     ) {
       return false;
     }
@@ -186,8 +261,9 @@ function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
     isDocumentRootTarget &&
     // Radix keeps modal content mounted while closing. During that short window
     // outside pointer blocking can make fast follow-up touches target html/body.
-    ownerDocument.querySelector('[data-sidebar="panel"][data-state="closed"]') !==
-      null
+    ownerDocument.querySelector(
+      '[data-sidebar="panel"][data-state="closed"]',
+    ) !== null
   ) {
     return true;
   }
@@ -228,8 +304,6 @@ type SidebarContext = {
   setOpen: (open: boolean) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
-  mobileDrag: SidebarMobileDrag | null;
-  setMobileDrag: (drag: SidebarMobileDrag | null) => void;
   suppressMobileOpenAnimation: boolean;
   setSuppressMobileOpenAnimation: (suppress: boolean) => void;
   suppressMobileCloseAnimation: boolean;
@@ -297,16 +371,10 @@ const SidebarProvider = React.forwardRef<
   ) => {
     const isCompactViewport = useIsCompactViewport();
     const [openMobile, setOpenMobile] = React.useState(false);
-    const [mobileDrag, setMobileDrag] =
-      React.useState<SidebarMobileDrag | null>(null);
-    const [
-      suppressMobileOpenAnimation,
-      setSuppressMobileOpenAnimation,
-    ] = React.useState(false);
-    const [
-      suppressMobileCloseAnimation,
-      setSuppressMobileCloseAnimation,
-    ] = React.useState(false);
+    const [suppressMobileOpenAnimation, setSuppressMobileOpenAnimation] =
+      React.useState(false);
+    const [suppressMobileCloseAnimation, setSuppressMobileCloseAnimation] =
+      React.useState(false);
 
     React.useEffect(() => {
       if (openMobile) {
@@ -349,8 +417,6 @@ const SidebarProvider = React.forwardRef<
         isCompactViewport,
         openMobile,
         setOpenMobile,
-        mobileDrag,
-        setMobileDrag,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -364,8 +430,6 @@ const SidebarProvider = React.forwardRef<
         isCompactViewport,
         openMobile,
         setOpenMobile,
-        mobileDrag,
-        setMobileDrag,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -431,7 +495,6 @@ const Sidebar = React.forwardRef<
       state,
       openMobile,
       setOpenMobile,
-      mobileDrag,
       suppressMobileOpenAnimation,
       setSuppressMobileOpenAnimation,
       suppressMobileCloseAnimation,
@@ -454,46 +517,24 @@ const Sidebar = React.forwardRef<
     );
     const shouldSuppressMobileCloseAnimation =
       !openMobile && suppressMobileCloseAnimation;
-    const shouldDisableMobileAnimation = mobileDrag !== null;
     const mobilePanelMotionStyle = React.useMemo<
       React.CSSProperties | undefined
-    >(
-      () => {
-        if (mobileDrag !== null) {
-          const hiddenPercent = (1 - mobileDrag.progress) * 100;
-          return {
-            transform:
-              side === "left"
-                ? `translate3d(-${hiddenPercent}%, 0, 0)`
-                : `translate3d(${hiddenPercent}%, 0, 0)`,
-            transition: mobileDrag.settling ? undefined : "none",
-          };
-        }
-
-        if (shouldSuppressMobileCloseAnimation) {
-          return {
-            transform:
-              side === "left"
-                ? "translate3d(-100%, 0, 0)"
-                : "translate3d(100%, 0, 0)",
-            transition: "none",
-          };
-        }
-
-        return undefined;
-      },
-      [mobileDrag, shouldSuppressMobileCloseAnimation, side],
-    );
-    const mobileBackdropStyle = React.useMemo<
-      React.CSSProperties | undefined
     >(() => {
-      if (mobileDrag !== null) {
+      if (shouldSuppressMobileCloseAnimation) {
         return {
-          opacity: mobileDrag.progress,
-          transition: mobileDrag.settling ? undefined : "none",
+          transform:
+            side === "left"
+              ? "translate3d(-100%, 0, 0)"
+              : "translate3d(100%, 0, 0)",
+          transition: "none",
         };
       }
 
+      return undefined;
+    }, [shouldSuppressMobileCloseAnimation, side]);
+    const mobileBackdropStyle = React.useMemo<
+      React.CSSProperties | undefined
+    >(() => {
       if (shouldSuppressMobileCloseAnimation) {
         return {
           opacity: 0,
@@ -503,7 +544,7 @@ const Sidebar = React.forwardRef<
       }
 
       return undefined;
-    }, [mobileDrag, shouldSuppressMobileCloseAnimation]);
+    }, [shouldSuppressMobileCloseAnimation]);
 
     if (collapsible === "none") {
       return (
@@ -541,9 +582,6 @@ const Sidebar = React.forwardRef<
               }
               className="fixed inset-0 z-40 bg-black/80 data-[state=closed]:pointer-events-none [&[data-sidebar-suppress-open-animation=true][data-state=open]]:![animation:none]"
               style={mobileBackdropStyle}
-              {...(shouldDisableMobileAnimation
-                ? { "data-vaul-animate": "false" }
-                : undefined)}
             />
             <DrawerPrimitive.Content
               ref={ref}
@@ -571,9 +609,6 @@ const Sidebar = React.forwardRef<
                   ...mobilePanelMotionStyle,
                 } as SidebarMobileWidthStyle
               }
-              {...(shouldDisableMobileAnimation
-                ? { "data-vaul-animate": "false" }
-                : undefined)}
               {...props}
             >
               <DrawerPrimitive.Title className="sr-only">
@@ -708,16 +743,12 @@ const SidebarInset = React.forwardRef<
     isCompactViewport,
     openMobile,
     setOpenMobile,
-    mobileDrag,
-    setMobileDrag,
     setSuppressMobileOpenAnimation,
     setSuppressMobileCloseAnimation,
   } = useSidebar();
   const swipeSessionRef = React.useRef<SidebarInsetSwipeSession | null>(null);
   const removeSwipeListenersRef = React.useRef<(() => void) | null>(null);
-  const removeSwipeClickSuppressorRef = React.useRef<(() => void) | null>(
-    null,
-  );
+  const removeSwipeClickSuppressorRef = React.useRef<(() => void) | null>(null);
   const swipeClickSuppressorTimeoutRef = React.useRef<number | null>(null);
   const wheelSwipeDeltaRef = React.useRef(0);
   const wheelSwipeResetTimeoutRef = React.useRef<number | null>(null);
@@ -781,22 +812,26 @@ const SidebarInset = React.forwardRef<
   const settleMobileSwipe = React.useCallback(
     (open: boolean) => {
       clearMobileDragSettleTimeout();
-      setMobileDrag({ progress: open ? 1 : 0, settling: true });
-      setOpenMobile(true);
+      applySidebarMobileDragStyles({
+        progress: open ? 1 : 0,
+        settling: true,
+      });
       mobileDragSettleTimeoutRef.current = window.setTimeout(() => {
         mobileDragSettleTimeoutRef.current = null;
         if (open) {
           setSuppressMobileOpenAnimation(true);
+          clearSidebarMobileDragStyles();
         } else {
-          setSuppressMobileCloseAnimation(true);
+          flushSync(() => {
+            setSuppressMobileCloseAnimation(true);
+            setOpenMobile(false);
+          });
+          clearSidebarMobileDragAttributes();
         }
-        setMobileDrag(null);
-        setOpenMobile(open);
       }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
     },
     [
       clearMobileDragSettleTimeout,
-      setMobileDrag,
       setOpenMobile,
       setSuppressMobileCloseAnimation,
       setSuppressMobileOpenAnimation,
@@ -821,10 +856,14 @@ const SidebarInset = React.forwardRef<
         absDeltaY > SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX &&
         absDeltaY > absDeltaX * 1.15
       ) {
-        setMobileDrag(null);
+        clearSidebarMobileDragStyles();
         clearSwipeSession();
         return;
       }
+
+      const progress = clampSidebarMobileSwipeProgress(
+        deltaX / session.panelWidth,
+      );
 
       if (!session.isDragging) {
         if (
@@ -836,32 +875,33 @@ const SidebarInset = React.forwardRef<
 
         session.isDragging = true;
         clearMobileDragSettleTimeout();
-        setSuppressMobileCloseAnimation(false);
-        setOpenMobile(true);
+        flushSync(() => {
+          setSuppressMobileOpenAnimation(true);
+          setSuppressMobileCloseAnimation(false);
+          setOpenMobile(true);
+        });
       }
 
       if (event.cancelable) {
         event.preventDefault();
       }
 
-      const progress = clampSidebarMobileSwipeProgress(
-        deltaX / session.panelWidth,
-      );
       const elapsedMs = nowMs - session.lastTimeMs;
       if (elapsedMs > 0) {
-        session.velocityX = ((clientX - session.lastClientX) / elapsedMs) * 1000;
+        session.velocityX =
+          ((clientX - session.lastClientX) / elapsedMs) * 1000;
         session.lastClientX = clientX;
         session.lastTimeMs = nowMs;
       }
       session.lastProgress = progress;
-      setMobileDrag({ progress, settling: false });
+      applySidebarMobileDragStyles({ progress, settling: false });
     },
     [
       clearMobileDragSettleTimeout,
       clearSwipeSession,
-      setMobileDrag,
       setOpenMobile,
       setSuppressMobileCloseAnimation,
+      setSuppressMobileOpenAnimation,
     ],
   );
 
@@ -890,7 +930,7 @@ const SidebarInset = React.forwardRef<
 
       clearSwipeSession();
       if (!session.isDragging) {
-        setMobileDrag(null);
+        clearSidebarMobileDragStyles();
         return;
       }
 
@@ -901,12 +941,7 @@ const SidebarInset = React.forwardRef<
       suppressNextSwipeClick();
       settleMobileSwipe(shouldOpenSidebarMobileSwipe(session));
     },
-    [
-      clearSwipeSession,
-      setMobileDrag,
-      settleMobileSwipe,
-      suppressNextSwipeClick,
-    ],
+    [clearSwipeSession, settleMobileSwipe, suppressNextSwipeClick],
   );
 
   const handleSwipeEnd = React.useCallback(
@@ -1050,12 +1085,7 @@ const SidebarInset = React.forwardRef<
       window.addEventListener("pointercancel", handleSwipeEnd);
       removeSwipeListenersRef.current = removeListeners;
     },
-    [
-      handleSwipeEnd,
-      handleSwipeMove,
-      isCompactViewport,
-      openMobile,
-    ],
+    [handleSwipeEnd, handleSwipeMove, isCompactViewport, openMobile],
   );
 
   React.useEffect(() => {
@@ -1154,15 +1184,22 @@ const SidebarInset = React.forwardRef<
       }
       clearWheelSwipe();
       clearMobileDragSettleTimeout();
+      clearSidebarMobileDragStyles();
     },
     [clearMobileDragSettleTimeout, clearSwipeSession, clearWheelSwipe],
   );
 
   React.useEffect(() => {
-    if (!isCompactViewport || (openMobile && mobileDrag === null)) {
+    if (!isCompactViewport) {
+      clearSwipeSession();
+      clearSidebarMobileDragStyles();
+      return;
+    }
+
+    if (openMobile && swipeSessionRef.current === null) {
       clearSwipeSession();
     }
-  }, [clearSwipeSession, isCompactViewport, mobileDrag, openMobile]);
+  }, [clearSwipeSession, isCompactViewport, openMobile]);
 
   return (
     <main
