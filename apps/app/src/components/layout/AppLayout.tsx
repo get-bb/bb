@@ -326,7 +326,6 @@ function AppHeader({
           )}
           aria-label="Project settings"
           aria-current={isSettingsView ? "page" : undefined}
-          title="Project settings"
         >
           <Icon name="Settings" />
         </Link>
@@ -341,7 +340,6 @@ function AppHeader({
           )}
           aria-label="Archived threads"
           aria-current={isArchivedView ? "page" : undefined}
-          title="Archived threads"
         >
           <Icon name="Archive" />
         </Link>

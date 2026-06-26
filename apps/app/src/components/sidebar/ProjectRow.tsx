@@ -1049,7 +1049,6 @@ function EnvironmentThreadGroupHeaderActions({
             variant="ghost"
             size="icon"
             aria-label="Worktree actions"
-            title={undefined}
             className={cn(
               "rounded-md p-0 text-muted-foreground",
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
@@ -2133,7 +2132,6 @@ function ProjectRowComponent({
                 !projectDragBindings.disabled &&
                 "select-none",
             )}
-            title={project.name}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
@@ -2150,7 +2148,9 @@ function ProjectRowComponent({
               />
             </span>
             <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="min-w-0 truncate">{project.name}</span>
+              <span className="min-w-0 truncate" title={project.name}>
+                {project.name}
+              </span>
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
@@ -2166,7 +2166,6 @@ function ProjectRowComponent({
                   event.stopPropagation();
                   onProjectSelect?.();
                 }}
-                title="Project folder not found. Open project settings to fix."
                 aria-label="Project folder not found"
                 className={cn(
                   "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
@@ -2205,7 +2204,6 @@ function ProjectRowComponent({
                 variant="ghost"
                 size="icon"
                 aria-label={`New thread in ${project.name}`}
-                title="New thread"
                 disabled={!onCreateProjectThread}
                 onClick={(event) => {
                   event.stopPropagation();

@@ -82,7 +82,6 @@ export function WorktreePicker({
           size="sm"
           aria-label="Worktree"
           disabled={disabled}
-          title={`Worktree: ${triggerLabel}`}
           data-promptbox-icon-only-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,

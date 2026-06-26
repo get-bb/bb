@@ -380,7 +380,6 @@ export function ModelReasoningPicker({
       variant="ghost"
       size="sm"
       aria-label="Provider, model and reasoning"
-      title={triggerTitle}
       disabled={disabled}
       className={cn(
         OPTION_BASE_CLASS_NAME,
@@ -390,7 +389,7 @@ export function ModelReasoningPicker({
         className,
       )}
     >
-      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>
         {showSelectedFastMode ? (
           <Icon
             name="Zap"

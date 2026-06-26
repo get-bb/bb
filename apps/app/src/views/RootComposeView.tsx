@@ -431,7 +431,6 @@ function RootComposeRightPanelToggle({
       className={`${HEADER_ICON_BUTTON_CLASS} relative`}
       aria-label={rightPanelLabel}
       aria-pressed={isOpen}
-      title={rightPanelLabel}
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
@@ -2893,7 +2892,6 @@ export function RootComposeView(props: RootComposeViewProps) {
             with the prompt controls below the card. */}
         <div
           aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
-          title={`Forking ${forkSeed.sourceThreadTitle}`}
           className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
         >
           <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
@@ -2903,7 +2901,6 @@ export function RootComposeView(props: RootComposeViewProps) {
           <button
             type="button"
             aria-label="Cancel fork"
-            title="Cancel fork"
             className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={handleCancelForkDraft}
           >

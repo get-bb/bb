@@ -254,12 +254,6 @@ function formatCreateBranchTriggerLabel(branch: string | null): string {
     : `New branch from: ${branch}`;
 }
 
-function formatCreateBranchTriggerTitle(branch: string | null): string {
-  return branch === null
-    ? CREATE_NEW_BRANCH_LABEL
-    : `Create a new branch from ${branch}`;
-}
-
 function splitBranchLabel(label: string): BranchLabelParts {
   if (
     label.startsWith(CURRENT_PARENTHESES_LABEL_PREFIX) &&
@@ -948,14 +942,6 @@ export function BranchPicker({
           size="sm"
           disabled={disabled}
           aria-label="Branch"
-          title={
-            triggerTitle ??
-            (isCreatingNew
-              ? formatCreateBranchTriggerTitle(value)
-              : value
-                ? `Branch: ${value}`
-                : unresolvedTriggerLabel)
-          }
           className={cn(
             variant === "default" &&
               "h-8 w-full min-w-0 justify-between rounded-md border-border bg-background px-2.5 text-sm font-normal shadow-none hover:bg-state-hover",
@@ -973,7 +959,10 @@ export function BranchPicker({
           aria-expanded={open}
         >
           {variant === "option" ? (
-            <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+            <span
+              className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+              title={triggerTitle ?? triggerLabel}
+            >
               <Icon
                 name="GitMerge"
                 className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
@@ -986,7 +975,10 @@ export function BranchPicker({
               />
             </span>
           ) : (
-            <span className="flex min-w-0 items-center overflow-hidden">
+            <span
+              className="flex min-w-0 items-center overflow-hidden"
+              title={triggerTitle ?? triggerLabel}
+            >
               <BranchPickerText
                 label={triggerLabel}
                 emphasizePlainLabel={triggerHasPlainBranchValue}

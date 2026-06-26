@@ -119,7 +119,6 @@ export function GitDiffCardRawToggle({
       onClick={onToggle}
       aria-label={label}
       aria-pressed={isRaw}
-      title={label}
     >
       <Icon name="Code" aria-hidden className="size-3.5" />
     </button>

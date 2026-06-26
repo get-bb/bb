@@ -82,7 +82,6 @@ export function ConversationCollapsedRail({
         onClick={onExpand}
         aria-label="Expand conversation"
         aria-expanded={false}
-        title="Expand conversation"
         className="flex min-h-0 w-full flex-1 flex-col items-center bg-surface-recessed text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {/*

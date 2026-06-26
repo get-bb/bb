@@ -116,7 +116,6 @@ export function PromptBoxActionsMenu({
           type="button"
           size="icon"
           variant="ghost"
-          title="Prompt actions"
           aria-label="Prompt actions"
           className={cn(
             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,

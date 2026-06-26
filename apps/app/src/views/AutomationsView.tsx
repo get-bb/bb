@@ -220,7 +220,6 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
             size="icon"
             className="size-6 shrink-0 rounded-md p-0 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
             aria-label={`${automation.name} actions`}
-            title={`${automation.name} actions`}
           >
             <Icon name="MoreHorizontal" className="size-4" />
           </Button>

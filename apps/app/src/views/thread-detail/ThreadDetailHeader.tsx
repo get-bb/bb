@@ -122,7 +122,6 @@ export function ThreadDetailHeader({
           className={`${HEADER_ICON_BUTTON_CLASS} relative`}
           aria-label={rightPanelLabel}
           aria-pressed={isSecondaryPanelOpen}
-          title={rightPanelLabel}
           onClick={onToggleSecondaryPanel}
         >
           <Icon name={rightPanelIconName} />

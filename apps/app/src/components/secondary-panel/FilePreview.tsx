@@ -232,10 +232,6 @@ function getToggleAriaLabel(kind: FilePreviewToggleKind): string {
   return kind === "html" ? "HTML view mode" : "Markdown view mode";
 }
 
-function getRawToggleTitle(kind: FilePreviewToggleKind): string {
-  return kind === "html" ? "HTML source" : "Markdown source";
-}
-
 function getFileContentsCopyLabel(kind: FilePreviewToggleKind | null): string {
   if (kind === "markdown") {
     return "Copy markdown";
@@ -490,7 +486,6 @@ function FilePreviewHeader({
                   <CopyButton
                     text={rawContents}
                     label={copyFileContentsLabel}
-                    title={undefined}
                     className="shrink-0 rounded-md hover:bg-state-hover hover:text-foreground"
                   />
                 </TooltipTrigger>
@@ -504,7 +499,6 @@ function FilePreviewHeader({
                 <TooltipTrigger asChild>
                   <OpenInEditorButton
                     onClick={() => onOpenInEditor(path)}
-                    title={null}
                   />
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Open in editor</TooltipContent>
@@ -535,7 +529,6 @@ function FilePreviewHeader({
                   )}
                   onClick={() => onViewModeChange("preview")}
                   aria-pressed={viewMode === "preview"}
-                  title="Rendered preview"
                 >
                   Preview
                 </Button>
@@ -549,7 +542,6 @@ function FilePreviewHeader({
                   )}
                   onClick={() => onViewModeChange("source")}
                   aria-pressed={viewMode === "source"}
-                  title={getRawToggleTitle(toggleKind)}
                 >
                   Raw
                 </Button>
@@ -622,7 +614,6 @@ function FilePreviewLineWrapButton({
             )}
             aria-label={label}
             aria-pressed={lineOverflowMode === "wrap"}
-            title={undefined}
             onClick={() => {
               onLineOverflowModeChange(
                 lineOverflowMode === "wrap" ? "scroll" : "wrap",

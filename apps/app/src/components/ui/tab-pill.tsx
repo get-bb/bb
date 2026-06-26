@@ -57,7 +57,6 @@ export function TabPill({
         type="button"
         onClick={onSelect}
         aria-pressed={isActive}
-        title={title}
         className="flex h-full min-w-0 items-center rounded-md pl-2 pr-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {leadingVisual ? (
@@ -72,7 +71,10 @@ export function TabPill({
             {leadingVisual}
           </span>
         ) : null}
-        <span className={cn("truncate", labelMaxWidthClass, labelClassName)}>
+        <span
+          className={cn("truncate", labelMaxWidthClass, labelClassName)}
+          title={title}
+        >
           {label}
         </span>
         {secondaryLabel ? (
@@ -89,7 +91,6 @@ export function TabPill({
           onClick={closeAction.onClose}
           disabled={closeAction.isClosing}
           aria-label={closeAction.closeLabel}
-          title={closeAction.closeTooltip}
           data-tab-pill-close
           className={TAB_PILL_CLOSE_BUTTON_CLASS}
         >

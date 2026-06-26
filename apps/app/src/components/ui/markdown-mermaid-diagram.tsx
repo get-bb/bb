@@ -910,7 +910,6 @@ function MermaidDiagramDialog({
             className="size-7 text-muted-foreground"
             onClick={zoomOut}
             aria-label="Zoom out"
-            title="Zoom out"
           >
             <Icon name="ZoomOut" />
           </Button>
@@ -921,7 +920,6 @@ function MermaidDiagramDialog({
             className="size-7 text-muted-foreground"
             onClick={zoomIn}
             aria-label="Zoom in"
-            title="Zoom in"
           >
             <Icon name="ZoomIn" />
           </Button>
@@ -932,7 +930,6 @@ function MermaidDiagramDialog({
             className="size-7 text-muted-foreground"
             onClick={resetView}
             aria-label="Reset view"
-            title="Reset view"
           >
             <Icon name="RotateCcw" />
           </Button>
@@ -1063,7 +1060,6 @@ export function MarkdownMermaidDiagram({
               onClick={toggleDisplayMode}
               aria-label="Show Mermaid source"
               aria-pressed={displayMode === "source"}
-              title="Show Mermaid source"
             >
               <Icon name="Code" />
             </Button>
@@ -1076,7 +1072,6 @@ export function MarkdownMermaidDiagram({
               className="size-7 text-muted-foreground"
               onClick={() => setIsDialogOpen(true)}
               aria-label="Open Mermaid diagram"
-              title="Open diagram"
             >
               <Icon name="Maximize2" />
             </Button>

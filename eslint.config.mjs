@@ -1,6 +1,15 @@
 import tsParser from "@typescript-eslint/parser";
 import reactHooks from "eslint-plugin-react-hooks";
 
+const noBlockingChildProcessSyntaxRestrictions = [
+  {
+    selector:
+      "CallExpression[callee.name='spawnSync'], CallExpression[callee.name='execSync'], CallExpression[callee.name='execFileSync']",
+    message:
+      "Use async child_process APIs instead of blocking sync variants.",
+  },
+];
+
 const noBlockingChildProcessRules = {
   "no-restricted-imports": [
     "error",
@@ -23,13 +32,22 @@ const noBlockingChildProcessRules = {
   ],
   "no-restricted-syntax": [
     "error",
-    {
-      selector:
-        "CallExpression[callee.name='spawnSync'], CallExpression[callee.name='execSync'], CallExpression[callee.name='execFileSync']",
-      message:
-        "Use async child_process APIs instead of blocking sync variants.",
-    },
+    ...noBlockingChildProcessSyntaxRestrictions,
   ],
+};
+
+const noNativeTitleWithAriaLabelSyntaxRestriction = {
+  selector:
+    "JSXOpeningElement:has(> JSXAttribute[name.name='aria-label']):has(> JSXAttribute[name.name='title']) > JSXAttribute[name.name='title']",
+  message:
+    "Do not pair aria-label with a native title tooltip. Use aria-label for the accessible name and a design-system Tooltip, or put title on the truncated text only.",
+};
+
+const noNativeTitleOnButtonPrimitiveSyntaxRestriction = {
+  selector:
+    "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='title']",
+  message:
+    "Do not put native title tooltips on the shared Button primitive. Use aria-label for icon-only buttons and a design-system Tooltip when visible hover help is intentional.",
 };
 
 // The server must not access workspace filesystems directly — all workspace
@@ -117,5 +135,17 @@ export default [
     files: ["apps/server/src/**/*.ts"],
     ignores: ["**/*.test.ts", "**/__tests__/**"],
     rules: serverNoWorkspaceAccessRules,
+  },
+  {
+    files: ["apps/app/src/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...noBlockingChildProcessSyntaxRestrictions,
+        noNativeTitleWithAriaLabelSyntaxRestriction,
+        noNativeTitleOnButtonPrimitiveSyntaxRestriction,
+      ],
+    },
   },
 ];

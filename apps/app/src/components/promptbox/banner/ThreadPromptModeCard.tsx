@@ -79,7 +79,6 @@ export function ThreadPromptModeCard({
           <button
             type="button"
             aria-label="Exit plan mode"
-            title="Exit plan mode"
             onClick={onExitPlanMode}
             className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
           >

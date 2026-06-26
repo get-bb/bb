@@ -110,7 +110,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         <button
           type="button"
           aria-label="Create new thread in this worktree"
-          title="New thread in this worktree"
           onClick={onCreateNewThreadInWorktree}
           className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
         >

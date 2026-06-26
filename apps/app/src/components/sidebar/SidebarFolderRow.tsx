@@ -198,7 +198,6 @@ function SidebarFolderRowComponent({
                   variant="ghost"
                   size="icon"
                   aria-label={`${label} folder actions`}
-                  title={undefined}
                   className={cn(
                     "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                     COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -246,7 +245,6 @@ function SidebarFolderRowComponent({
                   variant="ghost"
                   size="icon"
                   aria-label={`New thread in ${label}`}
-                  title={undefined}
                   onClick={(event) => {
                     event.stopPropagation();
                     onCreateThread();

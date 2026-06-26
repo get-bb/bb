@@ -182,7 +182,6 @@ export function OptionPicker<T extends string>({
       variant="ghost"
       size="sm"
       aria-label={label}
-      title={selectedTitle}
       disabled={disabled}
       className={cn(
         OPTION_BASE_CLASS_NAME,
@@ -196,7 +195,7 @@ export function OptionPicker<T extends string>({
         className,
       )}
     >
-      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={selectedTitle}>
         {SelectedIcon ? <SelectedIcon className="size-3.5 shrink-0" /> : null}
         {selectedCompactLabel ? (
           <>

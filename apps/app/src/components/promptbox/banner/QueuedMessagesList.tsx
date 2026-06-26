@@ -374,7 +374,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           )}
           disabled={dragDisabled}
           aria-label={`Reorder queued message ${index + 1}`}
-          title="Reorder queued message"
           {...attributes}
           {...listeners}
         >
@@ -419,7 +418,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               disabled={sendDisabled}
               onClick={() => onSendImmediately(queuedMessage.id)}
               aria-label="Send now"
-              title="Send now"
             >
               <Icon name="Sent" className="size-4 opacity-70" />
             </Button>
@@ -432,7 +430,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             disabled={actionDisabled || isProcessing}
             onClick={() => onEdit(queuedMessage.id)}
             aria-label={`Edit queued message ${index + 1}`}
-            title="Edit queued message"
           >
             <Icon name="Edit" className="size-4 opacity-70" />
           </Button>
@@ -444,7 +441,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             disabled={actionDisabled || isProcessing}
             onClick={() => onDelete(queuedMessage.id)}
             aria-label={`Delete queued message ${index + 1}`}
-            title="Delete queued message"
           >
             <Icon name="Trash2" className="size-4 opacity-70" />
           </Button>

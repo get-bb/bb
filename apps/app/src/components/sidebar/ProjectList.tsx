@@ -579,7 +579,6 @@ function ProjectListSectionIconButton({
       type="button"
       size="icon"
       variant="ghost"
-      title={undefined}
       aria-label={ariaLabel}
       disabled={disabled}
       className={PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS}
@@ -706,7 +705,6 @@ function SidebarDisplayMenuTrigger({
             variant="ghost"
             size="icon"
             aria-label={ariaLabel}
-            title={undefined}
             className={cn(
               "rounded-md p-0 text-muted-foreground",
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
@@ -1087,7 +1085,6 @@ export function TopLevelSidebarSection({
           "rounded-md pr-1 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
-        title={label}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
@@ -1097,7 +1094,9 @@ export function TopLevelSidebarSection({
             actions && "pr-[7.5rem] max-md:pointer-coarse:pr-[9.75rem]",
           )}
         >
-          <span className="min-w-0 truncate">{label}</span>
+          <span className="min-w-0 truncate" title={label}>
+            {label}
+          </span>
           {/* Reserve room for the compact section action cluster on the right;
               coarse pointers need a little more. */}
           {collapseControl ? (
@@ -1112,7 +1111,6 @@ export function TopLevelSidebarSection({
                   ? `Expand ${label} section`
                   : `Collapse ${label} section`
               }
-              title={undefined}
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",

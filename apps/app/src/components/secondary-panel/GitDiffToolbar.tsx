@@ -213,9 +213,6 @@ export function GitDiffToolbar({
             aria-label={
               areAllFilesCollapsed ? "Expand all files" : "Collapse all files"
             }
-            title={
-              areAllFilesCollapsed ? "Expand all files" : "Collapse all files"
-            }
           >
             {areAllFilesCollapsed ? (
               <Icon name="ChevronsDown" />
@@ -242,11 +239,6 @@ export function GitDiffToolbar({
                 : "Wrap diff lines"
             }
             aria-pressed={lineOverflowMode === "wrap"}
-            title={
-              lineOverflowMode === "wrap"
-                ? "Disable diff line wrap"
-                : "Wrap diff lines"
-            }
           >
             <Icon name="TextWrap" />
           </Button>
@@ -266,7 +258,6 @@ export function GitDiffToolbar({
               onClick={() => onDisplayModeChange("unified")}
               aria-label="Stacked diff view"
               aria-pressed={displayMode === "unified"}
-              title="Stacked diff view"
             >
               <Icon name="Rows2" />
             </Button>
@@ -281,7 +272,6 @@ export function GitDiffToolbar({
               onClick={() => onDisplayModeChange("split")}
               aria-label="Split diff view"
               aria-pressed={displayMode === "split"}
-              title="Split diff view"
             >
               <Icon name="Columns2" />
             </Button>

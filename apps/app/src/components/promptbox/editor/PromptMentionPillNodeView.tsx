@@ -104,7 +104,6 @@ export function PromptMentionPillNodeView({
         activate && "cursor-pointer",
       )}
       {...promptMentionClipboardDataAttributes(attrs)}
-      title={title}
       role={activate ? "button" : undefined}
       tabIndex={activate ? 0 : undefined}
       aria-label={activationLabel}

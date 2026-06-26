@@ -211,7 +211,6 @@ export function ThreadActionsMenu({
             "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
           )}
           aria-label="Thread actions"
-          title="Thread actions"
           onClick={(event) => {
             event.stopPropagation();
           }}

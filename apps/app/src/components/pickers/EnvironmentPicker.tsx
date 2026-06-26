@@ -154,7 +154,6 @@ export function EnvironmentPickerUI({
           size="sm"
           aria-label="Environment"
           disabled={disabled}
-          title={`Environment: ${selected.modeLabel}`}
           data-promptbox-icon-only-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,

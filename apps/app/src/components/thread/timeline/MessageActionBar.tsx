@@ -159,8 +159,6 @@ export function MessageActionBar({
               <CopyButton
                 text={messageText}
                 label="Copy message"
-                // The design-system tooltip replaces the native one below.
-                title={undefined}
                 className={cn(
                   HOVER_REVEAL_CLASS,
                   "max-md:pointer-coarse:hidden",
@@ -263,7 +261,6 @@ export function MessageActionBar({
               type="button"
               className={MOBILE_OVERFLOW_TRIGGER_CLASS}
               aria-label="Message actions"
-              title="Message actions"
             >
               <Icon name="MoreHorizontal" className="size-3" />
             </button>

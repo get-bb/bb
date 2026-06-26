@@ -89,8 +89,6 @@ export function ProjectSelector({
           size="sm"
           aria-label="Project"
           disabled={disabled}
-          // Matches OptionPicker's "<label>: <value>" tooltip convention.
-          title={`Project: ${triggerLabel}`}
           data-promptbox-project-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,

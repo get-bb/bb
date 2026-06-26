@@ -194,7 +194,6 @@ function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      title={label}
       className={cn(
         "flex shrink-0 items-center justify-center text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,

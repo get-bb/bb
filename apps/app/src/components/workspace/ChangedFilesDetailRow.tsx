@@ -76,7 +76,6 @@ export function ChangedFilesDetailRow({
               variant="ghost"
               size="sm"
               className="h-5 w-auto min-w-0 justify-between gap-1 rounded-sm px-0 text-xs font-normal shadow-none hover:bg-transparent data-[state=open]:bg-transparent data-[state=open]:hover:bg-transparent"
-              title={activeSection.label}
               aria-label="Switch changed files bucket"
             >
               <span className="truncate">{activeSection.label}</span>

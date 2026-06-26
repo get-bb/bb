@@ -223,7 +223,6 @@ export function UsageLimitsSettingsSectionContent({
               className="size-7 text-muted-foreground hover:text-foreground"
               disabled={isFetching}
               onClick={onRefresh}
-              title={undefined}
               aria-label={
                 isFetching
                   ? "Reloading usage data"

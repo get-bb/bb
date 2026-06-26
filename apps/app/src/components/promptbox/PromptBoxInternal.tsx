@@ -2315,7 +2315,6 @@ export function PromptBoxInternal({
             event.preventDefault();
           }}
           onClick={toggleZenMode}
-          title={isZenMode ? "Exit zen mode" : "Enter zen mode"}
           aria-label={isZenMode ? "Exit zen mode" : "Enter zen mode"}
           aria-pressed={isZenMode}
           // Neutralise the ghost variant's `aria-pressed:bg-state-active`
@@ -2443,7 +2442,7 @@ export function PromptBoxInternal({
             type="button"
             size="icon"
             variant="ghost"
-            title="Attach files"
+            aria-label="Attach files"
             disabled={!onAttachFiles || isAttaching}
             onClick={() => attachmentInputRef.current?.click()}
             className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
@@ -2459,7 +2458,7 @@ export function PromptBoxInternal({
               type="button"
               size="icon"
               variant="ghost"
-              title={
+              aria-label={
                 !voice.isSupported
                   ? "Voice input is not supported in this browser"
                   : "Start voice input"
@@ -2476,7 +2475,7 @@ export function PromptBoxInternal({
               type="button"
               size="icon"
               variant="secondary"
-              title="Stop run"
+              aria-label="Stop run"
               onClick={onStop}
               className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
             >
@@ -2491,7 +2490,7 @@ export function PromptBoxInternal({
                 type="button"
                 size="sm"
                 variant="default"
-                title="Stop and transcribe recording"
+                aria-label="Stop and transcribe recording"
                 onClick={voice.stop}
                 className={cn(
                   "rounded-r-none",
@@ -2504,7 +2503,7 @@ export function PromptBoxInternal({
                 type="button"
                 size="sm"
                 variant="default"
-                title="Cancel recording"
+                aria-label="Cancel recording"
                 onClick={voice.cancel}
                 className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
               >
@@ -2517,7 +2516,7 @@ export function PromptBoxInternal({
                 type="button"
                 size="sm"
                 variant="default"
-                title="Transcribing voice input..."
+                aria-label="Transcribing voice input"
                 disabled
                 className={cn(
                   "rounded-r-none",
@@ -2531,7 +2530,7 @@ export function PromptBoxInternal({
                 type="button"
                 size="sm"
                 variant="default"
-                title="Cancel transcription"
+                aria-label="Cancel transcription"
                 onClick={voice.cancel}
                 className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
               >
@@ -2543,7 +2542,7 @@ export function PromptBoxInternal({
               type="submit"
               size="sm"
               variant="default"
-              title={effectiveSubmitTitle}
+              aria-label={effectiveSubmitTitle}
               disabled={!canSubmit}
               className={COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS}
             >

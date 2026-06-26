@@ -20,7 +20,6 @@ export function ThreadUnarchiveButton({
       variant="ghost"
       size="icon"
       aria-label={resolvedLabel}
-      title={resolvedLabel}
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
       className={cn("size-6", className)}

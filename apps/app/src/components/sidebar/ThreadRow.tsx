@@ -339,7 +339,6 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const linkTitle = linkLabel;
   const rowDragBindings = options.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -378,7 +377,6 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        title={linkTitle}
         className={cn(
           "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
           // Draggable rows show a grab affordance; the link still selects on
@@ -387,7 +385,9 @@ function ThreadRowComponent({
         )}
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate">{visibleTitle}</span>
+        <span className="min-w-0 truncate" title={labelTitle}>
+          {visibleTitle}
+        </span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}

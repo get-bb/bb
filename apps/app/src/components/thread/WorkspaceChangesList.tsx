@@ -76,7 +76,6 @@ function WorkspaceChangesListItem({
         WORKSPACE_CHANGE_ROW_CLASS,
         "group w-full rounded px-1 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
-      title={file.path}
       aria-label={`Open ${file.path}`}
       onClick={() => onFileClick(file)}
     >

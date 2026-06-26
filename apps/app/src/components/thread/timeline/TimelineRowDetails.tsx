@@ -87,7 +87,6 @@ function ImageViewWorkRowBody({
         className="block w-full max-w-80 cursor-zoom-in overflow-hidden rounded-lg border border-border bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-96"
         onClick={() => setLightboxOpen(true)}
         aria-label={`Open image preview: ${imageName}`}
-        title={row.path}
       >
         <img
           src={imageSrc}

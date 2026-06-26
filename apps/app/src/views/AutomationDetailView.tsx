@@ -256,7 +256,6 @@ export function AutomationDetailContent({
               variant="outline"
               size="sm"
               aria-label="Pause"
-              title="Pause"
               disabled={actionsPending}
               onClick={onPause}
             >
@@ -269,7 +268,6 @@ export function AutomationDetailContent({
               variant="outline"
               size="sm"
               aria-label="Resume"
-              title="Resume"
               disabled={actionsPending}
               onClick={onResume}
             >
@@ -282,7 +280,6 @@ export function AutomationDetailContent({
             variant="outline"
             size="sm"
             aria-label="Run now"
-            title="Run now"
             disabled={actionsPending}
             onClick={onRun}
           >
@@ -295,7 +292,6 @@ export function AutomationDetailContent({
             size="sm"
             className="text-destructive hover:text-destructive"
             aria-label="Delete automation"
-            title="Delete automation"
             disabled={actionsPending}
             onClick={onDelete}
           >

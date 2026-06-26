@@ -227,9 +227,6 @@ export function ThreadGitActionDialogContent({
       : selectedMergeBaseBranchMissing
         ? missingMergeBaseErrorMessage
         : null);
-  const submitTitle = selectedMergeBaseBranchClassificationPending
-    ? checkingMergeBaseMessage
-    : (mergeBaseValidationErrorMessage ?? undefined);
   const footerMergeBaseMessage =
     visibleMergeBaseErrorMessage ?? visibleMergeBaseStatusMessage;
   const footerMergeBaseMessageIsError = Boolean(visibleMergeBaseErrorMessage);
@@ -397,7 +394,6 @@ export function ThreadGitActionDialogContent({
             disabled={
               dialogCopy.showMergeBase && mergeBaseSubmitBlockMessage !== null
             }
-            title={submitTitle}
           >
             {dialogCopy.submitLabel}
           </Button>

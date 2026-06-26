@@ -78,7 +78,6 @@ export function AttachmentPreview({
                     type="button"
                     onClick={() => onRemoveAttachment(attachment.path)}
                     className="absolute right-1 top-1 z-10 rounded-full bg-black/55 p-0.5 text-white transition-colors hover:bg-black/70"
-                    title={`Remove ${attachment.name}`}
                     aria-label={`Remove ${attachment.name}`}
                   >
                     <Icon name="X" className="size-3" />

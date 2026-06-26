@@ -189,7 +189,6 @@ export function ProjectActionsMenu({
             "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
           )}
           aria-label={`${project.name} actions`}
-          title={`${project.name} actions`}
           onClick={(event) => {
             event.stopPropagation();
           }}

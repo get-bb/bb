@@ -400,7 +400,6 @@ export function ThreadSecondaryPanel({
                 aria-pressed={
                   activeFixedPanel === "thread-info" && !hasActiveFileTab
                 }
-                title="Info"
               >
                 <Icon name="Info" />
               </Button>
@@ -417,7 +416,6 @@ export function ThreadSecondaryPanel({
                 onClick={() => onPanelChange("git-diff")}
                 aria-label="Show diff panel"
                 aria-pressed={isDiffPanelActive && !hasActiveFileTab}
-                title="Diff"
               >
                 <Icon name="FileDiff" />
               </Button>
@@ -450,7 +448,6 @@ export function ThreadSecondaryPanel({
                 onClick={conversationCollapseControl.onClick}
                 aria-label={conversationCollapseControl.label}
                 aria-expanded={conversationCollapseControl.isExpanded}
-                title={conversationCollapseControl.label}
               >
                 <Icon name={conversationCollapseControl.iconName} />
               </Button>
@@ -467,7 +464,6 @@ export function ThreadSecondaryPanel({
               aria-label={
                 renderAsDrawer ? "Close right panel" : "Hide right panel"
               }
-              title={renderAsDrawer ? "Close right panel" : "Hide right panel"}
             >
               <Icon name={togglePanelIconName} />
             </Button>
@@ -596,7 +592,6 @@ function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
       )}
       onClick={onOpenNewTab}
       aria-label="Open new tab"
-      title="New tab"
     >
       <Icon name="Plus" />
     </Button>

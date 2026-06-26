@@ -566,7 +566,6 @@ function PullRequestMergeSplitButton({
               "inline-flex items-center border-l border-border px-1 data-[state=open]:bg-state-active data-[state=open]:text-foreground",
             )}
             aria-label="Choose pull request merge method"
-            title="Choose pull request merge method"
           >
             <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
           </PromptBannerActionSegmentButton>
@@ -624,7 +623,6 @@ function PullRequestBannerLink({
       target="_blank"
       rel="noopener noreferrer"
       onClick={handlePullRequestClick}
-      title={pullRequest.title}
       aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -811,7 +809,6 @@ function ReadOnlyContextBanner({
           )}
           role="status"
           aria-label={statusAriaLabel}
-          title={statusAriaLabel}
         >
           <Icon
             name={iconName}

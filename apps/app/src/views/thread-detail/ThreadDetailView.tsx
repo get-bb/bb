@@ -312,7 +312,6 @@ function PopoutThreadHeader({
         type="button"
         className={buttonClassName}
         aria-label="Hide popout"
-        title="Hide popout"
         onClick={onHide}
       >
         <Icon name="X" />
@@ -324,7 +323,6 @@ function PopoutThreadHeader({
         type="button"
         className={buttonClassName}
         aria-label="New quick thread"
-        title="New quick thread"
         onClick={onNewQuickThread}
       >
         <Icon name="EditFile" />
@@ -333,7 +331,6 @@ function PopoutThreadHeader({
         type="button"
         className={buttonClassName}
         aria-label="Open in main app"
-        title="Open in main app"
         onClick={onOpenInMain}
       >
         <Icon name="ExternalLink" />
