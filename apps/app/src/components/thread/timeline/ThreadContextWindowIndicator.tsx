@@ -15,6 +15,8 @@ export interface ThreadContextWindowIndicatorProps {
 }
 
 const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
+const CONTEXT_WINDOW_PANEL_CLASS_NAME =
+  "w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none";
 
 export function ThreadContextWindowIndicator({
   usage,
@@ -49,6 +51,7 @@ export function ThreadContextWindowIndicator({
 
   const usedTokensLabel = formatCompactTokenCount(usage.usedTokens);
   const windowTokensLabel = formatCompactTokenCount(usage.modelContextWindow);
+  const titleLabel = usage.estimated ? "Estimated context" : "Context window";
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -95,24 +98,23 @@ export function ThreadContextWindowIndicator({
         align="end"
         sideOffset={8}
         {...contentHoverProps}
-        className="w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+        mobileTitle={titleLabel}
+        className={CONTEXT_WINDOW_PANEL_CLASS_NAME}
       >
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2 text-xs">
-            <span className="text-muted-foreground">
-              {usage.estimated ? "Estimated context" : "Context window"}
-            </span>
+        <div className="space-y-2 max-md:space-y-3">
+          <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
+            <span className="text-muted-foreground">{titleLabel}</span>
             <span className={cn("font-medium tabular-nums", toneClass)}>
               {usedPercent}% used
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border max-md:h-2">
             <div
               className={cn("h-full rounded-full bg-current", toneClass)}
               style={{ width: `${visualPercent}%` }}
             />
           </div>
-          <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground">
+          <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground max-md:text-sm">
             <span>
               {usedTokensLabel} / {windowTokensLabel} tokens
             </span>
