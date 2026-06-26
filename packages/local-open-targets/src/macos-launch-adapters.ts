@@ -561,6 +561,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
           buildMacTerminalLocalOpenArgs({
             appName: "Terminal",
             columnNumber: args.columnNumber,
+            editorCommand: args.editorCommand,
             lineNumber: args.lineNumber,
             path: args.path,
             pathType: args.pathType,
@@ -599,6 +600,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
           buildMacTerminalLocalOpenArgs({
             appName: "iTerm",
             columnNumber: args.columnNumber,
+            editorCommand: args.editorCommand,
             lineNumber: args.lineNumber,
             path: args.path,
             pathType: args.pathType,

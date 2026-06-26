@@ -191,7 +191,10 @@ function useOpenTargetResolution(
 export function useLocalOpenTargets(
   args: UseLocalOpenTargetsArgs,
 ): UseLocalOpenTargetsResult {
-  const openContext = args.openContext ?? { kind: "local" };
+  const openContext = useMemo<OpenInTargetContext>(
+    () => args.openContext ?? { kind: "local" },
+    [args.openContext],
+  );
   const contextKind = openContext.kind;
   const { hasDaemon } = useHostDaemon();
   const {

@@ -55,6 +55,7 @@ const DESKTOP_APP_TARGET_ID_PREFIX = "desktop-app:";
 const MAC_APP_TARGET_ID_PREFIX = "mac-app:";
 const MAC_FILE_APPLICATION_DISCOVERY_LIMIT = 5;
 const MAC_APPLICATION_ICON_THUMBNAIL_SIZE_PX = 32;
+const TERMINAL_EDITOR_CANDIDATES = ["nvim", "vim", "nano", "less"] as const;
 const MAC_APPLICATIONS_FOR_FILE_SCRIPT = `
 function run(argv) {
   ObjC.import("AppKit");
@@ -909,6 +910,28 @@ async function isExecutableAvailable(
   }
 }
 
+async function resolveTerminalEditorCommand(
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<string | null> {
+  const visual = runtime.env?.VISUAL?.trim();
+  if (visual) {
+    return visual;
+  }
+
+  const editor = runtime.env?.EDITOR?.trim();
+  if (editor) {
+    return editor;
+  }
+
+  for (const candidate of TERMINAL_EDITOR_CANDIDATES) {
+    if (await isExecutableAvailable(candidate, runtime)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function getMacRemoteSshOpenCommandExecutables(
   command: MacRemoteSshOpenCommandAdapter,
 ): string[] {
@@ -1012,9 +1035,10 @@ async function maybeResolveMacFileOpenInvocation(
   };
 }
 
-function maybeResolveMacLocalTerminalOpenInvocation(
+async function maybeResolveMacLocalTerminalOpenInvocation(
   args: ResolveMacOpenInvocationArgs,
-): ExecFileInvocation | null {
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<ExecFileInvocation | null> {
   if (args.definition.macos.openMode === "default-app") {
     return null;
   }
@@ -1031,6 +1055,10 @@ function maybeResolveMacLocalTerminalOpenInvocation(
       columnNumber: args.definition.capabilities.openFileAtColumn
         ? args.columnNumber
         : null,
+      editorCommand:
+        args.existingPath.type === "file"
+          ? await resolveTerminalEditorCommand(runtime)
+          : null,
       lineNumber: args.lineNumber,
       path: args.existingPath.path,
       pathType: args.existingPath.type,
@@ -1067,7 +1095,7 @@ async function resolveMacOpenInvocation(
   }
 
   const localTerminalOpenInvocation =
-    maybeResolveMacLocalTerminalOpenInvocation(args);
+    await maybeResolveMacLocalTerminalOpenInvocation(args, runtime);
   if (localTerminalOpenInvocation) {
     return localTerminalOpenInvocation;
   }

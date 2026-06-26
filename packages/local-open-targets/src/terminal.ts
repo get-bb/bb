@@ -1,4 +1,7 @@
+import path from "node:path";
+
 import type {
+  BuildMacLocalTerminalOpenArgs,
   BuildMacRemoteSshOpenArgs,
   BuildMacTerminalOpenArgs,
 } from "./types.js";
@@ -47,6 +50,72 @@ function buildTerminalDirectoryCommand(path: string): string {
   return `cd ${quoteShellArg(path)}`;
 }
 
+function getEditorExecutableName(editorCommand: string): string {
+  const executable = editorCommand.trim().split(/\s+/u)[0] ?? "";
+  return path
+    .basename(executable)
+    .replace(/\.exe$/iu, "")
+    .toLowerCase();
+}
+
+function buildTerminalEditorLocationArgs(
+  editorCommand: string,
+  lineNumber: number | null,
+  columnNumber: number | null,
+): string[] {
+  if (lineNumber === null) {
+    return [];
+  }
+
+  switch (getEditorExecutableName(editorCommand)) {
+    case "nvim":
+    case "vim":
+    case "vi":
+      return columnNumber === null
+        ? [`+${lineNumber}`]
+        : [`+call cursor(${lineNumber},${columnNumber})`];
+    case "nano":
+      return columnNumber === null
+        ? [`+${lineNumber}`]
+        : [`+${lineNumber},${columnNumber}`];
+    case "less":
+      return [`+${lineNumber}g`];
+    default:
+      return [];
+  }
+}
+
+function buildTerminalEditorFileCommand(
+  args: BuildMacLocalTerminalOpenArgs,
+): string {
+  const directory = path.dirname(args.path);
+  if (args.editorCommand === null) {
+    return buildTerminalDirectoryCommand(directory);
+  }
+
+  const fileName = path.basename(args.path);
+  const editorArgs = [
+    ...buildTerminalEditorLocationArgs(
+      args.editorCommand,
+      args.lineNumber,
+      args.columnNumber,
+    ),
+    fileName,
+  ]
+    .map(quoteShellArg)
+    .join(" ");
+
+  return `cd ${quoteShellArg(directory)} && ${args.editorCommand} ${editorArgs}`;
+}
+
+function buildMacTerminalLocalCommand(
+  args: BuildMacLocalTerminalOpenArgs,
+): string {
+  return args.pathType === "directory"
+    ? buildTerminalDirectoryCommand(args.path)
+    : buildTerminalEditorFileCommand(args);
+}
+
 export function buildLocalTerminalShellArgs(
   args: BuildMacTerminalOpenArgs,
 ): string[] {
@@ -64,13 +133,9 @@ function buildShellCommand(args: string[]): string {
 }
 
 export function buildMacTerminalLocalOpenArgs(
-  args: BuildMacTerminalOpenArgs & { appName: "Terminal" | "iTerm" },
+  args: BuildMacLocalTerminalOpenArgs & { appName: "Terminal" | "iTerm" },
 ): string[] {
-  const command = escapeAppleScriptString(
-    args.pathType === "directory"
-      ? buildTerminalDirectoryCommand(args.path)
-      : buildShellCommand(buildLocalTerminalShellArgs(args)),
-  );
+  const command = escapeAppleScriptString(buildMacTerminalLocalCommand(args));
 
   if (args.appName === "Terminal") {
     return [

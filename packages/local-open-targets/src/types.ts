@@ -102,6 +102,10 @@ export interface BuildMacTerminalOpenArgs {
   pathType: ExistingPath["type"];
 }
 
+export interface BuildMacLocalTerminalOpenArgs extends BuildMacTerminalOpenArgs {
+  editorCommand: string | null;
+}
+
 export interface BuildMacRemoteSshOpenArgs {
   columnNumber: number | null;
   lineNumber: number | null;
@@ -127,7 +131,7 @@ export interface MacFileOpenCommandAdapter {
 
 export interface MacLocalTerminalOpenCommandAdapter {
   executable: string;
-  toArgs: (args: BuildMacTerminalOpenArgs) => string[];
+  toArgs: (args: BuildMacLocalTerminalOpenArgs) => string[];
 }
 
 export interface MacRemoteSshOpenCommandAdapter {
