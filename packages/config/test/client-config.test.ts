@@ -32,7 +32,7 @@ describe("client config", () => {
     ).toBe("devbox");
   });
 
-  it("returns null when no SSH authority is configured for a host", () => {
+  it("returns null when no SSH target is configured for a host", () => {
     const config = parseClientConfig({
       servers: {
         "https://bb.example.test": {

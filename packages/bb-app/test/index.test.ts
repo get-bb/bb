@@ -551,13 +551,13 @@ describe("bb-app launcher", () => {
     expect(
       resolveBbAppCommand([
         "client",
-        "ssh-alias",
+        "ssh-target",
         "set",
         "https://bb.example.test",
         "devbox",
       ]),
     ).toEqual({
-      args: ["ssh-alias", "set", "https://bb.example.test", "devbox"],
+      args: ["ssh-target", "set", "https://bb.example.test", "devbox"],
       kind: "client",
     });
   });
@@ -596,13 +596,13 @@ describe("bb-app launcher", () => {
 
   it("parses the json launcher flag", () => {
     expect(
-      parseLauncherArgs(["client", "ssh-alias", "list", "--json"]),
+      parseLauncherArgs(["client", "ssh-target", "list", "--json"]),
     ).toEqual({
       options: {
         help: false,
         json: true,
       },
-      positionals: ["client", "ssh-alias", "list"],
+      positionals: ["client", "ssh-target", "list"],
     });
   });
 
@@ -777,7 +777,7 @@ describe("bb-app launcher", () => {
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
-  it("stores client SSH aliases from the client command", async () => {
+  it("stores client SSH targets from the client command", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-client-command-"));
     const server = await startHostListTestServer([
       {
@@ -792,7 +792,7 @@ describe("bb-app launcher", () => {
         "--data-dir",
         dataDir,
         "client",
-        "ssh-alias",
+        "ssh-target",
         "set",
         `${server.url}/projects/proj_1`,
         "mbp-intel",
@@ -818,7 +818,7 @@ describe("bb-app launcher", () => {
         "--data-dir",
         dataDir,
         "client",
-        "ssh-alias",
+        "ssh-target",
         "remove",
         server.url,
       ]);

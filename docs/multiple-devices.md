@@ -41,6 +41,41 @@ npx bb-app
 Then open that same URL in a browser on any other device. The project list
 should load and you're in.
 
+## Optional: open remote files in a local editor
+
+If you use a remote bb server from another computer and want "Open in Editor"
+to open an editor on the computer in front of you, run bb's local helper on that
+client computer and tell it how to SSH back to the machine running bb.
+
+If bb is already running on the client computer, the local helper is already
+running. Otherwise, start bb there with `npx bb-app`; you can keep using the
+remote bb URL in your browser.
+
+On the client computer, first make sure SSH works:
+
+```bash
+ssh <machine>
+```
+
+Then register that SSH target for the remote bb URL:
+
+```bash
+npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
+```
+
+The SSH target is the value that works after `ssh`. It does not have to match
+the hostname in the bb URL. For example, if you open bb at
+`https://workstation.<tailnet>.ts.net` and `ssh devbox` works, use:
+
+```bash
+npx bb-app client ssh-target set https://workstation.<tailnet>.ts.net devbox
+```
+
+This writes `~/.bb/client.json` on the client computer only. The remote bb
+server does not read that file. Phones and tablets do not need this setup; bb
+continues to work from a browser without a local helper, but local editor
+buttons are unavailable.
+
 ## Optional: use HTTPS for voice and clipboard
 
 Plain HTTP works for browsing, reading threads, and sending prompts. But some

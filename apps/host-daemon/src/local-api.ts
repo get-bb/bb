@@ -191,7 +191,7 @@ async function resolveOpenPathInTargetArgs({
   if (sshAuthority === null) {
     throw new WorkspaceOpenTargetError({
       code: "remote_mapping_missing",
-      message: `No SSH mapping configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-alias set ${serverOrigin} <ssh-authority>`,
+      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target>`,
     });
   }
 

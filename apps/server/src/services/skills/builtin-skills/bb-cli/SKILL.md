@@ -22,13 +22,14 @@ message agents, or inspect projects, providers, and environments.
 
 ## Remote Client
 
-- `bb-app client ssh-alias set <server-origin> <ssh-authority>`
-  configures the local helper to open files from a remote bb server in VS Code
-  Remote-SSH.
+- `bb-app client ssh-target set <server-origin> <ssh-target>` configures the
+  local helper to open files from a remote bb server in local editors. The SSH
+  target is the value that works after `ssh`, such as `devbox` or
+  `user@devbox`.
 - These mappings live on the client machine in `<dataDir>/client.json`;
   the CLI resolves the server's host ID when writing the mapping, and the remote
   server does not read the file.
-- Use `bb-app client ssh-alias list --json` to inspect mappings.
+- Use `bb-app client ssh-target list --json` to inspect mappings.
 
 ## Agent Instructions
 

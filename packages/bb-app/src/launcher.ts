@@ -62,7 +62,7 @@ const START_COMMAND = "start";
 const HOST_DAEMON_COMMAND = "host-daemon";
 const HOST_DAEMON_JOIN_COMMAND = "join";
 const CLIENT_COMMAND = "client";
-const CLIENT_SSH_ALIAS_COMMAND = "ssh-alias";
+const CLIENT_SSH_TARGET_COMMAND = "ssh-target";
 const CONFIG_COMMAND = "config";
 const ENV_COMMAND = "env";
 const SET_COMMAND = "set";
@@ -499,7 +499,7 @@ interface RunClientCommandArgs {
   json: boolean;
 }
 
-interface ResolveClientSshAliasHostIdArgs {
+interface ResolveClientSshTargetHostIdArgs {
   serverOrigin: string;
 }
 
@@ -1306,9 +1306,9 @@ function printClientHelp(dataDir: string): void {
   process.stdout.write(`bb-app client
 
 Usage:
-  bb-app client ssh-alias list [--json]
-  bb-app client ssh-alias set <server-origin> <ssh-authority>
-  bb-app client ssh-alias remove <server-origin>
+  bb-app client ssh-target list [--json]
+  bb-app client ssh-target set <server-origin> <ssh-target>
+  bb-app client ssh-target remove <server-origin>
 
 Config file:
   ${formatClientConfigPath(dataDir)}
@@ -1440,8 +1440,8 @@ function formatClientHost(host: ClientHost): string {
     : `${host.id} (${host.name})`;
 }
 
-async function resolveClientSshAliasHostId(
-  args: ResolveClientSshAliasHostIdArgs,
+async function resolveClientSshTargetHostId(
+  args: ResolveClientSshTargetHostIdArgs,
 ): Promise<string> {
   const serverOrigin = normalizeClientServerOrigin(args.serverOrigin);
   const hostsUrl = new URL("/api/v1/hosts", serverOrigin);
@@ -1471,7 +1471,7 @@ async function resolveClientSshAliasHostId(
   );
 }
 
-function setClientSshAlias(
+function setClientSshTarget(
   config: ClientConfig,
   rawServerOrigin: string,
   hostId: string,
@@ -1493,7 +1493,7 @@ function setClientSshAlias(
   return parseClientConfig(nextConfig);
 }
 
-function removeClientSshAlias(
+function removeClientSshTarget(
   config: ClientConfig,
   rawServerOrigin: string,
 ): ClientConfig {
@@ -1503,7 +1503,7 @@ function removeClientSshAlias(
   return { servers: nextServers };
 }
 
-function formatClientSshAliases(config: ClientConfig, json: boolean): string {
+function formatClientSshTargets(config: ClientConfig, json: boolean): string {
   if (json) {
     return `${JSON.stringify(config, null, 2)}\n`;
   }
@@ -1521,7 +1521,7 @@ function formatClientSshAliases(config: ClientConfig, json: boolean): string {
 
   return lines.length > 0
     ? `${lines.join("\n")}\n`
-    : "No client SSH aliases set.\n";
+    : "No client SSH targets set.\n";
 }
 
 async function refreshRunningServerConfig(
@@ -1701,19 +1701,19 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
     return;
   }
 
-  if (commandArgs[0] !== CLIENT_SSH_ALIAS_COMMAND) {
+  if (commandArgs[0] !== CLIENT_SSH_TARGET_COMMAND) {
     throw new Error(
-      `Unsupported bb-app client command "${commandArgs[0]}". Use "ssh-alias".`,
+      `Unsupported bb-app client command "${commandArgs[0]}". Use "ssh-target".`,
     );
   }
 
   const subcommand = commandArgs[1];
   if (subcommand === CONFIG_LIST_COMMAND || subcommand === undefined) {
     if (commandArgs.length > 2) {
-      throw new Error("Usage: bb-app client ssh-alias list [--json]");
+      throw new Error("Usage: bb-app client ssh-target list [--json]");
     }
     process.stdout.write(
-      formatClientSshAliases(
+      formatClientSshTargets(
         await readClientConfig({ dataDir: args.dataDir }),
         args.json,
       ),
@@ -1724,18 +1724,18 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   if (subcommand === SET_COMMAND) {
     if (commandArgs.length !== 4) {
       throw new Error(
-        "Usage: bb-app client ssh-alias set <server-origin> <ssh-authority>",
+        "Usage: bb-app client ssh-target set <server-origin> <ssh-target>",
       );
     }
     const serverOrigin = commandArgs[2];
     const sshAuthority = commandArgs[3].trim();
     if (sshAuthority.length === 0) {
-      throw new Error("SSH authority must not be empty");
+      throw new Error("SSH target must not be empty");
     }
-    const hostId = await resolveClientSshAliasHostId({
+    const hostId = await resolveClientSshTargetHostId({
       serverOrigin,
     });
-    const nextConfig = setClientSshAlias(
+    const nextConfig = setClientSshTarget(
       await readClientConfig({ dataDir: args.dataDir }),
       serverOrigin,
       hostId,
@@ -1746,30 +1746,30 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
       dataDir: args.dataDir,
     });
     process.stdout.write(
-      `Set client SSH alias in ${formatClientConfigPath(args.dataDir)}\n`,
+      `Set client SSH target in ${formatClientConfigPath(args.dataDir)}\n`,
     );
     return;
   }
 
   if (subcommand === REMOVE_COMMAND) {
     if (commandArgs.length !== 3) {
-      throw new Error("Usage: bb-app client ssh-alias remove <server-origin>");
+      throw new Error("Usage: bb-app client ssh-target remove <server-origin>");
     }
     await writeClientConfigFile({
-      config: removeClientSshAlias(
+      config: removeClientSshTarget(
         await readClientConfig({ dataDir: args.dataDir }),
         commandArgs[2],
       ),
       dataDir: args.dataDir,
     });
     process.stdout.write(
-      `Removed client SSH alias from ${formatClientConfigPath(args.dataDir)}\n`,
+      `Removed client SSH target from ${formatClientConfigPath(args.dataDir)}\n`,
     );
     return;
   }
 
   throw new Error(
-    `Unsupported bb-app client ssh-alias command "${subcommand}". Use list, set, or remove.`,
+    `Unsupported bb-app client ssh-target command "${subcommand}". Use list, set, or remove.`,
   );
 }
 
@@ -2484,7 +2484,7 @@ Usage:
   bb-app config set <key> <value>
   bb-app config refresh
   bb-app env set <key> <value>
-  bb-app client ssh-alias set <server-origin> <ssh-authority>
+  bb-app client ssh-target set <server-origin> <ssh-target>
   bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
   bb-app host-daemon join --server-url <url>
 
