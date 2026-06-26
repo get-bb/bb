@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TerminalSession } from "@bb/server-contract";
-import { isVisibleTerminalSessionStatus } from "@bb/domain";
 import {
   useCloseTerminal,
   useCloseEnvironmentTerminal,
@@ -22,6 +21,10 @@ import {
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
 } from "@/lib/fixed-panel-tabs";
+import {
+  shouldCloseUnretainedDisconnectedTerminalSession,
+  shouldShowRetainedTerminalSession,
+} from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
 
 export const DEFAULT_TERMINAL_COLS = 100;
@@ -80,12 +83,10 @@ export function isVisibleTerminalSession({
   retainedTerminalViewId: string | null;
   session: TerminalSession;
 }): boolean {
-  if (!isVisibleTerminalSessionStatus(session.status)) {
-    return false;
-  }
-  return (
-    session.status !== "disconnected" || session.id === retainedTerminalViewId
-  );
+  return shouldShowRetainedTerminalSession({
+    retainedTerminalId: retainedTerminalViewId,
+    session,
+  });
 }
 
 export function shouldCloseDisconnectedTerminalSession({
@@ -95,9 +96,10 @@ export function shouldCloseDisconnectedTerminalSession({
   retainedTerminalViewId: string | null;
   session: TerminalSession;
 }): boolean {
-  return (
-    session.status === "disconnected" && session.id !== retainedTerminalViewId
-  );
+  return shouldCloseUnretainedDisconnectedTerminalSession({
+    retainedTerminalId: retainedTerminalViewId,
+    session,
+  });
 }
 
 export function shouldAutoCloseCleanTerminalSession({

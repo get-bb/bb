@@ -62,6 +62,7 @@ import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
   useCloseThreadTerminal,
@@ -153,8 +154,9 @@ import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
+  getRetainedTerminalTabId,
   syncTerminalTabsInFixedPanelState,
-} from "./threadTerminalTabs";
+} from "@/components/secondary-panel/terminalPanelTabs";
 import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
@@ -451,6 +453,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeFixedSecondaryTab,
     isSecondaryPanelOpen: isPersistedSecondaryPanelOpenForSurface,
   });
+  const retainedTerminalId = getRetainedTerminalTabId({
+    activeTab: activeFixedSecondaryTab,
+    isPanelOpen: isPersistedSecondaryPanelOpenForSurface,
+  });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(threadId);
@@ -563,6 +569,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadFileTabs({
     threadId,
     environmentId: thread?.environmentId,
+    retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
@@ -710,9 +717,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildTerminalSyncedSecondaryFileTabs({
         orderedTabs: orderedSecondaryFileTabs,
+        retainedTerminalId,
         terminalSessions,
       }),
-    [orderedSecondaryFileTabs, terminalSessions],
+    [orderedSecondaryFileTabs, retainedTerminalId, terminalSessions],
   );
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
@@ -720,11 +728,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
+        retainedTerminalId,
         state,
         terminalSessions,
       }),
     );
-  }, [terminalSessions, terminalsListQuery.data, updateFixedPanelTabsState]);
+  }, [
+    retainedTerminalId,
+    terminalSessions,
+    terminalsListQuery.data,
+    updateFixedPanelTabsState,
+  ]);
   const hostConnectionNotice = useMemo(
     () => (thread ? buildHostConnectionNotice(thread) : null),
     [thread],
@@ -734,6 +748,21 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
+  const hostsQuery = useHosts({
+    enabled:
+      hasThreadDetailBootstrapSettled &&
+      thread?.environmentId !== null &&
+      thread?.environmentId !== undefined,
+  });
+  const connectedHostIds = useMemo(
+    () =>
+      new Set(
+        (hostsQuery.data ?? [])
+          .filter((host) => host.status === "connected")
+          .map((host) => host.id),
+      ),
+    [hostsQuery.data],
+  );
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
   });
@@ -833,7 +862,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const canCreateTerminal =
     thread?.environmentId !== null &&
     thread?.environmentId !== undefined &&
-    environment?.status === "ready";
+    environment?.status === "ready" &&
+    connectedHostIds.has(environment.hostId);
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: projectId ?? "",
     environmentId: thread?.environmentId ?? "",

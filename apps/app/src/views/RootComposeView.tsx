@@ -89,7 +89,7 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
@@ -179,8 +179,9 @@ import {
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
+  getRetainedTerminalTabId,
   syncTerminalTabsInFixedPanelState,
-} from "./thread-detail/threadTerminalTabs";
+} from "@/components/secondary-panel/terminalPanelTabs";
 import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
@@ -397,6 +398,8 @@ interface ResolveRootComposePanelThreadIdArgs {
 }
 
 interface CanCreateRootComposeTerminalArgs {
+  connectedHostIds: ReadonlySet<string>;
+  environmentHostId: string | null | undefined;
   terminalTarget: RootComposeTerminalTarget | null;
   environmentStatus: EnvironmentStatus | undefined;
 }
@@ -702,6 +705,8 @@ export function resolveRootComposePanelThreadId({
 }
 
 export function canCreateRootComposeTerminal({
+  connectedHostIds,
+  environmentHostId,
   terminalTarget,
   environmentStatus,
 }: CanCreateRootComposeTerminalArgs): boolean {
@@ -709,9 +714,14 @@ export function canCreateRootComposeTerminal({
     return false;
   }
   if (terminalTarget.kind === "environment") {
-    return environmentStatus === "ready";
+    return (
+      environmentStatus === "ready" &&
+      environmentHostId !== null &&
+      environmentHostId !== undefined &&
+      connectedHostIds.has(environmentHostId)
+    );
   }
-  return true;
+  return connectedHostIds.has(terminalTarget.hostId);
 }
 
 export function buildRootComposeTerminalSessions({
@@ -875,7 +885,22 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
-  const primaryHostId = usePrimaryHost()?.id ?? null;
+  const hostsQuery = useHosts();
+  const connectedHostIds = useMemo(
+    () =>
+      new Set(
+        (hostsQuery.data ?? [])
+          .filter((host) => host.status === "connected")
+          .map((host) => host.id),
+      ),
+    [hostsQuery.data],
+  );
+  const primaryHost = useMemo(() => {
+    const hosts = hostsQuery.data;
+    if (!hosts || hosts.length === 0) return null;
+    return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
+  }, [hostsQuery.data]);
+  const primaryHostId = primaryHost?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
@@ -1696,6 +1721,14 @@ export function RootComposeView(props: RootComposeViewProps) {
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
+  const retainedTerminalId = useMemo(
+    () =>
+      getRetainedTerminalTabId({
+        activeTab: activeFixedSecondaryTab,
+        isPanelOpen: isPersistedSecondaryPanelOpen,
+      }),
+    [activeFixedSecondaryTab, isPersistedSecondaryPanelOpen],
+  );
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const rawActiveRootStorageFileTab =
     activeFixedSecondaryTab?.kind === "thread-storage-file-preview"
@@ -1891,6 +1924,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     fileOwnerThreadId: rootPanelThreadId,
     preserveWorkspaceTabsAcrossContexts: true,
     projectId: isProjectless ? null : projectId,
+    retainedTerminalId,
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
   });
@@ -1912,9 +1946,10 @@ export function RootComposeView(props: RootComposeViewProps) {
         ? orderedSecondaryFileTabs
         : buildTerminalSyncedSecondaryFileTabs({
             orderedTabs: orderedSecondaryFileTabs,
+            retainedTerminalId,
             terminalSessions: loadedTerminalSessions,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs],
+    [loadedTerminalSessions, orderedSecondaryFileTabs, retainedTerminalId],
   );
   useEffect(() => {
     if (!terminalsListLoaded) {
@@ -1922,12 +1957,20 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     updateFixedPanelTabsState((state) =>
       syncTerminalTabsInFixedPanelState({
+        retainedTerminalId,
         state,
         terminalSessions,
       }),
     );
-  }, [terminalSessions, terminalsListLoaded, updateFixedPanelTabsState]);
+  }, [
+    retainedTerminalId,
+    terminalSessions,
+    terminalsListLoaded,
+    updateFixedPanelTabsState,
+  ]);
   const canCreateRootTerminal = canCreateRootComposeTerminal({
+    connectedHostIds,
+    environmentHostId: rootPanelEnvironment?.hostId,
     terminalTarget: rootPanelTerminalTarget,
     environmentStatus: rootPanelEnvironment?.status,
   });

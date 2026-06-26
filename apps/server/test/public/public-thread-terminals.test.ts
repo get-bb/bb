@@ -29,12 +29,17 @@ import {
   seedHost,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
 } from "../helpers/seed.js";
 import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../helpers/test-app.js";
+import {
+  handleExpiredHostSessionLeases,
+  handleHostSessionOpened,
+} from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 
 interface FakeDaemonSocket {
@@ -1124,6 +1129,124 @@ describe("public thread terminal routes", () => {
           id: stored.id,
           closeReason: "daemon-disconnect",
           status: "exited",
+        }),
+      }),
+    );
+  });
+
+  it("expires terminals when a replacement daemon session opens before the old socket closes", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    const browserSocket = createFakeBrowserSocket();
+    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+
+    const replacementSession = seedSession(
+      fixture.harness.deps,
+      fixture.host.id,
+    );
+    await handleHostSessionOpened(fixture.harness.deps, {
+      activeThreads: [],
+      hostId: fixture.host.id,
+      openedSession: replacementSession,
+      previousSession: fixture.session,
+    });
+
+    expect(
+      listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
+    ).toEqual([
+      expect.objectContaining({
+        id: stored.id,
+        daemonSessionId: null,
+        status: "disconnected",
+      }),
+    ]);
+
+    const replacementSocket = createFakeDaemonSocket();
+    onDaemonSocketOpen(fixture.harness.deps, {
+      hostId: fixture.host.id,
+      sessionId: replacementSession.id,
+      socket: replacementSocket,
+    });
+
+    const closeMessage = await waitForDaemonMessage(replacementSocket);
+    expect(closeMessage).toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "daemon-disconnect",
+    });
+    expect(
+      listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
+    ).toEqual([
+      expect.objectContaining({
+        id: stored.id,
+        closeReason: "daemon-disconnect",
+        daemonSessionId: null,
+        status: "exited",
+      }),
+    ]);
+    expect(readBrowserMessages(browserSocket)).toContainEqual(
+      expect.objectContaining({
+        type: "exited",
+        session: expect.objectContaining({
+          id: stored.id,
+          closeReason: "daemon-disconnect",
+          status: "exited",
+        }),
+      }),
+    );
+  });
+
+  it("marks running terminals disconnected when their daemon session lease expires", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    const browserSocket = createFakeBrowserSocket();
+    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+
+    handleExpiredHostSessionLeases(fixture.harness.deps, {
+      expiredLeases: {
+        expiredHostIds: [fixture.host.id],
+        expiredSessionIds: [fixture.session.id],
+        sessionsClosed: 1,
+      },
+    });
+
+    expect(
+      listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
+    ).toEqual([
+      expect.objectContaining({
+        daemonSessionId: null,
+        id: stored.id,
+        status: "disconnected",
+      }),
+    ]);
+    expect(readBrowserMessages(browserSocket)).toContainEqual(
+      expect.objectContaining({
+        type: "session-updated",
+        session: expect.objectContaining({
+          id: stored.id,
+          status: "disconnected",
         }),
       }),
     );

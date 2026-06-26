@@ -36,7 +36,7 @@ type DaemonSocketClosedDeps = Pick<
 >;
 type ExpiredHostSessionLeaseDeps = Pick<
   AppDeps,
-  "db" | "hub" | "logger" | "pendingInteractions"
+  "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
 >;
 
 export interface HandleHostSessionOpenedArgs {
@@ -89,6 +89,9 @@ export async function handleHostSessionOpened(
 
     if (args.previousSession.status === "active") {
       deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+      deps.terminalSessions.handleDaemonSessionClosed({
+        sessionId: args.previousSession.id,
+      });
     }
 
     interruptPendingInteractionsForHostThreads(deps, {
@@ -171,6 +174,7 @@ export function handleExpiredHostSessionLeases(
 
   for (const sessionId of args.expiredLeases.expiredSessionIds) {
     deps.hub.closeDaemonSession(sessionId, "expired");
+    deps.terminalSessions.handleDaemonSessionClosed({ sessionId });
   }
   for (const hostId of args.expiredLeases.expiredHostIds) {
     if (!getActiveSession(deps.db, hostId)) {

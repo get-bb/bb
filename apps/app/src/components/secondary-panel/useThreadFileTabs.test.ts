@@ -1,60 +1,135 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { TerminalSession } from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
   createTerminalFixedPanelTab,
-  createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
-  type FixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
-import { pruneTerminalTabs, useThreadFileTabs } from "./useThreadFileTabs";
+import { useThreadFileTabs } from "./useThreadFileTabs";
+
+type TerminalSessionOverrides = Partial<TerminalSession>;
+
+function terminalSession(
+  overrides: TerminalSessionOverrides,
+): TerminalSession {
+  return {
+    id: "term_1",
+    threadId: "thr_1",
+    environmentId: "env_1",
+    hostId: "host_1",
+    title: "Terminal",
+    initialCwd: "/workspace",
+    cols: 100,
+    rows: 30,
+    status: "running",
+    exitCode: null,
+    closeReason: null,
+    createdAt: 1,
+    updatedAt: 1,
+    lastUserInputAt: null,
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
 });
 
-describe("pruneTerminalTabs", () => {
-  it("removes terminal tabs that no longer have visible sessions", () => {
-    const infoTab = createThreadInfoFixedPanelTab();
-    const staleTerminalTab = createTerminalFixedPanelTab({
-      terminalId: "term_exited",
+describe("useThreadFileTabs terminal pruning", () => {
+  it("drops disconnected terminal tabs when not retained", async () => {
+    const threadId = "terminal-prune-unretained";
+    const disconnectedTab = createTerminalFixedPanelTab({
+      terminalId: "term_disconnected",
     });
-    const currentTerminalTab = createTerminalFixedPanelTab({
+    const runningTab = createTerminalFixedPanelTab({
       terminalId: "term_running",
     });
-    const tabs: readonly FixedPanelTab[] = [
-      infoTab,
-      staleTerminalTab,
-      currentTerminalTab,
-    ];
-
-    const nextTabs = pruneTerminalTabs({
-      knownTerminalIds: new Set(["term_running"]),
-      tabs,
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: runningTab.id,
+        isOpen: true,
+        tabs: [disconnectedTab, runningTab],
+      },
+      lastUsedAt: Date.now(),
     });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({ state }),
+    );
 
-    expect(nextTabs).toEqual([infoTab, currentTerminalTab]);
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId,
+        environmentId: "env_current",
+        storageFiles: undefined,
+        terminalSessions: [
+          terminalSession({
+            id: "term_disconnected",
+            status: "disconnected",
+          }),
+          terminalSession({ id: "term_running" }),
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+      ).toEqual([runningTab.id]);
+    });
   });
 
-  it("preserves tab array identity when every terminal tab is still visible", () => {
-    const tabs: readonly FixedPanelTab[] = [
-      createThreadInfoFixedPanelTab(),
-      createTerminalFixedPanelTab({ terminalId: "term_running" }),
-    ];
-
-    const nextTabs = pruneTerminalTabs({
-      knownTerminalIds: new Set(["term_running"]),
-      tabs,
+  it("keeps a retained disconnected terminal tab", async () => {
+    const threadId = "terminal-prune-retained";
+    const disconnectedTab = createTerminalFixedPanelTab({
+      terminalId: "term_disconnected",
     });
+    const runningTab = createTerminalFixedPanelTab({
+      terminalId: "term_running",
+    });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          secondary: {
+            activeTabId: disconnectedTab.id,
+            isOpen: true,
+            tabs: [disconnectedTab, runningTab],
+          },
+          lastUsedAt: Date.now(),
+        }),
+      }),
+    );
 
-    expect(nextTabs).toBe(tabs);
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId,
+        environmentId: "env_current",
+        retainedTerminalId: "term_disconnected",
+        storageFiles: undefined,
+        terminalSessions: [
+          terminalSession({
+            id: "term_disconnected",
+            status: "disconnected",
+          }),
+          terminalSession({ id: "term_running" }),
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+      ).toEqual([disconnectedTab.id, runningTab.id]);
+    });
   });
 });
 

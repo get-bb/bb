@@ -676,9 +676,13 @@ describe("resolveRootComposePanelThreadId", () => {
 });
 
 describe("canCreateRootComposeTerminal", () => {
-  it("allows ready environments and host paths", () => {
+  const connectedHostIds = new Set(["host_1"]);
+
+  it("allows ready environments and host paths on connected hosts", () => {
     expect(
       canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: "host_1",
         terminalTarget: { kind: "environment", environmentId: "env_1" },
         environmentStatus: "ready",
       }),
@@ -686,6 +690,8 @@ describe("canCreateRootComposeTerminal", () => {
 
     expect(
       canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: "host_1",
         terminalTarget: { kind: "environment", environmentId: "env_1" },
         environmentStatus: "provisioning",
       }),
@@ -693,6 +699,8 @@ describe("canCreateRootComposeTerminal", () => {
 
     expect(
       canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: undefined,
         terminalTarget: { kind: "host_path", hostId: "host_1", cwd: "/repo" },
         environmentStatus: undefined,
       }),
@@ -700,6 +708,8 @@ describe("canCreateRootComposeTerminal", () => {
 
     expect(
       canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: undefined,
         terminalTarget: { kind: "host_path", hostId: "host_1", cwd: null },
         environmentStatus: undefined,
       }),
@@ -707,8 +717,34 @@ describe("canCreateRootComposeTerminal", () => {
 
     expect(
       canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: "host_1",
         terminalTarget: null,
         environmentStatus: "ready",
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks terminal creation on offline hosts", () => {
+    expect(
+      canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: "host_offline",
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+        environmentStatus: "ready",
+      }),
+    ).toBe(false);
+
+    expect(
+      canCreateRootComposeTerminal({
+        connectedHostIds,
+        environmentHostId: undefined,
+        terminalTarget: {
+          kind: "host_path",
+          hostId: "host_offline",
+          cwd: "/repo",
+        },
+        environmentStatus: undefined,
       }),
     ).toBe(false);
   });
