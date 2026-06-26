@@ -44,16 +44,6 @@ const TALL_PATCH = [
   "",
 ].join("\n");
 
-// Git emits this (no `--binary`) for an added image; it parses to a zero-hunk
-// file the card routes to its inline image preview.
-const ADDED_IMAGE_PATCH = [
-  "diff --git a/assets/logo.png b/assets/logo.png",
-  "new file mode 100644",
-  "index 0000000..2222222",
-  "Binary files /dev/null and b/assets/logo.png differ",
-  "",
-].join("\n");
-
 // A 1x1 transparent PNG so the image-preview branch has something to render.
 const IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
@@ -192,7 +182,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="image change"
-        hint="a binary image routes to an inline preview instead of a No renderable diff notice"
+        hint="an on_demand binary image previews directly from file bytes without first loading a binary patch"
       >
         <CardStage
           entry={{
@@ -202,11 +192,6 @@ export function Overview() {
             deletions: 0,
             binary: true,
             loadMode: "on_demand",
-          }}
-          patchState={{
-            status: "loaded",
-            patch: ADDED_IMAGE_PATCH,
-            truncated: false,
           }}
           onRequestFileContents={imageContentsRequester}
         />

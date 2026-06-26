@@ -199,10 +199,7 @@ function getImageSizeStat(
   changeKind: GitDiffFileChangeKind,
 ): DiffImageSizeStat | null {
   if (enrichment.status !== "ready-image") return null;
-  const addedBytes = changeKind === "deleted" ? null : enrichment.newSizeBytes;
-  const removedBytes = changeKind === "added" ? null : enrichment.oldSizeBytes;
-  if (addedBytes === null && removedBytes === null) return null;
-  return { addedBytes, removedBytes };
+  return getGitDiffCardImageSizeStat(enrichment, changeKind);
 }
 
 export interface UseGitDiffCardBodyArgs {
@@ -450,9 +447,14 @@ interface GitDiffCardImageBodyProps {
   fitToFrame?: boolean;
 }
 
+export interface GitDiffCardImagePreview {
+  oldImageUrl: string | null;
+  newImageUrl: string | null;
+}
+
 function getGitDiffCardImageUrls(
   enrichment: DiffFileEnrichmentState,
-): { oldImageUrl: string | null; newImageUrl: string | null } | null {
+): GitDiffCardImagePreview | null {
   if (
     enrichment.status !== "ready-image" &&
     enrichment.status !== "ready-svg"
@@ -465,28 +467,36 @@ function getGitDiffCardImageUrls(
   };
 }
 
-function GitDiffCardImageBody({
-  enrichment,
+export function getGitDiffCardImageSizeStat(
+  preview: {
+    oldSizeBytes: number | null;
+    newSizeBytes: number | null;
+  },
+  changeKind: GitDiffFileChangeKind,
+): DiffImageSizeStat | null {
+  const addedBytes = changeKind === "deleted" ? null : preview.newSizeBytes;
+  const removedBytes = changeKind === "added" ? null : preview.oldSizeBytes;
+  if (addedBytes === null && removedBytes === null) return null;
+  return { addedBytes, removedBytes };
+}
+
+export interface GitDiffCardImagePreviewBodyProps {
+  preview: GitDiffCardImagePreview;
+  fileDiffLabel: string;
+  fitToFrame?: boolean;
+}
+
+export function GitDiffCardImagePreviewBody({
+  preview,
   fileDiffLabel,
   fitToFrame = false,
-}: GitDiffCardImageBodyProps) {
+}: GitDiffCardImagePreviewBodyProps) {
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
   );
-  if (enrichment.status === "idle" || enrichment.status === "loading") {
-    return <GitDiffCardBodySkeleton />;
-  }
-  const imageUrls = getGitDiffCardImageUrls(enrichment);
-  if (imageUrls === null) {
-    return (
-      <div className="px-3 py-3 text-xs text-muted-foreground">
-        No preview available for this image.
-      </div>
-    );
-  }
   const imageSides = buildGitDiffCardImageSides(
-    imageUrls.oldImageUrl,
-    imageUrls.newImageUrl,
+    preview.oldImageUrl,
+    preview.newImageUrl,
   );
   if (imageSides.length === 0) {
     return (
@@ -563,6 +573,31 @@ function GitDiffCardImageBody({
         onClose={() => setExpandedImageIndex(null)}
       />
     </>
+  );
+}
+
+function GitDiffCardImageBody({
+  enrichment,
+  fileDiffLabel,
+  fitToFrame = false,
+}: GitDiffCardImageBodyProps) {
+  if (enrichment.status === "idle" || enrichment.status === "loading") {
+    return <GitDiffCardBodySkeleton />;
+  }
+  const preview = getGitDiffCardImageUrls(enrichment);
+  if (preview === null) {
+    return (
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        No preview available for this image.
+      </div>
+    );
+  }
+  return (
+    <GitDiffCardImagePreviewBody
+      preview={preview}
+      fileDiffLabel={fileDiffLabel}
+      fitToFrame={fitToFrame}
+    />
   );
 }
 

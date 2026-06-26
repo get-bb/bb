@@ -1,19 +1,26 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import type { DiffFileEntry } from "@bb/server-contract";
 import {
+  getGitDiffCardImageSizeStat,
   GitDiffCardBody,
+  GitDiffCardImagePreviewBody,
   useGitDiffCardBody,
+  type DiffFileContentsResult,
+  type DiffImageSizeStat,
+  type GitDiffCardImagePreview,
   type GitDiffCardSvgDisplayMode,
   type RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import {
   GitDiffCardHeader,
+  GitDiffCardImageSizeStat,
   GitDiffCardRawToggle,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
 } from "@/components/git-diff/GitDiffCardHeader";
 import {
+  isPreviewableImagePath,
   isSvgGitDiffFile,
   parseGitDiffFiles,
   type ParsedGitDiffFile,
@@ -49,6 +56,70 @@ function buildDiffEntryHeaderModel(
     changeKind: entry.changeKind,
     insertions: entry.additions,
     deletions: entry.deletions,
+  };
+}
+
+interface BinaryImagePreviewSource {
+  path: string;
+  side: "old" | "new";
+}
+
+interface BinaryImagePreviewPlan {
+  identity: string;
+  old: BinaryImagePreviewSource | null;
+  new: BinaryImagePreviewSource | null;
+}
+
+interface ReadyBinaryImagePreview extends GitDiffCardImagePreview {
+  oldSizeBytes: number | null;
+  newSizeBytes: number | null;
+}
+
+type BinaryImageContentsResult = Extract<
+  DiffFileContentsResult,
+  { kind: "image" }
+>;
+
+type BinaryImagePreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; preview: ReadyBinaryImagePreview }
+  | { status: "unavailable" }
+  | { status: "error" };
+
+const EMPTY_BINARY_IMAGE_PREVIEW_STATE: BinaryImagePreviewState = {
+  status: "idle",
+};
+
+function isPreviewableBinaryImageEntry(entry: DiffFileEntry): boolean {
+  return (
+    entry.binary &&
+    (isPreviewableImagePath(entry.path) ||
+      isPreviewableImagePath(entry.previousPath ?? undefined))
+  );
+}
+
+function buildBinaryImagePreviewPlan(
+  entry: DiffFileEntry,
+): BinaryImagePreviewPlan | null {
+  if (!isPreviewableBinaryImageEntry(entry)) {
+    return null;
+  }
+  const previousPath = entry.previousPath ?? entry.path;
+  const oldSource: BinaryImagePreviewSource | null =
+    entry.changeKind === "added"
+      ? null
+      : { path: previousPath, side: "old" };
+  const newSource: BinaryImagePreviewSource | null =
+    entry.changeKind === "deleted"
+      ? null
+      : { path: entry.path, side: "new" };
+  return {
+    identity: `${entry.changeKind}:${oldSource?.path ?? ""}:${
+      newSource?.path ?? ""
+    }`,
+    old: oldSource,
+    new: newSource,
   };
 }
 
@@ -119,6 +190,91 @@ function areDiffFileCardPropsEqual(
   );
 }
 
+async function resolveBinaryImagePreviewSource(
+  source: BinaryImagePreviewSource | null,
+  fetcher: RequestDiffFileContents,
+): Promise<BinaryImageContentsResult | null> {
+  if (source === null) {
+    return null;
+  }
+  const result = await fetcher(source.path, source.side);
+  return result?.kind === "image" ? result : null;
+}
+
+function useBinaryImagePreview({
+  enabled,
+  onRequestFileContents,
+  plan,
+}: {
+  enabled: boolean;
+  onRequestFileContents?: RequestDiffFileContents;
+  plan: BinaryImagePreviewPlan | null;
+}): BinaryImagePreviewState {
+  const [state, setState] = useState<BinaryImagePreviewState>(
+    EMPTY_BINARY_IMAGE_PREVIEW_STATE,
+  );
+  const statusRef = useRef<BinaryImagePreviewState["status"]>("idle");
+  const planIdentity = plan?.identity ?? "none";
+
+  useEffect(() => {
+    statusRef.current = "idle";
+    setState(EMPTY_BINARY_IMAGE_PREVIEW_STATE);
+  }, [planIdentity, onRequestFileContents]);
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      plan === null ||
+      onRequestFileContents === undefined ||
+      statusRef.current !== "idle"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    statusRef.current = "loading";
+    setState({ status: "loading" });
+
+    void Promise.all([
+      resolveBinaryImagePreviewSource(plan.old, onRequestFileContents),
+      resolveBinaryImagePreviewSource(plan.new, onRequestFileContents),
+    ])
+      .then(([oldResult, newResult]) => {
+        if (cancelled) return;
+        if (oldResult === null && newResult === null) {
+          statusRef.current = "unavailable";
+          setState({ status: "unavailable" });
+          return;
+        }
+        statusRef.current = "ready";
+        setState({
+          status: "ready",
+          preview: {
+            oldImageUrl: oldResult?.dataUrl ?? null,
+            newImageUrl: newResult?.dataUrl ?? null,
+            oldSizeBytes: oldResult?.sizeBytes ?? null,
+            newSizeBytes: newResult?.sizeBytes ?? null,
+          },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          statusRef.current = "error";
+          setState({ status: "error" });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (statusRef.current === "loading") {
+        statusRef.current = "idle";
+      }
+    };
+  }, [enabled, onRequestFileContents, plan]);
+
+  return state;
+}
+
 export const DiffFileCard = memo(function DiffFileCard({
   entry,
   diffViewOptions,
@@ -153,6 +309,26 @@ export const DiffFileCard = memo(function DiffFileCard({
   };
   const changedLines = entry.additions + entry.deletions;
   const isBodyHidden = isCollapsed;
+  const binaryImagePreviewPlan = useMemo(
+    () => buildBinaryImagePreviewPlan(entry),
+    [entry],
+  );
+  const shouldDirectlyPreviewBinaryImage =
+    binaryImagePreviewPlan !== null && onRequestFileContents !== undefined;
+  const binaryImagePreviewState = useBinaryImagePreview({
+    enabled: !isBodyHidden && shouldDirectlyPreviewBinaryImage,
+    onRequestFileContents,
+    plan: binaryImagePreviewPlan,
+  });
+  const binaryImageSizeStat = useMemo<DiffImageSizeStat | null>(() => {
+    if (binaryImagePreviewState.status !== "ready") {
+      return null;
+    }
+    return getGitDiffCardImageSizeStat(
+      binaryImagePreviewState.preview,
+      entry.changeKind,
+    );
+  }, [binaryImagePreviewState, entry.changeKind]);
   const supportsSvgRawToggle =
     !isBodyHidden &&
     parsedFile !== null &&
@@ -201,6 +377,15 @@ export const DiffFileCard = memo(function DiffFileCard({
           isCollapsed={isCollapsed}
           onToggleCollapsed={onToggleCollapsed}
           hasChanges
+          statSlot={
+            shouldDirectlyPreviewBinaryImage ? (
+              binaryImageSizeStat !== null ? (
+                <GitDiffCardImageSizeStat stat={binaryImageSizeStat} />
+              ) : (
+                <span />
+              )
+            ) : undefined
+          }
           actionSlot={
             supportsSvgRawToggle ? (
               <GitDiffCardRawToggle
@@ -224,6 +409,11 @@ export const DiffFileCard = memo(function DiffFileCard({
           onRetry={onRetry}
           onOpenFilePreview={onOpenFilePreview}
           onRequestFileContents={onRequestFileContents}
+          binaryImagePreviewState={
+            shouldDirectlyPreviewBinaryImage
+              ? binaryImagePreviewState
+              : undefined
+          }
         />
       )}
     </div>
@@ -241,10 +431,53 @@ interface DiffFileCardBodyProps {
   onRetry: () => void;
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
+  binaryImagePreviewState?: BinaryImagePreviewState;
 }
 
 const DIFF_FILE_CARD_NOTICE_CLASS =
   "flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-3 text-xs text-muted-foreground";
+
+function DiffFileCardBodySkeleton() {
+  return (
+    <div className="space-y-1.5 px-3 py-3">
+      <Skeleton className="h-3 w-full rounded-sm" />
+      <Skeleton className="h-3 w-[96%] rounded-sm" />
+      <Skeleton className="h-3 w-[93%] rounded-sm" />
+      <Skeleton className="h-3 w-[90%] rounded-sm" />
+      <Skeleton className="h-3 w-[87%] rounded-sm" />
+      <Skeleton className="h-3 w-[84%] rounded-sm" />
+    </div>
+  );
+}
+
+function DiffFileCardLoadDiffNotice({
+  changedLines,
+  entry,
+  onLoadPatch,
+}: {
+  changedLines: number;
+  entry: DiffFileEntry;
+  onLoadPatch: () => void;
+}) {
+  return (
+    <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
+      <span>
+        {entry.binary
+          ? "Binary file."
+          : `${changedLines.toLocaleString()} changed lines.`}
+      </span>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="h-auto p-0 text-xs underline underline-offset-4 hover:underline"
+        onClick={onLoadPatch}
+      >
+        Load diff
+      </Button>
+    </div>
+  );
+}
 
 function DiffFileCardBody({
   entry,
@@ -257,7 +490,34 @@ function DiffFileCardBody({
   onRetry,
   onOpenFilePreview,
   onRequestFileContents,
+  binaryImagePreviewState,
 }: DiffFileCardBodyProps) {
+  if (binaryImagePreviewState !== undefined) {
+    if (
+      binaryImagePreviewState.status === "idle" ||
+      binaryImagePreviewState.status === "loading"
+    ) {
+      return <DiffFileCardBodySkeleton />;
+    }
+    if (binaryImagePreviewState.status === "ready") {
+      return (
+        <GitDiffCardImagePreviewBody
+          preview={binaryImagePreviewState.preview}
+          fileDiffLabel={formatDiffEntryLabel(entry)}
+        />
+      );
+    }
+    if (patchState.status === "idle") {
+      return (
+        <DiffFileCardLoadDiffNotice
+          entry={entry}
+          changedLines={changedLines}
+          onLoadPatch={onLoadPatch}
+        />
+      );
+    }
+  }
+
   if (patchState.status === "error") {
     return (
       <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
@@ -297,22 +557,11 @@ function DiffFileCardBody({
 
   if (entry.loadMode === "on_demand" && patchState.status === "idle") {
     return (
-      <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
-        <span>
-          {entry.binary
-            ? "Binary file."
-            : `${changedLines.toLocaleString()} changed lines.`}
-        </span>
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-xs underline underline-offset-4 hover:underline"
-          onClick={onLoadPatch}
-        >
-          Load diff
-        </Button>
-      </div>
+      <DiffFileCardLoadDiffNotice
+        entry={entry}
+        changedLines={changedLines}
+        onLoadPatch={onLoadPatch}
+      />
     );
   }
 
@@ -338,16 +587,7 @@ function DiffFileCardBody({
       );
     }
 
-    return (
-      <div className="space-y-1.5 px-3 py-3">
-        <Skeleton className="h-3 w-full rounded-sm" />
-        <Skeleton className="h-3 w-[96%] rounded-sm" />
-        <Skeleton className="h-3 w-[93%] rounded-sm" />
-        <Skeleton className="h-3 w-[90%] rounded-sm" />
-        <Skeleton className="h-3 w-[87%] rounded-sm" />
-        <Skeleton className="h-3 w-[84%] rounded-sm" />
-      </div>
-    );
+    return <DiffFileCardBodySkeleton />;
   }
 
   return (

@@ -160,12 +160,17 @@ const IMAGE_GIT_DIFF_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   "webp",
 ]);
 
-export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
-  const path = normalizeGitDiffPath(file.name) ?? file.name;
-  const extension = path.split(".").pop()?.toLowerCase();
+export function isPreviewableImagePath(path: string | undefined): boolean {
+  const normalizedPath = normalizeGitDiffPath(path);
+  if (normalizedPath === undefined) return false;
+  const extension = normalizedPath.split(".").pop()?.toLowerCase();
   return (
     extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
   );
+}
+
+export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
+  return isPreviewableImagePath(file.name);
 }
 
 export function isSvgGitDiffFile(file: ParsedGitDiffFile): boolean {
