@@ -6,7 +6,7 @@ import {
   type PromptTextMention,
 } from "@bb/domain";
 import type { JSONContent } from "@tiptap/react";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, Schema, Slice } from "@tiptap/pm/model";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -471,6 +471,18 @@ export function promptEditorValueFromDoc(
   appendChildren(doc);
 
   return { text, mentions };
+}
+
+export function promptEditorClipboardTextFromSlice(
+  slice: Slice,
+  schema: Schema,
+): string {
+  const doc = schema.topNodeType.createAndFill(null, slice.content);
+  if (doc) {
+    return promptEditorValueFromDoc(doc).text;
+  }
+
+  return slice.content.textBetween(0, slice.content.size, "\n");
 }
 
 export function promptMentionResourceFromSuggestion(

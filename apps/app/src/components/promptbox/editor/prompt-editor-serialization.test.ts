@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { Node } from "@tiptap/pm/model";
+import { Node, Slice } from "@tiptap/pm/model";
 import type { PromptTextMention } from "@bb/domain";
 import {
   PromptMentionExtension,
@@ -9,6 +9,7 @@ import {
 } from "./prompt-mention-extension";
 import {
   promptCommandResourceFromSuggestion,
+  promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
@@ -114,6 +115,40 @@ describe("prompt editor serialization round-trip", () => {
     expect(result.mentions[0]!.start).toBe(mention.start);
     expect(result.mentions[0]!.end).toBe(mention.end);
     expect(result.mentions[0]!.resource).toEqual(mention.resource);
+  });
+});
+
+describe("prompt editor clipboard serialization", () => {
+  function clipboardText(content: unknown[]): string {
+    const doc = Node.fromJSON(schema, { type: "doc", content });
+    return promptEditorClipboardTextFromSlice(
+      new Slice(doc.content, 0, 0),
+      schema,
+    );
+  }
+
+  it("copies separate prompt lines with a single newline", () => {
+    expect(
+      clipboardText([
+        { type: "paragraph", content: [{ type: "text", text: "first" }] },
+        { type: "paragraph", content: [{ type: "text", text: "second" }] },
+      ]),
+    ).toBe("first\nsecond");
+  });
+
+  it("copies hard-break prompt lines with the same single newline", () => {
+    expect(
+      clipboardText([
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "first" },
+            { type: "hardBreak" },
+            { type: "text", text: "second" },
+          ],
+        },
+      ]),
+    ).toBe("first\nsecond");
   });
 });
 

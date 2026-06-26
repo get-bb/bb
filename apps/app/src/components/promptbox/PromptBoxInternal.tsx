@@ -63,6 +63,7 @@ import {
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
 import {
   promptCommandResourceFromSuggestion,
+  promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
@@ -1221,6 +1222,8 @@ export function PromptBoxInternal({
           ...(id ? { id } : {}),
           role: "textbox",
         },
+        clipboardTextSerializer: (slice, view) =>
+          promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {
           auxclick: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
