@@ -178,7 +178,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "builtin", name: "vscode" },
+    icon: { kind: "builtin", name: "vscode-insiders" },
     id: "vscode-insiders",
     kind: "editor",
     label: "VS Code Insiders",
@@ -415,7 +415,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: BASIC_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "bbedit" },
     id: "bbedit",
     kind: "editor",
     label: "BBEdit",
@@ -429,7 +429,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "textmate" },
     id: "textmate",
     kind: "editor",
     label: "TextMate",
@@ -448,7 +448,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: BASIC_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "emacs" },
     id: "emacs",
     kind: "editor",
     label: "Emacs",
@@ -462,7 +462,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "intellij" },
     id: "intellij-idea",
     kind: "editor",
     label: "IntelliJ IDEA",
@@ -488,7 +488,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "pycharm" },
     id: "pycharm",
     kind: "editor",
     label: "PyCharm",
@@ -514,7 +514,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "webstorm" },
     id: "webstorm",
     kind: "editor",
     label: "WebStorm",
@@ -540,7 +540,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "goland" },
     id: "goland",
     kind: "editor",
     label: "GoLand",
@@ -566,7 +566,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "rider" },
     id: "rider",
     kind: "editor",
     label: "Rider",
@@ -592,7 +592,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "rustrover" },
     id: "rustrover",
     kind: "editor",
     label: "RustRover",
@@ -618,7 +618,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "phpstorm" },
     id: "phpstorm",
     kind: "editor",
     label: "PhpStorm",
@@ -644,7 +644,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "symbol", name: "app" },
+    icon: { kind: "builtin", name: "android-studio" },
     id: "android-studio",
     kind: "editor",
     label: "Android Studio",
