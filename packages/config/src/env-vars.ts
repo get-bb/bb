@@ -226,7 +226,7 @@ export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
 
 export const BB_INHERITED_SKILLS_ROOTS_ENV = defineEnvVar<string[]>({
   description:
-    "Development-only path list of inherited bb skill roots for managed worktree dev apps",
+    "Development-only path list of lower-priority inherited bb skill roots",
   name: "BB_INHERITED_SKILLS_ROOTS",
   parse: parsePathListEnvValue,
 });

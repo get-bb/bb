@@ -175,6 +175,13 @@ No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
 provider-specific. bb reads the files above itself and injects them, so use them
 for guidance you want every bb thread to receive regardless of provider.
 
+## Skills
+
+User-level bb skills live under `<dataDir>/skills/<name>/SKILL.md`; for the
+packaged app this is usually `~/.bb/skills`. Project skills live under
+`<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or built-in
+skills.
+
 ## Startup Flags
 
 Use launcher flags for per-run startup details:

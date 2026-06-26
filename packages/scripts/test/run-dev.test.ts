@@ -100,33 +100,56 @@ describe("run-dev", () => {
   });
 
   it("inherits parent bb skills for managed worktree dev apps", () => {
+    const homeDir = "/Users/tester";
     const repoRoot =
       "/Users/tester/.bb-dev/code-bb-abc123/worktrees/env_feature/bb";
     const config = resolveDevInstanceConfig({
-      homeDir: "/Users/tester",
+      homeDir,
       repoRoot,
     });
 
-    expect(resolveInheritedDevSkillsRootPaths({ repoRoot })).toEqual([
+    const inheritedSkillsRootPaths = [
       "/Users/tester/.bb-dev/code-bb-abc123/skills",
-    ]);
+      "/Users/tester/.bb/skills",
+    ];
+    expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual(
+      inheritedSkillsRootPaths,
+    );
     expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
-      BB_INHERITED_SKILLS_ROOTS:
-        "/Users/tester/.bb-dev/code-bb-abc123/skills",
+      BB_INHERITED_SKILLS_ROOTS: inheritedSkillsRootPaths.join(path.delimiter),
     });
   });
 
-  it("does not inherit bb skills for ordinary checkout dev apps", () => {
-    const repoRoot = "/Users/tester/src/bb";
+  it("dedupes inherited bb skills for prod-managed worktree dev apps", () => {
+    const homeDir = "/Users/tester";
+    const repoRoot = "/Users/tester/.bb/worktrees/env_feature/bb";
     const config = resolveDevInstanceConfig({
-      homeDir: "/Users/tester",
+      homeDir,
       repoRoot,
     });
 
-    expect(resolveInheritedDevSkillsRootPaths({ repoRoot })).toEqual([]);
-    expect(
-      toDevProcessEnv({ baseEnv: {}, config }).BB_INHERITED_SKILLS_ROOTS,
-    ).toBeUndefined();
+    expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual([
+      "/Users/tester/.bb/skills",
+    ]);
+    expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
+      BB_INHERITED_SKILLS_ROOTS: "/Users/tester/.bb/skills",
+    });
+  });
+
+  it("inherits prod bb skills for ordinary checkout dev apps", () => {
+    const homeDir = "/Users/tester";
+    const repoRoot = "/Users/tester/src/bb";
+    const config = resolveDevInstanceConfig({
+      homeDir,
+      repoRoot,
+    });
+
+    expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual([
+      "/Users/tester/.bb/skills",
+    ]);
+    expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
+      BB_INHERITED_SKILLS_ROOTS: "/Users/tester/.bb/skills",
+    });
   });
 
   it("strips parent thread context from dev child processes", () => {

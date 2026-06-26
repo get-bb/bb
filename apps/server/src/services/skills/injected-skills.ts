@@ -321,7 +321,7 @@ function excludeOverriddenLowerPriorityUserSources(
         name: source.name,
         sourceRootPath: source.sourceRootPath,
       },
-      "Inherited injected skill overridden by data-dir skill",
+      "Lower-priority injected skill overridden by higher-priority skill",
     );
     return false;
   });
@@ -360,8 +360,8 @@ function excludeCollisions(
 /**
  * Discovers the injected skills for a thread command from built-in skills
  * bundled with the server and data-dir skills under `<dataDir>/skills`.
- * User data-dir skills override same-named built-ins; name collisions among
- * user sources drop all colliding user sources.
+ * User data-dir skills override inherited and built-in skills. Inherited roots
+ * are ordered by priority, so earlier roots override later roots.
  *
  * All source paths are server-machine paths that the local host daemon reads
  * from its filesystem.
@@ -389,7 +389,7 @@ export function resolveInjectedSkillSources(
     skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
     sourceType: "data-dir",
   });
-  const inheritedSources = (args.additionalSkillsRootPaths ?? []).flatMap(
+  const inheritedSourceGroups = (args.additionalSkillsRootPaths ?? []).map(
     (skillsRootPath) =>
       readSkillsRoot({
         logger,
@@ -398,13 +398,18 @@ export function resolveInjectedSkillSources(
       }),
   );
 
-  const userSources = [
-    ...dataDirSources,
-    ...excludeOverriddenLowerPriorityUserSources(logger, {
-      higherPrioritySources: dataDirSources,
-      lowerPrioritySources: inheritedSources,
-    }),
-  ];
+  const userSources = inheritedSourceGroups.reduce<
+    HostDaemonInjectedSkillSource[]
+  >(
+    (higherPrioritySources, lowerPrioritySources) => [
+      ...higherPrioritySources,
+      ...excludeOverriddenLowerPriorityUserSources(logger, {
+        higherPrioritySources,
+        lowerPrioritySources,
+      }),
+    ],
+    dataDirSources,
+  );
   const activeBuiltinSources = excludeOverriddenBuiltins(logger, {
     builtinSources,
     userSources,

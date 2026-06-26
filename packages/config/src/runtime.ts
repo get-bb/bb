@@ -12,6 +12,7 @@ export interface DevPortSet {
 
 export interface DevInstanceConfig {
   dataDir: string;
+  homeDir: string;
   instanceId: string;
   ports: DevPortSet;
   repoRoot: string;
@@ -29,6 +30,7 @@ export interface DevProcessEnvArgs {
 }
 
 export interface ResolveInheritedDevSkillsRootPathsArgs {
+  homeDir: string;
   repoRoot: string;
 }
 
@@ -195,6 +197,7 @@ export function resolveDevInstanceConfig(
   const serverUrl = `http://localhost:${ports.serverPort}`;
   return {
     dataDir,
+    homeDir: args.homeDir,
     instanceId,
     ports,
     repoRoot: args.repoRoot,
@@ -214,18 +217,19 @@ export function resolveCurrentDevInstanceConfig(
 export function resolveInheritedDevSkillsRootPaths(
   args: ResolveInheritedDevSkillsRootPathsArgs,
 ): string[] {
+  const roots = [join(resolveProdDataDir({ homeDir: args.homeDir }), "skills")];
   const segments = resolve(args.repoRoot).split(/[\\/]+/u);
   const worktreesIndex = segments.lastIndexOf(MANAGED_WORKTREE_DIR_NAME);
   if (worktreesIndex <= 0) {
-    return [];
+    return roots;
   }
 
   const parentDataDir = segments.slice(0, worktreesIndex).join("/");
   if (parentDataDir.length === 0) {
-    return [];
+    return roots;
   }
 
-  return [join(parentDataDir, "skills")];
+  return Array.from(new Set([join(parentDataDir, "skills"), ...roots]));
 }
 
 export function resolveRuntimeDataDir(args: ResolveRuntimeDataDirArgs): string {
@@ -294,6 +298,7 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
     delete env[key];
   }
   const inheritedSkillsRootPaths = resolveInheritedDevSkillsRootPaths({
+    homeDir: args.config.homeDir,
     repoRoot: args.config.repoRoot,
   });
   return {

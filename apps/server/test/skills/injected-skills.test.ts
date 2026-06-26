@@ -323,7 +323,49 @@ describe("injected skill source discovery", () => {
     expect(warnings).toEqual([]);
     expect(infos).toEqual([
       expect.objectContaining({
-        message: "Inherited injected skill overridden by data-dir skill",
+        message:
+          "Lower-priority injected skill overridden by higher-priority skill",
+      }),
+    ]);
+  });
+
+  it("lets earlier inherited skill roots override later inherited roots", async () => {
+    const dataDir = await makeTempDir();
+    const parentSkillsRootPath = path.join(dataDir, "parent-skills");
+    const prodSkillsRootPath = path.join(dataDir, "prod-skills");
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    const parentSkillRoot = await writeSkill({
+      rootPath: parentSkillsRootPath,
+      name: "stories",
+      description: "Parent stories skill.",
+    });
+    await writeSkill({
+      rootPath: prodSkillsRootPath,
+      name: "stories",
+      description: "Prod stories skill.",
+    });
+    const { logger, infos, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      additionalSkillsRootPaths: [parentSkillsRootPath, prodSkillsRootPath],
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "data-dir",
+        name: "stories",
+        description: "Parent stories skill.",
+        sourceRootPath: parentSkillRoot,
+        skillFilePath: path.join(parentSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+    expect(infos).toEqual([
+      expect.objectContaining({
+        message:
+          "Lower-priority injected skill overridden by higher-priority skill",
       }),
     ]);
   });
