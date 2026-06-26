@@ -7,7 +7,6 @@ import type {
   ProviderCliStatus,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
-import { providerCliKeyValues } from "@bb/host-daemon-contract";
 import { ProviderCliInstallLogDialog } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import { appToast } from "@/components/ui/app-toast";
@@ -81,10 +80,15 @@ const PROVIDER_CLI_TITLE_TEMPLATES = {
   Record<ProviderCliInstallActionKind, ProviderCliTitleTemplate>
 >;
 
+const PROVIDER_CLI_INSTALL_TOAST_PROVIDERS = [
+  "codex",
+  "claudeCode",
+] as const satisfies readonly ProviderCliKey[];
+
 export function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  return providerCliKeyValues.map((provider) => ({
+  return PROVIDER_CLI_INSTALL_TOAST_PROVIDERS.map((provider) => ({
     provider,
     status: status[provider],
   }));
