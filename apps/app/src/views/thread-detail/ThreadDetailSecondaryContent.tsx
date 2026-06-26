@@ -155,7 +155,8 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.onOpenNewTab === next.onOpenNewTab &&
   previous.onFileTabReorder === next.onFileTabReorder &&
   previous.onOpenFileInEditor === next.onOpenFileInEditor &&
-  previous.onOpenFilePreview === next.onOpenFilePreview;
+  previous.onOpenFilePreview === next.onOpenFilePreview &&
+  previous.onSelectionAddToChat === next.onSelectionAddToChat;
 
 const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   previous,

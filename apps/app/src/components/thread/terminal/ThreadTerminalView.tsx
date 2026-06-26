@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
@@ -11,12 +17,25 @@ import {
   openUrlInExternalBrowser,
   useOpenUrlByPreference,
 } from "@/lib/url-open-routing";
+import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
+import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
+const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 type TerminalFitScheduler = () => void;
+
+interface TerminalSelectionAnchorPoint {
+  x: number;
+  y: number;
+}
+
+interface TerminalSelectionAnchor {
+  point: TerminalSelectionAnchorPoint;
+  side: "top" | "bottom";
+}
 
 interface HasVisibleTerminalSizeArgs {
   containerElement: HTMLElement;
@@ -77,6 +96,7 @@ function buildTerminalTheme(): ITheme {
 interface ThreadTerminalViewProps {
   isPanelOpen: boolean;
   onOpenLink?: MarkdownPreviewLinkHandler;
+  onSelectionAddToChat?: (text: string) => void;
   onTitleChange?: TerminalTitleChangeHandler;
   onUserInput?: () => void;
   session: TerminalSession;
@@ -172,6 +192,63 @@ function hasVisibleTerminalSize({
   const width = entry?.contentRect.width ?? containerElement.clientWidth;
   const height = entry?.contentRect.height ?? containerElement.clientHeight;
   return width > 0 && height > 0;
+}
+
+function terminalSelectionAnchorPointFromEvent(
+  event: Pick<MouseEvent, "clientX" | "clientY">,
+): TerminalSelectionAnchorPoint | null {
+  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+    return null;
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
+function terminalSelectionAnchorFromPointerRelease(
+  startPoint: TerminalSelectionAnchorPoint | null,
+  releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
+): TerminalSelectionAnchor | null {
+  const releasePoint = terminalSelectionAnchorPointFromEvent(releaseEvent);
+  if (releasePoint === null) {
+    return null;
+  }
+
+  return {
+    point: releasePoint,
+    side:
+      startPoint !== null &&
+      releasePoint.y - startPoint.y >
+        TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX
+        ? "bottom"
+        : "top",
+  };
+}
+
+function buildTerminalSelection({
+  anchor,
+  containerElement,
+  text,
+}: {
+  anchor: TerminalSelectionAnchor | null;
+  containerElement: HTMLElement;
+  text: string;
+}): MessageProseSelection | null {
+  const trimmedText = text.trim();
+  if (trimmedText.length === 0) {
+    return null;
+  }
+
+  const selection: MessageProseSelection = {
+    text: trimmedText,
+    rect:
+      anchor === null
+        ? containerElement.getBoundingClientRect()
+        : new DOMRect(anchor.point.x, anchor.point.y, 0, 0),
+  };
+  if (anchor !== null) {
+    selection.anchorPoint = anchor.point;
+    selection.anchorSide = anchor.side;
+  }
+  return selection;
 }
 
 function writeTerminalStatus({ terminal, text }: WriteTerminalStatusArgs): void {
@@ -283,12 +360,22 @@ function handleTerminalServerMessage({
 export function ThreadTerminalView({
   isPanelOpen,
   onOpenLink,
+  onSelectionAddToChat,
   onTitleChange,
   onUserInput,
   session,
 }: ThreadTerminalViewProps) {
+  const [activeSelection, setActiveSelection] =
+    useState<MessageProseSelection | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
+  const pointerIsDownRef = useRef(false);
+  const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
+    null,
+  );
+  const lastPointerReleaseAnchorRef = useRef<TerminalSelectionAnchor | null>(
+    null,
+  );
   const onTitleChangeRef = useRef<TerminalTitleChangeHandler | undefined>(
     onTitleChange,
   );
@@ -319,6 +406,75 @@ export function ThreadTerminalView({
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
 
+  const reportTerminalSelection = useCallback(
+    (anchor: TerminalSelectionAnchor | null) => {
+      const terminal = terminalRef.current;
+      const container = containerRef.current;
+      if (!terminal || !container) {
+        setActiveSelection(null);
+        return;
+      }
+      setActiveSelection(
+        buildTerminalSelection({
+          anchor,
+          containerElement: container,
+          text: terminal.getSelection(),
+        }),
+      );
+    },
+    [],
+  );
+
+  const clearTerminalSelection = useCallback(() => {
+    terminalRef.current?.clearSelection();
+    setActiveSelection(null);
+  }, []);
+
+  const handleSelectionAddToChat = useCallback(
+    (text: string) => {
+      onSelectionAddToChat?.(text);
+      clearTerminalSelection();
+    },
+    [clearTerminalSelection, onSelectionAddToChat],
+  );
+
+  const handleTerminalPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      pointerIsDownRef.current = true;
+      pointerStartPointRef.current =
+        terminalSelectionAnchorPointFromEvent(event);
+    },
+    [],
+  );
+
+  const handleTerminalPointerRelease = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const anchor = terminalSelectionAnchorFromPointerRelease(
+        pointerStartPointRef.current,
+        event,
+      );
+      lastPointerReleaseAnchorRef.current = anchor;
+      pointerIsDownRef.current = false;
+      pointerStartPointRef.current = null;
+      window.requestAnimationFrame(() => {
+        reportTerminalSelection(anchor);
+      });
+    },
+    [reportTerminalSelection],
+  );
+
+  const handleTerminalPointerCancel = useCallback(() => {
+    pointerIsDownRef.current = false;
+    pointerStartPointRef.current = null;
+    window.requestAnimationFrame(() => {
+      reportTerminalSelection(lastPointerReleaseAnchorRef.current);
+    });
+  }, [reportTerminalSelection]);
+
+  useEffect(() => {
+    setActiveSelection(null);
+  }, [session.id]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -334,7 +490,9 @@ export function ThreadTerminalView({
       suppressedWriteCount: 0,
     };
     let resizeAnimationFrame: number | null = null;
+    let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let selectionChangeDisposable: { dispose: () => void } | null = null;
 
     async function mountTerminal(containerElement: HTMLDivElement): Promise<void> {
       const [
@@ -478,6 +636,18 @@ export function ThreadTerminalView({
         }
         onTitleChangeRef.current?.(title);
       });
+      const scheduleSelectionReport = () => {
+        if (pointerIsDownRef.current || selectionAnimationFrame !== null) {
+          return;
+        }
+        selectionAnimationFrame = window.requestAnimationFrame(() => {
+          selectionAnimationFrame = null;
+          reportTerminalSelection(lastPointerReleaseAnchorRef.current);
+        });
+      };
+      selectionChangeDisposable = activeTerminal.onSelectionChange(
+        scheduleSelectionReport,
+      );
 
       resizeObserver = new ResizeObserver((entries) => {
         if (!hasVisibleTerminalSize({ containerElement, entries })) {
@@ -500,13 +670,17 @@ export function ThreadTerminalView({
       if (resizeAnimationFrame !== null) {
         window.cancelAnimationFrame(resizeAnimationFrame);
       }
+      if (selectionAnimationFrame !== null) {
+        window.cancelAnimationFrame(selectionAnimationFrame);
+      }
       resizeObserver?.disconnect();
+      selectionChangeDisposable?.dispose();
       socket?.close();
       terminal?.dispose();
       terminalRef.current = null;
       scheduleFitRef.current = null;
     };
-  }, [session.id, session.threadId]);
+  }, [reportTerminalSelection, session.id, session.threadId]);
 
   useEffect(() => {
     if (!isPanelOpen) {
@@ -537,10 +711,24 @@ export function ThreadTerminalView({
   }, [preferredTheme, appThemeEpoch]);
 
   return (
-    <div className="h-full min-h-0 w-full overflow-hidden bg-background p-2">
+    <div
+      className="h-full min-h-0 w-full overflow-hidden bg-background p-2"
+      onPointerDown={handleTerminalPointerDown}
+      onPointerUp={handleTerminalPointerRelease}
+      onPointerCancel={handleTerminalPointerCancel}
+    >
       <div
         ref={containerRef}
         className="h-full min-h-0 w-full overflow-hidden"
+      />
+      <TimelineSelectionMenu
+        selection={activeSelection}
+        onAddToChat={
+          onSelectionAddToChat === undefined
+            ? undefined
+            : handleSelectionAddToChat
+        }
+        onDismiss={clearTerminalSelection}
       />
     </div>
   );

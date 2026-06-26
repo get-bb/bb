@@ -61,6 +61,7 @@ export interface DiffFilesPanelProps {
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
+  onSelectionAddToChat?: (text: string) => void;
 }
 
 /**
@@ -85,6 +86,7 @@ export function DiffFilesPanel({
   onOpenFileInEditor,
   onOpenFilePreview,
   onRequestFileContents,
+  onSelectionAddToChat,
 }: DiffFilesPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { requestPaths, getPatchState, retry, loadPath, seedInitialPatches } =
@@ -224,6 +226,7 @@ export function DiffFilesPanel({
                 onOpenFileInEditor={onOpenFileInEditor}
                 onOpenFilePreview={onOpenFilePreview}
                 onRequestFileContents={onRequestFileContents}
+                onSelectionAddToChat={onSelectionAddToChat}
               />
             </div>
           );
@@ -248,6 +251,7 @@ interface DiffFileRowProps {
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
+  onSelectionAddToChat?: (text: string) => void;
 }
 
 function DiffFileRow({
@@ -262,6 +266,7 @@ function DiffFileRow({
   onOpenFileInEditor,
   onOpenFilePreview,
   onRequestFileContents,
+  onSelectionAddToChat,
 }: DiffFileRowProps) {
   const stateAtom = useMemo(
     () => diffFileCardStateAtomFamily({ diffIdentity, path: entry.path }),
@@ -299,6 +304,7 @@ function DiffFileRow({
       onOpenFileInEditor={onOpenFileInEditor}
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
+      onSelectionAddToChat={onSelectionAddToChat}
     />
   );
 }

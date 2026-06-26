@@ -136,6 +136,7 @@ export interface ThreadSecondaryPanelProps {
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
+  onSelectionAddToChat?: (text: string) => void;
   /**
    * When true the conversation pane is collapsed: this panel expands to fill
    * the content area (its max size is lifted). Always false in the
@@ -217,6 +218,7 @@ export function ThreadSecondaryPanel({
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
+  onSelectionAddToChat,
   isConversationCollapsed,
   onToggleConversationCollapse,
   reserveLeftForDesktopTrafficLights,
@@ -521,6 +523,7 @@ export function ThreadSecondaryPanel({
             gitDiffViewOptions={gitDiffViewOptions}
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
+            onSelectionAddToChat={onSelectionAddToChat}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (

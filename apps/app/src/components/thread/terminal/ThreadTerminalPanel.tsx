@@ -8,6 +8,7 @@ import {
 interface ThreadTerminalPanelProps {
   canCreateTerminal: boolean;
   onOpenLink?: MarkdownPreviewLinkHandler;
+  onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
   target: ThreadTerminalTarget;
 }
@@ -15,6 +16,7 @@ interface ThreadTerminalPanelProps {
 export function ThreadTerminalPanel({
   canCreateTerminal,
   onOpenLink,
+  onSelectionAddToChat,
   panelStateId,
   target,
 }: ThreadTerminalPanelProps) {
@@ -33,6 +35,7 @@ export function ThreadTerminalPanel({
         <ThreadTerminalContent
           controller={terminalController}
           onOpenLink={onOpenLink}
+          onSelectionAddToChat={onSelectionAddToChat}
         />
       </div>
     </section>

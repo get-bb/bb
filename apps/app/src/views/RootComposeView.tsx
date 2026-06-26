@@ -859,6 +859,16 @@ export function RootComposeView(props: RootComposeViewProps) {
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
+  const handleRootPanelSelectionAddToChat = useCallback(
+    (text: string) => {
+      promptDraft.addQuote(text);
+      setStartedComposing(true);
+      window.requestAnimationFrame(() => {
+        promptBoxRef.current?.focusEnd();
+      });
+    },
+    [promptDraft],
+  );
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
@@ -2568,6 +2578,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <ThreadTerminalPanel
         canCreateTerminal={canCreateRootTerminal}
         onOpenLink={handleOpenPanelLink}
+        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
         target={rootPanelTerminalTarget}
       />
@@ -2593,6 +2604,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         environmentId={activeWorkspaceFileEnvironmentId}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenWorkspaceFileInEditor}
+        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         source={activeWorkspaceFileSource}
         statusLabel={activeWorkspaceFileStatusLabel}
         threadId={rootPanelThreadId}
@@ -2604,6 +2616,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         copyPath={projectFileCopyPath}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
+        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         projectId={activeWorkspaceFileProjectPreviewId}
       />
     ) : activeHostFilePath !== null ? (
@@ -2614,6 +2627,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           environmentId={activeRootHostFileEnvironmentId}
           lineRange={activeHostFileLineRange}
           onOpenInEditor={handleOpenHostFileInEditor}
+          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
           threadId={activeRootHostFileThreadId}
         />
       ) : (
@@ -2631,6 +2645,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           copyPath={storageFileCopyPath}
           lineRange={activeStorageFileLineRange}
           onOpenInEditor={handleOpenStorageFileInEditor}
+          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
           threadId={activeRootStorageFileThreadId}
         />
       ) : (
@@ -3036,6 +3051,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           onFileTabReorder: reorderFileTab,
           onOpenNewTab: handleOpenNewTab,
           onOpenFilePreview: handleOpenFilePreview,
+          onSelectionAddToChat: handleRootPanelSelectionAddToChat,
           onPanelFocus: handleSecondaryPanelFocus,
           onPanelChange: handleSecondaryPanelChange,
         }}

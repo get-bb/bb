@@ -48,6 +48,7 @@ export interface GitDiffTabContentProps {
   gitDiffViewOptions: Record<string, string | boolean | number>;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
+  onSelectionAddToChat?: (text: string) => void;
   workspaceRootPath?: string | null;
 }
 
@@ -61,6 +62,7 @@ export interface WorkspaceFilePreviewTabContentProps {
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
+  onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
@@ -71,6 +73,7 @@ export interface ProjectFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
   lineRange: FilePreviewLineRange | null;
+  onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   projectId: string;
 }
@@ -81,6 +84,7 @@ export interface HostFilePreviewTabContentProps {
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
+  onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
 }
@@ -90,6 +94,7 @@ export interface ThreadStorageFilePreviewTabContentProps {
   copyPath?: string | null;
   lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
+  onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
 }
@@ -140,6 +145,7 @@ export function GitDiffTabContent({
   gitDiffViewOptions,
   onOpenFileInEditor,
   onOpenFilePreview,
+  onSelectionAddToChat,
   workspaceRootPath,
 }: GitDiffTabContentProps) {
   const isQueryEnabled =
@@ -230,9 +236,7 @@ export function GitDiffTabContent({
       <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
         <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Workspace unavailable</p>
-          <p className="mt-1 leading-5">
-            {diffFilesResponse.failure.message}
-          </p>
+          <p className="mt-1 leading-5">{diffFilesResponse.failure.message}</p>
         </div>
       </div>
     );
@@ -286,6 +290,7 @@ export function GitDiffTabContent({
       onOpenFileInEditor={onOpenFileInEditor}
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
+      onSelectionAddToChat={onSelectionAddToChat}
     />
   );
 }
@@ -304,6 +309,7 @@ export function WorkspaceFilePreviewTabContent({
   environmentId,
   lineRange,
   markdownLinkRouting,
+  onSelectionAddToChat,
   onOpenInEditor,
   source,
   statusLabel,
@@ -329,6 +335,7 @@ export function WorkspaceFilePreviewTabContent({
       isLoading={isWorkspaceFilePreviewLoading}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={statusLabel}
     />
@@ -339,6 +346,7 @@ export function ProjectFilePreviewTabContent({
   activePath,
   copyPath = null,
   lineRange,
+  onSelectionAddToChat,
   onOpenInEditor,
   projectId,
 }: ProjectFilePreviewTabContentProps) {
@@ -356,6 +364,7 @@ export function ProjectFilePreviewTabContent({
       filePreview={projectFilePreview}
       isLoading={isProjectFilePreviewLoading}
       lineRange={lineRange}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
     />
@@ -368,6 +377,7 @@ export function HostFilePreviewTabContent({
   environmentId,
   lineRange,
   markdownLinkRouting,
+  onSelectionAddToChat,
   onOpenInEditor,
   threadId,
 }: HostFilePreviewTabContentProps) {
@@ -387,6 +397,7 @@ export function HostFilePreviewTabContent({
       isLoading={isHostFilePreviewLoading}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
     />
@@ -398,6 +409,7 @@ export function ThreadStorageFilePreviewTabContent({
   copyPath = null,
   lineRange,
   markdownLinkRouting,
+  onSelectionAddToChat,
   onOpenInEditor,
   threadId,
 }: ThreadStorageFilePreviewTabContentProps) {
@@ -416,6 +428,7 @@ export function ThreadStorageFilePreviewTabContent({
       isLoading={isThreadStorageFilePreviewLoading}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       threadId={threadId}
     />

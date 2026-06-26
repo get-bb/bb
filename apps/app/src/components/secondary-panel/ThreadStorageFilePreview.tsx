@@ -26,6 +26,7 @@ interface FilePreviewBaseProps {
   isLoading: boolean;
   lineRange?: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
+  onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
 }
 
@@ -87,6 +88,7 @@ export function SecondaryPanelFilePreview({
   isLoading,
   lineRange = null,
   markdownLinkRouting,
+  onSelectionAddToChat,
   onOpenInEditor,
   statusLabel = null,
 }: SecondaryPanelFilePreviewProps) {
@@ -96,6 +98,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{ kind: isNotFound ? "not-found" : "error" }}
@@ -108,6 +111,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{ kind: "loading" }}
@@ -121,6 +125,7 @@ export function SecondaryPanelFilePreview({
         <FilePreviewSurface
           path={activePath}
           copyPath={copyPath}
+          onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
           statusLabel={statusLabel}
           state={{
@@ -137,6 +142,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{
@@ -159,6 +165,7 @@ export function SecondaryPanelFilePreview({
         <FilePreviewSurface
           path={activePath}
           copyPath={copyPath}
+          onSelectionAddToChat={onSelectionAddToChat}
           onOpenInEditor={onOpenInEditor}
           statusLabel={statusLabel}
           state={{ kind: "empty" }}
@@ -169,6 +176,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         markdownLinkRouting={markdownLinkRouting}
         statusLabel={statusLabel}
@@ -187,6 +195,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{ kind: "image", url: filePreview.url }}
@@ -199,6 +208,7 @@ export function SecondaryPanelFilePreview({
       <FilePreviewSurface
         path={activePath}
         copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{ kind: "video", url: filePreview.url }}
@@ -210,6 +220,7 @@ export function SecondaryPanelFilePreview({
     <FilePreviewSurface
       path={activePath}
       copyPath={copyPath}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={statusLabel}
       state={{
@@ -228,6 +239,7 @@ export function ThreadStorageFilePreview({
   isLoading,
   lineRange,
   markdownLinkRouting,
+  onSelectionAddToChat,
   onOpenInEditor,
   threadId,
 }: ThreadStorageFilePreviewProps) {
@@ -241,6 +253,7 @@ export function ThreadStorageFilePreview({
       isLoading={isLoading}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
+      onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
     />
   );

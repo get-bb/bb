@@ -8,6 +8,7 @@ import type { ThreadTerminalController } from "./useThreadTerminalController";
 interface ThreadTerminalContentProps {
   controller: ThreadTerminalController;
   onOpenLink?: MarkdownPreviewLinkHandler;
+  onSelectionAddToChat?: (text: string) => void;
 }
 
 interface InactiveTerminalContent {
@@ -56,6 +57,7 @@ function getInactiveTerminalContent({
 export function ThreadTerminalContent({
   controller,
   onOpenLink,
+  onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
   if (controller.hasTerminalQueryError) {
     return (
@@ -120,6 +122,7 @@ export function ThreadTerminalContent({
     <ThreadTerminalView
       isPanelOpen={controller.isPanelOpen}
       onOpenLink={onOpenLink}
+      onSelectionAddToChat={onSelectionAddToChat}
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}

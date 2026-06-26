@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "../../ui/icon.js";
 import { preventOverlayTriggerSelection } from "../../ui/overlay-trigger.js";
@@ -27,9 +27,11 @@ export interface TimelineSelectionMenuProps {
 
 function ActionButton({
   action,
+  onDismiss,
   selection,
 }: {
   action: SelectionAction;
+  onDismiss: () => void;
   selection: MessageProseSelection;
 }) {
   return (
@@ -44,6 +46,7 @@ function ActionButton({
         // Clear the lingering highlight so the source text doesn't read as
         // "still selected" after the quote/side-chat has been created.
         window.getSelection()?.removeAllRanges();
+        onDismiss();
       }}
     >
       <Icon
@@ -68,17 +71,9 @@ export function TimelineSelectionMenu({
   onDismiss,
 }: TimelineSelectionMenuProps) {
   const open = selection !== null;
-
-  // Constrain the floating menu to the thread column so it never overlaps the
-  // sidebar or secondary panel. The anchor sits inside `[data-thread-window]`,
-  // so resolve that ancestor as the Radix collision boundary.
-  const [collisionBoundary, setCollisionBoundary] =
-    useState<HTMLElement | null>(null);
-  const anchorRef = useCallback((node: HTMLDivElement | null) => {
-    setCollisionBoundary(
-      node?.closest<HTMLElement>("[data-thread-window]") ?? null,
-    );
-  }, []);
+  const virtualAnchorRef = useRef({
+    getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
+  });
 
   // Dismiss on scroll/resize rather than re-anchoring: the captured rect goes
   // stale the moment the viewport moves, so closing is the honest behavior.
@@ -122,6 +117,8 @@ export function TimelineSelectionMenu({
   const anchorLeft = anchorPoint?.x ?? rect.left + rect.width / 2;
   const anchorTop = anchorPoint?.y ?? rect.top;
   const anchorSide = selection.anchorSide ?? "top";
+  virtualAnchorRef.current.getBoundingClientRect = () =>
+    new DOMRect(anchorLeft, anchorTop, 0, 0);
 
   return (
     <PopoverPrimitive.Root
@@ -131,28 +128,15 @@ export function TimelineSelectionMenu({
       }}
     >
       {/*
-        Zero-size anchor pinned to the pointer release point and gesture side,
-        falling back to the selection rect.
+        Use a virtual viewport anchor. A real fixed-position anchor can be
+        distorted by transformed ancestors in diff/preview panels.
       */}
-      <PopoverPrimitive.Anchor asChild>
-        <div
-          ref={anchorRef}
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            left: anchorLeft,
-            top: anchorTop,
-            width: 0,
-            height: 0,
-          }}
-        />
-      </PopoverPrimitive.Anchor>
+      <PopoverPrimitive.Anchor virtualRef={virtualAnchorRef} />
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           side={anchorSide}
           align="center"
           sideOffset={6}
-          collisionBoundary={collisionBoundary}
           collisionPadding={8}
           className={SELECTION_MENU_CONTENT_CLASS}
           onEscapeKeyDown={() => onDismiss()}
@@ -166,7 +150,11 @@ export function TimelineSelectionMenu({
                   className="mx-0.5 h-4 w-px bg-border"
                 />
               ) : null}
-              <ActionButton action={action} selection={selection} />
+              <ActionButton
+                action={action}
+                onDismiss={onDismiss}
+                selection={selection}
+              />
             </div>
           ))}
         </PopoverPrimitive.Content>
