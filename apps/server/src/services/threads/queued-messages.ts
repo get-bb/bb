@@ -108,6 +108,7 @@ interface FormatQueuedMessageInputForSenderArgs {
 
 const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
 const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
+const activeQueuedMessageClaimTokens = new Set<string>();
 
 function sendQueuedMessagePayload(
   queuedMessage: ThreadQueuedMessage,
@@ -162,6 +163,22 @@ function releaseQueuedMessageClaims(
       id: queuedMessage.id,
       claimToken: queuedMessage.claimToken,
     });
+  }
+}
+
+async function withActiveQueuedMessageClaims<T>(
+  queuedMessages: readonly ClaimedQueuedMessage[],
+  task: () => Promise<T>,
+): Promise<T> {
+  for (const queuedMessage of queuedMessages) {
+    activeQueuedMessageClaimTokens.add(queuedMessage.claimToken);
+  }
+  try {
+    return await task();
+  } finally {
+    for (const queuedMessage of queuedMessages) {
+      activeQueuedMessageClaimTokens.delete(queuedMessage.claimToken);
+    }
   }
 }
 
@@ -425,11 +442,13 @@ export async function sendQueuedMessage(
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
   try {
-    return await sendClaimedQueuedMessage(deps, {
-      mode: args.mode,
-      queuedMessages,
-      threadId: args.threadId,
-    });
+    return await withActiveQueuedMessageClaims(queuedMessages, () =>
+      sendClaimedQueuedMessage(deps, {
+        mode: args.mode,
+        queuedMessages,
+        threadId: args.threadId,
+      }),
+    );
   } catch (error) {
     releaseQueuedMessageClaims(deps, queuedMessages);
     throw error;
@@ -460,11 +479,13 @@ export async function sendNextQueuedMessageIfPresent(
   }
 
   try {
-    await sendClaimedQueuedMessageForThread(deps, {
-      mode: "auto",
-      queuedMessages: nextQueuedMessages,
-      thread,
-    });
+    await withActiveQueuedMessageClaims(nextQueuedMessages, () =>
+      sendClaimedQueuedMessageForThread(deps, {
+        mode: "auto",
+        queuedMessages: nextQueuedMessages,
+        thread,
+      }),
+    );
   } catch (error) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (isQueuedMessageClaimLostError(error)) {
@@ -532,6 +553,7 @@ export async function runQueuedMessageAutoSendSweep(
 ): Promise<void> {
   releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
     claimedBefore: Date.now() - STALE_QUEUED_MESSAGE_CLAIM_MS,
+    protectedClaimTokens: [...activeQueuedMessageClaimTokens],
   });
 
   for (const candidate of listIdleThreadsWithQueuedMessages(deps.db)) {

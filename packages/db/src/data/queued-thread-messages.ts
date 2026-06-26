@@ -8,6 +8,7 @@ import {
   isNull,
   lt,
   min,
+  notInArray,
   or,
 } from "drizzle-orm";
 import type { PermissionMode, PromptInput } from "@bb/domain";
@@ -85,6 +86,7 @@ export type DeleteClaimedQueuedThreadMessageArgs = ClaimedQueuedThreadMessageMut
 
 export interface ReleaseStaleQueuedMessageClaimsArgs {
   claimedBefore: number;
+  protectedClaimTokens: readonly string[];
 }
 
 export interface ReorderQueuedThreadMessageSuccess {
@@ -984,18 +986,26 @@ export function releaseStaleQueuedMessageClaims(
   notifier: DbNotifier,
   args: ReleaseStaleQueuedMessageClaimsArgs,
 ): number {
+  const protectedClaimTokens = [...args.protectedClaimTokens];
+  const staleClaimWhere = and(
+    isNotNull(queuedThreadMessages.claimedAt),
+    lt(queuedThreadMessages.claimedAt, args.claimedBefore),
+    ...(protectedClaimTokens.length > 0
+      ? [
+          or(
+            isNull(queuedThreadMessages.claimToken),
+            notInArray(queuedThreadMessages.claimToken, protectedClaimTokens),
+          )!,
+        ]
+      : []),
+  );
   const staleRows = db
     .select({
       id: queuedThreadMessages.id,
       threadId: queuedThreadMessages.threadId,
     })
     .from(queuedThreadMessages)
-    .where(
-      and(
-        isNotNull(queuedThreadMessages.claimedAt),
-        lt(queuedThreadMessages.claimedAt, args.claimedBefore),
-      ),
-    )
+    .where(staleClaimWhere)
     .all();
   if (staleRows.length === 0) {
     return 0;
@@ -1005,12 +1015,7 @@ export function releaseStaleQueuedMessageClaims(
   const result = db
     .update(queuedThreadMessages)
     .set({ claimedAt: null, claimToken: null, updatedAt: now })
-    .where(
-      and(
-        isNotNull(queuedThreadMessages.claimedAt),
-        lt(queuedThreadMessages.claimedAt, args.claimedBefore),
-      ),
-    )
+    .where(staleClaimWhere)
     .run();
 
   for (const threadId of new Set(staleRows.map((row) => row.threadId))) {
