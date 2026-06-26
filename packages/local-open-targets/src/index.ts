@@ -1033,6 +1033,7 @@ function maybeResolveMacLocalTerminalOpenInvocation(
         : null,
       lineNumber: args.lineNumber,
       path: args.existingPath.path,
+      pathType: args.existingPath.type,
     }),
   };
 }
@@ -1263,6 +1264,7 @@ async function resolvePlatformTerminalOpenInvocation(
     columnNumber: args.columnNumber,
     lineNumber: args.lineNumber,
     path: args.existingPath.path,
+    pathType: args.existingPath.type,
   });
 }
 

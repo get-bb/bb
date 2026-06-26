@@ -3,6 +3,12 @@ import type {
   BuildMacTerminalOpenArgs,
 } from "./types.js";
 
+interface TerminalShellScriptArgs {
+  columnNumber: number | null;
+  lineNumber: number | null;
+  path: string;
+}
+
 function quoteShellArg(value: string): string {
   if (value === "") {
     return "''";
@@ -14,7 +20,7 @@ function escapeAppleScriptString(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
-function buildTerminalShellScript(args: BuildMacTerminalOpenArgs): string {
+function buildTerminalShellScript(args: TerminalShellScriptArgs): string {
   const line = args.lineNumber === null ? "" : String(args.lineNumber);
   const column = args.columnNumber === null ? "" : String(args.columnNumber);
   const editorScript = [
@@ -37,6 +43,10 @@ function buildTerminalShellScript(args: BuildMacTerminalOpenArgs): string {
   ].join("; ");
 }
 
+function buildTerminalDirectoryCommand(path: string): string {
+  return `cd ${quoteShellArg(path)}`;
+}
+
 export function buildLocalTerminalShellArgs(
   args: BuildMacTerminalOpenArgs,
 ): string[] {
@@ -57,7 +67,9 @@ export function buildMacTerminalLocalOpenArgs(
   args: BuildMacTerminalOpenArgs & { appName: "Terminal" | "iTerm" },
 ): string[] {
   const command = escapeAppleScriptString(
-    buildShellCommand(buildLocalTerminalShellArgs(args)),
+    args.pathType === "directory"
+      ? buildTerminalDirectoryCommand(args.path)
+      : buildShellCommand(buildLocalTerminalShellArgs(args)),
   );
 
   if (args.appName === "Terminal") {

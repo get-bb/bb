@@ -563,6 +563,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             columnNumber: args.columnNumber,
             lineNumber: args.lineNumber,
             path: args.path,
+            pathType: args.pathType,
           }),
       },
       remoteSshOpenCommand: {
@@ -600,6 +601,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             columnNumber: args.columnNumber,
             lineNumber: args.lineNumber,
             path: args.path,
+            pathType: args.pathType,
           }),
       },
       remoteSshOpenCommand: {
@@ -636,6 +638,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             columnNumber: args.columnNumber,
             lineNumber: args.lineNumber,
             path: args.path,
+            pathType: args.pathType,
           }),
       },
       remoteSshOpenCommand: {

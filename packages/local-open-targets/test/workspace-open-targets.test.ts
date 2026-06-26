@@ -1354,6 +1354,74 @@ describe("workspace open targets", () => {
     });
   });
 
+  it("opens local directories in Terminal with a short cd command", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: workspacePath,
+          targetId: "terminal",
+        },
+        createRuntime({ execFile }),
+      );
+
+      const osascriptCall = calls.find((call) => call.file === "osascript");
+      expect(osascriptCall).toBeDefined();
+      const script = osascriptCall?.args.join("\n") ?? "";
+      expect(script).toContain('tell application "Terminal" to do script');
+      expect(script).toContain(`cd '${workspacePath}'`);
+      expect(script).not.toContain("/bin/sh");
+      expect(script).not.toContain("VISUAL");
+      expect(script).not.toContain("EDITOR");
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens local directories in iTerm2 with a short cd command", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.googlecode.iterm2"],
+      calls,
+    });
+
+    try {
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: workspacePath,
+          targetId: "iterm2",
+        },
+        createRuntime({ execFile }),
+      );
+
+      const osascriptCall = calls.find((call) => call.file === "osascript");
+      expect(osascriptCall).toBeDefined();
+      const script = osascriptCall?.args.join("\n") ?? "";
+      expect(script).toContain(
+        'tell application "iTerm" to create window with default profile',
+      );
+      expect(script).toContain(
+        'tell application "iTerm" to tell current session of current window to write text',
+      );
+      expect(script).toContain(`cd '${workspacePath}'`);
+      expect(script).not.toContain("/bin/sh");
+      expect(script).not.toContain("VISUAL");
+      expect(script).not.toContain("EDITOR");
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
   it("opens local files in Terminal with a local editor script", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");

@@ -99,6 +99,7 @@ export interface BuildMacTerminalOpenArgs {
   columnNumber: number | null;
   lineNumber: number | null;
   path: string;
+  pathType: ExistingPath["type"];
 }
 
 export interface BuildMacRemoteSshOpenArgs {
