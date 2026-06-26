@@ -663,6 +663,10 @@ function getDiffSelectionPath(
   return normalizeGitDiffPath(fileDiff.name) ?? fileDiff.name;
 }
 
+function getDiffSelectionSideLabel(side: SelectionSide) {
+  return side === "additions" ? "after change" : "before change";
+}
+
 function buildSingleSideDiffSelectionText({
   endLineNumber,
   fileDiff,
@@ -687,7 +691,7 @@ function buildSingleSideDiffSelectionText({
   if (selectedText.trim().length === 0) {
     return null;
   }
-  const sideLabel = side === "additions" ? "new" : "old";
+  const sideLabel = getDiffSelectionSideLabel(side);
   return `${getDiffSelectionPath(fileDiff, side)}:${formatLineRange(
     start,
     end,
@@ -791,7 +795,7 @@ function buildDiffDomSelectionSection({
     lineNumbers.length > 0
       ? Math.max(...lineNumbers)
       : Math.max(range.start, range.end);
-  const sideLabel = side === "additions" ? "new" : "old";
+  const sideLabel = getDiffSelectionSideLabel(side);
   return `${getDiffSelectionPath(fileDiff, side)}:${formatLineRange(
     start,
     end,
