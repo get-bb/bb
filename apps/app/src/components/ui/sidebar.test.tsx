@@ -34,11 +34,13 @@ function renderSidebarHarness({
   withTrigger = false,
   withInteractiveContent = false,
   withTextInput = false,
+  withHorizontalScroller = false,
 }: {
   isCompactViewport?: boolean;
   withTrigger?: boolean;
   withInteractiveContent?: boolean;
   withTextInput?: boolean;
+  withHorizontalScroller?: boolean;
 } = {}) {
   render(
     <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
@@ -50,6 +52,10 @@ function renderSidebarHarness({
         <SidebarInset data-testid="sidebar-inset">
           {withTextInput ? (
             <input aria-label="Main input" />
+          ) : withHorizontalScroller ? (
+            <div data-testid="horizontal-scroller" style={{ overflowX: "auto" }}>
+              <div style={{ width: 640 }}>Wide content</div>
+            </div>
           ) : withInteractiveContent ? (
             <button type="button">Main action</button>
           ) : (
@@ -91,6 +97,13 @@ function createTouch({
 
 function createTouchList(...touches: Touch[]): TouchList {
   return touches as unknown as TouchList;
+}
+
+function makeElementHorizontallyScrollable(element: HTMLElement) {
+  Object.defineProperties(element, {
+    clientWidth: { configurable: true, value: 320 },
+    scrollWidth: { configurable: true, value: 640 },
+  });
 }
 
 describe("useOptionalIsSidebarShowing", () => {
@@ -626,6 +639,45 @@ describe("mobile sidebar drawer", () => {
     });
 
     expect(getSidebarPanel().textContent).toContain("Sidebar content");
+  });
+
+  it("does not install the wheel swipe listener on wide viewports", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener");
+
+    renderSidebarHarness({ isCompactViewport: false });
+
+    expect(
+      addEventListener.mock.calls.filter(([eventName]) => eventName === "wheel"),
+    ).toHaveLength(0);
+  });
+
+  it("ignores rightward gestures inside horizontally scrollable content", () => {
+    renderSidebarHarness({ withHorizontalScroller: true });
+    const scroller = screen.getByTestId("horizontal-scroller");
+    makeElementHorizontallyScrollable(scroller);
+    const wideContent = screen.getByText("Wide content");
+
+    fireEvent.touchStart(wideContent, {
+      touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
+      changedTouches: createTouchList(
+        createTouch({ clientX: 160, clientY: 120 }),
+      ),
+    });
+    fireEvent.touchMove(window, {
+      touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
+      changedTouches: createTouchList(
+        createTouch({ clientX: 310, clientY: 124 }),
+      ),
+    });
+    fireEvent.wheel(wideContent, {
+      deltaX: 96,
+      deltaY: 2,
+      clientX: 160,
+      clientY: 120,
+    });
+
+    expect(querySidebarPanel()).toBeNull();
+    expect(screen.queryByTestId("sidebar-mobile-backdrop")).toBeNull();
   });
 
   it("ignores vertical touch gestures on the main content", () => {

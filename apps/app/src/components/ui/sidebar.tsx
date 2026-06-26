@@ -116,12 +116,49 @@ function shouldOpenSidebarMobileSwipe(
   );
 }
 
+function isHorizontallyScrollableElement(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  if (view === null || !(element instanceof view.HTMLElement)) {
+    return false;
+  }
+
+  const overflowX = view.getComputedStyle(element).overflowX;
+  if (
+    overflowX !== "auto" &&
+    overflowX !== "scroll" &&
+    overflowX !== "overlay"
+  ) {
+    return false;
+  }
+
+  return element.scrollWidth > element.clientWidth + 1;
+}
+
+function isInsideHorizontalScrollRegion(target: Element): boolean {
+  let element: Element | null = target;
+  while (element !== null) {
+    if (isHorizontallyScrollableElement(element)) {
+      return true;
+    }
+    if (
+      element.matches(
+        '[data-sidebar="inset"], [data-sidebar-mobile-backdrop]',
+      )
+    ) {
+      return false;
+    }
+    element = element.parentElement;
+  }
+
+  return false;
+}
+
 function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) {
     return false;
   }
 
-  return Boolean(
+  if (
     target.closest(
       [
         "input",
@@ -135,8 +172,12 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
         "[data-vaul-no-drag]",
         "[data-no-sidebar-swipe]",
       ].join(", "),
-    ),
-  );
+    ) !== null
+  ) {
+    return true;
+  }
+
+  return isInsideHorizontalScrollRegion(target);
 }
 
 function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
@@ -705,6 +746,14 @@ const SidebarInset = React.forwardRef<
     }
   }, []);
 
+  const clearWheelSwipe = React.useCallback(() => {
+    wheelSwipeDeltaRef.current = 0;
+    if (wheelSwipeResetTimeoutRef.current !== null) {
+      window.clearTimeout(wheelSwipeResetTimeoutRef.current);
+      wheelSwipeResetTimeoutRef.current = null;
+    }
+  }, []);
+
   const suppressNextSwipeClick = React.useCallback(() => {
     removeSwipeClickSuppressorRef.current?.();
     if (swipeClickSuppressorTimeoutRef.current !== null) {
@@ -1100,17 +1149,18 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      wheelSwipeDeltaRef.current = 0;
-      if (wheelSwipeResetTimeoutRef.current !== null) {
-        window.clearTimeout(wheelSwipeResetTimeoutRef.current);
-        wheelSwipeResetTimeoutRef.current = null;
-      }
+      clearWheelSwipe();
       setOpenMobile(true);
     },
-    [isCompactViewport, openMobile, setOpenMobile],
+    [clearWheelSwipe, isCompactViewport, openMobile, setOpenMobile],
   );
 
   React.useEffect(() => {
+    if (!isCompactViewport) {
+      clearWheelSwipe();
+      return;
+    }
+
     document.addEventListener("wheel", handleWheelSwipe, {
       capture: true,
       passive: false,
@@ -1119,8 +1169,9 @@ const SidebarInset = React.forwardRef<
       document.removeEventListener("wheel", handleWheelSwipe, {
         capture: true,
       });
+      clearWheelSwipe();
     };
-  }, [handleWheelSwipe]);
+  }, [clearWheelSwipe, handleWheelSwipe, isCompactViewport]);
 
   React.useEffect(
     () => () => {
@@ -1130,13 +1181,10 @@ const SidebarInset = React.forwardRef<
         window.clearTimeout(swipeClickSuppressorTimeoutRef.current);
         swipeClickSuppressorTimeoutRef.current = null;
       }
-      if (wheelSwipeResetTimeoutRef.current !== null) {
-        window.clearTimeout(wheelSwipeResetTimeoutRef.current);
-        wheelSwipeResetTimeoutRef.current = null;
-      }
+      clearWheelSwipe();
       clearMobileDragSettleTimeout();
     },
-    [clearMobileDragSettleTimeout, clearSwipeSession],
+    [clearMobileDragSettleTimeout, clearSwipeSession, clearWheelSwipe],
   );
 
   React.useEffect(() => {
