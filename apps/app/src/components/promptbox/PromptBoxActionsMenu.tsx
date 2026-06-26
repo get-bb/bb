@@ -129,8 +129,9 @@ export function PromptBoxActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         aria-label="Prompt actions"
-        align="end"
-        side="top"
+        align="start"
+        side="bottom"
+        sideOffset={4}
         className="w-36"
         mobileTitle="Prompt actions"
         onCloseAutoFocus={(event) => {

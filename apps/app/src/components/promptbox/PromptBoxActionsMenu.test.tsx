@@ -71,6 +71,18 @@ describe("PromptBoxActionsMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Create App" })).toBeNull();
   });
 
+  it("opens below the plus trigger aligned to the trigger start", async () => {
+    render(
+      <PromptBoxActionsMenu actions={promptActions} onAction={() => {}} />,
+    );
+
+    await openPromptActionsMenu();
+
+    const menu = screen.getByRole("menu", { name: "Prompt actions" });
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+    expect(menu.getAttribute("data-align")).toBe("start");
+  });
+
   it("fires the selected action", async () => {
     const onAction = vi.fn();
     render(<PromptBoxActionsMenu actions={promptActions} onAction={onAction} />);

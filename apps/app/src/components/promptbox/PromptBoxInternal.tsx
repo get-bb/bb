@@ -2440,7 +2440,7 @@ export function PromptBoxInternal({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 flex-row items-center gap-3 px-3.5 pt-1.5">
+      <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
         <div
           className="flex min-w-0 flex-1 flex-row items-center gap-1"
           aria-live="polite"
@@ -2558,7 +2558,7 @@ export function PromptBoxInternal({
               variant="default"
               aria-label={effectiveSubmitTitle}
               disabled={!canSubmit}
-              className={COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS}
+              className={cn("ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS)}
             >
               {isSubmitting ? (
                 <Icon name="Spinner" className="size-4 animate-spin" />
