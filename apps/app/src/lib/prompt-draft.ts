@@ -47,6 +47,27 @@ export function emptyPromptDraftState(): PromptDraftState {
   };
 }
 
+function normalizeQuotedSelectionText(text: string): string {
+  const lines = text.replace(/\r\n|\r/gu, "\n").split("\n");
+  const normalizedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const previousLine = normalizedLines.at(-1);
+    const nextLine = lines[index + 1];
+    if (
+      line.trim().length === 0 &&
+      previousLine?.startsWith(">") === true &&
+      nextLine?.startsWith(">") === true
+    ) {
+      continue;
+    }
+    normalizedLines.push(line);
+  }
+
+  return normalizedLines.join("\n").trim();
+}
+
 /**
  * Append a quoted selection to the draft text as a `> `-prefixed blockquote
  * block. The editor parses these blocks into real blockquote nodes; the user
@@ -59,7 +80,7 @@ export function appendQuoteToDraftText(
 ): PromptDraftState {
   // Guard the boundary: an empty/whitespace-only selection would otherwise
   // emit a bare "> " block and make an empty draft look dirty.
-  const trimmed = quotedText.trim();
+  const trimmed = normalizeQuotedSelectionText(quotedText);
   if (trimmed === "") return state;
 
   const block = trimmed
@@ -68,8 +89,7 @@ export function appendQuoteToDraftText(
     .join("\n");
 
   // Trailing newline so the reply paragraph sits below the quote.
-  const text =
-    state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
+  const text = state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
 
   return { ...state, text };
 }
