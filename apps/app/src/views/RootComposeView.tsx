@@ -1095,6 +1095,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const refetchProviderCliStatus = providerCliStatus.refetch;
   const {
     installLogDialog: providerCliInstallLogDialog,
+    queuedProviders,
     runningProvider,
     startInstall,
   } = useProviderCliInstallRunner({
@@ -3004,7 +3005,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         currentVersion={codexCliStatus.currentVersion}
         minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
         issue={codexCliIssue}
-        updating={runningProvider === "codex"}
+        updating={runningProvider === "codex" || queuedProviders.has("codex")}
         onUpdate={handleUpdateCodexCli}
       />
     );
@@ -3013,6 +3014,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     codexCliStatus,
     handleUpdateCodexCli,
     isCodexCliVersionBlocked,
+    queuedProviders,
     runningProvider,
   ]);
 

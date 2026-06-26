@@ -180,15 +180,15 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
-    id: "provider-already-running",
+    id: "provider-queued",
     group: "Provider CLI",
-    label: "setup already running",
+    label: "setup queued",
     source: "ProviderCliHealthToasts",
     usage: ["Click Install/Update while another setup is running"],
     current: {
-      tone: "warning",
-      title: "Provider CLI setup already running",
-      description: "Wait for the current install or update to finish.",
+      tone: "message",
+      title: "Claude Code update queued",
+      description: "Waiting for the current install or update to finish.",
     },
   },
   {
