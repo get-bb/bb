@@ -171,6 +171,29 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain('alt="Checks success"');
   });
 
+  it("uses the compact pull request pill height inside the banner row", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={null}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={{ pullRequest: pullRequestFixture }}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toMatch(
+      /class="(?=[^"]*\bh-4\b)(?=[^"]*cursor-pointer)[^"]*"/,
+    );
+    expect(markup).not.toMatch(
+      /class="(?=[^"]*\bh-5\b)(?=[^"]*cursor-pointer)[^"]*"/,
+    );
+  });
+
   it("uses the selected pull request merge method as the action label without a merge icon", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner

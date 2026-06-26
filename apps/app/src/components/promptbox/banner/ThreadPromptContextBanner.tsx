@@ -632,7 +632,7 @@ function PullRequestBannerLink({
         SEGMENT_SHRINK_CLASS,
       )}
     >
-      <PullRequestStatusPill pullRequest={pullRequest} />
+      <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />
       {showLabel ? (
         <span
           className="min-w-0 truncate"
