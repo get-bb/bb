@@ -83,8 +83,14 @@ const CURSOR_BUNDLED_EXECUTABLE: MacBundledExecutableAdapter = {
 function jetBrainsBundledExecutable(
   executable: string,
 ): MacBundledExecutableAdapter {
+  return bundledExecutable("Contents", "MacOS", executable);
+}
+
+function bundledExecutable(
+  ...relativeExecutablePath: string[]
+): MacBundledExecutableAdapter {
   return {
-    relativeExecutablePath: ["Contents", "MacOS", executable],
+    relativeExecutablePath,
   };
 }
 
@@ -106,18 +112,40 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     macos: {
       openMode: "application",
       appName: "Visual Studio Code",
+      additionalAppNames: ["Code"],
       bundleIds: ["com.microsoft.VSCode"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         executable: "code",
         supportsColumn: true,
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
       },
       pathOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         executable: "code",
         toArgs: (path) => [path],
       },
       remoteSshOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         capabilities: FULL_FILE_OPEN_CAPABILITIES,
         executable: "code",
         toArgs: (args) => [
@@ -147,18 +175,40 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     macos: {
       openMode: "application",
       appName: "Visual Studio Code - Insiders",
+      additionalAppNames: ["Code - Insiders"],
       bundleIds: ["com.microsoft.VSCodeInsiders"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         executable: "code-insiders",
         supportsColumn: true,
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
       },
       pathOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         executable: "code-insiders",
         toArgs: (path) => [path],
       },
       remoteSshOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "code",
+        ),
         capabilities: FULL_FILE_OPEN_CAPABILITIES,
         executable: "code-insiders",
         toArgs: (args) => [
@@ -236,9 +286,25 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       bundleIds: ["com.sublimetext.4", "com.sublimetext.3"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "SharedSupport",
+          "bin",
+          "subl",
+        ),
         executable: "subl",
         supportsColumn: true,
         toArgs: (args) => [formatPathWithLineNumber(args)],
+      },
+      pathOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "SharedSupport",
+          "bin",
+          "subl",
+        ),
+        executable: "subl",
+        toArgs: (path) => [path],
       },
     },
   },
@@ -252,18 +318,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     macos: {
       openMode: "application",
       appName: "Zed",
+      additionalAppNames: ["Zed Preview", "Zed Nightly"],
       bundleIds: ["dev.zed.Zed"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: bundledExecutable("Contents", "MacOS", "zed"),
         executable: "zed",
         supportsColumn: true,
         toArgs: (args) => [formatPathWithLineNumber(args)],
       },
       pathOpenCommand: {
+        bundledExecutable: bundledExecutable("Contents", "MacOS", "zed"),
         executable: "zed",
         toArgs: (path) => [path],
       },
       remoteSshOpenCommand: {
+        bundledExecutable: bundledExecutable("Contents", "MacOS", "zed"),
         capabilities: FULL_FILE_OPEN_CAPABILITIES,
         executable: "zed",
         toArgs: (args) => [formatZedRemoteSshUri(args)],
@@ -283,13 +353,52 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       bundleIds: ["com.exafunction.windsurf"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "windsurf",
+        ),
         executable: "windsurf",
         supportsColumn: true,
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
       },
       pathOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "windsurf",
+        ),
         executable: "windsurf",
         toArgs: (path) => [path],
+      },
+      remoteSshOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "windsurf",
+        ),
+        capabilities: FULL_FILE_OPEN_CAPABILITIES,
+        executable: "windsurf",
+        toArgs: (args) => [
+          "--remote",
+          `ssh-remote+${args.sshAuthority}`,
+          ...(args.lineNumber === null
+            ? [args.path]
+            : [
+                "-g",
+                formatPathWithLineNumber({
+                  lineNumber: args.lineNumber,
+                  columnNumber: args.columnNumber,
+                  path: args.path,
+                }),
+              ]),
+        ],
       },
     },
   },
@@ -576,7 +685,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     },
   },
   {
-    capabilities: BASIC_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "builtin", name: "antigravity" },
     id: "antigravity",
     kind: "editor",
@@ -587,6 +696,54 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Antigravity",
       bundleIds: ["com.google.antigravity", "com.googlelabs.antigravity"],
       builtIn: false,
+      lineOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "antigravity",
+        ),
+        executable: "antigravity",
+        supportsColumn: true,
+        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
+      },
+      pathOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "antigravity",
+        ),
+        executable: "antigravity",
+        toArgs: (path) => [path],
+      },
+      remoteSshOpenCommand: {
+        bundledExecutable: bundledExecutable(
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "antigravity",
+        ),
+        capabilities: FULL_FILE_OPEN_CAPABILITIES,
+        executable: "antigravity",
+        toArgs: (args) => [
+          "--remote",
+          `ssh-remote+${args.sshAuthority}`,
+          ...(args.lineNumber === null
+            ? [args.path]
+            : [
+                "-g",
+                formatPathWithLineNumber({
+                  lineNumber: args.lineNumber,
+                  columnNumber: args.columnNumber,
+                  path: args.path,
+                }),
+              ]),
+        ],
+      },
     },
   },
   {

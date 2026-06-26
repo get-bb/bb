@@ -745,6 +745,174 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("uses bundled macOS editor CLIs when shell commands are unavailable", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+    const cases = [
+      {
+        appName: "Code",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
+        targetId: "vscode",
+      },
+      {
+        appName: "Code - Insiders",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
+        targetId: "vscode-insiders",
+      },
+      {
+        appName: "Windsurf",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "windsurf",
+        ],
+        targetId: "windsurf",
+      },
+      {
+        appName: "Antigravity",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "antigravity",
+        ],
+        targetId: "antigravity",
+      },
+      {
+        appName: "Zed Nightly",
+        args: [`${filePath}:15:6`],
+        relativeExecutablePath: ["Contents", "MacOS", "zed"],
+        targetId: "zed",
+      },
+      {
+        appName: "Sublime Text",
+        args: [`${filePath}:15:6`],
+        relativeExecutablePath: ["Contents", "SharedSupport", "bin", "subl"],
+        targetId: "sublime-text",
+      },
+    ];
+
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+      for (const testCase of cases) {
+        const executablePath = path.join(
+          applicationsDirectory,
+          `${testCase.appName}.app`,
+          ...testCase.relativeExecutablePath,
+        );
+        await mkdir(path.dirname(executablePath), { recursive: true });
+        await writeFile(executablePath, "");
+
+        await openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: 6,
+            lineNumber: 15,
+            path: filePath,
+            targetId: testCase.targetId,
+          },
+          createRuntime({
+            applicationDirectories: [applicationsDirectory],
+            execFile,
+          }),
+        );
+
+        expect(calls.find((call) => call.file === executablePath)).toEqual({
+          file: executablePath,
+          args: testCase.args,
+        });
+      }
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("uses bundled VS Code CLI for remote SSH opens when the shell command is unavailable", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    const codeExecutable = path.join(
+      applicationsDirectory,
+      "Code.app",
+      "Contents",
+      "Resources",
+      "app",
+      "bin",
+      "code",
+    );
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["ssh"],
+      calls,
+    });
+
+    try {
+      await mkdir(path.dirname(codeExecutable), { recursive: true });
+      await writeFile(codeExecutable, "");
+
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+      expect(targets.find((target) => target.id === "vscode")).toMatchObject({
+        remoteSshCapabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+      });
+
+      await openPathInTargetWithRuntime(
+        {
+          context: {
+            kind: "remote-ssh",
+            serverOrigin: "https://example.test",
+            hostId: "host_1",
+            sshAuthority: "mbp-intel",
+          },
+          columnNumber: 2,
+          lineNumber: 10,
+          path: "/repo/src/file.ts",
+          targetId: "vscode",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === codeExecutable)).toEqual({
+        file: codeExecutable,
+        args: [
+          "--remote",
+          "ssh-remote+mbp-intel",
+          "-g",
+          "/repo/src/file.ts:10:2",
+        ],
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("discovers Warp from the macOS application bundle", async () => {
     const root = await mkdtemp(
       path.join(tmpdir(), "bb-workspace-open-targets-"),

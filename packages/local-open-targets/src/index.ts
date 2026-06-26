@@ -217,7 +217,9 @@ function findLaunchAdapterForMacApplication(
     LAUNCH_ADAPTERS.find(
       (adapter) =>
         adapter.macos.openMode === "application" &&
-        adapter.macos.appName === application.label,
+        [adapter.macos.appName, ...(adapter.macos.additionalAppNames ?? [])]
+          .map((candidate) => candidate.toLowerCase())
+          .includes(application.label.toLowerCase()),
     ) ?? null
   );
 }
@@ -510,9 +512,14 @@ function getMacApplicationCandidatePaths(
     return [];
   }
 
-  const appBundleName = `${definition.macos.appName}.app`;
-  return runtime.applicationDirectories.map((directory) =>
-    path.join(directory, appBundleName),
+  const appNames = [
+    definition.macos.appName,
+    ...(definition.macos.additionalAppNames ?? []),
+  ];
+  return appNames.flatMap((appName) =>
+    runtime.applicationDirectories.map((directory) =>
+      path.join(directory, `${appName}.app`),
+    ),
   );
 }
 

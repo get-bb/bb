@@ -59,6 +59,7 @@ export interface MacDefaultLaunchAdapter {
 }
 
 export interface MacApplicationLaunchAdapter {
+  additionalAppNames?: string[];
   appName: string;
   bundleIds: string[];
   builtIn: boolean;
