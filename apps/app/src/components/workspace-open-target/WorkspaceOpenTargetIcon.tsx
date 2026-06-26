@@ -11,6 +11,7 @@ import iterm2Icon from "@/assets/workspace-open-target-icons/iterm2.png";
 import sublimeTextIcon from "@/assets/workspace-open-target-icons/sublime-text.png";
 import terminalIcon from "@/assets/workspace-open-target-icons/terminal.png";
 import vscodeIcon from "@/assets/workspace-open-target-icons/vscode.png";
+import warpIcon from "@/assets/workspace-open-target-icons/warp.png";
 import windsurfIcon from "@/assets/workspace-open-target-icons/windsurf.png";
 import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
 import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
@@ -27,6 +28,7 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   "sublime-text": sublimeTextIcon,
   terminal: terminalIcon,
   vscode: vscodeIcon,
+  warp: warpIcon,
   windsurf: windsurfIcon,
   xcode: xcodeIcon,
   zed: zedIcon,

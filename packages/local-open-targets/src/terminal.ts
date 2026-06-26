@@ -58,8 +58,54 @@ function getEditorExecutableName(editorCommand: string): string {
     .toLowerCase();
 }
 
+function splitShellCommand(command: string): string[] | null {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaping = false;
+  for (const char of command.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+    if (quote !== null) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (/\s/u.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (escaping || quote !== null) {
+    return null;
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+  return tokens.length > 0 ? tokens : null;
+}
+
 function buildTerminalEditorLocationArgs(
-  editorCommand: string,
+  editorExecutableName: string,
   lineNumber: number | null,
   columnNumber: number | null,
 ): string[] {
@@ -67,7 +113,7 @@ function buildTerminalEditorLocationArgs(
     return [];
   }
 
-  switch (getEditorExecutableName(editorCommand)) {
+  switch (editorExecutableName) {
     case "nvim":
     case "vim":
     case "vi":
@@ -93,19 +139,29 @@ function buildTerminalEditorFileCommand(
     return buildTerminalDirectoryCommand(directory);
   }
 
-  const fileName = path.basename(args.path);
-  const editorArgs = [
-    ...buildTerminalEditorLocationArgs(
-      args.editorCommand,
-      args.lineNumber,
-      args.columnNumber,
-    ),
-    fileName,
-  ]
-    .map(quoteShellArg)
-    .join(" ");
+  const parsedEditorCommand = splitShellCommand(args.editorCommand);
+  if (parsedEditorCommand === null) {
+    return `cd ${quoteShellArg(directory)} && ${args.editorCommand} ${quoteShellArg(args.path)}`;
+  }
 
-  return `cd ${quoteShellArg(directory)} && ${args.editorCommand} ${editorArgs}`;
+  const editorExecutableName = getEditorExecutableName(parsedEditorCommand[0]);
+  const locationArgs = buildTerminalEditorLocationArgs(
+    editorExecutableName,
+    args.lineNumber,
+    args.columnNumber,
+  );
+  const explicitArgsIndex = parsedEditorCommand.indexOf("--");
+  const editorArgs =
+    explicitArgsIndex < 0
+      ? [...parsedEditorCommand, ...locationArgs, args.path]
+      : [
+          ...parsedEditorCommand.slice(0, explicitArgsIndex),
+          ...locationArgs,
+          ...parsedEditorCommand.slice(explicitArgsIndex),
+          args.path,
+        ];
+
+  return `cd ${quoteShellArg(directory)} && ${editorArgs.map(quoteShellArg).join(" ")}`;
 }
 
 function buildMacTerminalLocalCommand(
@@ -153,6 +209,16 @@ export function buildMacTerminalLocalOpenArgs(
     `tell application "iTerm" to tell current session of current window to write text "${command}"`,
     "-e",
     'tell application "iTerm" to activate',
+  ];
+}
+
+export function buildMacTerminalAppLocalOpenArgs(
+  args: BuildMacTerminalOpenArgs & { appName: string },
+): string[] {
+  return [
+    "-a",
+    args.appName,
+    args.pathType === "directory" ? args.path : path.dirname(args.path),
   ];
 }
 

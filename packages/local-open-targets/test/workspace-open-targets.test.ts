@@ -672,6 +672,38 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("discovers Warp from the macOS application bundle", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    await mkdir(path.join(applicationsDirectory, "Warp.app"), {
+      recursive: true,
+    });
+
+    try {
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+        }),
+      );
+
+      expect(targets.find((target) => target.id === "warp")).toMatchObject({
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: false,
+          openFileAtLine: false,
+        },
+        icon: { kind: "builtin", name: "warp" },
+        kind: "terminal",
+        label: "Warp",
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("discovers Antigravity with the current bundle id", async () => {
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.google.antigravity"],
@@ -1445,7 +1477,7 @@ describe("workspace open targets", () => {
       const script = osascriptCall?.args.join("\n") ?? "";
       expect(script).toContain('tell application "Terminal" to do script');
       expect(script).toContain(
-        `cd '${path.dirname(filePath)}' && vim '+call cursor(22,4)' 'file.ts'`,
+        `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
       );
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -1485,7 +1517,44 @@ describe("workspace open targets", () => {
       expect(script).toContain(
         'tell application "iTerm" to tell current session of current window to write text',
       );
-      expect(script).toContain(`cd '${workspacePath}' && vim 'README.md'`);
+      expect(script).toContain(`cd '${workspacePath}' && 'vim' '${filePath}'`);
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("inserts terminal editor location args before explicit editor args separator", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      calls,
+    });
+
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 4,
+          lineNumber: 22,
+          path: filePath,
+          targetId: "terminal",
+        },
+        createRuntime({
+          env: { VISUAL: "vim --clean --" },
+          execFile,
+        }),
+      );
+
+      const osascriptCall = calls.find((call) => call.file === "osascript");
+      expect(osascriptCall).toBeDefined();
+      const script = osascriptCall?.args.join("\n") ?? "";
+      expect(script).toContain(
+        `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
+      );
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
@@ -1518,6 +1587,46 @@ describe("workspace open targets", () => {
       expect(script).toContain(`cd '${workspacePath}'`);
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens local files in Warp at the containing directory", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    await mkdir(path.join(applicationsDirectory, "Warp.app"), {
+      recursive: true,
+    });
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "README.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(workspacePath, { recursive: true });
+      await writeFile(filePath, "# Test\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 4,
+          lineNumber: 22,
+          path: filePath,
+          targetId: "warp",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === "open")).toEqual({
+        file: "open",
+        args: ["-a", "Warp", workspacePath],
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
     }
   });
 

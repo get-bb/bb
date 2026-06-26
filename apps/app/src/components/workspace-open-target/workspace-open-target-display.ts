@@ -17,6 +17,7 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
   "sublime-text": "Sublime Text",
   terminal: "Terminal",
   vscode: "VS Code",
+  warp: "Warp",
   windsurf: "Windsurf",
   xcode: "Xcode",
   zed: "Zed",
@@ -40,6 +41,7 @@ export function getWorkspaceOpenTargetFallbackIcon(
     case "terminal":
     case "iterm2":
     case "ghostty":
+    case "warp":
       return { kind: "symbol", name: "terminal" };
     default:
       return { kind: "builtin", name: targetId };

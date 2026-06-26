@@ -8,6 +8,7 @@ import {
 import {
   buildMacGhosttyLocalOpenArgs,
   buildMacGhosttyRemoteSshOpenArgs,
+  buildMacTerminalAppLocalOpenArgs,
   buildMacTerminalLocalOpenArgs,
   buildMacTerminalRemoteSshOpenArgs,
 } from "./terminal.js";
@@ -653,6 +654,31 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             lineNumber: args.lineNumber,
             path: args.path,
             sshAuthority: args.sshAuthority,
+          }),
+      },
+    },
+  },
+  {
+    capabilities: BASIC_FILE_OPEN_CAPABILITIES,
+    icon: { kind: "builtin", name: "warp" },
+    id: "warp",
+    kind: "terminal",
+    label: "Warp",
+    fileOpenBehavior: "containing-directory",
+    macos: {
+      openMode: "application",
+      appName: "Warp",
+      bundleIds: ["dev.warp.Warp", "dev.warp.Warp-Stable"],
+      builtIn: false,
+      localTerminalOpenCommand: {
+        executable: "open",
+        toArgs: (args) =>
+          buildMacTerminalAppLocalOpenArgs({
+            appName: "Warp",
+            columnNumber: args.columnNumber,
+            lineNumber: args.lineNumber,
+            path: args.path,
+            pathType: args.pathType,
           }),
       },
     },
