@@ -160,7 +160,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--base-branch <branch>",
-      "Base branch for new managed environments (worktree). Defaults to the source's default branch.",
+      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
     )
     .option(
       "--parent-thread <id>",

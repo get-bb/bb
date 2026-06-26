@@ -38,8 +38,9 @@ pnpm bb thread spawn \
   --prompt "..."
 ```
 
-Pass `--base-branch <name>` to branch from something other than the project's
-default branch.
+When you omit `--base-branch`, bb chooses the project's default worktree base,
+preferring the origin default branch when safe. Pass `--base-branch <name>`
+only when you need a specific base.
 
 ## Run setup with `.bb-env-setup.sh`
 

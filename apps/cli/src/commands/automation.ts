@@ -321,7 +321,7 @@ export function registerAutomationCommands(
     )
     .option(
       "--base-branch <branch>",
-      "Base branch for new managed environments (worktree)",
+      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
     )
     .option("--disabled", "Create the automation paused")
     .option("--auto-archive", "Auto-archive the spawned thread when it completes")

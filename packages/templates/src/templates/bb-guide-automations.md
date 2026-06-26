@@ -60,7 +60,7 @@ Creating:
     --project <id>                 Project (required)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment <kind>       Create a new environment (worktree)
-    --base-branch <branch>         Base branch for new managed environments
+    --base-branch <branch>         Base branch for new managed worktrees
     --disabled                     Create the automation paused
     --auto-archive                 Auto-archive the spawned thread when it completes
 
