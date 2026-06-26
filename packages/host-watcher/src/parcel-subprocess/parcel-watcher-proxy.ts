@@ -107,6 +107,7 @@ export function createParcelWatcherProxy(
   let idCounter = 0;
   let pingNonce = 0;
   let lastPongAt = 0;
+  let lastPingTickAt = 0;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
 
   function nextId(): string {
@@ -123,14 +124,25 @@ export function createParcelWatcherProxy(
 
   function startPing(): void {
     stopPing();
-    lastPongAt = Date.now();
+    const now = Date.now();
+    lastPongAt = now;
+    lastPingTickAt = now;
     pingTimer = setInterval(() => {
       if (channel === null) {
         return;
       }
-      if (Date.now() - lastPongAt > pingTimeoutMs) {
+      const now = Date.now();
+      const sinceLastPingTickMs = now - lastPingTickAt;
+      lastPingTickAt = now;
+      if (sinceLastPingTickMs > pingIntervalMs + pingTimeoutMs) {
+        lastPongAt = now;
+        pingNonce += 1;
+        channel.send({ kind: "ping", nonce: pingNonce });
+        return;
+      }
+      if (now - lastPongAt > pingTimeoutMs) {
         log("warn", "Watcher child unresponsive; killing", {
-          sinceLastPongMs: Date.now() - lastPongAt,
+          sinceLastPongMs: now - lastPongAt,
         });
         killAndRespawn();
         return;

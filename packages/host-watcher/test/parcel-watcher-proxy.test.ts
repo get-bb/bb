@@ -337,6 +337,33 @@ describe("createParcelWatcherProxy", () => {
     }
   });
 
+  it("probes instead of killing when the parent ping timer resumes late", async () => {
+    vi.useFakeTimers();
+    const nowSpy = vi.spyOn(Date, "now");
+    try {
+      nowSpy.mockReturnValue(0);
+      const { proxy, children, current } = createHarness({
+        pingIntervalMs: 1_000,
+        pingTimeoutMs: 2_500,
+      });
+      await proxy.subscribe("/root", () => {});
+      await flush();
+      expect(children).toHaveLength(1);
+
+      nowSpy.mockReturnValue(4_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flush();
+
+      expect(children[0]?.exited).toBe(false);
+      expect(children).toHaveLength(1);
+      expect(current().parcel.activeDirs()).toEqual(["/root"]);
+      proxy.dispose();
+    } finally {
+      nowSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("backs off a rapid respawn but never permanently gives up", async () => {
     vi.useFakeTimers();
     try {
