@@ -312,6 +312,8 @@ describe("resolveSystemExecutionOptions", () => {
           ],
         },
         async (harness) => {
+          const warn = vi.fn();
+          harness.deps.logger = { ...harness.deps.logger, warn };
           const { host, session } = seedHostSession(harness.deps, {
             id: `host-execution-options-known-acp-status-fails-${failStatusRequest}`,
           });
@@ -380,6 +382,22 @@ describe("resolveSystemExecutionOptions", () => {
               ? ["provider.list_models"]
               : ["known_acp_agents.status", "provider.list_models"],
           );
+          const statusWarning = warn.mock.calls.find(
+            ([, message]) =>
+              message === "Failed to resolve known ACP agent status",
+          );
+          expect(statusWarning).toBeDefined();
+          expect(statusWarning?.[0]).toMatchObject({
+            errorCode: failStatusRequest
+              ? "command_timeout"
+              : "host_unavailable",
+            errorMessage: failStatusRequest
+              ? "Timed out waiting for command result"
+              : "Host is not connected",
+            errorStatus: failStatusRequest ? 504 : 502,
+            hostId: host.id,
+          });
+          expect(statusWarning?.[0]).not.toHaveProperty("err");
         },
       );
     },
@@ -406,6 +424,8 @@ describe("resolveSystemExecutionOptions", () => {
         ],
       },
       async (harness) => {
+        const warn = vi.fn();
+        harness.deps.logger = { ...harness.deps.logger, warn };
         const response = await resolveSystemExecutionOptions(harness.deps, {
           providerId: "codex",
         });
@@ -429,6 +449,17 @@ describe("resolveSystemExecutionOptions", () => {
           providerId: "codex",
           code: "failed",
         });
+        const hostLookupWarning = warn.mock.calls.find(
+          ([, message]) =>
+            message === "Failed to resolve host for known ACP agent status",
+        );
+        expect(hostLookupWarning).toBeDefined();
+        expect(hostLookupWarning?.[0]).toMatchObject({
+          errorCode: "host_unavailable",
+          errorMessage: "Local host daemon is not initialized",
+          errorStatus: 502,
+        });
+        expect(hostLookupWarning?.[0]).not.toHaveProperty("err");
       },
     );
   });
@@ -535,6 +566,45 @@ describe("resolveSystemExecutionOptions", () => {
         expect(response.selectedOnlyModels).toEqual([]);
       },
     );
+  });
+
+  it("logs model load fallback errors without stack-bearing err objects", async () => {
+    await withTestHarness(async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-concise-model-log",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "command_failed",
+            errorMessage: "model list failed",
+          },
+        },
+      });
+
+      await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+
+      const providerModelWarning = warn.mock.calls.find(
+        ([, message]) => message === "Failed to resolve provider models",
+      );
+      expect(providerModelWarning).toBeDefined();
+      expect(providerModelWarning?.[0]).toMatchObject({
+        errorCode: "command_failed",
+        errorMessage: "model list failed",
+        errorRetryable: false,
+        errorStatus: 502,
+        hostId: host.id,
+        providerId: "codex",
+      });
+      expect(providerModelWarning?.[0]).not.toHaveProperty("err");
+    });
   });
 
   it("includes custom ACP agents and sends their launch spec when loading models", async () => {

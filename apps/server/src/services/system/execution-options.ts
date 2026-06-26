@@ -42,6 +42,14 @@ interface BuildModelLoadErrorArgs {
   provider: ProviderInfo;
 }
 
+interface ExpectedFallbackErrorLogFields {
+  errorCode: string;
+  errorDetails?: unknown;
+  errorMessage: string;
+  errorRetryable?: boolean;
+  errorStatus: number;
+}
+
 type ModelListResult = Pick<
   SystemExecutionOptionsResponse,
   "modelLoadError" | "models" | "selectedOnlyModels"
@@ -107,6 +115,23 @@ function canOmitKnownAcpAgentsForError(error: unknown): error is ApiError {
   );
 }
 
+function expectedFallbackErrorLogFields(
+  error: ApiError,
+): ExpectedFallbackErrorLogFields {
+  const fields: ExpectedFallbackErrorLogFields = {
+    errorCode: error.body.code,
+    errorMessage: error.body.message,
+    errorStatus: error.status,
+  };
+  if (error.body.details !== undefined) {
+    fields.errorDetails = error.body.details;
+  }
+  if (error.body.retryable !== undefined) {
+    fields.errorRetryable = error.body.retryable;
+  }
+  return fields;
+}
+
 async function listInstalledKnownAcpAgents(
   deps: AppDeps,
   hostId: string,
@@ -147,7 +172,7 @@ async function listInstalledKnownAcpAgents(
     }
     deps.logger.warn(
       {
-        err: error,
+        ...expectedFallbackErrorLogFields(error),
         hostId,
       },
       "Failed to resolve known ACP agent status",
@@ -182,7 +207,7 @@ function resolveSystemProviderInfosPlan(
       throw error;
     }
     deps.logger.warn(
-      { err: error },
+      expectedFallbackErrorLogFields(error),
       "Failed to resolve host for known ACP agent status",
     );
     return {
@@ -429,7 +454,7 @@ async function loadSystemProviderModels(
     }
     deps.logger.warn(
       {
-        err: error,
+        ...expectedFallbackErrorLogFields(error),
         hostId,
         providerId: provider.id,
       },

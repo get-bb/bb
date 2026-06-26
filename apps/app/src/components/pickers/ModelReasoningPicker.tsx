@@ -145,8 +145,7 @@ export function ModelReasoningPicker({
   const ProviderIcon = selectedProvider?.icon;
   const selectedModelOption = modelOptions.find((m) => m.value === modelValue);
   const selectedModelLabel = selectedModelOption?.label ?? modelValue;
-  const hasSelectedModel =
-    modelOptions.length > 0 && selectedModelLabel.trim().length > 0;
+  const hasSelectedModel = selectedModelLabel.trim().length > 0;
   const selectedProviderLabel = selectedProvider?.label ?? selectedProviderId;
   const selectedModelLoadErrorMatches =
     modelLoadError?.providerId === selectedProviderId;

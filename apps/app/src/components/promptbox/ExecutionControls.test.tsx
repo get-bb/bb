@@ -75,6 +75,27 @@ describe("ExecutionControls", () => {
     expect(screen.queryByTitle("Claude Code")).not.toBeNull();
   });
 
+  it("keeps showing the known model when model options fail to load", () => {
+    const props = makeExecutionControlsProps();
+    renderExecutionControls({
+      ...props,
+      model: {
+        ...props.model,
+        active: { model: "o4-mini" },
+        options: [],
+        loadFailed: true,
+        loadError: { providerId: "codex", code: "failed" },
+      },
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    expect(trigger.textContent).toContain("o4-mini");
+    expect(trigger.textContent).not.toContain("Failed to load models");
+  });
+
   it("maps disabled fast mode to the explicit default service tier", () => {
     const onServiceTierChange = vi.fn();
     renderExecutionControls({
