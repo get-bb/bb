@@ -82,21 +82,28 @@ GFM task list:
 
 const CODE_MARKDOWN = `Inline \`useMemo\` and \`useCallback\` for memoisation.
 
-Fenced code block with language tag (shows the language label + copy button):
+Fenced blocks are syntax-highlighted and carry a language label, a wrap toggle, and a copy button:
 
 \`\`\`ts
 import { useMemo } from "react";
 
+// Doubles a value, memoised.
 export function useDoubled(value: number) {
   return useMemo(() => value * 2, [value]);
 }
 \`\`\`
 
-Fenced code block without a language tag:
+Non-JavaScript languages highlight via presets (Python shown here):
+
+\`\`\`python
+def fib(n: int) -> int:
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+\`\`\`
+
+Long lines scroll horizontally until you toggle wrap (no language tag):
 
 \`\`\`
-$ pnpm exec turbo run typecheck --filter=@bb/app
-✓ typecheck (2.7s)
+$ pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/host-daemon --filter=@bb/cli && echo "all packages clean"
 \`\`\``;
 
 const MERMAID_MARKDOWN = `A Mermaid flowchart renders as a diagram:

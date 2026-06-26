@@ -25,6 +25,36 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview", () => {
+  it("syntax-highlights fenced code blocks", () => {
+    const { container } = render(
+      <MarkdownPreview content={"```ts\nconst x = 1;\n```"} />,
+    );
+    expect(container.querySelector(".sh__line")).not.toBeNull();
+    expect(container.querySelector(".sh__token--keyword")).not.toBeNull();
+  });
+
+  it("HTML-escapes fenced code so it cannot inject markup", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={'```ts\nconst html = "<script>alert(1)</script>";\n```'}
+      />,
+    );
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+
+  it("toggles soft wrap on a fenced code block", () => {
+    const { container } = render(
+      <MarkdownPreview content={"```ts\nconst value = 1;\n```"} />,
+    );
+    const pre = container.querySelector("pre");
+    expect(pre?.classList.contains("overflow-x-auto")).toBe(true);
+    expect(pre?.classList.contains("whitespace-pre-wrap")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Wrap long lines" }));
+    expect(pre?.classList.contains("whitespace-pre-wrap")).toBe(true);
+    expect(pre?.classList.contains("overflow-x-auto")).toBe(false);
+  });
+
   it("renders inline-code Markdown file paths as local file links", () => {
     render(
       <MarkdownPreview

@@ -28,6 +28,8 @@ import {
   getMarkdownCodeLanguage,
   isMarkdownCodeBlock,
 } from "./markdown-code-block.js";
+import { highlightMarkdownCode } from "./markdown-code-highlight.js";
+import "./markdown-code-highlight.css";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -515,6 +517,16 @@ function MarkdownCode({
   const codeText = String(children ?? "").replace(/\n$/, "");
   const language = getMarkdownCodeLanguage({ className: codeClassName });
   const isBlock = isMarkdownCodeBlock({ codeText, language });
+  const [softWrap, setSoftWrap] = useState(false);
+  // Highlight only fenced blocks (mermaid renders as a diagram, inline code stays
+  // plain). The HTML is escaped by sugar-high, so dangerouslySetInnerHTML is safe.
+  const highlightedHtml = useMemo(
+    () =>
+      isBlock && language !== "mermaid"
+        ? highlightMarkdownCode({ code: codeText, language })
+        : null,
+    [isBlock, language, codeText],
+  );
   if (isBlock) {
     if (language === "mermaid") {
       return (
@@ -531,18 +543,43 @@ function MarkdownCode({
           <span className="font-mono text-xs uppercase text-muted-foreground">
             {language ?? ""}
           </span>
-          <CopyButton text={codeText} label="Copy code" />
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-pressed={softWrap}
+              aria-label={softWrap ? "Disable line wrap" : "Wrap long lines"}
+              onClick={() => {
+                setSoftWrap((value) => !value);
+              }}
+              className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground aria-pressed:text-foreground"
+            >
+              <Icon name="TextWrap" className="size-3" />
+            </button>
+            <CopyButton text={codeText} label="Copy code" />
+          </div>
         </div>
-        <pre className="overflow-x-auto px-3 pb-3 pt-1">
-          <code
-            className={cn(
-              "font-mono text-xs",
-              language ? `language-${language}` : "",
-            )}
-            {...props}
-          >
-            {codeText}
-          </code>
+        <pre
+          className={cn(
+            "bb-code-highlight px-3 pb-3 pt-1",
+            softWrap
+              ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
+              : "overflow-x-auto",
+          )}
+        >
+          {highlightedHtml === null ? (
+            <code className="font-mono text-xs" {...props}>
+              {codeText}
+            </code>
+          ) : (
+            <code
+              className={cn(
+                "font-mono text-xs",
+                language ? `language-${language}` : "",
+              )}
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              {...props}
+            />
+          )}
         </pre>
       </div>
     );
