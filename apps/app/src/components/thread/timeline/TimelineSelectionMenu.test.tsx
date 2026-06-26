@@ -59,7 +59,7 @@ describe("TimelineSelectionMenu", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("anchors to the pointer release point when one is available", () => {
+  it("renders from a pointer release point without a physical anchor node", () => {
     const { container } = render(
       <TimelineSelectionMenu
         selection={makeSelection({ anchorPoint: { x: 42, y: 84 } })}
@@ -68,13 +68,8 @@ describe("TimelineSelectionMenu", () => {
       />,
     );
 
-    const anchor = container.querySelector('[aria-hidden="true"]');
-    expect(anchor).toBeInstanceOf(HTMLElement);
-    if (!(anchor instanceof HTMLElement)) {
-      throw new Error("Expected selection menu anchor to render");
-    }
-    expect(anchor.style.left).toBe("42px");
-    expect(anchor.style.top).toBe("84px");
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
   it("uses the selected anchor side when positioning from a pointer release", () => {
