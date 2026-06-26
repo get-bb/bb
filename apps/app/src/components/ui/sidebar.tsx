@@ -58,12 +58,6 @@ type SidebarMobileDrag = {
   settling: boolean;
 };
 
-type TouchArrayLike = {
-  length: number;
-  item?: (index: number) => Touch | null;
-  [index: number]: Touch | undefined;
-};
-
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
   "--sidebar-width-mobile": SIDEBAR_WIDTH_MOBILE,
 };
@@ -209,12 +203,8 @@ function getTouchByIdentifier(
   touches: TouchList,
   identifier: number,
 ): Touch | null {
-  const touchList = touches as unknown as TouchArrayLike;
   for (let index = 0; index < touches.length; index += 1) {
-    const touch =
-      typeof touchList.item === "function"
-        ? touchList.item(index)
-        : touchList[index];
+    const touch = touches.item(index);
     if (touch?.identifier === identifier) {
       return touch;
     }
@@ -713,7 +703,7 @@ SidebarRail.displayName = "SidebarRail";
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"main">
->(({ className, onPointerDown, onTouchStart, ...props }, ref) => {
+>(({ className, ...props }, ref) => {
   const {
     isCompactViewport,
     openMobile,
@@ -981,9 +971,7 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      const touches = event.touches as unknown as TouchArrayLike;
-      const touch =
-        typeof touches.item === "function" ? touches.item(0) : touches[0];
+      const touch = event.touches.item(0);
       if (
         touch == null ||
         touch.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX
@@ -1068,23 +1056,6 @@ const SidebarInset = React.forwardRef<
       isCompactViewport,
       openMobile,
     ],
-  );
-
-  const handlePointerDown = React.useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
-      onPointerDown?.(event);
-    },
-    [onPointerDown],
-  );
-
-  const handleTouchStart = React.useCallback(
-    (event: React.TouchEvent<HTMLElement>) => {
-      onTouchStart?.(event);
-      if (!event.defaultPrevented) {
-        startTouchSwipe(event.nativeEvent);
-      }
-    },
-    [onTouchStart, startTouchSwipe],
   );
 
   React.useEffect(() => {
@@ -1203,8 +1174,6 @@ const SidebarInset = React.forwardRef<
         className,
       )}
       {...props}
-      onPointerDown={handlePointerDown}
-      onTouchStart={handleTouchStart}
     />
   );
 });

@@ -96,7 +96,63 @@ function createTouch({
 }
 
 function createTouchList(...touches: Touch[]): TouchList {
-  return touches as unknown as TouchList;
+  const touchList = {
+    length: touches.length,
+    item: (index: number) => touches[index] ?? null,
+    [Symbol.iterator]: function* () {
+      yield* touches;
+    },
+  };
+  touches.forEach((touch, index) => {
+    Object.defineProperty(touchList, index, {
+      configurable: true,
+      enumerable: true,
+      value: touch,
+    });
+  });
+  return touchList as unknown as TouchList;
+}
+
+type FireEventTarget = Element | Document | Window;
+
+function fireTouchEvent(
+  target: FireEventTarget,
+  type: "touchstart" | "touchmove" | "touchend" | "touchcancel",
+  {
+    touches = createTouchList(),
+    changedTouches = createTouchList(),
+  }: {
+    touches?: TouchList;
+    changedTouches?: TouchList;
+  },
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: { configurable: true, value: touches },
+    changedTouches: { configurable: true, value: changedTouches },
+  });
+  fireEvent(target, event);
+}
+
+function fireTouchStart(
+  target: FireEventTarget,
+  init: Parameters<typeof fireTouchEvent>[2],
+) {
+  fireTouchEvent(target, "touchstart", init);
+}
+
+function fireTouchMove(
+  target: FireEventTarget,
+  init: Parameters<typeof fireTouchEvent>[2],
+) {
+  fireTouchEvent(target, "touchmove", init);
+}
+
+function fireTouchEnd(
+  target: FireEventTarget,
+  init: Parameters<typeof fireTouchEvent>[2],
+) {
+  fireTouchEvent(target, "touchend", init);
 }
 
 function makeElementHorizontallyScrollable(element: HTMLElement) {
@@ -138,13 +194,13 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -158,7 +214,7 @@ describe("mobile sidebar drawer", () => {
     expect(panel.getAttribute("data-vaul-animate")).toBe("false");
     expect(screen.queryByTestId("sidebar-mobile-backdrop")).not.toBeNull();
 
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -173,19 +229,19 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 270, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 270, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 270, clientY: 124 }),
@@ -203,7 +259,7 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
@@ -214,13 +270,13 @@ describe("mobile sidebar drawer", () => {
       vi.advanceTimersByTime(50);
     });
 
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 210, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 210, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 210, clientY: 124 }),
@@ -238,7 +294,7 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
@@ -249,13 +305,13 @@ describe("mobile sidebar drawer", () => {
       vi.advanceTimersByTime(20);
     });
 
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 190, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 190, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 190, clientY: 124 }),
@@ -272,13 +328,13 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 236, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 236, clientY: 124 }),
@@ -288,7 +344,7 @@ describe("mobile sidebar drawer", () => {
     const panel = getSidebarPanel();
     expect(panel.style.transform).toContain("translate3d(-");
 
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 236, clientY: 124 }),
@@ -320,19 +376,19 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness({ withTrigger: true });
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 236, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 236, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 236, clientY: 124 }),
@@ -370,19 +426,19 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -412,19 +468,19 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness({ withTrigger: true });
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -458,13 +514,13 @@ describe("mobile sidebar drawer", () => {
     const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
     expect(backdrop.getAttribute("data-state")).toBe("closed");
 
-    fireEvent.touchStart(backdrop, {
+    fireTouchStart(backdrop, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -488,13 +544,13 @@ describe("mobile sidebar drawer", () => {
     const closingPanel = getSidebarPanel();
     expect(closingPanel.getAttribute("data-state")).toBe("closed");
 
-    fireEvent.touchStart(document.documentElement, {
+    fireTouchStart(document.documentElement, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -541,13 +597,13 @@ describe("mobile sidebar drawer", () => {
   it("does not reopen from the document root without a closing sidebar", () => {
     renderSidebarHarness();
 
-    fireEvent.touchStart(document.body, {
+    fireTouchStart(document.body, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -562,13 +618,13 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const content = screen.getByText("Main content");
 
-    fireEvent.touchStart(content, {
+    fireTouchStart(content, {
       touches: createTouchList(createTouch({ clientX: 10, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 10, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 140, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 140, clientY: 124 }),
@@ -590,13 +646,13 @@ describe("mobile sidebar drawer", () => {
       clientX: 160,
       clientY: 120,
     });
-    fireEvent.touchStart(inset, {
+    fireTouchStart(inset, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 236, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 236, clientY: 124 }),
@@ -657,13 +713,13 @@ describe("mobile sidebar drawer", () => {
     makeElementHorizontallyScrollable(scroller);
     const wideContent = screen.getByText("Wide content");
 
-    fireEvent.touchStart(wideContent, {
+    fireTouchStart(wideContent, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 310, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 310, clientY: 124 }),
@@ -684,19 +740,19 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness();
     const inset = screen.getByTestId("sidebar-inset");
 
-    fireEvent.touchStart(inset, {
+    fireTouchStart(inset, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 166, clientY: 170 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 166, clientY: 170 }),
       ),
     });
-    fireEvent.touchEnd(window, {
+    fireTouchEnd(window, {
       touches: createTouchList(),
       changedTouches: createTouchList(
         createTouch({ clientX: 166, clientY: 170 }),
@@ -710,13 +766,13 @@ describe("mobile sidebar drawer", () => {
   it("opens from button-like main content", () => {
     renderSidebarHarness({ withInteractiveContent: true });
 
-    fireEvent.touchStart(screen.getByRole("button", { name: "Main action" }), {
+    fireTouchStart(screen.getByRole("button", { name: "Main action" }), {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 260, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 260, clientY: 124 }),
@@ -729,13 +785,13 @@ describe("mobile sidebar drawer", () => {
   it("ignores swipe gestures that start on text inputs", () => {
     renderSidebarHarness({ withTextInput: true });
 
-    fireEvent.touchStart(screen.getByRole("textbox", { name: "Main input" }), {
+    fireTouchStart(screen.getByRole("textbox", { name: "Main input" }), {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 260, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 260, clientY: 124 }),
@@ -750,13 +806,13 @@ describe("mobile sidebar drawer", () => {
     renderSidebarHarness({ isCompactViewport: false });
     const inset = screen.getByTestId("sidebar-inset");
 
-    fireEvent.touchStart(inset, {
+    fireTouchStart(inset, {
       touches: createTouchList(createTouch({ clientX: 160, clientY: 120 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 160, clientY: 120 }),
       ),
     });
-    fireEvent.touchMove(window, {
+    fireTouchMove(window, {
       touches: createTouchList(createTouch({ clientX: 260, clientY: 124 })),
       changedTouches: createTouchList(
         createTouch({ clientX: 260, clientY: 124 }),
