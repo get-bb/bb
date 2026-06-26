@@ -7,6 +7,7 @@ import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
 import {
   createExitTrailingBlockquoteBreakTransaction,
   createInsertParagraphBeforeBlockquoteTransaction,
+  createRemoveEmptyBlockquotesTransaction,
 } from "./prompt-editor-blockquote";
 
 const schema = getSchema([
@@ -171,5 +172,51 @@ describe("createInsertParagraphBeforeBlockquoteTransaction", () => {
     );
 
     expect(createInsertParagraphBeforeBlockquoteTransaction(state)).toBeNull();
+  });
+});
+
+describe("createRemoveEmptyBlockquotesTransaction", () => {
+  it("removes an empty blockquote left after cutting quote text", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [{ type: "paragraph" }],
+          },
+        ],
+      },
+      2,
+    );
+
+    const transaction = createRemoveEmptyBlockquotesTransaction(state);
+    expect(transaction).not.toBeNull();
+    const nextState = state.apply(transaction!);
+
+    expect(nextState.doc.toString()).toBe("doc(paragraph)");
+    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("");
+  });
+
+  it("keeps non-empty blockquotes", () => {
+    const state = stateFromJson(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "quote" }],
+              },
+            ],
+          },
+        ],
+      },
+      2,
+    );
+
+    expect(createRemoveEmptyBlockquotesTransaction(state)).toBeNull();
   });
 });

@@ -69,10 +69,45 @@ export function createExitTrailingBlockquoteBreakTransaction(
     .scrollIntoView();
 }
 
+export function createRemoveEmptyBlockquotesTransaction(
+  state: EditorState,
+): Transaction | null {
+  const paragraphType = state.schema.nodes.paragraph;
+  if (!paragraphType) return null;
+
+  const ranges: Array<{ from: number; to: number }> = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === "blockquote" && node.textContent.length === 0) {
+      ranges.push({ from: pos, to: pos + node.nodeSize });
+    }
+  });
+  if (ranges.length === 0) return null;
+
+  let transaction = state.tr;
+  for (const range of [...ranges].reverse()) {
+    const from = transaction.mapping.map(range.from);
+    const to = transaction.mapping.map(range.to);
+    if (from === 0 && to === transaction.doc.content.size) {
+      transaction = transaction.replaceWith(from, to, paragraphType.create());
+    } else {
+      transaction = transaction.delete(from, to);
+    }
+  }
+
+  return transaction.docChanged ? transaction.scrollIntoView() : null;
+}
+
 export function exitTrailingBlockquoteBreak(editor: Editor): boolean {
   const transaction = createExitTrailingBlockquoteBreakTransaction(
     editor.state,
   );
+  if (transaction === null) return false;
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+export function removeEmptyBlockquotes(editor: Editor): boolean {
+  const transaction = createRemoveEmptyBlockquotesTransaction(editor.state);
   if (transaction === null) return false;
   editor.view.dispatch(transaction);
   return true;

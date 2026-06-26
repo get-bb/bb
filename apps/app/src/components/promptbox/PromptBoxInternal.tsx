@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
@@ -67,6 +67,7 @@ import {
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
+  promptEditorValueFromSlice,
   parsePromptEditorMentionAttrs,
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
@@ -74,6 +75,7 @@ import {
 import {
   exitTrailingBlockquoteBreak,
   insertParagraphBeforeBlockquote,
+  removeEmptyBlockquotes,
 } from "./editor/prompt-editor-blockquote";
 import { exitHeading } from "./editor/prompt-editor-heading";
 import { applyPromptListNewline } from "./editor/prompt-editor-list";
@@ -504,6 +506,36 @@ function promptEditorValueFromPlainText(
   );
 }
 
+function promptEditorSliceHasBlockquote(slice: Slice): boolean {
+  let hasBlockquote = false;
+  slice.content.descendants((node) => {
+    if (node.type.name === "blockquote") {
+      hasBlockquote = true;
+      return false;
+    }
+    return true;
+  });
+  return hasBlockquote;
+}
+
+function plainTextHasQuoteLine(text: string): boolean {
+  return normalizePastedPlainText(text)
+    .split("\n")
+    .some((line) => line === ">" || line.startsWith("> "));
+}
+
+function trimTrailingPromptNewlines(value: PromptEditorValue): PromptEditorValue {
+  const text = value.text.replace(/\n+$/u, "");
+  if (text.length === value.text.length) {
+    return value;
+  }
+
+  return {
+    text,
+    mentions: value.mentions.filter((mention) => mention.end <= text.length),
+  };
+}
+
 function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
@@ -655,6 +687,15 @@ function promptEditorValueFromClipboardPaste(
   }
 
   return promptEditorValueFromRichHtml(html).value;
+}
+
+function runAfterClipboardCut(callback: () => void): void {
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(callback);
+    return;
+  }
+
+  setTimeout(callback, 0);
 }
 
 function revealPromptEditorSelection({
@@ -1241,6 +1282,14 @@ export function PromptBoxInternal({
             onCommandQueryChange(null);
             return false;
           },
+          cut: () => {
+            runAfterClipboardCut(() => {
+              const currentEditor = editorRef.current;
+              if (!currentEditor || currentEditor.isDestroyed) return;
+              removeEmptyBlockquotes(currentEditor);
+            });
+            return false;
+          },
           click: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
           },
@@ -1254,7 +1303,7 @@ export function PromptBoxInternal({
         handleKeyDown: (_view, event) => {
           return handleEditorKeyDownRef.current(event);
         },
-        handlePaste: (_view, event) => {
+        handlePaste: (view, event, slice) => {
           const attachFiles = onAttachFilesRef.current;
           const clipboardItems = Array.from(event.clipboardData?.items ?? []);
           const pastedFiles = clipboardItems
@@ -1265,6 +1314,35 @@ export function PromptBoxInternal({
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
             void attachFiles(pastedFiles);
+            return true;
+          }
+
+          const plainText = event.clipboardData?.getData("text/plain") ?? "";
+          const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
+          if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
+            event.preventDefault();
+            const pastedValue = trimTrailingPromptNewlines(
+              sliceHasBlockquote
+                ? promptEditorValueFromSlice(slice, view.state.schema)
+                : promptEditorValueFromPlainText(plainText, promptActions),
+            );
+            if (pastedValue.text.length === 0) return true;
+
+            const currentEditor = editorRef.current;
+            const pastedContent =
+              promptEditorContentFromValue(pastedValue).content ?? [];
+            currentEditor
+              ?.chain()
+              .focus()
+              .insertContent(pastedContent)
+              .run();
+            if (currentEditor && !currentEditor.isDestroyed) {
+              const nextValue = trimTrailingPromptNewlines(
+                promptEditorValueFromDoc(currentEditor.state.doc),
+              );
+              editorValueKeyRef.current = promptEditorValueKey(nextValue);
+              onChangeRef.current(nextValue.text, nextValue.mentions);
+            }
             return true;
           }
 

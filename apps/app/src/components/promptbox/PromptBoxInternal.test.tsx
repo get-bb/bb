@@ -238,10 +238,24 @@ async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
 }
 
 function pastePlainText(text: string) {
+  pasteClipboard({ plainText: text });
+}
+
+function pasteClipboard({
+  html = "",
+  plainText = "",
+}: {
+  html?: string;
+  plainText?: string;
+}) {
   fireEvent.paste(getPromptEditorElement(), {
     clipboardData: {
       items: [],
-      getData: (type: string) => (type === "text/plain" ? text : ""),
+      getData: (type: string) => {
+        if (type === "text/html") return html;
+        if (type === "text/plain") return plainText;
+        return "";
+      },
     },
   });
 }
@@ -428,6 +442,19 @@ describe("PromptBoxInternal zen mode layout", () => {
 });
 
 describe("PromptBoxInternal prompt actions", () => {
+  it("preserves blockquote structure when pasting copied blockquote html", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({
+      html: "<blockquote><p>quoted</p></blockquote>",
+      plainText: "> quoted",
+    });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
+    expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
   it("places prompt actions before the right-side action cluster", () => {
     renderPromptBox("");
 

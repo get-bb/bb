@@ -150,6 +150,22 @@ describe("prompt editor clipboard serialization", () => {
       ]),
     ).toBe("first\nsecond");
   });
+
+  it("copies a blockquote without adding a trailing blank line", () => {
+    expect(
+      clipboardText([
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "quoted" }],
+            },
+          ],
+        },
+      ]),
+    ).toBe("> quoted");
+  });
 });
 
 describe("prompt editor markdown serialization (doc -> markdown text)", () => {
