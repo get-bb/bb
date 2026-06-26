@@ -69,12 +69,13 @@ interface PendingPaths {
 
 /** In-flight / errored tracking for the active target, keyed by path. */
 interface InFlightState {
-  loading: ReadonlySet<string>;
+  /** Eviction generation captured when the fetch for a path started. */
+  loading: ReadonlyMap<string, number>;
   errors: ReadonlyMap<string, string>;
 }
 
 const EMPTY_IN_FLIGHT: InFlightState = {
-  loading: new Set(),
+  loading: new Map(),
   errors: new Map(),
 };
 
@@ -214,9 +215,9 @@ export function useEnvironmentDiffPatches(
       // patch cache is evicted (a content edit, ref move, or reconnect) while
       // this request is in flight, the generation advances and the resolved
       // response is dropped — re-seeding the just-cleared cache here would leave
-      // a pre-edit patch that nothing re-requests. Clearing the paths from
-      // `loading` without caching lets the panel's already-re-fired
-      // `requestPaths` dispatch re-fetch them fresh.
+      // a pre-edit patch. A newer `requestPaths` dispatch can start a fresh
+      // fetch because `loading` is generation-tagged; clearing below only
+      // releases this stale generation if no newer fetch has taken over.
       const evictionGeneration = getDiffPatchEvictionGeneration(environmentId);
       const controller = new AbortController();
       abortControllersRef.current.add(controller);
@@ -238,7 +239,9 @@ export function useEnvironmentDiffPatches(
         if (
           getDiffPatchEvictionGeneration(environmentId) !== evictionGeneration
         ) {
-          setInFlight((previous) => clearLoading(previous, paths));
+          setInFlight((previous) =>
+            clearLoading(previous, paths, evictionGeneration),
+          );
           return;
         }
         if (response.outcome === "available") {
@@ -251,11 +254,21 @@ export function useEnvironmentDiffPatches(
           // list fetch) is settled to a terminal error, not left idle — otherwise
           // it would be re-requested on every scroll tick.
           setInFlight((previous) =>
-            settlePage({ previous, paths, returnedPaths }),
+            settlePage({
+              previous,
+              paths,
+              loadingGeneration: evictionGeneration,
+              returnedPaths,
+            }),
           );
         } else {
           setInFlight((previous) =>
-            settlePage({ previous, paths, error: patchPageError(response) }),
+            settlePage({
+              previous,
+              paths,
+              loadingGeneration: evictionGeneration,
+              error: patchPageError(response),
+            }),
           );
         }
       } catch (caught) {
@@ -270,13 +283,20 @@ export function useEnvironmentDiffPatches(
         if (
           getDiffPatchEvictionGeneration(environmentId) !== evictionGeneration
         ) {
-          setInFlight((previous) => clearLoading(previous, paths));
+          setInFlight((previous) =>
+            clearLoading(previous, paths, evictionGeneration),
+          );
           return;
         }
         const message =
           extractErrorMessage(caught) ?? "Failed to load file diff";
         setInFlight((previous) =>
-          settlePage({ previous, paths, error: message }),
+          settlePage({
+            previous,
+            paths,
+            loadingGeneration: evictionGeneration,
+            error: message,
+          }),
         );
       } finally {
         abortControllersRef.current.delete(controller);
@@ -297,11 +317,19 @@ export function useEnvironmentDiffPatches(
     }
     const ordered = dedupeOrderedPaths(pendingPathsRef.current);
 
+    const currentEvictionGeneration =
+      getDiffPatchEvictionGeneration(environmentId);
     const toFetch = ordered.filter((path) => {
       if (readDiffPatchEntry({ queryClient, identity, path }) !== undefined) {
         return false;
       }
-      if (inFlightRef.current.loading.has(path)) {
+      if (
+        isLoadingForCurrentGeneration(
+          inFlightRef.current.loading,
+          path,
+          currentEvictionGeneration,
+        )
+      ) {
         return false;
       }
       if (inFlightRef.current.errors.has(path)) {
@@ -314,7 +342,9 @@ export function useEnvironmentDiffPatches(
       return;
     }
 
-    setInFlight((previous) => markLoading(previous, toFetch));
+    setInFlight((previous) =>
+      markLoading(previous, toFetch, currentEvictionGeneration),
+    );
 
     for (const page of chunkPaths(toFetch)) {
       void fetchPage(page, targetIdentity);
@@ -352,10 +382,13 @@ export function useEnvironmentDiffPatches(
   const loadPathNow = useCallback(
     (path: string) => {
       const generationTarget = targetIdentityRef.current;
-      setInFlight((previous) => markLoading(previous, [path]));
+      const loadingGeneration = getDiffPatchEvictionGeneration(environmentId);
+      setInFlight((previous) =>
+        markLoading(previous, [path], loadingGeneration),
+      );
       void fetchPage([path], generationTarget);
     },
-    [fetchPage],
+    [environmentId, fetchPage],
   );
 
   const retry = useCallback(
@@ -375,14 +408,18 @@ export function useEnvironmentDiffPatches(
         return;
       }
       if (
-        inFlightRef.current.loading.has(path) ||
+        isLoadingForCurrentGeneration(
+          inFlightRef.current.loading,
+          path,
+          getDiffPatchEvictionGeneration(environmentId),
+        ) ||
         inFlightRef.current.errors.has(path)
       ) {
         return;
       }
       loadPathNow(path);
     },
-    [queryClient, identity, loadPathNow],
+    [environmentId, queryClient, identity, loadPathNow],
   );
 
   const getPatchState = useCallback(
@@ -422,14 +459,27 @@ export function useEnvironmentDiffPatches(
 function markLoading(
   previous: InFlightState,
   paths: string[],
+  loadingGeneration: number,
 ): InFlightState {
-  const loading = new Set(previous.loading);
+  const loading = new Map(previous.loading);
   const errors = new Map(previous.errors);
   for (const path of paths) {
-    loading.add(path);
+    loading.set(path, loadingGeneration);
     errors.delete(path);
   }
   return { loading, errors };
+}
+
+function isLoadingForCurrentGeneration(
+  loading: ReadonlyMap<string, number>,
+  path: string,
+  currentEvictionGeneration: number,
+): boolean {
+  const loadingGeneration = loading.get(path);
+  return (
+    loadingGeneration !== undefined &&
+    loadingGeneration >= currentEvictionGeneration
+  );
 }
 
 /**
@@ -443,6 +493,8 @@ const MISSING_PATCH_MESSAGE = "No diff was available for this file.";
 interface SettlePageArgs {
   previous: InFlightState;
   paths: string[];
+  /** Eviction generation captured when this page started loading. */
+  loadingGeneration: number;
   /** Page-level error: a thrown request, or a non-`available` outcome. */
   error?: string;
   /** For an `available` page: the paths the server actually returned. */
@@ -452,13 +504,16 @@ interface SettlePageArgs {
 function settlePage({
   previous,
   paths,
+  loadingGeneration,
   error,
   returnedPaths,
 }: SettlePageArgs): InFlightState {
-  const loading = new Set(previous.loading);
+  const loading = new Map(previous.loading);
   const errors = new Map(previous.errors);
   for (const path of paths) {
-    loading.delete(path);
+    if (loading.get(path) === loadingGeneration) {
+      loading.delete(path);
+    }
     if (error !== undefined) {
       errors.set(path, error);
     } else if (returnedPaths !== undefined && !returnedPaths.has(path)) {
@@ -481,19 +536,24 @@ function clearError(previous: InFlightState, path: string): InFlightState {
 
 /**
  * Release paths from `loading` without caching or erroring them — used when a
- * mid-flight eviction supersedes a fetch, so the panel's re-fired `requestPaths`
- * dispatch re-fetches them fresh (a still-`loading` path is skipped).
+ * mid-flight eviction supersedes a fetch. Only the matching stale generation is
+ * cleared; a newer fetch for the same path remains loading.
  */
 function clearLoading(
   previous: InFlightState,
   paths: string[],
+  loadingGeneration: number,
 ): InFlightState {
-  if (!paths.some((path) => previous.loading.has(path))) {
+  if (
+    !paths.some((path) => previous.loading.get(path) === loadingGeneration)
+  ) {
     return previous;
   }
-  const loading = new Set(previous.loading);
+  const loading = new Map(previous.loading);
   for (const path of paths) {
-    loading.delete(path);
+    if (loading.get(path) === loadingGeneration) {
+      loading.delete(path);
+    }
   }
   return { loading, errors: previous.errors };
 }

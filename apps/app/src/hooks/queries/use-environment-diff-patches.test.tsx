@@ -165,6 +165,76 @@ describe("useEnvironmentDiffPatches", () => {
     );
   });
 
+  it("starts a fresh fetch when a visible path is re-requested after eviction while an older fetch is still loading", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+
+    const stalePatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+stale\n",
+      truncated: false,
+    };
+    const freshPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+fresh\n",
+      truncated: false,
+    };
+
+    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    vi.mocked(api.getEnvironmentDiffPatches)
+      .mockReturnValueOnce(firstFetch.promise)
+      .mockResolvedValueOnce(availableResponse(freshPatch));
+
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH).status).toBe("loading");
+    });
+
+    act(() => {
+      removeEnvironmentDiffPatchQueries({
+        environmentId: ENVIRONMENT_ID,
+        queryClient,
+      });
+    });
+
+    // The TOC refetch can report the same visible path before the stale request
+    // resolves. That must start a second fetch instead of being deduped against
+    // the pre-eviction loading entry.
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      const state = result.current.getPatchState(PATH);
+      expect(state.status).toBe("loaded");
+      expect(state.patch).toBe(freshPatch.patch);
+    });
+
+    await act(async () => {
+      firstFetch.resolve(availableResponse(stalePatch));
+      await firstFetch.promise;
+    });
+
+    expect(result.current.getPatchState(PATH)).toMatchObject({
+      status: "loaded",
+      patch: freshPatch.patch,
+    });
+    expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(
+      freshPatch,
+    );
+  });
+
   it("drops a fetch resolving after an all-environment (reconnect) eviction, even for a never-individually-evicted env", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
 
