@@ -1,13 +1,13 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
-interface SelectionAnchorPoint {
+export interface SelectionAnchorPoint {
   x: number;
   y: number;
 }
 
-type SelectionAnchorSide = "top" | "bottom";
+export type SelectionAnchorSide = "top" | "bottom";
 
-interface SelectionAnchor {
+export interface SelectionAnchor {
   point: SelectionAnchorPoint;
   side: SelectionAnchorSide;
 }
@@ -124,7 +124,7 @@ function toMessageProseSelection({
   return selection;
 }
 
-function anchorPointFromMouseEvent(
+export function anchorPointFromMouseEvent(
   event: Pick<MouseEvent, "clientX" | "clientY">,
 ): SelectionAnchorPoint | null {
   if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
@@ -133,7 +133,7 @@ function anchorPointFromMouseEvent(
   return { x: event.clientX, y: event.clientY };
 }
 
-function selectionAnchorFromPointerRelease(
+export function selectionAnchorFromPointerRelease(
   startPoint: SelectionAnchorPoint | null,
   releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
 ): SelectionAnchor | null {
@@ -152,7 +152,10 @@ function selectionAnchorFromPointerRelease(
   };
 }
 
-function isEventTargetWithinNode(event: Event, node: HTMLElement | null): boolean {
+function isEventTargetWithinNode(
+  event: Event,
+  node: HTMLElement | null,
+): boolean {
   if (node === null || !(event.target instanceof Node)) return false;
   return node.contains(event.target);
 }
@@ -303,7 +306,8 @@ export function SelectableMessageProse({
         return;
       }
       const clickAnchor =
-        selectionAnchorFromPointerRelease(null, event) ?? lastPointerReleaseAnchor;
+        selectionAnchorFromPointerRelease(null, event) ??
+        lastPointerReleaseAnchor;
       if (event.detail === 2) {
         scheduleAfterMultiClickDelay(clickAnchor);
         return;

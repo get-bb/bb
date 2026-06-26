@@ -6,7 +6,13 @@ import {
   type ReactNode,
 } from "react";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
-import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
+import {
+  anchorPointFromMouseEvent,
+  selectionAnchorFromPointerRelease,
+  type MessageProseSelection,
+  type SelectionAnchor,
+  type SelectionAnchorPoint,
+} from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 
 interface SecondaryPanelSelectionActionsProps {
@@ -14,18 +20,6 @@ interface SecondaryPanelSelectionActionsProps {
   className?: string;
   onSelectionAddToChat?: (text: string) => void;
 }
-
-interface SelectionAnchorPoint {
-  x: number;
-  y: number;
-}
-
-interface SelectionAnchor {
-  point: SelectionAnchorPoint;
-  side: "top" | "bottom";
-}
-
-const SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 function firstClientRect(range: Range): DOMRect | null {
   const rects = range.getClientRects();
@@ -40,34 +34,6 @@ function firstClientRect(range: Range): DOMRect | null {
   }
   const rect = range.getBoundingClientRect();
   return rect.width > 0 || rect.height > 0 ? rect : null;
-}
-
-function anchorPointFromMouseEvent(
-  event: Pick<MouseEvent, "clientX" | "clientY">,
-): SelectionAnchorPoint | null {
-  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-    return null;
-  }
-  return { x: event.clientX, y: event.clientY };
-}
-
-function selectionAnchorFromPointerRelease(
-  startPoint: SelectionAnchorPoint | null,
-  releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
-): SelectionAnchor | null {
-  const releasePoint = anchorPointFromMouseEvent(releaseEvent);
-  if (releasePoint === null) {
-    return null;
-  }
-
-  return {
-    point: releasePoint,
-    side:
-      startPoint !== null &&
-      releasePoint.y - startPoint.y > SELECTION_DRAG_DIRECTION_THRESHOLD_PX
-        ? "bottom"
-        : "top",
-  };
 }
 
 function isEventTargetWithinNode(
@@ -200,15 +166,19 @@ export function SecondaryPanelSelectionActions({
       pointerIsDownRef.current = true;
     };
     const handlePointerRelease = (event: PointerEvent | MouseEvent) => {
-      const anchor = pointerStartedInNodeRef.current
-        ? selectionAnchorFromPointerRelease(pointerStartPointRef.current, event)
-        : null;
+      const anchor =
+        pointerStartedInNodeRef.current && pointerStartPointRef.current !== null
+          ? selectionAnchorFromPointerRelease(
+              pointerStartPointRef.current,
+              event,
+            )
+          : null;
       if (anchor !== null) {
         lastPointerReleaseAnchorRef.current = anchor;
       }
       pointerIsDownRef.current = false;
       pointerStartPointRef.current = null;
-      scheduleReport(anchor);
+      scheduleReport(anchor ?? lastPointerReleaseAnchorRef.current);
     };
     const handlePointerCancel = () => {
       pointerIsDownRef.current = false;

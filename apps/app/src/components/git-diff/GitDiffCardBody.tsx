@@ -738,46 +738,6 @@ function getDiffShadowRoots(containerElement: HTMLElement | null) {
     .filter((root) => root !== null);
 }
 
-function anchorPointFromElement(element: Element): { x: number; y: number } {
-  const rect = element.getBoundingClientRect();
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
-}
-
-function resolveDiffDomSelectionAnchorPoint({
-  containerElement,
-}: {
-  containerElement: HTMLElement | null;
-}): { x: number; y: number } | null {
-  for (const root of getDiffShadowRoots(containerElement)) {
-    const utilityButton = root.querySelector("[data-utility-button]");
-    if (utilityButton !== null) {
-      return anchorPointFromElement(utilityButton);
-    }
-  }
-
-  for (const root of getDiffShadowRoots(containerElement)) {
-    const selectedNumber = root.querySelector(
-      "[data-selected-line][data-column-number]",
-    );
-    if (selectedNumber !== null) {
-      return anchorPointFromElement(selectedNumber);
-    }
-    const selectedLine = root.querySelector("[data-selected-line][data-line]");
-    if (selectedLine !== null) {
-      const rect = selectedLine.getBoundingClientRect();
-      return {
-        x: rect.left,
-        y: rect.top + rect.height / 2,
-      };
-    }
-  }
-
-  return null;
-}
-
 function getDiffDomLineSide(lineElement: HTMLElement): SelectionSide {
   const codeElement = lineElement.closest("[data-deletions],[data-additions]");
   if (codeElement?.hasAttribute("data-deletions")) {
@@ -931,7 +891,6 @@ function GitDiffCardRawDiffBody({
     containerRef,
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
-    resolveAnchorPoint: resolveDiffDomSelectionAnchorPoint,
   });
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
