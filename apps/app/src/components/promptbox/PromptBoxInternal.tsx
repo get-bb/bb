@@ -1001,6 +1001,7 @@ export function PromptBoxInternal({
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
   const promptActionFocusFrameRef = useRef<number | null>(null);
+  const pendingFocusEndRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef(value);
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
@@ -1310,6 +1311,15 @@ export function PromptBoxInternal({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  useLayoutEffect(() => {
+    if (!editor) return;
+    if (!pendingFocusEndRef.current) return;
+
+    pendingFocusEndRef.current = false;
+    focusEditorAtEnd(editor);
+    scheduleRevealEditorSelection();
+  }, [editor, scheduleRevealEditorSelection]);
 
   useLayoutEffect(() => {
     placeholderRef.current = placeholder;
@@ -1718,7 +1728,11 @@ export function PromptBoxInternal({
 
   const focusEnd = useCallback(() => {
     const currentEditor = editorRef.current;
-    if (!currentEditor || currentEditor.isDestroyed) return;
+    if (!currentEditor || currentEditor.isDestroyed) {
+      pendingFocusEndRef.current = true;
+      return;
+    }
+    pendingFocusEndRef.current = false;
     focusEditorAtEnd(currentEditor);
     scheduleRevealEditorSelection();
   }, [scheduleRevealEditorSelection]);

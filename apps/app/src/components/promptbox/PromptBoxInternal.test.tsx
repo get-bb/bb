@@ -120,10 +120,22 @@ function PromptBoxRaceHarness({
     <PromptBoxInternal
       {...createPromptBoxProps({
         onChange,
-        promptBoxRef,
         value,
       })}
+      promptBoxRef={promptBoxRef}
     />
+  );
+}
+
+function PromptBoxFocusOnMountHarness() {
+  const promptBoxRef = useRef<PromptBoxHandle | null>(null);
+
+  useLayoutEffect(() => {
+    promptBoxRef.current?.focusEnd();
+  }, []);
+
+  return (
+    <PromptBoxInternal {...createPromptBoxProps()} promptBoxRef={promptBoxRef} />
   );
 }
 
@@ -234,6 +246,23 @@ function pastePlainText(text: string) {
   });
 }
 
+function mockPointerCoarse(matches: boolean): () => void {
+  const originalMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+  return () => {
+    window.matchMedia = originalMatchMedia;
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -286,6 +315,31 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
+  it("honors early focusEnd requests once the editor is ready", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      render(<PromptBoxFocusOnMountHarness />);
+
+      await waitForPromptFocus();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("skips passive autofocus on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      render(<PromptBoxInternal {...createPromptBoxProps()} />);
+
+      await waitFor(() =>
+        expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("applies an added quote before focus-end insertion can edit the old document", () => {
     const onChange = vi.fn();
     const view = render(

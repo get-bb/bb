@@ -61,6 +61,7 @@ import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Button } from "@/components/ui/button.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
@@ -813,6 +814,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
+  const isPointerCoarse = usePointerCoarse();
   const [rootComposeFolderId, setRootComposeFolderId] = useState<string | null>(
     () => readFolderIdFromLocationState(location.state),
   );
@@ -1454,11 +1456,12 @@ export function RootComposeView(props: RootComposeViewProps) {
 
   useEffect(() => {
     if (!shouldFocusPrompt) return;
+    if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
-  }, [location.key, shouldFocusPrompt]);
+  }, [isPointerCoarse, location.key, shouldFocusPrompt]);
 
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
@@ -2765,8 +2768,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   // Focus the composer once it mounts in place of the welcome screen.
   useEffect(() => {
     if (!startedComposing) return;
-    promptBoxRef.current?.focusEnd();
-  }, [startedComposing]);
+    if (isPointerCoarse) return;
+    const handle = window.requestAnimationFrame(() => {
+      promptBoxRef.current?.focusEnd();
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [isPointerCoarse, startedComposing]);
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
