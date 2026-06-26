@@ -36,9 +36,14 @@ export interface ExecFileResult {
   stdout: string;
 }
 
+export interface ExecFileOptions {
+  env?: NodeJS.ProcessEnv;
+}
+
 export type ExecFileHandler = (
   file: string,
   args: string[],
+  options?: ExecFileOptions,
 ) => Promise<ExecFileResult>;
 
 export interface WorkspaceOpenTargetRuntime {
@@ -58,6 +63,7 @@ export interface MacApplicationLaunchAdapter {
   bundleIds: string[];
   builtIn: boolean;
   fileOpenCommand?: MacFileOpenCommandAdapter;
+  jetBrainsToolbox?: MacJetBrainsToolboxAdapter;
   lineOpenCommand?: MacLineOpenCommandAdapter;
   localTerminalOpenCommand?: MacLocalTerminalOpenCommandAdapter;
   openMode: "application";
@@ -81,6 +87,7 @@ export interface LaunchAdapter {
 
 export interface ExecFileInvocation {
   args: string[];
+  env?: NodeJS.ProcessEnv;
   file: string;
 }
 
@@ -104,6 +111,7 @@ export interface BuildMacTerminalOpenArgs {
 
 export interface BuildMacLocalTerminalOpenArgs extends BuildMacTerminalOpenArgs {
   editorCommand: string | null;
+  shellPath: string;
 }
 
 export interface BuildMacRemoteSshOpenArgs {
@@ -114,12 +122,14 @@ export interface BuildMacRemoteSshOpenArgs {
 }
 
 export interface MacLineOpenCommandAdapter {
+  bundledExecutable?: MacBundledExecutableAdapter;
   executable: string;
   supportsColumn: boolean;
   toArgs: (args: BuildMacLineOpenArgs) => string[];
 }
 
 export interface MacPathOpenCommandAdapter {
+  bundledExecutable?: MacBundledExecutableAdapter;
   executable: string;
   toArgs: (path: string) => string[];
 }
@@ -135,10 +145,23 @@ export interface MacLocalTerminalOpenCommandAdapter {
 }
 
 export interface MacRemoteSshOpenCommandAdapter {
+  bundledExecutable?: MacBundledExecutableAdapter;
   capabilities: WorkspaceOpenTargetCapabilities;
   executable: string;
   requiredExecutables?: string[];
   toArgs: (args: BuildMacRemoteSshOpenArgs) => string[];
+}
+
+export interface MacBundledExecutableAdapter {
+  relativeExecutablePath: string[];
+  requiredRelativePaths?: string[][];
+  toArgsPrefix?: (appPath: string) => string[];
+  toEnv?: (env: NodeJS.ProcessEnv | undefined) => NodeJS.ProcessEnv;
+}
+
+export interface MacJetBrainsToolboxAdapter {
+  bundlePrefixes: string[];
+  executable: string;
 }
 
 export interface PlatformOpenInvocationArgs {

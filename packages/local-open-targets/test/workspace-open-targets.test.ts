@@ -12,6 +12,7 @@ type ExecFileHandler = WorkspaceOpenTargetRuntime["execFile"];
 
 interface ExecFileCall {
   args: string[];
+  env?: NodeJS.ProcessEnv;
   file: string;
 }
 
@@ -71,8 +72,12 @@ function createAvailableExecFile(
   const fileAssociatedMacApplications =
     args.fileAssociatedMacApplications ?? [];
 
-  return async (file, commandArgs) => {
-    args.calls?.push({ file, args: commandArgs });
+  return async (file, commandArgs, options) => {
+    const call: ExecFileCall = { file, args: commandArgs };
+    if (options?.env !== undefined) {
+      call.env = options.env;
+    }
+    args.calls?.push(call);
 
     if (file === "mdfind") {
       if (commandArgs.join(" ").includes("kMDItemContentType")) {
@@ -672,6 +677,74 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("uses Cursor's bundled macOS CLI when the shell command is unavailable", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "bb-workspace-open-targets-"),
+    );
+    const applicationsDirectory = path.join(root, "Applications");
+    const cursorAppPath = path.join(applicationsDirectory, "Cursor.app");
+    const cursorExecutable = path.join(
+      cursorAppPath,
+      "Contents",
+      "MacOS",
+      "Cursor",
+    );
+    const cursorCli = path.join(
+      cursorAppPath,
+      "Contents",
+      "Resources",
+      "app",
+      "out",
+      "cli.js",
+    );
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(path.dirname(cursorExecutable), { recursive: true });
+      await mkdir(path.dirname(cursorCli), { recursive: true });
+      await writeFile(cursorExecutable, "");
+      await writeFile(cursorCli, "");
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "cursor",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          env: {
+            NODE_OPTIONS: "--inspect",
+            NODE_REPL_EXTERNAL_MODULE: "repl-module",
+          },
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === cursorExecutable)).toEqual({
+        file: cursorExecutable,
+        args: [cursorCli, "-g", `${filePath}:15:6`],
+        env: expect.objectContaining({
+          ELECTRON_RUN_AS_NODE: "1",
+          VSCODE_NODE_OPTIONS: "--inspect",
+          VSCODE_NODE_REPL_EXTERNAL_MODULE: "repl-module",
+        }),
+      });
+      expect(
+        calls.find((call) => call.file === cursorExecutable)?.env,
+      ).not.toHaveProperty("NODE_OPTIONS");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("discovers Warp from the macOS application bundle", async () => {
     const root = await mkdtemp(
       path.join(tmpdir(), "bb-workspace-open-targets-"),
@@ -1011,6 +1084,77 @@ describe("workspace open targets", () => {
     }
   });
 
+  it("discovers and opens JetBrains Toolbox applications through bundled executables", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-jetbrains-toolbox-"));
+    const homeDirectory = path.join(root, "home");
+    const webStormAppPath = path.join(
+      homeDirectory,
+      "Library",
+      "Application Support",
+      "JetBrains",
+      "Toolbox",
+      "apps",
+      "WebStorm",
+      "ch-0",
+      "241.1",
+      "WebStorm.app",
+    );
+    const webStormExecutable = path.join(
+      webStormAppPath,
+      "Contents",
+      "MacOS",
+      "webstorm",
+    );
+    const workspacePath = path.join(root, "workspace");
+    const filePath = path.join(workspacePath, "src", "file.ts");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(path.dirname(webStormExecutable), { recursive: true });
+      await writeFile(webStormExecutable, "");
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "export const value = 1;\n");
+
+      const targets = await listWorkspaceOpenTargetsWithRuntime(
+        createRuntime({
+          env: { HOME: homeDirectory },
+          execFile,
+        }),
+      );
+      expect(targets.find((target) => target.id === "webstorm")).toMatchObject({
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+        label: "WebStorm",
+      });
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: "webstorm",
+        },
+        createRuntime({
+          env: { HOME: homeDirectory },
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === webStormExecutable)).toEqual({
+        file: webStormExecutable,
+        args: ["--line", "15", "--column", "6", filePath],
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   it("falls back when app-provided icons exceed the contract size limit", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "bb-open-target-icon-"));
     const appPath = path.join(root, "Visual Studio Code.app");
@@ -1059,6 +1203,54 @@ describe("workspace open targets", () => {
       expect(targets.find((target) => target.id === "vscode")).toMatchObject({
         icon: { kind: "builtin", name: "vscode" },
         label: "VS Code",
+      });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("opens Xcode files through xed with the enclosing project container", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-xcode-open-"));
+    const applicationsDirectory = path.join(root, "Applications");
+    const xcodeAppPath = path.join(applicationsDirectory, "Xcode.app");
+    const xedPath = path.join(
+      xcodeAppPath,
+      "Contents",
+      "Developer",
+      "usr",
+      "bin",
+      "xed",
+    );
+    const workspacePath = path.join(root, "workspace");
+    const xcodeWorkspacePath = path.join(workspacePath, "App.xcworkspace");
+    const filePath = path.join(workspacePath, "Sources", "App", "File.swift");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({ calls });
+
+    try {
+      await mkdir(path.dirname(xedPath), { recursive: true });
+      await writeFile(xedPath, "");
+      await mkdir(xcodeWorkspacePath, { recursive: true });
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "let value = 1\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 4,
+          lineNumber: 22,
+          path: filePath,
+          targetId: "xcode",
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
+
+      expect(calls.find((call) => call.file === xedPath)).toEqual({
+        file: xedPath,
+        args: ["--project", xcodeWorkspacePath, "--line", "22", filePath],
       });
     } finally {
       await rm(root, { force: true, recursive: true });
@@ -1630,12 +1822,13 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("opens local files in Ghostty by passing a local editor script to the app", async () => {
+  it("opens local files in Ghostty with a resolved terminal editor command", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
+      availableExecutables: ["vim"],
       calls,
     });
 
@@ -1658,13 +1851,45 @@ describe("workspace open targets", () => {
         file: "open",
         args: [
           "-na",
-          "Ghostty",
+          "Ghostty.app",
           "--args",
           "-e",
-          "/bin/sh",
+          "/bin/zsh",
           "-lc",
-          expect.stringContaining(filePath),
+          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
         ],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("opens local files in Ghostty at the containing directory when no terminal editor is available", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "README.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableBundleIdSubstrings: ["com.mitchellh.ghostty"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Test\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 4,
+          lineNumber: 22,
+          path: filePath,
+          targetId: "ghostty",
+        },
+        createRuntime({ execFile }),
+      );
+
+      expect(calls.find((call) => call.file === "open")).toEqual({
+        file: "open",
+        args: ["-a", "Ghostty", workspacePath],
       });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });

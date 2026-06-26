@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
   FILE_MANAGER_OPEN_CAPABILITIES,
@@ -13,10 +15,19 @@ import {
   buildMacTerminalRemoteSshOpenArgs,
 } from "./terminal.js";
 import type {
+  MacBundledExecutableAdapter,
   BuildMacLineOpenArgs,
   BuildMacRemoteSshOpenArgs,
   LaunchAdapter,
 } from "./types.js";
+
+const CURSOR_CLI_JS_RELATIVE_PATH = [
+  "Contents",
+  "Resources",
+  "app",
+  "out",
+  "cli.js",
+];
 
 function formatPathWithLineNumber(args: BuildMacLineOpenArgs): string {
   return args.columnNumber === null
@@ -25,7 +36,14 @@ function formatPathWithLineNumber(args: BuildMacLineOpenArgs): string {
 }
 
 function formatJetBrainsLineOpenArgs(args: BuildMacLineOpenArgs): string[] {
-  return ["--line", String(args.lineNumber), args.path];
+  return [
+    "--line",
+    String(args.lineNumber),
+    ...(args.columnNumber === null
+      ? []
+      : ["--column", String(args.columnNumber)]),
+    args.path,
+  ];
 }
 
 function formatZedRemoteSshUri(args: BuildMacRemoteSshOpenArgs): string {
@@ -38,6 +56,43 @@ function formatZedRemoteSshUri(args: BuildMacRemoteSshOpenArgs): string {
   return args.columnNumber === null
     ? `${uri}:${args.lineNumber}`
     : `${uri}:${args.lineNumber}:${args.columnNumber}`;
+}
+
+function buildCursorCliEnv(
+  env: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv {
+  const cursorEnv: NodeJS.ProcessEnv = { ...(env ?? process.env) };
+  cursorEnv.VSCODE_NODE_OPTIONS = cursorEnv.NODE_OPTIONS;
+  cursorEnv.VSCODE_NODE_REPL_EXTERNAL_MODULE =
+    cursorEnv.NODE_REPL_EXTERNAL_MODULE;
+  delete cursorEnv.NODE_OPTIONS;
+  delete cursorEnv.NODE_REPL_EXTERNAL_MODULE;
+  cursorEnv.ELECTRON_RUN_AS_NODE = "1";
+  return cursorEnv;
+}
+
+const CURSOR_BUNDLED_EXECUTABLE: MacBundledExecutableAdapter = {
+  relativeExecutablePath: ["Contents", "MacOS", "Cursor"],
+  requiredRelativePaths: [CURSOR_CLI_JS_RELATIVE_PATH],
+  toArgsPrefix: (appPath) => [
+    path.join(appPath, ...CURSOR_CLI_JS_RELATIVE_PATH),
+  ],
+  toEnv: buildCursorCliEnv,
+};
+
+function jetBrainsBundledExecutable(
+  executable: string,
+): MacBundledExecutableAdapter {
+  return {
+    relativeExecutablePath: ["Contents", "MacOS", executable],
+  };
+}
+
+function jetBrainsToolbox(
+  executable: string,
+  ...bundlePrefixes: string[]
+): { bundlePrefixes: string[]; executable: string } {
+  return { bundlePrefixes, executable };
 }
 
 export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
@@ -137,15 +192,18 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       bundleIds: ["com.todesktop.230313mzl4w4u92"],
       builtIn: false,
       lineOpenCommand: {
+        bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
         executable: "cursor",
         supportsColumn: true,
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
       },
       pathOpenCommand: {
+        bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
         executable: "cursor",
         toArgs: (path) => [path],
       },
       remoteSshOpenCommand: {
+        bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
         capabilities: FULL_FILE_OPEN_CAPABILITIES,
         executable: "cursor",
         toArgs: (args) => [
@@ -321,19 +379,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "IntelliJ IDEA",
       bundleIds: ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("idea", "intellij idea"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("idea"),
         executable: "idea",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("idea"),
         executable: "idea",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "pycharm",
     kind: "editor",
@@ -344,19 +405,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "PyCharm",
       bundleIds: ["com.jetbrains.pycharm", "com.jetbrains.pycharm.ce"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("pycharm", "pycharm"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("pycharm"),
         executable: "pycharm",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("pycharm"),
         executable: "pycharm",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "webstorm",
     kind: "editor",
@@ -367,19 +431,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "WebStorm",
       bundleIds: ["com.jetbrains.WebStorm"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("webstorm", "webstorm"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("webstorm"),
         executable: "webstorm",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("webstorm"),
         executable: "webstorm",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "goland",
     kind: "editor",
@@ -390,19 +457,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "GoLand",
       bundleIds: ["com.jetbrains.goland"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("goland", "goland"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("goland"),
         executable: "goland",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("goland"),
         executable: "goland",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "rider",
     kind: "editor",
@@ -413,19 +483,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Rider",
       bundleIds: ["com.jetbrains.rider"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("rider", "rider"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("rider"),
         executable: "rider",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("rider"),
         executable: "rider",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "rustrover",
     kind: "editor",
@@ -436,19 +509,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "RustRover",
       bundleIds: ["com.jetbrains.rustrover"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("rustrover", "rustrover"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("rustrover"),
         executable: "rustrover",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("rustrover"),
         executable: "rustrover",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "phpstorm",
     kind: "editor",
@@ -459,19 +535,22 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "PhpStorm",
       bundleIds: ["com.jetbrains.PhpStorm"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("phpstorm", "phpstorm"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("phpstorm"),
         executable: "phpstorm",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("phpstorm"),
         executable: "phpstorm",
         toArgs: (path) => [path],
       },
     },
   },
   {
-    capabilities: LINE_ONLY_FILE_OPEN_CAPABILITIES,
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "symbol", name: "app" },
     id: "android-studio",
     kind: "editor",
@@ -482,12 +561,15 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Android Studio",
       bundleIds: ["com.google.android.studio"],
       builtIn: false,
+      jetBrainsToolbox: jetBrainsToolbox("studio", "android studio"),
       lineOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("studio"),
         executable: "studio",
-        supportsColumn: false,
+        supportsColumn: true,
         toArgs: formatJetBrainsLineOpenArgs,
       },
       pathOpenCommand: {
+        bundledExecutable: jetBrainsBundledExecutable("studio"),
         executable: "studio",
         toArgs: (path) => [path],
       },
@@ -566,6 +648,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             lineNumber: args.lineNumber,
             path: args.path,
             pathType: args.pathType,
+            shellPath: args.shellPath,
           }),
       },
       remoteSshOpenCommand: {
@@ -605,6 +688,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
             lineNumber: args.lineNumber,
             path: args.path,
             pathType: args.pathType,
+            shellPath: args.shellPath,
           }),
       },
       remoteSshOpenCommand: {
@@ -639,9 +723,11 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
         toArgs: (args) =>
           buildMacGhosttyLocalOpenArgs({
             columnNumber: args.columnNumber,
+            editorCommand: args.editorCommand,
             lineNumber: args.lineNumber,
             path: args.path,
             pathType: args.pathType,
+            shellPath: args.shellPath,
           }),
       },
       remoteSshOpenCommand: {

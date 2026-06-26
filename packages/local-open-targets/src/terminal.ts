@@ -249,14 +249,24 @@ export function buildMacTerminalRemoteSshOpenArgs(
 }
 
 export function buildMacGhosttyLocalOpenArgs(
-  args: BuildMacTerminalOpenArgs,
+  args: BuildMacLocalTerminalOpenArgs,
 ): string[] {
+  if (args.pathType === "directory" || args.editorCommand === null) {
+    return [
+      "-a",
+      "Ghostty",
+      args.pathType === "directory" ? args.path : path.dirname(args.path),
+    ];
+  }
+
   return [
     "-na",
-    "Ghostty",
+    "Ghostty.app",
     "--args",
     "-e",
-    ...buildLocalTerminalShellArgs(args),
+    args.shellPath,
+    "-lc",
+    buildMacTerminalLocalCommand(args),
   ];
 }
 
