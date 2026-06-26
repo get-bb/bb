@@ -29,6 +29,7 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
 import {
   findActiveItemIds,
+  selectTocRailItems,
   ThreadTableOfContents,
   type TocItem,
 } from "./ThreadTableOfContents";
@@ -176,6 +177,14 @@ const agentItems: TocItem[] = [
   { id: "agent-2", label: "Second response", role: "assistant" },
 ];
 
+function manyUserItems(count: number): TocItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `user-${index + 1}`,
+    label: `Question ${index + 1}`,
+    role: "user",
+  }));
+}
+
 let scrollElement: HTMLElement;
 let scrollElementIntoView: ReturnType<typeof vi.fn>;
 
@@ -209,6 +218,33 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+
+describe("selectTocRailItems", () => {
+  it("caps long thread rails to evenly sampled markers", () => {
+    const items = manyUserItems(50);
+
+    const railItems = selectTocRailItems({ activeId: null, items });
+
+    expect(railItems).toHaveLength(20);
+    expect(railItems.at(0)?.id).toBe("user-1");
+    expect(railItems.at(-1)?.id).toBe("user-50");
+    expect(railItems.map((item) => item.id)).not.toEqual(
+      items.slice(0, 20).map((item) => item.id),
+    );
+  });
+
+  it("keeps the active marker when the rail is capped", () => {
+    const items = manyUserItems(50);
+
+    const railItems = selectTocRailItems({
+      activeId: "user-20",
+      items,
+    });
+
+    expect(railItems).toHaveLength(20);
+    expect(railItems.map((item) => item.id)).toContain("user-20");
+  });
 });
 
 describe("ThreadTableOfContents", () => {

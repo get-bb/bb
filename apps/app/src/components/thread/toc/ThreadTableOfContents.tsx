@@ -39,6 +39,7 @@ const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
 const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 // Only worth showing once the conversation has enough user turns to navigate.
 const TOC_MIN_USER_MESSAGES = 3;
+const TOC_MAX_RAIL_TICKS = 20;
 // Hard stop so a pagination bug can never spin the jump loop forever.
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
@@ -90,6 +91,49 @@ function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
     label: item.preview || toAttachmentSummaryLabel(item.attachmentSummary),
     role: item.role,
   };
+}
+
+export function selectTocRailItems({
+  activeId,
+  items,
+}: {
+  activeId: string | null;
+  items: readonly TocItem[];
+}): readonly TocItem[] {
+  if (items.length <= TOC_MAX_RAIL_TICKS) return items;
+
+  const maxIndex = items.length - 1;
+  const activeIndex =
+    activeId === null ? -1 : items.findIndex((item) => item.id === activeId);
+  const sampledIndices = new Set<number>();
+  for (let slot = 0; slot < TOC_MAX_RAIL_TICKS; slot += 1) {
+    sampledIndices.add(
+      Math.round((slot * maxIndex) / (TOC_MAX_RAIL_TICKS - 1)),
+    );
+  }
+
+  if (activeIndex >= 0) {
+    sampledIndices.add(activeIndex);
+    if (sampledIndices.size > TOC_MAX_RAIL_TICKS) {
+      let removableIndex: number | null = null;
+      let removableDistance = Number.POSITIVE_INFINITY;
+      for (const index of sampledIndices) {
+        if (index === activeIndex || index === 0 || index === maxIndex) {
+          continue;
+        }
+        const distance = Math.abs(index - activeIndex);
+        if (distance < removableDistance) {
+          removableIndex = index;
+          removableDistance = distance;
+        }
+      }
+      if (removableIndex !== null) sampledIndices.delete(removableIndex);
+    }
+  }
+
+  return Array.from(sampledIndices)
+    .sort((a, b) => a - b)
+    .map((index) => items[index]);
 }
 
 function TocPanelTab({
@@ -346,6 +390,10 @@ export function ThreadTableOfContents({
   const activeTab = tab === "agent" && hasAgentMessages ? "agent" : "user";
   const items = activeTab === "user" ? userItems : agentItems;
   const activeId = activeTab === "user" ? activeUserId : activeAgentId;
+  const railItems = useMemo(
+    () => selectTocRailItems({ activeId: activeUserId, items: userItems }),
+    [activeUserId, userItems],
+  );
 
   // Mirror the latest pagination props into refs so the async jump loop always
   // reads current values rather than the ones captured when the click fired.
@@ -413,8 +461,7 @@ export function ThreadTableOfContents({
     };
   }, [bottomAnchor, scheduleActiveItemsUpdate, tocVisible]);
 
-  // Keep the active tick visible when the rail overflows (long threads make the
-  // full-history rail taller than the viewport).
+  // Keep the active tick visible if the rail overflows in constrained layouts.
   useEffect(() => {
     if (!tocVisible) return;
     const container = railRef.current;
@@ -433,9 +480,9 @@ export function ThreadTableOfContents({
           container.scrollTop + (elRect.bottom - (containerRect.bottom - pad)),
       });
     }
-    // `userItems` is a dep so the active tick re-centers when the rail content
+    // `railItems` is a dep so the active tick re-centers when the rail content
     // swaps (e.g. the full outline replacing the loaded-window fallback).
-  }, [activeUserId, tocVisible, userItems]);
+  }, [activeUserId, railItems, tocVisible]);
 
   useEffect(() => {
     if (!tocVisible) return;
@@ -538,7 +585,7 @@ export function ThreadTableOfContents({
             aria-hidden
             className="no-scrollbar flex max-h-[calc(100vh-7rem)] w-8 cursor-pointer flex-col items-center gap-2 overflow-y-auto py-2"
           >
-            {userItems.map((item) => (
+            {railItems.map((item) => (
               <span
                 key={item.id}
                 ref={(node) => {
