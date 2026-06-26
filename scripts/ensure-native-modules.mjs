@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,33 @@ export const nativeModules = [
 
 function formatThrownValue(err) {
   return err instanceof Error ? err.message : String(err);
+}
+
+function formatChildProcessFailure(err) {
+  const details = [formatThrownValue(err).split("\n")[0]];
+  if (err && typeof err === "object") {
+    if ("status" in err && err.status !== null && err.status !== undefined) {
+      details.push(`exit status: ${String(err.status)}`);
+    }
+    if ("signal" in err && err.signal !== null && err.signal !== undefined) {
+      details.push(`signal: ${String(err.signal)}`);
+    }
+
+    for (const streamName of ["stdout", "stderr"]) {
+      const output = err[streamName];
+      if (output === undefined || output === null) continue;
+
+      const text = Buffer.isBuffer(output)
+        ? output.toString("utf8")
+        : String(output);
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        details.push(`${streamName}: ${trimmed}`);
+      }
+    }
+  }
+
+  return details.join("\n");
 }
 
 export function verifyNativeModule(name, requireModule) {
@@ -29,11 +56,22 @@ function shouldRebuildNativeModule(errorMessage) {
   );
 }
 
+function getRepairableNativeModuleError(name, requireModule) {
+  try {
+    verifyNativeModule(name, requireModule);
+    return null;
+  } catch (err) {
+    const message = formatThrownValue(err);
+    if (!shouldRebuildNativeModule(message)) throw err;
+    return message;
+  }
+}
+
 export function ensureNativeModules({
   repoRoot = defaultRepoRoot,
   modules = nativeModules,
   createRequire: createRequireImpl = createRequire,
-  execSync: execSyncImpl = execSync,
+  execFileSync: execFileSyncImpl = execFileSync,
   log = console.log,
 } = {}) {
   for (const { name, resolveFrom } of modules) {
@@ -44,21 +82,78 @@ export function ensureNativeModules({
       const message = formatThrownValue(err);
       if (!shouldRebuildNativeModule(message)) throw err;
 
-      const pkgDir = dirname(requireModule.resolve(`${name}/package.json`));
+      const pkgJsonPath = requireModule.resolve(`${name}/package.json`);
+      const pkgDir = dirname(pkgJsonPath);
+      const pkgRequire = createRequireImpl(pkgJsonPath);
       log(
-        `[ensure-native-modules] Rebuilding ${name} for Node ${process.versions.node} (ABI ${process.versions.modules})`,
+        `[ensure-native-modules] Installing prebuilt ${name} for Node ${process.versions.node} (ABI ${process.versions.modules})`,
       );
-      execSyncImpl("npx --yes node-gyp rebuild", {
-        cwd: pkgDir,
-        stdio: "inherit",
-      });
-
+      let prebuildInstalled = false;
       try {
-        verifyNativeModule(name, requireModule);
-      } catch (verifyErr) {
+        execFileSyncImpl(
+          process.execPath,
+          [pkgRequire.resolve("prebuild-install/bin.js")],
+          {
+            cwd: pkgDir,
+            encoding: "utf8",
+            env: { ...process.env, npm_config_loglevel: "info" },
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+        prebuildInstalled = true;
+      } catch (prebuildErr) {
+        const message = formatChildProcessFailure(prebuildErr);
+        log(
+          `[ensure-native-modules] Prebuilt ${name} unavailable or unusable: ${message}`,
+        );
+      }
+
+      const prebuildVerifyError = getRepairableNativeModuleError(
+        name,
+        requireModule,
+      );
+      if (prebuildVerifyError === null) {
+        if (!prebuildInstalled) {
+          log(
+            `[ensure-native-modules] Prebuilt ${name} loaded despite installer failure`,
+          );
+        }
+        continue;
+      }
+
+      if (prebuildInstalled) {
+        log(
+          `[ensure-native-modules] Prebuilt ${name} failed to load: ${prebuildVerifyError}`,
+        );
+      } else {
+        log(
+          `[ensure-native-modules] Prebuilt ${name} still failed to load: ${prebuildVerifyError}`,
+        );
+      }
+
+      log(
+        `[ensure-native-modules] Rebuilding ${name} from source for Node ${process.versions.node} (ABI ${process.versions.modules})`,
+      );
+      execFileSyncImpl(
+        process.execPath,
+        [
+          pkgRequire.resolve("node-gyp/bin/node-gyp.js"),
+          "rebuild",
+          "--release",
+        ],
+        {
+          cwd: pkgDir,
+          stdio: "inherit",
+        },
+      );
+
+      const rebuildVerifyError = getRepairableNativeModuleError(
+        name,
+        requireModule,
+      );
+      if (rebuildVerifyError !== null) {
         throw new Error(
-          `[ensure-native-modules] ${name} still failed to load after rebuild: ${formatThrownValue(verifyErr)}`,
-          { cause: verifyErr },
+          `[ensure-native-modules] ${name} still failed to load after rebuild: ${rebuildVerifyError}`,
         );
       }
     }

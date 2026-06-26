@@ -34,11 +34,19 @@ function createBetterSqliteRequire(initialError) {
   }
 
   requireModule.resolve = (request) => {
-    if (request !== "better-sqlite3/package.json") {
-      throw new Error(`Unexpected resolve: ${request}`);
+    if (request === "better-sqlite3/package.json") {
+      return "/tmp/fake-node-modules/better-sqlite3/package.json";
     }
 
-    return "/tmp/fake-node-modules/better-sqlite3/package.json";
+    if (request === "prebuild-install/bin.js") {
+      return "/tmp/fake-node-modules/prebuild-install/bin.js";
+    }
+
+    if (request === "node-gyp/bin/node-gyp.js") {
+      return "/tmp/fake-node-modules/node-gyp/bin/node-gyp.js";
+    }
+
+    throw new Error(`Unexpected resolve: ${request}`);
   };
 
   return {
@@ -50,14 +58,14 @@ function createBetterSqliteRequire(initialError) {
   };
 }
 
-function createEnsureOptions(fakeRequire, execSync) {
+function createEnsureOptions(fakeRequire, execFileSync) {
   return {
     repoRoot: "/repo",
     modules: [
       { name: "better-sqlite3", resolveFrom: "packages/db/package.json" },
     ],
     createRequire: () => fakeRequire,
-    execSync,
+    execFileSync,
     log: vi.fn(),
   };
 }
@@ -77,44 +85,166 @@ describe("ensure-native-modules", () => {
     expect(state.constructorCalls).toBe(1);
   });
 
-  it("rechecks better-sqlite3 after a rebuild succeeds", () => {
+  it("rechecks better-sqlite3 after installing a prebuilt binary", () => {
     const abiError = new Error(
       "The module was compiled against a different NODE_MODULE_VERSION",
     );
     const fake = createBetterSqliteRequire(abiError);
-    const execSync = vi.fn(() => {
+    const execFileSync = vi.fn(() => {
       fake.clearConstructorError();
     });
 
     expect(() =>
-      ensureNativeModules(createEnsureOptions(fake.requireModule, execSync)),
+      ensureNativeModules(
+        createEnsureOptions(fake.requireModule, execFileSync),
+      ),
     ).not.toThrow();
 
-    expect(execSync).toHaveBeenCalledWith("npx --yes node-gyp rebuild", {
-      cwd: "/tmp/fake-node-modules/better-sqlite3",
-      stdio: "inherit",
-    });
+    expect(execFileSync).toHaveBeenCalledWith(
+      process.execPath,
+      ["/tmp/fake-node-modules/prebuild-install/bin.js"],
+      expect.objectContaining({
+        cwd: "/tmp/fake-node-modules/better-sqlite3",
+        encoding: "utf8",
+        env: expect.objectContaining({ npm_config_loglevel: "info" }),
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    expect(execFileSync).toHaveBeenCalledTimes(1);
     expect(fake.state.constructorCalls).toBe(2);
   });
 
-  it("rebuilds better-sqlite3 when the native binding is missing", () => {
+  it("accepts a prebuilt binary that loads after the installer exits non-zero", () => {
+    const abiError = new Error(
+      "The module was compiled against a different NODE_MODULE_VERSION",
+    );
+    const fake = createBetterSqliteRequire(abiError);
+    const prebuildError = Object.assign(
+      new Error("Command failed: prebuild-install"),
+      {
+        status: 1,
+        stderr:
+          "prebuild-install info unpack resolved to /tmp/fake-node-modules/better-sqlite3/build/Release/better_sqlite3.node\n",
+      },
+    );
+    const execFileSync = vi.fn((nodePath, args) => {
+      if (args[0] === "/tmp/fake-node-modules/prebuild-install/bin.js") {
+        fake.clearConstructorError();
+        throw prebuildError;
+      }
+      throw new Error(`Unexpected command: ${args.join(" ")}`);
+    });
+    const options = createEnsureOptions(fake.requireModule, execFileSync);
+
+    expect(() => ensureNativeModules(options)).not.toThrow();
+
+    expect(execFileSync).toHaveBeenCalledTimes(1);
+    expect(fake.state.constructorCalls).toBe(2);
+    expect(options.log).toHaveBeenCalledWith(
+      "[ensure-native-modules] Prebuilt better-sqlite3 loaded despite installer failure",
+    );
+  });
+
+  it("falls back to a source rebuild when prebuild repair fails", () => {
     const missingBindingError = new Error(
       "Could not locate the bindings file. Tried: build/Release/better_sqlite3.node",
     );
     const fake = createBetterSqliteRequire(missingBindingError);
-    const execSync = vi.fn(() => {
+    const prebuildError = Object.assign(
+      new Error("Command failed: prebuild-install"),
+      {
+        status: 1,
+        stderr:
+          "prebuild-install info install --build-from-source specified, not attempting download.\n",
+      },
+    );
+    const execFileSync = vi.fn((nodePath, args) => {
+      if (args[0] === "/tmp/fake-node-modules/prebuild-install/bin.js") {
+        throw prebuildError;
+      }
       fake.clearConstructorError();
+    });
+    const options = createEnsureOptions(fake.requireModule, execFileSync);
+
+    expect(() => ensureNativeModules(options)).not.toThrow();
+
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      1,
+      process.execPath,
+      ["/tmp/fake-node-modules/prebuild-install/bin.js"],
+      expect.objectContaining({
+        cwd: "/tmp/fake-node-modules/better-sqlite3",
+        encoding: "utf8",
+        env: expect.objectContaining({ npm_config_loglevel: "info" }),
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      2,
+      process.execPath,
+      [
+        "/tmp/fake-node-modules/node-gyp/bin/node-gyp.js",
+        "rebuild",
+        "--release",
+      ],
+      {
+        cwd: "/tmp/fake-node-modules/better-sqlite3",
+        stdio: "inherit",
+      },
+    );
+    expect(fake.state.constructorCalls).toBe(3);
+    expect(options.log).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "stderr: prebuild-install info install --build-from-source specified",
+      ),
+    );
+    expect(options.log).toHaveBeenCalledWith(
+      expect.stringContaining("Prebuilt better-sqlite3 still failed to load"),
+    );
+  });
+
+  it("rebuilds from source when an installed prebuild is still ABI-mismatched", () => {
+    const abiError = new Error(
+      "The module was compiled against a different NODE_MODULE_VERSION",
+    );
+    const fake = createBetterSqliteRequire(abiError);
+    const execFileSync = vi.fn((nodePath, args) => {
+      if (args[0] === "/tmp/fake-node-modules/node-gyp/bin/node-gyp.js") {
+        fake.clearConstructorError();
+      }
     });
 
     expect(() =>
-      ensureNativeModules(createEnsureOptions(fake.requireModule, execSync)),
+      ensureNativeModules(
+        createEnsureOptions(fake.requireModule, execFileSync),
+      ),
     ).not.toThrow();
 
-    expect(execSync).toHaveBeenCalledWith("npx --yes node-gyp rebuild", {
-      cwd: "/tmp/fake-node-modules/better-sqlite3",
-      stdio: "inherit",
-    });
-    expect(fake.state.constructorCalls).toBe(2);
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      1,
+      process.execPath,
+      ["/tmp/fake-node-modules/prebuild-install/bin.js"],
+      expect.objectContaining({
+        cwd: "/tmp/fake-node-modules/better-sqlite3",
+        encoding: "utf8",
+        env: expect.objectContaining({ npm_config_loglevel: "info" }),
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      2,
+      process.execPath,
+      [
+        "/tmp/fake-node-modules/node-gyp/bin/node-gyp.js",
+        "rebuild",
+        "--release",
+      ],
+      {
+        cwd: "/tmp/fake-node-modules/better-sqlite3",
+        stdio: "inherit",
+      },
+    );
+    expect(fake.state.constructorCalls).toBe(3);
   });
 
   it("exits non-zero when the post-rebuild instantiation still fails", () => {
@@ -147,7 +277,7 @@ describe("ensure-native-modules", () => {
             repoRoot: "/repo",
             modules: [{ name: "better-sqlite3", resolveFrom: "packages/db/package.json" }],
             createRequire,
-            execSync() {},
+            execFileSync() {},
             log() {},
           });
         `,
