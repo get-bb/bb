@@ -618,7 +618,7 @@ export async function createThreadFromRequest(
         throwEnvironmentNotReady(environment);
       }
       if (environment.status === "provisioning") {
-        requireNonDestroyedHostWithStatus(deps.db, environment.hostId);
+        requireNonDestroyedHostWithStatus(deps, environment.hostId);
       }
       environmentId = environment.id;
       environmentIntent = {

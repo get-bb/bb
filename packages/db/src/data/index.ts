@@ -402,13 +402,10 @@ export type {
 export {
   openSession,
   closeSession,
-  getActiveSession,
-  getActiveSessionById,
   getLatestSessionForHost,
-  getMostRecentlyUpdatedConnectedHostId,
+  getSessionById,
   heartbeatSession,
   listLatestSessionsForHosts,
-  listConnectedHostIds,
 } from "./sessions.js";
 export type {
   GetLatestSessionForHostArgs,
@@ -460,13 +457,11 @@ export {
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   truncateCompletedEventItemOutputs,
-  sweepExpiredLeases,
   sweepManagedEnvironments,
 } from "./sweeps.js";
 export type {
   PruneClosedSessionsArgs,
   PruneClosedSessionsResult,
-  SweepExpiredLeasesResult,
   TruncateCompletedEventItemOutputsArgs,
   TruncateCompletedEventItemOutputsResult,
 } from "./sweeps.js";

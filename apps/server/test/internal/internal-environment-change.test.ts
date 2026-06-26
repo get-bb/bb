@@ -1,4 +1,5 @@
-import { getEnvironment } from "@bb/db";
+import { getEnvironment, hostDaemonSessions } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { onDaemonSocketMessage } from "../../src/ws/daemon-protocol.js";
 import {
@@ -21,6 +22,36 @@ function createTestDaemonSocket(): TestDaemonSocket {
 }
 
 describe("internal environment change websocket hints", () => {
+  it("renews an active session from a late heartbeat after lease expiry", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-late-heartbeat",
+      });
+      const socket = createTestDaemonSocket();
+      harness.db
+        .update(hostDaemonSessions)
+        .set({ leaseExpiresAt: Date.now() - 1000 })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+
+      onDaemonSocketMessage(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        socket,
+        raw: JSON.stringify({ type: "heartbeat" }),
+      });
+
+      const updatedSession = harness.db
+        .select()
+        .from(hostDaemonSessions)
+        .where(eq(hostDaemonSessions.id, session.id))
+        .get();
+      expect(updatedSession?.status).toBe("active");
+      expect(updatedSession?.leaseExpiresAt).toBeGreaterThan(Date.now());
+      expect(socket.close).not.toHaveBeenCalled();
+    });
+  });
+
   it("does not resolve host RPC waiters from a different daemon session", async () => {
     await withTestHarness(async (harness) => {
       const hostA = seedHostSession(harness.deps, {

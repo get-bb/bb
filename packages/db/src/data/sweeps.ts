@@ -9,7 +9,6 @@ import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
-  hostDaemonSessions,
   environments,
   maintenanceScanCursors,
 } from "../schema.js";
@@ -103,12 +102,6 @@ export interface TruncateCompletedEventItemOutputsResult {
   toolCallResults: number;
   webFetchResultTexts: number;
   webSearchResultTexts: number;
-}
-
-export interface SweepExpiredLeasesResult {
-  expiredHostIds: string[];
-  expiredSessionIds: string[];
-  sessionsClosed: number;
 }
 
 export function pruneClosedSessions(
@@ -336,71 +329,6 @@ export function truncateCompletedEventItemOutputs(
       itemKind: "webSearch",
       outputPath: "resultText",
     }),
-  };
-}
-
-/**
- * Sweep expired leases: sessions past lease timeout.
- * - Close the session (status="closed", closeReason="expired")
- * - Notify host availability changed
- *
- * Returns the closed sessions and hosts so the server can notify runtime
- * display state and close any still-registered sockets.
- */
-export function sweepExpiredLeases(
-  db: DbConnection,
-  notifier: DbNotifier,
-  now?: number,
-): SweepExpiredLeasesResult {
-  const currentTime = now ?? Date.now();
-
-  // Find active sessions past their lease
-  const expiredSessions = db
-    .select()
-    .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.status, "active"),
-        lt(hostDaemonSessions.leaseExpiresAt, currentTime),
-      ),
-    )
-    .all();
-
-  if (expiredSessions.length === 0) {
-    return {
-      expiredHostIds: [],
-      expiredSessionIds: [],
-      sessionsClosed: 0,
-    };
-  }
-
-  db.update(hostDaemonSessions)
-    .set({
-      status: "closed",
-      closedAt: currentTime,
-      closeReason: "expired",
-      updatedAt: currentTime,
-    })
-    .where(
-      inArray(
-        hostDaemonSessions.id,
-        expiredSessions.map((session) => session.id),
-      ),
-    )
-    .run();
-
-  for (const session of expiredSessions) {
-    notifier.notifyHost(session.hostId, ["host-disconnected"]);
-  }
-
-  const expiredHostIds = [
-    ...new Set(expiredSessions.map((session) => session.hostId)),
-  ];
-
-  return {
-    expiredHostIds,
-    expiredSessionIds: expiredSessions.map((session) => session.id),
-    sessionsClosed: expiredSessions.length,
   };
 }
 

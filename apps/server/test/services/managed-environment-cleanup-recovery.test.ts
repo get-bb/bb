@@ -1,5 +1,10 @@
 import { eq } from "drizzle-orm";
-import { createEnvironment, environments, getEnvironment } from "@bb/db";
+import {
+  createEnvironment,
+  environments,
+  getEnvironment,
+  hostDaemonSessions,
+} from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   runEnvironmentCleanupAdvance,
@@ -211,6 +216,45 @@ describe("managed environment cleanup recovery sweep", () => {
         isGitRepo: true,
         managed: true,
         path: "/tmp/git-cleanup-without-merge-base",
+        projectId: project.id,
+        status: "retiring",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      await runEnvironmentCleanupAdvance(harness.deps, {
+        environmentId: environment.id,
+      });
+
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        destroyAttemptId: expect.any(String),
+        status: "destroying",
+      });
+      expect(
+        listQueuedEnvironmentCommands(
+          harness,
+          "environment.destroy",
+          environment.id,
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("advances cleanup when a daemon socket is live but its lease timestamp is stale", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      harness.db
+        .update(hostDaemonSessions)
+        .set({ leaseExpiresAt: Date.now() - 1_000 })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        hostId: host.id,
+        isGitRepo: false,
+        managed: true,
+        path: "/tmp/live-daemon-stale-cleanup-lease",
         projectId: project.id,
         status: "retiring",
         workspaceProvisionType: "managed-worktree",

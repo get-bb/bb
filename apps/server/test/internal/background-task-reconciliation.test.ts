@@ -3,10 +3,7 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
-import {
-  handleDaemonSocketClosed,
-  handleExpiredHostSessionLeases,
-} from "../../src/internal/session-owner-side-effects.js";
+import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import {
   DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
   DAEMON_DISCONNECT_GRACE_MS,
@@ -363,27 +360,6 @@ describe("background-task lifecycle reconciliation triggers", () => {
 
       expect(response.status).toBe(201);
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
-    });
-  });
-
-  it("settles open tasks when the host's session lease expires with no active replacement", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
-
-      // Mirror sweepExpiredLeases: the session row is closed before the
-      // owner-side effects run, and the host never reconnects.
-      closeSession(harness.deps.db, harness.deps.hub, session.id, "expired");
-      handleExpiredHostSessionLeases(harness.deps, {
-        expiredLeases: {
-          expiredHostIds: [host.id],
-          expiredSessionIds: [session.id],
-          sessionsClosed: 1,
-        },
-      });
-
-      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
-        { status: "interrupted", taskStatus: "stopped" },
-      ]);
     });
   });
 

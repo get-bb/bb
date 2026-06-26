@@ -15,6 +15,8 @@ import {
 } from "../../ws/hub.js";
 import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
+const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
+
 export interface CallHostOnlineRpcArgs<
   TCommand extends HostDaemonRpcCommand,
 > {
@@ -70,7 +72,14 @@ async function callHostOnlineRpcWithRetry(
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
   options: { retryOnUnavailable: boolean },
 ): Promise<HostDaemonRpcResultForCommand> {
-  await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
+  await ensureHostSessionReadyForWork(deps, { hostId: args.hostId }).catch(
+    async (error) => {
+      if (!options.retryOnUnavailable || !isHostUnavailableApiError(error)) {
+        throw error;
+      }
+      await waitForRetryableHostRpcTransport(deps, args.hostId);
+    },
+  );
   const response = await requestHostOnlineRpcResponse(deps, args).catch(
     async (error) => {
       if (
@@ -79,7 +88,7 @@ async function callHostOnlineRpcWithRetry(
       ) {
         throwOnlineRpcError(error);
       }
-      await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
+      await waitForRetryableHostRpcTransport(deps, args.hostId);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });
@@ -99,6 +108,26 @@ async function callHostOnlineRpcWithRetry(
   }
 
   return parseHostDaemonRpcResultForCommand(args.command, response.result);
+}
+
+async function waitForRetryableHostRpcTransport(
+  deps: WorkSessionDeps,
+  hostId: string,
+): Promise<void> {
+  if (deps.hub.hasDaemonForHost(hostId)) {
+    await ensureHostSessionReadyForWork(deps, { hostId });
+    return;
+  }
+  await deps.hub.waitForDaemonForHost(hostId, HOST_DAEMON_REGISTRATION_WAIT_MS);
+  await ensureHostSessionReadyForWork(deps, { hostId });
+}
+
+function isHostUnavailableApiError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 502 &&
+    error.body.code === "host_unavailable"
+  );
 }
 
 function requestHostOnlineRpcResponse(

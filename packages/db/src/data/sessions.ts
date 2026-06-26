@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { HostType } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -9,12 +9,8 @@ import { markHostSeen } from "./hosts.js";
 type SessionReadConnection = DbConnection | DbTransaction;
 export type HostDaemonSessionRow = typeof hostDaemonSessions.$inferSelect;
 
-export interface GetActiveSessionByIdArgs {
+export interface GetSessionByIdArgs {
   sessionId: string;
-}
-
-export interface GetMostRecentlyUpdatedConnectedHostIdArgs {
-  hostType?: HostType;
 }
 
 export interface GetLatestSessionForHostArgs {
@@ -130,22 +126,6 @@ export function closeSession(
   return updated ?? null;
 }
 
-export function getActiveSession(db: SessionReadConnection, hostId: string) {
-  return (
-    db
-      .select()
-      .from(hostDaemonSessions)
-      .where(
-        and(
-          eq(hostDaemonSessions.hostId, hostId),
-          eq(hostDaemonSessions.status, "active"),
-          gt(hostDaemonSessions.leaseExpiresAt, Date.now()),
-        ),
-      )
-      .get() ?? null
-  );
-}
-
 export function getLatestSessionForHost(
   db: SessionReadConnection,
   args: GetLatestSessionForHostArgs,
@@ -203,60 +183,17 @@ export function listLatestSessionsForHosts(
     .all();
 }
 
-export function getActiveSessionById(
+export function getSessionById(
   db: SessionReadConnection,
-  args: GetActiveSessionByIdArgs,
+  args: GetSessionByIdArgs,
 ) {
   return (
     db
       .select()
       .from(hostDaemonSessions)
-      .where(
-        and(
-          eq(hostDaemonSessions.id, args.sessionId),
-          eq(hostDaemonSessions.status, "active"),
-          gt(hostDaemonSessions.leaseExpiresAt, Date.now()),
-        ),
-      )
+      .where(eq(hostDaemonSessions.id, args.sessionId))
       .get() ?? null
   );
-}
-
-export function listConnectedHostIds(db: SessionReadConnection): string[] {
-  return db
-    .select({ hostId: hostDaemonSessions.hostId })
-    .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.status, "active"),
-        gt(hostDaemonSessions.leaseExpiresAt, Date.now()),
-      ),
-    )
-    .all()
-    .map((row) => row.hostId);
-}
-
-export function getMostRecentlyUpdatedConnectedHostId(
-  db: SessionReadConnection,
-  args: GetMostRecentlyUpdatedConnectedHostIdArgs = {},
-): string | null {
-  const row = db
-    .select({ hostId: hostDaemonSessions.hostId })
-    .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.status, "active"),
-        gt(hostDaemonSessions.leaseExpiresAt, Date.now()),
-        args.hostType
-          ? eq(hostDaemonSessions.hostType, args.hostType)
-          : undefined,
-      ),
-    )
-    .orderBy(desc(hostDaemonSessions.updatedAt))
-    .limit(1)
-    .get();
-
-  return row?.hostId ?? null;
 }
 
 export function heartbeatSession(

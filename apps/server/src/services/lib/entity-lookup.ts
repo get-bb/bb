@@ -1,15 +1,16 @@
 import {
-  getActiveSession,
   getEnvironment,
   getHost,
   getNonDestroyedHost,
   getProject,
+  getSessionById,
   getThread,
-  listConnectedHostIds,
   listPublicHosts,
+  type HostDaemonSessionRow,
 } from "@bb/db";
 import type { Environment, Host } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
+import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
 import {
   destroyedHostUnavailableDetails,
@@ -26,24 +27,43 @@ type HostRow = NonNullable<ReturnType<typeof getHost>>;
 type ProjectRow = NonNullable<ReturnType<typeof getProject>>;
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 type StandardProject = ProjectRow & { kind: "standard" };
+type HostLookupHub = Pick<NotificationHub, "getDaemonSessionIdForHost">;
+
+interface HostLookupDeps {
+  db: DbConnection;
+  hub: HostLookupHub;
+}
 
 export interface ThreadEnvironmentLookupResult {
   environment: Environment;
   thread: ThreadRow;
 }
 
-function toHostStatus(db: DbConnection, hostId: string): Host["status"] {
-  const host = getNonDestroyedHost(db, hostId);
+function getOpenDaemonSessionForHost(
+  deps: HostLookupDeps,
+  hostId: string,
+): HostDaemonSessionRow | null {
+  const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+  if (!sessionId) {
+    return null;
+  }
+
+  const session = getSessionById(deps.db, { sessionId });
+  if (!session || session.hostId !== hostId || session.status !== "active") {
+    return null;
+  }
+  return session;
+}
+
+function toHostStatus(deps: HostLookupDeps, hostId: string): Host["status"] {
+  const host = getNonDestroyedHost(deps.db, hostId);
   if (!host) {
     return "disconnected";
   }
 
-  const session = getActiveSession(db, hostId);
-  if (session) {
-    return "connected";
-  }
-
-  return "disconnected";
+  return getOpenDaemonSessionForHost(deps, hostId)
+    ? "connected"
+    : "disconnected";
 }
 
 function toHostRecord(row: HostRow, status: Host["status"]): Host {
@@ -66,23 +86,24 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
   return project.kind === "standard";
 }
 
-export function listPublicHostsWithStatus(db: DbConnection): Host[] {
-  const rows = listPublicHosts(db);
-  const connectedHostIds = new Set(listConnectedHostIds(db));
+export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
+  const rows = listPublicHosts(deps.db);
 
   return rows.map((row) =>
     toHostRecord(
       row,
-      connectedHostIds.has(row.id) ? "connected" : "disconnected",
+      getOpenDaemonSessionForHost(deps, row.id)
+        ? "connected"
+        : "disconnected",
     ),
   );
 }
 
 export function requireNonDestroyedHostWithStatus(
-  db: DbConnection,
+  deps: HostLookupDeps,
   hostId: string,
 ): Host {
-  const host = getHost(db, hostId);
+  const host = getHost(deps.db, hostId);
   if (!host) {
     throwHostNotFound();
   }
@@ -93,25 +114,25 @@ export function requireNonDestroyedHostWithStatus(
       destroyedHostUnavailableDetails(host.destroyedAt),
     );
   }
-  return toHostRecord(host, toHostStatus(db, host.id));
+  return toHostRecord(host, toHostStatus(deps, host.id));
 }
 
 export function getNonDestroyedHostWithStatus(
-  db: DbConnection,
+  deps: HostLookupDeps,
   hostId: string,
 ): Host | null {
-  const host = getNonDestroyedHost(db, hostId);
+  const host = getNonDestroyedHost(deps.db, hostId);
   if (!host) {
     return null;
   }
-  return toHostRecord(host, toHostStatus(db, host.id));
+  return toHostRecord(host, toHostStatus(deps, host.id));
 }
 
 export function requireConnectedHostSession(
-  deps: Pick<{ db: DbConnection }, "db">,
+  deps: HostLookupDeps,
   hostId: string,
 ) {
-  const session = getActiveSession(deps.db, hostId);
+  const session = getOpenDaemonSessionForHost(deps, hostId);
   if (!session) {
     const host = getHost(deps.db, hostId);
     if (!host) {
@@ -124,7 +145,7 @@ export function requireConnectedHostSession(
         destroyedHostUnavailableDetails(host.destroyedAt),
       );
     }
-    const hostStatus = toHostStatus(deps.db, hostId);
+    const hostStatus = toHostStatus(deps, hostId);
     throwHostUnavailable(
       502,
       "Host is not connected",

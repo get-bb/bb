@@ -22,7 +22,6 @@ import {
   runIncrementalVacuum,
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
-  sweepExpiredLeases,
   sweepManagedEnvironments,
   threads,
   truncateCompletedEventItemOutputs,
@@ -41,7 +40,6 @@ import {
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
-import { handleExpiredHostSessionLeases } from "../../internal/session-owner-side-effects.js";
 import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
@@ -66,7 +64,6 @@ export type PeriodicSweepJobCategory =
   | "retention"
   | "durable-intent-retry"
   | "orphan-cleanup"
-  | "lifecycle-timeout"
   | "maintenance"
   | "scheduler";
 
@@ -507,13 +504,6 @@ function runClosedSessionPruneSweep(
   });
 }
 
-function runExpiredLeaseSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-): void {
-  const expiredLeases = sweepExpiredLeases(deps.db, deps.hub);
-  handleExpiredHostSessionLeases(deps, { expiredLeases });
-}
-
 function runDestroyedEnvironmentPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): void {
@@ -545,12 +535,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "closed-session-prune",
     run: runClosedSessionPruneSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "lifecycle-timeout",
-    name: "expired-host-session-lease",
-    run: runExpiredLeaseSweep,
   },
   {
     cadenceMs: 0,

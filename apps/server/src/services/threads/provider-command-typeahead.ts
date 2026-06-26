@@ -66,7 +66,7 @@ export interface ResolveCommandWorkspaceArgs {
  * `requireReadyEnvironment`.
  */
 export function resolveCommandWorkspace(
-  deps: Pick<AppDeps, "config" | "db">,
+  deps: Pick<AppDeps, "config" | "db" | "hub">,
   args: ResolveCommandWorkspaceArgs,
 ): CommandWorkspace {
   if (args.environmentId !== null) {

@@ -37,7 +37,7 @@ import {
   type TestAppHarness,
 } from "../helpers/test-app.js";
 import {
-  handleExpiredHostSessionLeases,
+  handleDaemonSocketClosed,
   handleHostSessionOpened,
 } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
@@ -1207,7 +1207,7 @@ describe("public thread terminal routes", () => {
     );
   });
 
-  it("marks running terminals disconnected when their daemon session lease expires", async () => {
+  it("marks running terminals disconnected when their daemon socket closes", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
     const stored = createTerminalSession(fixture.harness.db, {
@@ -1224,12 +1224,8 @@ describe("public thread terminal routes", () => {
     const browserSocket = createFakeBrowserSocket();
     fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
 
-    handleExpiredHostSessionLeases(fixture.harness.deps, {
-      expiredLeases: {
-        expiredHostIds: [fixture.host.id],
-        expiredSessionIds: [fixture.session.id],
-        sessionsClosed: 1,
-      },
+    handleDaemonSocketClosed(fixture.harness.deps, {
+      sessionId: fixture.session.id,
     });
 
     expect(

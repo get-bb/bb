@@ -4,6 +4,8 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResult,
 } from "@bb/host-daemon-contract";
+import { hostDaemonSessions } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -72,6 +74,99 @@ function registerDropThenReplaceSocket(args: DropThenReplaceSocketArgs): void {
 }
 
 describe("host online RPC retry semantics", () => {
+  it("runs a retryable RPC when the daemon websocket is still registered with a stale lease", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-stale-lease-live-socket",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      harness.hub.unregisterDaemon(session.id);
+      const socket: TestHostRpcSocket = {
+        close() {},
+        send(data) {
+          const request = parseHostRpcRequest(data);
+          requests.push(request);
+          harness.hub.recordHostOnlineRpcResponse({
+            sessionId: session.id,
+            message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+              type: "host-rpc.response",
+              requestId: request.requestId,
+              commandType: request.command.type,
+              ok: true,
+              result: { models: [], selectedOnlyModels: [] },
+            }),
+          });
+        },
+      };
+      harness.hub.registerDaemon(session.id, host.id, socket);
+      harness.db
+        .update(hostDaemonSessions)
+        .set({ leaseExpiresAt: Date.now() - 1000 })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+
+      await expect(
+        callHostRetryableOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1_000,
+          command: { type: "provider.list_models", providerId: "codex" },
+        }),
+      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+
+      const updatedSession = harness.db
+        .select()
+        .from(hostDaemonSessions)
+        .where(eq(hostDaemonSessions.id, session.id))
+        .get();
+      expect(updatedSession?.status).toBe("active");
+      expect(requests.map((request) => request.command.type)).toEqual([
+        "provider.list_models",
+      ]);
+    });
+  });
+
+  it("waits briefly for retryable RPCs when the session is active before the daemon websocket registers", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-registration-race",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      harness.hub.unregisterDaemon(session.id);
+
+      setTimeout(() => {
+        const socket: TestHostRpcSocket = {
+          close() {},
+          send(data) {
+            const request = parseHostRpcRequest(data);
+            requests.push(request);
+            harness.hub.recordHostOnlineRpcResponse({
+              sessionId: session.id,
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: request.requestId,
+                commandType: request.command.type,
+                ok: true,
+                result: { models: [], selectedOnlyModels: [] },
+              }),
+            });
+          },
+        };
+        harness.hub.registerDaemon(session.id, host.id, socket);
+      }, 10);
+
+      await expect(
+        callHostRetryableOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1_000,
+          command: { type: "provider.list_models", providerId: "codex" },
+        }),
+      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      expect(requests.map((request) => request.command.type)).toEqual([
+        "provider.list_models",
+      ]);
+    });
+  });
+
   it("retries read-only online RPCs when the current websocket session disappears", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

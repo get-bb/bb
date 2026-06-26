@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getActiveSessionById, hostDaemonSessions } from "@bb/db";
+import { getSessionById, hostDaemonSessions } from "@bb/db";
 import type { DbConnection, HostDaemonSessionRow } from "@bb/db";
 import { ApiError } from "../errors.js";
 import { getAuthenticatedDaemon } from "./auth.js";
@@ -17,15 +17,15 @@ export interface RequireAuthenticatedDaemonSessionArgs {
   sessionId: string;
 }
 
-export type InactiveSessionReason = "active" | "closed" | "expired" | "missing";
+export type InactiveSessionReason = "active" | "closed" | "missing";
 
 export interface InactiveSessionLogFields {
   authenticatedHostId?: string;
   closeReason?: string | null;
   closedAt?: number | null;
-  expiredByMs?: number;
   inactiveSessionReason: InactiveSessionReason;
   leaseExpiresAt?: number;
+  leaseStaleByMs?: number;
   sessionHostId?: string;
   sessionId: string;
   sessionStatus?: string;
@@ -37,21 +37,14 @@ export interface GetInactiveSessionLogFieldsArgs {
   sessionId: string;
 }
 
-export function requireActiveSession(db: DbConnection, sessionId: string) {
-  const session = getActiveSessionById(db, { sessionId });
-
-  if (!session) {
-    throw new ApiError(401, "inactive_session", "Session is not active");
-  }
-
-  return session;
-}
-
-export function requireAuthorizedActiveSession(
+export function requireAuthorizedOpenSession(
   db: DbConnection,
   args: RequireAuthorizedActiveSessionArgs,
 ) {
-  const session = requireActiveSession(db, args.sessionId);
+  const session = getSessionById(db, { sessionId: args.sessionId });
+  if (!session || session.status !== "active") {
+    throw new ApiError(401, "inactive_session", "Session is not active");
+  }
   if (session.hostId !== args.hostId) {
     throw new ApiError(
       403,
@@ -67,7 +60,7 @@ export function requireAuthenticatedDaemonSession(
   args: RequireAuthenticatedDaemonSessionArgs,
 ): HostDaemonSessionRow {
   const daemon = getAuthenticatedDaemon(args.context);
-  return requireAuthorizedActiveSession(args.db, {
+  return requireAuthorizedOpenSession(args.db, {
     hostId: daemon.hostId,
     sessionId: args.sessionId,
   });
@@ -105,22 +98,13 @@ export function getInactiveSessionLogFields(
     };
   }
 
-  if (session.leaseExpiresAt <= args.now) {
-    return {
-      authenticatedHostId: args.authenticatedHostId,
-      expiredByMs: args.now - session.leaseExpiresAt,
-      inactiveSessionReason: "expired",
-      leaseExpiresAt: session.leaseExpiresAt,
-      sessionHostId: session.hostId,
-      sessionId: args.sessionId,
-      sessionStatus: session.status,
-    };
-  }
-
   return {
     authenticatedHostId: args.authenticatedHostId,
     inactiveSessionReason: "active",
     leaseExpiresAt: session.leaseExpiresAt,
+    ...(session.leaseExpiresAt <= args.now
+      ? { leaseStaleByMs: args.now - session.leaseExpiresAt }
+      : {}),
     sessionHostId: session.hostId,
     sessionId: args.sessionId,
     sessionStatus: session.status,

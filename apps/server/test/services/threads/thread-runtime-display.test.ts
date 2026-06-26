@@ -21,10 +21,12 @@ import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
 } from "../../../src/services/threads/thread-runtime-display.js";
+import { NotificationHub } from "../../../src/ws/hub.js";
 
 interface SetupResult {
   db: DbConnection;
   hostId: string;
+  hub: NotificationHub;
 }
 
 interface OpenTestSessionArgs {
@@ -57,12 +59,23 @@ interface CreateThreadListEntryArgs {
 function setup(): SetupResult {
   const db = createConnection(":memory:");
   migrate(db);
+  const hub = new NotificationHub();
   const host = upsertHost(db, noopNotifier, {
     id: "host-runtime-display",
     name: "Runtime Display Host",
     type: "persistent",
   });
-  return { db, hostId: host.id };
+  return { db, hostId: host.id, hub };
+}
+
+function registerTestDaemon(
+  hub: NotificationHub,
+  args: { hostId: string; sessionId: string },
+): void {
+  hub.registerDaemon(args.sessionId, args.hostId, {
+    close() {},
+    send() {},
+  });
 }
 
 function openTestSession(args: OpenTestSessionArgs) {
@@ -143,8 +156,29 @@ function createThreadListEntry(
 }
 
 describe("thread runtime display", () => {
-  it("keeps active threads active while the latest host session is active", () => {
-    const { db, hostId } = setup();
+  it("keeps active threads active while the host daemon websocket is registered", () => {
+    const { db, hostId, hub } = setup();
+    const now = 1_000;
+    const session = openTestSession({
+      db,
+      hostId,
+      leaseExpiresAt: now - 1,
+    });
+    registerTestDaemon(hub, { hostId, sessionId: session.id });
+
+    expect(
+      resolveThreadRuntimeState(
+        { db, hub },
+        { environmentHostId: hostId, now, status: "active" },
+      ),
+    ).toEqual({
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    } satisfies ThreadRuntimeState);
+  });
+
+  it("does not treat a fresh lease as active without a registered daemon websocket", () => {
+    const { db, hostId, hub } = setup();
     const now = 1_000;
     openTestSession({
       db,
@@ -154,17 +188,17 @@ describe("thread runtime display", () => {
 
     expect(
       resolveThreadRuntimeState(
-        { db },
+        { db, hub },
         { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
-      displayStatus: "active",
+      displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });
 
   it("shows host-reconnecting while a daemon disconnect is inside the grace period", () => {
-    const { db, hostId } = setup();
+    const { db, hostId, hub } = setup();
     const now = 10_000;
     const session = openTestSession({ db, hostId });
     closeTestSession({
@@ -175,7 +209,7 @@ describe("thread runtime display", () => {
 
     expect(
       resolveThreadRuntimeState(
-        { db },
+        { db, hub },
         { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
@@ -185,7 +219,7 @@ describe("thread runtime display", () => {
   });
 
   it("shows waiting-for-host after the daemon disconnect grace period expires", () => {
-    const { db, hostId } = setup();
+    const { db, hostId, hub } = setup();
     const now = 10_000;
     const session = openTestSession({ db, hostId });
     closeTestSession({
@@ -196,7 +230,7 @@ describe("thread runtime display", () => {
 
     expect(
       resolveThreadRuntimeState(
-        { db },
+        { db, hub },
         { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
@@ -206,11 +240,11 @@ describe("thread runtime display", () => {
   });
 
   it("uses the thread status directly for non-active statuses", () => {
-    const { db, hostId } = setup();
+    const { db, hostId, hub } = setup();
 
     expect(
       resolveThreadRuntimeState(
-        { db },
+        { db, hub },
         { environmentHostId: hostId, now: 1_000, status: "idle" },
       ),
     ).toEqual({
@@ -220,11 +254,11 @@ describe("thread runtime display", () => {
   });
 
   it("does not require a host id for active threads without an environment host", () => {
-    const { db } = setup();
+    const { db, hub } = setup();
 
     expect(
       resolveThreadRuntimeState(
-        { db },
+        { db, hub },
         { environmentHostId: null, now: 1_000, status: "active" },
       ),
     ).toEqual({
@@ -233,14 +267,15 @@ describe("thread runtime display", () => {
     } satisfies ThreadRuntimeState);
   });
 
-  it("resolves list entry runtime from the latest session per host", () => {
-    const { db, hostId } = setup();
+  it("resolves list entry runtime from daemon registration per host", () => {
+    const { db, hostId, hub } = setup();
     const now = 1_000;
-    openTestSession({
+    const session = openTestSession({
       db,
       hostId,
-      leaseExpiresAt: now + 30_000,
+      leaseExpiresAt: now - 1,
     });
+    registerTestDaemon(hub, { hostId, sessionId: session.id });
     const first = createThreadWithEnvironment({ db, hostId });
     const second = createThreadWithEnvironment({ db, hostId });
     const noHost = createThreadWithEnvironment({
@@ -250,7 +285,7 @@ describe("thread runtime display", () => {
     });
 
     const entries = toThreadListEntryResponses(
-      { db },
+      { db, hub },
       {
         now,
         threads: [

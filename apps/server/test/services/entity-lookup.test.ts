@@ -13,6 +13,7 @@ import {
 } from "@bb/db";
 import type { Host, Project } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
+import { NotificationHub } from "../../src/ws/hub.js";
 import {
   requireConnectedHostSession,
   requireNonDestroyedHostWithStatus,
@@ -24,6 +25,7 @@ import {
 interface SetupResult {
   db: DbConnection;
   host: Host;
+  hub: NotificationHub;
   project: Project;
 }
 
@@ -32,6 +34,7 @@ type ThrowingCallback = () => void;
 function setup(): SetupResult {
   const db = createConnection(":memory:");
   migrate(db);
+  const hub = new NotificationHub();
   const hostRow = upsertHost(db, noopNotifier, {
     id: "host_entity_lookup",
     name: "Entity Lookup Host",
@@ -54,7 +57,7 @@ function setup(): SetupResult {
     createdAt: hostRow.createdAt,
     updatedAt: hostRow.updatedAt,
   };
-  return { db, host, project };
+  return { db, host, hub, project };
 }
 
 function captureApiError(callback: ThrowingCallback): ApiError {
@@ -147,10 +150,10 @@ describe("entity lookup lifecycle errors", () => {
   });
 
   it("returns structured host_unavailable details", () => {
-    const { db, host } = setup();
+    const { db, host, hub } = setup();
     try {
       const disconnectedError = captureApiError(() => {
-        requireConnectedHostSession({ db }, host.id);
+        requireConnectedHostSession({ db, hub }, host.id);
       });
       expect(disconnectedError.status).toBe(502);
       expect(disconnectedError.body).toEqual({
@@ -166,7 +169,7 @@ describe("entity lookup lifecycle errors", () => {
 
       updateHost(db, noopNotifier, host.id, { destroyedAt: 456 });
       const destroyedError = captureApiError(() => {
-        requireNonDestroyedHostWithStatus(db, host.id);
+        requireNonDestroyedHostWithStatus({ db, hub }, host.id);
       });
       expect(destroyedError.status).toBe(404);
       expect(destroyedError.body).toEqual({

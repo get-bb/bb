@@ -5,13 +5,10 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   closeSession,
-  getActiveSession,
-  getActiveSessionById,
   getLatestSessionForHost,
-  getMostRecentlyUpdatedConnectedHostId,
+  getSessionById,
   heartbeatSession,
   listLatestSessionsForHosts,
-  listConnectedHostIds,
   openSession,
 } from "../../src/data/sessions.js";
 import { getHost, upsertHost } from "../../src/data/hosts.js";
@@ -46,11 +43,7 @@ describe("sessions", () => {
     expect(session.status).toBe("active");
     expect(session.hostId).toBe(host.id);
 
-    const active = getActiveSession(db, host.id);
-    expect(active?.id).toBe(session.id);
-    expect(getActiveSessionById(db, { sessionId: session.id })?.id).toBe(
-      session.id,
-    );
+    expect(getSessionById(db, { sessionId: session.id })?.id).toBe(session.id);
   });
 
   it("marks the host as seen on open, heartbeat, and close", () => {
@@ -100,7 +93,9 @@ describe("sessions", () => {
     expect(closed?.closeReason).toBe("user-requested");
     expect(closed?.closedAt).toBeTypeOf("number");
 
-    expect(getActiveSession(db, host.id)).toBeNull();
+    expect(getSessionById(db, { sessionId: session.id })?.status).toBe(
+      "closed",
+    );
   });
 
   it("closes old session when opening new one for same host", () => {
@@ -131,8 +126,9 @@ describe("sessions", () => {
     expect(session2.id).not.toBe(session1.id);
 
     // Old session should be closed with reason "replaced"
-    const active = getActiveSession(db, host.id);
-    expect(active?.id).toBe(session2.id);
+    expect(getLatestSessionForHost(db, { hostId: host.id })?.id).toBe(
+      session2.id,
+    );
 
     // Verify session1 is closed
     const old = db
@@ -281,63 +277,6 @@ describe("sessions", () => {
 
     const updated = heartbeatSession(db, session.id, Date.now() + 45_000);
     expect(updated?.leaseExpiresAt).toBeGreaterThan(Date.now());
-  });
-
-  it("does not return expired sessions as active", () => {
-    const { db, host } = setup();
-    const session = openSession(db, noopNotifier, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    db.update(hostDaemonSessions)
-      .set({
-        leaseExpiresAt: Date.now() - 1,
-      })
-      .where(eq(hostDaemonSessions.id, session.id))
-      .run();
-
-    expect(getActiveSession(db, host.id)).toBeNull();
-    expect(getActiveSessionById(db, { sessionId: session.id })).toBeNull();
-  });
-
-  it("lists connected hosts and returns the most recently updated connected host", () => {
-    const { db, host } = setup();
-    const otherHost = upsertHost(db, noopNotifier, {
-      name: "test-host-2",
-      type: "persistent",
-    });
-    const firstSession = openSession(db, noopNotifier, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-    openSession(db, noopNotifier, {
-      hostId: otherHost.id,
-      instanceId: "inst-2",
-      hostName: "test-host-2",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host-data-2",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    closeSession(db, noopNotifier, firstSession.id, "replaced");
-
-    expect(listConnectedHostIds(db)).toEqual([otherHost.id]);
-    expect(getMostRecentlyUpdatedConnectedHostId(db)).toBe(otherHost.id);
   });
 
   it("does not overwrite an already closed session", () => {

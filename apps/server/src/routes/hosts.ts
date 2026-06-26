@@ -33,12 +33,12 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.hosts;
 
   get(routes.list, (context) =>
-    context.json(listPublicHostsWithStatus(deps.db)),
+    context.json(listPublicHostsWithStatus(deps)),
   );
 
   get(routes.get, (context) =>
     context.json(
-      requireNonDestroyedHostWithStatus(deps.db, context.req.param("id")),
+      requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
     ),
   );
 
@@ -46,7 +46,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   // `path` lists the host's home directory (resolved on the host).
   get(routes.directory, async (context, query) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -60,7 +60,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.pathsExist, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -74,7 +74,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.pickFolder, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     if (payload.clientHostId !== hostId) {
       throw new ApiError(
         409,
@@ -94,7 +94,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.providerCliStatus, async (context) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -107,7 +107,7 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.providerCliInstall, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     const result = await callHostOnlineRpc(deps, {
       hostId,
       timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,

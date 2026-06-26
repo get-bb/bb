@@ -15,7 +15,10 @@ import {
 import { describe, expect, it } from "vitest";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
-import { listQueuedThreadCommands } from "../helpers/commands.js";
+import {
+  listQueuedThreadCommands,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -214,6 +217,12 @@ describe("idle cold-start activation", () => {
         status: "active",
       });
       // A cold thread.start command (not a warm turn.submit) was dispatched.
+      await waitForQueuedCommand(
+        harness,
+        (queued) =>
+          queued.command.type === "thread.start" &&
+          queued.command.threadId === thread.id,
+      );
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(1);
@@ -288,6 +297,12 @@ describe("idle cold-start activation", () => {
         trigger: "user",
       });
 
+      await waitForQueuedCommand(
+        harness,
+        (queued) =>
+          queued.command.type === "thread.start" &&
+          queued.command.threadId === thread.id,
+      );
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(1);

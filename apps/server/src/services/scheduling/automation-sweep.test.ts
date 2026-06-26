@@ -43,13 +43,19 @@ let projectId: string;
 function buildDeps(
   overrides: { automationsAllowScriptRuns?: boolean } = {},
 ): LoggedPendingInteractionWorkSessionDeps {
+  const hub = {
+    ...noopNotifier,
+    hasDaemonForHost(): boolean {
+      return false;
+    },
+  };
   return {
     config: {
       dataDir: "/tmp/bb-sweep-test",
       automationsAllowScriptRuns: overrides.automationsAllowScriptRuns ?? true,
     },
     db,
-    hub: noopNotifier,
+    hub,
     lifecycleDedupers: {},
     logger: testLogger,
     machineAuth: {},

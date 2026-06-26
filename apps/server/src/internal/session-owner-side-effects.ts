@@ -1,11 +1,9 @@
 import { eq } from "drizzle-orm";
 import {
   closeSession,
-  getActiveSession,
   hostDaemonSessions,
   listHostThreadIds,
   type HostDaemonSessionRow,
-  type SweepExpiredLeasesResult,
 } from "@bb/db";
 import type { HostDaemonActiveThread } from "@bb/host-daemon-contract";
 import {
@@ -26,15 +24,13 @@ const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
   "Host daemon restarted while awaiting user interaction; retry the thread to continue";
 const DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON =
   "Host daemon disconnected while awaiting user interaction; retry the thread to continue";
-const DAEMON_SESSION_EXPIRED_PENDING_INTERACTION_REASON =
-  "Host daemon session expired while awaiting user interaction; retry the thread to continue";
 
 type HostSessionOpenedDeps = LoggedPendingInteractionWorkSessionDeps;
 type DaemonSocketClosedDeps = Pick<
   AppDeps,
   "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
 >;
-type ExpiredHostSessionLeaseDeps = Pick<
+type DaemonDisconnectGraceDeps = Pick<
   AppDeps,
   "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
 >;
@@ -62,10 +58,6 @@ interface CompleteDaemonDisconnectGraceArgs {
 
 interface CompleteDaemonActiveWorkDisconnectGraceArgs {
   hostId: string;
-}
-
-export interface HandleExpiredHostSessionLeasesArgs {
-  expiredLeases: SweepExpiredLeasesResult;
 }
 
 export async function handleHostSessionOpened(
@@ -164,38 +156,11 @@ export function handleDaemonSocketClosed(
   );
 }
 
-export function handleExpiredHostSessionLeases(
-  deps: ExpiredHostSessionLeaseDeps,
-  args: HandleExpiredHostSessionLeasesArgs,
-): void {
-  if (args.expiredLeases.expiredSessionIds.length === 0) {
-    return;
-  }
-
-  for (const sessionId of args.expiredLeases.expiredSessionIds) {
-    deps.hub.closeDaemonSession(sessionId, "expired");
-    deps.terminalSessions.handleDaemonSessionClosed({ sessionId });
-  }
-  for (const hostId of args.expiredLeases.expiredHostIds) {
-    if (!getActiveSession(deps.db, hostId)) {
-      interruptPendingInteractionsForHostThreads(deps, {
-        hostId,
-        reason: DAEMON_SESSION_EXPIRED_PENDING_INTERACTION_REASON,
-      });
-      // A host that never reconnects has no re-register to settle its open
-      // background tasks; mirror the pending-interaction reconciliation here
-      // so lost workflows do not dangle as running forever.
-      settleDanglingBackgroundTasks(deps, { hostId });
-    }
-    notifyHostThreadRuntimeStatusChanged(deps, hostId);
-  }
-}
-
 function completeDaemonDisconnectGrace(
-  deps: ExpiredHostSessionLeaseDeps,
+  deps: DaemonDisconnectGraceDeps,
   args: CompleteDaemonDisconnectGraceArgs,
 ): void {
-  if (getActiveSession(deps.db, args.hostId)) {
+  if (deps.hub.hasDaemonForHost(args.hostId)) {
     return;
   }
 
@@ -215,7 +180,7 @@ function completeDaemonActiveWorkDisconnectGrace(
   deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
   args: CompleteDaemonActiveWorkDisconnectGraceArgs,
 ): void {
-  if (getActiveSession(deps.db, args.hostId)) {
+  if (deps.hub.hasDaemonForHost(args.hostId)) {
     return;
   }
 

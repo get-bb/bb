@@ -203,7 +203,7 @@ function resolveSendMode(
 }
 
 function ensureRuntimeCanAcceptActiveSend(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: Pick<SendThreadMessageArgs, "environment" | "thread">,
 ): void {
   if (args.thread.status !== "active") {

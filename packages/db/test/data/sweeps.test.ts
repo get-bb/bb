@@ -12,7 +12,6 @@ import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-  sweepExpiredLeases,
   sweepManagedEnvironments,
   truncateCompletedEventItemOutputs,
 } from "../../src/data/sweeps.js";
@@ -31,7 +30,6 @@ import {
   environments,
   events,
   hostDaemonSessions,
-  threads,
 } from "../../src/schema.js";
 
 function setup() {
@@ -547,123 +545,6 @@ describe("pruneClosedSessions", () => {
         .where(eq(hostDaemonSessions.status, "closed"))
         .all(),
     ).toHaveLength(1);
-  });
-});
-
-describe("sweepExpiredLeases", () => {
-  it("closes expired sessions without erroring active threads", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      workspaceProvisionType: "unmanaged",
-      status: "ready",
-    });
-
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: env.id,
-      providerId: "codex",
-      status: "active",
-    });
-
-    const session = openSession(db, noopNotifier, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    // Set lease to the past
-    db.update(hostDaemonSessions)
-      .set({ leaseExpiresAt: Date.now() - 1000 })
-      .where(eq(hostDaemonSessions.id, session.id))
-      .run();
-
-    const spy: DbNotifier = {
-      notifyThread: vi.fn(),
-      notifyEnvironment: vi.fn(),
-      notifyProject: vi.fn(),
-      notifyHost: vi.fn(),
-      notifySystem: vi.fn(),
-    };
-
-    const result = sweepExpiredLeases(db, spy);
-    expect(result.sessionsClosed).toBe(1);
-    expect(result.expiredHostIds).toEqual([host.id]);
-    expect(result.expiredSessionIds).toEqual([session.id]);
-
-    // Session should be closed
-    const updatedSession = db
-      .select()
-      .from(hostDaemonSessions)
-      .where(eq(hostDaemonSessions.id, session.id))
-      .get();
-    expect(updatedSession?.status).toBe("closed");
-    expect(updatedSession?.closeReason).toBe("expired");
-
-    const updatedThread = db
-      .select()
-      .from(threads)
-      .where(eq(threads.id, thread.id))
-      .get();
-    expect(updatedThread?.status).toBe("active");
-
-    expect(spy.notifyHost).toHaveBeenCalledWith(host.id, ["host-disconnected"]);
-    expect(spy.notifyThread).not.toHaveBeenCalled();
-  });
-
-  it("does not error idle threads on lease expiry", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      workspaceProvisionType: "unmanaged",
-      status: "ready",
-    });
-
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: env.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    const session = openSession(db, noopNotifier, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    db.update(hostDaemonSessions)
-      .set({ leaseExpiresAt: Date.now() - 1000 })
-      .where(eq(hostDaemonSessions.id, session.id))
-      .run();
-
-    const result = sweepExpiredLeases(db, noopNotifier);
-    expect(result.sessionsClosed).toBe(1);
-    expect(result.expiredHostIds).toEqual([host.id]);
-    expect(result.expiredSessionIds).toEqual([session.id]);
-
-    const updatedThread = db
-      .select()
-      .from(threads)
-      .where(eq(threads.id, thread.id))
-      .get();
-    expect(updatedThread?.status).toBe("idle");
   });
 });
 

@@ -111,7 +111,7 @@ function buildThreadResponse(
   }
   if (args.includes.has("host")) {
     response.host = environment
-      ? getNonDestroyedHostWithStatus(deps.db, environment.hostId)
+      ? getNonDestroyedHostWithStatus(deps, environment.hostId)
       : null;
   }
   return response;

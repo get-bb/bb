@@ -3,7 +3,6 @@ import { threadScope } from "@bb/domain";
 import {
   countLiveThreadsInEnvironment,
   getEnvironment,
-  getActiveSession,
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
   type DbNotifier,
@@ -102,12 +101,7 @@ function hasConnectedHostDaemon(
   deps: EnvironmentCleanupHostConnectionDeps,
   hostId: string,
 ): boolean {
-  const session = getActiveSession(deps.db, hostId);
-  return (
-    session !== null &&
-    session.leaseExpiresAt > Date.now() &&
-    deps.hub.hasDaemonForHost(hostId)
-  );
+  return deps.hub.hasDaemonForHost(hostId);
 }
 
 function workspaceCanBeDestroyedNow(

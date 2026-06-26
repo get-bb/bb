@@ -20,12 +20,12 @@ export function resolveSystemLookupHostId(
 ): string {
   if (query.environmentId) {
     const environment = requireEnvironment(deps.db, query.environmentId);
-    requireNonDestroyedHostWithStatus(deps.db, environment.hostId);
+    requireNonDestroyedHostWithStatus(deps, environment.hostId);
     assertPrimaryHostId(deps, { hostId: environment.hostId });
     return environment.hostId;
   }
   if (query.hostId) {
-    requireNonDestroyedHostWithStatus(deps.db, query.hostId);
+    requireNonDestroyedHostWithStatus(deps, query.hostId);
     assertPrimaryHostId(deps, { hostId: query.hostId });
     return query.hostId;
   }

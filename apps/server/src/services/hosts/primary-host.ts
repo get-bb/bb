@@ -1,10 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  listConnectedHostIds,
-  listPublicHosts,
-  type DbConnection,
-} from "@bb/db";
+import { listPublicHosts, type DbConnection } from "@bb/db";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -13,7 +9,7 @@ import {
   requireNonDestroyedHostWithStatus,
 } from "../lib/entity-lookup.js";
 
-type PrimaryHostDeps = Pick<AppDeps, "config" | "db">;
+type PrimaryHostDeps = Pick<AppDeps, "config" | "db" | "hub">;
 
 export interface ReadPrimaryHostIdArgs {
   dataDir: string;
@@ -62,10 +58,11 @@ function resolveSinglePublicHostId(db: DbConnection): string | null {
   return host?.id ?? null;
 }
 
-function resolveSingleConnectedPublicHostId(db: DbConnection): string | null {
-  const connectedHostIds = new Set(listConnectedHostIds(db));
-  const hosts = listPublicHosts(db).filter((host) =>
-    connectedHostIds.has(host.id),
+function resolveSingleConnectedPublicHostId(
+  deps: PrimaryHostDeps,
+): string | null {
+  const hosts = listPublicHosts(deps.db).filter((host) =>
+    deps.hub.hasDaemonForHost(host.id),
   );
   if (hosts.length !== 1) {
     return null;
@@ -77,7 +74,7 @@ function resolveSingleConnectedPublicHostId(db: DbConnection): string | null {
 export function resolvePrimaryHostId(deps: PrimaryHostDeps): string | null {
   return (
     readPrimaryHostIdFromDataDir({ dataDir: deps.config.dataDir }) ??
-    resolveSingleConnectedPublicHostId(deps.db) ??
+    resolveSingleConnectedPublicHostId(deps) ??
     resolveSinglePublicHostId(deps.db)
   );
 }
@@ -102,7 +99,7 @@ export function assertPrimaryHostId(
 
 export function requireConnectedPrimaryHostId(deps: PrimaryHostDeps): string {
   const hostId = requirePrimaryHostId(deps);
-  requireNonDestroyedHostWithStatus(deps.db, hostId);
+  requireNonDestroyedHostWithStatus(deps, hostId);
   requireConnectedHostSession(deps, hostId);
   return hostId;
 }

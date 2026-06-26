@@ -18,7 +18,7 @@ import {
 } from "../hosts/primary-host.js";
 
 type ThreadRequestEnvironment = EnvironmentArgs;
-type ThreadRequestEnvironmentDeps = Pick<AppDeps, "config" | "db">;
+type ThreadRequestEnvironmentDeps = Pick<AppDeps, "config" | "db" | "hub">;
 type HostThreadRequestEnvironment = Extract<
   ThreadRequestEnvironment,
   { type: "host" }
@@ -269,7 +269,7 @@ function resolveHostThreadRequestEnvironment(
     const hostId =
       environment.hostId ?? requireConnectedPrimaryHostId(deps);
     assertPrimaryHostId(deps, { hostId });
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    requireNonDestroyedHostWithStatus(deps, hostId);
     return {
       hostId,
       type: "personal",
@@ -277,7 +277,7 @@ function resolveHostThreadRequestEnvironment(
   }
 
   const hostId = requireHostEnvironmentId(environment);
-  requireNonDestroyedHostWithStatus(deps.db, hostId);
+  requireNonDestroyedHostWithStatus(deps, hostId);
   assertPrimaryHostId(deps, { hostId });
 
   if (
@@ -329,7 +329,7 @@ function resolveReuseThreadRequestEnvironment(
     );
   }
   assertReuseWorkspaceProjectCompatibility(projectId, reusedEnvironment);
-  requireNonDestroyedHostWithStatus(deps.db, reusedEnvironment.hostId);
+  requireNonDestroyedHostWithStatus(deps, reusedEnvironment.hostId);
   assertPrimaryHostId(deps, { hostId: reusedEnvironment.hostId });
   return {
     environment: reusedEnvironment,

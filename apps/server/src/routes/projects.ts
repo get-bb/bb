@@ -291,7 +291,7 @@ interface ResolveProjectSourcePathArgs {
  * environment's path.
  */
 function resolveEnvironmentPath(
-  deps: Pick<AppDeps, "config" | "db">,
+  deps: Pick<AppDeps, "config" | "db" | "hub">,
   args: ResolveEnvironmentPathArgs,
 ): ResolvedHostPath {
   const environment = requireReadyEnvironment(deps.db, args.environmentId);
@@ -315,7 +315,7 @@ function resolveEnvironmentPath(
  *   primary local host.
  */
 function resolveProjectSourcePath(
-  deps: Pick<AppDeps, "config" | "db">,
+  deps: Pick<AppDeps, "config" | "db" | "hub">,
   args: ResolveProjectSourcePathArgs,
 ): ResolvedHostPath {
   const hostId = args.hostId ?? requirePrimaryHostId(deps);
@@ -354,7 +354,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post(routes.create, async (context, payload) => {
     const { source } = payload;
     if (source.type === "local_path") {
-      requireNonDestroyedHostWithStatus(deps.db, source.hostId);
+      requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertPrimaryHostId(deps, { hostId: source.hostId });
     }
     const { project } = createProject(deps.db, deps.hub, {
@@ -444,7 +444,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post(routes.createSource, async (context, payload) => {
     requirePublicStandardProject(deps.db, context.req.param("id"));
     if (payload.type === "local_path") {
-      requireNonDestroyedHostWithStatus(deps.db, payload.hostId);
+      requireNonDestroyedHostWithStatus(deps, payload.hostId);
       assertPrimaryHostId(deps, { hostId: payload.hostId });
     }
     const source = createProjectSource(deps.db, deps.hub, {
