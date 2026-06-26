@@ -517,9 +517,17 @@ export function BottomAnchoredScrollBody({
       window.performance.now() + USER_SCROLL_INTENT_MS;
   }, []);
 
-  const markWheelScrollIntent = useCallback(() => {
-    markUserScrollIntent();
-  }, [markUserScrollIntent]);
+  const markWheelScrollIntent = useCallback(
+    (event: WheelEvent) => {
+      const scrollArea = scrollAreaRef.current;
+      if (event.deltaY > 0 && scrollArea && isScrolledNearBottom(scrollArea)) {
+        userScrollIntentUntilRef.current = 0;
+        return;
+      }
+      markUserScrollIntent();
+    },
+    [markUserScrollIntent],
+  );
 
   const markTouchStartScrollIntent = useCallback(() => {
     markUserScrollIntent();
@@ -557,6 +565,7 @@ export function BottomAnchoredScrollBody({
     if (isScrolledNearBottom(scrollArea)) {
       userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;
+      userScrollIntentUntilRef.current = 0;
       setIsAtBottom(true);
       // A deliberate scroll to the bottom during the restore settle window means
       // the user no longer wants the saved row; stop re-applying it.

@@ -365,6 +365,47 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
   });
 
+  it("keeps sticking after manual scroll reaches bottom before more growth", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.wheel(scrollArea, { deltaY: 1_000 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+
+    fireEvent.wheel(scrollArea, { deltaY: 200 });
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 450,
+      clientHeight: 100,
+      scrollTop: scrollArea.scrollTop,
+    });
+    fireEvent.scroll(scrollArea);
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(350);
+  });
+
   it("preserves bottom intent when unmounting during transient off-bottom layout", () => {
     const { scrollArea, rowElements, unmount } = renderTimeline({
       threadId: "thread-a",
