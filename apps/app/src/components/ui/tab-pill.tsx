@@ -1,6 +1,7 @@
 import { Icon } from "@/components/ui/icon.js";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
+import { CONTROL_HOVER_TRANSITION } from "./motion.js";
 import type { ReactNode } from "react";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
@@ -46,7 +47,7 @@ export function TabPill({
   return (
     <div
       className={cn(
-        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors max-md:pointer-coarse:h-9",
+        `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${CONTROL_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
           ? "bg-muted text-foreground"

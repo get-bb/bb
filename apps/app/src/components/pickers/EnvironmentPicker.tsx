@@ -16,6 +16,7 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { cn } from "@/lib/utils";
 import {
@@ -158,6 +159,7 @@ export function EnvironmentPickerUI({
           className={cn(
             OPTION_BASE_CLASS_NAME,
             !disabled && OPTION_INTERACTIVE_CLASS_NAME,
+            !disabled && LIST_HOVER_TRANSITION,
             muted && OPTION_MUTED_CLASS_NAME,
             disabled && "cursor-default disabled:opacity-100",
             className,
@@ -324,7 +326,10 @@ function EnvironmentMenuItem({
         if (disabled) return;
         onSelect();
       }}
-      className="flex items-start justify-between gap-3 whitespace-normal"
+      className={cn(
+        "flex items-start justify-between gap-3 whitespace-normal",
+        LIST_HOVER_TRANSITION,
+      )}
     >
       <span className="flex min-w-0 flex-1 items-start gap-2">
         <Icon

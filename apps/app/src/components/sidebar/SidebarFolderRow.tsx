@@ -26,6 +26,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -36,6 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import {
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadRowPaddingLeft,
@@ -97,6 +99,7 @@ function SidebarFolderRowComponent({
     // positioned box. Mirrors ThreadRow / EnvironmentThreadGroupHeader.
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
+    LIST_HOVER_TRANSITION,
     SIDEBAR_ROW_STATIC_STATE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     dragBindings && !dragBindings.disabled && "select-none",
@@ -200,7 +203,7 @@ function SidebarFolderRowComponent({
                   aria-label={`${label} folder actions`}
                   className={cn(
                     "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
                   )}
                 >
                   <Icon
@@ -226,10 +229,7 @@ function SidebarFolderRowComponent({
                   </DropdownMenuItem>
                 ) : null}
                 {onRemove ? (
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onSelect={onRemove}
-                  >
+                  <DropdownMenuItem variant="destructive" onSelect={onRemove}>
                     <Icon name="Trash2" aria-hidden="true" />
                     Remove
                   </DropdownMenuItem>

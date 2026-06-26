@@ -196,7 +196,7 @@
     pointer-events: none;
     opacity: 0;
     transition-property: opacity;
-    transition-duration: 150ms;
+    transition-duration: 0ms;
   }
 
   .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
@@ -209,7 +209,7 @@
   .bb-sidebar-hover-actions-fade {
     opacity: 1;
     transition-property: opacity;
-    transition-duration: 150ms;
+    transition-duration: 0ms;
   }
 
   .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))

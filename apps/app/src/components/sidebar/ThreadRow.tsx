@@ -39,11 +39,13 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
@@ -344,6 +346,7 @@ function ThreadRowComponent({
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
     SIDEBAR_ROW_BASE_CLASS,
+    LIST_HOVER_TRANSITION,
     parentOptions?.stickyLevel === undefined && "relative",
     options.isCompact
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
@@ -351,6 +354,7 @@ function ThreadRowComponent({
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+    !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
   );
   const rowStyle = getThreadRowStyle(options.depth);
@@ -437,7 +441,7 @@ function ThreadRowComponent({
               thread={thread}
               triggerClassName={cn(
                 "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
               )}
               onOpenChange={setIsDropdownActionsOpen}
             />

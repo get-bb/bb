@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import type { PermissionMode } from "@bb/domain";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+import { cn } from "@/lib/utils";
 import { OptionPicker, type PickerOption } from "./OptionPicker";
 
 type PermissionModeOption = PickerOption<PermissionMode>;
@@ -86,7 +88,7 @@ export function PermissionModePicker({
       value={value}
       options={compactOptions}
       onChange={onChange}
-      className={className}
+      className={cn(LIST_HOVER_TRANSITION, className)}
       contentClassName="max-w-72"
       muted={muted}
       defaultOpen={defaultOpen}

@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/icon.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +32,8 @@ export function SidebarChildToggleChevron({
       }}
       className={cn(
         revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
-        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+        LIST_HOVER_TRANSITION,
       )}
     >
       <Icon

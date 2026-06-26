@@ -17,7 +17,23 @@ import {
   isLastInputKeyboard,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
+import {
+  MENU_ITEM_LAST_HOVERED_CLASS,
+  MenuHoverProvider,
+  useMenuItemHover,
+} from "./menu-item-hover.js";
+import { LIST_HOVER_TRANSITION } from "./motion.js";
 import { Icon } from "@/components/ui/icon.js";
+
+// Item state by variant: hover (focus) and the persistent last-hovered tile use
+// the same fill, so the highlight reads identically and simply persists on the
+// last item (neutral = state-hover; destructive = a destructive-red tile).
+const MENU_ITEM_NEUTRAL_STATE_CLASS =
+  "focus:bg-state-hover focus:text-foreground data-[last-hovered]:bg-state-hover data-[last-hovered]:text-foreground";
+const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
+  "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15";
+const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
+  "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
 // ---------------------------------------------------------------------------
 // Context — separate instance from Popover to avoid cross-contamination
@@ -189,7 +205,7 @@ const DropdownMenuContent = React.forwardRef<
           )}
           {...props}
         >
-          {children}
+          <MenuHoverProvider>{children}</MenuHoverProvider>
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     );
@@ -213,21 +229,29 @@ const DropdownMenuItem = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
+    variant?: "default" | "destructive";
   }
 >(
   (
     {
       className,
       inset,
+      variant = "default",
       onSelect,
       disabled,
       textValue: _textValue,
       children,
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
       ...domProps
     },
     ref,
   ) => {
     const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const { hoverProps } = useMenuItemHover({
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+    });
 
     if (isCompactViewport) {
       return (
@@ -240,6 +264,7 @@ const DropdownMenuItem = React.forwardRef<
           className={cn(
             "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
             inset && "pl-8",
+            variant === "destructive" && MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS,
             className,
           )}
           data-disabled={disabled ? "" : undefined}
@@ -261,7 +286,11 @@ const DropdownMenuItem = React.forwardRef<
       <DropdownMenuPrimitive.Item
         ref={ref}
         className={cn(
-          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+          LIST_HOVER_TRANSITION,
+          variant === "destructive"
+            ? MENU_ITEM_DESTRUCTIVE_STATE_CLASS
+            : MENU_ITEM_NEUTRAL_STATE_CLASS,
           inset && "pl-8",
           className,
         )}
@@ -269,6 +298,7 @@ const DropdownMenuItem = React.forwardRef<
         onSelect={onSelect}
         textValue={_textValue}
         {...domProps}
+        {...hoverProps}
       >
         {children}
       </DropdownMenuPrimitive.Item>
@@ -294,11 +324,17 @@ const DropdownMenuCheckboxItem = React.forwardRef<
       onCheckedChange,
       disabled,
       textValue: _textValue,
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
       ...domProps
     },
     ref,
   ) => {
     const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const { hoverProps } = useMenuItemHover({
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+    });
 
     if (isCompactViewport) {
       return (
@@ -348,7 +384,9 @@ const DropdownMenuCheckboxItem = React.forwardRef<
       <DropdownMenuPrimitive.CheckboxItem
         ref={ref}
         className={cn(
-          "relative flex cursor-default select-none items-center rounded-sm py-[0.3125rem] pl-2 pr-8 text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+          "relative flex cursor-default select-none items-center rounded-sm py-[0.3125rem] pl-2 pr-8 text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+          LIST_HOVER_TRANSITION,
+          MENU_ITEM_LAST_HOVERED_CLASS,
           className,
         )}
         checked={checked}
@@ -357,6 +395,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
         disabled={disabled}
         textValue={_textValue}
         {...domProps}
+        {...hoverProps}
       >
         <span
           className={cn(
@@ -402,31 +441,49 @@ function DropdownMenuRadioGroup({
 const DropdownMenuRadioItem = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.RadioItem>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
->(({ className, children, ...props }, ref) => {
-  const { isCompactViewport } = useResponsiveMenu();
+>(
+  (
+    {
+      className,
+      children,
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+      ...props
+    },
+    ref,
+  ) => {
+    const { isCompactViewport } = useResponsiveMenu();
+    const { hoverProps } = useMenuItemHover({
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+    });
 
-  if (isCompactViewport) {
-    return null;
-  }
+    if (isCompactViewport) {
+      return null;
+    }
 
-  return (
-    <DropdownMenuPrimitive.RadioItem
-      ref={ref}
-      className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm py-[0.3125rem] pl-8 pr-2 text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        className,
-      )}
-      {...props}
-    >
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <Icon name="Circle" className="h-2 w-2 fill-current" />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
-      {children}
-    </DropdownMenuPrimitive.RadioItem>
-  );
-});
+    return (
+      <DropdownMenuPrimitive.RadioItem
+        ref={ref}
+        className={cn(
+          "relative flex cursor-default select-none items-center rounded-sm py-[0.3125rem] pl-8 pr-2 text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+          LIST_HOVER_TRANSITION,
+          MENU_ITEM_LAST_HOVERED_CLASS,
+          className,
+        )}
+        {...props}
+        {...hoverProps}
+      >
+        <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+          <DropdownMenuPrimitive.ItemIndicator>
+            <Icon name="Circle" className="h-2 w-2 fill-current" />
+          </DropdownMenuPrimitive.ItemIndicator>
+        </span>
+        {children}
+      </DropdownMenuPrimitive.RadioItem>
+    );
+  },
+);
 DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
 
 // ---------------------------------------------------------------------------
@@ -540,20 +597,42 @@ const DropdownMenuSubTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
     inset?: boolean;
   }
->(({ className, inset, children, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubTrigger
-    ref={ref}
-    className={cn(
-      "flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-      inset && "pl-8",
+>(
+  (
+    {
       className,
-    )}
-    {...props}
-  >
-    {children}
-    <Icon name="ChevronRight" className="ml-auto" />
-  </DropdownMenuPrimitive.SubTrigger>
-));
+      inset,
+      children,
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+      ...props
+    },
+    ref,
+  ) => {
+    const { hoverProps } = useMenuItemHover({
+      onPointerEnter: callerPointerEnter,
+      onKeyDown: callerKeyDown,
+    });
+
+    return (
+      <DropdownMenuPrimitive.SubTrigger
+        ref={ref}
+        className={cn(
+          "flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+          LIST_HOVER_TRANSITION,
+          MENU_ITEM_LAST_HOVERED_CLASS,
+          inset && "pl-8",
+          className,
+        )}
+        {...props}
+        {...hoverProps}
+      >
+        {children}
+        <Icon name="ChevronRight" className="ml-auto" />
+      </DropdownMenuPrimitive.SubTrigger>
+    );
+  },
+);
 DropdownMenuSubTrigger.displayName =
   DropdownMenuPrimitive.SubTrigger.displayName;
 

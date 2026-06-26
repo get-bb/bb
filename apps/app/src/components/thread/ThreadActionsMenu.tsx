@@ -51,6 +51,7 @@ interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
 interface ThreadActionMenuItemProps {
   children: ReactNode;
   className?: string;
+  variant?: "default" | "destructive";
   icon: IconName;
   onSelect?: (event: Event) => void;
   surface: ThreadActionsMenuSurface;
@@ -59,6 +60,7 @@ interface ThreadActionMenuItemProps {
 function ThreadActionMenuItem({
   children,
   className,
+  variant,
   icon,
   onSelect,
   surface,
@@ -72,14 +74,25 @@ function ThreadActionMenuItem({
 
   if (surface === "context") {
     return (
-      <ContextMenuItem className={className} onSelect={onSelect}>
+      <ContextMenuItem
+        className={cn(
+          className,
+          variant === "destructive" &&
+            "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
+        )}
+        onSelect={onSelect}
+      >
         {content}
       </ContextMenuItem>
     );
   }
 
   return (
-    <DropdownMenuItem className={className} onSelect={onSelect}>
+    <DropdownMenuItem
+      className={className}
+      variant={variant}
+      onSelect={onSelect}
+    >
       {content}
     </DropdownMenuItem>
   );
@@ -177,7 +190,7 @@ function ThreadActionsMenuItems({
         <ThreadActionMenuItem
           surface={surface}
           icon="Trash2"
-          className="text-destructive focus:text-destructive"
+          variant="destructive"
           onSelect={() => {
             window.setTimeout(() => {
               requestDelete(thread);

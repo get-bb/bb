@@ -1,6 +1,7 @@
 /* shadcn/ui-derived */
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { CONTROL_HOVER_TRANSITION } from "./motion.js";
 
 type SwitchProps = Omit<
   React.ComponentPropsWithoutRef<"button">,
@@ -24,7 +25,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       disabled={disabled}
       data-state={checked ? "checked" : "unchecked"}
       className={cn(
-        "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-input shadow-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-foreground data-[state=unchecked]:bg-muted",
+        `peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-input shadow-xs ${CONTROL_HOVER_TRANSITION} outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-foreground data-[state=unchecked]:bg-muted`,
         className,
       )}
       onClick={(event) => {

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
+import { CONTROL_HOVER_TRANSITION } from "./motion.js";
 
 const EXPANDABLE_PANEL_TRANSITION_MS = 200;
 const useBrowserLayoutEffect =
@@ -19,7 +20,7 @@ interface ChevronProps {
 }
 
 export const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS =
-  "text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground";
+  `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
 export const COLLAPSIBLE_HEADER_EXPANDED_TONE_CLASS = "text-foreground";
 export const COLLAPSIBLE_HEADER_STATIC_TONE_CLASS = "text-muted-foreground";
 export const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =

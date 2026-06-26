@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu.js";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
@@ -95,6 +96,7 @@ import { SidebarFolderRow } from "./SidebarFolderRow";
 import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_ROW_STATIC_STATE_CLASS,
@@ -1052,7 +1054,7 @@ function EnvironmentThreadGroupHeaderActions({
             className={cn(
               "rounded-md p-0 text-muted-foreground",
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
             )}
           >
             <Icon
@@ -2124,7 +2126,8 @@ function ProjectRowComponent({
             tier="project"
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-              "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
+              "group/project-row flex w-full items-center rounded-md text-sm",
+              LIST_HOVER_TRANSITION,
               isActive
                 ? SIDEBAR_ROW_SELECTED_STATE_CLASS
                 : SIDEBAR_ROW_STATIC_STATE_CLASS,
@@ -2139,6 +2142,7 @@ function ProjectRowComponent({
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground",
                 PROJECT_ROW_LEADING_SLOT_CLASS,
+                LIST_HOVER_TRANSITION,
               )}
               aria-hidden
             >
@@ -2196,7 +2200,7 @@ function ProjectRowComponent({
                 onOpenChange={setIsDropdownActionsOpen}
                 triggerClassName={cn(
                   "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
                 )}
               />
               <Button

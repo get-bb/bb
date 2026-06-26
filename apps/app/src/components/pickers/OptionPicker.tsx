@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import { cn } from "@/lib/utils";
 
 export const OPTION_BASE_CLASS_NAME =
@@ -186,6 +187,7 @@ export function OptionPicker<T extends string>({
       className={cn(
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
+        LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
         selectedIsWarning && OPTION_WARNING_TEXT_CLASS_NAME,
         selectedIsWarning && OPTION_WARNING_INTERACTIVE_CLASS_NAME,
@@ -243,7 +245,10 @@ export function OptionPicker<T extends string>({
             <DropdownMenuItem
               key={option.value}
               onSelect={() => onChange(option.value)}
-              className="flex items-start justify-between gap-3 whitespace-normal"
+              className={cn(
+                "flex items-start justify-between gap-3 whitespace-normal",
+                LIST_HOVER_TRANSITION,
+              )}
             >
               <span
                 className={cn(

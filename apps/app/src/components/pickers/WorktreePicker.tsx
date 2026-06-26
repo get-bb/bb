@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
@@ -86,6 +87,7 @@ export function WorktreePicker({
           className={cn(
             OPTION_BASE_CLASS_NAME,
             !disabled && OPTION_INTERACTIVE_CLASS_NAME,
+            !disabled && LIST_HOVER_TRANSITION,
             muted && OPTION_MUTED_CLASS_NAME,
             disabled && "cursor-default disabled:opacity-100",
           )}
@@ -154,7 +156,10 @@ function WorktreeMenuItem({
   return (
     <DropdownMenuItem
       onSelect={() => onSelect(option.environmentId)}
-      className="flex flex-col items-stretch gap-1 py-2"
+      className={cn(
+        "flex flex-col items-stretch gap-1 py-2",
+        LIST_HOVER_TRANSITION,
+      )}
     >
       <span className="flex min-w-0 items-center gap-2">
         <Icon
