@@ -34,11 +34,14 @@ describe("PermissionModePicker", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Permission mode" });
+    const expectedTitle =
+      "Permission mode: Plan Mode - Claude Code will plan without normal full-access execution.";
     expect(trigger.textContent).toContain("Plan Mode");
     expect(trigger.className).not.toContain("text-warning-text");
-    expect(trigger.getAttribute("title")).toBe(
-      "Permission mode: Plan Mode - Claude Code will plan without normal full-access execution.",
-    );
+    expect(trigger.getAttribute("title")).toBeNull();
+    expect(
+      trigger.querySelector(`[title="${expectedTitle}"]`),
+    ).not.toBeNull();
   });
 
   it("can keep the chevron visible while disabled", () => {
