@@ -1,17 +1,22 @@
 import { Icon } from "@/components/ui/icon.js";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
-import { CONTROL_HOVER_TRANSITION } from "./motion.js";
+import { LIST_HOVER_TRANSITION } from "./motion.js";
 import type { ReactNode } from "react";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
+// No transition: the tab strip is a swept, list-like row, so the affordance
+// reveal (icon→close) and the close button's own hover tile both snap instantly,
+// matching the pill's instant hover (LIST_HOVER_TRANSITION) instead of trailing
+// the pointer. The instant swap also removes the icon/close cross-fade overlap,
+// so the close button needs no background to mask the icon underneath it.
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
-  "inline-flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
+  "inline-flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
 export const TAB_PILL_AFFORDANCE_ICON_CLASS =
   "size-3.5 max-md:pointer-coarse:size-5";
-export const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 bg-inherit ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100`;
+export const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-1.5 top-1/2 z-10 -translate-y-1/2 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100`;
 const TAB_PILL_LEADING_VISUAL_CLASS =
-  "mr-1.5 inline-flex size-4 shrink-0 items-center justify-center transition-opacity [&_svg]:size-3.5 max-md:pointer-coarse:size-5 max-md:pointer-coarse:[&_svg]:size-5";
+  "mr-1.5 inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-3.5 max-md:pointer-coarse:size-5 max-md:pointer-coarse:[&_svg]:size-5";
 
 export interface TabPillCloseAction {
   onClose: () => void;
@@ -47,7 +52,7 @@ export function TabPill({
   return (
     <div
       className={cn(
-        `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${CONTROL_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
+        `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
           ? "bg-muted text-foreground"
@@ -58,7 +63,7 @@ export function TabPill({
         type="button"
         onClick={onSelect}
         aria-pressed={isActive}
-        className="flex h-full min-w-0 items-center rounded-md pl-2 pr-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-full min-w-0 items-center rounded-md pl-1.5 pr-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {leadingVisual ? (
           <span
