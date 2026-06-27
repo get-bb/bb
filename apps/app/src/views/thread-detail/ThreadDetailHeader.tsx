@@ -57,7 +57,11 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
-  const showRightPanelToggle = renderAsDrawer || !isSecondaryPanelOpen;
+  // The header is a full-width bar, so the toggle holds a stable position at the
+  // window edge — keep it mounted across open/close on wide layouts (the panel no
+  // longer renders its own inline hide control). The drawer still hides it while
+  // open, since the drawer carries its own close affordance.
+  const showRightPanelToggle = !renderAsDrawer || !isSecondaryPanelOpen;
 
   const center = (
     <>

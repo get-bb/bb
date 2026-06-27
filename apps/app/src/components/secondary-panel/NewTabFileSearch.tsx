@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
@@ -365,7 +366,8 @@ function FileResultRow({
       onMouseEnter={onActivate}
       title={getFileSearchResultTitle(suggestion)}
       className={cn(
-        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        LIST_HOVER_TRANSITION,
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
@@ -556,10 +558,13 @@ export function NewTabFileSearch({
 
     // Focus synchronously, then again on the next frame to win the focus race
     // against the panel/tab content mounting in the same commit, which can
-    // otherwise pull focus away from the input.
-    inputRef.current?.focus();
+    // otherwise pull focus away from the input. `preventScroll` so focusing never
+    // scrolls an ancestor to reveal the input — during the panel's open swipe the
+    // content is briefly wider than the panel, and a scroll there would shift the
+    // whole panel content sideways.
+    inputRef.current?.focus({ preventScroll: true });
     const frame = requestAnimationFrame(() => {
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [focusRequest, isPointerCoarse]);

@@ -13,7 +13,6 @@ interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
   canSpawnChild: boolean;
   footer: ReactNode;
   hasOlderTimelineRows: boolean;
-  header: ReactNode;
   isLoadingOlderTimelineRows: boolean;
   isStopping: boolean;
   onLoadOlderRows: () => void;
@@ -31,7 +30,6 @@ export function ThreadTimelinePane({
   threadChildOrigin,
   footer,
   hasOlderTimelineRows,
-  header,
   hostConnectionNotice,
   isLoadingOlderTimelineRows,
   isThreadTimelinePending,
@@ -63,7 +61,6 @@ export function ThreadTimelinePane({
       data-thread-window=""
       className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
     >
-      {header}
       <PageShell
         key={threadId}
         scrollBehavior="bottom-anchor"

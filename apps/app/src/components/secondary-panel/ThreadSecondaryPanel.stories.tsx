@@ -109,7 +109,6 @@ function ShellRow({
             onOpenNewTab={noop}
             isConversationCollapsed={false}
             onToggleConversationCollapse={noop}
-            reserveLeftForDesktopTrafficLights={false}
             renderAsDrawer
           />
         </PanelStage>
@@ -231,7 +230,6 @@ function FileTabsShellInner({
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
-        reserveLeftForDesktopTrafficLights={false}
         renderAsDrawer
       />
     </PanelStage>
@@ -341,7 +339,6 @@ function TerminalTabsShellInner({
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
-        reserveLeftForDesktopTrafficLights={false}
         renderAsDrawer
       />
     </PanelStage>

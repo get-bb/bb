@@ -143,6 +143,15 @@ export function useSecondaryPanelResize({
       }
 
       lastSecondaryPanelSizeRef.current = size;
+      // Mirror the live panel size onto the content's fixed width (container-query
+      // units against the horizontal group) for swipe mode: the content holds the
+      // open width while the panel's width transition clips it, and tracks the
+      // size live during a drag-resize. Guarding size > 0 leaves the width at the
+      // last open value through a collapse, so the content swipes out cleanly.
+      secondaryPanelRef.current?.style.setProperty(
+        "--secondary-swipe-width",
+        `${size}cqw`,
+      );
     },
     [],
   );

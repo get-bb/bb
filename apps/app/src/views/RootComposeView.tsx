@@ -2760,9 +2760,14 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [openWorkspaceFile],
   );
+  // Keep the panel toggle pinned to the viewport corner in the wide layout so it
+  // stays mounted and fixed in place across open/close (the panel reserves a
+  // matching slot via inlinePanelToggle="reserved", and the pinned button lands
+  // centered over it). The drawer layout has no pinned slot, so there the toggle
+  // only opens the drawer and its close control lives inside the drawer.
   const rootPanelToggle =
-    !isSecondaryPanelOpen ? (
-      <div className="fixed right-4 top-2 z-40">
+    !renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen ? (
+      <div className="fixed right-4 top-2.5 z-40">
         <RootComposeRightPanelToggle
           activeTerminalCount={activeTerminalCount}
           isOpen={isSecondaryPanelOpen}
@@ -3131,6 +3136,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           showGitDiffTab: false,
           showInfoTab: false,
           showNewTabButton: true,
+          inlinePanelToggle: "reserved",
           onClose: closeSecondaryPanel,
           onCollapse: closeSecondaryPanel,
           onOpenFileInEditor: handleOpenWorkspaceFileInEditor,

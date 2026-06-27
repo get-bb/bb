@@ -5,13 +5,17 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
 import { cn } from "@/lib/utils";
 
 // Shared shell for the secondary-panel launcher rows — the app/file/recent
 // results in the New tab page and the browser tab's recently-visited list — so
 // density, hover, and the trailing open-affordance stay identical across both
-// surfaces rather than drifting in two parallel class bundles.
-const LAUNCHER_ROW_SHELL_CLASS = `group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none ${COARSE_POINTER_TEXT_SM_CLASS}`;
+// surfaces rather than drifting in two parallel class bundles. These are dense,
+// arrow-navigable list rows, so the hover/active fill is instant both ways
+// (LIST_HOVER_TRANSITION) — the highlight tracks the pointer and arrow keys
+// exactly instead of lagging behind fast navigation.
+const LAUNCHER_ROW_SHELL_CLASS = `group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left ${LIST_HOVER_TRANSITION} focus-visible:outline-none ${COARSE_POINTER_TEXT_SM_CLASS}`;
 export const LAUNCHER_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:ring-1 focus-visible:ring-ring`;
 export const LAUNCHER_ACTION_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:bg-state-hover focus-visible:text-foreground`;
 export const LAUNCHER_ROW_ICON_CLASS = `flex shrink-0 items-center justify-center overflow-hidden text-muted-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;

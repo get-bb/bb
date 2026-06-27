@@ -33,7 +33,6 @@ type RootSecondaryPanelProps = Omit<
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
-  | "reserveLeftForDesktopTrafficLights"
 > & {
   renderBrowserDeck?: (args: {
     canShowNativeBrowserView: boolean;
@@ -183,7 +182,6 @@ export function RootComposeSecondaryContent({
       renderAsDrawer={false}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noopToggleConversationCollapse}
-      reserveLeftForDesktopTrafficLights={false}
     />
   ) : null;
   const drawerSecondaryPanelContent = renderAsDrawer ? (
@@ -193,13 +191,16 @@ export function RootComposeSecondaryContent({
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noopToggleConversationCollapse}
-      reserveLeftForDesktopTrafficLights={false}
     />
   ) : null;
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
-      <div className="flex h-full w-full min-w-0">
+      {/* Size container so the secondary panel's content can be pinned to its
+          open width in container-query units (cqw) — a fixed-width layer that
+          translates in (rather than reflowing) while the panel's flex width
+          animates as a spacer to make room. */}
+      <div className="@container flex h-full w-full min-w-0">
         <PanelGroup
           ref={horizontalPanelGroupRef}
           direction="horizontal"
@@ -218,6 +219,8 @@ export function RootComposeSecondaryContent({
             order={1}
             className={cn(
               "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              // Match the secondary panel's swipe timing so the shared boundary
+              // moves uniformly as the panel opens/closes.
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >

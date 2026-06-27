@@ -9,11 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  getBbDesktopInfo,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
-import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
-import {
   Panel,
   PanelGroup,
   type ImperativePanelGroupHandle,
@@ -45,7 +40,7 @@ const TIMELINE_PANEL_MIN_SIZE_PERCENT = 30;
 
 type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,
-  "footer" | "header"
+  "footer"
 >;
 type ThreadSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
@@ -53,7 +48,6 @@ type ThreadSecondaryPanelProps = Omit<
   | "renderAsDrawer"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
-  | "reserveLeftForDesktopTrafficLights"
   | "browserDeck"
 > & {
   renderBrowserDeck?: (args: {
@@ -243,17 +237,6 @@ export function ThreadDetailSecondaryContent({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
-  // When the main sidebar is collapsed on macOS desktop, the traffic-light
-  // cluster sits over the leftmost content (no expanded sidebar to absorb it).
-  // The rail's chevron and the secondary panel's tab strip need to clear that
-  // zone; nothing-to-do otherwise (web, or sidebar covers the cluster).
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const optionalIsMainSidebarShowing = useOptionalIsSidebarShowing();
-  const isMainSidebarShowing =
-    surface === "popout" ? false : optionalIsMainSidebarShowing === true;
-  const isLeftmostSurfaceUnderTrafficLights =
-    usesDesktopChrome && !isMainSidebarShowing && !renderAsDrawer;
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
@@ -424,11 +407,10 @@ export function ThreadDetailSecondaryContent({
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
       onToggleConversationCollapse={onToggleConversationCollapse}
-      // Panel is leftmost only when the rail (36px) is the only thing between
-      // it and the window edge — i.e. the conversation is also collapsed.
-      reserveLeftForDesktopTrafficLights={
-        isLeftmostSurfaceUnderTrafficLights && isConversationCollapsedActive
-      }
+      // The full-width header bar owns the (stable) right-panel toggle, so the
+      // panel drops its own inline hide control entirely — no reserved slot, so
+      // the trailing expand control sits flush at the edge.
+      inlinePanelToggle="hidden"
       metadataContent={metadataContent}
     />
   ) : null;
@@ -439,7 +421,6 @@ export function ThreadDetailSecondaryContent({
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={onToggleConversationCollapse}
-      reserveLeftForDesktopTrafficLights={false}
       metadataContent={metadataContent}
     />
   ) : null;
@@ -452,6 +433,12 @@ export function ThreadDetailSecondaryContent({
       )}
     >
       {/*
+        The thread header is a full-width bar above the split, so its right-aligned
+        actions stay anchored to the window edge instead of riding the timeline
+        panel's width as the secondary panel opens and closes.
+      */}
+      {header}
+      {/*
         When collapsed we keep the resizable PanelGroup mounted (the timeline
         lifts to 0% and the panel to 100% via the layout effect) and slot the
         36px rail in beside it as a plain flex sibling. This sidesteps the
@@ -460,13 +447,11 @@ export function ThreadDetailSecondaryContent({
         panel's content (live iframes, parsed diffs, scroll position) is
         never torn down and re-created when toggling collapse.
       */}
-      <div className="flex h-full w-full min-w-0">
+      <div className="flex min-h-0 w-full min-w-0 flex-1">
         <ConversationCollapsedRail
           collapsed={isConversationCollapsedActive}
           isWorking={isConversationWorking}
-          reserveTopForDesktopTrafficLights={
-            isLeftmostSurfaceUnderTrafficLights
-          }
+          reserveTopForDesktopTrafficLights={false}
           onExpand={onToggleConversationCollapse}
         />
         <PanelGroup
@@ -475,7 +460,12 @@ export function ThreadDetailSecondaryContent({
           key={stableTimeline.threadId}
           ref={horizontalPanelGroupRef}
           direction="horizontal"
-          className="h-full min-w-0 flex-1"
+          // Query container so the secondary panel can hold its content at the
+          // panel's open width in cqw and clip it into view instead of reflowing
+          // (see ThreadSecondaryPanel swipe mode). Scoping it to the group — not
+          // the rail+group row — keeps cqw equal to the panel's own width even
+          // when the conversation-collapsed rail is present.
+          className="@container h-full min-w-0 flex-1"
           // react-resizable-panels sets an INLINE `overflow: hidden` on the group
           // root, which is still programmatically scrollable. A `scrollIntoView`
           // from the app-preview iframe (clicking an in-page `#anchor`) walks up
@@ -513,11 +503,7 @@ export function ThreadDetailSecondaryContent({
                 isConversationCollapsedActive && "opacity-0",
               )}
             >
-              <ThreadTimelinePane
-                {...stableTimeline}
-                footer={footer}
-                header={header}
-              />
+              <ThreadTimelinePane {...stableTimeline} footer={footer} />
             </div>
           </Panel>
           {inlineSecondaryPanelContent}
