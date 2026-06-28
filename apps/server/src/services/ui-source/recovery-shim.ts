@@ -6,16 +6,16 @@
  * Responsibilities:
  *  - Own the live reload: subscribe to the `system` realtime channel and reload
  *    the page when the server broadcasts `ui-reloaded` after a build promote.
- *  - Self-heal, when serving the active UI source: if the app root never mounts
- *    (a build that compiled but crashes at runtime), auto-revert to the shipped
- *    UI once, then fall back to a manual "Revert to stable" bar. A
- *    session-scoped guard prevents reload loops.
+ *  - Provide manual recovery, when serving the active UI source: if the app
+ *    root never mounts (slow load, missing bundle, or runtime crash), show a
+ *    "Revert to stable" bar without interrupting an eventually successful load.
  */
 const RECOVERY_SHIM_JS = String.raw`
 (function () {
   var MOUNT_TIMEOUT_MS = 10000;
-  var AUTO_RECOVER_KEY = "bb.ui.autoRecovered";
+  var FAILURE_HINT_TIMEOUT_MS = 3000;
   var RECOVERY_ENABLED = __BB_UI_SOURCE_RECOVERY_ENABLED__;
+  var recoveryObserver = null;
 
   function wsUrl() {
     var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -50,9 +50,6 @@ const RECOVERY_SHIM_JS = String.raw`
         Array.isArray(msg.changes) &&
         msg.changes.indexOf("ui-reloaded") !== -1
       ) {
-        // The build that triggered this reload is known-good (build-gated), so
-        // clear the auto-recover guard for the fresh load.
-        try { sessionStorage.removeItem(AUTO_RECOVER_KEY); } catch (e) {}
         window.location.reload();
       }
     };
@@ -61,9 +58,38 @@ const RECOVERY_SHIM_JS = String.raw`
     };
   }
 
-  // --- Self-heal watchdog ----------------------------------------------------
+  // --- Manual recovery -------------------------------------------------------
+  function hideRecoveryBar() {
+    var bar = document.getElementById("bb-ui-recovery-bar");
+    if (bar && typeof bar.remove === "function") {
+      bar.remove();
+    }
+    if (recoveryObserver) {
+      recoveryObserver.disconnect();
+      recoveryObserver = null;
+    }
+  }
+
+  function watchForMount() {
+    if (recoveryObserver || typeof MutationObserver === "undefined") return;
+    var root = document.getElementById("root");
+    var target = root || document.body;
+    if (!target) return;
+    recoveryObserver = new MutationObserver(function () {
+      if (appMounted()) {
+        hideRecoveryBar();
+      }
+    });
+    recoveryObserver.observe(target, { childList: true, subtree: !root });
+  }
+
   function showRecoveryBar() {
+    if (appMounted()) {
+      hideRecoveryBar();
+      return;
+    }
     if (document.getElementById("bb-ui-recovery-bar")) return;
+    if (!document.body) return;
     var bar = document.createElement("div");
     bar.id = "bb-ui-recovery-bar";
     bar.setAttribute(
@@ -74,7 +100,8 @@ const RECOVERY_SHIM_JS = String.raw`
         "background:#1a1a1a;color:#fff;border-top:1px solid #333;"
     );
     var label = document.createElement("span");
-    label.textContent = "This UI did not load. Your edits are safe in the UI source.";
+    label.textContent =
+      "This UI is taking a while to load. Your edits are safe in the UI source.";
     var button = document.createElement("button");
     button.textContent = "Revert to stable";
     button.setAttribute(
@@ -92,6 +119,7 @@ const RECOVERY_SHIM_JS = String.raw`
     bar.appendChild(label);
     bar.appendChild(button);
     document.body.appendChild(bar);
+    watchForMount();
   }
 
   function appMounted() {
@@ -102,22 +130,35 @@ const RECOVERY_SHIM_JS = String.raw`
   function startWatchdog() {
     if (!RECOVERY_ENABLED) return;
     setTimeout(function () {
-      if (appMounted()) return;
-      var alreadyRecovered;
-      try { alreadyRecovered = sessionStorage.getItem(AUTO_RECOVER_KEY); } catch (e) {}
-      if (alreadyRecovered) {
-        // Auto-revert already tried this session — show the manual escape hatch.
-        showRecoveryBar();
-        return;
-      }
-      try { sessionStorage.setItem(AUTO_RECOVER_KEY, "1"); } catch (e) {}
-      fetch("/api/v1/ui/prod", { method: "POST" })
-        .then(function () { window.location.reload(); })
-        .catch(function () { showRecoveryBar(); });
+      showRecoveryBar();
     }, MOUNT_TIMEOUT_MS);
   }
 
+  function watchLoadFailures() {
+    if (!RECOVERY_ENABLED) return;
+    function scheduleFailureHint() {
+      setTimeout(function () {
+        showRecoveryBar();
+      }, FAILURE_HINT_TIMEOUT_MS);
+    }
+    window.addEventListener("error", function (event) {
+      if (appMounted()) return;
+      var target = event && event.target;
+      var tagName = target && target.tagName;
+      if (target && target !== window && String(tagName).toUpperCase() !== "SCRIPT") {
+        return;
+      }
+      scheduleFailureHint();
+    }, true);
+    window.addEventListener("unhandledrejection", function () {
+      if (!appMounted()) {
+        scheduleFailureHint();
+      }
+    });
+  }
+
   connectReload();
+  watchLoadFailures();
   if (document.readyState === "complete" || document.readyState === "interactive") {
     startWatchdog();
   } else {

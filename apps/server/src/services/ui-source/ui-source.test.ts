@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { injectRecoveryShim } from "./recovery-shim.js";
 import {
@@ -15,6 +16,137 @@ import {
 } from "./ui-source.js";
 
 describe("injectRecoveryShim", () => {
+  class FakeElement {
+    attrs: Record<string, string> = {};
+    childElementCount = 0;
+    children: FakeElement[] = [];
+    disabled = false;
+    id = "";
+    onclick: (() => void) | null = null;
+    parentNode: FakeElement | null = null;
+    textContent = "";
+
+    constructor(readonly tagName: string) {}
+
+    appendChild(child: FakeElement): void {
+      this.children.push(child);
+      child.parentNode = this;
+      this.childElementCount = this.children.length;
+    }
+
+    remove(): void {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter(
+        (child) => child !== this,
+      );
+      this.parentNode.childElementCount = this.parentNode.children.length;
+      this.parentNode = null;
+    }
+
+    setAttribute(name: string, value: string): void {
+      this.attrs[name] = value;
+    }
+  }
+
+  function findElement(root: FakeElement, id: string): FakeElement | null {
+    if (root.id === id) return root;
+    for (const child of root.children) {
+      const found = findElement(child, id);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function extractShimJs(html: string): string {
+    const scriptStart = html.indexOf("<script");
+    const jsStart = html.indexOf(">", scriptStart) + 1;
+    const jsEnd = html.indexOf("</script>", jsStart);
+    return html.slice(jsStart, jsEnd);
+  }
+
+  function runInjectedShim(html: string): {
+    body: FakeElement;
+    dispatchWindowEvent(type: string, event: { target?: FakeElement }): void;
+    fetch: ReturnType<typeof vi.fn>;
+    getElementById(id: string): FakeElement | null;
+    mutationCallbacks: Array<() => void>;
+    root: FakeElement;
+    runTimers(delayMs: number): void;
+  } {
+    const root = new FakeElement("DIV");
+    root.id = "root";
+    const body = new FakeElement("BODY");
+    const timers: Array<{ callback: () => void; delayMs: number }> = [];
+    const mutationCallbacks: Array<() => void> = [];
+    const windowListeners: Record<
+      string,
+      Array<(event: { target?: FakeElement }) => void>
+    > = {};
+    const fetch = vi.fn(() => Promise.resolve(new Response("{}")));
+    const getElementById = (id: string): FakeElement | null => {
+      if (id === "root") return root;
+      return findElement(body, id);
+    };
+    const context = {
+      document: {
+        body,
+        createElement: (tagName: string) => new FakeElement(tagName.toUpperCase()),
+        getElementById,
+        readyState: "interactive",
+      },
+      fetch,
+      MutationObserver: class {
+        constructor(callback: () => void) {
+          mutationCallbacks.push(callback);
+        }
+        disconnect(): void {}
+        observe(): void {}
+      },
+      setTimeout: (callback: () => void, delayMs: number) => {
+        timers.push({ callback, delayMs });
+        return timers.length;
+      },
+      WebSocket: class {
+        onclose: (() => void) | null = null;
+        onmessage: ((event: { data: string }) => void) | null = null;
+        onopen: (() => void) | null = null;
+        send(): void {}
+      },
+      window: {
+        addEventListener(
+          type: string,
+          listener: (event: { target?: FakeElement }) => void,
+        ): void {
+          windowListeners[type] ??= [];
+          windowListeners[type].push(listener);
+        },
+        location: {
+          host: "bb.example.test",
+          protocol: "https:",
+          reload: vi.fn(),
+        },
+      },
+    };
+    runInNewContext(extractShimJs(html), context);
+    return {
+      body,
+      dispatchWindowEvent(type: string, event: { target?: FakeElement }): void {
+        for (const listener of windowListeners[type] ?? []) {
+          listener(event);
+        }
+      },
+      fetch,
+      getElementById,
+      mutationCallbacks,
+      root,
+      runTimers(delayMs: number): void {
+        for (const timer of timers.filter((timer) => timer.delayMs === delayMs)) {
+          timer.callback();
+        }
+      },
+    };
+  }
+
   it("inserts the shim before </head>", () => {
     const out = injectRecoveryShim("<html><head><title>x</title></head><body></body></html>");
     expect(out).toContain("data-bb-recovery-shim");
@@ -27,6 +159,50 @@ describe("injectRecoveryShim", () => {
     const out = injectRecoveryShim("<head></head>", { recoverEnabled: true });
     expect(out).toContain('data-bb-ui-source-recovery="enabled"');
     expect(out).toContain("var RECOVERY_ENABLED = true;");
+  });
+
+  it("shows active-fork recovery manually without auto-reverting", () => {
+    const html = injectRecoveryShim("<head></head>", { recoverEnabled: true });
+    const shim = runInjectedShim(html);
+
+    shim.runTimers(10_000);
+
+    const bar = shim.getElementById("bb-ui-recovery-bar");
+    expect(bar).not.toBeNull();
+    expect(shim.fetch).not.toHaveBeenCalled();
+
+    const button = bar?.children.find((child) => child.tagName === "BUTTON");
+    button?.onclick?.();
+    expect(shim.fetch).toHaveBeenCalledWith("/api/v1/ui/prod", {
+      method: "POST",
+    });
+  });
+
+  it("shows manual recovery sooner after an active-fork script load failure", () => {
+    const html = injectRecoveryShim("<head></head>", { recoverEnabled: true });
+    const shim = runInjectedShim(html);
+    const script = new FakeElement("SCRIPT");
+
+    shim.dispatchWindowEvent("error", { target: script });
+    shim.runTimers(3_000);
+
+    expect(shim.getElementById("bb-ui-recovery-bar")).not.toBeNull();
+    expect(shim.fetch).not.toHaveBeenCalled();
+  });
+
+  it("removes active-fork recovery if the app eventually mounts", () => {
+    const html = injectRecoveryShim("<head></head>", { recoverEnabled: true });
+    const shim = runInjectedShim(html);
+    shim.runTimers(10_000);
+    expect(shim.getElementById("bb-ui-recovery-bar")).not.toBeNull();
+
+    shim.root.childElementCount = 1;
+    for (const callback of shim.mutationCallbacks) {
+      callback();
+    }
+
+    expect(shim.getElementById("bb-ui-recovery-bar")).toBeNull();
+    expect(shim.fetch).not.toHaveBeenCalled();
   });
 
   it("is idempotent (does not double-inject)", () => {
