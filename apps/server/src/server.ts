@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import {
   buildLocalAppOrigins,
@@ -204,6 +205,7 @@ export function createApp(
       },
     }),
   );
+  app.use("*", compress());
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
   app.use("/api/v1/*", async (context, next) => {

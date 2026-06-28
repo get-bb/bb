@@ -15,7 +15,7 @@ describe("production static cache headers", () => {
     );
     await writeFile(
       join(staticDir, "assets", "index-test.js"),
-      "console.log('fresh bundle');",
+      `console.log('${"fresh bundle ".repeat(600)}');`,
     );
 
     const harness = await createTestAppHarness();
@@ -33,6 +33,15 @@ describe("production static cache headers", () => {
       expect(assetResponse.headers.get("cache-control")).toBe(
         "public, max-age=31536000, immutable",
       );
+
+      const compressedAssetResponse = await serverApp.app.request(
+        "/assets/index-test.js",
+        { headers: { "accept-encoding": "gzip" } },
+      );
+      expect(compressedAssetResponse.headers.get("content-encoding")).toBe(
+        "gzip",
+      );
+      expect(compressedAssetResponse.headers.has("content-length")).toBe(false);
 
       const apiMissResponse = await serverApp.app.request(
         "/api/v1/does-not-exist.js",

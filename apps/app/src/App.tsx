@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { PageShell } from "./components/ui/page-shell";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
@@ -98,14 +99,11 @@ function PopoutRouteFallback() {
 function AppRoutes() {
   return (
     <AppLayout>
-      <Suspense fallback={null}>
+      <Suspense fallback={<AppRouteFallback />}>
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
-          <Route
-            path={AUTOMATIONS_ROUTE_PATH}
-            element={<AutomationsView />}
-          />
+          <Route path={AUTOMATIONS_ROUTE_PATH} element={<AutomationsView />} />
           <Route
             path={AUTOMATION_DETAIL_ROUTE_PATH}
             element={<AutomationDetailView />}
@@ -141,6 +139,16 @@ function AppRoutes() {
         </Routes>
       </Suspense>
     </AppLayout>
+  );
+}
+
+function AppRouteFallback() {
+  return (
+    <PageShell contentClassName="min-h-full items-center justify-center">
+      <p className="py-12 text-center text-sm text-muted-foreground">
+        Loading...
+      </p>
+    </PageShell>
   );
 }
 

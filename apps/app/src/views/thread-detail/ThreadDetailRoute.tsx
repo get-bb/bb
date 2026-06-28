@@ -1,16 +1,6 @@
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
+import DiffWorkerPoolProvider from "@/components/secondary-panel/DiffWorkerPoolProvider";
 import { ThreadDetailView } from "./ThreadDetailView";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
-
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const HIGHLIGHTER_OPTIONS = {};
 
 interface ThreadDetailRoutePageProps {
   surface?: "page";
@@ -40,12 +30,5 @@ export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
       <ThreadDetailView surface="page" />
     );
 
-  return (
-    <WorkerPoolContextProvider
-      poolOptions={WORKER_POOL_OPTIONS}
-      highlighterOptions={HIGHLIGHTER_OPTIONS}
-    >
-      {view}
-    </WorkerPoolContextProvider>
-  );
+  return <DiffWorkerPoolProvider>{view}</DiffWorkerPoolProvider>;
 }
