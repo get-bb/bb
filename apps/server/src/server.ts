@@ -101,6 +101,8 @@ interface CreateAppOptions {
 }
 
 interface StaticResponseHeadersArgs {
+  contentEncoding?: string;
+  contentLength?: number;
   contentType: string;
   urlPath: string;
 }
@@ -113,6 +115,10 @@ const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
 const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
+const PRECOMPRESSED_STATIC_FILES = [
+  { encoding: "br", extension: ".br" },
+  { encoding: "gzip", extension: ".gz" },
+] as const;
 
 interface ShouldLogSlowApiRequestArgs {
   durationMs: number;
@@ -136,7 +142,101 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
       ? STATIC_ASSET_CACHE_CONTROL
       : STATIC_INDEX_CACHE_CONTROL,
   );
+  if (args.contentEncoding !== undefined) {
+    headers.set("content-encoding", args.contentEncoding);
+    headers.set("vary", "Accept-Encoding");
+  }
+  if (args.contentLength !== undefined) {
+    headers.set("content-length", String(args.contentLength));
+  }
   return headers;
+}
+
+function acceptedEncodingQuality(
+  acceptEncodingHeader: string | undefined,
+  encoding: string,
+): number {
+  if (acceptEncodingHeader === undefined) {
+    return 0;
+  }
+  let wildcardQuality = 0;
+  for (const part of acceptEncodingHeader.split(",")) {
+    const [rawName, ...rawParams] = part.trim().split(";");
+    const name = rawName?.trim().toLowerCase();
+    const qParam = rawParams
+      .map((param) => param.trim().toLowerCase())
+      .find((param) => param.startsWith("q="));
+    const quality =
+      qParam === undefined
+        ? 1
+        : Number.isNaN(Number(qParam.slice(2)))
+          ? 1
+          : Number(qParam.slice(2));
+    if (name === encoding) {
+      return quality;
+    }
+    if (name === "*") {
+      wildcardQuality = quality;
+    }
+  }
+  return wildcardQuality;
+}
+
+function canServePrecompressedStaticFile(contentType: string): boolean {
+  return (
+    contentType.startsWith("text/") ||
+    contentType === "application/javascript" ||
+    contentType === "application/json" ||
+    contentType === "application/manifest+json" ||
+    contentType === "application/wasm" ||
+    contentType === "application/xml" ||
+    contentType === "image/svg+xml"
+  );
+}
+
+async function findPrecompressedStaticFile(args: {
+  acceptEncodingHeader: string | undefined;
+  contentType: string;
+  filePath: string;
+}): Promise<{
+  contentLength: number;
+  encoding: string;
+  filePath: string;
+} | null> {
+  if (!canServePrecompressedStaticFile(args.contentType)) {
+    return null;
+  }
+
+  const candidates = PRECOMPRESSED_STATIC_FILES.map((candidate, index) => ({
+    ...candidate,
+    index,
+    quality: acceptedEncodingQuality(
+      args.acceptEncodingHeader,
+      candidate.encoding,
+    ),
+  }))
+    .filter((candidate) => candidate.quality > 0)
+    .sort(
+      (left, right) => right.quality - left.quality || left.index - right.index,
+    );
+
+  for (const candidate of candidates) {
+    const encodedFilePath = `${args.filePath}${candidate.extension}`;
+    try {
+      const encodedStat = await stat(encodedFilePath);
+      if (encodedStat.isFile()) {
+        return {
+          contentLength: encodedStat.size,
+          encoding: candidate.encoding,
+          filePath: encodedFilePath,
+        };
+      }
+    } catch {
+      // Sidecar missing — try the next acceptable encoding.
+    }
+  }
+
+  return null;
 }
 
 function buildAllowedCorsOrigins(deps: AppDeps): Set<string> {
@@ -377,6 +477,7 @@ export function createApp(
       ".woff": "font/woff",
       ".woff2": "font/woff2",
       ".webp": "image/webp",
+      ".webmanifest": "application/manifest+json",
       ".map": "application/json",
     };
 
@@ -403,6 +504,22 @@ export function createApp(
             const html = injectRecoveryShim(await readFile(filePath, "utf8"));
             return new Response(html, {
               headers: createStaticResponseHeaders({ contentType, urlPath }),
+            });
+          }
+          const precompressedFile = await findPrecompressedStaticFile({
+            acceptEncodingHeader: context.req.header("accept-encoding"),
+            contentType,
+            filePath,
+          });
+          if (precompressedFile !== null) {
+            const content = await readFile(precompressedFile.filePath);
+            return new Response(content, {
+              headers: createStaticResponseHeaders({
+                contentEncoding: precompressedFile.encoding,
+                contentLength: precompressedFile.contentLength,
+                contentType,
+                urlPath,
+              }),
             });
           }
           const content = await readFile(filePath);

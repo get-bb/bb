@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite --config vite.dev.config.ts --configLoader runner",
-    "build": "vite build --logLevel warn",
+    "build": "vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist",
     "preview": "vite preview",
     "clean": "rimraf dist",
     "storybook": "ladle serve",

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
+import {
+  constants as zlibConstants,
+  brotliCompressSync,
+  gzipSync,
+} from "node:zlib";
 
 const DEFAULT_DIST_DIR = "apps/app/dist";
 
@@ -28,6 +32,11 @@ function walkFiles(dir) {
 function measureFile(filePath, label) {
   const body = readFileSync(filePath);
   return {
+    brotliBytes: brotliCompressSync(body, {
+      params: {
+        [zlibConstants.BROTLI_PARAM_QUALITY]: 10,
+      },
+    }).length,
     gzipBytes: gzipSync(body).length,
     label,
     rawBytes: body.length,
@@ -56,7 +65,9 @@ function printTable(title, items) {
     console.log(
       `${formatBytes(item.rawBytes).padStart(10)} raw  ${formatBytes(
         item.gzipBytes,
-      ).padStart(10)} gzip  ${item.label}`,
+      ).padStart(10)} gzip  ${formatBytes(item.brotliBytes).padStart(
+        10,
+      )} br  ${item.label}`,
     );
   }
 }
@@ -95,7 +106,12 @@ const initialFiles = [
 ];
 const initialRequestCount = initialFiles.length;
 const allFiles = walkFiles(distDir)
-  .filter((filePath) => !filePath.endsWith(".map"))
+  .filter(
+    (filePath) =>
+      !filePath.endsWith(".br") &&
+      !filePath.endsWith(".gz") &&
+      !filePath.endsWith(".map"),
+  )
   .map((filePath) =>
     measureFile(filePath, `/${filePath.slice(distDir.length + 1)}`),
   )
@@ -107,12 +123,12 @@ console.log(`initial requests: ${initialRequestCount}`);
 console.log(
   `initial total: ${formatBytes(sum(initialFiles, "rawBytes"))} raw, ${formatBytes(
     sum(initialFiles, "gzipBytes"),
-  )} gzip`,
+  )} gzip, ${formatBytes(sum(initialFiles, "brotliBytes"))} br`,
 );
 console.log(
   `all non-map files: ${formatBytes(sum(allFiles, "rawBytes"))} raw, ${formatBytes(
     sum(allFiles, "gzipBytes"),
-  )} gzip`,
+  )} gzip, ${formatBytes(sum(allFiles, "brotliBytes"))} br`,
 );
 
 printTable(
