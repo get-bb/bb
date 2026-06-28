@@ -70,8 +70,15 @@ describe("injectRecoveryShim", () => {
     fetch: ReturnType<typeof vi.fn>;
     getElementById(id: string): FakeElement | null;
     mutationCallbacks: Array<() => void>;
+    reload: ReturnType<typeof vi.fn>;
     root: FakeElement;
     runTimers(delayMs: number): void;
+    webSockets: Array<{
+      onclose: (() => void) | null;
+      onmessage: ((event: { data: string }) => void) | null;
+      onopen: (() => void) | null;
+      send: () => void;
+    }>;
   } {
     const root = new FakeElement("DIV");
     root.id = "root";
@@ -83,6 +90,13 @@ describe("injectRecoveryShim", () => {
       Array<(event: { target?: FakeElement }) => void>
     > = {};
     const fetch = vi.fn(() => Promise.resolve(new Response("{}")));
+    const reload = vi.fn();
+    const webSockets: Array<{
+      onclose: (() => void) | null;
+      onmessage: ((event: { data: string }) => void) | null;
+      onopen: (() => void) | null;
+      send: () => void;
+    }> = [];
     const getElementById = (id: string): FakeElement | null => {
       if (id === "root") return root;
       return findElement(body, id);
@@ -110,6 +124,9 @@ describe("injectRecoveryShim", () => {
         onclose: (() => void) | null = null;
         onmessage: ((event: { data: string }) => void) | null = null;
         onopen: (() => void) | null = null;
+        constructor() {
+          webSockets.push(this);
+        }
         send(): void {}
       },
       window: {
@@ -123,7 +140,7 @@ describe("injectRecoveryShim", () => {
         location: {
           host: "bb.example.test",
           protocol: "https:",
-          reload: vi.fn(),
+          reload,
         },
       },
     };
@@ -138,12 +155,14 @@ describe("injectRecoveryShim", () => {
       fetch,
       getElementById,
       mutationCallbacks,
+      reload,
       root,
       runTimers(delayMs: number): void {
         for (const timer of timers.filter((timer) => timer.delayMs === delayMs)) {
           timer.callback();
         }
       },
+      webSockets,
     };
   }
 
@@ -161,7 +180,38 @@ describe("injectRecoveryShim", () => {
     expect(out).toContain("var RECOVERY_ENABLED = true;");
   });
 
-  it("shows active-fork recovery manually without auto-reverting", () => {
+  it("keeps shipped/default recovery watchdog disabled", () => {
+    const html = injectRecoveryShim("<head></head>");
+    const shim = runInjectedShim(html);
+
+    shim.runTimers(10_000);
+    expect(shim.getElementById("bb-ui-recovery-bar")).toBeNull();
+
+    shim.dispatchWindowEvent("error", { target: new FakeElement("SCRIPT") });
+    shim.runTimers(3_000);
+
+    expect(shim.getElementById("bb-ui-recovery-bar")).toBeNull();
+    expect(shim.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps live reload active for shipped and UI-source HTML", () => {
+    for (const recoverEnabled of [false, true]) {
+      const html = injectRecoveryShim("<head></head>", { recoverEnabled });
+      const shim = runInjectedShim(html);
+
+      shim.webSockets[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: "changed",
+          entity: "system",
+          changes: ["ui-reloaded"],
+        }),
+      });
+
+      expect(shim.reload).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("shows active-fork recovery manually without auto-reverting", async () => {
     const html = injectRecoveryShim("<head></head>", { recoverEnabled: true });
     const shim = runInjectedShim(html);
 
@@ -176,6 +226,8 @@ describe("injectRecoveryShim", () => {
     expect(shim.fetch).toHaveBeenCalledWith("/api/v1/ui/prod", {
       method: "POST",
     });
+    await Promise.resolve();
+    expect(shim.reload).toHaveBeenCalledOnce();
   });
 
   it("shows manual recovery sooner after an active-fork script load failure", () => {
