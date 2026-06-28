@@ -85,6 +85,15 @@ vi.mock("@/components/ui/responsive-overlay.js", async () => {
   return { ResponsiveDrawerShell };
 });
 
+vi.mock("@/components/secondary-panel/DiffWorkerPoolProvider", async () => {
+  const React = await import("react");
+
+  const DiffWorkerPoolProvider = ({ children }: { children?: ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+
+  return { default: DiffWorkerPoolProvider };
+});
+
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
   const React = await import("react");
 
@@ -174,7 +183,7 @@ afterEach(() => {
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
-  it("syncs the panel group when persisted open state arrives after mount", () => {
+  it("syncs the panel group when persisted open state arrives after mount", async () => {
     const view = renderRootCompose({
       isCompactViewport: false,
       isSecondaryPanelOpen: false,
@@ -188,7 +197,9 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
     expect(
-      screen.getByTestId("inline-secondary-panel").getAttribute("data-open"),
+      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
+        "data-open",
+      ),
     ).toBe("true");
   });
 
@@ -207,7 +218,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
   });
 
-  it("leaves the panel group alone while the root panel renders as a drawer", () => {
+  it("leaves the panel group alone while the root panel renders as a drawer", async () => {
     const view = renderRootCompose({
       isCompactViewport: true,
       isSecondaryPanelOpen: false,
@@ -219,7 +230,9 @@ describe("RootComposeSecondaryContent desktop layout", () => {
 
     expect(panelGroupState.setLayout).not.toHaveBeenCalled();
     expect(
-      screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
+      (await screen.findByTestId("drawer-secondary-panel")).getAttribute(
+        "data-open",
+      ),
     ).toBe("true");
   });
 });
