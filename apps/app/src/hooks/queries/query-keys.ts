@@ -173,6 +173,9 @@ export type DisabledThreadListQueryKey = readonly [
 ];
 export type ThreadQueryKeyPrefix = readonly [typeof THREAD_QUERY_KEY];
 export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
+export type ThreadDetailBootstrapQueryKeyPrefix = readonly [
+  typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
+];
 export type ThreadDetailBootstrapQueryKey = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
   string,
@@ -633,6 +636,10 @@ export function threadDetailBootstrapQueryKey(
   threadId: string,
 ): ThreadDetailBootstrapQueryKey {
   return [THREAD_DETAIL_BOOTSTRAP_QUERY_KEY, threadId];
+}
+
+export function allThreadDetailBootstrapQueryKeyPrefix(): ThreadDetailBootstrapQueryKeyPrefix {
+  return [THREAD_DETAIL_BOOTSTRAP_QUERY_KEY];
 }
 
 export function allThreadQueryKeyPrefix(): ThreadQueryKeyPrefix {
