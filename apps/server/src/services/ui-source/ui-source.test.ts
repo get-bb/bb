@@ -18,7 +18,15 @@ describe("injectRecoveryShim", () => {
   it("inserts the shim before </head>", () => {
     const out = injectRecoveryShim("<html><head><title>x</title></head><body></body></html>");
     expect(out).toContain("data-bb-recovery-shim");
+    expect(out).toContain('data-bb-ui-source-recovery="disabled"');
+    expect(out).toContain("var RECOVERY_ENABLED = false;");
     expect(out.indexOf("data-bb-recovery-shim")).toBeLessThan(out.indexOf("</head>"));
+  });
+
+  it("can enable UI-source recovery for active fork HTML", () => {
+    const out = injectRecoveryShim("<head></head>", { recoverEnabled: true });
+    expect(out).toContain('data-bb-ui-source-recovery="enabled"');
+    expect(out).toContain("var RECOVERY_ENABLED = true;");
   });
 
   it("is idempotent (does not double-inject)", () => {

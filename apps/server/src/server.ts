@@ -384,6 +384,7 @@ export function createApp(
       const root = uiSource
         ? uiSource.resolveActiveRoot(shippedRoot)
         : shippedRoot;
+      const uiSourceRecoveryEnabled = root !== shippedRoot;
       const urlPath =
         context.req.path === "/" ? "/index.html" : context.req.path;
       const filePath = join(root, urlPath);
@@ -396,9 +397,12 @@ export function createApp(
           const contentType =
             MIME[extname(filePath)] ?? "application/octet-stream";
           // Inject the recovery shim into every served HTML document so the
-          // reload/escape-hatch survives any UI-source breakage.
+          // reload wiring is always present. The UI-source escape hatch is only
+          // valid when this response is serving an active fork.
           if (contentType === "text/html") {
-            const html = injectRecoveryShim(await readFile(filePath, "utf8"));
+            const html = injectRecoveryShim(await readFile(filePath, "utf8"), {
+              recoverEnabled: uiSourceRecoveryEnabled,
+            });
             return new Response(html, {
               headers: createStaticResponseHeaders({ contentType, urlPath }),
             });
@@ -413,6 +417,7 @@ export function createApp(
       }
       const indexHtml = injectRecoveryShim(
         await readFile(join(root, "index.html"), "utf8"),
+        { recoverEnabled: uiSourceRecoveryEnabled },
       );
       return new Response(indexHtml, {
         headers: createStaticResponseHeaders({

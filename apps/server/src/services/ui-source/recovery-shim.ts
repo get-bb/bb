@@ -6,14 +6,16 @@
  * Responsibilities:
  *  - Own the live reload: subscribe to the `system` realtime channel and reload
  *    the page when the server broadcasts `ui-reloaded` after a build promote.
- *  - Self-heal: if the app root never mounts (a build that compiled but crashes
- *    at runtime), auto-revert to the shipped UI once, then fall back to a manual
- *    "Revert to stable" bar. A session-scoped guard prevents reload loops.
+ *  - Self-heal, when serving the active UI source: if the app root never mounts
+ *    (a build that compiled but crashes at runtime), auto-revert to the shipped
+ *    UI once, then fall back to a manual "Revert to stable" bar. A
+ *    session-scoped guard prevents reload loops.
  */
 const RECOVERY_SHIM_JS = String.raw`
 (function () {
   var MOUNT_TIMEOUT_MS = 10000;
   var AUTO_RECOVER_KEY = "bb.ui.autoRecovered";
+  var RECOVERY_ENABLED = __BB_UI_SOURCE_RECOVERY_ENABLED__;
 
   function wsUrl() {
     var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -98,6 +100,7 @@ const RECOVERY_SHIM_JS = String.raw`
   }
 
   function startWatchdog() {
+    if (!RECOVERY_ENABLED) return;
     setTimeout(function () {
       if (appMounted()) return;
       var alreadyRecovered;
@@ -123,18 +126,35 @@ const RECOVERY_SHIM_JS = String.raw`
 })();
 `;
 
-const RECOVERY_SHIM_TAG = `<script data-bb-recovery-shim>${RECOVERY_SHIM_JS}</script>`;
+interface InjectRecoveryShimOptions {
+  recoverEnabled?: boolean;
+}
+
+function recoveryShimTag(options: InjectRecoveryShimOptions): string {
+  const recoverEnabled = options.recoverEnabled ?? false;
+  const js = RECOVERY_SHIM_JS.replace(
+    "__BB_UI_SOURCE_RECOVERY_ENABLED__",
+    recoverEnabled ? "true" : "false",
+  );
+  return `<script data-bb-recovery-shim data-bb-ui-source-recovery="${
+    recoverEnabled ? "enabled" : "disabled"
+  }">${js}</script>`;
+}
 
 /**
  * Insert the recovery shim into an index.html document. Idempotent: if the shim
  * is already present (re-served) it is not duplicated.
  */
-export function injectRecoveryShim(html: string): string {
+export function injectRecoveryShim(
+  html: string,
+  options: InjectRecoveryShimOptions = {},
+): string {
   if (html.includes("data-bb-recovery-shim")) {
     return html;
   }
+  const tag = recoveryShimTag(options);
   if (html.includes("</head>")) {
-    return html.replace("</head>", `${RECOVERY_SHIM_TAG}</head>`);
+    return html.replace("</head>", `${tag}</head>`);
   }
-  return `${RECOVERY_SHIM_TAG}${html}`;
+  return `${tag}${html}`;
 }
