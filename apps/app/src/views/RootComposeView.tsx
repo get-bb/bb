@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -49,6 +48,13 @@ import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { FilePreview } from "@/components/secondary-panel/FilePreview";
+import {
+  HostFilePreviewTabContent,
+  ProjectFilePreviewTabContent,
+  ThreadStorageFilePreviewTabContent,
+  WorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@/components/ui/empty-state";
@@ -75,7 +81,9 @@ import {
 } from "@/hooks/queries/project-queries";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
-import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
+import {
+  useHostProviderCliStatus,
+} from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -162,6 +170,7 @@ import {
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
+import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -184,6 +193,10 @@ import {
   resolveEnvironmentOpenContext,
   resolveThreadWorkspacePreviewRootPath,
 } from "./thread-detail/threadWorkspaceOpenPath";
+import {
+  createDiffWorker,
+  getDiffWorkerPoolSize,
+} from "@/lib/diff-worker-pool";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -210,36 +223,11 @@ const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-const LazyFilePreview = lazy(() =>
-  import("@/components/secondary-panel/FilePreview").then((module) => ({
-    default: module.FilePreview,
-  })),
-);
-const LazyWorkspaceFilePreviewTabContent = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanelTabContent").then(
-    (module) => ({ default: module.WorkspaceFilePreviewTabContent }),
-  ),
-);
-const LazyProjectFilePreviewTabContent = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanelTabContent").then(
-    (module) => ({ default: module.ProjectFilePreviewTabContent }),
-  ),
-);
-const LazyHostFilePreviewTabContent = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanelTabContent").then(
-    (module) => ({ default: module.HostFilePreviewTabContent }),
-  ),
-);
-const LazyThreadStorageFilePreviewTabContent = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanelTabContent").then(
-    (module) => ({ default: module.ThreadStorageFilePreviewTabContent }),
-  ),
-);
-const LazyThreadTerminalPanel = lazy(() =>
-  import("@/components/thread/terminal/ThreadTerminalPanel").then((module) => ({
-    default: module.ThreadTerminalPanel,
-  })),
-);
+const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
+  workerFactory: createDiffWorker,
+  poolSize: getDiffWorkerPoolSize(),
+};
+const FILE_PREVIEW_HIGHLIGHTER_OPTIONS = {};
 
 type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
@@ -740,9 +728,7 @@ export function buildRootComposeTerminalSessions({
   environmentTerminalSessions,
   globalTerminalSessions,
   terminalTarget,
-}: BuildRootComposeTerminalSessionsArgs):
-  | readonly TerminalSession[]
-  | undefined {
+}: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
   if (terminalTarget?.kind === "environment") {
     return environmentTerminalSessions;
   }
@@ -833,14 +819,6 @@ function CodexCliVersionBanner({
   );
 }
 
-function RootComposeFileTabLoading() {
-  return (
-    <EmptyStatePanel className="mx-4 mt-4 rounded-lg">
-      Loading...
-    </EmptyStatePanel>
-  );
-}
-
 export function RootComposeRoute() {
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -848,7 +826,14 @@ export function RootComposeRoute() {
     return <LegacyProjectComposeRedirect projectId={projectId} />;
   }
 
-  return <RootComposeView surface="page" />;
+  return (
+    <WorkerPoolContextProvider
+      poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
+      highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
+    >
+      <RootComposeView surface="page" />
+    </WorkerPoolContextProvider>
+  );
 }
 
 export function RootComposeView(props: RootComposeViewProps) {
@@ -913,9 +898,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const primaryHost = useMemo(() => {
     const hosts = hostsQuery.data;
     if (!hosts || hosts.length === 0) return null;
-    return (
-      hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null
-    );
+    return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
   }, [hostsQuery.data]);
   const primaryHostId = primaryHost?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
@@ -1849,20 +1832,21 @@ export function RootComposeView(props: RootComposeViewProps) {
   const shouldUseRootStorageViewerForActiveTab =
     rawActiveRootStorageFileThreadId !== null &&
     rawActiveRootStorageFileThreadId === rootPanelThreadId;
-  const { threadStorageRootPath: activeStorageThreadStorageRootPath } =
-    useThreadStorageViewer({
-      activePath: null,
-      fileListEnabled:
-        props.surface === "page" &&
-        rawActiveRootStorageFileThreadId !== null &&
-        !shouldUseRootStorageViewerForActiveTab,
-      filePreviewEnabled: false,
-      threadId:
-        rawActiveRootStorageFileThreadId !== null &&
-        !shouldUseRootStorageViewerForActiveTab
-          ? rawActiveRootStorageFileThreadId
-          : undefined,
-    });
+  const {
+    threadStorageRootPath: activeStorageThreadStorageRootPath,
+  } = useThreadStorageViewer({
+    activePath: null,
+    fileListEnabled:
+      props.surface === "page" &&
+      rawActiveRootStorageFileThreadId !== null &&
+      !shouldUseRootStorageViewerForActiveTab,
+    filePreviewEnabled: false,
+    threadId:
+      rawActiveRootStorageFileThreadId !== null &&
+      !shouldUseRootStorageViewerForActiveTab
+        ? rawActiveRootStorageFileThreadId
+        : undefined,
+  });
   const activeStorageFileRootPath = shouldUseRootStorageViewerForActiveTab
     ? rootThreadStorageRootPath
     : activeStorageThreadStorageRootPath;
@@ -1893,8 +1877,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({
-        environmentTerminalSessions:
-          environmentTerminalsListQuery.data?.sessions,
+        environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
         globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
         terminalTarget: rootPanelTerminalTarget,
       }),
@@ -1904,7 +1887,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
-  const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const terminalSessions =
+    loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
   const activeTerminalCount = useMemo(
     () =>
@@ -2023,12 +2007,13 @@ export function RootComposeView(props: RootComposeViewProps) {
   const closeRootSecondaryPanel = useCallback(() => {
     setRootSecondaryPanelForSurface(null);
   }, [setRootSecondaryPanelForSurface]);
-  const openRootSecondaryPanel = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      setRootSecondaryPanelForSurface(panel);
-    },
-    [setRootSecondaryPanelForSurface],
-  );
+  const openRootSecondaryPanel =
+    useCallback<SecondaryPanelChangeHandler>(
+      (panel) => {
+        setRootSecondaryPanelForSurface(panel);
+      },
+      [setRootSecondaryPanelForSurface],
+    );
   const toggleRootPersistedSecondaryPanel = useCallback(() => {
     if (isPersistedSecondaryPanelOpen) {
       closeRootSecondaryPanel();
@@ -2198,7 +2183,11 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [browserTabIds, openBrowserTabAndReveal]);
   const renderBrowserDeck = useCallback(
-    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
+    ({
+      canShowNativeBrowserView,
+    }: {
+      canShowNativeBrowserView: boolean;
+    }) => {
       if (rootPanelThreadId === null) {
         return null;
       }
@@ -2247,13 +2236,14 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      clearActiveFileTabs();
-      openSecondaryPanel(panel);
-    },
-    [clearActiveFileTabs, openSecondaryPanel],
-  );
+  const handleSecondaryPanelChange =
+    useCallback<SecondaryPanelChangeHandler>(
+      (panel) => {
+        clearActiveFileTabs();
+        openSecondaryPanel(panel);
+      },
+      [clearActiveFileTabs, openSecondaryPanel],
+    );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -2664,9 +2654,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeTabId: activeFixedSecondaryTabId,
     tabs: syncedOrderedSecondaryFileTabs,
   });
-  const fileTabContentBody: ReactNode =
+  const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
-      <LazyThreadTerminalPanel
+      <ThreadTerminalPanel
         canCreateTerminal={canCreateRootTerminal}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2689,7 +2679,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       />
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null ? (
-      <LazyWorkspaceFilePreviewTabContent
+      <WorkspaceFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={workspaceFileCopyPath}
         environmentId={activeWorkspaceFileEnvironmentId}
@@ -2702,7 +2692,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       />
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileProjectPreviewId !== null ? (
-      <LazyProjectFilePreviewTabContent
+      <ProjectFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={projectFileCopyPath}
         lineRange={activeWorkspaceFileLineRange}
@@ -2712,7 +2702,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       />
     ) : activeHostFilePath !== null ? (
       activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
-        <LazyHostFilePreviewTabContent
+        <HostFilePreviewTabContent
           activePath={activeHostFilePath}
           copyPath={activeHostFilePath}
           environmentId={activeRootHostFileEnvironmentId}
@@ -2722,7 +2712,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           threadId={activeRootHostFileThreadId}
         />
       ) : (
-        <LazyFilePreview
+        <FilePreview
           path={activeHostFilePath}
           copyPath={activeHostFilePath}
           onOpenInEditor={handleOpenHostFileInEditor}
@@ -2731,7 +2721,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       )
     ) : activeStorageFilePath !== null ? (
       activeRootStorageFileThreadId ? (
-        <LazyThreadStorageFilePreviewTabContent
+        <ThreadStorageFilePreviewTabContent
           activePath={activeStorageFilePath}
           copyPath={storageFileCopyPath}
           lineRange={activeStorageFileLineRange}
@@ -2740,7 +2730,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           threadId={activeRootStorageFileThreadId}
         />
       ) : (
-        <LazyFilePreview
+        <FilePreview
           path={activeStorageFilePath}
           copyPath={storageFileCopyPath}
           onOpenInEditor={handleOpenStorageFileInEditor}
@@ -2748,12 +2738,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         />
       )
     ) : undefined;
-  const fileTabContent =
-    fileTabContentBody === undefined ? undefined : (
-      <Suspense fallback={<RootComposeFileTabLoading />}>
-        {fileTabContentBody}
-      </Suspense>
-    );
   const isBrowserTabActive = activeBrowserTab !== null;
   const rootPanelMetadataContent = useMemo(
     () => (
@@ -2776,15 +2760,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [openWorkspaceFile],
   );
-  const rootPanelToggle = !isSecondaryPanelOpen ? (
-    <div className="fixed right-4 top-2 z-40">
-      <RootComposeRightPanelToggle
-        activeTerminalCount={activeTerminalCount}
-        isOpen={isSecondaryPanelOpen}
-        onToggle={handleToggleSecondaryPanel}
-      />
-    </div>
-  ) : null;
+  const rootPanelToggle =
+    !isSecondaryPanelOpen ? (
+      <div className="fixed right-4 top-2 z-40">
+        <RootComposeRightPanelToggle
+          activeTerminalCount={activeTerminalCount}
+          isOpen={isSecondaryPanelOpen}
+          onToggle={handleToggleSecondaryPanel}
+        />
+      </div>
+    ) : null;
   const attachmentsConfig = useMemo(
     () => ({
       items: promptDraft.attachments,

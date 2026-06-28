@@ -1,12 +1,11 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from "react";
 import { useAtomValue } from "jotai";
@@ -17,7 +16,7 @@ import {
 } from "react-resizable-panels";
 import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
-import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
@@ -27,17 +26,9 @@ import { cn } from "@/lib/utils";
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
-const LazyThreadSecondaryPanel = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanel").then(
-    (module) => ({ default: module.ThreadSecondaryPanel }),
-  ),
-);
-const LazyDiffWorkerPoolProvider = lazy(
-  () => import("@/components/secondary-panel/DiffWorkerPoolProvider"),
-);
 
 type RootSecondaryPanelProps = Omit<
-  ThreadSecondaryPanelProps,
+  ComponentProps<typeof ThreadSecondaryPanel>,
   | "browserDeck"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
@@ -57,28 +48,6 @@ interface RootComposeSecondaryContentProps {
 }
 
 function noopToggleConversationCollapse(): void {}
-
-function RootComposeDiffWorkerPoolBoundary({
-  children,
-  fallback,
-}: {
-  children: ReactNode;
-  fallback: ReactNode;
-}) {
-  return (
-    <Suspense fallback={fallback}>
-      <LazyDiffWorkerPoolProvider>{children}</LazyDiffWorkerPoolProvider>
-    </Suspense>
-  );
-}
-
-function RootComposeSecondaryPanelLoading() {
-  return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 items-center justify-center bg-background px-4 text-sm text-muted-foreground">
-      Loading...
-    </div>
-  );
-}
 
 export function RootComposeSecondaryContent({
   children,
@@ -207,47 +176,26 @@ export function RootComposeSecondaryContent({
       secondaryWidth,
     ]);
   }, [isSecondaryPanelOpen, renderAsDrawer]);
-  const inlineSecondaryPanelFallback = (
-    <Panel
-      id="root-compose-secondary-panel-loading"
-      defaultSize={persistedSecondaryWidthPercent}
-      minSize={24}
-      order={2}
-      className="min-w-0 overflow-hidden"
-    >
-      <RootComposeSecondaryPanelLoading />
-    </Panel>
-  );
-  const inlineSecondaryPanelContent =
-    !renderAsDrawer && isSecondaryPanelOpen ? (
-      <RootComposeDiffWorkerPoolBoundary
-        fallback={inlineSecondaryPanelFallback}
-      >
-        <LazyThreadSecondaryPanel
-          {...threadSecondaryPanelProps}
-          browserDeck={browserDeck}
-          renderAsDrawer={false}
-          isConversationCollapsed={false}
-          onToggleConversationCollapse={noopToggleConversationCollapse}
-          reserveLeftForDesktopTrafficLights={false}
-        />
-      </RootComposeDiffWorkerPoolBoundary>
-    ) : null;
-  const drawerSecondaryPanelContent =
-    renderAsDrawer && isSecondaryPanelOpen ? (
-      <RootComposeDiffWorkerPoolBoundary
-        fallback={<RootComposeSecondaryPanelLoading />}
-      >
-        <LazyThreadSecondaryPanel
-          {...threadSecondaryPanelProps}
-          browserDeck={browserDeck}
-          renderAsDrawer={true}
-          isConversationCollapsed={false}
-          onToggleConversationCollapse={noopToggleConversationCollapse}
-          reserveLeftForDesktopTrafficLights={false}
-        />
-      </RootComposeDiffWorkerPoolBoundary>
-    ) : null;
+  const inlineSecondaryPanelContent = !renderAsDrawer ? (
+    <ThreadSecondaryPanel
+      {...threadSecondaryPanelProps}
+      browserDeck={browserDeck}
+      renderAsDrawer={false}
+      isConversationCollapsed={false}
+      onToggleConversationCollapse={noopToggleConversationCollapse}
+      reserveLeftForDesktopTrafficLights={false}
+    />
+  ) : null;
+  const drawerSecondaryPanelContent = renderAsDrawer ? (
+    <ThreadSecondaryPanel
+      {...threadSecondaryPanelProps}
+      browserDeck={browserDeck}
+      renderAsDrawer={true}
+      isConversationCollapsed={false}
+      onToggleConversationCollapse={noopToggleConversationCollapse}
+      reserveLeftForDesktopTrafficLights={false}
+    />
+  ) : null;
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">

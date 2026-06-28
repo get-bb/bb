@@ -93,6 +93,7 @@ const initialFiles = [
     })
     .filter(Boolean),
 ];
+const initialRequestCount = initialFiles.length;
 const allFiles = walkFiles(distDir)
   .filter((filePath) => !filePath.endsWith(".map"))
   .map((filePath) =>
@@ -102,6 +103,7 @@ const allFiles = walkFiles(distDir)
 
 console.log(`dist: ${distDir}`);
 console.log(`initial references: ${initialReferences.length}`);
+console.log(`initial requests: ${initialRequestCount}`);
 console.log(
   `initial total: ${formatBytes(sum(initialFiles, "rawBytes"))} raw, ${formatBytes(
     sum(initialFiles, "gzipBytes"),
