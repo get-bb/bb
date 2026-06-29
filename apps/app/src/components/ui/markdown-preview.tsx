@@ -16,10 +16,13 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
@@ -219,12 +222,25 @@ const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
-// Security-critical order: raw HTML must become nodes before sanitization can
-// strip unsafe elements, attributes, and URLs.
+// `remark-math` emits math as `<code class="language-math">` (inline) and
+// `<pre><code class="language-math">` (display) holding the raw TeX, and
+// `rehype-katex` renders any element carrying that class. The default sanitize
+// schema already keeps `language-*` classes on `<code>`, so the wrappers survive
+// sanitization untouched — and `rehype-katex` runs LAST, after sanitize, so KaTeX
+// (which uses `trust: false` and self-escapes its TeX input) emits its rendered
+// output without it being re-sanitized.
+//
+// Security-critical order: raw HTML must become nodes (rehypeRaw) before
+// sanitization can strip unsafe elements, attributes, and URLs.
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
   rehypeSanitize,
+  rehypeKatex,
 ];
+
+// No raw HTML means nothing untrusted to sanitize, so KaTeX renders straight
+// from the `remark-math` wrappers.
+const MARKDOWN_MATH_REHYPE_PLUGINS: MarkdownRehypePlugins = [rehypeKatex];
 
 function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
   next,
@@ -1176,6 +1192,11 @@ function MarkdownPreviewComponent({
   const remarkPlugins = useMemo(
     () => [
       remarkGfm,
+      // `remark-math` with single-dollar math left ON (the default), matching
+      // GitHub: `$x$` is inline and `$$x$$` is block. The known trade-off is that
+      // a line with two unescaped `$` (e.g. "$5 to $10", "$HOME and $PATH") parses
+      // the span between them as math; authors escape a literal dollar with `\$`.
+      remarkMath,
       ...(threadMentions !== undefined || promptMentions !== undefined
         ? [remarkBreaks]
         : []),
@@ -1208,7 +1229,11 @@ function MarkdownPreviewComponent({
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
         <ReactMarkdown
-          rehypePlugins={allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : undefined}
+          rehypePlugins={
+            allowHtml
+              ? MARKDOWN_HTML_REHYPE_PLUGINS
+              : MARKDOWN_MATH_REHYPE_PLUGINS
+          }
           remarkPlugins={remarkPlugins}
           components={markdownComponents}
           urlTransform={resolvedUrlTransform}

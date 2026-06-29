@@ -129,4 +129,53 @@ describe("MarkdownPreview", () => {
       `${window.location.protocol}//${window.location.hostname}:5173/demo`,
     );
   });
+
+  it("renders inline LaTeX math with KaTeX", () => {
+    const { container } = render(
+      <MarkdownPreview content={"Mass-energy is $E = mc^2$ exactly."} />,
+    );
+
+    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(container.querySelector(".katex-display")).toBeNull();
+  });
+
+  it("renders display LaTeX math blocks with KaTeX", () => {
+    const { container } = render(
+      <MarkdownPreview content={"$$\n\\frac{1}{2} + \\frac{1}{2} = 1\n$$"} />,
+    );
+
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("leaves escaped dollar amounts as literal text", () => {
+    const { container } = render(
+      <MarkdownPreview content={"It went from \\$5 to \\$10 last week."} />,
+    );
+
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toContain("$5");
+    expect(container.textContent).toContain("$10");
+  });
+
+  it("renders math while still sanitizing untrusted HTML when allowHtml is set", () => {
+    const { container } = render(
+      <MarkdownPreview
+        allowHtml
+        content={"$a^2 + b^2 = c^2$\n\n<script>alert(1)</script>"}
+      />,
+    );
+
+    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.textContent).not.toContain("alert(1)");
+  });
+
+  it("contains invalid TeX instead of throwing", () => {
+    const { container } = render(
+      <MarkdownPreview content={"Broken: $\\frac{1}{$ keeps rendering."} />,
+    );
+
+    expect(container.querySelector(".katex-error")).not.toBeNull();
+    expect(container.textContent).toContain("keeps rendering.");
+  });
 });
