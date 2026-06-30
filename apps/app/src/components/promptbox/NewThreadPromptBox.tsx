@@ -69,6 +69,7 @@ export interface NewThreadBranchConfig {
   value: string | null;
   currentBranch?: string | null;
   isNew: boolean;
+  hidden?: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
   priorityOptions?: readonly string[];
@@ -326,7 +327,8 @@ export function ThreadEnvSlot({
     [environment.value],
   );
   const branchMenuKind = getBranchPickerMenuKind({ parsedEnvironment });
-  const showBranchPicker = parsedEnvironment?.type === "host";
+  const showBranchPicker =
+    parsedEnvironment?.type === "host" && branch.hidden !== true;
   const showWorktreePicker = parsedEnvironment?.type === "reuse";
   return (
     <>
@@ -400,6 +402,7 @@ export interface NewThreadConnectedBranchConfig {
   value: string | null;
   currentBranch?: string | null;
   isNew: boolean;
+  hidden?: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
   loading?: boolean;
@@ -488,6 +491,7 @@ function ConnectedThreadModeBranch({
       value: branch.value,
       currentBranch: branch.currentBranch,
       isNew: allowCreate && branch.isNew,
+      hidden: branch.hidden,
       options: branch.options,
       remoteOptions: branch.remoteOptions,
       loading: branch.loading,

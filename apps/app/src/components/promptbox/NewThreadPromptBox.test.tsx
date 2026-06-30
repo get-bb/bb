@@ -71,4 +71,34 @@ describe("ThreadEnvSlot", () => {
     expect(worktreeItem.getAttribute("aria-disabled")).toBe("true");
     expect(worktreeItem.getAttribute("data-disabled")).toBe("");
   });
+
+  it("hides the branch picker when branch controls are not applicable", () => {
+    render(
+      <ThreadEnvSlot
+        environment={{
+          value: `host:${host.id}:local`,
+          onChange: vi.fn(),
+          sources,
+          host,
+          isLocal: true,
+        }}
+        branch={{
+          value: null,
+          currentBranch: null,
+          isNew: false,
+          hidden: true,
+          options: [],
+          triggerLabel: "Unknown checkout",
+          onChange: vi.fn(),
+        }}
+        worktree={{
+          options: [],
+          value: null,
+          onChange: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Unknown checkout")).toBeNull();
+  });
 });

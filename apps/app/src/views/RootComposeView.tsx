@@ -2980,6 +2980,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         branchEnvironmentMode === "local"
           ? (branchUiState.currentOptionLabel ?? undefined)
           : undefined,
+      hidden: projectSourceWorktreeUnavailable,
       optionDisabledReason: branchUiState.mutationBlocker?.label,
       optionDisabledTitle: branchUiState.mutationBlocker?.title,
       createDisabledReason: branchUiState.mutationBlocker?.label,
@@ -2998,6 +2999,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       branchEnvironmentMode,
       isForkDraft,
       priorityBranchOptions,
+      projectSourceWorktreeUnavailable,
       remoteBranchOptions,
       branchUiState.currentBranch,
       branchUiState.currentOptionLabel,
