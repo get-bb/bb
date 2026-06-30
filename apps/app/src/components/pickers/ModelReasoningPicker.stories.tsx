@@ -5,6 +5,7 @@ import { ModelReasoningPicker } from "./ModelReasoningPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   STORY_CLAUDE_CODE_MODELS,
+  STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
   STORY_CODEX_REASONING,
@@ -54,6 +55,7 @@ const claudeBase = {
   selectedProviderId: "claude-code",
   modelValue: "claude-sonnet-5",
   modelOptions: STORY_CLAUDE_CODE_MODELS,
+  moreModelOptions: STORY_CLAUDE_CODE_MORE_MODELS,
   reasoningOptions: STORY_CLAUDE_REASONING,
   showFastModeToggle: false,
 };
@@ -65,6 +67,15 @@ const MODEL_OPTIONS_BY_PROVIDER_ID: Record<
   codex: STORY_CODEX_MODELS,
   "claude-code": STORY_CLAUDE_CODE_MODELS,
   pi: STORY_PI_MODELS,
+};
+
+const MORE_MODEL_OPTIONS_BY_PROVIDER_ID: Record<
+  string,
+  readonly (typeof STORY_CODEX_MODELS)[number][]
+> = {
+  codex: [],
+  "claude-code": STORY_CLAUDE_CODE_MORE_MODELS,
+  pi: [],
 };
 
 const REASONING_OPTIONS_BY_PROVIDER_ID: Record<
@@ -147,6 +158,8 @@ function ModelReasoningPickerInteractive() {
   const [selectedProviderId, setSelectedProviderId] = useState("codex");
   const modelOptions =
     MODEL_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ?? STORY_CODEX_MODELS;
+  const moreModelOptions =
+    MORE_MODEL_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ?? [];
   const reasoningOptions =
     REASONING_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ??
     STORY_CODEX_REASONING;
@@ -165,6 +178,7 @@ function ModelReasoningPickerInteractive() {
       }}
       modelValue={modelValue}
       modelOptions={modelOptions}
+      moreModelOptions={moreModelOptions}
       reasoningValue={reasoningValue}
       reasoningOptions={reasoningOptions}
       showFastModeToggle={

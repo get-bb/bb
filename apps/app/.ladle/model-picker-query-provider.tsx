@@ -10,6 +10,7 @@ import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import {
+  STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_CLAUDE_CODE_MODELS,
   STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
@@ -81,9 +82,11 @@ function makeSupportedReasoningEfforts(
 function makeAvailableModels({
   models,
   reasoningOptions,
+  markFirstDefault = true,
 }: {
   models: readonly PickerOption<string>[];
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
+  markFirstDefault?: boolean;
 }): AvailableModel[] {
   const defaultReasoningEffort =
     reasoningOptions.find((option) => option.value === "medium")?.value ??
@@ -99,17 +102,18 @@ function makeAvailableModels({
     description: "",
     supportedReasoningEfforts,
     defaultReasoningEffort,
-    isDefault: index === 0,
+    isDefault: markFirstDefault && index === 0,
   }));
 }
 
 function makeExecutionOptions(
   models: AvailableModel[],
+  selectedOnlyModels: AvailableModel[] = [],
 ): SystemExecutionOptionsResponse {
   return {
     providers: STORY_PROVIDER_INFOS,
     models,
-    selectedOnlyModels: [],
+    selectedOnlyModels,
     modelLoadError: null,
   };
 }
@@ -139,6 +143,11 @@ function createStoryQueryClient(): QueryClient {
       makeAvailableModels({
         models: STORY_CLAUDE_CODE_MODELS,
         reasoningOptions: STORY_CLAUDE_REASONING,
+      }),
+      makeAvailableModels({
+        models: STORY_CLAUDE_CODE_MORE_MODELS,
+        reasoningOptions: STORY_CLAUDE_REASONING,
+        markFirstDefault: false,
       }),
     ),
     pi: makeExecutionOptions(

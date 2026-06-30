@@ -128,6 +128,10 @@ export const STORY_CLAUDE_CODE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-fable-5", label: "Claude Fable 5" },
   { value: "claude-opus-4-8[1m]", label: "Claude Opus 4.8 (1M)" },
   { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+];
+
+export const STORY_CLAUDE_CODE_MORE_MODELS: readonly PickerOption<string>[] = [
+  { value: "claude-sonnet-4-6[1m]", label: "Claude Sonnet 4.6 (1M)" },
   { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];

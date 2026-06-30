@@ -41,6 +41,7 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_CLAUDE_CODE_MODELS,
   STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
@@ -81,7 +82,7 @@ const claudePlanExecution = makeExecutionControlsProps({
     active: { model: "claude-sonnet-5" },
     selected: "claude-sonnet-5",
     options: STORY_CLAUDE_CODE_MODELS,
-    moreOptions: [],
+    moreOptions: STORY_CLAUDE_CODE_MORE_MODELS,
     isLoading: false,
     loadFailed: false,
     onChange: noop,

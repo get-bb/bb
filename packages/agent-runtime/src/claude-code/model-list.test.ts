@@ -10,9 +10,6 @@ describe("listClaudeCodeModels", () => {
       "claude-opus-4-8[1m]",
       "claude-opus-4-7[1m]",
       "claude-sonnet-5",
-      "claude-sonnet-4-6[1m]",
-      "claude-sonnet-4-6",
-      "claude-haiku-4-5",
     ]);
   });
 
@@ -28,8 +25,17 @@ describe("listClaudeCodeModels", () => {
     );
   });
 
-  it("routes non-active Opus models to the selected-only bucket", () => {
+  it("routes secondary and non-active Claude models to the selected-only bucket", () => {
     const { models, selectedOnlyModels } = listClaudeCodeModels();
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-sonnet-4-6[1m]",
+    );
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-sonnet-4-6",
+    );
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-haiku-4-5",
+    );
     expect(models.map((model) => model.model)).not.toContain("claude-opus-4-8");
     expect(models.map((model) => model.model)).not.toContain("claude-opus-4-7");
     expect(models.map((model) => model.model)).not.toContain("claude-opus-4-6");
@@ -115,12 +121,6 @@ describe("listClaudeCodeModels", () => {
       "ultracode",
       "max",
     ]);
-    expect(effortLevelsByModel.get("claude-sonnet-4-6")).toEqual([
-      "low",
-      "medium",
-      "high",
-      "max",
-    ]);
   });
 
   it("routes inactive models and moving aliases to the selected-only bucket", () => {
@@ -128,6 +128,9 @@ describe("listClaudeCodeModels", () => {
     const activeIds = models.map((model) => model.model);
     const selectedOnlyIds = selectedOnlyModels.map((model) => model.model);
     for (const selectedOnlyModel of [
+      "claude-sonnet-4-6[1m]",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
       "claude-opus-4-8",
       "claude-opus-4-7",
       "claude-opus-4-6[1m]",
@@ -158,6 +161,28 @@ describe("listClaudeCodeModels", () => {
           expect.objectContaining({ reasoningEffort: "xhigh" }),
           expect.objectContaining({ reasoningEffort: "ultracode" }),
         ]),
+      }),
+    );
+    expect(
+      selectedOnlyModels.find((model) => model.model === "claude-sonnet-4-6"),
+    ).toEqual(
+      expect.objectContaining({
+        displayName: "Sonnet 4.6",
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: expect.arrayContaining([
+          expect.objectContaining({ reasoningEffort: "max" }),
+        ]),
+      }),
+    );
+    expect(
+      selectedOnlyModels.find((model) => model.model === "claude-haiku-4-5"),
+    ).toEqual(
+      expect.objectContaining({
+        displayName: "Haiku 4.5",
+        defaultReasoningEffort: "low",
+        supportedReasoningEfforts: [
+          expect.objectContaining({ reasoningEffort: "low" }),
+        ],
       }),
     );
   });

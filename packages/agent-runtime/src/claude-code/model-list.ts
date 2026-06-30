@@ -66,9 +66,9 @@ function withOneMillionContext(model: string): string {
 
 const DEFAULT_CLAUDE_CODE_MODEL = withOneMillionContext(CLAUDE_OPUS_4_8_MODEL);
 
-// Keep the active catalog version-pinned. Moving aliases and retired model
-// strings live in the selected-only catalog so existing stored selections can
-// render with their proper label without being offered as fresh choices.
+// Keep the active catalog version-pinned. Secondary "More models" choices,
+// moving aliases, and retired model strings live in the selected-only catalog
+// so existing stored selections can render with their proper label.
 const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: CLAUDE_FABLE_5_MODEL,
@@ -111,6 +111,9 @@ const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "medium",
   },
+];
+
+const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: withOneMillionContext(CLAUDE_SONNET_4_6_MODEL),
     model: withOneMillionContext(CLAUDE_SONNET_4_6_MODEL),
@@ -135,9 +138,6 @@ const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     supportedReasoningEfforts: HAIKU_REASONING_EFFORTS,
     defaultReasoningEffort: "low",
   },
-];
-
-const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: CLAUDE_OPUS_4_8_MODEL,
     model: CLAUDE_OPUS_4_8_MODEL,
