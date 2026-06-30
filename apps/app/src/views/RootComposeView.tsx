@@ -388,7 +388,7 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
-const NON_GIT_PROJECT_SOURCE_WORKTREE_DISABLED_REASON =
+const PROJECT_SOURCE_WORKTREE_DISABLED_REASON =
   "Project source is not a git repository";
 
 interface ShouldNavigateAfterThreadCreateArgs {
@@ -626,13 +626,10 @@ function buildReuseThreadOptions(
   return options;
 }
 
-function isNonGitProjectSourceCheckout(
+export function isProjectSourceWorktreeUnavailable(
   data: ProjectBranchesResponse | undefined,
 ): boolean {
-  return (
-    data?.checkout.kind === "unknown" &&
-    data.checkout.reason === "Path is not a git repository"
-  );
+  return data?.checkout.kind === "unknown";
 }
 
 export function resolveRootComposeEffectiveEnvironmentValue({
@@ -1297,7 +1294,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
   );
   const activeBranchesQuery = hostBranchesQuery;
-  const projectSourceIsNonGit = isNonGitProjectSourceCheckout(
+  const projectSourceWorktreeUnavailable = isProjectSourceWorktreeUnavailable(
     activeBranchesQuery.data,
   );
   const selectedEnvironmentRequestsManagedWorktree =
@@ -1307,10 +1304,11 @@ export function RootComposeView(props: RootComposeViewProps) {
     !isProjectless &&
     activeBranchesQuery.isLoading;
   const managedWorktreeUnavailable =
-    selectedEnvironmentRequestsManagedWorktree && projectSourceIsNonGit;
+    selectedEnvironmentRequestsManagedWorktree &&
+    projectSourceWorktreeUnavailable;
   useEffect(() => {
     if (
-      !projectSourceIsNonGit ||
+      !projectSourceWorktreeUnavailable ||
       parsedEnvironment?.type !== "host" ||
       parsedEnvironment.mode !== "worktree"
     ) {
@@ -1319,7 +1317,11 @@ export function RootComposeView(props: RootComposeViewProps) {
     setEnvironmentSelectionValue(
       encodeHostValue(parsedEnvironment.hostId, "local"),
     );
-  }, [parsedEnvironment, projectSourceIsNonGit, setEnvironmentSelectionValue]);
+  }, [
+    parsedEnvironment,
+    projectSourceWorktreeUnavailable,
+    setEnvironmentSelectionValue,
+  ]);
   const branchOptions = useMemo(() => {
     const branches = activeBranchesQuery.data?.branches ?? [];
     const selectedRef = activeBranchesQuery.data?.selectedBranch;
@@ -2921,8 +2923,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       onChange: handleEnvironmentSelectionValueChange,
       sources: projectSources,
       reuseDisabled: reuseThreadOptions.length === 0,
-      worktreeDisabledReason: projectSourceIsNonGit
-        ? NON_GIT_PROJECT_SOURCE_WORKTREE_DISABLED_REASON
+      worktreeDisabledReason: projectSourceWorktreeUnavailable
+        ? PROJECT_SOURCE_WORKTREE_DISABLED_REASON
         : null,
       disabled: isForkDraft,
     }),
@@ -2930,7 +2932,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       effectiveEnvironmentValue,
       isForkDraft,
       handleEnvironmentSelectionValueChange,
-      projectSourceIsNonGit,
+      projectSourceWorktreeUnavailable,
       projectSources,
       reuseThreadOptions.length,
     ],

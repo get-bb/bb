@@ -4,6 +4,7 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
+  ProjectBranchesResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
   TerminalSession,
@@ -17,6 +18,7 @@ import {
   hasPromptBranchSelectionChanged,
   hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
+  isProjectSourceWorktreeUnavailable,
   mergeMissingPromptDraftAttachments,
   readFolderIdFromLocationState,
   readRootComposeFolderTargetFromLocationState,
@@ -128,6 +130,26 @@ function makeTerminalSession(
     createdAt: 1,
     updatedAt: 1,
     lastUserInputAt: null,
+    ...overrides,
+  };
+}
+
+function makeProjectBranchesResponse(
+  overrides: Partial<ProjectBranchesResponse>,
+): ProjectBranchesResponse {
+  return {
+    branches: [],
+    branchesTruncated: false,
+    checkout: { kind: "branch", branchName: "main", headSha: null },
+    defaultBranch: "main",
+    defaultBranchRelation: "equal",
+    defaultWorktreeBaseBranch: "main",
+    hasUncommittedChanges: false,
+    operation: { kind: "none" },
+    originDefaultBranch: "main",
+    remoteBranches: [],
+    remoteBranchesTruncated: false,
+    selectedBranch: null,
     ...overrides,
   };
 }
@@ -503,6 +525,29 @@ describe("shouldNavigateAfterThreadCreate", () => {
         isForkDraft: true,
         navigateToThreadAfterCreate: false,
       }),
+    ).toBe(true);
+  });
+});
+
+describe("isProjectSourceWorktreeUnavailable", () => {
+  it("treats unknown checkout metadata as unavailable for worktree creation", () => {
+    expect(isProjectSourceWorktreeUnavailable(undefined)).toBe(false);
+    expect(
+      isProjectSourceWorktreeUnavailable(makeProjectBranchesResponse({})),
+    ).toBe(false);
+    expect(
+      isProjectSourceWorktreeUnavailable(
+        makeProjectBranchesResponse({
+          checkout: {
+            kind: "unknown",
+            reason: "Path is not a git repository",
+          },
+          defaultBranch: null,
+          defaultBranchRelation: null,
+          defaultWorktreeBaseBranch: null,
+          originDefaultBranch: null,
+        }),
+      ),
     ).toBe(true);
   });
 });
