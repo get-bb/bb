@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
@@ -190,14 +197,7 @@ export type TemplateId = keyof TemplateVariables;
 `;
 
 if (process.argv.includes("--check")) {
-  const currentOutput = await readFile(outputPath, "utf8").catch((error) => {
-    if (error && typeof error === "object" && "code" in error) {
-      if (error.code === "ENOENT") {
-        return null;
-      }
-    }
-    throw error;
-  });
+  const currentOutput = await readCurrentOutput();
   if (currentOutput !== output) {
     console.error(
       "Generated templates are out of date. Run `node packages/templates/scripts/generate-templates.mjs`.",
@@ -208,4 +208,42 @@ if (process.argv.includes("--check")) {
 }
 
 await mkdir(path.dirname(outputPath), { recursive: true });
-await writeFile(outputPath, output, "utf8");
+if ((await readCurrentOutput()) !== output) {
+  await writeOutputAtomically(outputPath, output);
+}
+
+async function readCurrentOutput() {
+  return readFile(outputPath, "utf8").catch((error) => {
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "ENOENT") {
+        return null;
+      }
+    }
+    throw error;
+  });
+}
+
+async function writeOutputAtomically(filePath, content) {
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+
+  try {
+    await writeFile(temporaryPath, content, "utf8");
+    await rename(temporaryPath, filePath);
+  } catch (error) {
+    await unlink(temporaryPath).catch((unlinkError) => {
+      if (
+        unlinkError &&
+        typeof unlinkError === "object" &&
+        "code" in unlinkError &&
+        unlinkError.code === "ENOENT"
+      ) {
+        return;
+      }
+      throw unlinkError;
+    });
+    throw error;
+  }
+}
