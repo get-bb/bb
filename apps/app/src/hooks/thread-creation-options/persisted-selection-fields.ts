@@ -1,11 +1,13 @@
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import {
   createLocalStorageEnumStorage,
   rawStringLocalStorage,
 } from "@/lib/browser-storage";
+import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
 const MODEL_STORAGE_KEY = "bb.promptbox.model";
 const SERVICE_TIER_STORAGE_KEY = "bb.promptbox.service-tier";
@@ -112,6 +114,14 @@ const environmentSelectionAtom = atomWithStorage<string>(
   rawStringLocalStorage,
   { getOnInit: true },
 );
+const projectEnvironmentSelectionAtomFamily = atomFamily((projectId: string) =>
+  atomWithStorage<string>(
+    getProjectScopedStorageKey(ENVIRONMENT_STORAGE_KEY, projectId),
+    "",
+    rawStringLocalStorage,
+    { getOnInit: true },
+  ),
+);
 
 export function usePromptBoxProviderPreference(): PersistedStringSelectionField {
   const [value, setAtomValue] = useAtom(providerIdAtom);
@@ -135,8 +145,7 @@ export function usePromptBoxModelPreference(): PersistedStringSelectionField {
   return { setValue, value };
 }
 
-export function usePromptBoxServiceTierPreference():
-  PersistedServiceTierSelectionField {
+export function usePromptBoxServiceTierPreference(): PersistedServiceTierSelectionField {
   const [value, setAtomValue] = useAtom(serviceTierAtom);
   const setValue = useCallback(
     (nextValue: StoredServiceTier) => {
@@ -147,8 +156,7 @@ export function usePromptBoxServiceTierPreference():
   return { setValue, value };
 }
 
-export function usePromptBoxReasoningLevelPreference():
-  PersistedReasoningLevelSelectionField {
+export function usePromptBoxReasoningLevelPreference(): PersistedReasoningLevelSelectionField {
   const [value, setAtomValue] = useAtom(reasoningLevelAtom);
   const setValue = useCallback(
     (nextValue: StoredReasoningLevel) => {
@@ -159,8 +167,7 @@ export function usePromptBoxReasoningLevelPreference():
   return { setValue, value };
 }
 
-export function usePromptBoxPermissionModePreference():
-  PersistedPermissionModeSelectionField {
+export function usePromptBoxPermissionModePreference(): PersistedPermissionModeSelectionField {
   const [value, setAtomValue] = useAtom(permissionModeAtom);
   const setValue = useCallback(
     (nextValue: StoredPermissionMode) => {
@@ -171,9 +178,15 @@ export function usePromptBoxPermissionModePreference():
   return { setValue, value };
 }
 
-export function usePromptBoxEnvironmentPreference():
-  PersistedStringSelectionField {
-  const [value, setAtomValue] = useAtom(environmentSelectionAtom);
+export function usePromptBoxEnvironmentPreference(
+  projectId?: string | null,
+): PersistedStringSelectionField {
+  const normalizedProjectId = projectId?.trim();
+  const atom =
+    normalizedProjectId && normalizedProjectId.length > 0
+      ? projectEnvironmentSelectionAtomFamily(normalizedProjectId)
+      : environmentSelectionAtom;
+  const [value, setAtomValue] = useAtom(atom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);

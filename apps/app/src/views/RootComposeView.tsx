@@ -21,6 +21,7 @@ import {
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
+  ProjectBranchesResponse,
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -387,6 +388,9 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
+const NON_GIT_PROJECT_SOURCE_WORKTREE_DISABLED_REASON =
+  "Project source is not a git repository";
+
 interface ShouldNavigateAfterThreadCreateArgs {
   isForkDraft: boolean;
   navigateToThreadAfterCreate: boolean;
@@ -620,6 +624,15 @@ function buildReuseThreadOptions(
     return left.environmentId.localeCompare(right.environmentId);
   });
   return options;
+}
+
+function isNonGitProjectSourceCheckout(
+  data: ProjectBranchesResponse | undefined,
+): boolean {
+  return (
+    data?.checkout.kind === "unknown" &&
+    data.checkout.reason === "Path is not a git repository"
+  );
 }
 
 export function resolveRootComposeEffectiveEnvironmentValue({
@@ -966,6 +979,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
+    preferenceProjectId: projectId,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -1283,6 +1297,29 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
   );
   const activeBranchesQuery = hostBranchesQuery;
+  const projectSourceIsNonGit = isNonGitProjectSourceCheckout(
+    activeBranchesQuery.data,
+  );
+  const selectedEnvironmentRequestsManagedWorktree =
+    parsedEnvironment?.type === "host" && parsedEnvironment.mode === "worktree";
+  const managedWorktreeAvailabilityPending =
+    selectedEnvironmentRequestsManagedWorktree &&
+    !isProjectless &&
+    activeBranchesQuery.isLoading;
+  const managedWorktreeUnavailable =
+    selectedEnvironmentRequestsManagedWorktree && projectSourceIsNonGit;
+  useEffect(() => {
+    if (
+      !projectSourceIsNonGit ||
+      parsedEnvironment?.type !== "host" ||
+      parsedEnvironment.mode !== "worktree"
+    ) {
+      return;
+    }
+    setEnvironmentSelectionValue(
+      encodeHostValue(parsedEnvironment.hostId, "local"),
+    );
+  }, [parsedEnvironment, projectSourceIsNonGit, setEnvironmentSelectionValue]);
   const branchOptions = useMemo(() => {
     const branches = activeBranchesQuery.data?.branches ?? [];
     const selectedRef = activeBranchesQuery.data?.selectedBranch;
@@ -1555,6 +1592,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       submittedInput.length === 0 ||
       createThread.isPending ||
       isCodexCliVersionBlocked ||
+      managedWorktreeAvailabilityPending ||
+      managedWorktreeUnavailable ||
       (forkSeed === null && !selectedEnvironment)
     ) {
       return;
@@ -1622,6 +1661,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     executionInputSources,
     forkSeed,
     isCodexCliVersionBlocked,
+    managedWorktreeAvailabilityPending,
+    managedWorktreeUnavailable,
     navigate,
     navigateToThreadAfterCreate,
     permissionMode,
@@ -1647,6 +1688,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     createThread.isPending ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
+    managedWorktreeAvailabilityPending ||
+    managedWorktreeUnavailable ||
     (branchEnvironmentMode === "local" &&
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
@@ -2878,12 +2921,16 @@ export function RootComposeView(props: RootComposeViewProps) {
       onChange: handleEnvironmentSelectionValueChange,
       sources: projectSources,
       reuseDisabled: reuseThreadOptions.length === 0,
+      worktreeDisabledReason: projectSourceIsNonGit
+        ? NON_GIT_PROJECT_SOURCE_WORKTREE_DISABLED_REASON
+        : null,
       disabled: isForkDraft,
     }),
     [
       effectiveEnvironmentValue,
       isForkDraft,
       handleEnvironmentSelectionValueChange,
+      projectSourceIsNonGit,
       projectSources,
       reuseThreadOptions.length,
     ],

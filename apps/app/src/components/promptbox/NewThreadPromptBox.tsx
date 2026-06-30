@@ -61,6 +61,7 @@ export interface NewThreadEnvironmentConfig {
   /** When true, the picker's "Reuse existing worktree" entry is disabled.
    * Caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
+  worktreeDisabledReason?: string | null;
   disabled?: boolean;
 }
 
@@ -386,6 +387,7 @@ export interface NewThreadConnectedEnvironmentConfig {
   /** When true, the "Reuse existing worktree" entry in the env picker is
    * disabled — caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
+  worktreeDisabledReason?: string | null;
   disabled?: boolean;
 }
 

@@ -149,6 +149,7 @@ export function useThreadCreationOptions(
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
+    preferenceProjectId,
     resetKey,
     scope = "new-thread",
   } = options ?? {};
@@ -165,7 +166,7 @@ export function useThreadCreationOptions(
   const {
     setValue: setStoredEnvironmentSelectionValue,
     value: storedEnvironmentSelectionValue,
-  } = usePromptBoxEnvironmentPreference();
+  } = usePromptBoxEnvironmentPreference(preferenceProjectId);
   // Reuse env values are intentionally NEVER persisted to localStorage —
   // they represent a transient "create one thread in this worktree" intent,
   // not a project default.

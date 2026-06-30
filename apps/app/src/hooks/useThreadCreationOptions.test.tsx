@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -109,7 +109,7 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
-  it("uses project-agnostic persisted defaults for new-thread prompt boxes", async () => {
+  it("uses global execution defaults and project-scoped environment for new-thread prompt boxes", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     window.localStorage.setItem("bb.promptbox.model", "global-model");
     window.localStorage.setItem("bb.promptbox.service-tier", "default");
@@ -128,7 +128,10 @@ describe("useThreadCreationOptions", () => {
     setProjectScopedValue("bb.promptbox.service-tier", "fast");
     setProjectScopedValue("bb.promptbox.reasoning", "low");
     setProjectScopedValue("bb.promptbox.permission-mode", "readonly");
-    setProjectScopedValue("bb.promptbox.environment", "host:project-host:local");
+    setProjectScopedValue(
+      "bb.promptbox.environment",
+      "host:project-host:local",
+    );
 
     const { wrapper } = createQueryClientTestHarness();
 
@@ -136,6 +139,7 @@ describe("useThreadCreationOptions", () => {
       () =>
         useThreadCreationOptions({
           scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
           initialProviderId: "initial-provider",
           initialModel: "initial-model",
           initialServiceTier: "fast",
@@ -172,9 +176,33 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.reasoningLevel).toBe("high");
       expect(result.current.permissionMode).toBe("workspace-write");
       expect(result.current.environmentSelectionValue).toBe(
-        "host:global-host:worktree",
+        "host:project-host:local",
       );
     });
+  });
+
+  it("persists new-thread environment selection under the project key", () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
+        }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.setEnvironmentSelectionValue("host:project-host:worktree");
+    });
+
+    expect(window.localStorage.getItem("bb.promptbox.environment")).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        getProjectScopedStorageKey("bb.promptbox.environment", PROJECT_ID),
+      ),
+    ).toBe("host:project-host:worktree");
   });
 
   it("loads provider composer actions for environmentless component-local threads", async () => {

@@ -38,6 +38,7 @@ export interface UsePromptModelReasoningOptions {
   initialReasoningLevel?: ReasoningLevel;
   initialPermissionMode?: PermissionMode;
   initialEnvironmentSelectionValue?: string;
+  preferenceProjectId?: string | null;
 }
 
 export interface UseNewThreadCreationOptions extends UsePromptModelReasoningOptions {

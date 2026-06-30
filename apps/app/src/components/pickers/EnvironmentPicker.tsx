@@ -58,6 +58,8 @@ export interface EnvironmentPickerUIProps {
    * reuse. The entry is always rendered so the affordance stays
    * discoverable; it just can't be selected. */
   reuseDisabled?: boolean;
+  /** Reason to disable "New worktree" while leaving local/remote work usable. */
+  worktreeDisabledReason?: string | null;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   /** Render as a non-interactive label while preserving the selected mode. */
@@ -76,6 +78,7 @@ export function EnvironmentPickerUI({
   host,
   isLocal,
   reuseDisabled,
+  worktreeDisabledReason,
   muted,
   disabled = false,
   className,
@@ -105,6 +108,8 @@ export function EnvironmentPickerUI({
   const workspaceDisabledReason = hasSource
     ? null
     : "Project source unavailable";
+  const newWorktreeDisabledReason =
+    workspaceDisabledReason ?? worktreeDisabledReason ?? null;
   const reuseDisabledReason = reuseDisabled
     ? "No worktrees in this project yet"
     : null;
@@ -203,6 +208,7 @@ export function EnvironmentPickerUI({
           hostUnavailableReason={hostUnavailableReason}
           localLabel={localLabel}
           workspaceDisabledReason={workspaceDisabledReason}
+          worktreeDisabledReason={newWorktreeDisabledReason}
           reuseDisabledReason={reuseDisabledReason}
           selectedType={parsed?.type}
           value={value}
@@ -224,6 +230,8 @@ interface EnvironmentOptionsSectionProps {
   localLabel: string;
   /** Why the local/worktree options are unavailable, or null when usable. */
   workspaceDisabledReason: string | null;
+  /** Why the worktree option is unavailable, or null when usable. */
+  worktreeDisabledReason: string | null;
   /** Why the reuse option is unavailable, or null when usable. */
   reuseDisabledReason: string | null;
   selectedType:
@@ -239,6 +247,7 @@ function EnvironmentOptionsSection({
   hostUnavailableReason,
   localLabel,
   workspaceDisabledReason,
+  worktreeDisabledReason,
   reuseDisabledReason,
   selectedType,
   value,
@@ -248,6 +257,8 @@ function EnvironmentOptionsSection({
   const worktreeValue = hostId ? encodeHostValue(hostId, "worktree") : null;
   const workspaceDisabled = workspaceDisabledReason !== null;
   const workspaceDisabledDescription = workspaceDisabledReason ?? undefined;
+  const worktreeDisabled = worktreeDisabledReason !== null;
+  const worktreeDisabledDescription = worktreeDisabledReason ?? undefined;
 
   return (
     <DropdownMenuGroup>
@@ -277,10 +288,10 @@ function EnvironmentOptionsSection({
           />
           <EnvironmentMenuItem
             label="New worktree"
-            description={workspaceDisabledDescription}
+            description={worktreeDisabledDescription}
             icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
             selected={worktreeValue !== null && value === worktreeValue}
-            disabled={workspaceDisabled || worktreeValue === null}
+            disabled={worktreeDisabled || worktreeValue === null}
             onSelect={() => {
               if (worktreeValue !== null) onChange(worktreeValue);
             }}
