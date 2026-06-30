@@ -78,8 +78,8 @@ const claudePlanExecution = makeExecutionControlsProps({
     displayName: "Claude Code",
   },
   model: {
-    active: { model: "claude-sonnet-4-6" },
-    selected: "claude-sonnet-4-6",
+    active: { model: "claude-sonnet-5" },
+    selected: "claude-sonnet-5",
     options: STORY_CLAUDE_CODE_MODELS,
     moreOptions: [],
     isLoading: false,

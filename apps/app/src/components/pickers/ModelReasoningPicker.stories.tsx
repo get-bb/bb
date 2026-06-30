@@ -52,7 +52,7 @@ const codexBase = {
 const claudeBase = {
   ...codexBase,
   selectedProviderId: "claude-code",
-  modelValue: "claude-sonnet-4-6",
+  modelValue: "claude-sonnet-5",
   modelOptions: STORY_CLAUDE_CODE_MODELS,
   reasoningOptions: STORY_CLAUDE_REASONING,
   showFastModeToggle: false,

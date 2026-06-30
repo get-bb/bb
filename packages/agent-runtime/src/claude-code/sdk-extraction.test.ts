@@ -14,7 +14,7 @@ describe("resolveClaudeModelContextWindowHint", () => {
   });
 
   it("uses the default Claude context window for non-1M models", () => {
-    expect(resolveClaudeModelContextWindowHint("claude-sonnet-4-6")).toBe(
+    expect(resolveClaudeModelContextWindowHint("claude-sonnet-5")).toBe(
       200_000,
     );
   });

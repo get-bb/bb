@@ -133,6 +133,7 @@ export const claudeAssistantMessageErrorSchema = z.enum([
   "billing_error",
   "rate_limit",
   "invalid_request",
+  "model_not_found",
   "server_error",
   "unknown",
   "max_output_tokens",

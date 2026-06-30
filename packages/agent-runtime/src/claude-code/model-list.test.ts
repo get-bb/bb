@@ -9,6 +9,7 @@ describe("listClaudeCodeModels", () => {
       "claude-mythos-5",
       "claude-opus-4-8[1m]",
       "claude-opus-4-7[1m]",
+      "claude-sonnet-5",
       "claude-sonnet-4-6[1m]",
       "claude-sonnet-4-6",
       "claude-haiku-4-5",
@@ -99,6 +100,14 @@ describe("listClaudeCodeModels", () => {
       "max",
     ]);
     expect(effortLevelsByModel.get("claude-opus-4-7[1m]")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "ultracode",
+      "max",
+    ]);
+    expect(effortLevelsByModel.get("claude-sonnet-5")).toEqual([
       "low",
       "medium",
       "high",

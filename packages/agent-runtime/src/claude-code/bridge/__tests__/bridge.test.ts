@@ -1486,6 +1486,12 @@ describe("bridge", () => {
         isDefault: false,
       }),
       expect.objectContaining({
+        id: "claude-sonnet-5",
+        model: "claude-sonnet-5",
+        displayName: "Sonnet 5",
+        isDefault: false,
+      }),
+      expect.objectContaining({
         id: "claude-sonnet-4-6[1m]",
         model: "claude-sonnet-4-6[1m]",
         displayName: "Sonnet 4.6 (1M)",

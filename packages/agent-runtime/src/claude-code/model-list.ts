@@ -56,6 +56,7 @@ const CLAUDE_MYTHOS_5_MODEL = "claude-mythos-5";
 const CLAUDE_OPUS_4_8_MODEL = "claude-opus-4-8";
 const CLAUDE_OPUS_4_7_MODEL = "claude-opus-4-7";
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
+const CLAUDE_SONNET_5_MODEL = "claude-sonnet-5";
 const CLAUDE_SONNET_4_6_MODEL = "claude-sonnet-4-6";
 const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
 
@@ -100,6 +101,14 @@ const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     displayName: "Opus 4.7 (1M)",
     description: "Opus 4.7 with 1M context for complex long coding sessions",
     supportedReasoningEfforts: OPUS_4_7_REASONING_EFFORTS,
+    defaultReasoningEffort: "medium",
+  },
+  {
+    id: CLAUDE_SONNET_5_MODEL,
+    model: CLAUDE_SONNET_5_MODEL,
+    displayName: "Sonnet 5",
+    description: "Sonnet 5 for everyday coding tasks with deeper reasoning",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "medium",
   },
   {

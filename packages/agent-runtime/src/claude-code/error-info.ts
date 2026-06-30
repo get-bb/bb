@@ -51,6 +51,7 @@ function getProviderErrorCategoryFromClaudeCode(
     case "rate_limit":
       return "rate-limit";
     case "invalid_request":
+    case "model_not_found":
       return "bad-request";
     case "server_error":
       return "internal";

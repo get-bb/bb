@@ -512,10 +512,12 @@ function ClaudeProviderRow() {
           ...baseExecution,
           provider: { ...baseExecution.provider, selectedId: "claude-code" },
           model: {
-            active: { model: "claude-sonnet-4-6" },
-            selected: "claude-sonnet-4-6",
+            active: { model: "claude-sonnet-5" },
+            selected: "claude-sonnet-5",
             options: [
-              { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
+              { value: "claude-fable-5", label: "Claude Fable 5" },
+              { value: "claude-opus-4-8[1m]", label: "Claude Opus 4.8 (1M)" },
+              { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
               { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
               { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
             ],
