@@ -69,14 +69,14 @@ starts.
 
 ## Common Keys
 
-| Key                | Command         | When to set             | Used for                                                                                                                 |
-| ------------------ | --------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `BB_APP_URL`       | `bb-app config` | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.               |
-| `BB_INFERENCE`     | `bb-app config` | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.4-mini`.                                   |
-| `BB_TRANSCRIPTION` | `bb-app config` | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-4o-mini-transcribe`.                        |
-| `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine.                                    |
-| `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                  |
-| `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-4o-transcribe`. |
+| Key                | Command         | When to set             | Used for                                                                                                                                       |
+| ------------------ | --------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BB_APP_URL`       | `bb-app config` | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                     |
+| `BB_INFERENCE`     | `bb-app config` | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.4-mini`.                                                         |
+| `BB_TRANSCRIPTION` | `bb-app config` | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-4o-mini-transcribe`.                                              |
+| `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset. |
+| `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                        |
+| `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-4o-transcribe`.                       |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
@@ -84,7 +84,9 @@ provider env keys only when opting into a non-Codex provider route.
 
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
-bundled `bb` CLI or a standalone host daemon.
+bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
+the default local packaged server at `http://127.0.0.1:38886`; set it for remote
+or non-default servers.
 
 ## Client SSH Targets
 

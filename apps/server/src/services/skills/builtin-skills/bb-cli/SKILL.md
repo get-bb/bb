@@ -14,6 +14,10 @@ message agents, or inspect projects, providers, and environments.
 - Prefer `--json` when command output will drive follow-up work.
 - Run `bb guide` for the system overview and `bb guide <chapter>` for full
   command reference.
+- A standalone `bb` CLI with no connection env targets the default local server
+  at `http://127.0.0.1:38886` and host daemon port `38887`. Set
+  `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` only for remote or non-default
+  targets.
 
 ## Environment Setup Script
 

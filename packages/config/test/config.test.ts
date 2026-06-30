@@ -544,14 +544,15 @@ describe("consumer-specific config", () => {
     expect(loggerConfig.BB_LOG_LEVEL).toBe("debug");
   });
 
-  it("requires CLI connection env", () => {
-    expect(() =>
-      loadCliConfig({
-        env: {
-          NODE_ENV: "development",
-        },
-      }),
-    ).toThrow(/BB_SERVER_URL/u);
+  it("defaults CLI connection env to the local app instance", () => {
+    const cliConfig = loadCliConfig({
+      env: {
+        NODE_ENV: "development",
+      },
+    });
+
+    expect(cliConfig.BB_SERVER_URL).toBe("http://127.0.0.1:38886");
+    expect(cliConfig.BB_HOST_DAEMON_PORT).toBe(38887);
   });
 
   it("lets explicit CLI env overrides win over NODE_ENV-selected defaults", () => {

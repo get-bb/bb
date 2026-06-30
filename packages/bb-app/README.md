@@ -78,7 +78,9 @@ The package also exposes the `bb` CLI for an already-running bb server:
 npx --package bb-app bb --help
 ```
 
-The CLI uses the same `BB_SERVER_URL` and bb config resolution as the SDK.
+The CLI uses the same `BB_SERVER_URL` and bb config resolution as the SDK. When
+unset, it targets the default local packaged server at
+`http://127.0.0.1:38886`.
 
 ## Scripting with the SDK
 
