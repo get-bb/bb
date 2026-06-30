@@ -40,8 +40,8 @@ export interface EventProjectionState {
    */
   activeWorkflow: EventProjectionWorkflowMessage | null;
   /**
-   * Root-projection-only running backgrounded shell commands, most recently
-   * started first, for the background-commands prompt-box card. Independent of
+   * Root-projection-only running non-workflow background tasks, most recently
+   * started first, for the background-activity prompt-box card. Independent of
    * `activeWorkflow`. Empty for nested child projections.
    */
   activeBackgroundCommands: EventProjectionWorkflowMessage[];

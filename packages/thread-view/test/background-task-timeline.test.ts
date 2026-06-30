@@ -93,6 +93,7 @@ function bashTaskItem(args: {
   summary?: string;
   id?: string;
   description?: string;
+  parentToolCallId?: string;
 }): ThreadEventBackgroundTaskItem {
   return {
     type: "backgroundTask",
@@ -103,6 +104,30 @@ function bashTaskItem(args: {
     taskStatus: args.taskStatus,
     skipTranscript: false,
     ...(args.summary ? { summary: args.summary } : {}),
+    ...(args.parentToolCallId
+      ? { parentToolCallId: args.parentToolCallId }
+      : {}),
+  };
+}
+
+function agentTaskItem(args: {
+  taskStatus: ThreadEventBackgroundTaskItem["taskStatus"];
+  status: ThreadEventBackgroundTaskItem["status"];
+  id?: string;
+  description?: string;
+  parentToolCallId?: string;
+}): ThreadEventBackgroundTaskItem {
+  return {
+    type: "backgroundTask",
+    id: args.id ?? "task:agent-1",
+    taskType: "local_agent",
+    description: args.description ?? "Map test coverage",
+    status: args.status,
+    taskStatus: args.taskStatus,
+    skipTranscript: false,
+    ...(args.parentToolCallId
+      ? { parentToolCallId: args.parentToolCallId }
+      : {}),
   };
 }
 
@@ -474,7 +499,7 @@ describe("background task timeline projection", () => {
     );
 
     // A running shell command never hijacks the workflow banner, but it does
-    // drive its own independent background-commands card.
+    // drive the independent background-activity card.
     expect(timeline.activeWorkflow).toBeNull();
     expect(timeline.activeBackgroundCommands).toHaveLength(1);
     expect(timeline.activeBackgroundCommands[0]).toMatchObject({
@@ -484,7 +509,7 @@ describe("background task timeline projection", () => {
     });
   });
 
-  it("lists running background commands most-recent-first and excludes workflows", () => {
+  it("lists running background commands and agents most-recent-first and excludes workflows", () => {
     const timeline = buildTimeline(
       [
         turnStarted("turn-1", 1),
@@ -528,17 +553,150 @@ describe("background task timeline projection", () => {
           },
           4,
         ),
-        turnCompleted("turn-1", 5),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: agentTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:agent-latest",
+              description: "Inspect related code",
+            }),
+          },
+          5,
+        ),
+        turnCompleted("turn-1", 6),
       ],
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
-    // The workflow drives the workflow banner; the two shell commands drive the
-    // background-commands card, ordered most recently started first.
+    // The workflow drives the workflow banner; non-workflow background tasks
+    // drive the background-activity card, ordered most recently started first.
     expect(timeline.activeWorkflow).toMatchObject({ taskType: "local_workflow" });
     expect(
       timeline.activeBackgroundCommands.map((row) => row.itemId),
-    ).toEqual(["task:cmd-late", "task:cmd-early"]);
+    ).toEqual(["task:agent-latest", "task:cmd-late", "task:cmd-early"]);
+  });
+
+  it("excludes background tasks spawned inside a background agent from the parent active list", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "toolCall",
+              id: "toolu-root-agent",
+              tool: "Agent",
+              arguments: {
+                description: "Sleep then write poem",
+                prompt: "Sleep then write poem",
+              },
+              status: "pending",
+            },
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: agentTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:root-agent",
+              description: "Sleep then write poem",
+              parentToolCallId: "toolu-root-agent",
+            }),
+          },
+          3,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "commandExecution",
+              id: "toolu-nested-bash",
+              command: "sleep 10",
+              cwd: "/tmp",
+              status: "pending",
+              approvalStatus: null,
+              parentToolCallId: "toolu-root-agent",
+            },
+          },
+          4,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:nested-bash",
+              description: "Wait 10 seconds",
+              parentToolCallId: "toolu-nested-bash",
+            }),
+          },
+          5,
+        ),
+        turnCompleted("turn-1", 6),
+        turnStarted("turn-2", 7),
+        withMeta(
+          {
+            type: "item/backgroundTask/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: bashTaskItem({
+              status: "completed",
+              taskStatus: "completed",
+              id: "task:nested-bash",
+              description: "Wait 10 seconds",
+              parentToolCallId: "toolu-nested-bash",
+              summary: "Wait 10 seconds",
+            }),
+          },
+          8,
+        ),
+        withMeta(
+          {
+            type: "item/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-2"),
+            item: {
+              type: "toolCall",
+              id: "toolu-nested-bash",
+              tool: "unknown",
+              status: "completed",
+              result: "(Bash completed with no output)",
+              parentToolCallId: "toolu-root-agent",
+            },
+          },
+          9,
+        ),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    expect(
+      timeline.activeBackgroundCommands.map((row) => row.itemId),
+    ).toEqual(["task:root-agent"]);
   });
 
   it("hides skip_transcript tasks from the timeline", () => {

@@ -287,7 +287,7 @@ describe("claude-code background task translation", () => {
     expect(stoppedItem.outputFile).toBeUndefined();
   });
 
-  it("does not materialize foreground subagent tasks (delegation owns them)", () => {
+  it("materializes subagent tasks while preserving the delegation tool call", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const allEvents: ThreadEvent[] = [];
 
@@ -298,7 +298,26 @@ describe("claude-code background task translation", () => {
       );
     }
 
-    expect(collectTaskEvents(allEvents)).toHaveLength(0);
+    const taskEvents = collectTaskEvents(allEvents);
+    expect(taskEvents.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/backgroundTask/completed",
+    ]);
+    expect(backgroundTaskItem(taskEvents[0]!)).toMatchObject({
+      id: "task:a35aa0d9e98a8e8e6",
+      taskType: "local_agent",
+      description: "Single subagent reply test",
+      status: "pending",
+      taskStatus: "running",
+      parentToolCallId: "toolu_01W1cLr7AsTRvbya9LM5LSAV",
+    });
+    expect(backgroundTaskItem(taskEvents[1]!)).toMatchObject({
+      id: "task:a35aa0d9e98a8e8e6",
+      taskType: "local_agent",
+      status: "completed",
+      taskStatus: "completed",
+      summary: "Single subagent reply test",
+    });
     // The session still renders: the Task tool call itself is a started item.
     expect(
       allEvents.some(
@@ -547,4 +566,32 @@ describe("claude-code background task translation", () => {
     });
   });
 
+  it("materializes background subagents with legacy task_type local_subagent", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "sub-1",
+        tool_use_id: "toolu_sub_1",
+        description: "background subagent",
+        task_type: "local_subagent",
+        subagent_type: "Explore",
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    const taskEvents = collectTaskEvents(events);
+    expect(taskEvents).toHaveLength(1);
+    expect(backgroundTaskItem(taskEvents[0]!)).toMatchObject({
+      id: "task:sub-1",
+      taskType: "local_subagent",
+      description: "background subagent",
+      status: "pending",
+      taskStatus: "running",
+      parentToolCallId: "toolu_sub_1",
+    });
+  });
 });

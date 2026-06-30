@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
@@ -15,12 +16,48 @@ const CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-background-commands-card-body";
 const TOGGLE_ID = "thread-background-commands-card-toggle";
 
+interface BackgroundActivityDisplay {
+  icon: "Terminal" | "UserRoundPlus";
+  label: string;
+  runningPrefix: string;
+}
+
+function backgroundActivityDisplay(
+  row: TimelineWorkflowWorkRow,
+): BackgroundActivityDisplay {
+  if (isBackgroundAgentTaskType(row.taskType)) {
+    return {
+      icon: "UserRoundPlus",
+      label: "Background agent",
+      runningPrefix: "Running background agent:",
+    };
+  }
+  return {
+    icon: "Terminal",
+    label: "Background command",
+    runningPrefix: "Running background command:",
+  };
+}
+
+function backgroundActivityGroupLabel(
+  rows: readonly TimelineWorkflowWorkRow[],
+): string {
+  const hasAgent = rows.some((row) => isBackgroundAgentTaskType(row.taskType));
+  const hasCommand = rows.some(
+    (row) => !isBackgroundAgentTaskType(row.taskType),
+  );
+  if (hasAgent && hasCommand) {
+    return "Background activity";
+  }
+  return hasAgent ? "Background agents" : "Background commands";
+}
+
 /**
- * Live elapsed time since the command started, ticking every second. Blank for
- * the first second to avoid sub-second flicker on entry. Mirrors the workflow
- * card's duration treatment.
+ * Live elapsed time since the background task started, ticking every second.
+ * Blank for the first second to avoid sub-second flicker on entry. Mirrors the
+ * workflow card's duration treatment.
  */
-function CommandDuration({ startedAt }: { startedAt: number }) {
+function BackgroundActivityDuration({ startedAt }: { startedAt: number }) {
   const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
   useEffect(() => {
     setElapsed(Date.now() - startedAt);
@@ -35,7 +72,7 @@ function CommandDuration({ startedAt }: { startedAt: number }) {
   return <>{durationToCompactString(elapsed)}</>;
 }
 
-function CommandSummary({
+function BackgroundActivitySummary({
   row,
   showDuration,
   active = false,
@@ -44,6 +81,7 @@ function CommandSummary({
   showDuration: boolean;
   active?: boolean;
 }) {
+  const display = backgroundActivityDisplay(row);
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
       {/* Verb + description truncate as one unit so the trailing controls
@@ -54,7 +92,7 @@ function CommandSummary({
             active ? activityMetaClass("active") : "text-muted-foreground"
           }
         >
-          Running background command:{" "}
+          {display.runningPrefix}{" "}
         </span>
         <span
           className={
@@ -73,7 +111,7 @@ function CommandSummary({
             active ? activityMetaClass("active") : "text-muted-foreground",
           )}
         >
-          <CommandDuration startedAt={row.startedAt} />
+          <BackgroundActivityDuration startedAt={row.startedAt} />
         </span>
       ) : null}
     </span>
@@ -87,12 +125,11 @@ export interface ThreadBackgroundCommandsCardProps {
 }
 
 /**
- * Prompt-stack card for running backgrounded shell commands (Bash
- * run_in_background), independent of the workflow card. Collapsed it shows the
- * most recent command; when several are running it appends "+N more" and the
- * card expands to list the other running commands. Each command also keeps its
- * own timeline row carrying the terminal outcome; this card only tracks the
- * live ones and drops out once none remain.
+ * Prompt-stack card for running non-workflow background tasks, independent of
+ * the workflow card. Collapsed it shows the most recent task; when several are
+ * running it appends "+N more" and expands to list the rest. Each task also
+ * keeps its own timeline row carrying the terminal outcome; this card only
+ * tracks the live ones and drops out once none remain.
  */
 export function ThreadBackgroundCommandsCard({
   commands,
@@ -105,10 +142,12 @@ export function ThreadBackgroundCommandsCard({
   }
   const others = commands.slice(1);
   const hasMore = others.length > 0;
+  const primaryDisplay = backgroundActivityDisplay(primary);
+  const groupLabel = backgroundActivityGroupLabel(commands);
 
   return (
     <PromptStackCard
-      ariaLabel="Background commands"
+      ariaLabel={groupLabel}
       className="overflow-hidden"
       style={{ minHeight: CARD_ROW_HEIGHT }}
     >
@@ -119,7 +158,7 @@ export function ThreadBackgroundCommandsCard({
             id={TOGGLE_ID}
             aria-expanded={isExpanded}
             aria-controls={BODY_ID}
-            aria-label={`Background commands: ${primary.description}`}
+            aria-label={`${groupLabel}: ${primary.description}`}
             onClick={onToggle}
             className={activityRowClass(
               "active",
@@ -127,11 +166,15 @@ export function ThreadBackgroundCommandsCard({
             )}
           >
             <Icon
-              name="Terminal"
+              name={primaryDisplay.icon}
               className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <CommandSummary row={primary} showDuration={false} active />
+            <BackgroundActivitySummary
+              row={primary}
+              showDuration={false}
+              active
+            />
             <span className={activityMetaClass("active", "shrink-0")}>
               +{others.length} more
             </span>
@@ -151,14 +194,14 @@ export function ThreadBackgroundCommandsCard({
               "active",
               "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
             )}
-            aria-label={`Background command: ${primary.description}`}
+            aria-label={`${primaryDisplay.label}: ${primary.description}`}
           >
             <Icon
-              name="Terminal"
+              name={primaryDisplay.icon}
               className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <CommandSummary row={primary} showDuration active />
+            <BackgroundActivitySummary row={primary} showDuration active />
           </div>
         )}
       </div>
@@ -177,29 +220,32 @@ export function ThreadBackgroundCommandsCard({
         >
           <div className="overflow-hidden bg-popover">
             <div className="flex flex-col gap-0.5 py-1">
-              {others.map((row) => (
-                <div
-                  key={row.id}
-                  // px-3 matches the full-width header row's padding so the
-                  // icon lines up under the header icon.
-                  className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
-                >
-                  <Icon
-                    name="Terminal"
-                    className="size-3.5 shrink-0 text-muted-foreground/60"
-                    aria-hidden="true"
-                  />
-                  <span
-                    className="min-w-0 flex-1 truncate text-muted-foreground"
-                    title={row.description}
+              {others.map((row) => {
+                const display = backgroundActivityDisplay(row);
+                return (
+                  <div
+                    key={row.id}
+                    // px-3 matches the full-width header row's padding so the
+                    // icon lines up under the header icon.
+                    className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
                   >
-                    {row.description}
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
-                    <CommandDuration startedAt={row.startedAt} />
-                  </span>
-                </div>
-              ))}
+                    <Icon
+                      name={display.icon}
+                      className="size-3.5 shrink-0 text-muted-foreground/60"
+                      aria-hidden="true"
+                    />
+                    <span
+                      className="min-w-0 flex-1 truncate text-muted-foreground"
+                      title={row.description}
+                    >
+                      {row.description}
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
+                      <BackgroundActivityDuration startedAt={row.startedAt} />
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>

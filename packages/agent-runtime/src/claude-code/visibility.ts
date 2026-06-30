@@ -434,9 +434,8 @@ function describeParsedClaudeRawEvent(
           };
         case "status":
           return { kind: "sdk/system:status", coverage: "normalized" };
-        // Workflow tasks translate into backgroundTask item events; other
-        // task types are deliberately not materialized (foreground subagents
-        // render via delegation rows).
+        // Supported task types translate into backgroundTask item events.
+        // Unsupported task types remain normalized noise.
         case "task_notification":
         case "task_progress":
         case "task_started":

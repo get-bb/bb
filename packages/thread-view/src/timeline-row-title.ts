@@ -1,4 +1,5 @@
 import {
+  isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
   isSettledWorkflowAgentState,
 } from "@bb/domain";
@@ -890,6 +891,24 @@ function backgroundCommandVerbForStatus(status: TimelineRowStatus): {
   }
 }
 
+function backgroundAgentVerbForStatus(status: TimelineRowStatus): {
+  text: string;
+  shimmer: boolean;
+} {
+  switch (status) {
+    case "pending":
+      return { text: "Running background agent:", shimmer: true };
+    case "completed":
+      return { text: "Ran background agent:", shimmer: false };
+    case "error":
+      return { text: "Background agent failed:", shimmer: false };
+    case "interrupted":
+      return { text: "Background agent interrupted:", shimmer: false };
+    default:
+      return assertNever(status);
+  }
+}
+
 function mapBackgroundCommandTitle(
   row: TimelineViewWorkflowWorkRow,
 ): TimelineTitle {
@@ -905,9 +924,27 @@ function mapBackgroundCommandTitle(
   });
 }
 
+function mapBackgroundAgentTitle(
+  row: TimelineViewWorkflowWorkRow,
+): TimelineTitle {
+  const verb = backgroundAgentVerbForStatus(row.status);
+  return makeTitle({
+    segments: [
+      segment(verb.text, { shimmer: verb.shimmer }),
+      segment(row.description, { em: true, truncate: true }),
+    ],
+    decorations: filterNull([
+      durationDecoration(row.startedAt, row.completedAt),
+    ]),
+  });
+}
+
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
   if (isBackgroundCommandTaskType(row.taskType)) {
     return mapBackgroundCommandTitle(row);
+  }
+  if (isBackgroundAgentTaskType(row.taskType)) {
+    return mapBackgroundAgentTitle(row);
   }
   const verb = workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;

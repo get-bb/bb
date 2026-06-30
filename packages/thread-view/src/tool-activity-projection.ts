@@ -13,7 +13,6 @@ import type {
 } from "./exec-lifecycle.js";
 import { messageId } from "./format-helpers.js";
 import {
-  areThreadEventScopesEqual,
   eventProjectionMessageThreadScopeFields,
   eventProjectionMessageTurnScopeFields,
 } from "./message-scope.js";
@@ -349,19 +348,6 @@ function createRunningExecCall(
   }
 }
 
-function assertMatchingExecutionKind(
-  existing: RunningExecCall,
-  incoming: ProviderExecutionUpdate,
-): void {
-  if (existing.kind === incoming.kind) {
-    return;
-  }
-
-  throw new Error(
-    `Cannot merge ${existing.kind} with ${incoming.kind} for call ${incoming.callId}`,
-  );
-}
-
 interface CommandExecutionFieldsTarget {
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   command: string;
@@ -484,7 +470,6 @@ function mergeRunningExecutionMetadata(
   existing: RunningExecCall,
   incoming: ProviderExecutionUpdate,
 ): void {
-  assertMatchingExecutionKind(existing, incoming);
   switch (incoming.kind) {
     case "command":
       if (existing.kind !== "command") return;
@@ -508,10 +493,10 @@ function upsertRunningExecCall(
   threadId: string,
   turnId: string | undefined,
 ): RunningExecCall {
-  const scopeFields = turnId
-    ? eventProjectionMessageTurnScopeFields(turnId)
-    : eventProjectionMessageThreadScopeFields();
   if (!existing) {
+    const scopeFields = turnId
+      ? eventProjectionMessageTurnScopeFields(turnId)
+      : eventProjectionMessageThreadScopeFields();
     return createRunningExecCall(incoming, meta, threadId, scopeFields.scope);
   }
 
@@ -522,12 +507,9 @@ function upsertRunningExecCall(
   //   "keep longest" — begin events carry partial output, end events carry full output
   //   "keep terminal" — first terminal state wins unless a later error arrives
 
-  // keep first
-  if (!areThreadEventScopesEqual(existing.scope, scopeFields.scope)) {
-    throw new Error(
-      `Cannot merge execution messages with different scopes for call ${incoming.callId}`,
-    );
-  }
+  // keep first: provider background work can outlive its spawning turn, and a
+  // late terminal event for the same call id may arrive scoped to a later turn.
+  // Preserve the original placement while still merging terminal state/output.
   mergeRunningExecutionMetadata(existing, incoming);
   mergeExecutionCompletion(existing, incoming);
   if (!existing.parentToolCallId && incoming.parentToolCallId) {

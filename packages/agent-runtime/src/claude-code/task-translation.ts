@@ -12,6 +12,7 @@ import {
   LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   backgroundTaskItemStatus,
+  isBackgroundAgentTaskType,
   isSettledBackgroundTaskStatus,
   threadScope,
   turnScope,
@@ -266,12 +267,15 @@ function buildClaudeTaskCompletedEvent(
 
 /**
  * Task types bb materializes as background-task timeline rows: dynamic
- * workflows and backgrounded shell commands. Other task types (subagents,
- * monitors) share the event family but stay on their own render paths.
+ * workflows, backgrounded shell commands, and backgrounded agents. Other task
+ * types such as monitors share the event family but stay on their own render
+ * paths.
  */
 function isMaterializedTaskType(taskType: string): boolean {
   return (
-    taskType === LOCAL_WORKFLOW_TASK_TYPE || taskType === LOCAL_BASH_TASK_TYPE
+    taskType === LOCAL_WORKFLOW_TASK_TYPE ||
+    taskType === LOCAL_BASH_TASK_TYPE ||
+    isBackgroundAgentTaskType(taskType)
   );
 }
 
@@ -279,8 +283,8 @@ function isMaterializedTaskType(taskType: string): boolean {
  * Translates the SDK task event family (task_started / task_progress /
  * task_updated / task_notification). Returns null when the message is not a
  * task message; returns [] for task messages that are intentionally not
- * materialized (subagent/monitor task types — foreground subagents already
- * render via delegation rows — and events for unknown/settled tasks).
+ * materialized (monitor/unknown task types and events for unknown/settled
+ * tasks).
  */
 export function translateClaudeTaskMessage(
   args: TranslateClaudeTaskMessageArgs,

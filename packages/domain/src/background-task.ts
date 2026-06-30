@@ -2,23 +2,30 @@ import { z } from "zod";
 
 /**
  * Raw SDK task-type discriminants for the background tasks bb materializes as
- * timeline rows: dynamic workflows (the Workflow tool) and backgrounded shell
- * commands (Bash with run_in_background). Both share the provider task event
- * family (task_started / task_progress / task_updated / task_notification).
- * Other task types (subagents, monitors) share the family too but are not
- * materialized — foreground subagents already render via delegation rows.
+ * timeline rows: dynamic workflows (the Workflow tool), backgrounded shell
+ * commands (Bash with run_in_background), and backgrounded subagents. They
+ * share the provider task event family (task_started / task_progress /
+ * task_updated / task_notification). Other task types such as monitors share
+ * the family too but are not materialized.
  */
 export const LOCAL_WORKFLOW_TASK_TYPE = "local_workflow";
 export const LOCAL_BASH_TASK_TYPE = "local_bash";
+export const LOCAL_AGENT_TASK_TYPE = "local_agent";
+export const LOCAL_SUBAGENT_TASK_TYPE = "local_subagent";
 
 /**
- * Whether a background task renders as a "background command" row rather than a
- * workflow row. Everything bb materializes that is not a dynamic workflow is a
- * backgrounded shell command, so unknown future materialized types default to
- * the safer command presentation.
+ * Whether a background task renders as a "background command" row rather than
+ * a workflow or background agent row.
  */
 export function isBackgroundCommandTaskType(taskType: string): boolean {
-  return taskType !== LOCAL_WORKFLOW_TASK_TYPE;
+  return taskType === LOCAL_BASH_TASK_TYPE;
+}
+
+export function isBackgroundAgentTaskType(taskType: string): boolean {
+  return (
+    taskType === LOCAL_AGENT_TASK_TYPE ||
+    taskType === LOCAL_SUBAGENT_TASK_TYPE
+  );
 }
 
 /**

@@ -191,6 +191,7 @@ interface TimelineEventRowSelection {
 }
 
 interface TimelineWindowRowsArgs {
+  includeParentContext?: boolean;
   rows: readonly StoredEventRow[];
   threadId: string;
 }
@@ -456,6 +457,13 @@ function ensureTimelineWindowParentedRows(
       }
     }
     rows = mergeStoredEventRowsById([...rows, ...newChildRows]);
+  }
+
+  if (args.includeParentContext === false) {
+    return {
+      contextOnlyToolCallIds: new Set(),
+      rows,
+    };
   }
 
   const contextOnlyToolCallIds = new Set<string>();
@@ -1246,14 +1254,14 @@ export function buildTimelineTurnSummaryDetails(
   // validated against the requested turn, that turn's start must be at or
   // before the latest selected turn row. Accepted input rows may sit after
   // sourceSeqEnd, so the lifecycle lookup uses the widened context cutoff.
-  const turnStartedRows = hasCurrentStartedRow
+  const requestedTurnStartedRows = hasCurrentStartedRow
     ? []
     : listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
         threadId: thread.id,
         sequenceCutoff: contextSequenceCutoff,
         turnIds: [options.turnId],
       });
-  if (!hasCurrentStartedRow && turnStartedRows.length === 0) {
+  if (!hasCurrentStartedRow && requestedTurnStartedRows.length === 0) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -1269,14 +1277,23 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
+    includeParentContext: false,
+    threadId: thread.id,
+    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+  }).rows;
+  const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
+    threadId: thread.id,
+    rows: eventRowsWithParentedChildren,
+  });
   const eventRowsWithBackgroundTaskState =
     ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
-      rows: eventRows,
+      rows: eventRowsWithTurnStarts,
     });
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: [...turnStartedRows, ...eventRowsWithBackgroundTaskState].map(
-      (row) => toThreadEventWithMeta(row),
+    events: eventRowsWithBackgroundTaskState.map((row) =>
+      toThreadEventWithMeta(row),
     ),
     options: {
       includeProviderUnhandledOperations,

@@ -1149,6 +1149,150 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates parent turn-summary details with delegated child rows", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const providerThreadId = "provider-thread-1";
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 2,
+        type: "item/started",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "agent-call",
+            tool: "Agent",
+            arguments: {
+              description: "Map old Telegram integration",
+              subagent_type: "general-purpose",
+              prompt: "Map the old Telegram integration.",
+            },
+            status: "pending",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "agent-call",
+            tool: "Agent",
+            arguments: {
+              description: "Map old Telegram integration",
+              subagent_type: "general-purpose",
+              prompt: "Map the old Telegram integration.",
+            },
+            status: "completed",
+            result: "Async agent launched successfully.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 4,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 5,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 6,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            text: "Child mapped the Telegram integration.",
+            parentToolCallId: "agent-call",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 7,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const parentTurnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow =>
+          row.kind === "turn" && row.turnId === "parent-turn",
+      );
+      expect(parentTurnRow).toBeDefined();
+      if (!parentTurnRow) {
+        throw new Error("Expected parent turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+      const delegation = details.rows.find(
+        (
+          row,
+        ): row is Extract<
+          TimelineRow,
+          { kind: "work"; workKind: "delegation" }
+        > => row.kind === "work" && row.workKind === "delegation",
+      );
+
+      expect(delegation).toBeDefined();
+      expect(delegation?.callId).toBe("agent-call");
+      expect(delegation?.childRows).toContainEqual(
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Child mapped the Telegram integration.",
+        }),
+      );
+    });
+  });
+
   it("hydrates turn-summary details with future accepted input context", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
