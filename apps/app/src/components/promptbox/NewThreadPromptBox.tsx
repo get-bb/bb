@@ -316,7 +316,11 @@ interface ThreadEnvSlotProps {
   worktree: NewThreadWorktreeConfig;
 }
 
-function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
+export function ThreadEnvSlot({
+  environment,
+  branch,
+  worktree,
+}: ThreadEnvSlotProps) {
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],
@@ -333,6 +337,7 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
         host={environment.host}
         isLocal={environment.isLocal}
         reuseDisabled={environment.reuseDisabled}
+        worktreeDisabledReason={environment.worktreeDisabledReason}
         disabled={environment.disabled}
         className="shrink-0"
         muted
