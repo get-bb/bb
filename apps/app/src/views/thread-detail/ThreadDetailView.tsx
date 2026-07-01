@@ -83,6 +83,7 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getSurfaceAwareThreadRoutePath,
@@ -812,8 +813,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // the reply under the quote.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
   const handleSelectionAddToChat = useCallback(
-    (text: string) => {
-      addQuoteToComposer(text);
+    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      addQuoteToComposer(text, attachments);
       setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
     [addQuoteToComposer],

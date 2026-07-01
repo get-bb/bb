@@ -94,6 +94,35 @@ export function appendQuoteToDraftText(
   return { ...state, text };
 }
 
+export function appendQuoteAndAttachmentsToDraft(
+  state: PromptDraftState,
+  quotedText: string,
+  attachments: readonly PromptDraftAttachment[],
+): PromptDraftState {
+  const quotedState = appendQuoteToDraftText(state, quotedText);
+  if (attachments.length === 0) {
+    return quotedState;
+  }
+
+  const existingAttachmentPaths = new Set(
+    quotedState.attachments.map((attachment) => attachment.path),
+  );
+  const mergedAttachments = [...quotedState.attachments];
+  for (const attachment of attachments) {
+    if (existingAttachmentPaths.has(attachment.path)) {
+      continue;
+    }
+    existingAttachmentPaths.add(attachment.path);
+    mergedAttachments.push(attachment);
+  }
+
+  if (mergedAttachments.length === quotedState.attachments.length) {
+    return quotedState;
+  }
+
+  return { ...quotedState, attachments: mergedAttachments };
+}
+
 export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   return (
     draft.text.length === 0 &&
@@ -209,7 +238,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       type: "localFile",
       path: attachment.path,
       name: attachment.name,
-      sizeBytes: attachment.sizeBytes,
+      ...(attachment.sizeBytes > 0 ? { sizeBytes: attachment.sizeBytes } : {}),
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     });
   }

@@ -3,6 +3,7 @@ import type {
   MarkdownPreviewLocalFileLinkHandler,
 } from "../../ui/markdown-local-file-link.js";
 import type { MarkdownPreviewLinkHandler } from "../../ui/markdown-link.js";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 
 export type ThreadTimelineTheme = "light" | "dark";
 
@@ -65,7 +66,10 @@ export type ThreadTimelineSendToMainMessageHandler = (
  * host (which owns the composer draft); the floating selection menu invokes it
  * with the selected text. Absent when no composer draft is available.
  */
-export type ThreadTimelineSelectionAddToChatHandler = (text: string) => void;
+export type ThreadTimelineSelectionAddToChatHandler = (
+  text: string,
+  attachments?: readonly PromptDraftAttachment[],
+) => void;
 
 export interface ThreadTimelineSelectionReplyInSideChatTarget {
   /** Visible selected text the side chat is anchored to. */

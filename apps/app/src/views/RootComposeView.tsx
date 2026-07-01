@@ -914,8 +914,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const handleRootPanelSelectionAddToChat = useCallback(
-    (text: string) => {
-      promptDraft.addQuote(text);
+    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
       window.requestAnimationFrame(() => {
         promptBoxRef.current?.focusEnd();

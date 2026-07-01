@@ -5,7 +5,7 @@ import type {
   PromptDraftState,
 } from "@/lib/prompt-draft";
 import {
-  appendQuoteToDraftText,
+  appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
   isPromptDraftEmpty,
@@ -310,12 +310,16 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string) => {
+    (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
       const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = appendQuoteToDraftText(currentDraft, text);
-      // `appendQuoteToDraftText` no-ops on whitespace-only text; skip the write
+      const nextDraft = appendQuoteAndAttachmentsToDraft(
+        currentDraft,
+        text,
+        attachments,
+      );
+      // Whitespace-only text with no new attachments is a no-op; skip the write
       // so an empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft.text === currentDraft.text) {
+      if (nextDraft === currentDraft) {
         return;
       }
 
