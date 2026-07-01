@@ -16,6 +16,20 @@ describe("prompt mention command triggers", () => {
     );
   });
 
+  it("accepts built-in command mention resources", () => {
+    expect(
+      promptMentionResourceSchema.safeParse({
+        kind: "command",
+        trigger: "/",
+        name: "compact",
+        source: "command",
+        origin: "builtin",
+        label: "compact",
+        argumentHint: null,
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects legacy dollar command mention resources", () => {
     expect(
       promptMentionResourceSchema.safeParse({

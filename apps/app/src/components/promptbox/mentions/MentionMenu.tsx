@@ -155,6 +155,9 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
 // the server sorts the flat response by — so the menu's visual order and the
 // keyboard-nav order can't drift. The menu only adds the human-readable labels.
 function getCommandSectionLabel(kind: ProviderCommandSection): string {
+  if (kind === "agent-command") {
+    return "Commands";
+  }
   if (kind === "skill") {
     return "Skills";
   }

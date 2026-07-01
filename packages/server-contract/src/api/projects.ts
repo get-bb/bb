@@ -230,7 +230,11 @@ export type UpdateProjectSourceRequest = z.infer<
 export const providerCommandSourceSchema = z.enum(["skill", "command"]);
 export type ProviderCommandSource = z.infer<typeof providerCommandSourceSchema>;
 
-export const providerCommandOriginSchema = z.enum(["project", "user"]);
+export const providerCommandOriginSchema = z.enum([
+  "builtin",
+  "project",
+  "user",
+]);
 export type ProviderCommandOrigin = z.infer<typeof providerCommandOriginSchema>;
 
 export const providerCommandSchema = z.object({
@@ -246,14 +250,15 @@ export const providerCommandSchema = z.object({
 export type ProviderCommand = z.infer<typeof providerCommandSchema>;
 
 /**
- * The command typeahead menu's visual sections, top-to-bottom: skills first,
- * then Claude Code's legacy project commands, then user commands. This single
- * ordered list is the one source of truth for both the server's flat sort
- * (which buckets the response in this order) and the composer menu's section
- * grouping, so keyboard navigation (which walks the flat order) can never
- * disagree with what the user sees.
+ * The command typeahead menu's visual sections, top-to-bottom: built-in agent
+ * commands, skills, Claude Code's legacy project commands, then user commands.
+ * This single ordered list is the one source of truth for both the server's
+ * flat sort (which buckets the response in this order) and the composer menu's
+ * section grouping, so keyboard navigation (which walks the flat order) can
+ * never disagree with what the user sees.
  */
 export const PROVIDER_COMMAND_SECTIONS = [
+  "agent-command",
   "skill",
   "project-command",
   "user-command",
@@ -261,14 +266,15 @@ export const PROVIDER_COMMAND_SECTIONS = [
 export type ProviderCommandSection = (typeof PROVIDER_COMMAND_SECTIONS)[number];
 
 /**
- * Derive the menu section a command belongs to from its source + origin:
- * `skill` source → the skills section; otherwise the legacy `command` source
- * splits by origin into the project- and user-command sections.
+ * Derive the menu section a command belongs to from its source + origin.
  */
 export function providerCommandSection(cmd: {
   source: ProviderCommandSource;
   origin: ProviderCommandOrigin;
 }): ProviderCommandSection {
+  if (cmd.origin === "builtin") {
+    return "agent-command";
+  }
   if (cmd.source === "skill") {
     return "skill";
   }

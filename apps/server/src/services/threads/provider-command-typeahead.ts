@@ -25,6 +25,16 @@ export const PROVIDER_COMMAND_DEFAULT_LIMIT = 8;
  */
 export const PROVIDER_COMMAND_LIMIT_MAX = 50;
 
+const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
+  {
+    name: "compact",
+    source: "command",
+    origin: "builtin",
+    description: "Compact context",
+    argumentHint: null,
+  },
+];
+
 export function providerHasCommandSurface(providerId: string): boolean {
   if (!isAgentProviderId(providerId)) {
     return false;
@@ -125,24 +135,32 @@ function matchesQuery(command: ProviderCommand, query: string): boolean {
 }
 
 /**
- * Collapse same-`(source, name)` collisions, keeping the `project`-origin entry
- * over the `user`-origin one. Cross-source duplicates (a `skill` and a
- * `command` with the same name) are intentionally retained — they are distinct
- * invocations.
+ * Collapse same-`(source, name)` collisions. Built-in agent commands are the
+ * canonical row for their names; otherwise project-origin entries win over
+ * user-origin ones. Cross-source duplicates (a `skill` and a `command` with the
+ * same name) are intentionally retained — they are distinct invocations.
  */
 function dedupeBySourceAndName(commands: ProviderCommand[]): ProviderCommand[] {
   const byKey = new Map<string, ProviderCommand>();
   for (const command of commands) {
     const key = `${command.source} ${command.name}`;
     const existing = byKey.get(key);
-    if (
-      !existing ||
-      (existing.origin === "user" && command.origin === "project")
-    ) {
+    if (!existing || commandOriginRank(command) > commandOriginRank(existing)) {
       byKey.set(key, command);
     }
   }
   return [...byKey.values()];
+}
+
+function commandOriginRank(command: ProviderCommand): number {
+  switch (command.origin) {
+    case "builtin":
+      return 2;
+    case "project":
+      return 1;
+    case "user":
+      return 0;
+  }
 }
 
 function compareForQuery(
@@ -201,9 +219,10 @@ export function buildCommandListResponse(
 ): CommandListResponse {
   const query = (args.query ?? "").toLowerCase();
   const filtered = dedupeBySourceAndName(
-    args.commands
-      .map(toProviderCommand)
-      .filter((command) => matchesQuery(command, query)),
+    [
+      ...BUILT_IN_PROVIDER_COMMANDS,
+      ...args.commands.map(toProviderCommand),
+    ].filter((command) => matchesQuery(command, query)),
   ).sort((a, b) => compareForQuery(a, b, query));
   const end = args.offset + args.limit;
 

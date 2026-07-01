@@ -195,6 +195,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
         "prd",
         "skill-installer",
       ]);
@@ -344,6 +345,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
         "user-only",
       ]);
       // Falls back to the project source path on the primary host, since the
@@ -389,6 +391,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
         "user-only",
       ]);
       // Not the provisioning env path; the project source path on the primary host.
@@ -427,6 +430,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
         "user-only",
       ]);
       expect(stub.requests[0]?.command).toEqual({
@@ -457,6 +461,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "compact",
         "home-skill",
       ]);
       expect(stub.requests[0]?.command).toEqual({
@@ -523,8 +528,8 @@ describe("public project command typeahead route", () => {
         await readJson(limitedResponse),
       );
       expect(limited.commands.map((command) => command.name)).toEqual([
+        "compact",
         "alpha",
-        "bravo",
       ]);
       expect(limited.truncated).toBe(true);
 
@@ -536,10 +541,10 @@ describe("public project command typeahead route", () => {
         await readJson(nextPageResponse),
       );
       expect(nextPage.commands.map((command) => command.name)).toEqual([
+        "bravo",
         "charlie",
-        "delta",
       ]);
-      expect(nextPage.truncated).toBe(false);
+      expect(nextPage.truncated).toBe(true);
 
       const fullResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
@@ -549,6 +554,7 @@ describe("public project command typeahead route", () => {
         await readJson(fullResponse),
       );
       expect(full.commands.map((command) => command.name)).toEqual([
+        "compact",
         "alpha",
         "bravo",
         "charlie",

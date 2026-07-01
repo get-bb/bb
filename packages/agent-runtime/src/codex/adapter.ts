@@ -21,6 +21,7 @@ import type {
   ClientTurnRequestId,
   PermissionEscalation,
   PromptInput,
+  PromptTextMention,
   ReasoningLevel,
   ServiceTier,
   ThreadEvent,
@@ -31,6 +32,7 @@ import type { ServerNotification as CodexServerNotification } from "./generated/
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
 import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/DynamicToolSpec.js";
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
+import type { ThreadCompactStartParams } from "./generated/codex-app-server/schema/v2/ThreadCompactStartParams.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
@@ -697,6 +699,64 @@ function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
         };
     }
   });
+}
+
+type TextPromptInput = Extract<PromptInput, { type: "text" }>;
+
+function isBuiltinCompactCommandMention(mention: PromptTextMention): boolean {
+  const resource = mention.resource;
+  return (
+    resource.kind === "command" &&
+    resource.trigger === "/" &&
+    resource.name === "compact" &&
+    resource.source === "command" &&
+    resource.origin === "builtin"
+  );
+}
+
+function stripBuiltinCompactCommandMentions(input: TextPromptInput): {
+  mentionCount: number;
+  text: string;
+} {
+  const ranges = input.mentions
+    .filter(isBuiltinCompactCommandMention)
+    .map((mention) => ({
+      start: mention.start,
+      end:
+        mention.end < input.text.length && input.text[mention.end] === " "
+          ? mention.end + 1
+          : mention.end,
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+
+  if (ranges.length === 0) {
+    return { mentionCount: 0, text: input.text };
+  }
+
+  let text = "";
+  let cursor = 0;
+  for (const range of ranges) {
+    text += input.text.slice(cursor, range.start);
+    cursor = range.end;
+  }
+  text += input.text.slice(cursor);
+
+  return { mentionCount: ranges.length, text };
+}
+
+function isStandaloneBuiltinCompactCommandInput(input: PromptInput[]): boolean {
+  let mentionCount = 0;
+  for (const chunk of input) {
+    if (chunk.type !== "text") {
+      return false;
+    }
+    const stripped = stripBuiltinCompactCommandMentions(chunk);
+    mentionCount += stripped.mentionCount;
+    if (stripped.text.trim() !== "") {
+      return false;
+    }
+  }
+  return mentionCount === 1;
 }
 
 function buildCodexConfig(
@@ -1727,6 +1787,20 @@ export function createCodexProviderAdapter(
           };
         }
         case "turn/start": {
+          const input = flattenPromptInputGroups(
+            command.input,
+            command.inputGroups,
+          );
+          if (isStandaloneBuiltinCompactCommandInput(input)) {
+            const params: ThreadCompactStartParams = {
+              threadId: command.providerThreadId,
+            };
+            return {
+              kind: "request",
+              method: "thread/compact/start",
+              params,
+            };
+          }
           const writableRoots =
             workspaceWriteGitWritableRootsByThreadId.get(command.threadId) ??
             [];
@@ -1740,9 +1814,7 @@ export function createCodexProviderAdapter(
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
-              input: toCodexUserInput(
-                flattenPromptInputGroups(command.input, command.inputGroups),
-              ),
+              input: toCodexUserInput(input),
               approvalPolicy: permissionSettings.approvalPolicy,
               sandboxPolicy: permissionSettings.sandboxPolicy,
               model: command.options?.model ?? undefined,

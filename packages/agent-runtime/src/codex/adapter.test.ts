@@ -15,6 +15,7 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
+import type { PromptInput, PromptMentionCommandOrigin } from "@bb/domain";
 
 import { createCodexProviderAdapter } from "./adapter.js";
 import type { CodexEvent } from "./adapter.js";
@@ -244,6 +245,36 @@ function buildLinkedWorktreeThreadResumeCommand(
     providerThreadId: args.providerThreadId ?? "codex-thread-1",
     instructionMode: "append",
     options: workspaceWriteAskProviderExecutionContext,
+  };
+}
+
+function promptCompactCommandInput(args?: {
+  origin?: PromptMentionCommandOrigin;
+  text?: string;
+}): PromptInput {
+  const text = args?.text ?? "/compact";
+  const start = text.indexOf("/compact");
+  if (start === -1) {
+    throw new Error(`Missing /compact command text in "${text}".`);
+  }
+  return {
+    type: "text",
+    text,
+    mentions: [
+      {
+        start,
+        end: start + "/compact".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "compact",
+          source: "command",
+          origin: args?.origin ?? "builtin",
+          label: "compact",
+          argumentHint: null,
+        },
+      },
+    ],
   };
 }
 
@@ -1752,6 +1783,83 @@ describe("codex provider adapter", () => {
         threadId: "codex-1",
         input: [{ type: "text", text: "do it" }],
         approvalPolicy: "never",
+      },
+    });
+  });
+
+  it("buildCommand turn/start maps standalone builtin /compact to native compact start", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_222222228c",
+      threadId: "t1",
+      providerThreadId: "codex-1",
+      input: [promptCompactCommandInput()],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toEqual({
+      kind: "request",
+      method: "thread/compact/start",
+      params: {
+        threadId: "codex-1",
+      },
+    });
+  });
+
+  it("buildCommand turn/start leaves raw /compact text as normal input", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_222222228d",
+      threadId: "t1",
+      providerThreadId: "codex-1",
+      input: [promptTextInput({ text: "/compact" })],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [{ type: "text", text: "/compact" }],
+      },
+    });
+  });
+
+  it("buildCommand turn/start leaves user compact commands as normal input", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_222222228e",
+      threadId: "t1",
+      providerThreadId: "codex-1",
+      input: [promptCompactCommandInput({ origin: "user" })],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [{ type: "text", text: "/compact" }],
+      },
+    });
+  });
+
+  it("buildCommand turn/start leaves mixed compact command input as normal input", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_222222228f",
+      threadId: "t1",
+      providerThreadId: "codex-1",
+      input: [promptCompactCommandInput({ text: "/compact then summarize" })],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [{ type: "text", text: "/compact then summarize" }],
       },
     });
   });

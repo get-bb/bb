@@ -145,7 +145,11 @@ export type PromptMentionCommandSource = z.infer<
   typeof promptMentionCommandSourceSchema
 >;
 
-export const promptMentionCommandOriginValues = ["project", "user"] as const;
+export const promptMentionCommandOriginValues = [
+  "builtin",
+  "project",
+  "user",
+] as const;
 export const promptMentionCommandOriginSchema = z.enum(
   promptMentionCommandOriginValues,
 );
