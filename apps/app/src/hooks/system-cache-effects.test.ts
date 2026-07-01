@@ -3,13 +3,18 @@ import { QueryObserver } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  automationDetailQueryKey,
+  automationRunsQueryKey,
+  automationsQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
   sidebarNavigationQueryKey,
   systemExecutionOptionsQueryKey,
+  terminalsQueryKey,
   threadConversationOutlineQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
+  threadHostFilePreviewQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
@@ -102,9 +107,27 @@ describe("system cache effects", () => {
     });
     const defaultExecutionOptionsKey =
       threadDefaultExecutionOptionsQueryKey("thread-1");
+    const threadHostFilePreviewKey = threadHostFilePreviewQueryKey(
+      "thread-1",
+      "env-1",
+      "/tmp/log.txt",
+    );
     const executionOptionsKey = scopedSystemExecutionOptionsKey({
       environmentId: "env-1",
     });
+    const terminalsKey = terminalsQueryKey({
+      kind: "thread",
+      threadId: "thread-1",
+    });
+    const automationsKey = automationsQueryKey();
+    const automationDetailKey = automationDetailQueryKey(
+      "project-1",
+      "automation-1",
+    );
+    const automationRunsKey = automationRunsQueryKey(
+      "project-1",
+      "automation-1",
+    );
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     queryClient.setQueryData(threadKey, { id: "thread-1" });
     queryClient.setQueryData(threadBootstrapKey, { id: "thread-1" });
@@ -121,7 +144,18 @@ describe("system cache effects", () => {
       defaultExecutionOptionsKey,
       EMPTY_EXECUTION_OPTIONS,
     );
+    queryClient.setQueryData(threadHostFilePreviewKey, {
+      kind: "text",
+      path: "/tmp/log.txt",
+      url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
+      mimeType: "text/plain",
+      content: "old",
+    });
     queryClient.setQueryData(executionOptionsKey, EMPTY_EXECUTION_OPTIONS);
+    queryClient.setQueryData(terminalsKey, { sessions: [] });
+    queryClient.setQueryData(automationsKey, { automations: [] });
+    queryClient.setQueryData(automationDetailKey, { id: "automation-1" });
+    queryClient.setQueryData(automationRunsKey, { runs: [] });
     queryClient.setQueryData(sidebarNavigationKey, {
       projects: [],
       personalProject: { threads: [] },
@@ -152,7 +186,20 @@ describe("system cache effects", () => {
     expect(
       queryClient.getQueryState(defaultExecutionOptionsKey)?.isInvalidated,
     ).toBe(true);
+    expect(
+      queryClient.getQueryState(threadHostFilePreviewKey)?.isInvalidated,
+    ).toBe(true);
     expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(terminalsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(automationsKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(automationDetailKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(automationRunsKey)?.isInvalidated).toBe(
       true,
     );
     expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(

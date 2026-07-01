@@ -17,6 +17,7 @@ import {
   type TerminalQueryScope,
 } from "./query-keys";
 import { requireEnabledQueryArg } from "./query-helpers";
+import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -98,7 +99,7 @@ export function useTerminals(
         signal,
       ),
     enabled: (options?.enabled ?? true) && scope !== null && scope !== undefined,
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   });
 }
 

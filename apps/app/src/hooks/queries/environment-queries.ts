@@ -31,6 +31,12 @@ import {
   resolveEnvironmentWorkStatusPlaceholder,
 } from "./query-placeholders";
 import { requireEnabledQueryArg } from "./query-helpers";
+import {
+  EXPENSIVE_MANUAL_QUERY_POLICY,
+  REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+  TYPEAHEAD_QUERY_POLICY,
+} from "./query-policies";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -111,8 +117,7 @@ export function useEnvironmentWorkStatus(
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     staleTime: 0,
     placeholderData: (previousData, previousQuery) =>
       environmentId
@@ -199,7 +204,7 @@ export function useEnvironmentMergeBaseBranches(
         signal,
       ),
     enabled,
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: MERGE_BASE_BRANCHES_STALE_MS,
     placeholderData: (previousData, previousQuery) =>
       environmentId
@@ -245,7 +250,7 @@ export function useEnvironmentFilePreview(
         signal,
       }),
     enabled,
-    refetchOnWindowFocus: false,
+    ...EXPENSIVE_MANUAL_QUERY_POLICY,
   });
 }
 
@@ -297,9 +302,7 @@ export function useEnvironmentPathSuggestions(
         signal,
       }),
     enabled,
-    staleTime: 15_000,
-    retry: false,
-    refetchOnWindowFocus: false,
+    ...TYPEAHEAD_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
   });
 }
@@ -341,8 +344,7 @@ export function useEnvironmentDiffFiles(
         previousQuery?.queryKey,
         environmentId,
       ),
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     staleTime: ENVIRONMENT_DIFF_STALE_MS,
   });
 }

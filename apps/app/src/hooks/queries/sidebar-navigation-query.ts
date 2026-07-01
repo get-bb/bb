@@ -9,6 +9,7 @@ import {
   useProjectListRealtimeSubscription,
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
+import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
 
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 
@@ -43,7 +44,7 @@ export function useSidebarNavigation(options?: QueryOptions) {
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
     enabled,
-    staleTime: Infinity,
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
   });
 }
 
@@ -60,7 +61,7 @@ export function useProjectDisplayName(
   const { data } = useQuery<SidebarBootstrapResponse>({
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
-    staleTime: Infinity,
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
     // Nothing to resolve without a project id (e.g. personal threads), so don't
     // trigger the bootstrap fetch from this read-only selector.
     enabled: Boolean(projectId),

@@ -4,17 +4,17 @@ import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
 import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
+import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
+import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 
-export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
-  "threadDefaultExecutionOptions";
-
-export type ThreadDefaultExecutionOptionsQueryKeyPrefix = readonly [
-  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
-];
-export type ThreadDefaultExecutionOptionsQueryKey = readonly [
-  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
-  string,
-];
+export {
+  allThreadDefaultExecutionOptionsQueryKeyPrefix,
+  threadDefaultExecutionOptionsQueryKey,
+} from "./query-keys";
+export type {
+  ThreadDefaultExecutionOptionsQueryKey,
+  ThreadDefaultExecutionOptionsQueryKeyPrefix,
+} from "./query-keys";
 
 interface ThreadDefaultExecutionOptionsQueryOptions {
   enabled?: boolean;
@@ -24,16 +24,6 @@ interface ThreadDefaultExecutionOptionsQueryOptions {
 
 function requireThreadId(id: string, hookName: string): string {
   return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
-}
-
-export function threadDefaultExecutionOptionsQueryKey(
-  threadId: string,
-): ThreadDefaultExecutionOptionsQueryKey {
-  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, threadId];
-}
-
-export function allThreadDefaultExecutionOptionsQueryKeyPrefix(): ThreadDefaultExecutionOptionsQueryKeyPrefix {
-  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY];
 }
 
 export function fetchThreadDefaultExecutionOptions(
@@ -66,7 +56,7 @@ export function useThreadDefaultExecutionOptions(
       ),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: options?.staleTime,
   });
 }

@@ -22,6 +22,11 @@ import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
 } from "./query-helpers";
+import {
+  EXPENSIVE_MANUAL_QUERY_POLICY,
+  FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+  TYPEAHEAD_QUERY_POLICY,
+} from "./query-policies";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -50,7 +55,6 @@ interface UseProjectCommandsArgs {
   offset: number;
 }
 
-const PROJECT_SOURCE_BRANCHES_STALE_TIME_MS = 5_000;
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
 
 function requireProjectId(
@@ -115,9 +119,7 @@ export function useProjectSourceBranches(
         signal,
       ),
     enabled,
-    refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
-    staleTime: PROJECT_SOURCE_BRANCHES_STALE_TIME_MS,
+    ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
     placeholderData: (previousData, previousQuery) =>
       projectId && hostId
         ? resolveProjectSourceBranchesPlaceholder({
@@ -181,9 +183,7 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
         signal,
       }),
     enabled,
-    staleTime: 15_000,
-    retry: false,
-    refetchOnWindowFocus: false,
+    ...TYPEAHEAD_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
   });
 }
@@ -210,7 +210,7 @@ export function useProjectFilePreview(
         signal,
       }),
     enabled,
-    refetchOnWindowFocus: false,
+    ...EXPENSIVE_MANUAL_QUERY_POLICY,
   });
 }
 
@@ -252,9 +252,7 @@ export function useProjectCommands(
         signal,
       }),
     enabled,
-    staleTime: 15_000,
-    retry: false,
-    refetchOnWindowFocus: false,
+    ...TYPEAHEAD_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
   });
 }
@@ -291,8 +289,6 @@ export function useProjectCommandsPages(
       (options?.enabled ?? true) &&
       Boolean(args.projectId) &&
       Boolean(args.providerId),
-    staleTime: 15_000,
-    retry: false,
-    refetchOnWindowFocus: false,
+    ...TYPEAHEAD_QUERY_POLICY,
   });
 }

@@ -8,7 +8,6 @@ import { useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import type {
   PendingInteraction,
-  ResolvedThreadExecutionOptions,
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
@@ -53,9 +52,13 @@ import {
   TRANSIENT_READ_RETRY_DELAY_MS,
 } from "./query-helpers";
 import {
+  REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+  RESUME_REFETCH_QUERY_POLICY,
+} from "./query-policies";
+import {
   archivedThreadsListQueryKey,
   disabledThreadListQueryKey,
-  threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
@@ -100,8 +103,6 @@ type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
 type ThreadQueuedMessagesQueryOptions = QueryOptions;
 
 type ThreadPromptHistoryQueryOptions = QueryOptions;
-
-type ThreadDefaultExecutionOptionsQueryOptions = QueryOptions;
 
 type ThreadPendingInteractionsQueryOptions = QueryOptions;
 
@@ -577,7 +578,7 @@ export function useThreadQueuedMessages(
       ),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
     staleTime: options?.staleTime,
   });
 }
@@ -602,24 +603,6 @@ export function useThreadPromptHistory(
   });
 }
 
-export function useThreadDefaultExecutionOptions(
-  id: string,
-  options?: ThreadDefaultExecutionOptionsQueryOptions,
-) {
-  return useQuery<ResolvedThreadExecutionOptions | null>({
-    queryKey: threadDefaultExecutionOptionsQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.getThreadDefaultExecutionOptions(
-        requireThreadId(id, "useThreadDefaultExecutionOptions"),
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
-  });
-}
-
 export function useThreadPendingInteractions(
   id: string,
   options?: ThreadPendingInteractionsQueryOptions,
@@ -636,7 +619,7 @@ export function useThreadPendingInteractions(
       ),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: options?.staleTime,
   });
 }
@@ -660,8 +643,7 @@ export function useThreadStorageFiles(
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
 }
 
@@ -682,8 +664,7 @@ export function useThreadStoragePaths(
         signal,
       }),
     enabled,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
     placeholderData: (previousData) => previousData,
   });
 }
@@ -705,8 +686,7 @@ export function useThreadStorageFilePreview(
         signal,
       ),
     enabled,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
 }
 
@@ -732,7 +712,7 @@ export function useThreadHostFilePreview(
         signal,
       ),
     enabled,
-    refetchOnWindowFocus: false,
+    ...RESUME_REFETCH_QUERY_POLICY,
   });
 }
 

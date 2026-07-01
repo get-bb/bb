@@ -295,6 +295,15 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     error: null,
     status: "success",
   }),
+  useThreadQueuedMessages: () => ({ data: [] }),
+  useThreadTimeline: () => ({
+    data: { activeThinking: null, rows: mocks.threadTimelineRows },
+    isError: false,
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
   useThreadDefaultExecutionOptions: () => ({
     data: {
       model: "gpt-5",
@@ -302,12 +311,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
       serviceTier: undefined,
     },
     isLoading: false,
-  }),
-  useThreadQueuedMessages: () => ({ data: [] }),
-  useThreadTimeline: () => ({
-    data: { activeThinking: null, rows: mocks.threadTimelineRows },
-    isError: false,
-    isPending: false,
   }),
 }));
 

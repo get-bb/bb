@@ -17,6 +17,11 @@ import {
   systemVersionQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg } from "./query-helpers";
+import {
+  FOCUS_OWNED_LIVE_QUERY_POLICY,
+  SERVER_SESSION_QUERY_POLICY,
+  SESSION_STATIC_QUERY_POLICY,
+} from "./query-policies";
 
 export interface UseSystemExecutionOptionsArgs {
   enabled?: boolean;
@@ -91,16 +96,12 @@ export function useSystemConfig(options?: QueryOptions) {
   });
 }
 
-const SYSTEM_VERSION_STALE_TIME_MS = 60 * 60 * 1000;
-
 export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
     queryFn: ({ signal }) => api.getSystemVersion(signal),
     enabled: options?.enabled ?? true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    staleTime: SYSTEM_VERSION_STALE_TIME_MS,
+    ...SERVER_SESSION_QUERY_POLICY,
   });
 }
 
@@ -125,22 +126,15 @@ export function useHostProviderCliStatus({
         signal,
       ),
     enabled: (enabled ?? true) && hostId !== null,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
-    staleTime: Infinity,
+    ...SESSION_STATIC_QUERY_POLICY,
   });
 }
-
-const PROVIDER_USAGE_STALE_TIME_MS = 30_000;
 
 export function useSystemUsageLimits(options?: QueryOptions) {
   return useQuery<ProviderUsageResponse>({
     queryKey: systemUsageLimitsQueryKey(),
     queryFn: ({ signal }) => api.getSystemUsageLimits(signal),
     enabled: options?.enabled ?? true,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
-    staleTime: PROVIDER_USAGE_STALE_TIME_MS,
+    ...FOCUS_OWNED_LIVE_QUERY_POLICY,
   });
 }

@@ -73,9 +73,9 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   useThread,
-  useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
 } from "@/hooks/queries/thread-queries";
+import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import {
   useCreateThreadQueuedMessage,
   useCreateThread,
