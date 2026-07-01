@@ -1833,8 +1833,15 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   // side chat on the SELECTION (not the whole message), so the reply's context
   // is exactly what the user highlighted.
   const handleSelectionAddToChat = useCallback(
-    (text: string) => {
-      onSelectionAddToChat?.(text);
+    (
+      text: string,
+      attachments?: Parameters<ThreadTimelineSelectionAddToChatHandler>[1],
+    ) => {
+      if (attachments === undefined) {
+        onSelectionAddToChat?.(text);
+      } else {
+        onSelectionAddToChat?.(text, attachments);
+      }
       setActiveSelection(null);
     },
     [onSelectionAddToChat],

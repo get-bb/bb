@@ -91,12 +91,13 @@ function groupSections<TKind extends string, TItem>(args: {
 }
 
 type PathMentionSectionKind = "workspace" | "thread-storage";
-type MentionSectionKind = "threads" | PathMentionSectionKind;
+type MentionSectionKind = "threads" | "projects" | PathMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
 type SecondaryContextKind = "path" | "project";
 
 const MENTION_SECTION_ORDER: readonly MentionSectionKind[] = [
   "threads",
+  "projects",
   "workspace",
   "thread-storage",
 ];
@@ -106,6 +107,9 @@ function getMentionSectionKind(
 ): MentionSectionKind {
   if (item.kind === "thread") {
     return "threads";
+  }
+  if (item.kind === "project") {
+    return "projects";
   }
   return getPathSectionKind(item);
 }
@@ -119,6 +123,9 @@ function getPathSectionKind(
 function getMentionSectionLabel(kind: MentionSectionKind): string {
   if (kind === "threads") {
     return "Threads";
+  }
+  if (kind === "projects") {
+    return "Projects";
   }
   return getPathSectionLabel(kind);
 }
@@ -138,6 +145,10 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
   if (item.kind === "thread") {
     const title = item.title || item.path;
     return item.projectName ? `${title} · ${item.projectName}` : title;
+  }
+
+  if (item.kind === "project") {
+    return `Project: ${item.name}`;
   }
 
   return `${getPathSectionLabel(getPathSectionKind(item))}: ${item.path}`;
@@ -296,6 +307,8 @@ function MentionResults({
                 secondaryContext = item.projectName ?? null;
                 secondaryContextKind =
                   item.projectName === undefined ? null : "project";
+              } else if (item.kind === "project") {
+                primary = item.name;
               } else {
                 const directory = directoryFromPath(item.path);
                 primary = item.name;

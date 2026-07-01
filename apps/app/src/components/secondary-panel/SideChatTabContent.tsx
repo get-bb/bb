@@ -665,8 +665,8 @@ export function SideChatTabContent({
   );
   const handleSelectionAddToChat =
     useCallback<ThreadTimelineSelectionAddToChatHandler>(
-      (text) => {
-        promptDraft.addQuote(text);
+      (text, attachments) => {
+        promptDraft.addQuote(text, attachments);
         setComposerFocusNonce((nonce) => nonce + 1);
       },
       [promptDraft],

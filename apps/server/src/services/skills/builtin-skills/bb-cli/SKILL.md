@@ -102,14 +102,15 @@ For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
 `--environment <environment-id>` so it sees the same files.
 
-## Finding Threads From Workspace Paths
+## Opening Files In The Thread Panel
 
-- Use `bb thread open <path>` to find the BB thread whose workspace contains a
-  path and print its thread URL.
-- The path is resolved relative to the current working directory unless it is
-  already absolute.
-- BB chooses the non-archived thread whose workspace path is the longest prefix
-  of the resolved path.
+- Use `bb thread open <path>` inside a BB thread to open a Markdown, HTML, or
+  other workspace file for the user in the BB IDE's thread panel.
+- Outside a BB thread, use `bb thread open <thread-id> <path>`.
+- Paths can be thread-relative workspace paths, or absolute paths inside the
+  target thread workspace.
+- Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
+  current thread.
 
 ## Long-Running Commands
 

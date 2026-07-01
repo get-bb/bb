@@ -12,8 +12,8 @@ export type PromptPathMentionEntryKind = "file" | "directory";
  * One row in the mention menu. The `replacement` field is the literal text
  * inserted into the prompt after the user picks the suggestion (e.g.
  * `apps/app/src/foo.ts` for workspace files,
- * `thread-storage:notes/foo.md` for thread-storage files, or
- * `thread:thr_abc` for threads).
+ * `thread-storage:notes/foo.md` for thread-storage files,
+ * `thread:thr_abc` for threads, or `project:proj_abc` for projects).
  */
 export type PromptMentionSuggestion =
   | {
@@ -32,6 +32,13 @@ export type PromptMentionSuggestion =
       projectName?: string;
       threadId: string;
       title?: string;
+    }
+  | {
+      kind: "project";
+      path: string;
+      replacement: string;
+      projectId: string;
+      name: string;
     };
 
 /**

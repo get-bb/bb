@@ -5,6 +5,7 @@ import type {
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
+import { fileNameFromPath } from "@bb/thread-view";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -45,6 +46,7 @@ import {
   SelectableMessageProse,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -150,6 +152,7 @@ export type ConversationMessageContentProps =
   | ConversationMessageContentAssistantProps;
 
 interface UserConversationMessageProps {
+  addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
@@ -303,7 +306,31 @@ function CollapsibleMessageText({
   );
 }
 
+function buildAddToChatAttachments(
+  attachments: TimelineConversationAttachments | null,
+): PromptDraftAttachment[] {
+  if (!attachments) {
+    return [];
+  }
+
+  return [
+    ...attachments.localImagePaths.map((path) => ({
+      type: "localImage" as const,
+      path,
+      name: fileNameFromPath(path),
+      sizeBytes: 0,
+    })),
+    ...attachments.localFilePaths.map((path) => ({
+      type: "localFile" as const,
+      path,
+      name: fileNameFromPath(path),
+      sizeBytes: 0,
+    })),
+  ];
+}
+
 function UserConversationMessage({
+  addToChatAttachments,
   attachmentItems,
   childOrigin,
   initiator,
@@ -423,11 +450,12 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {messageText ? (
+        {messageText || addToChatAttachments.length > 0 ? (
           <div className="mt-1 flex justify-end">
             <MessageActionBar
               messageText={messageText}
               alignment="end"
+              addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
             />
           </div>
@@ -537,10 +565,15 @@ export function ConversationMessageContent(
       }),
     [attachments, projectId, resolveUserAttachmentImageSrc],
   );
+  const addToChatAttachments = useMemo(
+    () => buildAddToChatAttachments(attachments),
+    [attachments],
+  );
 
   if (props.role === "user") {
     return (
       <UserConversationMessage
+        addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         childOrigin={props.childOrigin}
         initiator={props.initiator}

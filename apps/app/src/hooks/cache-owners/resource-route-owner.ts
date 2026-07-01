@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { useSetAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import type {
   ChangedMessage,
   EnvironmentChangedMessage,
@@ -15,9 +14,7 @@ import {
 import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { useRouteState } from "../useRouteState";
-import { getCachedThreadProjectId } from "./thread-detail-cache-owner";
 
 export type DeletedResourceRouteChangeHandler = (
   message: ChangedMessage,
@@ -55,9 +52,7 @@ function isDeletedEnvironmentMessage(
 
 export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandler {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
-  const setRootComposeProjectId = useSetRootComposeProjectId();
   const { projectId: routeProjectId, threadId: routeThreadId } = useRouteState();
 
   return useCallback(
@@ -91,22 +86,8 @@ export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandle
         return;
       }
 
-      const projectId = getCachedThreadProjectId({
-        queryClient,
-        threadId: deletedThreadId,
-      });
-      if (projectId) {
-        setRootComposeProjectId(projectId);
-      }
       navigate(getRootComposeRoutePath());
     },
-    [
-      navigate,
-      queryClient,
-      routeProjectId,
-      routeThreadId,
-      setCollapsedProjectIdList,
-      setRootComposeProjectId,
-    ],
+    [navigate, routeProjectId, routeThreadId, setCollapsedProjectIdList],
   );
 }

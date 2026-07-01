@@ -116,6 +116,7 @@ import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-cre
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
+  getProjectComposeRoutePath,
   getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
   isRoutePath,
@@ -914,8 +915,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const handleRootPanelSelectionAddToChat = useCallback(
-    (text: string) => {
-      promptDraft.addQuote(text);
+    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
       window.requestAnimationFrame(() => {
         promptBoxRef.current?.focusEnd();
@@ -2103,6 +2104,9 @@ export function RootComposeView(props: RootComposeViewProps) {
               threadId: resource.threadId,
             }),
           );
+      }
+      if (resource.kind === "project") {
+        return () => navigate(getProjectComposeRoutePath(resource.projectId));
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;

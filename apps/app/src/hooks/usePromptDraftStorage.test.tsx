@@ -111,6 +111,35 @@ describe("usePromptDraftStorage addQuote", () => {
     expect(result.current.text).toBe("> line a\n> line b\n");
   });
 
+  it("adds quote attachments to the draft and persists them", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() =>
+      result.current.addQuote("review this", [
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ]),
+    );
+
+    expect(result.current.text).toBe("> review this\n");
+    expect(result.current.attachments).toEqual([
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 0,
+      },
+    ]);
+    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
+      "uploads/spec.md",
+    );
+  });
+
   it("ignores whitespace-only text without writing", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));

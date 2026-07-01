@@ -93,6 +93,14 @@ export function getLegacyProjectComposeRoutePath(projectId: string): string {
   return `/projects/${projectId}`;
 }
 
+// Opens a project's compose view. The personal project has no `/projects/:id`
+// surface — its compose view is the app root — so it routes there instead.
+export function getProjectComposeRoutePath(projectId: string): string {
+  return isProjectlessProjectId(projectId)
+    ? getRootComposeRoutePath()
+    : getLegacyProjectComposeRoutePath(projectId);
+}
+
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }

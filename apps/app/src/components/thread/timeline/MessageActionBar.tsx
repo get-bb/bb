@@ -15,11 +15,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.js";
 import { cn } from "@/lib/utils";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 
 interface MessageActionBarProps {
   messageText: string;
   alignment: "start" | "end";
-  onAddToChat?: (text: string) => void;
+  addToChatAttachments?: readonly PromptDraftAttachment[];
+  onAddToChat?: (
+    text: string,
+    attachments?: readonly PromptDraftAttachment[],
+  ) => void;
   onFork?: () => void;
   onSideChat?: () => void;
   /**
@@ -73,6 +78,7 @@ export function findMessageActionTooltipCollisionBoundary(
 export function MessageActionBar({
   messageText,
   alignment,
+  addToChatAttachments = [],
   onAddToChat,
   onFork,
   onSideChat,
@@ -80,12 +86,21 @@ export function MessageActionBar({
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
-  const hasAddToChat = hasCopy && onAddToChat !== undefined;
+  const hasAddToChat =
+    (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] =
     useState<HTMLElement | undefined>();
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
   }, []);
+  const handleAddToChat = useCallback(() => {
+    if (!onAddToChat) return;
+    if (addToChatAttachments.length > 0) {
+      onAddToChat(messageText, addToChatAttachments);
+      return;
+    }
+    onAddToChat(messageText);
+  }, [addToChatAttachments, messageText, onAddToChat]);
   const overflowActions: MessageOverflowAction[] = [
     ...(hasCopy
       ? [
@@ -105,7 +120,7 @@ export function MessageActionBar({
           {
             icon: "MessageSquarePlus" as const,
             label: "Add to chat",
-            onSelect: () => onAddToChat(messageText),
+            onSelect: handleAddToChat,
           },
         ]
       : []),
@@ -179,7 +194,7 @@ export function MessageActionBar({
               <button
                 type="button"
                 className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
-                onClick={() => onAddToChat(messageText)}
+                onClick={handleAddToChat}
                 aria-label="Add to chat"
               >
                 <Icon name="MessageSquarePlus" className="size-3" />

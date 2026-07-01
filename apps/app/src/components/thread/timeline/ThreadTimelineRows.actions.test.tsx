@@ -306,6 +306,85 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 
+  it("passes user message attachments to add-to-chat", () => {
+    const onSelectionAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "  Quote this user prompt.  ",
+            attachments: {
+              webImages: 1,
+              localImages: 1,
+              localFiles: 1,
+              imageUrls: ["https://example.com/remote.png"],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith(
+      "Quote this user prompt.",
+      [
+        {
+          type: "localImage",
+          path: "uploads/screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 0,
+        },
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ],
+    );
+  });
+
+  it("shows add-to-chat for attachment-only user messages", () => {
+    const onSelectionAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "",
+            attachments: {
+              webImages: 0,
+              localImages: 0,
+              localFiles: 1,
+              imageUrls: [],
+              localImagePaths: [],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith("", [
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 0,
+      },
+    ]);
+  });
+
   it("hides user message add-to-chat when no add handler is supplied", () => {
     const markup = toMarkup(
       <ThreadTimelineRows
