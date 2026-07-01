@@ -108,6 +108,8 @@ export function useFaviconBadge(badge: FaviconBadge): void {
 
 const FAVICON_SIZES = [32, 16] as const;
 const UNREAD_BADGE_FILL = "#e00000";
+const WEB_MANIFEST_LINK_ID = "app-manifest";
+const APPLE_TOUCH_ICON_LINK_ID = "apple-touch-icon";
 
 type FaviconSize = (typeof FAVICON_SIZES)[number];
 
@@ -155,6 +157,39 @@ function getFaviconVariantSuffix(): string {
 function getFaviconLink(size: number): HTMLLinkElement | null {
   const element = document.getElementById(`favicon-${size}`);
   return element instanceof HTMLLinkElement ? element : null;
+}
+
+function getDocumentLink(id: string): HTMLLinkElement | null {
+  const element = document.getElementById(id);
+  return element instanceof HTMLLinkElement ? element : null;
+}
+
+function getTintedAssetSuffix(colorPreference: FaviconColorPreference): string {
+  return colorPreference === defaultFaviconColor ? "" : `-${colorPreference}`;
+}
+
+export function getPwaManifestHref(
+  colorPreference: FaviconColorPreference,
+): string {
+  return `/manifest${getTintedAssetSuffix(colorPreference)}.webmanifest`;
+}
+
+export function getAppleTouchIconHref(
+  colorPreference: FaviconColorPreference,
+): string {
+  return `/apple-touch-icon${getTintedAssetSuffix(colorPreference)}.png`;
+}
+
+export function applyInstallIconState(
+  colorPreference: FaviconColorPreference,
+): void {
+  const manifestLink = getDocumentLink(WEB_MANIFEST_LINK_ID);
+  if (manifestLink) manifestLink.href = getPwaManifestHref(colorPreference);
+
+  const appleTouchIconLink = getDocumentLink(APPLE_TOUCH_ICON_LINK_ID);
+  if (appleTouchIconLink) {
+    appleTouchIconLink.href = getAppleTouchIconHref(colorPreference);
+  }
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -263,11 +298,14 @@ export function initializeFavicon(): void {
   initialized = true;
   const store = getDefaultStore();
   const apply = () => {
+    const colorPreference = store.get(faviconColorAtom);
+    applyInstallIconState(colorPreference);
+
     // On failure (e.g. the favicon image fails to load), keep whatever the
     // index.html bootstrap script already applied.
     void applyFaviconState({
       badge: store.get(faviconBadgeAtom),
-      colorPreference: store.get(faviconColorAtom),
+      colorPreference,
     }).catch(() => {});
   };
   store.sub(faviconColorAtom, apply);

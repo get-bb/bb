@@ -27,8 +27,13 @@
       href="/favicon-16x16.png"
       id="favicon-16"
     />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/apple-touch-icon.png"
+      id="apple-touch-icon"
+    />
+    <link rel="manifest" href="/manifest.webmanifest" id="app-manifest" />
     <script>
       (function () {
         var dev = "%MODE%" === "development";
@@ -45,6 +50,23 @@
           mq.addEventListener("change", function (e) {
             setFavicon(e.matches);
           });
+        function getFaviconColorSuffix() {
+          try {
+            var color = localStorage.getItem("bb.faviconColor");
+            return /^(red|orange|yellow|green|teal|blue|purple|pink)$/.test(
+              color,
+            )
+              ? "-" + color
+              : "";
+          } catch {
+            return "";
+          }
+        }
+        var faviconColorSuffix = getFaviconColorSuffix();
+        document.getElementById("app-manifest").href =
+          "/manifest" + faviconColorSuffix + ".webmanifest";
+        document.getElementById("apple-touch-icon").href =
+          "/apple-touch-icon" + faviconColorSuffix + ".png";
         // Pre-paint browser-chrome color so PWA/status-bar chrome doesn't
         // flash the wrong shade before the app boots; useTheme.ts owns the
         // meta tag afterwards. Mirrors the bb.theme preference resolution and

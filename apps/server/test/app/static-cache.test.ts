@@ -25,6 +25,10 @@ describe("production static cache headers", () => {
       join(staticDir, "assets", "dynamic-only.js"),
       `console.log('${"dynamic bundle ".repeat(600)}');`,
     );
+    await writeFile(
+      join(staticDir, "manifest.webmanifest"),
+      JSON.stringify({ name: "bb", icons: [] }),
+    );
 
     const harness = await createTestAppHarness();
     const serverApp = createApp(harness.deps, { staticDir });
@@ -87,6 +91,14 @@ describe("production static cache headers", () => {
       expect(dynamicCompressedAssetResponse.headers.has("content-length")).toBe(
         false,
       );
+
+      const manifestResponse = await serverApp.app.request(
+        "/manifest.webmanifest",
+      );
+      expect(manifestResponse.headers.get("content-type")).toBe(
+        "application/manifest+json",
+      );
+      expect(manifestResponse.headers.get("cache-control")).toBe("no-store");
 
       const apiMissResponse = await serverApp.app.request(
         "/api/v1/does-not-exist.js",

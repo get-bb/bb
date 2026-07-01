@@ -471,13 +471,13 @@ export function createApp(
       ".js": "application/javascript",
       ".css": "text/css",
       ".json": "application/json",
+      ".webmanifest": "application/manifest+json",
       ".png": "image/png",
       ".svg": "image/svg+xml",
       ".ico": "image/x-icon",
       ".woff": "font/woff",
       ".woff2": "font/woff2",
       ".webp": "image/webp",
-      ".webmanifest": "application/manifest+json",
       ".map": "application/json",
     };
 
