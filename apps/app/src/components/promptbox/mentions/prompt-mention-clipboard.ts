@@ -57,6 +57,9 @@ export function serializedTextForPromptMentionResource(
   if (resource.kind === "thread") {
     return `@thread:${resource.threadId}`;
   }
+  if (resource.kind === "project") {
+    return `@project:${resource.projectId}`;
+  }
   if (resource.kind === "command") {
     return `${resource.trigger}${resource.name}`;
   }

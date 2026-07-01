@@ -12,6 +12,7 @@ import {
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
+  promptMentionResourceFromSuggestion,
   promptEditorValueFromDoc,
   type PromptEditorValue,
 } from "./prompt-editor-serialization";
@@ -481,6 +482,41 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
 });
 
 describe("prompt editor serialization", () => {
+  it("builds a project mention resource from a project suggestion", () => {
+    expect(
+      promptMentionResourceFromSuggestion({
+        kind: "project",
+        path: "project:proj_abc",
+        replacement: "project:proj_abc",
+        projectId: "proj_abc",
+        name: "Alpha Service",
+      }),
+    ).toEqual({
+      kind: "project",
+      projectId: "proj_abc",
+      label: "Alpha Service",
+    });
+  });
+
+  it("round-trips a project mention through the editor document", () => {
+    const value: PromptEditorValue = {
+      text: "look at @project:proj_abc please",
+      mentions: [
+        {
+          start: "look at ".length,
+          end: "look at @project:proj_abc".length,
+          resource: {
+            kind: "project",
+            projectId: "proj_abc",
+            label: "Alpha Service",
+          },
+        },
+      ],
+    };
+
+    expect(roundTrip(value)).toEqual(value);
+  });
+
   it("builds command mention resources from provider command suggestions", () => {
     expect(
       promptCommandResourceFromSuggestion({

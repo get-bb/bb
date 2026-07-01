@@ -2,6 +2,10 @@ import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
+import {
+  buildProjectMentionSuggestions,
+  type ProjectMentionCandidate,
+} from "./projectMentionSuggestions";
 import { useSidebarNavigation } from "./queries/sidebar-navigation-query";
 import { useThreadMentionCandidates } from "./queries/thread-queries";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
@@ -26,15 +30,26 @@ export interface UsePromptMentionsResult {
 interface BuildPromptMentionSuggestionsArgs {
   pathSuggestions: readonly PromptMentionSuggestion[];
   threadSuggestions: readonly PromptMentionSuggestion[];
+  projectSuggestions: readonly PromptMentionSuggestion[];
   trimmedQuery: string;
 }
 
 function buildPromptMentionSuggestions(
   args: BuildPromptMentionSuggestionsArgs,
 ): PromptMentionSuggestion[] {
+  // A query containing "/" reads as a file path, so paths lead; otherwise the
+  // named entities (threads then projects) lead and paths trail.
   return args.trimmedQuery.includes("/")
-    ? [...args.pathSuggestions, ...args.threadSuggestions]
-    : [...args.threadSuggestions, ...args.pathSuggestions];
+    ? [
+        ...args.pathSuggestions,
+        ...args.threadSuggestions,
+        ...args.projectSuggestions,
+      ]
+    : [
+        ...args.threadSuggestions,
+        ...args.projectSuggestions,
+        ...args.pathSuggestions,
+      ];
 }
 
 function buildProjectNamesById(
@@ -49,6 +64,21 @@ function buildProjectNamesById(
     projectNamesById.set(project.id, project.name);
   }
   return projectNamesById;
+}
+
+// The sidebar bootstrap keeps the personal project separate from the named
+// project list; project mentions offer both so every project is reachable.
+function buildProjectMentionCandidates(
+  sidebarNavigation: SidebarBootstrapResponse | undefined,
+): ProjectMentionCandidate[] {
+  if (!sidebarNavigation) {
+    return [];
+  }
+
+  return [
+    ...sidebarNavigation.projects,
+    sidebarNavigation.personalProject,
+  ].map((project) => ({ id: project.id, name: project.name }));
 }
 
 export function usePromptMentions(
@@ -77,6 +107,10 @@ export function usePromptMentions(
     () => buildProjectNamesById(projectNamesQuery.data),
     [projectNamesQuery.data],
   );
+  const projectCandidates = useMemo(
+    () => buildProjectMentionCandidates(projectNamesQuery.data),
+    [projectNamesQuery.data],
+  );
 
   const currentThreadId = options.currentThreadId;
   const pathSuggestions = useMemo(
@@ -102,16 +136,30 @@ export function usePromptMentions(
     threadsQuery.data,
     trimmedQuery,
   ]);
+  const projectSuggestions = useMemo(() => {
+    return buildProjectMentionSuggestions({
+      projects: projectCandidates,
+      query: trimmedQuery,
+      limit: PROMPT_MENTION_SOURCE_LIMIT,
+    });
+  }, [projectCandidates, trimmedQuery]);
   const suggestions = useMemo(
     () =>
       hasQuery
         ? buildPromptMentionSuggestions({
             pathSuggestions,
             threadSuggestions,
+            projectSuggestions,
             trimmedQuery,
           })
         : [],
-    [hasQuery, pathSuggestions, threadSuggestions, trimmedQuery],
+    [
+      hasQuery,
+      pathSuggestions,
+      threadSuggestions,
+      projectSuggestions,
+      trimmedQuery,
+    ],
   );
 
   // Loading flips on only when there are zero suggestions to show. Once the

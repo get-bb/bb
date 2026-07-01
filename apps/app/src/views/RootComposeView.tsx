@@ -116,6 +116,7 @@ import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-cre
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
+  getProjectComposeRoutePath,
   getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
   isRoutePath,
@@ -2102,6 +2103,9 @@ export function RootComposeView(props: RootComposeViewProps) {
               threadId: resource.threadId,
             }),
           );
+      }
+      if (resource.kind === "project") {
+        return () => navigate(getProjectComposeRoutePath(resource.projectId));
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;

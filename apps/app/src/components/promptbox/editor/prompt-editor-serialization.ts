@@ -507,6 +507,14 @@ export function promptMentionResourceFromSuggestion(
     };
   }
 
+  if (suggestion.kind === "project") {
+    return {
+      kind: "project",
+      projectId: suggestion.projectId,
+      label: suggestion.name.trim() || suggestion.projectId,
+    };
+  }
+
   return {
     kind: "path",
     source: suggestion.source,
