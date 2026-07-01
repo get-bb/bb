@@ -1711,7 +1711,7 @@ interface ManualThreadTreeItemsProps {
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
-// (project, flat chronological, folders) renders through this, so a row-prop
+// (project, chronological, folders) renders through this, so a row-prop
 // change lands once instead of being copied across each view's renderer.
 function ManualThreadTreeItems({
   items,
@@ -1851,11 +1851,10 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   );
 });
 
-// Flat Folders bucket: one top-level row per non-pinned thread across all
-// projects, globally ordered by the chosen comparator before folder bucketing.
-// It intentionally drops parent/child nesting and worktree grouping so nothing
-// hides behind a collapsed parent. Derives projectId per row from its own
-// thread so cross-project rows still route correctly.
+// Folders bucket: root threads across all projects, globally ordered by the
+// chosen comparator before folder bucketing, with descendants nested under
+// their parent. Worktree grouping stays off. Derives projectId per row from its
+// own thread so cross-project rows still route correctly.
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,

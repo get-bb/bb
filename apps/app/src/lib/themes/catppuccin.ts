@@ -16,7 +16,8 @@ export const catppuccinThemeCss = `
   /* Accent: Mauve */
   --primary: #8839ef;
   --primary-foreground: #eff1f5;
-  --file-accent: #1e66f5; /* Blue — the one path tint */
+  --timeline-accent: #1e66f5; /* Blue — the timeline tint */
+  --file-accent: var(--timeline-accent);
 
   /* Text tiers: Subtext1 / Subtext0 / Overlay1 */
   --muted-foreground: #5c5f77;
@@ -61,7 +62,8 @@ export const catppuccinThemeCss = `
   /* Accent: Mauve */
   --primary: #cba6f7;
   --primary-foreground: #1e1e2e;
-  --file-accent: #89b4fa; /* Blue */
+  --timeline-accent: #89b4fa; /* Blue */
+  --file-accent: var(--timeline-accent);
 
   /* Text tiers: Subtext1 / Subtext0 / Overlay1 */
   --muted-foreground: #bac2de;

@@ -13,7 +13,8 @@ export const draculaThemeCss = `
   --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
   --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
-  --file-accent: #1f6f8b;
+  --timeline-accent: #1f6f8b;
+  --file-accent: var(--timeline-accent);
   --destructive: #c4314b;
   --destructive-text: #b3243d;
   --warning: #b8762e;
@@ -62,7 +63,8 @@ export const draculaThemeCss = `
   --ink: #f8f8f2;
   --primary: #bd93f9;
   --primary-foreground: #282a36;
-  --file-accent: #8be9fd;
+  --timeline-accent: #8be9fd;
+  --file-accent: var(--timeline-accent);
   --destructive: #ff5555;
   --destructive-text: #ff7b7b;
   --warning: #ffb86c;
