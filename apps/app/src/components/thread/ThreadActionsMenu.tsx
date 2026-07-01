@@ -154,7 +154,9 @@ function ThreadActionsMenuItems({
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
-      {showSeparators ? <ThreadActionMenuSeparator surface={surface} /> : null}
+      {showSeparators && canSendToPopout ? (
+        <ThreadActionMenuSeparator surface={surface} />
+      ) : null}
       {canSendToPopout ? (
         <ThreadActionMenuItem
           surface={surface}
@@ -177,9 +179,7 @@ function ThreadActionsMenuItems({
       >
         Rename
       </ThreadActionMenuItem>
-      {showSeparators && canSendToPopout ? (
-        <ThreadActionMenuSeparator surface={surface} />
-      ) : null}
+      {showSeparators ? <ThreadActionMenuSeparator surface={surface} /> : null}
       <ThreadActionMenuItem
         surface={surface}
         icon={isArchived ? "ArchiveRestore" : "Archive"}

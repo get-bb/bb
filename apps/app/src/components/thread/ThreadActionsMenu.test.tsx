@@ -72,6 +72,18 @@ function expectMenuItemIcon(label: string, iconName: string) {
   expect(menuItem.querySelector(`[data-icon="${iconName}"]`)).not.toBeNull();
 }
 
+function getMenuRoleSequence(): string[] {
+  return Array.from(
+    screen
+      .getByRole("menu")
+      .querySelectorAll('[role="menuitem"], [role="separator"]'),
+  ).map((element) =>
+    element.getAttribute("role") === "separator"
+      ? "separator"
+      : (element.textContent ?? "").trim(),
+  );
+}
+
 describe("ThreadActionsMenu", () => {
   afterEach(() => {
     cleanup();
@@ -135,10 +147,18 @@ describe("ThreadActionsMenu", () => {
     expect(screen.queryAllByRole("separator")).toHaveLength(0);
   });
 
-  it("renders one divider when the popout action is unavailable", async () => {
+  it("renders one divider before lifecycle actions when the popout action is unavailable", async () => {
     await renderOpenMenu(makeThread(), { isCompactViewport: false });
 
     expect(screen.getAllByRole("separator")).toHaveLength(1);
+    expect(getMenuRoleSequence()).toEqual([
+      "Mark read",
+      "Pin",
+      "Rename",
+      "separator",
+      "Archive",
+      "Delete",
+    ]);
   });
 
   it("renders both dividers when the popout action is available", async () => {
