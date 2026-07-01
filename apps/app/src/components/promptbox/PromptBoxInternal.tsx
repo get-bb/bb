@@ -1572,7 +1572,7 @@ export function PromptBoxInternal({
     formElement.addEventListener("transitionend", handleTransitionEnd);
 
     return cleanup;
-  }, [zenModeLayout]);
+  }, [isZenMode, zenModeLayout]);
 
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
@@ -2088,7 +2088,10 @@ export function PromptBoxInternal({
     setIsZenMode((previous) => !previous);
 
     requestAnimationFrame(() => {
-      editorRef.current?.commands.focus();
+      const currentEditor = editorRef.current;
+      if (!currentEditor || currentEditor.isDestroyed) return;
+
+      currentEditor.commands.focus();
       scheduleRevealEditorSelection();
     });
   }, [scheduleRevealEditorSelection, setIsZenMode]);

@@ -402,6 +402,39 @@ describe("PromptBoxInternal controlled value sync", () => {
 });
 
 describe("PromptBoxInternal zen mode layout", () => {
+  it("animates the prompt box height when toggling zen mode", async () => {
+    const storageKey = "bb.test.promptbox.zen-height-animation";
+    window.localStorage.removeItem(storageKey);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          zenMode: { storageKey },
+        })}
+      />,
+    );
+
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+
+    vi.spyOn(form, "getBoundingClientRect")
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 96))
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 512))
+      .mockReturnValue(new DOMRect(0, 0, 320, 512));
+
+    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
+
+    await waitFor(() => {
+      expect(form.style.transition).toContain("height 240ms");
+      expect(form.style.height).toBe("512px");
+    });
+
+    fireEvent.transitionEnd(form, { propertyName: "height" });
+    window.localStorage.removeItem(storageKey);
+  });
+
   it("keeps long editor content constrained to the scroll area", async () => {
     const storageKey = "bb.test.promptbox.zen-layout";
     window.localStorage.removeItem(storageKey);
