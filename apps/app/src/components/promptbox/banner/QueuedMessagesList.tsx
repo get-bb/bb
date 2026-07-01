@@ -6,6 +6,7 @@ import {
   closestCenter,
   useSensor,
   useSensors,
+  type ClientRect,
   type DragEndEvent,
   type Modifier,
 } from "@dnd-kit/core";
@@ -17,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { Transform } from "@dnd-kit/utilities";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -201,6 +203,39 @@ export function resolveQueuedMessageDrag({
       previousQueuedMessageId: nextMessages[messageIndex - 1]?.id ?? null,
       nextQueuedMessageId: nextMessages[messageIndex + 1]?.id ?? null,
     },
+  };
+}
+
+export function clampQueuedMessageDragTransform({
+  draggingNodeRect,
+  listRect,
+  scrollRect,
+  transform,
+}: {
+  draggingNodeRect: ClientRect | null;
+  listRect: ClientRect | null;
+  scrollRect: ClientRect | null;
+  transform: Transform;
+}): Transform {
+  if (!draggingNodeRect || (!listRect && !scrollRect)) {
+    return { ...transform, x: 0 };
+  }
+
+  const boundsTop = Math.max(
+    listRect?.top ?? Number.NEGATIVE_INFINITY,
+    scrollRect?.top ?? Number.NEGATIVE_INFINITY,
+  );
+  const boundsBottom = Math.min(
+    listRect?.bottom ?? Number.POSITIVE_INFINITY,
+    scrollRect?.bottom ?? Number.POSITIVE_INFINITY,
+  );
+  const minY = boundsTop - draggingNodeRect.top;
+  const maxY = boundsBottom - draggingNodeRect.bottom;
+
+  return {
+    ...transform,
+    x: 0,
+    y: Math.min(Math.max(transform.y, minY), maxY),
   };
 }
 
@@ -616,24 +651,17 @@ export function QueuedMessagesList({
     [combinedIds, onReorder, onSetGroupBoundary, orderedMessages],
   );
 
-  // Keep a dragged row from being pulled outside the visible list: clamp the
-  // drag to the list's bounds and to the vertical axis.
+  // Keep a dragged row inside both the visible viewport and the rendered list:
+  // short queues should not gain scrollable overflow below the final row.
   const listRef = useRef<HTMLUListElement>(null);
   const restrictToListBounds = useCallback<Modifier>(
     ({ draggingNodeRect, transform }) => {
-      const listRect =
-        scrollRef.current?.getBoundingClientRect() ??
-        listRef.current?.getBoundingClientRect();
-      if (!listRect || !draggingNodeRect) {
-        return { ...transform, x: 0 };
-      }
-      const minY = listRect.top - draggingNodeRect.top;
-      const maxY = listRect.bottom - draggingNodeRect.bottom;
-      return {
-        ...transform,
-        x: 0,
-        y: Math.min(Math.max(transform.y, minY), maxY),
-      };
+      return clampQueuedMessageDragTransform({
+        draggingNodeRect,
+        listRect: listRef.current?.getBoundingClientRect() ?? null,
+        scrollRect: scrollRef.current?.getBoundingClientRect() ?? null,
+        transform,
+      });
     },
     [scrollRef],
   );

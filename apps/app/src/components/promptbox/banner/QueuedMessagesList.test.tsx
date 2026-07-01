@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import {
   QueuedMessagesList,
+  clampQueuedMessageDragTransform,
   resolveQueuedMessageDrag,
 } from "./QueuedMessagesList";
 
@@ -39,6 +40,17 @@ function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
     makeQueuedMessage("q_two", "Second queued message"),
     makeQueuedMessage("q_three", "Third queued message"),
   ];
+}
+
+function rect({ top, bottom }: { top: number; bottom: number }) {
+  return {
+    top,
+    bottom,
+    height: bottom - top,
+    left: 0,
+    right: 100,
+    width: 100,
+  };
 }
 
 function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
@@ -212,6 +224,17 @@ describe("QueuedMessagesList", () => {
         { id: "q_three", groupWithNext: false },
       ],
     });
+  });
+
+  it("clamps queued-message drags to the rendered list bottom", () => {
+    expect(
+      clampQueuedMessageDragTransform({
+        draggingNodeRect: rect({ top: 24, bottom: 40 }),
+        listRect: rect({ top: 0, bottom: 72 }),
+        scrollRect: rect({ top: 0, bottom: 128 }),
+        transform: { x: 12, y: 96, scaleX: 1, scaleY: 1 },
+      }),
+    ).toEqual({ x: 0, y: 32, scaleX: 1, scaleY: 1 });
   });
 
   it("re-adopts queued-message order from props when the same rows are restored", () => {
