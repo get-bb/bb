@@ -969,12 +969,12 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       role="separator"
       aria-label="New messages"
       className={cn(
-        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-destructive-text",
+        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-timeline-accent",
       )}
       data-testid="thread-unread-divider"
     >
       <span className="shrink-0">New</span>
-      <span className="h-px min-w-0 flex-1 bg-destructive" aria-hidden />
+      <span className="h-px min-w-0 flex-1 bg-timeline-accent" aria-hidden />
     </div>
   );
 }

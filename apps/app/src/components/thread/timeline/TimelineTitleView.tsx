@@ -66,9 +66,9 @@ function accentToneClass(
     case "subtle":
       return "text-subtle-foreground";
     case "file":
-      // File-path segments are emphasized targets tinted with the file accent;
-      // keep the medium weight so they read as the row's anchor.
-      return em ? "font-medium text-file-accent" : "text-file-accent";
+      // File-path segments are emphasized timeline targets; keep the medium
+      // weight so they read as the row's anchor.
+      return em ? "font-medium text-timeline-accent" : "text-timeline-accent";
     default:
       return assertNever(accent);
   }

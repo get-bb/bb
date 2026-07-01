@@ -22,6 +22,7 @@
    * settled/closed-turn machinery, and a text-only destructive that clears AA in
    * dark mode (the --destructive fill is below the 4.5:1 text floor there). */
   --color-readback-foreground: var(--readback-foreground);
+  --color-timeline-accent: var(--timeline-accent);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
@@ -342,9 +343,10 @@
   --subtle-foreground: oklch(0.5 0 0);
   /* Recede tier between muted (7.77:1) and subtle (6.00:1); ~6.83:1 on white. */
   --readback-foreground: oklch(0.47 0 0);
-  /* Soft "paper blue" accent for file-path titles — the one tint in the
-   * otherwise-achromatic timeline. ~5.0:1 on white. */
-  --file-accent: oklch(0.55 0.1 250);
+  /* Soft "paper blue" timeline accent — the one tint in the otherwise
+   * achromatic timeline. ~5.0:1 on white. */
+  --timeline-accent: oklch(0.55 0.1 250);
+  --file-accent: var(--timeline-accent);
   /* Interactive-state fills: translucent ink so the same hover/active step
    * reads consistently on canvas, cards, and recessed surfaces alike. Over the
    * canvas these match an opaque ink-over-canvas mix exactly; on elevated
@@ -545,8 +547,9 @@
   --subtle-foreground: oklch(0.68 0 0);
   /* Recede tier between muted (9.14:1) and subtle (6.35:1); ~7.24:1 on canvas. */
   --readback-foreground: oklch(0.715 0 0);
-  /* Soft "paper blue" file-path accent, lifted for the dark canvas (~6:1). */
-  --file-accent: oklch(0.72 0.09 250);
+  /* Soft "paper blue" timeline accent, lifted for the dark canvas (~6:1). */
+  --timeline-accent: oklch(0.72 0.09 250);
+  --file-accent: var(--timeline-accent);
   /* Interactive-state fills: translucent ink so the same hover/active step
    * reads consistently on canvas, cards, and recessed surfaces alike. */
   --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);

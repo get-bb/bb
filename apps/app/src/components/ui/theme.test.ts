@@ -222,6 +222,9 @@ describe("theme.css Cadence text tokens", () => {
       /--color-readback-foreground:\s*var\(--readback-foreground\);/,
     );
     expect(css).toMatch(
+      /--color-timeline-accent:\s*var\(--timeline-accent\);/,
+    );
+    expect(css).toMatch(
       /--color-destructive-text:\s*var\(--destructive-text\);/,
     );
     expect(css).toMatch(/--text-2xs:\s*0\.625rem;/);
@@ -235,11 +238,15 @@ describe("theme.css Cadence text tokens", () => {
       const readbackForeground = parseOklch(
         variableValue(block, "readback-foreground"),
       );
+      const timelineAccent = parseOklch(variableValue(block, "timeline-accent"));
       const destructiveText = parseOklch(
         variableValue(block, "destructive-text"),
       );
 
       expect(contrastRatio(readbackForeground, canvas)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrastRatio(timelineAccent, canvas)).toBeGreaterThanOrEqual(
         4.5,
       );
       expect(contrastRatio(destructiveText, canvas)).toBeGreaterThanOrEqual(
