@@ -387,6 +387,7 @@ export function Overview() {
             <Swatch token="warning" fill="bg-warning" />
             <Swatch token="attention" fill="bg-attention" />
             <Swatch token="success" fill="bg-success" />
+            <Swatch token="timeline-accent" fill="bg-timeline-accent" />
             <Swatch token="diff-added" fill="bg-diff-added" />
             <Swatch token="diff-removed" fill="bg-diff-removed" />
           </div>

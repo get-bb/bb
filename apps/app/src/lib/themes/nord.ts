@@ -15,7 +15,8 @@ export const nordThemeCss = `
   --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
   --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
-  --file-accent: #5e81ac;
+  --timeline-accent: #5e81ac;
+  --file-accent: var(--timeline-accent);
   --destructive: #bf616a;
   --destructive-text: #a1343d;
   --warning: #d08770;
@@ -64,7 +65,8 @@ export const nordThemeCss = `
   --ink: #d8dee9;
   --primary: #88c0d0;
   --primary-foreground: #2e3440;
-  --file-accent: #88c0d0;
+  --timeline-accent: #88c0d0;
+  --file-accent: var(--timeline-accent);
   --destructive: #bf616a;
   --destructive-text: #d6868d;
   --warning: #d08770;
