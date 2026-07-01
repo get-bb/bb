@@ -28,6 +28,7 @@ import {
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
+import type { ProviderCommandSuggestion } from "./mentions/types";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
@@ -771,5 +772,147 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toContain("clean up"));
     expect(latestValue(changes)).not.toBe("/goal ");
+  });
+});
+
+describe("PromptBoxInternal command typeahead submit", () => {
+  const compactSuggestion: ProviderCommandSuggestion = {
+    kind: "command",
+    name: "compact",
+    source: "command",
+    origin: "builtin",
+    description: "Compact context",
+    argumentHint: null,
+  };
+  const userSkillSuggestion: ProviderCommandSuggestion = {
+    kind: "command",
+    name: "review",
+    source: "skill",
+    origin: "user",
+    description: "Review a PR",
+    argumentHint: null,
+  };
+
+  function renderCommandPromptBox(suggestion: ProviderCommandSuggestion) {
+    const onSubmit = vi.fn();
+    const changes: PromptChange[] = [];
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function Harness() {
+      const [value, setValue] = useState("");
+      const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+        [],
+      );
+      return (
+        <PromptBoxInternal
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={(nextValue, nextMentions) => {
+            changes.push({ mentions: nextMentions, value: nextValue });
+            setValue(nextValue);
+            setMentionRanges(nextMentions);
+          }}
+          onSubmit={onSubmit}
+          typeahead={{
+            mention: {
+              suggestions: [],
+              isLoading: false,
+              isError: false,
+              onQueryChange: () => {},
+            },
+            command: {
+              trigger: "/",
+              suggestions: [suggestion],
+              isLoading: false,
+              isError: false,
+              hasMore: false,
+              isLoadingMore: false,
+              loadMore: () => {},
+              onQueryChange: () => {},
+            },
+          }}
+          mentionMenuPlacement="bottom"
+          promptBoxRef={promptBoxRef}
+        />
+      );
+    }
+
+    render(<Harness />);
+    return { changes, onSubmit, promptBoxRef };
+  }
+
+  async function openCommandMenu(
+    promptBoxRef: RefObject<PromptBoxHandle | null>,
+    token: string,
+    name: string,
+  ) {
+    await focusPromptEnd(promptBoxRef);
+    await act(async () => {
+      promptBoxRef.current?.insertTextAtCursor(token);
+    });
+    await act(async () => {});
+    await waitFor(() => expect(screen.queryByText(name)).not.toBeNull());
+  }
+
+  it("submits when a built-in command is selected with Enter", async () => {
+    const { changes, onSubmit, promptBoxRef } =
+      renderCommandPromptBox(compactSuggestion);
+    await openCommandMenu(promptBoxRef, "/compact", "compact");
+
+    await act(async () => {
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+    });
+    await act(async () => {});
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // The command mention is applied (and therefore submitted), not left as
+    // bare text — Codex reads the mention to trigger compaction and Claude
+    // sends the `/compact` text as-is.
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/compact".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "compact",
+          source: "command",
+          origin: "builtin",
+          label: "compact",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("does not submit when a non-built-in command is selected with Enter", async () => {
+    const { changes, onSubmit, promptBoxRef } =
+      renderCommandPromptBox(userSkillSuggestion);
+    await openCommandMenu(promptBoxRef, "/review", "review");
+
+    await act(async () => {
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+    });
+    await act(async () => {});
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    // The pill is still inserted so the user can add arguments before sending.
+    expect(latestChange(changes)?.mentions?.[0]?.resource).toMatchObject({
+      name: "review",
+      origin: "user",
+    });
+  });
+
+  it("does not submit when a built-in command is selected with Tab", async () => {
+    const { onSubmit, promptBoxRef } =
+      renderCommandPromptBox(compactSuggestion);
+    await openCommandMenu(promptBoxRef, "/compact", "compact");
+
+    await act(async () => {
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Tab" });
+    });
+    await act(async () => {});
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });
