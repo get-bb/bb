@@ -950,6 +950,9 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "You are working inside bb, an agentic IDE",
       );
+      expect(runtimeConfig.instructions).toContain("bb status");
+      expect(runtimeConfig.instructions).toContain("bb guide");
+      expect(runtimeConfig.instructions).toContain("Markdown links");
       expect(runtimeConfig.instructions).toContain(
         "update_environment_directory",
       );

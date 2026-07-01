@@ -64,13 +64,20 @@ Inspecting:
     --timeout <seconds>                    Timeout
     --poll-interval <ms>                   Polling interval in milliseconds
 
-Finding threads from workspace paths:
+Opening files in the thread panel:
 
-  bb thread open <path>                    Print the URL for the thread whose workspace contains the path
+  bb thread open <path>                    Open a file in the current BB thread panel
+  bb thread open <thread-id> <path>        Open a file in a specific BB thread panel
+    --line <number>                        Line number to focus
 
-  The path is resolved relative to the current working directory unless it is
-  already absolute. BB picks the non-archived thread whose workspace path is the
-  longest prefix of the resolved path.
+  Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
+  the thread ID argument is omitted. Outside a BB thread, pass the thread ID as
+  the first argument.
+
+  Paths can be thread-relative workspace paths, or absolute paths inside the
+  target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
+  thread-storage files for the current thread. Use this for Markdown or HTML
+  artifacts you create for the user so they open in the BB IDE.
 
 Thread terminals:
 
