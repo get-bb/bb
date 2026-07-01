@@ -21,6 +21,12 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import {
+  CHROME_ROW_HEIGHT_CLASS,
+  getBbDesktopInfo,
+  MACOS_WINDOW_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
@@ -69,6 +75,8 @@ export function RootComposeSecondaryContent({
   }, [persistedSecondaryWidthPercent]);
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({
@@ -225,6 +233,17 @@ export function RootComposeSecondaryContent({
             )}
           >
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+              {usesDesktopChrome ? (
+                <div
+                  data-testid="root-compose-main-window-drag-strip"
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute inset-x-0 top-0 z-10 shrink-0",
+                    CHROME_ROW_HEIGHT_CLASS,
+                    MACOS_WINDOW_DRAG_CLASS,
+                  )}
+                />
+              ) : null}
               <div className="@container/page min-h-0 flex-1 overflow-y-auto">
                 <div
                   className={cn(

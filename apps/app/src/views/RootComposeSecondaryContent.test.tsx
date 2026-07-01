@@ -27,11 +27,23 @@ interface RenderRootComposeArgs {
   isSecondaryPanelOpen: boolean;
 }
 
+type TestDesktopWindow = {
+  bbDesktop?: { platform: "macos" };
+};
+
 const panelGroupState = vi.hoisted(() => ({
   setLayout: vi.fn(),
 }));
 
 const noop = () => {};
+
+function setMacosDesktopChrome(): void {
+  (window as unknown as TestDesktopWindow).bbDesktop = { platform: "macos" };
+}
+
+function clearDesktopChrome(): void {
+  delete (window as unknown as TestDesktopWindow).bbDesktop;
+}
 
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
@@ -170,10 +182,25 @@ function renderRootCompose(args: RenderRootComposeArgs) {
 
 afterEach(() => {
   cleanup();
+  clearDesktopChrome();
   panelGroupState.setLayout.mockReset();
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
+  it("marks the root compose top strip as a macOS window drag region", () => {
+    setMacosDesktopChrome();
+
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+    });
+
+    const strip = screen.getByTestId("root-compose-main-window-drag-strip");
+    expect(strip.className).toContain("h-[48px]");
+    expect(strip.className).toContain("[app-region:drag]");
+    expect(strip.className).toContain("[-webkit-app-region:drag]");
+  });
+
   it("syncs the panel group when persisted open state arrives after mount", () => {
     const view = renderRootCompose({
       isCompactViewport: false,
