@@ -17,6 +17,7 @@ import {
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Button } from "@/components/ui/button.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import { cn } from "@/lib/utils";
 import { isThreadRead } from "@/lib/thread-read-state";
 import { useThreadActions } from "./ThreadActionsProvider";
@@ -124,9 +125,13 @@ function ThreadActionsMenuItems({
     unarchiveThread,
     sendToPopout,
   } = useThreadActions();
+  const isCompactViewport = useIsCompactViewport();
+  const isDrawer = surface === "dropdown" && isCompactViewport;
+  const showSeparators = !isDrawer;
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
+  const canSendToPopout = sendToPopout !== null;
 
   return (
     <>
@@ -149,8 +154,8 @@ function ThreadActionsMenuItems({
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
-      <ThreadActionMenuSeparator surface={surface} />
-      {sendToPopout !== null ? (
+      {showSeparators ? <ThreadActionMenuSeparator surface={surface} /> : null}
+      {canSendToPopout ? (
         <ThreadActionMenuItem
           surface={surface}
           icon="ExternalLink"
@@ -172,7 +177,9 @@ function ThreadActionsMenuItems({
       >
         Rename
       </ThreadActionMenuItem>
-      <ThreadActionMenuSeparator surface={surface} />
+      {showSeparators && canSendToPopout ? (
+        <ThreadActionMenuSeparator surface={surface} />
+      ) : null}
       <ThreadActionMenuItem
         surface={surface}
         icon={isArchived ? "ArchiveRestore" : "Archive"}
