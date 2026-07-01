@@ -13,7 +13,7 @@ import {
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -40,7 +40,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  { kind: "loop", text: CREATE_LOOP_PROMPT },
+  LOOP_PROMPT_ACTION,
 ];
 
 // ---------------------------------------------------------------------------

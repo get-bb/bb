@@ -402,6 +402,7 @@ export function ThreadDetailPromptArea({
     projectId: thread.projectId,
     providerId: thread.providerId,
     skillsTrigger: providerPromptActions.skillsTrigger,
+    promptActions: providerPromptActionProps.promptActions,
     environmentId: thread.environmentId,
     query: commandQuery,
   });

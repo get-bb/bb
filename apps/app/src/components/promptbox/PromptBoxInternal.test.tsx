@@ -19,7 +19,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CREATE_LOOP_PROMPT } from "./PromptBoxActionsMenu";
+import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -48,7 +48,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  { kind: "loop", text: CREATE_LOOP_PROMPT },
+  LOOP_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -74,8 +74,10 @@ function createPromptBoxProps(
 }
 
 function buildTypeaheadConfig({
+  commandSuggestions = [],
   onCommandQueryChange = () => {},
 }: {
+  commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   onCommandQueryChange?: (query: string | null) => void;
 } = {}): TypeaheadConfig {
   return {
@@ -87,7 +89,7 @@ function buildTypeaheadConfig({
     },
     command: {
       trigger: "/",
-      suggestions: [],
+      suggestions: commandSuggestions,
       isLoading: false,
       isError: false,
       hasMore: false,
@@ -139,7 +141,12 @@ function PromptBoxFocusOnMountHarness() {
   );
 }
 
-function renderPromptBox(initialValue: string) {
+function renderPromptBox(
+  initialValue: string,
+  options: {
+    commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
+  } = {},
+) {
   const changes: PromptChange[] = [];
   const onCommandQueryChange = vi.fn();
   const promptBoxRef = createRef<PromptBoxHandle>();
@@ -159,7 +166,10 @@ function renderPromptBox(initialValue: string) {
           setMentionRanges(nextMentions);
         }}
         onSubmit={() => {}}
-        typeahead={buildTypeaheadConfig({ onCommandQueryChange })}
+        typeahead={buildTypeaheadConfig({
+          commandSuggestions: options.commandSuggestions,
+          onCommandQueryChange,
+        })}
         mentionMenuPlacement="bottom"
         attachments={{}}
         promptActions={promptActions}
@@ -204,6 +214,11 @@ async function selectPromptAction(label: string) {
   const menu = await screen.findByRole("menu", { name: "Prompt actions" });
   const menuItem = within(menu).getByRole("menuitem", { name: label });
   fireEvent.click(menuItem);
+}
+
+async function selectCommandSuggestion(label: string) {
+  const suggestion = await screen.findByRole("button", { name: label });
+  fireEvent.mouseDown(suggestion, { button: 0 });
 }
 
 function getPromptEditorElement(): HTMLElement {
@@ -613,14 +628,28 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("inserts loop creation prompt as plain text", async () => {
+  it("inserts loop mode as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Loop");
 
-    await waitFor(() => expect(latestValue(changes)).toBe(CREATE_LOOP_PROMPT));
-    expect(latestChange(changes)?.mentions).toEqual([]);
+    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/loop".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "loop",
+          source: "command",
+          origin: "user",
+          label: "loop",
+          argumentHint: null,
+        },
+      },
+    ]);
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {
@@ -688,9 +717,9 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("pastes prompt action command tokens as goal and plan pills", async () => {
+  it("pastes prompt action command tokens as goal, plan, and loop pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text = "/plan inspect first\n/goal finish the change";
+    const text = "/plan inspect first\n/goal finish the change\n/loop keep checking";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);
@@ -723,6 +752,19 @@ describe("PromptBoxInternal prompt actions", () => {
           argumentHint: null,
         },
       },
+      {
+        start: "/plan inspect first\n/goal finish the change\n".length,
+        end: "/plan inspect first\n/goal finish the change\n/loop".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "loop",
+          source: "command",
+          origin: "user",
+          label: "loop",
+          argumentHint: null,
+        },
+      },
     ]);
   });
 
@@ -750,8 +792,57 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await selectPromptAction("Loop");
 
-    await waitFor(() => expect(latestValue(changes)).toBe(CREATE_LOOP_PROMPT));
-    expect(latestChange(changes)?.mentions).toEqual([]);
+    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/loop".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "loop",
+          source: "command",
+          origin: "user",
+          label: "loop",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("selects loop from slash typeahead as a command pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/lo", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "loop",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await selectCommandSuggestion("loop");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/loop".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "loop",
+          source: "command",
+          origin: "user",
+          label: "loop",
+          argumentHint: null,
+        },
+      },
+    ]);
   });
 
   it("keeps typed content after a prompt action when selecting another action", async () => {

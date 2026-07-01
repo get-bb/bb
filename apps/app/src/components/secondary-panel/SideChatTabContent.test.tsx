@@ -554,6 +554,14 @@ describe("SideChatTabContent", () => {
       projectId: "proj_parent",
       providerId: "codex",
       skillsTrigger: "/",
+      promptActions: [
+        { kind: "skills", text: "/" },
+        {
+          kind: "loop",
+          command: { trigger: "/", name: "loop", trailingText: " " },
+          text: "/loop ",
+        },
+      ],
       environmentId: null,
       query: null,
     });
@@ -568,6 +576,14 @@ describe("SideChatTabContent", () => {
         projectId: "proj_parent",
         providerId: "codex",
         skillsTrigger: "/",
+        promptActions: [
+          { kind: "skills", text: "/" },
+          {
+            kind: "loop",
+            command: { trigger: "/", name: "loop", trailingText: " " },
+            text: "/loop ",
+          },
+        ],
         environmentId: null,
         query: "review",
       }),

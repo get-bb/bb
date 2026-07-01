@@ -1751,6 +1751,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     projectId,
     providerId: selectedProviderId,
     skillsTrigger: providerPromptActions.skillsTrigger,
+    promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
     query: commandQuery,
   });

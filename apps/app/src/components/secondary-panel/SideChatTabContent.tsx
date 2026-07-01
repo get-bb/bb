@@ -400,6 +400,7 @@ export function SideChatTabContent({
     projectId: sourceThread.projectId,
     providerId: sourceThread.providerId,
     skillsTrigger: providerPromptActions.skillsTrigger,
+    promptActions,
     environmentId: promptContextEnvironmentId,
     query: commandQuery,
   });

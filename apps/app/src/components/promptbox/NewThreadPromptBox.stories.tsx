@@ -13,7 +13,7 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { Button } from "@/components/ui/button";
@@ -123,7 +123,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  { kind: "loop", text: CREATE_LOOP_PROMPT },
+  LOOP_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {

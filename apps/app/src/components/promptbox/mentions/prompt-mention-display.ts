@@ -58,6 +58,9 @@ export function promptCommandIconName(command: PromptCommandLike): IconName {
   if (command.name === "goal") {
     return "Target";
   }
+  if (command.name === "loop") {
+    return "Repeat";
+  }
   return "Terminal";
 }
 

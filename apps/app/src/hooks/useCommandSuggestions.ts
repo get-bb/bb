@@ -14,6 +14,7 @@ export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   skillsTrigger: PromptMentionCommandTrigger | null;
+  promptActions?: readonly CommandSuggestionPromptAction[];
   /**
    * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
    * a reused environment in the new-thread composer), or `null` to fall back to
@@ -38,6 +39,84 @@ export interface UseCommandSuggestionsResult {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMore: () => void;
+}
+
+export interface CommandSuggestionPromptAction {
+  text?: string;
+  command?: {
+    trigger: PromptMentionCommandTrigger;
+    name: string;
+    trailingText: string;
+  };
+}
+
+function commandSuggestionMatchesQuery(
+  suggestion: ProviderCommandSuggestion,
+  query: string,
+): boolean {
+  if (query.length === 0) {
+    return true;
+  }
+
+  return [
+    suggestion.name,
+    suggestion.description ?? "",
+    suggestion.argumentHint ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
+export function promptActionCommandSuggestions({
+  promptActions,
+  query,
+  trigger,
+}: {
+  promptActions: readonly CommandSuggestionPromptAction[] | undefined;
+  query: string;
+  trigger: PromptMentionCommandTrigger | null;
+}): ProviderCommandSuggestion[] {
+  if (trigger === null) {
+    return [];
+  }
+
+  return (promptActions ?? [])
+    .flatMap((action): ProviderCommandSuggestion[] => {
+      if (!action.command || action.command.trigger !== trigger) {
+        return [];
+      }
+      return [
+        {
+          kind: "command",
+          name: action.command.name,
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ];
+    })
+    .filter((suggestion) => commandSuggestionMatchesQuery(suggestion, query));
+}
+
+function mergeCommandSuggestions(
+  preferred: readonly ProviderCommandSuggestion[],
+  fallback: readonly ProviderCommandSuggestion[],
+): ProviderCommandSuggestion[] {
+  const suggestions: ProviderCommandSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const suggestion of [...preferred, ...fallback]) {
+    const key = `${suggestion.source}:${suggestion.name}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    suggestions.push(suggestion);
+  }
+
+  return suggestions;
 }
 
 /**
@@ -70,6 +149,17 @@ export function useCommandSuggestions(
   const debouncedTrimmedQuery = debouncedQuery?.trim() ?? "";
   const isDebouncing = isActive && trimmedQuery !== debouncedTrimmedQuery;
   const loadMoreInFlightRef = useRef(false);
+  const promptActionSuggestions = useMemo(
+    () =>
+      isActive
+        ? promptActionCommandSuggestions({
+            promptActions: args.promptActions,
+            query: trimmedQuery.toLowerCase(),
+            trigger,
+          })
+        : [],
+    [args.promptActions, isActive, trigger, trimmedQuery],
+  );
 
   useEffect(() => {
     loadMoreInFlightRef.current = false;
@@ -96,10 +186,14 @@ export function useCommandSuggestions(
     if (!isActive) {
       return [];
     }
-    return (commandsQuery.data?.pages ?? [])
+    const discoveredSuggestions = (commandsQuery.data?.pages ?? [])
       .flatMap((page) => page.commands)
       .map(toProviderCommandSuggestion);
-  }, [commandsQuery.data?.pages, isActive]);
+    return mergeCommandSuggestions(
+      promptActionSuggestions,
+      discoveredSuggestions,
+    );
+  }, [commandsQuery.data?.pages, isActive, promptActionSuggestions]);
 
   const hasMore = isActive && commandsQuery.hasNextPage === true;
   const isLoadingMore = isActive && commandsQuery.isFetchingNextPage;
@@ -120,6 +214,7 @@ export function useCommandSuggestions(
   // opening an empty menu.
   const isLoading =
     isActive &&
+    suggestions.length === 0 &&
     commandsQuery.data === undefined &&
     (isDebouncing || commandsQuery.isPending || commandsQuery.isFetching);
   const isError = isActive && commandsQuery.isError;

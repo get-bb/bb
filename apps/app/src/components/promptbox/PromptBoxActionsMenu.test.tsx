@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  CREATE_LOOP_PROMPT,
+  LOOP_PROMPT_ACTION,
   PromptBoxActionsMenu,
   withLoopPromptAction,
   type PromptBoxAction,
@@ -23,7 +23,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "plan", trailingText: " " },
     text: "/plan ",
   },
-  { kind: "loop", text: CREATE_LOOP_PROMPT },
+  LOOP_PROMPT_ACTION,
 ];
 
 async function openPromptActionsMenu() {
@@ -34,9 +34,7 @@ async function openPromptActionsMenu() {
 
 describe("PromptBoxActionsMenu", () => {
   it("appends the Loop action to provider actions", () => {
-    expect(withLoopPromptAction([])).toEqual([
-      { kind: "loop", text: CREATE_LOOP_PROMPT },
-    ]);
+    expect(withLoopPromptAction([])).toEqual([LOOP_PROMPT_ACTION]);
     expect(withLoopPromptAction(promptActions)).toEqual(promptActions);
   });
 
@@ -104,9 +102,6 @@ describe("PromptBoxActionsMenu", () => {
     await openPromptActionsMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Loop" }));
 
-    expect(onAction).toHaveBeenCalledWith({
-      kind: "loop",
-      text: CREATE_LOOP_PROMPT,
-    });
+    expect(onAction).toHaveBeenCalledWith(LOOP_PROMPT_ACTION);
   });
 });

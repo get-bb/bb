@@ -9,6 +9,9 @@ describe("promptCommandIconName", () => {
     expect(promptCommandIconName({ name: "goal", source: "command" })).toBe(
       "Target",
     );
+    expect(promptCommandIconName({ name: "loop", source: "command" })).toBe(
+      "Repeat",
+    );
   });
 
   it("keeps skill and generic command icons unchanged", () => {
