@@ -139,6 +139,23 @@ function PromptBoxFocusOnMountHarness() {
   );
 }
 
+function PromptBoxAutoFocusKeyHarness({
+  autoFocusKey,
+}: {
+  autoFocusKey: string | number;
+}) {
+  return (
+    <>
+      <button type="button">Outside focus target</button>
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          autoFocusKey,
+        })}
+      />
+    </>
+  );
+}
+
 function renderPromptBox(initialValue: string) {
   const changes: PromptChange[] = [];
   const onCommandQueryChange = vi.fn();
@@ -349,6 +366,48 @@ describe("PromptBoxInternal controlled value sync", () => {
         expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
       );
       expect(document.activeElement).not.toBe(getPromptEditorElement());
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("refocuses when the passive autofocus key changes on fine pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const view = render(<PromptBoxAutoFocusKeyHarness autoFocusKey={0} />);
+
+      await waitForPromptFocus();
+      const outsideTarget = screen.getByRole("button", {
+        name: "Outside focus target",
+      });
+      outsideTarget.focus();
+      expect(document.activeElement).toBe(outsideTarget);
+
+      view.rerender(<PromptBoxAutoFocusKeyHarness autoFocusKey={1} />);
+
+      await waitForPromptFocus();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("does not refocus for passive autofocus key changes on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const view = render(<PromptBoxAutoFocusKeyHarness autoFocusKey={0} />);
+
+      await waitFor(() =>
+        expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      const outsideTarget = screen.getByRole("button", {
+        name: "Outside focus target",
+      });
+      outsideTarget.focus();
+      expect(document.activeElement).toBe(outsideTarget);
+
+      view.rerender(<PromptBoxAutoFocusKeyHarness autoFocusKey={1} />);
+
+      expect(document.activeElement).toBe(outsideTarget);
     } finally {
       restoreMatchMedia();
     }

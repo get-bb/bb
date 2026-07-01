@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
@@ -440,6 +440,7 @@ export function resolveHostFilePreviewLinkRootPath({
 
 export function ThreadDetailView(props: ThreadDetailViewProps) {
   const { projectId, threadId } = useRouteState();
+  const location = useLocation();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
@@ -2012,6 +2013,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             }
           : null
       }
+      autoFocusKey={`${thread.id}:${location.key}`}
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}

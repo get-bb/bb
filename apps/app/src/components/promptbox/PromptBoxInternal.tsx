@@ -319,6 +319,11 @@ export interface PromptBoxInternalProps {
   voice?: PromptVoiceConfig;
   promptBoxRef?: Ref<PromptBoxHandle>;
   /**
+   * Changing this passively focuses the editor at the end on fine pointers.
+   * Defaults to the history reset key when omitted.
+   */
+  autoFocusKey?: string | number;
+  /**
    * Changing this re-focuses the editor caret to the end. Used by explicit
    * draft-restore actions (e.g. editing a queued message) so the user can type
    * immediately. Unlike the scope autofocus it fires even on coarse pointers,
@@ -994,6 +999,7 @@ export function PromptBoxInternal({
   history,
   voice,
   promptBoxRef,
+  autoFocusKey,
   focusEndKey,
 }: PromptBoxInternalProps) {
   const {
@@ -1094,7 +1100,7 @@ export function PromptBoxInternal({
     [resolvedZenModeStorageKey],
   );
   const [isZenMode, setIsZenMode] = useAtom(zenModeAtom);
-  const focusScopeKey = history?.resetKey;
+  const focusScopeKey = autoFocusKey ?? history?.resetKey;
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {

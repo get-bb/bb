@@ -160,6 +160,8 @@ interface ThreadDetailPromptAreaProps {
   /** Pull request summary for the active thread branch. Null when there is no PR. */
   pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
+  /** Route-scoped passive autofocus key for thread navigation. */
+  autoFocusKey?: string | number;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
    * draft via "Add to chat", so the composer can focus its caret at the end —
@@ -209,6 +211,7 @@ export function ThreadDetailPromptArea({
   childThreadsSection,
   pullRequest,
   sendMessage,
+  autoFocusKey,
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -1178,6 +1181,7 @@ export function ThreadDetailPromptArea({
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
+      autoFocusKey={autoFocusKey}
       focusEndKey={focusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
