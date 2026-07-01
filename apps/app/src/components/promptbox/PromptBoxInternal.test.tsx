@@ -19,6 +19,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { emptyPromptDraftState } from "@/lib/prompt-draft";
 import { CREATE_LOOP_PROMPT } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -141,8 +142,10 @@ function PromptBoxFocusOnMountHarness() {
 
 function PromptBoxAutoFocusKeyHarness({
   autoFocusKey,
+  historyResetKey,
 }: {
   autoFocusKey: string | number;
+  historyResetKey?: string | number;
 }) {
   return (
     <>
@@ -150,6 +153,15 @@ function PromptBoxAutoFocusKeyHarness({
       <PromptBoxInternal
         {...createPromptBoxProps({
           autoFocusKey,
+          history:
+            historyResetKey === undefined
+              ? undefined
+              : {
+                  currentDraft: emptyPromptDraftState(),
+                  entries: [],
+                  onSelectEntry: vi.fn(),
+                  resetKey: historyResetKey,
+                },
         })}
       />
     </>
@@ -384,6 +396,36 @@ describe("PromptBoxInternal controlled value sync", () => {
       expect(document.activeElement).toBe(outsideTarget);
 
       view.rerender(<PromptBoxAutoFocusKeyHarness autoFocusKey={1} />);
+
+      await waitForPromptFocus();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("still refocuses when history reset changes with a stable passive autofocus key", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const view = render(
+        <PromptBoxAutoFocusKeyHarness
+          autoFocusKey="thread-a"
+          historyResetKey={0}
+        />,
+      );
+
+      await waitForPromptFocus();
+      const outsideTarget = screen.getByRole("button", {
+        name: "Outside focus target",
+      });
+      outsideTarget.focus();
+      expect(document.activeElement).toBe(outsideTarget);
+
+      view.rerender(
+        <PromptBoxAutoFocusKeyHarness
+          autoFocusKey="thread-a"
+          historyResetKey={1}
+        />,
+      );
 
       await waitForPromptFocus();
     } finally {
