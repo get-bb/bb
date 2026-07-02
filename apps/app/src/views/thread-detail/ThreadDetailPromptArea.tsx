@@ -838,22 +838,26 @@ export function ThreadDetailPromptArea({
   const handleUnarchiveCurrentThread = useCallback(() => {
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
+  const sourceThreadDisplayTitle = getThreadDisplayTitle({
+    id: thread.id,
+    title: thread.title,
+    titleFallback: thread.titleFallback,
+  });
   const handleHandoffToNewThread = useCallback(() => {
     navigate(getProjectComposeRoutePath(thread.projectId), {
       state: buildThreadHandoffLocationState({
         environmentId: thread.environmentId,
         projectId: thread.projectId,
         sourceThreadId: thread.id,
-        sourceThreadTitle: getThreadDisplayTitle(thread),
+        sourceThreadTitle: sourceThreadDisplayTitle,
       }),
     });
   }, [
     navigate,
+    sourceThreadDisplayTitle,
     thread.environmentId,
     thread.id,
     thread.projectId,
-    thread.title,
-    thread.titleFallback,
   ]);
 
   const attachmentsConfig = useMemo(
