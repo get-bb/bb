@@ -5,15 +5,17 @@ import type {
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
+  navigate: vi.fn(),
   promptDraft: {
     addAttachment: vi.fn(),
     attachments: [],
@@ -38,18 +40,38 @@ const mocks = vi.hoisted(() => ({
   useThreadQueuedMessages: vi.fn(),
 }));
 
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return {
+    ...actual,
+    useNavigate: () => mocks.navigate,
+  };
+});
+
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     composer,
+    execution,
     stack,
   }: {
     composer: { submitMode: { kind: string; reason?: string } } | null;
+    execution: {
+      footerAction?: {
+        label: string;
+        onClick: () => void;
+      };
+    };
     stack: ReactNode;
   }) => (
     <div data-testid="follow-up-prompt-box">
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
+      {execution.footerAction ? (
+        <button type="button" onClick={execution.footerAction.onClick}>
+          {execution.footerAction.label}
+        </button>
+      ) : null}
       {stack}
     </div>
   ),
@@ -363,5 +385,34 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("submit-mode").textContent).toBe(
       "blocked:loading-pending-interactions",
     );
+  });
+
+  it("opens root compose with a handoff seed for the current thread", () => {
+    renderPromptArea({
+      thread: makeThread({
+        environmentId: "env_1",
+        id: "thr_source",
+        projectId: "proj_source",
+        title: "Source thread",
+        titleFallback: null,
+      }),
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
+
+    expect(mocks.navigate).toHaveBeenCalledWith("/projects/proj_source", {
+      state: {
+        focusPrompt: true,
+        reuseEnvironmentId: "env_1",
+        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
+          environmentId: "env_1",
+          projectId: "proj_source",
+          sourceThreadId: "thr_source",
+          sourceThreadTitle: "Source thread",
+        },
+      },
+    });
   });
 });

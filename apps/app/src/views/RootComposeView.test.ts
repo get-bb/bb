@@ -11,6 +11,7 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
@@ -480,6 +481,19 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
       true,
     );
+  });
+
+  it("treats handoff seeds as single-use target state", () => {
+    expect(
+      hasSingleUseRootComposeTargetState({
+        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
+          environmentId: "env_source",
+          projectId: "proj_source",
+          sourceThreadId: "thr_source",
+          sourceThreadTitle: "Source thread",
+        },
+      }),
+    ).toBe(true);
   });
 
   it("ignores non-target state", () => {

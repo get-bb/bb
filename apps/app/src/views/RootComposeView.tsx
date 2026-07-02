@@ -112,6 +112,10 @@ import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   type ForkThreadCreateSeed,
 } from "@/lib/fork-thread-request";
+import {
+  buildThreadHandoffPromptDraft,
+  readThreadHandoffCreateSeedFromLocationState,
+} from "@/lib/thread-handoff-request";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
@@ -555,7 +559,8 @@ export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
   return (
     readRootComposeFolderTargetFromLocationState(state) !== null ||
     readReuseEnvironmentIdFromLocationState(state) !== null ||
-    readForkThreadCreateSeedFromLocationState(state) !== null
+    readForkThreadCreateSeedFromLocationState(state) !== null ||
+    readThreadHandoffCreateSeedFromLocationState(state) !== null
   );
 }
 
@@ -1149,6 +1154,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     startInstall(codexCliIssue);
   }, [codexCliIssue, startInstall]);
+  const seedHandoffPrompt = promptDraft.setDraft;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
   // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
@@ -1165,6 +1171,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
       location.state,
     );
+    const nextHandoffSeed = readThreadHandoffCreateSeedFromLocationState(
+      location.state,
+    );
     if (!hasSingleUseRootComposeTargetState(location.state)) {
       return;
     }
@@ -1179,13 +1188,24 @@ export function RootComposeView(props: RootComposeViewProps) {
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
     }
-    if (nextForkSeed !== null) {
+    if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
       setSelectedProviderId(nextForkSeed.providerId);
       setSelectedModel(nextForkSeed.model);
       setReasoningLevel(nextForkSeed.reasoningLevel);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
+    }
+    if (nextHandoffSeed !== null) {
+      setStartedComposing(true);
+      setRootComposeProjectId(nextHandoffSeed.projectId);
+      setForkSeed(null);
+      if (nextHandoffSeed.environmentId !== null) {
+        setEnvironmentSelectionValue(
+          encodeReuseValue(nextHandoffSeed.environmentId),
+        );
+      }
+      seedHandoffPrompt(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -1195,11 +1215,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     location.search,
     location.state,
     navigate,
+    seedHandoffPrompt,
     setEnvironmentSelectionValue,
     setPermissionMode,
     setReasoningLevel,
     setSelectedModel,
     setSelectedProviderId,
+    setRootComposeProjectId,
     setServiceTier,
   ]);
 

@@ -2,7 +2,10 @@ import { memo } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
-import { ModelReasoningPicker } from "@/components/pickers/ModelReasoningPicker";
+import {
+  ModelReasoningPicker,
+  type ModelReasoningPickerFooterAction,
+} from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
 
 export interface ExecutionProviderConfig {
@@ -51,6 +54,7 @@ export interface ExecutionControlsProps {
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
   reasoning: ExecutionReasoningConfig;
+  footerAction?: ModelReasoningPickerFooterAction;
   /**
    * Render the model/reasoning picker as a non-interactive, dimmed label
    * (read-only surfaces, e.g. the side chat inheriting the parent thread's
@@ -64,6 +68,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   model,
   serviceTier,
   reasoning,
+  footerAction,
   disabled,
 }: ExecutionControlsProps) {
   const handleServiceTierChange = serviceTier?.onChange ?? (() => {});
@@ -112,6 +117,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
           muted
           disabled={disabled}
+          footerAction={footerAction}
         />
       ) : null}
     </>
