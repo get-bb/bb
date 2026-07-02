@@ -1043,7 +1043,7 @@ describe("acp adapter interactive requests", () => {
     });
   });
 
-  it("decodes non-execute permission requests as permission grants", () => {
+  it("decodes opaque permission requests as command approvals", () => {
     const adapter = createAdapter();
     const decoded = adapter.decodeInteractiveRequest?.({
       id: 8,
@@ -1062,13 +1062,52 @@ describe("acp adapter interactive requests", () => {
     expect(decoded?.payload).toEqual({
       kind: "approval",
       subject: {
-        kind: "permission_grant",
+        kind: "command",
         itemId: "call-2",
-        toolName: "Fetch docs",
-        permissions: { network: null, fileSystem: null },
+        command: "Fetch docs",
+        cwd: null,
+        actions: [{ type: "unknown", command: "Fetch docs" }],
+        sessionGrant: null,
       },
       reason: null,
       availableDecisions: ["allow_once", "deny"],
+    });
+  });
+
+  it("uses the full tool title for OpenCode shell permission requests", () => {
+    const adapter = createAdapter();
+    const command =
+      'cd backend && rg -ln "check_module_stub" scripts/ 2>/dev/null';
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 10,
+      method: "acp/permission/request",
+      params: {
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        turnId: null,
+        toolCall: {
+          toolCallId: "call-opencode",
+          title: command,
+        },
+        options: [
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+          { optionId: "always", name: "Always", kind: "allow_always" },
+          { optionId: "deny", name: "Deny", kind: "reject_once" },
+        ],
+      },
+    });
+    expect(decoded?.payload).toEqual({
+      kind: "approval",
+      subject: {
+        kind: "command",
+        itemId: "call-opencode",
+        command,
+        cwd: null,
+        actions: [{ type: "unknown", command }],
+        sessionGrant: null,
+      },
+      reason: null,
+      availableDecisions: ["allow_once", "allow_for_session", "deny"],
     });
   });
 

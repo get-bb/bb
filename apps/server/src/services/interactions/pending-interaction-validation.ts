@@ -311,7 +311,8 @@ export function validatePendingInteractionResolution(
     } else if (
       resolution.decision === "allow_for_session" &&
       (interaction.payload.subject.kind === "command" ||
-        interaction.payload.subject.kind === "file_change")
+        interaction.payload.subject.kind === "file_change") &&
+      interaction.payload.subject.sessionGrant !== null
     ) {
       throw new ApiError(
         400,

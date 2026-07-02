@@ -452,6 +452,19 @@ function buildAcpApprovalDecisions(
   return decisions.length > 0 ? decisions : ["deny"];
 }
 
+function buildOpaqueAcpPermissionCommand(toolCall: {
+  command?: string;
+  title?: string;
+  kind?: string;
+}): string {
+  return (
+    toOptionalString(toolCall.command) ??
+    toOptionalString(toolCall.title) ??
+    toolCall.kind ??
+    "ACP permission request"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Adapter factory
 // ---------------------------------------------------------------------------
@@ -1402,11 +1415,9 @@ export function createAcpProviderAdapter(
         return null;
       }
       const toolCall = parsed.data.toolCall;
-      const command =
-        toolCall?.kind === "execute"
-          ? (toOptionalString(toolCall.command) ??
-            toOptionalString(toolCall.title))
-          : undefined;
+      const command = toolCall
+        ? buildOpaqueAcpPermissionCommand(toolCall)
+        : "ACP permission request";
       return {
         requestId: request.id,
         method: request.method,
@@ -1415,23 +1426,14 @@ export function createAcpProviderAdapter(
         turnId: parsed.data.turnId,
         payload: {
           kind: "approval",
-          subject:
-            toolCall && command
-              ? {
-                  kind: "command",
-                  itemId: toolCall.toolCallId,
-                  command,
-                  cwd: null,
-                  actions: [{ type: "unknown", command }],
-                  sessionGrant: null,
-                }
-              : {
-                  kind: "permission_grant",
-                  itemId: toolCall?.toolCallId ?? "acp-permission",
-                  toolName:
-                    toOptionalString(toolCall?.title) ?? toolCall?.kind ?? null,
-                  permissions: { network: null, fileSystem: null },
-                },
+          subject: {
+            kind: "command",
+            itemId: toolCall?.toolCallId ?? "acp-permission",
+            command,
+            cwd: null,
+            actions: [{ type: "unknown", command }],
+            sessionGrant: null,
+          },
           reason: null,
           availableDecisions: buildAcpApprovalDecisions(parsed.data),
         },

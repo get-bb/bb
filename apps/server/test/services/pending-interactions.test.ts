@@ -870,6 +870,66 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("allows command session approvals when no BB session grant was requested", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-command-opaque-session",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-opencode",
+      });
+
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-command-opaque-session",
+          providerId: "acp-opencode",
+          providerThreadId: "provider-thread-command-opaque-session",
+          providerRequestId: "request-command-opaque-session",
+          payload: createCommandApprovalPayload({
+            itemId: "item-command-opaque-session",
+            reason: "Needs provider-side session approval",
+            command: "cd backend && pnpm test",
+            sessionGrant: null,
+            availableDecisions: ["allow_once", "allow_for_session", "deny"],
+          }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+
+      expect(
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: createAllowForSessionResolution(null),
+        }),
+      ).toEqual(
+        expect.objectContaining({
+          status: "resolving",
+          resolution: {
+            decision: "allow_for_session",
+            grantedPermissions: null,
+          },
+        }),
+      );
+    });
+  });
+
   it("rejects narrowed command session approval grants", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
