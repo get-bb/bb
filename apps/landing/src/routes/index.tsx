@@ -23,7 +23,6 @@ import {
   SidebarLeftIcon,
   SidebarRightIcon,
   Tick02Icon,
-  ZapIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -430,9 +429,6 @@ const CircleCheckIcon = ({ className }: IconProps) => (
 );
 const MessageQuestionGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
-);
-const BoltIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ZapIcon} className={className} />
 );
 const PaperPlane = ({ className }: IconProps) => (
   <HugeiconsIcon icon={SentIcon} className={className} />
@@ -1350,88 +1346,195 @@ function AgentChat() {
   );
 }
 
-/* ── Band 3 visual: automation run receipt ───────────────────────── */
+/* ── Band 3 visual: mobile automation thread ─────────────────────── */
 
-type Run = {
-  title: string;
-  trigger: string;
-  triggerKind: "cron" | "event";
-  steps: string[];
-  output: string;
+type AutomationMessage = {
+  role: "user" | "agent" | "tool";
+  text: string;
 };
 
-const RUNS: Run[] = [
-  {
-    title: "Nightly docs sync",
-    trigger: "0 2 * * *",
-    triggerKind: "cron",
-    steps: ["spawned “sync docs”", "worker ran locally", "reviewed 14 files"],
-    output: "PR #418 ready",
-  },
+type AutomationScenario = {
+  title: string;
+  prompt: string;
+  promptWidth: string;
+  branch: string;
+  messages: AutomationMessage[];
+};
+
+const AUTOMATION_SCENARIOS: AutomationScenario[] = [
   {
     title: "Issue triage",
-    trigger: "on new issue",
-    triggerKind: "event",
-    steps: ["read the new issue", "spawned an agent thread", "drafted a summary"],
-    output: "posted to Slack",
+    prompt: "triage every new issue",
+    promptWidth: "144px",
+    branch: "bb/issue-triage",
+    messages: [
+      { role: "user", text: "triage every new issue" },
+      {
+        role: "agent",
+        text: "I'll set up an automation for every new issue.",
+      },
+      { role: "tool", text: "created trigger: on new issue" },
+      { role: "tool", text: "configured action: open triage thread" },
+      {
+        role: "agent",
+        text: "Done. New issues will get a local bb thread and Slack summary.",
+      },
+    ],
+  },
+  {
+    title: "Nightly docs sync",
+    prompt: "run nightly docs sync",
+    promptWidth: "137px",
+    branch: "bb/sync-docs",
+    messages: [
+      { role: "user", text: "run nightly docs sync" },
+      {
+        role: "agent",
+        text: "I'll create a local 2am automation for the docs sync.",
+      },
+      { role: "tool", text: "created schedule: 0 2 * * *" },
+      { role: "tool", text: "configured action: run docs worker" },
+      {
+        role: "agent",
+        text: "Done. Each run will open a thread and prepare the PR.",
+      },
+    ],
   },
   {
     title: "Watch failing jobs",
-    trigger: "on job failed",
-    triggerKind: "event",
-    steps: ["inspected the CI logs", "found a flaky timeout", "pushed a fix"],
-    output: "opened fix branch",
+    prompt: "watch failing jobs",
+    promptWidth: "112px",
+    branch: "bb/fix-ci",
+    messages: [
+      { role: "user", text: "watch failing jobs" },
+      {
+        role: "agent",
+        text: "I'll set up an automation that reacts to failed CI jobs.",
+      },
+      { role: "tool", text: "created trigger: on job failed" },
+      { role: "tool", text: "configured action: inspect logs and spawn fix" },
+      {
+        role: "agent",
+        text: "Done. Failures will start a worker thread automatically.",
+      },
+    ],
   },
 ];
 
-// A compact, BB-native "run receipt": trigger + status pill + steps that check
-// in one by one + final output. It cycles one automation at a time. The card
-// shell stays put — only its contents cycle: they build in, hold, then fade out
-// together before the next run's contents appear (CSS reveals, no card flash).
+// A phone-sized bb thread preview: a prompt types into the composer, sends, then
+// the matching automation transcript streams into the feed.
 function AutomationRun() {
-  const { cycle, leaving } = useCycle(3800, 400);
-  const run = RUNS[cycle % RUNS.length];
-  const outAt = 0.25 + run.steps.length * 0.5;
-  const doneAt = outAt + 0.2;
+  const { cycle, leaving } = useCycle(7600, 500);
+  const run = AUTOMATION_SCENARIOS[cycle % AUTOMATION_SCENARIOS.length];
+  const promptStyle = {
+    "--automation-prompt-width": run.promptWidth,
+  } as CSSProperties;
   return (
-    <div className="runcard" aria-label="An automation run">
-      <div className={leaving ? "run-body leaving" : "run-body"} key={cycle}>
-        <div className="run-head">
-          <span className="run-title">{run.title}</span>
-          <span className="run-status" aria-hidden>
-            <span className="rs rs-run" style={{ animationDelay: `${doneAt}s` }}>
-              <span className="rs-dot" />
-              Running
+    <div className="mockup-wrap mockup-wrap-automation">
+      <div
+        className="mock mock-automation-mobile"
+        aria-label="Mobile bb preview showing an automation prompt and streamed thread messages"
+      >
+        <div className="mock-bar">
+          <div className="bar-left">
+            <span className="bar-menu" aria-hidden>
+              <PanelIcon className="ri bar-ic" />
             </span>
-            <span className="rs rs-done" style={{ animationDelay: `${doneAt}s` }}>
-              <CheckIcon className="rs-check" />
-              Done
+          </div>
+          <div className="bar-main">
+            <span className="bar-title">{run.title}</span>
+            <span className="bar-actions">
+              <span className="commit-btn" aria-hidden>
+                Automation
+              </span>
             </span>
-          </span>
+          </div>
         </div>
-        <div className="run-trigger">
-          {run.triggerKind === "cron" ? (
-            <ClockIcon className="tg-ic" />
-          ) : (
-            <BoltIcon className="tg-ic" />
-          )}
-          <span className="mono">{run.trigger}</span>
-        </div>
-        <div className="run-steps">
-          {run.steps.map((step, i) => (
-            <div
-              className="run-step"
-              key={step}
-              style={{ animationDelay: `${0.25 + i * 0.5}s` }}
-            >
-              <CheckIcon className="st-check" />
-              <span>{step}</span>
+
+        <div
+          className={
+            leaving
+              ? "mock-body automation-body leaving"
+              : "mock-body automation-body"
+          }
+          key={cycle}
+        >
+          <div className="main">
+            <div className="feed feed-live automation-feed">
+              {run.messages.map((message, i) => {
+                const style = { animationDelay: `${3.2 + i * 0.68}s` };
+                if (message.role === "user") {
+                  return (
+                    <div
+                      className="msg-user automation-msg"
+                      key={`${message.role}-${message.text}`}
+                      style={style}
+                    >
+                      {message.text}
+                    </div>
+                  );
+                }
+                if (message.role === "tool") {
+                  return (
+                    <div
+                      className="msg-step automation-msg automation-tool"
+                      key={`${message.role}-${message.text}`}
+                      style={style}
+                    >
+                      <ChevronRight className="step-chev" />
+                      {message.text}
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    className="msg-say automation-msg"
+                    key={`${message.role}-${message.text}`}
+                    style={style}
+                  >
+                    {message.text}
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-        <div className="run-output" style={{ animationDelay: `${outAt}s` }}>
-          <span className="out-arrow">→</span>
-          <span>{run.output}</span>
+
+            <div className="composer automation-composer">
+              <div className="composer-box automation-composer-box">
+                <div className="composer-top">
+                  <span className="composer-input automation-typeahead">
+                    <span
+                      className="automation-type-text"
+                      style={promptStyle}
+                    >
+                      {run.prompt}
+                    </span>
+                    <span className="automation-caret" aria-hidden />
+                  </span>
+                  <Maximize2 className="cb-expand" />
+                </div>
+                <div className="composer-row">
+                  <span className="model">
+                    <OpenAiIcon className="model-ic" />
+                    Codex
+                    <ChevronDown className="chev-sm" />
+                  </span>
+                  <span className="composer-actions" aria-hidden>
+                    <Paperclip className="composer-clip" />
+                    <span className="send-btn automation-send">
+                      <SendIcon className="send-ic" />
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="context-row automation-context">
+                <span className="ctx">
+                  <GitBranchIcon className="ctx-ic" />
+                  <span className="ctx-branch">{run.branch}</span>
+                </span>
+                <Spinner className="ctx-spin" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1574,8 +1677,8 @@ function LandingPage() {
         </h1>
         <p className="lde-expand">(Loop Development Environment)</p>
         <p className="sub">
-          Orchestrate your coding agents. Drive it yourself, or let your agents
-          and automations drive it for you.
+          bb can control, customize, and automate itself, laying the groundwork
+          for your own software factory.
         </p>
 
         <InstallOptions placement="hero" />
