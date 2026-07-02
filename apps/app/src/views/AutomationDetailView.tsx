@@ -19,7 +19,10 @@ import {
   useResumeAutomation,
   useRunAutomation,
 } from "@/hooks/queries/automation-queries";
-import { formatCronCadence } from "@/lib/format-schedule";
+import {
+  formatAutomationTrigger,
+  isCompletedOneShotAutomation,
+} from "@/lib/format-schedule";
 import {
   getAutomationsRoutePath,
   getThreadRoutePath,
@@ -206,6 +209,12 @@ export function AutomationDetailContent({
   onDelete,
   actionsPending,
 }: AutomationDetailContentProps) {
+  const completedOneShot = isCompletedOneShotAutomation({
+    enabled: automation.enabled,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+  });
+
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -233,8 +242,7 @@ export function AutomationDetailContent({
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            {formatCronCadence(automation.trigger.cron)} ·{" "}
-            {automation.trigger.timezone}
+            {formatAutomationTrigger(automation.trigger)}
           </p>
           <p className="text-xs text-muted-foreground">
             {describeExecution(automation)}
@@ -262,7 +270,7 @@ export function AutomationDetailContent({
               <Icon name="Pause" className="size-4" />
               Pause
             </Button>
-          ) : (
+          ) : completedOneShot ? null : (
             <Button
               type="button"
               variant="outline"

@@ -53,14 +53,17 @@ async function processDueAutomation(
   const expectedNextRunAt = automation.nextRunAt;
 
   let definition: ReturnType<typeof parseAutomationDefinition>;
-  let newNextRunAt: number;
+  let newNextRunAt: number | null;
   try {
     definition = parseAutomationDefinition(automation);
-    newNextRunAt = computeNextScheduledTime({
-      cron: definition.trigger.cron,
-      now,
-      timezone: definition.trigger.timezone,
-    });
+    newNextRunAt =
+      definition.trigger.triggerType === "once"
+        ? null
+        : computeNextScheduledTime({
+            cron: definition.trigger.cron,
+            now,
+            timezone: definition.trigger.timezone,
+          });
   } catch (error) {
     deps.logger.error(
       { automationId: automation.id, err: error },

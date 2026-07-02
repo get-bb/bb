@@ -79,19 +79,29 @@ const SCRIPT_EXECUTION = {
   timeoutMs: 120_000,
 };
 const ENVIRONMENT = { type: "host", workspace: { type: "personal" } };
-const TRIGGER = { triggerType: "schedule", cron: "0 9 * * *", timezone: "UTC" };
+const TRIGGER: { triggerType: "schedule"; cron: string; timezone: string } = {
+  triggerType: "schedule",
+  cron: "0 9 * * *",
+  timezone: "UTC",
+};
+const ONCE_TRIGGER: { triggerType: "once"; runAt: number } = {
+  triggerType: "once",
+  runAt: 1_000,
+};
 
 function seedAutomation(args: {
   execution: unknown;
   nextRunAt: number;
   enabled?: boolean;
+  trigger?: typeof TRIGGER | typeof ONCE_TRIGGER;
 }) {
+  const trigger = args.trigger ?? TRIGGER;
   return createAutomation(db, noopNotifier, {
     projectId,
     name: "Test",
     enabled: args.enabled ?? true,
-    triggerType: "schedule",
-    triggerConfig: JSON.stringify(TRIGGER),
+    triggerType: trigger.triggerType,
+    triggerConfig: JSON.stringify(trigger),
     runMode: (args.execution as { mode: "agent" | "script" }).mode,
     execution: JSON.stringify(args.execution),
     environment: JSON.stringify(ENVIRONMENT),
@@ -159,6 +169,24 @@ describe("sweepDueAutomations", () => {
 
     expect(executeScriptRun).toHaveBeenCalledTimes(1);
     expect(executeAgentRun).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a due one-shot once, then disables it", async () => {
+    const now = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const automation = seedAutomation({
+      execution: AGENT_EXECUTION,
+      nextRunAt: now - 1000,
+      trigger: { ...ONCE_TRIGGER, runAt: now - 1000 },
+    });
+
+    await sweepDueAutomations(buildDeps(), { now });
+    await sweepDueAutomations(buildDeps(), { now });
+
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
+    const after = getAutomation(db, automation.id);
+    expect(after?.enabled).toBe(false);
+    expect(after?.nextRunAt).toBeNull();
+    expect(after?.runCount).toBe(1);
   });
 
   it("skips due script automations (without claiming) when script runs are disabled", async () => {

@@ -88,6 +88,18 @@ function makeInput(
   };
 }
 
+function makeOnceInput(
+  projectId: string,
+  overrides: Partial<CreateAutomationInput> = {},
+): CreateAutomationInput {
+  return makeInput(projectId, {
+    triggerType: "once",
+    triggerConfig: JSON.stringify({ runAt: 1_000 }),
+    nextRunAt: 1_000,
+    ...overrides,
+  });
+}
+
 describe("automations data", () => {
   it("creates, scopes by project, lists, and notifies", () => {
     const { db, projectId } = setup();
@@ -145,15 +157,23 @@ describe("automations data", () => {
     expect(deleteAutomation(db, noopNotifier, { projectId, automationId: created.id })).toBe(false);
   });
 
-  it("lists only due, enabled, scheduled automations", () => {
+  it("lists only due, enabled scheduled and one-shot automations", () => {
     const { db, projectId } = setup();
     const due = createAutomation(db, noopNotifier, makeInput(projectId, { nextRunAt: 1_000 }));
+    const onceDue = createAutomation(
+      db,
+      noopNotifier,
+      makeOnceInput(projectId, {
+        triggerConfig: JSON.stringify({ runAt: 1_500 }),
+        nextRunAt: 1_500,
+      }),
+    );
     createAutomation(db, noopNotifier, makeInput(projectId, { nextRunAt: 50_000 })); // future
     createAutomation(db, noopNotifier, makeInput(projectId, { enabled: false, nextRunAt: 1_000 })); // disabled
     createAutomation(db, noopNotifier, makeInput(projectId, { nextRunAt: null })); // paused
 
     const result = listDueAutomations(db, { now: 2_000, limit: 100 });
-    expect(result.map((r) => r.id)).toEqual([due.id]);
+    expect(result.map((r) => r.id)).toEqual([due.id, onceDue.id]);
   });
 
   it("claims at-most-once (CAS): a second claim of the same expected value no-ops", () => {
@@ -183,6 +203,24 @@ describe("automations data", () => {
       expect(first.run.trigger).toBe("schedule");
       expect(first.run.scheduledFor).toBe(1_000);
     }
+  });
+
+  it("claims a one-shot by disabling it and clearing nextRunAt", () => {
+    const { db, projectId } = setup();
+    const a = createAutomation(db, noopNotifier, makeOnceInput(projectId));
+
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: a.id,
+      expectedNextRunAt: 1_000,
+      newNextRunAt: null,
+      now: 1_500,
+    });
+
+    expect(claim.advanced).toBe(true);
+    const row = getAutomation(db, a.id);
+    expect(row?.enabled).toBe(false);
+    expect(row?.nextRunAt).toBeNull();
+    expect(row?.runCount).toBe(1);
   });
 
   it("records a skipped run while still advancing", () => {
@@ -226,6 +264,7 @@ describe("automations data", () => {
     });
 
     const row = getAutomation(db, a.id);
+    expect(row?.enabled).toBe(true);
     expect(row?.nextRunAt).toBe(1_000);
     expect(row?.runCount).toBe(0);
     expect(row?.lastError).toBe("spawn failed");

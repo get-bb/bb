@@ -111,6 +111,20 @@ describe("AutomationDetailContent", () => {
     expect(paused).not.toContain('aria-label="Pause"');
   });
 
+  it("does not show Resume for a completed one-shot automation", () => {
+    const markup = renderContent({
+      automation: makeAutomation({
+        enabled: false,
+        trigger: { triggerType: "once", runAt: 1_700_000_000_000 },
+        nextRunAt: null,
+        runCount: 1,
+      }),
+    });
+    expect(markup).not.toContain('aria-label="Resume"');
+    expect(markup).not.toContain('aria-label="Pause"');
+    expect(markup).toContain('aria-label="Run now"');
+  });
+
   it("renders Run now and Delete icon actions", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain('aria-label="Run now"');

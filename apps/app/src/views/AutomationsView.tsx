@@ -30,7 +30,10 @@ import {
   useResumeAutomation,
   useRunAutomation,
 } from "@/hooks/queries/automation-queries";
-import { formatScheduleStatusLabel } from "@/lib/format-schedule";
+import {
+  formatScheduleStatusLabel,
+  isCompletedOneShotAutomation,
+} from "@/lib/format-schedule";
 import {
   getAutomationDetailRoutePath,
   getRootComposeRoutePath,
@@ -115,20 +118,28 @@ export function buildAutomationRowMenuItems(
   actions: AutomationRowActions,
 ): AutomationRowMenuItem[] {
   const { automation } = entry;
-  return [
-    automation.enabled
-      ? {
-          key: "pause",
-          label: "Pause",
-          destructive: false,
-          run: () => actions.onPause(entry),
-        }
+  const completedOneShot = isCompletedOneShotAutomation({
+    enabled: automation.enabled,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+  });
+  const stateAction: AutomationRowMenuItem | null = automation.enabled
+    ? {
+        key: "pause",
+        label: "Pause",
+        destructive: false,
+        run: () => actions.onPause(entry),
+      }
+    : completedOneShot
+      ? null
       : {
           key: "resume",
           label: "Resume",
           destructive: false,
           run: () => actions.onResume(entry),
-        },
+        };
+  return [
+    ...(stateAction ? [stateAction] : []),
     {
       key: "run",
       label: "Run now",
@@ -210,6 +221,8 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
         {formatScheduleStatusLabel({
           enabled: automation.enabled,
           nextRunAt: automation.nextRunAt,
+          trigger: automation.trigger,
+          runCount: automation.runCount,
         })}
       </span>
       <DropdownMenu>

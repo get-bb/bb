@@ -160,6 +160,9 @@ For review or fix pipelines, get the environment ID from
   rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+- Create a one-shot agent automation with
+  `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
+  or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.
 - Create a script automation with
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
@@ -174,7 +177,8 @@ For review or fix pipelines, get the environment ID from
   and check the exit status of each `bb` call. Captured stdout+stderr is stored
   on failed runs (see `--output <run-id>`).
 - Cron accepts standard 5-field expressions, including step values like
-  `*/5 * * * *` (minimum granularity is 5 minutes).
+  `* * * * *`, `*/2 * * * *`, and `*/5 * * * *`. Cron granularity is one
+  minute. One-shot automations use `--at` or `--in` and fire once.
 - Pass `--project <id>` explicitly for every automation command.
 - Use `bb automation list`, `bb automation show <id>`, and
   `bb automation runs <id>` to inspect; `--output <run-id>` prints a script

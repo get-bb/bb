@@ -1,4 +1,5 @@
 import { toString as cronstrueToString } from "cronstrue";
+import type { AutomationTrigger } from "@bb/server-contract";
 
 const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -10,6 +11,14 @@ const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
 export interface FormatScheduleStatusLabelArgs {
   enabled: boolean;
   nextRunAt: number | null;
+  trigger?: AutomationTrigger;
+  runCount?: number;
+}
+
+export interface CompletedOneShotAutomationArgs {
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  runCount: number;
 }
 
 /**
@@ -25,6 +34,21 @@ export function formatCronCadence(cron: string): string {
   }
 }
 
+export function formatAutomationTrigger(trigger: AutomationTrigger): string {
+  if (trigger.triggerType === "once") {
+    return `Once at ${formatScheduleRunTime(trigger.runAt)}`;
+  }
+  return `${formatCronCadence(trigger.cron)} · ${trigger.timezone}`;
+}
+
+export function isCompletedOneShotAutomation({
+  enabled,
+  trigger,
+  runCount,
+}: CompletedOneShotAutomationArgs): boolean {
+  return trigger.triggerType === "once" && !enabled && runCount > 0;
+}
+
 /** Compact absolute time for an upcoming run, e.g. "Jun 6, 9:00 AM". */
 export function formatScheduleRunTime(timestamp: number): string {
   return SCHEDULE_RUN_FORMATTER.format(new Date(timestamp));
@@ -37,7 +61,15 @@ export function formatScheduleRunTime(timestamp: number): string {
 export function formatScheduleStatusLabel({
   enabled,
   nextRunAt,
+  trigger,
+  runCount = 0,
 }: FormatScheduleStatusLabelArgs): string {
+  if (
+    trigger !== undefined &&
+    isCompletedOneShotAutomation({ enabled, trigger, runCount })
+  ) {
+    return "Completed";
+  }
   if (!enabled) {
     return "Paused";
   }

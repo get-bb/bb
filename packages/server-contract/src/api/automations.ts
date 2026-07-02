@@ -32,8 +32,13 @@ export const automationScheduleTriggerSchema = z.object({
   cron: z.string().min(1).max(SCHEDULE_CRON_MAX_LENGTH),
   timezone: z.string().min(1).max(SCHEDULE_TIMEZONE_MAX_LENGTH),
 });
+export const automationOnceTriggerSchema = z.object({
+  triggerType: z.literal("once"),
+  runAt: z.number().int().positive(),
+});
 export const automationTriggerSchema = z.discriminatedUnion("triggerType", [
   automationScheduleTriggerSchema,
+  automationOnceTriggerSchema,
 ]);
 export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
+  validateOnceDefinition,
   validateScheduleDefinition,
 } from "./schedule-helpers.js";
 
@@ -11,6 +12,8 @@ describe("validateScheduleDefinition", () => {
   it("accepts standard 5-field cron expressions including step minutes", () => {
     for (const cron of [
       "*/5 * * * *",
+      "* * * * *",
+      "*/2 * * * *",
       "*/15 * * * *",
       "0 9 * * 1-5",
       "0 * * * *",
@@ -19,18 +22,6 @@ describe("validateScheduleDefinition", () => {
       expect(() =>
         validateScheduleDefinition({ cron, timezone: TZ }),
       ).not.toThrow();
-    }
-  });
-
-  it("rejects schedules that run more often than every 5 minutes", () => {
-    for (const cron of ["* * * * *", "*/2 * * * *"]) {
-      expect(() =>
-        validateScheduleDefinition({ cron, timezone: TZ }),
-      ).toThrowError(
-        new ScheduleValidationError(
-          "Schedule must not run more frequently than every 5 minutes",
-        ),
-      );
     }
   });
 
@@ -56,16 +47,31 @@ describe("validateScheduleDefinition", () => {
   });
 });
 
+describe("validateOnceDefinition", () => {
+  it("accepts a future one-shot run time", () => {
+    expect(() =>
+      validateOnceDefinition({ runAt: 2_000, now: 1_000 }),
+    ).not.toThrow();
+  });
+
+  it("rejects a past or immediate one-shot run time", () => {
+    expect(() =>
+      validateOnceDefinition({ runAt: 1_000, now: 1_000 }),
+    ).toThrowError(
+      new ScheduleValidationError("One-shot run time must be in the future"),
+    );
+  });
+});
+
 describe("computeNextScheduledTime", () => {
-  it("returns a strictly-future time for */5 * * * *", () => {
+  it("returns a strictly-future time for every-minute cron", () => {
     const now = Date.UTC(2026, 0, 1, 12, 1, 30);
     const next = computeNextScheduledTime({
-      cron: "*/5 * * * *",
+      cron: "* * * * *",
       now,
       timezone: TZ,
     });
     expect(next).toBeGreaterThan(now);
-    // Next */5 occurrence after 12:01:30 UTC is 12:05:00 UTC.
-    expect(next).toBe(Date.UTC(2026, 0, 1, 12, 5, 0));
+    expect(next).toBe(Date.UTC(2026, 0, 1, 12, 2, 0));
   });
 });

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type {
   AutomationOrigin,
   AutomationRunMode,
@@ -238,7 +238,7 @@ export function listDueAutomations(
     .where(
       and(
         eq(automations.enabled, true),
-        eq(automations.triggerType, "schedule"),
+        inArray(automations.triggerType, ["schedule", "once"]),
         isNotNull(automations.nextRunAt),
         lte(automations.nextRunAt, args.now),
         isNull(projects.deletedAt),
@@ -284,7 +284,7 @@ export function claimAutomationScheduledRun(
       if (
         !row ||
         !row.enabled ||
-        row.triggerType !== "schedule" ||
+        !["schedule", "once"].includes(row.triggerType) ||
         row.nextRunAt !== args.expectedNextRunAt
       ) {
         return { advanced: false };
@@ -293,6 +293,7 @@ export function claimAutomationScheduledRun(
       const updated = tx
         .update(automations)
         .set({
+          enabled: row.triggerType === "once" ? false : row.enabled,
           nextRunAt: args.newNextRunAt,
           lastRunAt: args.now,
           runCount: row.runCount + 1,
@@ -351,6 +352,7 @@ export function restoreAutomationAfterFailedRun(
     (tx) => {
       tx.update(automations)
         .set({
+          enabled: true,
           nextRunAt: args.restoredNextRunAt,
           runCount: args.expectedRunCount - 1,
           lastRunStatus: "failed",

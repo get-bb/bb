@@ -241,6 +241,24 @@ describe("buildAutomationRowMenuItems", () => {
     expect(labels).not.toContain("Pause");
   });
 
+  it("does not offer Resume for a completed one-shot automation", () => {
+    const items = buildAutomationRowMenuItems(
+      makeEntry(
+        makeAutomation({
+          enabled: false,
+          trigger: { triggerType: "once", runAt: 1_700_000_000_000 },
+          nextRunAt: null,
+          runCount: 1,
+        }),
+      ),
+      ACTIONS,
+    );
+    const labels = items.map((item) => item.label);
+    expect(labels).not.toContain("Resume");
+    expect(labels).not.toContain("Pause");
+    expect(labels).toContain("Run now");
+  });
+
   it("always offers Run now and a destructive Delete", () => {
     const items = buildAutomationRowMenuItems(makeEntry(makeAutomation()), ACTIONS);
     const labels = items.map((item) => item.label);

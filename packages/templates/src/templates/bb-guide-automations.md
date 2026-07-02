@@ -52,11 +52,13 @@ Every command supports --json for machine-readable output.
 
 Creating:
 
-  bb automation create --project <id> --name "..." --cron "..." --timezone "..." [mode flags]
+  bb automation create --project <id> --name "..." [schedule flags] [mode flags]
 
     --name <name>                  Automation name (required)
-    --cron <expr>                  5-field cron expression, steps OK e.g. */5 * * * * (required)
-    --timezone <tz>                IANA timezone, e.g. America/New_York (required)
+    --cron <expr>                  Recurring 5-field cron expression
+    --timezone <tz>                IANA timezone for --cron, e.g. America/New_York
+    --at <datetime>                One-shot run time, preferably ISO 8601
+    --in <duration>                One-shot delay, e.g. 30s, 5m, 2h, 1d
     --project <id>                 Project (required)
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment <kind>       Create a new environment (worktree)
@@ -99,11 +101,15 @@ Creating:
   and check the exit status of each `bb` call. Captured stdout+stderr is stored
   on failed runs and shown via `bb automation runs <id> --output <runId>`.
 
-Cron format:
+Schedule format:
 
   Standard 5-field cron expressions are accepted, including step values like
-  */5 * * * * and */15 * * * *. The minimum granularity is 5 minutes; a schedule
-  that would run more often (e.g. * * * * * or */2 * * * *) is rejected.
+  * * * * *, */2 * * * *, and */15 * * * *. Cron schedules are recurring and
+  have one-minute granularity.
+
+  One-shot automations use --at or --in and fire once. After the due run is
+  claimed, bb clears the next run and disables the automation so it will not
+  fire again unless updated or manually run.
 
 Listing and inspecting:
 
@@ -123,6 +129,8 @@ Managing:
     --name <name>                          Set the name
     --cron <expr>                          Set the cron (requires --timezone)
     --timezone <tz>                        Set the timezone (requires --cron)
+    --at <datetime>                        Set a one-shot run time
+    --in <duration>                        Set a one-shot delay
     --auto-archive                         Enable auto-archive
 
   bb automation pause <automationId> --project <id>

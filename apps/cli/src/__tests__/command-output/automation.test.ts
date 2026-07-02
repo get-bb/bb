@@ -114,6 +114,59 @@ describe("bb automation command output", () => {
     });
   });
 
+  it("create maps --at to a one-shot trigger", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const runAtText = "2030-01-01T09:00:00.000Z";
+    const runAt = Date.parse(runAtText);
+    const created = makeAutomation({
+      id: "auto-once",
+      projectId: "proj-1",
+      trigger: { triggerType: "once", runAt },
+      nextRunAt: runAt,
+    });
+    const post = vi.fn(async () => created);
+    stubServerApi({ "v1.projects.:id.automations.$post": post });
+
+    await runCommand(
+      [
+        "automation",
+        "create",
+        "--project",
+        "proj-1",
+        "--name",
+        "One-shot reminder",
+        "--at",
+        runAtText,
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+        "--prompt",
+        "Remind me.",
+        "--environment",
+        "env-1",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      json: {
+        name: "One-shot reminder",
+        trigger: { triggerType: "once", runAt },
+        execution: {
+          mode: "agent",
+          prompt: "Remind me.",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: "readonly",
+        },
+        environment: { type: "reuse", environmentId: "env-1" },
+        origin: "human",
+      },
+    });
+  });
+
   it("create reads --script-file content and builds a script execution request", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     readFileMock.mockResolvedValueOnce("echo hi\n");

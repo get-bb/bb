@@ -5,7 +5,7 @@
  * derive from one source.
  */
 
-export const automationTriggerTypeValues = ["schedule"] as const;
+export const automationTriggerTypeValues = ["schedule", "once"] as const;
 export type AutomationTriggerType = (typeof automationTriggerTypeValues)[number];
 
 export const automationRunModeValues = ["agent", "script"] as const;

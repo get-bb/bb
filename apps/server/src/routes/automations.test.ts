@@ -157,6 +157,18 @@ describe("automations routes", () => {
     expect(created.execution.script).toBeUndefined();
   });
 
+  it("creates a one-shot automation", async () => {
+    const runAt = Date.now() + 60_000;
+    const res = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ trigger: { triggerType: "once", runAt } }),
+    );
+    expect(res.status).toBe(201);
+    const created = await res.json();
+    expect(created.trigger).toEqual({ triggerType: "once", runAt });
+    expect(created.nextRunAt).toBe(runAt);
+  });
+
   it("rejects an invalid cron expression with 400", async () => {
     const res = await post(
       `/projects/${projectId}/automations`,
@@ -164,6 +176,17 @@ describe("automations routes", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("invalid_request");
+  });
+
+  it("rejects a one-shot run time in the past", async () => {
+    const res = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ trigger: { triggerType: "once", runAt: Date.now() - 1_000 } }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe("invalid_request");
+    expect(body.message).toContain("One-shot run time must be in the future");
   });
 
   it("rejects unknown fields via strict parsing", async () => {

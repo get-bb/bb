@@ -43,6 +43,7 @@ import { executeAgentRun, executeScriptRun } from "../services/scheduling/automa
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
+  validateOnceDefinition,
   validateScheduleDefinition,
 } from "../services/scheduling/schedule-helpers.js";
 
@@ -60,12 +61,16 @@ function requireProjectAutomation(
   return automation;
 }
 
-function validateCron(trigger: AutomationTrigger): void {
+function validateTrigger(trigger: AutomationTrigger, now = Date.now()): void {
   try {
-    validateScheduleDefinition({
-      cron: trigger.cron,
-      timezone: trigger.timezone,
-    });
+    if (trigger.triggerType === "schedule") {
+      validateScheduleDefinition({
+        cron: trigger.cron,
+        timezone: trigger.timezone,
+      });
+    } else {
+      validateOnceDefinition({ runAt: trigger.runAt, now });
+    }
   } catch (error) {
     if (error instanceof ScheduleValidationError) {
       throw new ApiError(400, "invalid_request", error.message);
@@ -75,6 +80,10 @@ function validateCron(trigger: AutomationTrigger): void {
 }
 
 function computeNextRunAt(trigger: AutomationTrigger, now: number): number {
+  if (trigger.triggerType === "once") {
+    validateTrigger(trigger, now);
+    return trigger.runAt;
+  }
   return computeNextScheduledTime({
     cron: trigger.cron,
     now,
@@ -198,11 +207,11 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
   post(routes.create, async (context, payload: ResolvedCreateAutomationRequest) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
-    validateCron(payload.trigger);
+    const now = Date.now();
+    validateTrigger(payload.trigger, now);
     assertNotRecursiveCreation(deps, payload.createdByThreadId);
     assertScriptRunsAllowed(deps, payload.execution);
 
-    const now = Date.now();
     const nextRunAt = payload.enabled
       ? computeNextRunAt(payload.trigger, now)
       : null;
@@ -259,8 +268,9 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       automationId: context.req.param("automationId"),
     });
 
+    const now = Date.now();
     if (payload.trigger !== undefined) {
-      validateCron(payload.trigger);
+      validateTrigger(payload.trigger, now);
     }
 
     const patch: Parameters<typeof updateAutomation>[2]["patch"] = {};
@@ -272,7 +282,7 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       patch.triggerConfig = serializeAutomationTrigger(payload.trigger);
       // Recompute the next run only while enabled; pause/resume own the rest.
       patch.nextRunAt = current.enabled
-        ? computeNextRunAt(payload.trigger, Date.now())
+        ? computeNextRunAt(payload.trigger, now)
         : null;
     }
     if (payload.autoArchive !== undefined) {
@@ -333,12 +343,13 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       automationId: context.req.param("automationId"),
     });
     const { trigger } = parseAutomationDefinition(current);
-    validateCron(trigger);
+    const now = Date.now();
+    validateTrigger(trigger, now);
     const updated = setAutomationEnabled(deps.db, deps.hub, {
       projectId,
       automationId: current.id,
       enabled: true,
-      nextRunAt: computeNextRunAt(trigger, Date.now()),
+      nextRunAt: computeNextRunAt(trigger, now),
       lastError: null,
     });
     if (!updated) {

@@ -9,8 +9,6 @@ import type {
   EnvironmentArgs,
   UpdateAutomationRequest,
 } from "@bb/server-contract";
-
-type CreateAutomationExecution = CreateAutomationRequest["execution"];
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import {
@@ -27,6 +25,9 @@ import {
 } from "./thread/spawn.js";
 import { parsePermissionMode } from "./thread/helpers.js";
 
+type CreateAutomationExecution = CreateAutomationRequest["execution"];
+type CreateAutomationTrigger = CreateAutomationRequest["trigger"];
+
 interface AutomationListCommandOptions {
   json?: boolean;
   project?: string;
@@ -36,8 +37,10 @@ interface AutomationCreateCommandOptions {
   json?: boolean;
   project?: string;
   name: string;
-  cron: string;
-  timezone: string;
+  cron?: string;
+  timezone?: string;
+  at?: string;
+  in?: string;
   environment?: string;
   newEnvironment?: string;
   baseBranch?: string;
@@ -67,6 +70,8 @@ interface AutomationUpdateCommandOptions {
   name?: string;
   cron?: string;
   timezone?: string;
+  at?: string;
+  in?: string;
   autoArchive?: boolean;
 }
 
@@ -96,6 +101,8 @@ interface AutomationDeleteCommandOptions {
 
 const SCRIPT_INTERPRETERS = ["bash", "sh", "node", "python3"] as const;
 type ScriptInterpreter = (typeof SCRIPT_INTERPRETERS)[number];
+
+const DURATION_PATTERN = /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
 
 function resolveAutomationProjectId(flagValue?: string): string {
   return requireProjectId(flagValue);
@@ -153,6 +160,85 @@ function parseTimeoutMs(value: string | undefined): number | undefined {
     throw new Error("--timeout must be a positive integer number of milliseconds.");
   }
   return parsed;
+}
+
+function parseRunAt(value: string): number {
+  const runAt = Date.parse(value);
+  if (!Number.isFinite(runAt)) {
+    throw new Error("--at must be a valid date/time, preferably ISO 8601.");
+  }
+  if (runAt <= Date.now()) {
+    throw new Error("--at must be in the future.");
+  }
+  return runAt;
+}
+
+function parseRunIn(value: string): number {
+  const match = DURATION_PATTERN.exec(value.trim());
+  if (!match) {
+    throw new Error("--in must be a duration like 30s, 5m, 2h, or 1d.");
+  }
+  const amountText = match[1];
+  const unitText = match[2];
+  if (amountText === undefined || unitText === undefined) {
+    throw new Error("--in must be a duration like 30s, 5m, 2h, or 1d.");
+  }
+  const amount = Number.parseInt(amountText, 10);
+  if (amount <= 0) {
+    throw new Error("--in must be greater than zero.");
+  }
+  const unit = unitText.toLowerCase();
+  const multiplier =
+    unit.startsWith("s")
+      ? 1_000
+      : unit.startsWith("m")
+        ? 60_000
+        : unit.startsWith("h")
+          ? 60 * 60_000
+          : 24 * 60 * 60_000;
+  return Date.now() + amount * multiplier;
+}
+
+function buildTriggerFromOptions(opts: {
+  cron?: string;
+  timezone?: string;
+  at?: string;
+  in?: string;
+}): CreateAutomationTrigger {
+  const triggerFlags = [
+    opts.cron !== undefined,
+    opts.at !== undefined,
+    opts.in !== undefined,
+  ].filter(Boolean).length;
+  if (triggerFlags !== 1) {
+    throw new Error("Provide exactly one schedule flag: --cron, --at, or --in.");
+  }
+  if (opts.cron !== undefined) {
+    if (!opts.timezone) {
+      throw new Error("--cron requires --timezone.");
+    }
+    return {
+      triggerType: "schedule",
+      cron: opts.cron,
+      timezone: opts.timezone,
+    };
+  }
+  if (opts.timezone !== undefined) {
+    throw new Error("--timezone is only used with --cron.");
+  }
+  if (opts.at !== undefined) {
+    return {
+      triggerType: "once",
+      runAt: parseRunAt(opts.at),
+    };
+  }
+  if (opts.in !== undefined) {
+    return {
+      triggerType: "once",
+      runAt: parseRunIn(opts.in),
+    };
+  }
+  throw new Error("Provide exactly one schedule flag: --cron, --at, or --in.");
 }
 
 function resolveAutomationEnvironmentValue(
@@ -252,20 +338,18 @@ function buildUpdateRequest(
 ): UpdateAutomationRequest {
   const request: UpdateAutomationRequest = {};
   if (opts.name !== undefined) request.name = opts.name;
-  if (opts.cron !== undefined || opts.timezone !== undefined) {
-    if (opts.cron === undefined || opts.timezone === undefined) {
-      throw new Error("Provide both --cron and --timezone to change the schedule.");
-    }
-    request.trigger = {
-      triggerType: "schedule",
-      cron: opts.cron,
-      timezone: opts.timezone,
-    };
+  if (
+    opts.cron !== undefined ||
+    opts.timezone !== undefined ||
+    opts.at !== undefined ||
+    opts.in !== undefined
+  ) {
+    request.trigger = buildTriggerFromOptions(opts);
   }
   if (opts.autoArchive !== undefined) request.autoArchive = opts.autoArchive;
   if (Object.keys(request).length === 0) {
     throw new Error(
-      "No changes requested. Provide --name, --cron + --timezone, and/or --auto-archive.",
+      "No changes requested. Provide --name, --cron + --timezone, --at, --in, and/or --auto-archive.",
     );
   }
   return request;
@@ -305,8 +389,10 @@ export function registerAutomationCommands(
     .command("create")
     .description("Create an automation (agent or script mode)")
     .requiredOption("--name <name>", "Automation name")
-    .requiredOption("--cron <expr>", "5-field cron expression")
-    .requiredOption("--timezone <tz>", "IANA timezone, e.g. America/New_York")
+    .option("--cron <expr>", "Recurring 5-field cron expression")
+    .option("--timezone <tz>", "IANA timezone for --cron, e.g. America/New_York")
+    .option("--at <datetime>", "One-shot run time, preferably ISO 8601")
+    .option("--in <duration>", "One-shot delay, e.g. 30s, 5m, 2h, 1d")
     .requiredOption(
       "--project <id>",
       "Project ID",
@@ -351,11 +437,7 @@ export function registerAutomationCommands(
         const environment = await resolveCreateEnvironment(opts, projectId);
         const request: CreateAutomationRequest = {
           name: opts.name,
-          trigger: {
-            triggerType: "schedule",
-            cron: opts.cron,
-            timezone: opts.timezone,
-          },
+          trigger: buildTriggerFromOptions(opts),
           execution,
           environment,
           ...resolveCreateAttribution(),
@@ -400,6 +482,8 @@ export function registerAutomationCommands(
     .option("--name <name>", "Set the automation name")
     .option("--cron <expr>", "Set the cron expression (requires --timezone)")
     .option("--timezone <tz>", "Set the timezone (requires --cron)")
+    .option("--at <datetime>", "Set a one-shot run time")
+    .option("--in <duration>", "Set a one-shot delay, e.g. 30s, 5m, 2h, 1d")
     .option("--auto-archive", "Enable auto-archive of the spawned thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -575,17 +659,20 @@ function formatTimestamp(value: number | null): string {
   return value === null ? "-" : new Date(value).toLocaleString();
 }
 
+function formatAutomationTrigger(automation: Automation): string {
+  if (automation.trigger.triggerType === "once") {
+    return `once at ${formatTimestamp(automation.trigger.runAt)}`;
+  }
+  return `${automation.trigger.cron} (${automation.trigger.timezone})`;
+}
+
 function printAutomation(automation: Automation): void {
   console.log("");
   console.log(`  ID:        ${automation.id}`);
   console.log(`  Name:      ${automation.name}`);
   console.log(`  Enabled:   ${automation.enabled ? "yes" : "no"}`);
   console.log(`  Mode:      ${automation.execution.mode}`);
-  if (automation.trigger.triggerType === "schedule") {
-    console.log(
-      `  Schedule:  ${automation.trigger.cron} (${automation.trigger.timezone})`,
-    );
-  }
+  console.log(`  Schedule:  ${formatAutomationTrigger(automation)}`);
   console.log(`  Next run:  ${formatTimestamp(automation.nextRunAt)}`);
   console.log(`  Last run:  ${formatTimestamp(automation.lastRunAt)}`);
   console.log(`  Runs:      ${automation.runCount}`);
@@ -601,14 +688,12 @@ function printAutomationTable(automations: Automation[]): void {
     automation.id,
     automation.name,
     automation.enabled ? "yes" : "no",
-    automation.trigger.triggerType === "schedule"
-      ? automation.trigger.cron
-      : "-",
+    formatAutomationTrigger(automation),
     formatTimestamp(automation.nextRunAt),
     String(automation.runCount),
     automation.origin,
   ]);
-  const head = ["ID", "Name", "On", "Cron", "Next run", "Runs", "Origin"];
+  const head = ["ID", "Name", "On", "Schedule", "Next run", "Runs", "Origin"];
   const colWidths = head.map((label, index) =>
     Math.max(label.length, ...rows.map((row) => row[index].length)),
   );

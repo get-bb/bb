@@ -683,7 +683,7 @@ export const automations = sqliteTable(
     name: text("name").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     triggerType: text("trigger_type").$type<AutomationTriggerType>().notNull(),
-    // JSON-as-text: { cron, timezone }
+    // JSON-as-text: schedule { cron, timezone } or once { runAt }
     triggerConfig: text("trigger_config").notNull(),
     runMode: text("run_mode").$type<AutomationRunMode>().notNull(),
     // JSON-as-text; shape depends on run_mode (agent: prompt/provider/model/
