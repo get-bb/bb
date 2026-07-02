@@ -178,11 +178,6 @@ export interface FollowUpPromptBoxProps {
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
-   * Changing this passively focuses the composer on fine pointers, used for
-   * thread-route navigation.
-   */
-  autoFocusKey?: string | number;
-  /**
    * Changing this refocuses the composer caret to the end — e.g. after editing a
    * queued message restores its text into the draft.
    */
@@ -223,7 +218,6 @@ function FollowUpPromptBoxWithComposer({
   typeahead,
   promptActions,
   zenModeResetKey,
-  autoFocusKey,
   focusEndKey,
 }: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
@@ -366,7 +360,6 @@ function FollowUpPromptBoxWithComposer({
           onSubmit={composer.onSubmit}
           scrollToBottomOnSubmit={submitMode.kind !== "queue"}
           history={composer.history}
-          autoFocusKey={autoFocusKey}
           focusEndKey={focusEndKey}
           placeholder={composer.promptPlaceholder}
           mentionMenuPlacement="top"
