@@ -55,10 +55,7 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Icon } from "@/components/ui/icon.js";
-import {
-  messageBodyHasQuote,
-  renderMessageBodyWithQuotes,
-} from "@/components/thread/timeline/ConversationMessageMentions";
+import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -149,6 +146,13 @@ const isVisibleSideChatTimelineRow: ThreadTimelineRowFilter = (row) =>
     row.systemKind === "operation" &&
     row.operationKind === "thread-provisioning"
   );
+
+const SINGLE_FENCED_CODE_BLOCK_PATTERN =
+  /^(?: {0,3})(`{3,}|~{3,})[^\r\n]*\r?\n[\s\S]*?\r?\n(?: {0,3})\1[ \t]*$/u;
+
+function isSingleFencedCodeBlock(text: string): boolean {
+  return SINGLE_FENCED_CODE_BLOCK_PATTERN.test(text);
+}
 
 interface OptimisticSideChatUserRowArgs {
   createdAt: number;
@@ -458,6 +462,9 @@ export function SideChatTabContent({
   // opened from the new-tab page (those fork from the thread tip).
   const triggerMessageText = tab.sourceMessageText.trim();
   const hasTriggerMessage = triggerMessageText.length > 0;
+  const triggerMessageIsSingleFence = isSingleFencedCodeBlock(
+    triggerMessageText,
+  );
 
   const sourceEnvironmentReady =
     sourceThread.environmentId === null || sourceEnvironment !== null;
@@ -1305,18 +1312,18 @@ export function SideChatTabContent({
         Replying to
       </span>
       <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
-        {messageBodyHasQuote(triggerMessageText) ? (
-          <div className="max-h-20 overflow-hidden break-words">
-            {renderMessageBodyWithQuotes({
-              mentions: [],
-              text: triggerMessageText,
-            })}
-          </div>
-        ) : (
-          <p className="line-clamp-2 whitespace-pre-wrap break-words">
-            {triggerMessageText}
-          </p>
-        )}
+        <div
+          className={
+            triggerMessageIsSingleFence
+              ? "break-words"
+              : "max-h-20 overflow-hidden break-words"
+          }
+        >
+          <MarkdownPreview
+            content={triggerMessageText}
+            className="text-xs leading-5 [&_blockquote]:my-1 [&_h1]:mb-1 [&_h1]:mt-0 [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:mt-0 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-0 [&_h3]:text-xs [&_li]:mb-0 [&_ol]:mb-1 [&_p]:mb-1 [&_ul]:mb-1"
+          />
+        </div>
       </div>
     </div>
   ) : null;

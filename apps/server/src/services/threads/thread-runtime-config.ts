@@ -91,7 +91,10 @@ function requireWorkspacePath(
   return environment.path;
 }
 
-function resolveDynamicTools(): DynamicTool[] {
+function resolveDynamicTools(thread: Thread): DynamicTool[] {
+  if (isSideChatThread(thread)) {
+    return [];
+  }
   return [UPDATE_ENVIRONMENT_DIRECTORY_TOOL];
 }
 
@@ -144,7 +147,7 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.logger,
     deps.config.dataDir,
   );
-  const dynamicTools = resolveDynamicTools();
+  const dynamicTools = resolveDynamicTools(args.thread);
   const workspaceAgentInstructions = readWorkspaceAgentInstructions(
     deps.logger,
     workspacePath,

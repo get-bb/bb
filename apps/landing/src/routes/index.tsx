@@ -34,7 +34,7 @@ import { trackLandingEvent } from "../analytics";
 import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
-import { ClaudeIcon, CursorIcon, OpenAiIcon, PiIcon } from "../icons";
+import { ClaudeIcon, CursorIcon, OpenAiIcon, OpencodeIcon, PiIcon } from "../icons";
 import type { CtaPlacement } from "../site";
 import { CLI_COMMAND, GITHUB_URL, SUBSCRIBE_PATH, downloadMacosHref } from "../site";
 
@@ -377,6 +377,7 @@ function ProviderChips() {
       <OpenAiIcon className="plogo" />
       <CursorIcon className="plogo" />
       <PiIcon className="plogo" />
+      <OpencodeIcon className="plogo" />
     </>
   );
 }
@@ -1494,7 +1495,7 @@ function SpawnSidebar() {
       <div className="sb-head">
         <img src={bbIcon} alt="" className="sb-mark" />
         <span className="sb-title">Threads</span>
-        <span className="sb-active">4 active</span>
+        <span className="sb-active">5 active</span>
       </div>
       <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
         <SpawnRow
@@ -1530,6 +1531,14 @@ function SpawnSidebar() {
             status="running"
             at={1.4}
             doneAt={3.7}
+          />
+          <SpawnRow
+            icon={<OpencodeIcon className="sb-ic" />}
+            name="OpenCode"
+            task="Add integration tests"
+            status="running"
+            at={1.8}
+            doneAt={3.4}
           />
         </div>
       </div>
@@ -1604,9 +1613,9 @@ function LandingPage() {
         visual={<SpawnSidebar />}
       >
         <p>
-          Claude Code, Codex, Cursor, and Pi all live in bb. Give a task to
-          whichever fits, and have one agent spawn and manage another, each in
-          its own thread.
+          Claude Code, Codex, Cursor, Pi, and OpenCode all live in bb. Give a
+          task to whichever fits, and have one agent spawn and manage another,
+          each in its own thread.
         </p>
         <p>
           Each runs on your own subscription: the provider plan you already pay

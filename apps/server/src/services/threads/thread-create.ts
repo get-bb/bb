@@ -723,5 +723,18 @@ export async function createThreadFromRequest(
       provider: request.providerId,
     },
   });
+  if (
+    (request.startedOnBehalfOf?.initiator ?? "user") === "user" &&
+    request.input.length > 0
+  ) {
+    deps.telemetry.capture({
+      name: "user_message_sent",
+      properties: {
+        is_child_thread: parentThread !== null,
+        message_source: "thread_create",
+        provider: request.providerId,
+      },
+    });
+  }
   return thread;
 }

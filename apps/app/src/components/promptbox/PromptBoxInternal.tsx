@@ -1412,12 +1412,23 @@ export function PromptBoxInternal({
     editor.view.dispatch(editor.state.tr);
   }, [editor, editorEnterKeyHint, placeholder]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (shouldAvoidSoftKeyboardAutofocus) return;
     if (!editor) return;
 
-    focusEditorAtEnd(editor);
-    scheduleRevealEditorSelection();
+    const focusEditor = () => {
+      if (editor.isDestroyed) return;
+      focusEditorAtEnd(editor);
+      scheduleRevealEditorSelection();
+    };
+
+    if (typeof window.requestAnimationFrame !== "function") {
+      focusEditor();
+      return;
+    }
+
+    const handle = window.requestAnimationFrame(focusEditor);
+    return () => window.cancelAnimationFrame(handle);
   }, [
     editor,
     focusScopeKey,
@@ -2053,6 +2064,19 @@ export function PromptBoxInternal({
     resetZenModeAfterSubmit();
   }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
 
+  // A no-argument built-in command (currently only `/compact`) is a complete
+  // action the moment it is selected, so applying it with Enter should also
+  // submit instead of leaving the pill parked for a second Enter. The submit is
+  // deferred to this effect — keyed on the flag — so `onSubmit` runs after the
+  // applied command mention has propagated into the parent draft (applying the
+  // pill updates the draft on the next render, not synchronously).
+  const [pendingCommandSubmit, setPendingCommandSubmit] = useState(false);
+  useEffect(() => {
+    if (!pendingCommandSubmit) return;
+    setPendingCommandSubmit(false);
+    submitPrompt();
+  }, [pendingCommandSubmit, submitPrompt]);
+
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     onModifierSubmit();
@@ -2198,6 +2222,16 @@ export function PromptBoxInternal({
             activeSuggestions[selectedIndex] ?? activeSuggestions[0];
           if (selected) {
             applyTrigger(selected);
+            // Built-in commands (e.g. `/compact`) take no arguments, so picking
+            // one with Enter both inserts the pill and submits. Tab still only
+            // inserts, and mention suggestions are unaffected.
+            if (
+              event.key === "Enter" &&
+              selected.kind === "command" &&
+              selected.origin === "builtin"
+            ) {
+              setPendingCommandSubmit(true);
+            }
           }
           return true;
         }
@@ -2349,6 +2383,7 @@ export function PromptBoxInternal({
       onModifierSubmit,
       resetHistorySession,
       selectedIndex,
+      setPendingCommandSubmit,
       showTypeaheadMenu,
       submitModifierPrompt,
       submitPrompt,

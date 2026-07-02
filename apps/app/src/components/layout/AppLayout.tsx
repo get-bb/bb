@@ -22,8 +22,10 @@ import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
+  getLatestPendingInteraction,
   useThread,
   useThreadDetailBootstrap,
+  useThreadPendingInteractions,
 } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -56,7 +58,7 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
-import { getFaviconUnreadCount } from "./faviconUnreadCount";
+import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -522,12 +524,26 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = routeTitles[location.pathname]?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
-  const unreadCount = getFaviconUnreadCount({
+  // The sidebar list omits archived threads and side chats, so it can't answer
+  // whether the currently-viewed thread is blocked on input. Read the current
+  // thread's pending interactions directly (the thread view already warms this
+  // cache) so an in-view thread waiting on the user always lights the favicon,
+  // mirroring how the in-view unread signal covers every thread kind.
+  const currentThreadPendingInteractionsQuery = useThreadPendingInteractions(
+    threadId ?? "",
+    { enabled: isThreadView && Boolean(threadId) },
+  );
+  const currentThreadHasPendingInteraction =
+    getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==
+    null;
+  const faviconBadge = shouldShowFaviconAttentionDot({
+    currentThreadHasPendingInteraction,
     isThreadView,
     sidebarThreads,
     thread,
-  });
-  const faviconBadge = unreadCount > 0 ? "unread" : "none";
+  })
+    ? "unread"
+    : "none";
   useFaviconBadge(faviconBadge);
 
   const handleResizeMouseDown = useCallback(

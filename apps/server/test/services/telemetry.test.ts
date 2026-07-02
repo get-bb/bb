@@ -45,8 +45,16 @@ describe("telemetry service", () => {
         provider: "claude-code",
       },
     });
+    telemetry.capture({
+      name: "user_message_sent",
+      properties: {
+        is_child_thread: false,
+        message_source: "thread_send",
+        provider: "codex",
+      },
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     const persistedId = (
       await readFile(join(dataDir, "telemetry-id"), "utf8")
     ).trim();
@@ -77,6 +85,15 @@ describe("telemetry service", () => {
         app_version: "1.2.3",
         is_child_thread: true,
         provider: "claude-code",
+      },
+    });
+    expect(calls[2]?.payload).toMatchObject({
+      event: "user_message_sent",
+      properties: {
+        app_version: "1.2.3",
+        is_child_thread: false,
+        message_source: "thread_send",
+        provider: "codex",
       },
     });
   });

@@ -959,7 +959,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("does not expose agent send-to-main tools for side chat threads", async () => {
+  it("does not expose mutable dynamic tools for side chat threads", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-side-chat-runtime";
       seedHostSession(harness.deps, { id: hostId });
@@ -997,11 +997,10 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: "update_environment_directory",
-        }),
-      ]);
+      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.instructions).not.toContain(
+        "update_environment_directory",
+      );
       expect(runtimeConfig.instructions).not.toContain(
         "bb_send_to_main_thread",
       );

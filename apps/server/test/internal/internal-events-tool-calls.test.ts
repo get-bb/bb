@@ -986,6 +986,53 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("rejects update_environment_directory tool calls from side chats", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/current-side-chat-environment",
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        sourceThreadId: sourceThread.id,
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: sideChatThread.id,
+        tool: "update_environment_directory",
+        arguments: { path: "/tmp/other-side-chat-environment" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Cannot update the environment directory for a side chat.",
+          },
+        ],
+      });
+      expect(getThread(harness.db, sideChatThread.id)?.environmentId).toBe(
+        environment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
+    });
+  });
+
   it("rejects unsupported tool calls", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

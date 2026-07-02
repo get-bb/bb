@@ -23,4 +23,4 @@ export function downloadMacosHref(placement: CtaPlacement): string {
 
 export const SITE_TITLE = "bb: the IDE for loop-driven development";
 export const SITE_DESCRIPTION =
-  "Orchestrate your coding agents. Drive it yourself, or let your agents and automations drive it for you. Fully open source and local-first, with Claude Code, Codex, Cursor, and Pi.";
+  "Orchestrate your coding agents. Drive it yourself, or let your agents and automations drive it for you. Fully open source and local-first, with Claude Code, Codex, Cursor, Pi, and OpenCode.";

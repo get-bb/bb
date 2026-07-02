@@ -18,6 +18,7 @@ import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
+import { isSideChatThread } from "./side-chat-thread.js";
 
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
   "update_environment_directory";
@@ -107,6 +108,9 @@ function threadWritableFailure(thread: Thread): string | null {
   }
   if (thread.archivedAt !== null) {
     return "Cannot update the environment directory for an archived thread.";
+  }
+  if (isSideChatThread(thread)) {
+    return "Cannot update the environment directory for a side chat.";
   }
   return null;
 }
