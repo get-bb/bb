@@ -236,6 +236,16 @@ async function createQueuedMessageForThread(
     permissionMode: execution.permissionMode,
     serviceTier: execution.serviceTier,
   });
+  if (senderThreadId === null && payload.input.length > 0) {
+    deps.telemetry.capture({
+      name: "user_message_sent",
+      properties: {
+        is_child_thread: thread.parentThreadId !== null,
+        message_source: "queued_message",
+        provider: thread.providerId,
+      },
+    });
+  }
   if (
     thread.status === "idle" &&
     getLastProviderThreadId(deps, thread.id) !== null

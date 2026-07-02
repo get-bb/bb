@@ -5,8 +5,9 @@ import {
   listEvents,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID, turnRequestEventDataSchema } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
+import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import {
   canThreadSpawnChild,
@@ -43,9 +44,62 @@ function threadStartTurnRequest(
   return turnRequestEventDataSchema.parse(JSON.parse(turnRequest.data));
 }
 
+function installTelemetryCaptureSpy(harness: TestAppHarness) {
+  const capture = vi.fn<TelemetryService["capture"]>();
+  harness.deps.telemetry = { capture };
+  return capture;
+}
+
+describe("thread creation telemetry", () => {
+  it("captures initial user messages", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-create-telemetry",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-create-telemetry",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-create-telemetry",
+      });
+
+      await createThreadFromRequest(harness.deps, {
+        childOrigin: null,
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: {
+            type: "unmanaged",
+            path: "/tmp/thread-create-telemetry",
+          },
+        },
+        input: textInput("Start with telemetry"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+
+      expect(capture).toHaveBeenCalledWith({
+        name: "user_message_sent",
+        properties: {
+          is_child_thread: false,
+          message_source: "thread_create",
+          provider: "codex",
+        },
+      });
+    });
+  });
+});
+
 describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
   it("persists an agent fork start while cloning the source provider session", async () => {
     await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
       const { host } = seedHostSession(harness.deps, {
         id: "host-seed-without-run",
       });
@@ -117,6 +171,9 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(persistedFork?.sourceThreadId).toBe(sourceThread.id);
       expect(persistedFork?.parentThreadId).toBeNull();
       expect(persistedFork?.titleFallback).toBe("Continue from the fork point");
+      expect(capture).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: "user_message_sent" }),
+      );
     });
   });
 
@@ -631,6 +688,7 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "empty-side-chat-preload",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const capture = installTelemetryCaptureSpy(harness);
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-parent",
@@ -664,6 +722,9 @@ describe("thread creation child-thread boundary validation", () => {
         expect(queuedStart.command.fork).toEqual({
           sourceProviderThreadId: "provider-parent-session",
         });
+        expect(capture).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: "user_message_sent" }),
+        );
 
         await reportQueuedCommandSuccess(harness, queuedStart, {
           providerThreadId: "provider-side-chat-session",

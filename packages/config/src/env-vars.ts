@@ -185,7 +185,7 @@ export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
 
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   description:
-    "Anonymous usage telemetry (app starts and thread creation counts). Set to false to opt out.",
+    "Anonymous usage telemetry (app starts, thread creation counts, and user message counts). Set to false to opt out.",
   name: "BB_TELEMETRY",
   parse: parseBooleanEnvValue,
 });

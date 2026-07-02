@@ -69,8 +69,9 @@ is unavailable.
 | `landing_cli_command_copied` | Copy button on the install command | `placement`, `command` |
 | `landing_email_subscribed` | Email signup submitted successfully | `placement` |
 
-These pair with the app-side `app_started` / `thread_created` telemetry events
-(see `apps/server/src/services/system/telemetry.ts`) to form the ad → page view
-→ download/CLI copy → app start → first thread funnel. Web→app identity does
-not join across the download; funnel analysis is aggregate, broken down by
+These pair with the app-side `app_started` / `thread_created` /
+`user_message_sent` telemetry events (see
+`apps/server/src/services/system/telemetry.ts`) to form the ad → page view →
+download/CLI copy → app start → first thread/message funnel. Web→app identity
+does not join across the download; funnel analysis is aggregate, broken down by
 `utm_campaign`.

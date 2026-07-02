@@ -12,7 +12,8 @@ import {
   type Environment,
   type Thread,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
@@ -106,6 +107,12 @@ function seedColdIdleThreadFixture(
   return { environment, thread };
 }
 
+function installTelemetryCaptureSpy(harness: TestAppHarness) {
+  const capture = vi.fn<TelemetryService["capture"]>();
+  harness.deps.telemetry = { capture };
+  return capture;
+}
+
 describe("queued message dispatch gate", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
@@ -183,6 +190,72 @@ describe("queued message dispatch gate", () => {
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
       expect(getQueuedThreadMessage(harness.db, queued.id)).not.toBeNull();
+    });
+  });
+});
+
+describe("user message telemetry", () => {
+  it("captures direct user sends", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { environment, thread } = seedColdIdleThreadFixture({
+        harness,
+        value: 5,
+      });
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("telemetry user send"),
+          mode: "start",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread,
+        trigger: "user",
+      });
+
+      expect(capture).toHaveBeenCalledWith({
+        name: "user_message_sent",
+        properties: {
+          is_child_thread: false,
+          message_source: "thread_send",
+          provider: "codex",
+        },
+      });
+    });
+  });
+
+  it("does not capture agent-originated sends", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { environment, thread } = seedColdIdleThreadFixture({
+        harness,
+        value: 6,
+      });
+      const senderThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: thread.projectId,
+      });
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("telemetry agent send"),
+          mode: "start",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          senderThreadId: senderThread.id,
+          serviceTier: "default",
+        },
+        thread,
+        trigger: "user",
+      });
+
+      expect(capture).not.toHaveBeenCalled();
     });
   });
 });
