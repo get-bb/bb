@@ -9,7 +9,7 @@ interface RootComposeEmptyWelcomeProps {
 }
 
 const IMPORT_PROJECTS_PROMPT =
-  "Search my home directory (max depth 3) for git repositories that I have recently contributed to and import them into bb using the cli";
+  "Search my home directory (max depth 3) for git repositories touched in the last 30 days and import only those projects into bb using the cli";
 
 const LEARN_PROMPT =
   "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads, projects, and automations.";
@@ -161,7 +161,7 @@ export function RootComposeEmptyWelcome({
         <WelcomeAction
           icon="FolderGit"
           title="Automatically import my projects"
-          description="Find your recent git repos and add them"
+          description="Find repos touched in the last 30 days"
           onClick={() => onCompose(IMPORT_PROJECTS_PROMPT)}
         />
         <WelcomeAction
