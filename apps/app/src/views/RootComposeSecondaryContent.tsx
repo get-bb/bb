@@ -21,9 +21,11 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -32,6 +34,17 @@ import { cn } from "@/lib/utils";
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
+
+// Where root compose pins its right-panel toggle in the viewport corner (see
+// rootPanelToggle in RootComposeView, which shares this constant). The window
+// drag strip below must carve this same footprint back out of the macOS drag
+// region while the panel is closed: Electron resolves app-regions in DOM order
+// (later wins), and the strip renders after the fixed toggle, so a no-drag on
+// the toggle itself would just be re-added by the strip's own drag rect. The
+// carve has to live inside the strip, and this constant keeps the two footprints
+// from drifting apart.
+export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
+  "right-4 top-2.5";
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
@@ -242,7 +255,26 @@ export function RootComposeSecondaryContent({
                     CHROME_ROW_HEIGHT_CLASS,
                     MACOS_WINDOW_DRAG_CLASS,
                   )}
-                />
+                >
+                  {/* While the panel is closed the main panel spans the full
+                      width and the pinned right-panel toggle overlays this
+                      strip, so carve its footprint out of the drag region — as
+                      a child of the strip it resolves after the strip's own
+                      drag rect and wins. Open, the toggle sits over the panel
+                      chrome instead (whose reserved slot does the carving), so
+                      the strip stays fully draggable. */}
+                  {!isSecondaryPanelOpen ? (
+                    <div
+                      data-testid="root-compose-drag-strip-toggle-cutout"
+                      className={cn(
+                        "absolute",
+                        ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+                        COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+                        MACOS_APP_REGION_NO_DRAG_CLASS,
+                      )}
+                    />
+                  ) : null}
+                </div>
               ) : null}
               <div className="@container/page min-h-0 flex-1 overflow-y-auto">
                 <div
