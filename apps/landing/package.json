@@ -10,6 +10,7 @@
     "clean": "rimraf dist",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

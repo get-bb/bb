@@ -1,6 +1,8 @@
 import {
+  DOWNLOAD_MACOS_FALLBACK_URL,
+  DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL,
   DOWNLOAD_MACOS_REDIRECT_PATH,
-  DOWNLOAD_MACOS_URL,
+  DOWNLOAD_MACOS_VERSION_FEED_URL,
   SUBSCRIBE_PATH,
 } from "./site";
 import type { CtaPlacement } from "./site";
@@ -12,6 +14,7 @@ const TRACKING_SOURCE = "landing_worker_redirect";
 const MAX_URL_PROPERTY_LENGTH = 2048;
 const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
 const MAX_EMAIL_LENGTH = 254;
+const MACOS_INSTALLER_EXTENSION = ".dmg";
 // Permissive single-line email shape; Resend does the authoritative validation.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -180,14 +183,68 @@ function isDownloadMacosRequest(requestUrl: URL): boolean {
   );
 }
 
-function redirectToMacosDownload(): Response {
+async function redirectToMacosDownload(): Promise<Response> {
+  const location = await resolveMacosDownloadUrl();
+  return redirectResponse(location);
+}
+
+function redirectResponse(location: string): Response {
   return new Response(null, {
     headers: {
       "Cache-Control": "no-store",
-      Location: DOWNLOAD_MACOS_URL,
+      Location: location,
     },
     status: 302,
   });
+}
+
+async function resolveMacosDownloadUrl(): Promise<string> {
+  try {
+    const response = await fetch(DOWNLOAD_MACOS_VERSION_FEED_URL, {
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) {
+      return DOWNLOAD_MACOS_FALLBACK_URL;
+    }
+
+    const assetName = findMacosInstallerAssetName(await response.json());
+    if (!assetName) {
+      return DOWNLOAD_MACOS_FALLBACK_URL;
+    }
+
+    return `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/${encodeURIComponent(assetName)}`;
+  } catch {
+    return DOWNLOAD_MACOS_FALLBACK_URL;
+  }
+}
+
+function findMacosInstallerAssetName(feed: unknown): string | null {
+  if (!isRecord(feed) || !Array.isArray(feed.files)) {
+    return null;
+  }
+
+  for (const file of feed.files) {
+    if (!isRecord(file) || typeof file.url !== "string") {
+      continue;
+    }
+    if (isMacosInstallerAssetName(file.url)) {
+      return file.url;
+    }
+  }
+  return null;
+}
+
+function isMacosInstallerAssetName(value: string): boolean {
+  return (
+    value.length > MACOS_INSTALLER_EXTENSION.length &&
+    value.endsWith(MACOS_INSTALLER_EXTENSION) &&
+    !value.includes("/") &&
+    !value.includes("\\")
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 async function trackDownloadClick(

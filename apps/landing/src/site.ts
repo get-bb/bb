@@ -1,6 +1,9 @@
 export const GITHUB_URL = "https://github.com/ymichael/bb";
-export const DOWNLOAD_MACOS_URL =
+export const DOWNLOAD_MACOS_FALLBACK_URL =
   "https://github.com/ymichael/bb/releases/tag/desktop-latest";
+export const DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL =
+  "https://github.com/ymichael/bb/releases/download/desktop-latest";
+export const DOWNLOAD_MACOS_VERSION_FEED_URL = `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/desktop-version.json`;
 export const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
 /** First-party endpoint that adds an email to the bb marketing audience.
  *  Handled by the Worker (see worker.ts), not a prerendered asset. */

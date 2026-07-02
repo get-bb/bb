@@ -86,6 +86,8 @@ function GitHubLink({ placement, className, children }: CtaLinkProps) {
     <a
       className={className}
       href={GITHUB_URL}
+      target="_blank"
+      rel="noreferrer"
       onClick={() =>
         trackLandingEvent({
           name: "landing_github_clicked",

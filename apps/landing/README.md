@@ -56,8 +56,10 @@ overrides the ingestion host (default `https://us.i.posthog.com`).
 
 Download CTAs point at the first-party `/download/macos` Worker redirect. The
 Worker sends the download click event server-side with the runtime
-`LANDING_POSTHOG_KEY` secret, then returns a non-cacheable 302 to the GitHub
-release URL. This keeps download click counting working when client-side
+`LANDING_POSTHOG_KEY` secret, resolves the current `.dmg` asset from the
+`desktop-version.json` release feed, then returns a non-cacheable 302 to that
+installer. If the feed cannot be resolved, the Worker falls back to the GitHub
+release page. This keeps download click counting working when client-side
 analytics is blocked, while the download still succeeds if server-side tracking
 is unavailable.
 
