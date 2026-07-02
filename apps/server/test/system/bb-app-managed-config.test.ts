@@ -61,6 +61,7 @@ function createCountingLogger(): CountingLogger {
 function createRuntimeConfig(): ServerRuntimeConfig {
   return {
     appUrl: "https://ambient-app.example.test",
+    appSurface: "web",
     appVersion: "0.0.0-test",
     automationsAllowScriptRuns: true,
     builtinSkillsRootPath: "/tmp/bb-test/builtin-skills",

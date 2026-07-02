@@ -17,6 +17,10 @@ import {
   type WebContents,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import {
+  APP_SURFACE_DESKTOP,
+  APP_SURFACE_ENV_NAME,
+} from "@bb/config/app-surface";
 import { type Experiments } from "@bb/domain";
 import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
@@ -1263,7 +1267,10 @@ async function startOwnedRuntime(
   const bbProcess = startBbAppProcess({
     bridgePath: args.bridgePath,
     cwd: homedir(),
-    env: process.env,
+    env: {
+      ...process.env,
+      [APP_SURFACE_ENV_NAME]: APP_SURFACE_DESKTOP,
+    },
     logLineLimit: PROCESS_LOG_LINE_LIMIT,
     runtime: resolveBbAppProcessRuntime({
       env: process.env,

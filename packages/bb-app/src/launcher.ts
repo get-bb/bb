@@ -16,6 +16,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
+  APP_SURFACE_ENV_NAME,
+  APP_SURFACE_WEB,
+} from "@bb/config/app-surface";
+import {
   BB_APP_MANAGED_CONFIG_KEYS,
   bbAppManagedEnvFileSchema,
   formatBbAppConfigPath,
@@ -2112,6 +2116,7 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   return {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
+    [APP_SURFACE_ENV_NAME]: APP_SURFACE_WEB,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
     BB_SERVER_PORT: String(args.context.serverPort),

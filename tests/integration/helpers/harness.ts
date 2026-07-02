@@ -224,6 +224,7 @@ async function startIntegrationServer(
     openTimeoutMs: 50,
   });
   const config: ServerRuntimeConfig = {
+    appSurface: "web",
     appVersion: "0.0.0-dev",
     automationsAllowScriptRuns: true,
     builtinSkillsRootPath,

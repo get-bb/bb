@@ -1,4 +1,5 @@
 import type { FeatureFlags } from "@bb/domain";
+import type { AppSurface } from "./app-surface.js";
 import {
   loadCommonConfig,
   type CommonConfig,
@@ -9,6 +10,7 @@ import { loadDevAppConfig } from "./dev-app.js";
 import { readEnvVarWithDefault, resolveEnvLoader } from "./env.js";
 import {
   BB_APP_URL_ENV,
+  BB_APP_SURFACE_ENV,
   BB_APP_VERSION_ENV,
   BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS_ENV,
   BB_EXTERNAL_URL_ENV,
@@ -18,6 +20,7 @@ import {
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
+  DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS,
   DEFAULT_BB_EXTERNAL_URL,
@@ -36,6 +39,7 @@ import { loadServerPortConfig, type ServerPortConfig } from "./server-port.js";
 export interface ServerConfig
   extends CommonConfig, DatabaseConfig, ServerPortConfig {
   BB_APP_URL: string;
+  BB_APP_SURFACE: AppSurface;
   BB_APP_VERSION: string;
   BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS: boolean;
   BB_DEV_APP_PORT?: number;
@@ -88,6 +92,12 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_APP_URL,
       definition: BB_APP_URL_ENV,
+      env: loader.env,
+    }),
+    BB_APP_SURFACE: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_APP_SURFACE,
+      definition: BB_APP_SURFACE_ENV,
       env: loader.env,
     }),
     BB_APP_VERSION: readEnvVarWithDefault({

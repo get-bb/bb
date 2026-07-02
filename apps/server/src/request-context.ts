@@ -1,4 +1,9 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
+import {
+  APP_SURFACE_HEADER_NAME,
+  parseAppSurface,
+  type AppSurface,
+} from "@bb/config/app-surface";
 import type { Context } from "hono";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
@@ -28,4 +33,11 @@ export function getTrustedRemoteAddress(
   context: TrustedRemoteAddressReader,
 ): string | undefined {
   return context.get(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY);
+}
+
+export function resolveRequestAppSurface(
+  context: Context,
+  fallback: AppSurface,
+): AppSurface {
+  return parseAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ?? fallback;
 }

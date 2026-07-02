@@ -2,6 +2,7 @@ import type {
   CustomAcpAgent,
   CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -19,6 +20,7 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
+  appSurface: AppSurface;
   /**
    * Operator gate for script-mode automations (which execute arbitrary host
    * commands). DEFAULT ENABLED so the feature works out of the box; set

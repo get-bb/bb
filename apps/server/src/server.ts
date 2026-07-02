@@ -33,7 +33,11 @@ import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
 } from "./internal/auth.js";
-import { captureTrustedRemoteAddress } from "./request-context.js";
+import {
+  captureTrustedRemoteAddress,
+  resolveRequestAppSurface,
+} from "./request-context.js";
+import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
   onClientSocketMessage,
@@ -290,7 +294,8 @@ export function createApp(
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    await next();
+    const appSurface = resolveRequestAppSurface(context, deps.config.appSurface);
+    return runWithTelemetryAppSurface(appSurface, next);
   });
   app.use(
     "*",

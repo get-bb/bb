@@ -1,4 +1,5 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { appSurfaceRequestInit } from "@/lib/app-surface";
 
 /**
  * UI-source status, mirrored from the server's UiSourceState. Not in the typed
@@ -22,7 +23,10 @@ export function uiSourceStatusQueryKey(): QueryKey {
 }
 
 async function fetchUiSourceStatus(): Promise<UiSourceStatus | null> {
-  const response = await fetch("/api/v1/ui/status");
+  const response = await fetch(
+    "/api/v1/ui/status",
+    appSurfaceRequestInit(),
+  );
   // 404 = feature not enabled on this server (no build toolchain). Treat as
   // "nothing to surface" rather than an error.
   if (!response.ok) {

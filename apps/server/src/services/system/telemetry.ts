@@ -1,4 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerLogger } from "../../types.js";
 
 /**
@@ -22,6 +24,8 @@ import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
 const TELEMETRY_ID_FILE_NAME = "telemetry-id";
+
+const telemetryAppSurfaceStorage = new AsyncLocalStorage<AppSurface>();
 
 export type TelemetryEvent =
   | { name: "app_started" }
@@ -47,6 +51,7 @@ export interface TelemetryService {
 
 export interface CreateTelemetryServiceArgs {
   apiKey: string;
+  appSurface: AppSurface;
   appVersion: string;
   dataDir: string;
   enabled: boolean;
@@ -60,6 +65,13 @@ const noopTelemetryService: TelemetryService = {
 /** No-op service for tests and other places that need the dependency shape. */
 export function createNoopTelemetryService(): TelemetryService {
   return noopTelemetryService;
+}
+
+export function runWithTelemetryAppSurface<T>(
+  appSurface: AppSurface,
+  callback: () => T,
+): T {
+  return telemetryAppSurfaceStorage.run(appSurface, callback);
 }
 
 export async function createTelemetryService(
@@ -81,13 +93,16 @@ export async function createTelemetryService(
   };
   return {
     capture(event: TelemetryEvent): void {
+      const appSurface = telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
+      const eventProperties = "properties" in event ? event.properties : {};
       const body = JSON.stringify({
         api_key: args.apiKey,
         distinct_id: distinctId,
         event: event.name,
         properties: {
           ...commonProperties,
-          ...("properties" in event ? event.properties : {}),
+          ...eventProperties,
+          app_surface: appSurface,
         },
         timestamp: new Date().toISOString(),
       });
@@ -96,7 +111,14 @@ export async function createTelemetryService(
         headers: { "content-type": "application/json" },
         method: "POST",
       }).catch((error: unknown) => {
-        args.logger.debug({ err: error }, "Telemetry event send failed");
+        args.logger.debug(
+          {
+            app_surface: appSurface,
+            err: error,
+            event: event.name,
+          },
+          "Telemetry event send failed",
+        );
       });
     },
   };

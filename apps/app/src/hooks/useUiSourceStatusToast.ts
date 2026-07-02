@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { appToast } from "@/components/ui/app-toast";
+import { appSurfaceRequestInit } from "@/lib/app-surface";
 import { useUiSourceStatus } from "./queries/ui-source-queries";
 
 const ERROR_TOAST_ID = "bb-ui-source-error";
@@ -36,9 +37,10 @@ export function useUiSourceStatusToast(): void {
         action: {
           label: "Switch to shipped",
           onClick: () => {
-            void fetch("/api/v1/ui/prod", { method: "POST" }).catch(
-              () => undefined,
-            );
+            void fetch(
+              "/api/v1/ui/prod",
+              appSurfaceRequestInit({ method: "POST" }),
+            ).catch(() => undefined);
             appToast.dismiss(ERROR_TOAST_ID);
           },
         },

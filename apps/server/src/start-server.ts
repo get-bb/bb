@@ -165,6 +165,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       ensureClonedUiSource({ repoUrl, ref, into: cloneDir });
   }
   const runtimeConfig: ServerRuntimeConfig = {
+    appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     automationsAllowScriptRuns: serverConfig.BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
@@ -198,6 +199,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   // desktop app both set NODE_ENV=production); dev/source runs never send.
   const telemetry = await createTelemetryService({
     apiKey: serverConfig.BB_POSTHOG_API_KEY,
+    appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     dataDir: serverConfig.BB_DATA_DIR,
     enabled: serverConfig.BB_TELEMETRY && isProduction,

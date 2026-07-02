@@ -98,6 +98,7 @@ import {
   type ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
+import { appSurfaceRequestInit } from "./app-surface";
 import {
   buildFilePreview,
   normalizeFilePreviewMimeType,
@@ -350,10 +351,13 @@ export async function loadFilePreview(
   signal?: AbortSignal,
 ): Promise<FilePreview> {
   const response = await requestResponse(
-    fetch(target.url, {
-      method: "GET",
-      signal,
-    }),
+    fetch(
+      target.url,
+      appSurfaceRequestInit({
+        method: "GET",
+        signal,
+      }),
+    ),
   );
   const contentBytes = new Uint8Array(await response.arrayBuffer());
   return buildFilePreview({
@@ -502,11 +506,14 @@ async function postMultipart<T>(
   }
   formData.set("file", file, file.name);
 
-  const res = await fetch(toRelativeUrl(url), {
-    method: "POST",
-    body: formData,
-    signal,
-  });
+  const res = await fetch(
+    toRelativeUrl(url),
+    appSurfaceRequestInit({
+      method: "POST",
+      body: formData,
+      signal,
+    }),
+  );
   if (!res.ok) {
     await throwHttpError(res);
   }

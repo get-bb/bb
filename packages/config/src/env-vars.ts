@@ -3,6 +3,13 @@ import { defaultFeatureFlags, hostTypeSchema, type HostType } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
+  APP_SURFACE_ENV_NAME,
+  DEFAULT_APP_SURFACE,
+  formatAppSurfaceValues,
+  parseAppSurface,
+  type AppSurface,
+} from "./app-surface.js";
+import {
   validateInferenceModel,
   validateTranscriptionModel,
 } from "./inference-model.js";
@@ -30,6 +37,16 @@ export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   }
 
   throw new Error(`${args.name} must be a boolean`);
+}
+
+export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
+  const parsed = parseAppSurface(args.value);
+  if (parsed !== undefined) {
+    return parsed;
+  }
+  throw new Error(
+    `${args.name} must be one of ${formatAppSurfaceValues()}`,
+  );
 }
 
 export function parseOptionalPortEnvValue(
@@ -141,6 +158,13 @@ export const BB_APP_VERSION_ENV = defineEnvVar<string>({
     "Version of the running bb-app package. The bb-app launcher sets this from packages/bb-app/package.json; defaults to a sentinel for dev/source runs.",
   name: "BB_APP_VERSION",
   parse: parseNonEmptyStringEnvValue,
+});
+
+export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({
+  description:
+    "Internal launcher marker for telemetry attribution. Set by bb-app and desktop launchers.",
+  name: APP_SURFACE_ENV_NAME,
+  parse: parseAppSurfaceEnvValue,
 });
 
 export const BB_APP_URL_ENV = defineEnvVar<string>({
@@ -266,6 +290,7 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
 });
 
 export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
+export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
