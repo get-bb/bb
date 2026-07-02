@@ -58,6 +58,8 @@ message agents, or inspect projects, providers, and environments.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
+- When spawning a subagent, pass `--permission-mode full` unless the user or
+  task explicitly requests restricted access.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.

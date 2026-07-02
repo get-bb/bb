@@ -27,6 +27,7 @@ Spawning:
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
+  When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
 
 Listing:
