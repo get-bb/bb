@@ -21,16 +21,9 @@ export function appSurfaceRequestInit(init?: RequestInit): RequestInit {
   };
 }
 
-function appSurfaceFetch(
+export function fetchWithAppSurface(
   input: Parameters<typeof fetch>[0],
   init?: RequestInit,
 ): ReturnType<typeof fetch> {
   return fetch(input, appSurfaceRequestInit(init));
 }
-
-export const fetchWithAppSurface: typeof fetch = Object.assign(
-  appSurfaceFetch,
-  {
-    preconnect: fetch.preconnect,
-  },
-);
