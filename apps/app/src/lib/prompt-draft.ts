@@ -8,6 +8,10 @@ import {
   type UploadedPromptAttachment,
 } from "@bb/server-contract";
 import { z } from "zod";
+import {
+  isLoopPromptCommandResource,
+  SUBMITTED_LOOP_PROMPT_PREFIX,
+} from "./loop-prompt";
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
@@ -195,6 +199,69 @@ function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
+interface ExpandedPromptText {
+  text: string;
+  mentions: PromptTextMention[];
+}
+
+function expandLoopPromptCommandMentions(
+  text: string,
+  mentions: readonly PromptTextMention[],
+): ExpandedPromptText {
+  const loopMentions = mentions
+    .filter((mention) => isLoopPromptCommandResource(mention.resource))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+
+  if (loopMentions.length === 0) {
+    return { text, mentions: [...mentions] };
+  }
+
+  const replacements: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+  let nextText = "";
+  for (const mention of loopMentions) {
+    if (mention.start < cursor) {
+      continue;
+    }
+    replacements.push({ start: mention.start, end: mention.end });
+    nextText += text.slice(cursor, mention.start);
+    nextText += SUBMITTED_LOOP_PROMPT_PREFIX;
+    cursor = mention.end;
+  }
+  nextText += text.slice(cursor);
+
+  const nextMentions = mentions.flatMap((mention) => {
+    if (isLoopPromptCommandResource(mention.resource)) {
+      return [];
+    }
+
+    let offset = 0;
+    for (const replacement of replacements) {
+      if (mention.start < replacement.end && mention.end > replacement.start) {
+        return [];
+      }
+      if (replacement.end <= mention.start) {
+        offset +=
+          SUBMITTED_LOOP_PROMPT_PREFIX.length -
+          (replacement.end - replacement.start);
+      }
+    }
+
+    return [
+      {
+        ...mention,
+        start: mention.start + offset,
+        end: mention.end + offset,
+      },
+    ];
+  });
+
+  return {
+    text: nextText,
+    mentions: normalizePromptTextMentions(nextMentions, nextText.length),
+  };
+}
+
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
 
@@ -218,10 +285,11 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       }),
       text.length,
     );
+    const expandedText = expandLoopPromptCommandMentions(text, mentions);
     input.push({
       type: "text",
-      text,
-      mentions,
+      text: expandedText.text,
+      mentions: expandedText.mentions,
     });
   }
 

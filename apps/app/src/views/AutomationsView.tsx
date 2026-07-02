@@ -21,7 +21,7 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
-import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { CREATE_LOOP_PROMPT } from "@/lib/loop-prompt";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomations,
