@@ -44,11 +44,11 @@ function toOpenRequest(
 }
 
 /**
- * Open files requested via `bb thread open` in the secondary panel. The intent
- * is broadcast to every client and buffered in {@link wsManager}; this hook
- * drains the buffer for the active thread when it becomes viewable (so a file
- * requested while a different thread was open opens on navigation) and reacts to
- * live signals while the thread is already in view.
+ * Open files requested via `bb thread open` in the secondary panel.
+ * The intent is broadcast to every client and buffered in {@link wsManager}; this
+ * hook drains the buffer for the active thread when it becomes viewable (so a
+ * file requested while a different thread was open opens on navigation) and
+ * reacts to live signals while the thread is already in view.
  */
 export function useThreadOpenFileSignal({
   threadId,

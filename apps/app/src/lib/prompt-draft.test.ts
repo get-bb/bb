@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
+  appendQuoteAndAttachmentsToDraft,
   appendQuoteToDraftText,
   emptyPromptDraftState,
   isPromptDraftEmpty,
@@ -100,6 +101,29 @@ describe("prompt draft helpers", () => {
         name: "spec.md",
         sizeBytes: 42,
         mimeType: "text/markdown",
+      },
+    ]);
+  });
+
+  it("omits zero-size localFile size when mapping draft attachments to prompt input", () => {
+    const input = promptDraftToInput({
+      text: "",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ],
+    });
+
+    expect(input).toEqual([
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
       },
     ]);
   });
@@ -224,5 +248,75 @@ describe("appendQuoteToDraftText", () => {
 
     expect(next.mentions).toEqual([mention]);
     expect(next.text.startsWith(text)).toBe(true);
+  });
+});
+
+describe("appendQuoteAndAttachmentsToDraft", () => {
+  it("appends a quote and merges new attachments", () => {
+    const next = appendQuoteAndAttachmentsToDraft(
+      emptyPromptDraftState(),
+      "review this",
+      [
+        {
+          type: "localImage",
+          path: "uploads/screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 0,
+        },
+      ],
+    );
+
+    expect(next).toEqual({
+      text: "> review this\n",
+      mentions: [],
+      attachments: [
+        {
+          type: "localImage",
+          path: "uploads/screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 0,
+        },
+      ],
+    });
+  });
+
+  it("adds attachments even when there is no quote text", () => {
+    const next = appendQuoteAndAttachmentsToDraft(emptyPromptDraftState(), "", [
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 0,
+      },
+    ]);
+
+    expect(next).toEqual({
+      text: "",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ],
+    });
+  });
+
+  it("dedupes attachments by path", () => {
+    const attachment = {
+      type: "localFile" as const,
+      path: "uploads/spec.md",
+      name: "spec.md",
+      sizeBytes: 0,
+    };
+    const base = {
+      text: "",
+      mentions: [],
+      attachments: [attachment],
+    };
+
+    expect(appendQuoteAndAttachmentsToDraft(base, "", [attachment])).toBe(base);
   });
 });

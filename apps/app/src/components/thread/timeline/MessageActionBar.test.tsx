@@ -58,6 +58,50 @@ describe("MessageActionBar", () => {
     expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
   });
 
+  it("passes add-to-chat attachments with the message text", () => {
+    const onAddToChat = vi.fn();
+    const attachment = {
+      type: "localFile" as const,
+      path: "uploads/spec.md",
+      name: "spec.md",
+      sizeBytes: 0,
+    };
+    render(
+      <MessageActionBar
+        messageText="Quote this message."
+        alignment="end"
+        addToChatAttachments={[attachment]}
+        onAddToChat={onAddToChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onAddToChat).toHaveBeenCalledWith("Quote this message.", [
+      attachment,
+    ]);
+  });
+
+  it("renders add-to-chat for attachment-only messages", () => {
+    const onAddToChat = vi.fn();
+    const attachment = {
+      type: "localImage" as const,
+      path: "uploads/screenshot.png",
+      name: "screenshot.png",
+      sizeBytes: 0,
+    };
+    render(
+      <MessageActionBar
+        messageText=""
+        alignment="end"
+        addToChatAttachments={[attachment]}
+        onAddToChat={onAddToChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onAddToChat).toHaveBeenCalledWith("", [attachment]);
+  });
+
   it("omits the send-to-main action when no handler is supplied", () => {
     render(
       <MessageActionBar messageText="An answer." alignment="start" />,

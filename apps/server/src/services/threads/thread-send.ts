@@ -298,6 +298,20 @@ function groupedInputForRuntime(
   );
 }
 
+function captureUserMessageSentTelemetry(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "telemetry">,
+  thread: Thread,
+): void {
+  deps.telemetry.capture({
+    name: "user_message_sent",
+    properties: {
+      is_child_thread: thread.parentThreadId !== null,
+      message_source: "thread_send",
+      provider: thread.providerId,
+    },
+  });
+}
+
 function appendAndQueueSendThreadMessageInTransaction({
   beforeAppendInTransaction,
   db,
@@ -404,6 +418,8 @@ export async function sendThreadMessage(
   // Agent-originated CLI sends still appear as normal turn requests in the
   // timeline, while initiator lets policy distinguish the source.
   const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
+  const shouldCaptureUserMessageSent =
+    args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
@@ -434,6 +450,9 @@ export async function sendThreadMessage(
       thread,
     })
   ) {
+    if (shouldCaptureUserMessageSent) {
+      captureUserMessageSentTelemetry(deps, thread);
+    }
     return;
   }
   const readyEnvironment = requireReadyThreadEnvironment(
@@ -538,6 +557,9 @@ export async function sendThreadMessage(
         projectId: thread.projectId,
       });
     }
+    if (shouldCaptureUserMessageSent) {
+      captureUserMessageSentTelemetry(deps, thread);
+    }
     return;
   }
 
@@ -598,4 +620,7 @@ export async function sendThreadMessage(
       );
     },
   });
+  if (shouldCaptureUserMessageSent) {
+    captureUserMessageSentTelemetry(deps, thread);
+  }
 }

@@ -323,10 +323,32 @@ export function buildProjectThreadGroups(
   compareThreads: ThreadComparator = compareStandardThreads,
   folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
-  const rootItems = buildThreadTreeItems(
+  // Project sections group worktree siblings into synthetic environment rows.
+  return assembleThreadItems(
     allProjectThreads,
     compareThreads,
     true,
+    folderOptions,
+  );
+}
+
+// Build the parent/child thread tree, then apply the section's folder grouping
+// or manual order. `groupEnvironmentThreads` toggles worktree-sibling grouping:
+// on for project sections, off for the chronological "All Threads" bucket so
+// Group by None never adds synthetic environment group rows. Folders and manual
+// order run on the root items, so descendants stay nested under their parent and
+// follow it into its folder. Both entry points share this one assembler so the
+// chronological and project paths cannot silently drift apart.
+function assembleThreadItems(
+  allThreads: readonly ThreadListEntry[],
+  compareThreads: ThreadComparator,
+  groupEnvironmentThreads: boolean,
+  folderOptions?: SidebarFolderOptions,
+): ProjectThreadItem[] {
+  const rootItems = buildThreadTreeItems(
+    allThreads,
+    compareThreads,
+    groupEnvironmentThreads,
   );
   // Group by: None — return today's output untouched unless an internal test
   // path explicitly supplied a manual order for this section.
@@ -414,45 +436,17 @@ function buildThreadTreeItems(
   return buildSortedItems(rootNodes, compareThreads, groupEnvironmentThreads);
 }
 
-// Chronological "All Threads" bucket: parent/child links still form a tree,
-// but worktree grouping stays off so Group by None does not add synthetic group
-// rows. Side chats are excluded to match buildProjectThreadGroups.
+// Chronological "All Threads" bucket: root threads are globally ordered by the
+// chosen comparator, descendants stay nested under their parent, and folder
+// grouping/manual order run on the roots. Worktree grouping stays off so Group
+// by None does not add synthetic environment group rows. Side chats are excluded
+// to match buildProjectThreadGroups.
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
-  // Folder grouping (and the test-only manual-order path) need a flat,
-  // globally-sorted list; everything else keeps main's parent/child tree.
-  if (folderOptions?.groupBy === "folder" || folderOptions?.manualOrder) {
-    const items = allThreads
-      .filter(isSidebarProjectThread)
-      .sort(compareThreads)
-      .map(
-        (thread): ProjectThreadItem => ({
-          kind: "thread",
-          node: {
-            thread,
-            children: [],
-            depth: 0,
-            stats: buildStatsForHiddenThreads([]),
-          },
-        }),
-      );
-    if (folderOptions.groupBy === "folder") {
-      return bucketIntoFolders(
-        items,
-        folderOptions.containerId,
-        compareThreads,
-        folderOptions.manualOrder,
-        folderOptions.folders,
-      );
-    }
-    return orderSiblingItems(items, folderOptions.containerId, compareThreads, {
-      manualOrder: folderOptions.manualOrder,
-    });
-  }
-  return buildThreadTreeItems(allThreads, compareThreads, false);
+  return assembleThreadItems(allThreads, compareThreads, false, folderOptions);
 }
 
 export function isSidebarProjectThread(

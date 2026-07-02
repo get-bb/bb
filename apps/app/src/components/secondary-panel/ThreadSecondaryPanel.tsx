@@ -57,6 +57,7 @@ import {
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
@@ -84,6 +85,24 @@ const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUT
 // Stable empty TOC reference so the collapse-controls hook's derived atom and
 // the stats memo are not rebuilt every render while the diff is loading/absent.
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
+
+// The reserved slot occupies the exact footprint of root compose's pinned
+// right-panel toggle (which is painted on top of this slot). On macOS desktop
+// the top chrome is a window-drag region ([app-region:drag]); Electron resolves
+// draggable regions in DOM order (a later region wins), so a plain slot would
+// leave the toggle's pixels inside that drag region and Electron would swallow
+// the click as a window drag; the panel could be opened but never closed. As a
+// descendant of the drag row this slot is resolved *after* it, so marking it
+// no-drag carves the toggle's footprint back out; the OS then routes the click
+// to the web contents, where the pinned toggle receives it.
+export function getReservedInlinePanelToggleClassName(
+  usesDesktopChrome: boolean,
+): string {
+  return cn(
+    SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+    usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
+  );
+}
 
 interface ResolveActiveFixedPanelArgs {
   activeTab: SecondaryFixedPanelTab | null;
@@ -511,9 +530,14 @@ export function ThreadSecondaryPanel({
               // A toggle pinned outside the panel owns show/hide on this surface
               // (root compose's fixed overlay); reserve this slot's footprint so
               // the tab strip stays clear and the pinned toggle lands over it.
+              // Under macOS desktop chrome the slot must carve itself out of the
+              // window-drag chrome row so the pinned toggle stays clickable; see
+              // getReservedInlinePanelToggleClassName.
               <div
                 aria-hidden
-                className={SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS}
+                className={getReservedInlinePanelToggleClassName(
+                  usesDesktopChrome,
+                )}
               />
             ) : null}
           </div>

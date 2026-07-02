@@ -1,11 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { Host, ThreadWithRuntime } from "@bb/domain";
+import type { Host } from "@bb/domain";
 import type {
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
-import { getCachedThreadListPlaceholder } from "./query-cache";
 import {
   environmentQueryKey,
   hostQueryKey,
@@ -20,11 +19,6 @@ type HostListQueryData = HostList | undefined;
 interface UpsertHostListArgs {
   host: Host;
   hosts: HostListQueryData;
-}
-
-interface CachedThreadProjectIdArgs {
-  queryClient: QueryClient;
-  threadId: string;
 }
 
 export interface ThreadDetailBootstrapIngestionArgs {
@@ -92,18 +86,4 @@ export function ingestThreadDetailBootstrap({
         }),
     });
   }
-
-}
-
-export function getCachedThreadProjectId({
-  queryClient,
-  threadId,
-}: CachedThreadProjectIdArgs): string | undefined {
-  const thread = queryClient.getQueryData<ThreadWithRuntime>(
-    threadQueryKey(threadId),
-  );
-  return (
-    thread?.projectId ??
-    getCachedThreadListPlaceholder(queryClient, threadId)?.projectId
-  );
 }

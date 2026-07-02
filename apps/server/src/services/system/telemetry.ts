@@ -4,10 +4,10 @@ import type { ServerLogger } from "../../types.js";
 /**
  * Anonymous usage telemetry.
  *
- * Sends a small set of product events (app starts, thread creation counts) to
- * PostHog so install/activation funnels can be measured. Identification is a
- * random per-install id persisted in the data dir — no user, host, project, or
- * workspace data is ever attached.
+ * Sends a small set of product events (app starts, thread creation counts, and
+ * user message counts) to PostHog so install/activation funnels can be measured.
+ * Identification is a random per-install id persisted in the data dir — no
+ * user, host, project, workspace, or message content is ever attached.
  *
  * Delivery is intentionally fire-and-forget: events are analytics, not
  * workflow state, so lost sends (offline, PostHog outage, process exit
@@ -29,6 +29,14 @@ export type TelemetryEvent =
       name: "thread_created";
       properties: {
         is_child_thread: boolean;
+        provider: string;
+      };
+    }
+  | {
+      name: "user_message_sent";
+      properties: {
+        is_child_thread: boolean;
+        message_source: "queued_message" | "thread_create" | "thread_send";
         provider: string;
       };
     };

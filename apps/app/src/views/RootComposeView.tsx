@@ -116,6 +116,7 @@ import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-cre
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
+  getProjectComposeRoutePath,
   getRootComposeRoutePath,
   getSurfaceAwareThreadRoutePath,
   isRoutePath,
@@ -153,7 +154,10 @@ import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
-import { RootComposeSecondaryContent } from "./RootComposeSecondaryContent";
+import {
+  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
+  RootComposeSecondaryContent,
+} from "./RootComposeSecondaryContent";
 import {
   buildRootComposeBranchUiState,
   type RootComposeBranchEnvironmentMode,
@@ -914,8 +918,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const handleRootPanelSelectionAddToChat = useCallback(
-    (text: string) => {
-      promptDraft.addQuote(text);
+    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
       window.requestAnimationFrame(() => {
         promptBoxRef.current?.focusEnd();
@@ -2103,6 +2107,9 @@ export function RootComposeView(props: RootComposeViewProps) {
             }),
           );
       }
+      if (resource.kind === "project") {
+        return () => navigate(getProjectComposeRoutePath(resource.projectId));
+      }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;
       }
@@ -2810,9 +2817,14 @@ export function RootComposeView(props: RootComposeViewProps) {
   // matching slot via inlinePanelToggle="reserved", and the pinned button lands
   // centered over it). The drawer layout has no pinned slot, so there the toggle
   // only opens the drawer and its close control lives inside the drawer.
+  // The shared position class keeps this footprint paired with the no-drag
+  // cutout the macOS window-drag strip carves for it while the panel is closed
+  // (see RootComposeSecondaryContent).
   const rootPanelToggle =
     !renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen ? (
-      <div className="fixed right-4 top-2.5 z-40">
+      <div
+        className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+      >
         <RootComposeRightPanelToggle
           activeTerminalCount={activeTerminalCount}
           isOpen={isSecondaryPanelOpen}

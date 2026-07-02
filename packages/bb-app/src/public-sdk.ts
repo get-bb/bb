@@ -51,6 +51,11 @@ export interface PromptTextMention {
         threadId: string;
       }
     | {
+        kind: "project";
+        label: string;
+        projectId: string;
+      }
+    | {
         kind: "path";
         entryKind: "directory" | "file";
         label: string;

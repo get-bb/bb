@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Environment, ThreadListEntry } from "@bb/domain";
+import type { Environment, Thread } from "@bb/domain";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
@@ -12,56 +12,38 @@ import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
 
-interface ThreadEntryArgs extends Partial<ThreadListEntry> {
-  environmentId: string | null;
-  id: string;
-  projectId: string;
-}
+type OpenThreadHandler = (
+  request: unknown,
+) => Promise<{ delivered: number }> | { delivered: number };
 
-function makeThreadEntry(args: ThreadEntryArgs): ThreadListEntry {
-  const { id, projectId, providerId, ...overrides } = args;
-  const thread = fixtures.makeThread({
-    ...overrides,
-    id,
-    projectId,
-    providerId: providerId ?? "codex",
-  });
-  return {
-    ...thread,
-    runtime: {
-      displayStatus: thread.status,
-      hostReconnectGraceExpiresAt: null,
-    },
-    pinSortKey: null,
-    hasPendingInteraction: false,
-    activity: {
-      activeWorkflowCount: 0,
-    },
-    environmentHostId: args.environmentId ? "host-test-001" : null,
-    environmentName: null,
-    environmentBranchName: null,
-    environmentWorkspaceDisplayKind: "managed-worktree",
-  };
-}
-
-function stubThreadResolverApi(args: {
-  environments: Record<string, Environment>;
-  threads: ThreadListEntry[];
+function stubThreadOpenApi(args: {
+  environments?: Record<string, Environment>;
+  open?: OpenThreadHandler;
+  threads?: Record<string, Thread>;
 }) {
-  const listThreads = vi.fn(async () => args.threads);
+  const getThread = vi.fn(async (request: unknown) => {
+    const threadId = (request as { param: { id: string } }).param.id;
+    const thread = args.threads?.[threadId];
+    if (!thread) {
+      throw new Error(`missing test thread ${threadId}`);
+    }
+    return thread;
+  });
   const getEnvironment = vi.fn(async (request: unknown) => {
     const environmentId = (request as { param: { id: string } }).param.id;
-    const environment = args.environments[environmentId];
+    const environment = args.environments?.[environmentId];
     if (!environment) {
       throw new Error(`missing test environment ${environmentId}`);
     }
     return environment;
   });
+  const openThread = vi.fn(args.open ?? (async () => ({ delivered: 0 })));
   stubServerApi({
-    "v1.threads.$get": listThreads,
+    "v1.threads.:id.$get": getThread,
     "v1.environments.:id.$get": getEnvironment,
+    "v1.threads.:id.open.$post": openThread,
   });
-  return { getEnvironment, listThreads };
+  return { getEnvironment, getThread, openThread };
 }
 
 describe("bb thread open command output", () => {
@@ -70,130 +52,198 @@ describe("bb thread open command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
-  it("resolves a relative path from process.cwd and prints the matching thread URL", async () => {
-    vi.spyOn(process, "cwd").mockReturnValue("/Users/sawyerhood/project");
-    const environment = fixtures.makeEnvironment({
-      id: "env-1",
-      projectId: "proj-1",
-      hostId: "host-test-001",
-      path: "/Users/sawyerhood/project/workspaces/thread-a",
-    });
-    const { getEnvironment, listThreads } = stubThreadResolverApi({
-      environments: { "env-1": environment },
-      threads: [
-        makeThreadEntry({
-          id: "thread-1",
-          projectId: "proj-1",
-          environmentId: "env-1",
-        }),
-      ],
+  it("uses BB_THREAD_ID and opens a thread-relative workspace path", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    const { openThread } = stubThreadOpenApi({
+      open: async () => ({ delivered: 2 }),
     });
 
-    await runCommand(
-      ["thread", "open", "workspaces/thread-a/src/index.ts"],
-      register,
-    );
+    await runCommand(["thread", "open", "reports/status.md"], register);
 
-    expect(listThreads).toHaveBeenCalledWith({ query: {} });
-    expect(getEnvironment).toHaveBeenCalledWith({ param: { id: "env-1" } });
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-current" },
+      json: {
+        source: "workspace",
+        path: "reports/status.md",
+        lineNumber: null,
+      },
+    });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Thread: thread-1",
-      "Project: proj-1",
-      "Workspace: /Users/sawyerhood/project/workspaces/thread-a",
-      "URL: http://server/projects/proj-1/threads/thread-1",
+      "Thread: thread-current",
+      "Source: workspace",
+      "Path: reports/status.md",
+      "Delivered: 2",
     ]);
   });
 
-  it("leaves absolute paths absolute and returns the resolved match as JSON", async () => {
-    vi.spyOn(process, "cwd").mockReturnValue("/Users/sawyerhood/elsewhere");
-    const environment = fixtures.makeEnvironment({
-      id: "env-absolute",
-      projectId: "proj-absolute",
-      hostId: "host-test-001",
-      path: "/tmp/bb-workspaces/thread-b",
-    });
-    stubThreadResolverApi({
-      environments: { "env-absolute": environment },
-      threads: [
-        makeThreadEntry({
-          id: "thread-absolute",
-          projectId: "proj-absolute",
-          environmentId: "env-absolute",
-        }),
-      ],
+  it("uses an explicit thread id when BB_THREAD_ID is not set", async () => {
+    const { openThread } = stubThreadOpenApi({
+      open: async () => ({ delivered: 1 }),
     });
 
     await runCommand(
-      ["thread", "open", "/tmp/bb-workspaces/thread-b/packages/cli", "--json"],
+      ["thread", "open", "thread-explicit", "reports/status.md"],
       register,
     );
 
-    const payloads = collectLogPayloads(vi.mocked(console.log));
-    expect(payloads.join("\n")).toContain(
-      '"resolvedPath": "/tmp/bb-workspaces/thread-b/packages/cli"',
-    );
-    expect(payloads.join("\n")).toContain('"threadId": "thread-absolute"');
-    expect(payloads.join("\n")).toContain(
-      '"url": "http://server/projects/proj-absolute/threads/thread-absolute"',
-    );
-  });
-
-  it("uses the longest matching workspace path", async () => {
-    vi.spyOn(process, "cwd").mockReturnValue("/tmp");
-    const parentEnvironment = fixtures.makeEnvironment({
-      id: "env-parent",
-      projectId: "proj-parent",
-      hostId: "host-test-001",
-      path: "/tmp/workspaces",
-    });
-    const childEnvironment = fixtures.makeEnvironment({
-      id: "env-child",
-      projectId: "proj-child",
-      hostId: "host-test-001",
-      path: "/tmp/workspaces/thread-c",
-    });
-    stubThreadResolverApi({
-      environments: {
-        "env-parent": parentEnvironment,
-        "env-child": childEnvironment,
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-explicit" },
+      json: {
+        source: "workspace",
+        path: "reports/status.md",
+        lineNumber: null,
       },
-      threads: [
-        makeThreadEntry({
-          id: "thread-parent",
-          projectId: "proj-parent",
-          environmentId: "env-parent",
-        }),
-        makeThreadEntry({
-          id: "thread-child",
-          projectId: "proj-child",
-          environmentId: "env-child",
-        }),
-      ],
     });
-
-    await runCommand(["thread", "open", "workspaces/thread-c/src"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread: thread-child",
-    );
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread: thread-explicit",
+      "Source: workspace",
+      "Path: reports/status.md",
+      "Delivered: 1",
+    ]);
   });
 
-  it("does not accept the old positional thread id", async () => {
-    stubThreadResolverApi({ environments: {}, threads: [] });
+  it("resolves an absolute workspace path through the target thread environment", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-workspace");
+    const thread = fixtures.makeThread({
+      id: "thread-workspace",
+      projectId: "proj-workspace",
+      providerId: "codex",
+      environmentId: "env-workspace",
+    });
+    const environment = fixtures.makeEnvironment({
+      id: "env-workspace",
+      projectId: "proj-workspace",
+      hostId: "host-test-001",
+      path: "/Users/sawyerhood/project/workspaces/thread-workspace",
+    });
+    const { getEnvironment, getThread, openThread } = stubThreadOpenApi({
+      environments: { "env-workspace": environment },
+      open: async () => ({ delivered: 1 }),
+      threads: { "thread-workspace": thread },
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "open",
+        "/Users/sawyerhood/project/workspaces/thread-workspace/reports/status.md",
+        "--line",
+        "7",
+      ],
+      register,
+    );
+
+    expect(getThread).toHaveBeenCalledWith({
+      param: { id: "thread-workspace" },
+    });
+    expect(getEnvironment).toHaveBeenCalledWith({
+      param: { id: "env-workspace" },
+    });
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-workspace" },
+      json: {
+        source: "workspace",
+        path: "reports/status.md",
+        lineNumber: 7,
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread: thread-workspace",
+      "Source: workspace",
+      "Path: reports/status.md",
+      "Line: 7",
+      "Delivered: 1",
+    ]);
+  });
+
+  it("opens an absolute thread-storage path for the current thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-storage");
+    vi.stubEnv("BB_THREAD_STORAGE", "/tmp/bb-thread-storage/thread-storage");
+    const { getEnvironment, getThread, openThread } = stubThreadOpenApi({
+      open: async () => ({ delivered: 1 }),
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "open",
+        "/tmp/bb-thread-storage/thread-storage/reports/preview.html",
+      ],
+      register,
+    );
+
+    expect(getThread).not.toHaveBeenCalled();
+    expect(getEnvironment).not.toHaveBeenCalled();
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-storage" },
+      json: {
+        source: "thread-storage",
+        path: "reports/preview.html",
+        lineNumber: null,
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread: thread-storage",
+      "Source: thread-storage",
+      "Path: reports/preview.html",
+      "Delivered: 1",
+    ]);
+  });
+
+  it("requires an explicit thread id outside a BB thread", async () => {
+    stubThreadOpenApi({});
 
     await expect(
-      runCommand(["thread", "open", "src/a.ts", "thread-1"], register),
+      runCommand(["thread", "open", "reports/status.md"], register),
     ).rejects.toThrow("process.exit:1");
   });
 
-  it("documents the path-only command shape", async () => {
+  it("rejects a different explicit thread id when BB_THREAD_ID is set", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    stubThreadOpenApi({});
+
+    await expect(
+      runCommand(
+        ["thread", "open", "thread-other", "reports/status.md"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+  });
+
+  it("returns the opened path as JSON", async () => {
+    const { openThread } = stubThreadOpenApi({
+      open: async () => ({ delivered: 3 }),
+    });
+
+    await runCommand(
+      ["thread", "open", "thread-explicit", "reports/status.md", "--json"],
+      register,
+    );
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thread-explicit" },
+      json: {
+        source: "workspace",
+        path: "reports/status.md",
+        lineNumber: null,
+      },
+    });
+    const payloads = collectLogPayloads(vi.mocked(console.log));
+    expect(payloads.join("\n")).toContain('"threadId": "thread-explicit"');
+    expect(payloads.join("\n")).toContain('"source": "workspace"');
+    expect(payloads.join("\n")).toContain('"path": "reports/status.md"');
+    expect(payloads.join("\n")).toContain('"delivered": 3');
+  });
+
+  it("documents the current-thread or explicit-thread command shape", async () => {
     const help = await getHelpOutput(["thread", "open"], register);
 
     expect(help).toContain("Usage:");
-    expect(help).toContain("<path>");
-    expect(help).toContain("Find the BB thread for a workspace path");
+    expect(help).toContain("[id] <path>");
+    expect(help).toContain("Open a file in a BB thread panel");
+    expect(help).toContain("--line");
+    expect(help).not.toContain("--preview");
     expect(help).not.toContain("--source");
-    expect(help).not.toContain("--line");
     expect(help).not.toContain("--self");
   });
 });
