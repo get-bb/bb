@@ -1424,12 +1424,23 @@ export function PromptBoxInternal({
     editor.view.dispatch(editor.state.tr);
   }, [editor, editorEnterKeyHint, placeholder]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (shouldAvoidSoftKeyboardAutofocus) return;
     if (!editor) return;
 
-    focusEditorAtEnd(editor);
-    scheduleRevealEditorSelection();
+    const focusEditor = () => {
+      if (editor.isDestroyed) return;
+      focusEditorAtEnd(editor);
+      scheduleRevealEditorSelection();
+    };
+
+    if (typeof window.requestAnimationFrame !== "function") {
+      focusEditor();
+      return;
+    }
+
+    const handle = window.requestAnimationFrame(focusEditor);
+    return () => window.cancelAnimationFrame(handle);
   }, [
     editor,
     focusScopeKey,

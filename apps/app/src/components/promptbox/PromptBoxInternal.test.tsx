@@ -168,6 +168,31 @@ function PromptBoxAutoFocusKeyHarness({
   );
 }
 
+function PromptBoxAutoFocusAfterLayoutStealHarness({
+  autoFocusKey,
+}: {
+  autoFocusKey: string | number;
+}) {
+  const outsideTargetRef = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    outsideTargetRef.current?.focus();
+  }, [autoFocusKey]);
+
+  return (
+    <>
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          autoFocusKey,
+        })}
+      />
+      <button ref={outsideTargetRef} type="button">
+        Late layout focus target
+      </button>
+    </>
+  );
+}
+
 function renderPromptBox(initialValue: string) {
   const changes: PromptChange[] = [];
   const onCommandQueryChange = vi.fn();
@@ -425,6 +450,25 @@ describe("PromptBoxInternal controlled value sync", () => {
           autoFocusKey="thread-a"
           historyResetKey={1}
         />,
+      );
+
+      await waitForPromptFocus();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("refocuses after another layout effect steals focus", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const view = render(
+        <PromptBoxAutoFocusAfterLayoutStealHarness autoFocusKey={0} />,
+      );
+
+      await waitForPromptFocus();
+
+      view.rerender(
+        <PromptBoxAutoFocusAfterLayoutStealHarness autoFocusKey={1} />,
       );
 
       await waitForPromptFocus();
