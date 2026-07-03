@@ -34,8 +34,11 @@ The manifest is `package.json`:
 }
 ```
 
-- `bb.server` (required) — backend entry, loaded as TypeScript directly (no
-  build step). `bb.app` (optional) — frontend entry compiled by
+- `bb.server` (required) — backend entry. Path installs load it as
+  TypeScript directly (no build step); `bb plugin build` also emits a
+  self-contained `dist/server.js` + `server.meta.json` that git/npm installs
+  prefer when its SDK major matches, so consumers never need npm or
+  node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
   and git installs build it automatically at install time.
 - `bb.skills` (optional) — relocates the auto-imported skills directories

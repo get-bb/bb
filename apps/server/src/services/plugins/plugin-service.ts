@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { CronExpressionParser } from "cron-parser";
@@ -7,6 +7,7 @@ import { createJiti } from "jiti";
 import semver from "semver";
 import type { DbConnection } from "@bb/db";
 import {
+  PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
   type DynamicTool,
   type Thread,
@@ -44,6 +45,7 @@ import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js
 import {
   loadPluginAppBundle,
   loadPluginLogos,
+  parsePluginAppBundleMeta,
   readPluginAppBundleMeta,
   type PluginAppBundleSnapshot,
   type PluginAppState,
@@ -1114,6 +1116,42 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   /**
+   * The backend entry to import for this load. Managed (git:/npm:) installs
+   * prefer a fresh, SDK-major-compatible prebuilt `dist/server.js` (design
+   * §3 loader amendment, §6 prebuilt distribution) so consumers never need
+   * npm or node_modules; path installs ALWAYS load from source, so author
+   * iteration via `bb plugin reload` sees edited files. A present-but-stale
+   * or meta-less dist falls back to source with one warning.
+   */
+  async function resolveServerEntry(
+    row: InstalledPluginRow,
+    manifest: PluginManifest,
+  ): Promise<string> {
+    if (sourceKind(row.source) === "path") return manifest.serverEntry;
+    const distJsPath = join(row.rootDir, "dist", "server.js");
+    try {
+      await stat(distJsPath);
+    } catch {
+      return manifest.serverEntry; // no prebuilt bundle shipped — normal
+    }
+    let meta: { sdkMajor: number; sdkVersion: string } | null = null;
+    try {
+      meta = parsePluginAppBundleMeta(
+        await readFile(join(row.rootDir, "dist", "server.meta.json"), "utf8"),
+      );
+    } catch {
+      // missing sidecar → meta stays null
+    }
+    if (meta?.sdkMajor !== PLUGIN_SDK_MAJOR) {
+      logger.warn(
+        `plugin ${row.id}: ignoring prebuilt dist/server.js (built for SDK ${meta ? `major ${meta.sdkMajor}` : "unknown"}, running SDK major is ${PLUGIN_SDK_MAJOR}) — loading from source`,
+      );
+      return manifest.serverEntry;
+    }
+    return distJsPath;
+  }
+
+  /**
    * Refresh a plugin's frontend-bundle snapshot for this load (design §5.1).
    * path:/git: sources are rebuilt first when the recorded SDK version
    * differs from the running one (BB upgrade since the last build); npm
@@ -1239,7 +1277,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     try {
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, { moduleCache: false });
-      const mod = (await jiti.import(manifest.serverEntry)) as {
+      // Same jiti instance for source and prebuilt dist/server.js, so the
+      // @bb/plugin-sdk resolution applies identically to both.
+      const mod = (await jiti.import(
+        await resolveServerEntry(row, manifest),
+      )) as {
         default?: unknown;
       };
       const factory = mod.default;

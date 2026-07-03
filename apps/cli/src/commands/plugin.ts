@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
-import { buildPluginApp } from "@bb/plugin-build";
+import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
 import { createPluginDevLoop } from "../plugin-dev-loop.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
@@ -369,13 +369,30 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin's bb.app frontend entry into dist/ (app.js, app.css, app.meta.json; no server required)",
+      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json) and, when bb.app is declared, the frontend bundle (app.js, app.css, app.meta.json); no server required",
     )
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        const result = await buildPluginApp(rootDir);
-        for (const file of [result.jsPath, result.cssPath, result.metaPath]) {
+        // buildPluginServer errors legibly on a missing/invalid bb.server —
+        // every plugin has one, so a headless plugin succeeds with just the
+        // backend bundle (prebuilt distribution, design §6).
+        const server = await buildPluginServer(rootDir);
+        const files = [server.jsPath, server.mapPath, server.metaPath];
+        let hasApp = false;
+        try {
+          const pkg = JSON.parse(
+            await readFile(join(rootDir, "package.json"), "utf8"),
+          ) as { bb?: { app?: unknown } };
+          hasApp = typeof pkg.bb?.app === "string";
+        } catch {
+          // Unreachable in practice: buildPluginServer already read it.
+        }
+        if (hasApp) {
+          const app = await buildPluginApp(rootDir);
+          files.push(app.jsPath, app.cssPath, app.metaPath);
+        }
+        for (const file of files) {
           console.log(relative(process.cwd(), file));
         }
       }),

@@ -34,9 +34,11 @@ SQLite file, secrets, logs).
   bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
                                  --app adds a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
-  bb plugin build [path]         Compile the plugin's bb.app frontend entry
-                                 (app.tsx) into dist/ — app.js ESM bundle,
-                                 app.css, app.meta.json (no server required)
+  bb plugin build [path]         Compile the plugin into dist/ — the backend
+                                 bundle (server.js, server.meta.json) and,
+                                 when bb.app is declared, the frontend bundle
+                                 (app.js, app.css, app.meta.json); no server
+                                 required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its frontend bundle
                                  (if it declares bb.app) and reload the
@@ -46,6 +48,12 @@ Frontend builds are automatic once installed: path and git installs compile
 dist/ at install time (a build failure fails the install), and the server
 rebuilds them at load after a bb upgrade. npm packages must publish a
 prebuilt dist/ (app.js + app.meta.json) or the install is refused.
+
+The backend half is prebuilt too: when a git/npm install ships a
+dist/server.js built for the running SDK major, the server loads it instead
+of the TypeScript source — consumers never need npm or node_modules. Path
+installs always load server.ts from source, so `bb plugin dev`/reload see
+edits immediately.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,

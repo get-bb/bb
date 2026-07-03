@@ -256,8 +256,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
     entry plus a typecheck-only `tsconfig.json`); `bb plugin build [path]` —
-    compile the `bb.app` entry into `dist/app.js` + `app.css` +
-    `app.meta.json`. Neither needs the server.
+    compile the plugin into `dist/`: the backend bundle (`server.js` +
+    `server.meta.json`; preferred by git/npm installs over source) and, when
+    `bb.app` is declared, `app.js` + `app.css` + `app.meta.json`. Neither
+    needs the server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.
