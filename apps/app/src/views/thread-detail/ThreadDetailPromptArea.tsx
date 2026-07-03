@@ -8,7 +8,6 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
-  PromptInput,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -410,7 +409,6 @@ export function ThreadDetailPromptArea({
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: thread.environmentId,
-    threadId: thread.id,
     query: commandQuery,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
@@ -598,58 +596,6 @@ export function ThreadDetailPromptArea({
     runtimeDisplayStatus,
   ]);
 
-  // Plugin slash-command `{ send }` results ride the same queue-vs-send
-  // branching as handleSend, minus the draft bookkeeping (there is no draft —
-  // the inputs came from the plugin, not the composer text).
-  const handleSendPluginInputs = useCallback(
-    (inputs: PromptInput[]) => {
-      void (async () => {
-        const isQueuingMessage = shouldQueueFollowUpMessage(
-          runtimeDisplayStatus,
-        );
-        try {
-          if (isQueuingMessage) {
-            const request = buildCreateQueuedFollowUpRequest({
-              threadId: thread.id,
-              input: inputs,
-              execution: followUpExecutionSelection,
-            });
-            if (request) {
-              await createQueuedMessage.mutateAsync(request);
-            }
-          } else {
-            const request = buildAutoFollowUpRequest({
-              threadId: thread.id,
-              input: inputs,
-              execution: followUpExecutionSelection,
-            });
-            if (request) {
-              await sendMessage.mutateAsync(request);
-            }
-          }
-        } catch (nextError) {
-          appToast.error(
-            getMutationErrorMessage({
-              error: nextError,
-              fallbackMessage: isQueuingMessage
-                ? "Failed to queue message"
-                : "Failed to send message",
-              lifecycleOperation: isQueuingMessage
-                ? "queue_message"
-                : "send_message",
-            }),
-          );
-        }
-      })();
-    },
-    [
-      createQueuedMessage,
-      followUpExecutionSelection,
-      runtimeDisplayStatus,
-      sendMessage,
-      thread.id,
-    ],
-  );
 
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
@@ -1064,8 +1010,6 @@ export function ThreadDetailPromptArea({
         isLoadingMore: commandSuggestions.isLoadingMore,
         loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
-        runPluginCommand: commandSuggestions.runPluginCommand,
-        sendPluginInputs: handleSendPluginInputs,
       },
     }),
     [
@@ -1079,10 +1023,8 @@ export function ThreadDetailPromptArea({
       commandSuggestions.isLoading,
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
-      commandSuggestions.runPluginCommand,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
-      handleSendPluginInputs,
     ],
   );
 

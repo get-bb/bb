@@ -193,132 +193,6 @@ describe("plugin skills tier", () => {
   });
 });
 
-describe("bb.agents.addContext", () => {
-  let db: DbConnection;
-  let workDir: string;
-  let service: PluginService;
-
-  beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
-    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-context-test-"));
-    service = createPluginService({
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      isEnabled: () => true,
-      loadTimeoutMs: 2000,
-      contextProviderTimeoutMs: 200,
-    });
-  });
-
-  afterEach(async () => {
-    await service.stop();
-    await rm(workDir, { recursive: true, force: true });
-  });
-
-  it("collects labeled sections in plugin-id order, skipping null and empty results", async () => {
-    const a = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-a",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(async (ctx: any) => "A: thread=" + ctx.threadId + " project=" + ctx.projectId);
-          bb.agents.addContext(() => null);
-        }
-      `,
-    });
-    const b = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-b",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(() => "   ");
-          bb.agents.addContext(() => "B section");
-        }
-      `,
-    });
-    await service.installPath(a);
-    await service.installPath(b);
-
-    const sections = await service.collectAgentContextSections({
-      threadId: "thr_1",
-      projectId: "proj_1",
-    });
-    expect(sections).toEqual([
-      { pluginId: "ctx-a", text: "A: thread=thr_1 project=proj_1" },
-      { pluginId: "ctx-b", text: "B section" },
-    ]);
-  });
-
-  it("skips a throwing provider without failing collection and counts the error", async () => {
-    const bad = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-bad",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(() => { throw new Error("provider boom"); });
-        }
-      `,
-    });
-    const good = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-good",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(() => "still here");
-        }
-      `,
-    });
-    await service.installPath(bad);
-    await service.installPath(good);
-
-    const sections = await service.collectAgentContextSections({
-      threadId: "thr_1",
-      projectId: "proj_1",
-    });
-    expect(sections).toEqual([{ pluginId: "ctx-good", text: "still here" }]);
-    const badEntry = service.list().find((p) => p.id === "ctx-bad");
-    expect(badEntry?.handlerStats.errorCount).toBe(1);
-  });
-
-  it("times out a slow provider without stalling collection", async () => {
-    const slow = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-slow",
-      serverSource: `
-        export default function plugin(bb: any) {
-          // Never resolves: simulates a provider far past the time box.
-          bb.agents.addContext(() => new Promise(() => {}));
-        }
-      `,
-    });
-    const fast = await writePlugin(workDir, {
-      name: "bb-plugin-ctx-fast",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(() => "fast section");
-        }
-      `,
-    });
-    await service.installPath(slow);
-    await service.installPath(fast);
-
-    const startedAt = Date.now();
-    const sections = await service.collectAgentContextSections({
-      threadId: "thr_1",
-      projectId: "proj_1",
-    });
-    // The 200ms test time box (2s in production) bounds the wall time.
-    expect(Date.now() - startedAt).toBeLessThan(2000);
-    expect(sections).toEqual([{ pluginId: "ctx-fast", text: "fast section" }]);
-    const slowEntry = service.list().find((p) => p.id === "ctx-slow");
-    expect(slowEntry?.handlerStats.errorCount).toBe(1);
-    expect(slowEntry?.status).toBe("running");
-  });
-});
-
 describe("plugin agent contributions reach thread runtime config", () => {
   let harness: TestAppHarness;
   let pluginsDir: string;
@@ -335,14 +209,12 @@ describe("plugin agent contributions reach thread runtime config", () => {
     await rm(pluginsDir, { recursive: true, force: true });
   });
 
-  it("plugin skills and context sections reach the thread.start command and update after reload", async () => {
+  it("plugin skills reach the thread.start command and update after reload", async () => {
     const rootDir = await writePlugin(pluginsDir, {
       name: "bb-plugin-ctxdemo",
       skillNames: ["ctx-skill"],
       serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.addContext(() => "Remember: plugin context works.");
-        }
+        export default function plugin() {}
       `,
     });
     const entry = await harness.pluginService.installPath(rootDir);
@@ -389,11 +261,6 @@ describe("plugin agent contributions reach thread runtime config", () => {
         sourceRootPath: join(rootDir, "skills", "ctx-skill"),
       }),
     );
-    expect(command.instructions).toContain(
-      'The following instructions come from the BB plugin "ctxdemo":',
-    );
-    expect(command.instructions).toContain("Remember: plugin context works.");
-
     // A skill added after install lands on the next turn after reload.
     await writeSkill(join(rootDir, "skills"), "late-skill");
     await harness.pluginService.reload("ctxdemo");
@@ -402,12 +269,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
       reloaded.injectedSkillSources.map((source) => source.name),
     ).toContain("late-skill");
 
-    // Turning the experiment off removes both contributions on the next turn.
+    // Turning the experiment off removes the contribution on the next turn.
     setExperiments(harness.db, { ...defaultExperiments, plugins: false });
     const gated = await buildCommand(3);
     expect(
       gated.injectedSkillSources.map((source) => source.name),
     ).not.toContain("ctx-skill");
-    expect(gated.instructions).not.toContain("plugin context works");
   });
 });

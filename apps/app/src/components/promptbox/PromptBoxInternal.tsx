@@ -1,7 +1,6 @@
 import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
 import type {
-  PromptInput,
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
@@ -27,14 +26,11 @@ import type {
   CommandMenuState,
   ComposerCommandSuggestion,
   MentionMenuState,
-  PluginCommandSuggestion,
   ProviderCommandSuggestion,
   PromptMentionSuggestion,
   TypeaheadMenuState,
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
-import type { PluginSlashCommandAction } from "@/hooks/queries/plugin-contribution-queries";
-import { appToast } from "@/components/ui/app-toast.js";
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
@@ -212,22 +208,6 @@ export interface TypeaheadCommandConfig {
   loadMore: () => void;
   /** Called whenever the active command query changes; null when no command trigger is active. */
   onQueryChange: (query: string | null) => void;
-  /**
-   * Runs a picked plugin slash command server-side (plugin design §4.9).
-   * The composer shows a pending row in the `/` menu while this is in
-   * flight, applies the resolved action (insert text / send inputs /
-   * nothing), and toasts rejections. Hosts wire it from
-   * `useCommandSuggestions`.
-   */
-  runPluginCommand: (
-    item: PluginCommandSuggestion,
-    args: string,
-  ) => Promise<PluginSlashCommandAction>;
-  /**
-   * Submits plugin-returned inputs as a message through the host's normal
-   * send path (a follow-up on a thread, a new thread on the homepage).
-   */
-  sendPluginInputs: (inputs: PromptInput[]) => void;
 }
 
 /**
@@ -256,8 +236,6 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   isLoadingMore: false,
   loadMore: () => {},
   onQueryChange: () => {},
-  runPluginCommand: async () => ({ kind: "none" }),
-  sendPluginInputs: () => {},
 };
 
 export interface AttachmentsConfig {
@@ -1041,8 +1019,6 @@ export function PromptBoxInternal({
     isLoading: commandLoading,
     isError: commandError,
     onQueryChange: onCommandQueryChange,
-    runPluginCommand,
-    sendPluginInputs,
   } = typeahead.command;
   const {
     items: attachments = [],
@@ -1092,12 +1068,6 @@ export function PromptBoxInternal({
   const [activeTrigger, setActiveTrigger] = useState<ActiveTrigger | null>(
     null,
   );
-  // A picked plugin slash command running server-side (design §4.9): the `/`
-  // menu stays open in a pending state until the POST settles. The seq ref
-  // drops stale resolutions after unmount-adjacent races (a newer pick wins).
-  const [pendingPluginCommand, setPendingPluginCommand] =
-    useState<PluginCommandSuggestion | null>(null);
-  const pluginCommandRunSeqRef = useRef(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
@@ -1668,21 +1638,13 @@ export function PromptBoxInternal({
     !commandLoading &&
     !commandError &&
     commandSuggestions.length === 0;
-  // A pending plugin slash command keeps the menu open (with a spinner row)
-  // even though the trigger token was already removed from the editor.
   const showTypeaheadMenu =
-    pendingPluginCommand !== null ||
-    (activeTrigger !== null && !isCommandTriggerLiteral);
+    activeTrigger !== null && !isCommandTriggerLiteral;
 
   const typeaheadMenuState: TypeaheadMenuState =
-    pendingPluginCommand !== null
-      ? {
-          trigger: "command",
-          state: { kind: "plugin-pending", name: pendingPluginCommand.name },
-        }
-      : activeTriggerKind === "command"
-        ? { trigger: "command", state: commandMenuState }
-        : { trigger: "mention", state: mentionMenuState };
+    activeTriggerKind === "command"
+      ? { trigger: "command", state: commandMenuState }
+      : { trigger: "mention", state: mentionMenuState };
 
   useEffect(() => {
     if (activeSuggestions.length === 0) {
@@ -1848,121 +1810,15 @@ export function PromptBoxInternal({
     [activeTrigger, finishApply, onCommandQueryChange],
   );
 
-  /**
-   * Insert plugin-provided draft text at the cursor, preserving newlines
-   * (unlike insertTextAtCursor, which normalizes whitespace for voice/quote
-   * insertion). Multi-line drafts insert as paragraph blocks.
-   */
-  const insertPluginCommandText = useCallback(
-    (text: string) => {
-      const currentEditor = editorRef.current;
-      if (!currentEditor || currentEditor.isDestroyed) {
-        const currentValue = valueRef.current;
-        const separator =
-          currentValue.length === 0 || /\s$/.test(currentValue) ? "" : " ";
-        onChangeRef.current(`${currentValue}${separator}${text}`, [
-          ...mentionRangesRef.current,
-        ]);
-        return;
-      }
-      const content = text.includes("\n")
-        ? (promptEditorContentFromValue({ text, mentions: [] }).content ?? [])
-        : text;
-      currentEditor.chain().focus().insertContent(content).run();
-      scheduleRevealEditorSelection();
-    },
-    [scheduleRevealEditorSelection],
-  );
-
-  /**
-   * Picking a plugin slash command (design §4.9): remove the typed trigger
-   * token, run the command server-side with a pending row in the menu, then
-   * apply the resolved action — insert a draft at the cursor, submit the
-   * returned inputs through the host's send path, or nothing. Failures land
-   * as an error toast at the composer.
-   */
-  const applyPluginCommandSuggestion = useCallback(
-    (item: PluginCommandSuggestion) => {
-      const currentEditor = editorRef.current;
-      if (!currentEditor || activeTrigger === null) return;
-      if (pendingPluginCommand !== null) return;
-
-      // Anything typed beyond the command name rides along as args (the
-      // trigger query stops at whitespace, so this is the same-word rest).
-      const query = activeTrigger.query;
-      const commandArgs = query.toLowerCase().startsWith(item.name.toLowerCase())
-        ? query.slice(item.name.length).trim()
-        : "";
-
-      triggerKeyRef.current = "";
-      isRestoringAppliedMentionRef.current = true;
-      setActiveTrigger(null);
-      setSelectedIndex(0);
-      onCommandQueryChange(null);
-      try {
-        skipEditorChangeRef.current = true;
-        currentEditor
-          .chain()
-          .focus()
-          .deleteRange({ from: activeTrigger.from, to: activeTrigger.to })
-          .run();
-      } finally {
-        skipEditorChangeRef.current = false;
-      }
-      finishApply(currentEditor);
-
-      const runSeq = ++pluginCommandRunSeqRef.current;
-      setPendingPluginCommand(item);
-      runPluginCommand(item, commandArgs)
-        .then((action) => {
-          if (pluginCommandRunSeqRef.current !== runSeq) return;
-          if (action.kind === "insertText") {
-            insertPluginCommandText(action.text);
-          } else if (action.kind === "send") {
-            sendPluginInputs(action.inputs);
-          }
-        })
-        .catch((error: unknown) => {
-          if (pluginCommandRunSeqRef.current !== runSeq) return;
-          appToast.error(`/${item.name} failed`, {
-            description:
-              error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          if (pluginCommandRunSeqRef.current === runSeq) {
-            setPendingPluginCommand(null);
-          }
-        });
-    },
-    [
-      activeTrigger,
-      finishApply,
-      insertPluginCommandText,
-      onCommandQueryChange,
-      pendingPluginCommand,
-      runPluginCommand,
-      sendPluginInputs,
-    ],
-  );
-
   const applyTrigger = useCallback(
     (item: TypeaheadSuggestion) => {
-      if (item.kind === "plugin-command") {
-        applyPluginCommandSuggestion(item);
-        return;
-      }
       if (item.kind === "command") {
         applyCommandSuggestion(item);
         return;
       }
       applyMentionSuggestion(item);
     },
-    [
-      applyCommandSuggestion,
-      applyMentionSuggestion,
-      applyPluginCommandSuggestion,
-    ],
+    [applyCommandSuggestion, applyMentionSuggestion],
   );
 
   const focusEnd = useCallback(() => {

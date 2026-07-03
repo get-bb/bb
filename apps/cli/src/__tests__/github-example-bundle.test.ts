@@ -7,7 +7,7 @@ import { buildPluginApp } from "@bb/plugin-build";
 
 /**
  * Evaluates the GitHub hero example's built bundle against a stub runtime
- * (the linear-example-bundle.test.ts pattern) and asserts its default export
+ * (the plugin-build.test.ts pattern) and asserts its default export
  * registers exactly the expected slots. Built from a temp copy so this test
  * never races the server suite over examples/plugins/github/dist.
  */

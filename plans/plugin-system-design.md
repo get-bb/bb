@@ -16,9 +16,11 @@ frontend:
   Plugins can also contribute skills (auto-imported from `skills/`), per-turn context, and
   native dynamic tools where a schema'd tool call is genuinely better.
 - **Frontend**: three layers, from most to least stable:
-  1. **Host-rendered contributions** — thread actions, slash commands, mention providers,
+  1. **Host-rendered contributions** — thread actions, mention providers,
      settings panes. Registered backend-side; the shipped UI renders them. No plugin code
-     runs in the browser.
+     runs in the browser. (Slash commands shipped here originally and were REMOVED
+     2026-07-02: plugin skills already ride the composer's `/` menu, so the
+     agent-free-macro niche didn't justify a parallel command path.)
   2. **Slots** — named stable extension points (homepage section, nav panel, thread panel
      tab, composer accessory) that mount real plugin React components from a runtime-loaded
      ESM bundle sharing the host's React.
@@ -27,8 +29,10 @@ frontend:
 - **Distribution**: pi's model — `bb plugin install npm:… | git:… | <path>`, pinned refs,
   manifest in `package.json` under a `bb` field.
 
-Hero plugins that define the V1 surface: **Linear** (full-stack), **Slack bot** (headless
-background service), **Small UX pack** (thread actions + slash commands), **Agent
+Hero plugins that define the V1 surface: **GitHub** (full-stack; the original **Linear**
+hero filled this role and was REMOVED 2026-07-02 in its favor — no third-party API key
+needed to exercise), **Slack bot** (headless
+background service), **Small UX pack** (thread actions), **Agent
 enrichment** (skills/CLI tools/context only).
 
 The whole system launches behind a `plugins` system experiment (same gate style as
@@ -309,14 +313,10 @@ a `plugin` sourceType added to the closed union in
 `packages/host-daemon-contract/src/commands.ts:91` (daemon-contract change; same-host
 limitation per §1).
 
-**Context** — per-turn instruction sections:
-
-```ts
-bb.agents.addContext(async ({ threadId, projectId }) =>
-  isRelevant(projectId) ? "## Linear\nOpen issues: …" : null);
-```
-
-Feeds the `instructionSections` assembly in `thread-runtime-config.ts`.
+**Context** — *(REMOVED 2026-07-02)* `bb.agents.addContext` shipped per-turn
+programmatic instruction sections and was deleted: standing agent knowledge
+ships as plugin `skills/` instead — declarative, user-visible, no per-turn
+plugin code on the turn-submission path.
 
 **Native dynamic tools (secondary)** — for cases where a schema'd, permission-visible tool
 call beats a CLI invocation:
@@ -453,17 +453,9 @@ The host renders a pending state while `run` is in flight, an automatic error to
 rejection, the optional declarative `confirm` step, and the returned toast. Failures reach
 the user at the point of interaction, not just the status badge.
 
-```ts
-bb.ui.registerSlashCommand({
-  name: "standup", description: "Draft a standup summary",
-  async run({ args, threadId, projectId }) {   // threadId/projectId: string | null
-    return { insertText: await draftStandup(bb, projectId) };  // or { send: PromptInput[] }
-  },
-});
-```
-
-Return contract: `void | { insertText } | { send }` — insert a draft into the composer, or
-submit inputs. The `/` menu shows a pending state while the command runs server-side.
+> **REMOVED 2026-07-02** — `bb.ui.registerSlashCommand` (composer `/` commands with a
+> `void | { insertText } | { send }` return contract) shipped in P2.4 and was deleted:
+> skills cover the `/`-menu flow, and the agent-free macro niche stayed theoretical.
 
 ```ts
 bb.ui.registerMentionProvider({
@@ -688,12 +680,12 @@ guide templates (plugin-commands chapter), the `bb-cli` builtin skill,
 
 ## 8. Hero plugin sketches (API validation)
 
-**Linear** — settings (`apiKey`, `teamKey`); sqlite issue cache; `background.schedule`
+**Linear** *(built, then REMOVED 2026-07-02 — superseded by the GitHub hero,
+`examples/plugins/github`, which exercises the full stack without a third-party API
+key)* — settings (`apiKey`, `teamKey`); sqlite issue cache; `background.schedule`
 sync; `bb.cli.register` (`bb linear issues|start`) so agents and humans share the surface;
 `registerMentionProvider` (@ENG-123 → issue context); rpc `listIssues/startWork`; slots:
-`homepageSection` (uses `projectId` prop; click → `startWork` → spawn with
-`project-default` environment → `navigate.toThread`), `navPanel` board, `threadPanelTab`
-with `visible` predicate. Exercises every layer.
+`homepageSection`, `navPanel` board, `threadPanelTab` with `visible` predicate.
 
 **Slack bot** — settings (`botToken` secret, `appToken` secret, `channelId`,
 `mode` select, `project` picker); `background.service` socket-mode connection
@@ -702,12 +694,12 @@ with `visible` predicate. Exercises every layer.
 `bb.on("thread.idle")` → post `lastAssistantText` to Slack. No `app` entry — headless
 plugins are first-class.
 
-**Small UX pack** — `registerThreadAction("Run tests")` with confirm + toast;
-`registerSlashCommand("/standup")` returning `insertText`. First plugin written
-end-to-end.
+**Small UX pack** — `registerThreadAction("Run tests")` with confirm + toast. First
+plugin written end-to-end. (Its `/standup` slash command was removed with the
+slash-command surface.)
 
 **Agent enrichment** — `skills/` auto-imported; `bb.cli.register("docs", …)` as the
-docs-search tool (primary surface); `addContext` injecting repo conventions; optionally
+docs-search tool (primary surface); `addContext` injecting repo conventions (later removed); optionally
 `registerTool` to compare the native path. No UI whatsoever.
 
 ## 9. Implementation phases
@@ -729,9 +721,9 @@ reload sequence ordering; smoke: `bb plugin install ./examples/plugins/slack-bot
 `bb plugin list` shows `running`, `bb <plugin> --help` renders from metadata.
 
 **Phase 2 — agent contributions + host-rendered UI.** Skills auto-import (`plugin`
-source tier + daemon-contract sourceType), `addContext`, `registerTool` (registry dispatch
+source tier + daemon-contract sourceType), `addContext` (later removed), `registerTool` (registry dispatch
 in `internal/tool-calls.ts`, instructions-gating fix, zod param inference), contributions
-endpoint + thread actions (pending/confirm/toast), slash commands (return contract),
+endpoint + thread actions (pending/confirm/toast), slash commands (later removed),
 mention providers (prompt-mention union contract change, resolve-at-send).
 *Exit criteria*: Small-UX-pack hero fully works; a plugin CLI tool and a native tool are
 each exercised by a real thread per provider (e2e verification across claude-code, codex,

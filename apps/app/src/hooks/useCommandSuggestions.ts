@@ -3,15 +3,8 @@ import { useDebounceValue } from "usehooks-ts";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
   toProviderCommandSuggestion,
-  type ComposerCommandSuggestion,
-  type PluginCommandSuggestion,
+  type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
-import { filterPluginCommandSuggestions } from "@/components/promptbox/mentions/plugin-command-suggestions";
-import {
-  runPluginSlashCommand,
-  usePluginContributions,
-  type PluginSlashCommandAction,
-} from "./queries/plugin-contribution-queries";
 import { useProjectCommandsPages } from "./queries/project-queries";
 import { PATH_SUGGESTION_DEBOUNCE_MS } from "./usePathSuggestions";
 
@@ -28,11 +21,6 @@ export interface UseCommandSuggestionsArgs {
    * the project's default source.
    */
   environmentId: string | null;
-  /**
-   * Thread the composer belongs to, forwarded to plugin slash-command
-   * invocations; `null` for the new-thread (homepage) composer.
-   */
-  threadId: string | null;
   /** Text typed after the trigger char, or `null` when no command trigger is active. */
   query: string | null;
 }
@@ -40,7 +28,7 @@ export interface UseCommandSuggestionsArgs {
 export interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
   trigger: PromptMentionCommandTrigger | null;
-  suggestions: ComposerCommandSuggestion[];
+  suggestions: ProviderCommandSuggestion[];
   /**
    * `true` only before the first result lands (and not yet placeholder-backed).
    * Distinct from a loaded-empty list, so the composer can suppress opening an
@@ -51,15 +39,6 @@ export interface UseCommandSuggestionsResult {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMore: () => void;
-  /**
-   * Runs a picked plugin slash command server-side with this composer's
-   * thread/project context (plugin design §4.9). Rejects with the server's
-   * error message so the composer can toast it.
-   */
-  runPluginCommand: (
-    item: PluginCommandSuggestion,
-    args: string,
-  ) => Promise<PluginSlashCommandAction>;
 }
 
 export interface CommandSuggestionPromptAction {
@@ -150,11 +129,6 @@ function mergeCommandSuggestions(
  * project, no provider, no command trigger for the provider, or no active
  * command query. Unlike mentions, it is enabled even when `query` is empty —
  * the provider-owned trigger shows the full available list.
- *
- * Plugin slash commands (design §4.9) ride the same menu: contributions from
- * `usePluginContributions` are filtered client-side against the live query and
- * appended after the provider's commands, so every composer that wires this
- * hook lists them under one "Plugin commands" section.
  */
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,
@@ -208,29 +182,18 @@ export function useCommandSuggestions(
     { enabled: isActive },
   );
 
-  const pluginContributions = usePluginContributions();
-  const pluginSlashCommands = pluginContributions.data?.slashCommands;
-
-  const suggestions = useMemo<ComposerCommandSuggestion[]>(() => {
+  const suggestions = useMemo<ProviderCommandSuggestion[]>(() => {
     if (!isActive) {
       return [];
     }
     const discoveredSuggestions = (commandsQuery.data?.pages ?? [])
       .flatMap((page) => page.commands)
       .map(toProviderCommandSuggestion);
-    // Plugin commands filter locally (no server round-trip), on the live
-    // query so they track keystrokes even while provider results debounce.
-    return [
-      ...mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
-      ...filterPluginCommandSuggestions(pluginSlashCommands ?? [], trimmedQuery),
-    ];
-  }, [
-    commandsQuery.data?.pages,
-    isActive,
-    pluginSlashCommands,
-    promptActionSuggestions,
-    trimmedQuery,
-  ]);
+    return mergeCommandSuggestions(
+      promptActionSuggestions,
+      discoveredSuggestions,
+    );
+  }, [commandsQuery.data?.pages, isActive, promptActionSuggestions]);
 
   const hasMore = isActive && commandsQuery.hasNextPage === true;
   const isLoadingMore = isActive && commandsQuery.isFetchingNextPage;
@@ -264,6 +227,5 @@ export function useCommandSuggestions(
     hasMore,
     isLoadingMore,
     loadMore,
-    runPluginCommand,
   };
 }

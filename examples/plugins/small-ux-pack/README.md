@@ -14,11 +14,6 @@ No dependencies, no build step: the shipped BB app renders everything from
   this handler fetches the thread via `bb.sdk.threads.get` and then throws an
   error carrying the thread's status. The host renders the rejection as an
   error toast at the click site.
-- **`bb.ui.registerSlashCommand("/standup")`** — type `/standup` in any
-  composer. The handler lists the project's threads with
-  `bb.sdk.threads.list`, takes the five most recently updated titles, and
-  returns `{ insertText }` — a standup draft inserted at the cursor, nothing
-  sent.
 
 ## Install
 
@@ -34,7 +29,5 @@ bb plugin list
 - Open any thread in the browser — "Summarize thread" and "Copy status"
   buttons appear in the thread header. Click "Summarize thread", confirm, and
   watch the agent reply; click "Copy status" for the demo error toast.
-- Type `/standup` in the composer (thread follow-up or homepage) and pick it
-  from the `/` menu — a standup draft is inserted into the composer.
 
 After editing sources, `bb plugin reload small-ux-pack`.

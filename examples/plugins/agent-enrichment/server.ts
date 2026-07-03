@@ -6,8 +6,6 @@
 // - bb.agents.registerTool: `docs_search`, the same search as a native
 //   dynamic tool with zod-validated parameters (schema'd, permission-visible
 //   tool calls — the secondary surface from design §4.4)
-// - bb.agents.addContext: a short conventions note appended to every
-//   thread turn's instructions
 // - bb.ui.registerMentionProvider: `@`-mention the bundled docs from the
 //   composer; the picked doc's body is resolved at send time and attached
 //   as agent-only context
@@ -153,16 +151,6 @@ export default async function plugin(bb: BbPluginApi) {
       return excerpts.join("\n");
     },
   });
-
-  // A short per-turn conventions note, appended to every thread's
-  // instructions (labeled with this plugin's id by the host).
-  bb.agents.addContext(
-    () =>
-      "This repository follows the conventions in the agent-enrichment plugin docs: " +
-      "conventional commits (`feat(scope): summary`), branches named `bb/<topic>`, " +
-      "and a regression test with every bug fix. " +
-      "Run `bb docs search <query>` or the docs_search tool for details.",
-  );
 
   // @-mention a bundled doc from the composer: search matches doc titles
   // and file names; the picked doc's full body is resolved once at send

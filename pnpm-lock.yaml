@@ -795,21 +795,6 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  examples/plugins/linear:
-    devDependencies:
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.10
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.13
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-
   examples/plugins/slack-bot: {}
 
   examples/plugins/small-ux-pack: {}

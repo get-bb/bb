@@ -93,24 +93,8 @@ export function toProviderCommandSuggestion(
   };
 }
 
-/**
- * One plugin-contributed slash command in the command typeahead menu
- * (plugin design §4.9). Unlike {@link ProviderCommandSuggestion}, picking one
- * does not insert a pill — it runs the command server-side (POST
- * /plugins/:id/slash/:name) with a pending state in the menu, then applies
- * the returned action (insert a draft, send inputs, or nothing).
- */
-export interface PluginCommandSuggestion {
-  kind: "plugin-command";
-  pluginId: string;
-  name: string;
-  description: string;
-}
-
 /** Every row the command typeahead menu can render. */
-export type ComposerCommandSuggestion =
-  | ProviderCommandSuggestion
-  | PluginCommandSuggestion;
+export type ComposerCommandSuggestion = ProviderCommandSuggestion;
 
 /**
  * A typeahead trigger the composer watches for. `@` opens the mention menu and
@@ -169,8 +153,6 @@ export type CommandMenuState =
   | { kind: "loading" }
   /** Suggestions request failed. */
   | { kind: "error" }
-  /** A picked plugin slash command is running server-side (design §4.9). */
-  | { kind: "plugin-pending"; name: string }
   /** Suggestions resolved (possibly empty). */
   | {
       kind: "results";

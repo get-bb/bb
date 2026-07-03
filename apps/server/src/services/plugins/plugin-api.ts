@@ -12,7 +12,6 @@ import {
 } from "@bb/db";
 import type {
   BbPluginApi,
-  PluginAgentContextProvider,
   PluginAgentToolContext,
   PluginAgentToolResult,
   PluginAgents,
@@ -34,8 +33,6 @@ import type {
   PluginSettingValue,
   PluginSettings,
   PluginSettingsValues,
-  PluginSlashCommandContext,
-  PluginSlashCommandResult,
   PluginStatusApi,
   PluginStorage,
   PluginThreadActionContext,
@@ -57,12 +54,10 @@ import {
 // keeps one import site for plugin API types.
 export type {
   BbPluginApi,
-  PluginAgentContextProvider,
   PluginAgentToolContentPart,
   PluginAgentToolContext,
   PluginAgentToolRegistrationBase,
   PluginAgentToolResult,
-  PluginAgentTurnContext,
   PluginAgents,
   PluginBackground,
   PluginCli,
@@ -83,9 +78,6 @@ export type {
   PluginSettings,
   PluginSettingsHandle,
   PluginSettingsValues,
-  PluginSlashCommandContext,
-  PluginSlashCommandRegistration,
-  PluginSlashCommandResult,
   PluginStatusApi,
   PluginStorage,
   PluginThreadActionContext,
@@ -209,23 +201,6 @@ export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
   "update_environment_directory",
 ];
 
-/**
- * Built-in composer slash commands plugins may not shadow. Maintained by
- * hand — kept in sync with BUILT_IN_PROVIDER_COMMANDS in
- * services/threads/provider-command-typeahead.ts by
- * test/services/plugins/plugin-slash-commands.test.ts.
- */
-export const RESERVED_COMPOSER_SLASH_COMMANDS: readonly string[] = ["compact"];
-
-/** Runtime record of a registered slash command. */
-export interface PluginSlashCommandRecord {
-  name: string;
-  description: string;
-  run: (
-    ctx: PluginSlashCommandContext,
-  ) => PluginSlashCommandResult | Promise<PluginSlashCommandResult>;
-}
-
 /** Runtime record of a registered mention provider. */
 export interface PluginMentionProviderRecord {
   id: string;
@@ -298,9 +273,6 @@ const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // Thread action ids become URL path segments.
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
-// Slash command names become `/<name>` menu entries and URL path segments.
-const SLASH_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
-
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -333,14 +305,10 @@ export interface PluginApiHandle {
   schedules: PluginScheduleRecord[];
   /** The plugin's CLI command (`bb.cli.register`); null when none. */
   cli: { registration: PluginCliRegistrationRecord | null };
-  /** Per-turn context providers recorded by `bb.agents.addContext`. */
-  contextProviders: PluginAgentContextProvider[];
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
   /** Thread actions recorded by `bb.ui.registerThreadAction`. */
   threadActions: PluginThreadActionRecord[];
-  /** Slash commands recorded by `bb.ui.registerSlashCommand`. */
-  slashCommands: PluginSlashCommandRecord[];
   /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
   mentionProviders: PluginMentionProviderRecord[];
   /** Poison every method on the handle. */
@@ -697,16 +665,8 @@ export function createPluginApi(options: {
     },
   };
 
-  const contextProviders: PluginAgentContextProvider[] = [];
   const agentTools: PluginAgentToolRecord[] = [];
   const agents: PluginAgents = {
-    addContext(provider) {
-      assertLive();
-      if (typeof provider !== "function") {
-        throw new Error("agents.addContext requires a function provider");
-      }
-      contextProviders.push(provider);
-    },
     registerTool(tool: {
       name: string;
       description: string;
@@ -828,7 +788,6 @@ export function createPluginApi(options: {
   };
 
   const threadActions: PluginThreadActionRecord[] = [];
-  const slashCommands: PluginSlashCommandRecord[] = [];
   const mentionProviders: PluginMentionProviderRecord[] = [];
   const ui: PluginUi = {
     registerThreadAction(action) {
@@ -871,39 +830,6 @@ export function createPluginApi(options: {
             ? action.confirm
             : null,
         run: action.run.bind(action),
-      });
-    },
-    registerSlashCommand(command) {
-      assertLive();
-      const name = command?.name;
-      if (typeof name !== "string" || !SLASH_COMMAND_NAME_PATTERN.test(name)) {
-        throw new Error(
-          `invalid slash command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
-        );
-      }
-      if (RESERVED_COMPOSER_SLASH_COMMANDS.includes(name)) {
-        throw new Error(
-          `slash command "/${name}" is a built-in composer command — pick another name`,
-        );
-      }
-      if (slashCommands.some((record) => record.name === name)) {
-        throw new Error(`slash command "${name}" is already registered`);
-      }
-      if (
-        typeof command.description !== "string" ||
-        command.description.trim().length === 0
-      ) {
-        throw new Error(`slash command "${name}" must provide a description`);
-      }
-      if (typeof command.run !== "function") {
-        throw new Error(
-          `slash command "${name}" must provide a run({ args, threadId, projectId }) function`,
-        );
-      }
-      slashCommands.push({
-        name,
-        description: command.description,
-        run: command.run.bind(command),
       });
     },
     registerMentionProvider(provider) {
@@ -1066,10 +992,8 @@ export function createPluginApi(options: {
     backgroundServices,
     schedules,
     cli: cliRecord,
-    contextProviders,
     agentTools,
     threadActions,
-    slashCommands,
     mentionProviders,
     invalidate() {
       invalidated = true;

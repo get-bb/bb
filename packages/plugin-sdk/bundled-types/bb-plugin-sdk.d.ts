@@ -601,84 +601,6 @@ declare const pendingInteractionResolutionSchema: z$1.ZodUnion<readonly [z$1.Zod
 }, z$1.core.$strip>]>;
 type PendingInteractionResolution = z$1.infer<typeof pendingInteractionResolutionSchema>;
 
-declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-    visibility: z$1.ZodOptional<z$1.ZodEnum<{
-        "agent-only": "agent-only";
-    }>>;
-    type: z$1.ZodLiteral<"text">;
-    text: z$1.ZodString;
-    mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
-        start: z$1.ZodNumber;
-        end: z$1.ZodNumber;
-        resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"thread">;
-            threadId: z$1.ZodString;
-            projectId: z$1.ZodOptional<z$1.ZodString>;
-            label: z$1.ZodString;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"project">;
-            projectId: z$1.ZodString;
-            label: z$1.ZodString;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"path">;
-            source: z$1.ZodEnum<{
-                workspace: "workspace";
-                "thread-storage": "thread-storage";
-            }>;
-            entryKind: z$1.ZodEnum<{
-                file: "file";
-                directory: "directory";
-            }>;
-            path: z$1.ZodString;
-            label: z$1.ZodString;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"command">;
-            trigger: z$1.ZodEnum<{
-                "/": "/";
-            }>;
-            name: z$1.ZodString;
-            source: z$1.ZodEnum<{
-                command: "command";
-                skill: "skill";
-            }>;
-            origin: z$1.ZodEnum<{
-                user: "user";
-                project: "project";
-                builtin: "builtin";
-            }>;
-            label: z$1.ZodString;
-            argumentHint: z$1.ZodNullable<z$1.ZodString>;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"plugin">;
-            pluginId: z$1.ZodString;
-            itemId: z$1.ZodString;
-            label: z$1.ZodString;
-        }, z$1.core.$strip>], "kind">;
-    }, z$1.core.$strip>>>;
-}, z$1.core.$strip>, z$1.ZodObject<{
-    visibility: z$1.ZodOptional<z$1.ZodEnum<{
-        "agent-only": "agent-only";
-    }>>;
-    type: z$1.ZodLiteral<"image">;
-    url: z$1.ZodString;
-}, z$1.core.$strip>, z$1.ZodObject<{
-    visibility: z$1.ZodOptional<z$1.ZodEnum<{
-        "agent-only": "agent-only";
-    }>>;
-    type: z$1.ZodLiteral<"localImage">;
-    path: z$1.ZodString;
-}, z$1.core.$strip>, z$1.ZodObject<{
-    visibility: z$1.ZodOptional<z$1.ZodEnum<{
-        "agent-only": "agent-only";
-    }>>;
-    type: z$1.ZodLiteral<"localFile">;
-    path: z$1.ZodString;
-    name: z$1.ZodOptional<z$1.ZodString>;
-    sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
-    mimeType: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strip>], "type">;
-type PromptInput = z$1.infer<typeof promptInputSchema>;
-
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
@@ -695,8 +617,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -710,6 +632,9 @@ declare const createAutomationRequestSchema: z$1.ZodObject<{
         triggerType: z$1.ZodLiteral<"schedule">;
         cron: z$1.ZodString;
         timezone: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        triggerType: z$1.ZodLiteral<"once">;
+        runAt: z$1.ZodNumber;
     }, z$1.core.$strip>], "triggerType">;
     execution: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         mode: z$1.ZodLiteral<"agent">;
@@ -778,6 +703,9 @@ declare const updateAutomationRequestSchema: z$1.ZodObject<{
         triggerType: z$1.ZodLiteral<"schedule">;
         cron: z$1.ZodString;
         timezone: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        triggerType: z$1.ZodLiteral<"once">;
+        runAt: z$1.ZodNumber;
     }, z$1.core.$strip>], "triggerType">>;
     execution: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         mode: z$1.ZodLiteral<"agent">;
@@ -2199,11 +2127,6 @@ interface PluginCli {
     register(registration: PluginCliRegistration): void;
 }
 /** Per-turn context handed to bb.agents context providers (design §4.4). */
-interface PluginAgentTurnContext {
-    threadId: string;
-    projectId: string;
-}
-type PluginAgentContextProvider = (ctx: PluginAgentTurnContext) => string | null | Promise<string | null>;
 /** MCP-style content parts a native tool may return (design §4.4). */
 type PluginAgentToolContentPart = {
     type: "text";
@@ -2239,16 +2162,6 @@ interface PluginAgentToolRegistrationBase {
     instructions?: string;
 }
 interface PluginAgents {
-    /**
-     * Register a per-turn instruction-section provider (design §4.4). Called
-     * during runtime-config assembly for every thread turn (global in V1);
-     * the returned text is appended to the thread's instructions, labeled
-     * with this plugin's id. Return null or an empty string to contribute
-     * nothing. Each call is time-boxed (2s) and failure-isolated: a slow or
-     * throwing provider is skipped and logged — it can never stall turn
-     * submission. Multiple providers per plugin are allowed.
-     */
-    addContext(provider: PluginAgentContextProvider): void;
     /**
      * Register a native dynamic tool (design §4.4). `parameters` is either a
      * zod schema (validated per call; execute receives the parsed value) or a
@@ -2296,46 +2209,6 @@ interface PluginThreadActionRegistration {
      */
     run(ctx: PluginThreadActionContext): PluginThreadActionResult | Promise<PluginThreadActionResult>;
 }
-/**
- * Composer slash-command invocation context (design §4.9). `threadId` and
- * `projectId` are null when the command runs from the homepage (new-thread)
- * composer before a thread or project is committed.
- */
-interface PluginSlashCommandContext {
-    /**
-     * Text passed after the command name; "" when none. The shipped composer
-     * currently always sends "" — its trigger query stops at the first
-     * whitespace, so nothing typed after the name reaches the command.
-     * Non-empty args arrive only from a direct
-     * `POST /plugins/:id/slash/:name` (e.g. scripts or tests).
-     */
-    args: string;
-    threadId: string | null;
-    projectId: string | null;
-}
-/**
- * Return contract: void completes silently, `insertText` inserts a draft
- * into the composer at the cursor, `send` submits the inputs as a message
- * through the composer's normal send path.
- */
-type PluginSlashCommandResult = void | {
-    insertText: string;
-} | {
-    send: PromptInput[];
-};
-interface PluginSlashCommandRegistration {
-    /** Menu name (`/<name>`): lowercase [a-z0-9-]+, and not a built-in
-     * composer command (see RESERVED_COMPOSER_SLASH_COMMANDS in the server). */
-    name: string;
-    /** Shown next to the name in the composer's `/` menu. */
-    description: string;
-    /**
-     * Runs server-side when the user picks the command. The composer menu
-     * shows a pending state while in flight and an error toast when this
-     * throws.
-     */
-    run(ctx: PluginSlashCommandContext): PluginSlashCommandResult | Promise<PluginSlashCommandResult>;
-}
 /** Search context handed to a mention provider (design §4.9). `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 interface PluginMentionSearchContext {
@@ -2382,12 +2255,6 @@ interface PluginUi {
      * the plugin. Invoked via POST /plugins/:id/actions/:actionId.
      */
     registerThreadAction(action: PluginThreadActionRegistration): void;
-    /**
-     * Register a composer slash command rendered in the shipped app's `/`
-     * menu (design §4.9). Multiple commands per plugin; names must be unique
-     * within the plugin. Invoked via POST /plugins/:id/slash/:name.
-     */
-    registerSlashCommand(command: PluginSlashCommandRegistration): void;
     /**
      * Register an `@`-mention provider for the shipped app's composer
      * (design §4.9). Items group under `label` in the mention menu; a picked
@@ -2461,4 +2328,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentContextProvider, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentTurnContext, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBadgeProps, PluginButtonProps, PluginCardProps, PluginCheckboxProps, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginDialogCloseProps, PluginDialogProps, PluginDialogSectionProps, PluginDropdownMenuCheckboxItemProps, PluginDropdownMenuItemProps, PluginDropdownMenuLabelProps, PluginDropdownMenuProps, PluginDropdownMenuRadioGroupProps, PluginDropdownMenuRadioItemProps, PluginDropdownMenuSubProps, PluginDropdownMenuSubTriggerProps, PluginEmptyStateProps, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInputProps, PluginKvStorage, PluginLabelProps, PluginLogger, PluginMarkdownProps, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMenuContentProps, PluginNavPanelProps, PluginNavPanelRegistration, PluginOverlayTriggerProps, PluginPageBodyProps, PluginPopoverContentProps, PluginPopoverProps, PluginPortalProps, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSelectContentProps, PluginSelectItemProps, PluginSelectProps, PluginSelectTriggerProps, PluginSelectValueProps, PluginSeparatorProps, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginSkeletonProps, PluginSlashCommandContext, PluginSlashCommandRegistration, PluginSlashCommandResult, PluginSpinnerProps, PluginStatusApi, PluginStorage, PluginSwitchProps, PluginTabsContentProps, PluginTabsListProps, PluginTabsProps, PluginTabsTriggerProps, PluginTextareaProps, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelTabProps, PluginThreadPanelTabRegistration, PluginToast, PluginToastOptions, PluginTooltipContentProps, PluginTooltipProps, PluginTooltipProviderProps, PluginUi, PluginUiAlign, PluginUiPartProps, PluginUiSide };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBadgeProps, PluginButtonProps, PluginCardProps, PluginCheckboxProps, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginDialogCloseProps, PluginDialogProps, PluginDialogSectionProps, PluginDropdownMenuCheckboxItemProps, PluginDropdownMenuItemProps, PluginDropdownMenuLabelProps, PluginDropdownMenuProps, PluginDropdownMenuRadioGroupProps, PluginDropdownMenuRadioItemProps, PluginDropdownMenuSubProps, PluginDropdownMenuSubTriggerProps, PluginEmptyStateProps, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInputProps, PluginKvStorage, PluginLabelProps, PluginLogger, PluginMarkdownProps, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMenuContentProps, PluginNavPanelProps, PluginNavPanelRegistration, PluginOverlayTriggerProps, PluginPageBodyProps, PluginPopoverContentProps, PluginPopoverProps, PluginPortalProps, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSelectContentProps, PluginSelectItemProps, PluginSelectProps, PluginSelectTriggerProps, PluginSelectValueProps, PluginSeparatorProps, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginSkeletonProps, PluginSpinnerProps, PluginStatusApi, PluginStorage, PluginSwitchProps, PluginTabsContentProps, PluginTabsListProps, PluginTabsProps, PluginTabsTriggerProps, PluginTextareaProps, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelTabProps, PluginThreadPanelTabRegistration, PluginToast, PluginToastOptions, PluginTooltipContentProps, PluginTooltipProps, PluginTooltipProviderProps, PluginUi, PluginUiAlign, PluginUiPartProps, PluginUiSide };

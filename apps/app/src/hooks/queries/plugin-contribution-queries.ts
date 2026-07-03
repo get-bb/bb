@@ -1,14 +1,12 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { z } from "zod";
-import { promptInputSchema, type PromptInput } from "@bb/domain";
 import { useSystemConfig } from "./system-queries";
 
 /**
  * Host-rendered plugin contributions (plugin design §4.9), served by
  * GET /api/v1/plugins/contributions. Not in the typed server contract — the
  * plugin routes are server-policy glue — so fetched directly and typed
- * locally. One query covers every contribution kind; later kinds (slash
- * commands, mention providers) extend {@link PluginContributions}.
+ * locally. One query covers every contribution kind; later kinds extend
+ * {@link PluginContributions}.
  */
 export interface PluginThreadActionContribution {
   pluginId: string;
@@ -20,13 +18,6 @@ export interface PluginThreadActionContribution {
   confirm: string | null;
 }
 
-/** One composer slash command contributed by a plugin (design §4.9). */
-export interface PluginSlashCommandContribution {
-  pluginId: string;
-  name: string;
-  description: string;
-}
-
 /** One `@`-mention provider contributed by a plugin (design §4.9). */
 export interface PluginMentionProviderContribution {
   pluginId: string;
@@ -36,7 +27,6 @@ export interface PluginMentionProviderContribution {
 
 export interface PluginContributions {
   threadActions: PluginThreadActionContribution[];
-  slashCommands: PluginSlashCommandContribution[];
   mentionProviders: PluginMentionProviderContribution[];
 }
 
@@ -47,7 +37,6 @@ export interface PluginThreadActionToast {
 
 const EMPTY_CONTRIBUTIONS: PluginContributions = {
   threadActions: [],
-  slashCommands: [],
   mentionProviders: [],
 };
 
@@ -60,18 +49,6 @@ function isMentionProviderContribution(
     typeof provider.pluginId === "string" &&
     typeof provider.id === "string" &&
     typeof provider.label === "string"
-  );
-}
-
-function isSlashCommandContribution(
-  value: unknown,
-): value is PluginSlashCommandContribution {
-  if (typeof value !== "object" || value === null) return false;
-  const command = value as Record<string, unknown>;
-  return (
-    typeof command.pluginId === "string" &&
-    typeof command.name === "string" &&
-    typeof command.description === "string"
   );
 }
 
@@ -98,15 +75,11 @@ async function fetchPluginContributions(
   if (!response.ok) return EMPTY_CONTRIBUTIONS;
   const body = (await response.json()) as {
     threadActions?: unknown;
-    slashCommands?: unknown;
     mentionProviders?: unknown;
   };
   return {
     threadActions: Array.isArray(body.threadActions)
       ? body.threadActions.filter(isThreadActionContribution)
-      : [],
-    slashCommands: Array.isArray(body.slashCommands)
-      ? body.slashCommands.filter(isSlashCommandContribution)
       : [],
     mentionProviders: Array.isArray(body.mentionProviders)
       ? body.mentionProviders.filter(isMentionProviderContribution)
@@ -186,45 +159,6 @@ export async function runPluginThreadAction(args: {
     return { kind, message };
   }
   return null;
-}
-
-/**
- * The composer-facing shape of a slash command's server-side result
- * (design §4.9 return contract: void | { insertText } | { send }).
- */
-export type PluginSlashCommandAction =
-  | { kind: "none" }
-  | { kind: "insertText"; text: string }
-  | { kind: "send"; inputs: PromptInput[] };
-
-const slashCommandSendSchema = z.array(promptInputSchema).min(1);
-
-/**
- * Parse the POST /plugins/:id/slash/:name success envelope into a
- * {@link PluginSlashCommandAction}. Exported for tests; throws on malformed
- * envelopes so callers surface them as command failures.
- */
-export function parsePluginSlashCommandAction(
-  body: unknown,
-): PluginSlashCommandAction {
-  const envelope = body as {
-    action?: unknown;
-    insertText?: unknown;
-    send?: unknown;
-  } | null;
-  if (envelope?.action === "none") return { kind: "none" };
-  if (
-    envelope?.action === "insertText" &&
-    typeof envelope.insertText === "string" &&
-    envelope.insertText.length > 0
-  ) {
-    return { kind: "insertText", text: envelope.insertText };
-  }
-  if (envelope?.action === "send") {
-    const parsed = slashCommandSendSchema.safeParse(envelope.send);
-    if (parsed.success) return { kind: "send", inputs: parsed.data };
-  }
-  throw new Error("plugin returned a malformed slash command result");
 }
 
 /** One row from GET /plugins/mentions/search (plugin design §4.9). */
@@ -318,40 +252,3 @@ export function usePluginMentionSearch(
   });
 }
 
-/**
- * Invoke one plugin slash command server-side. `threadId`/`projectId` are
- * null on the homepage (new-thread) composer. Throws with the server's error
- * message on handler failures so callers surface it as an error toast.
- */
-export async function runPluginSlashCommand(args: {
-  pluginId: string;
-  name: string;
-  args: string;
-  threadId: string | null;
-  projectId: string | null;
-}): Promise<PluginSlashCommandAction> {
-  const response = await fetch(
-    `/api/v1/plugins/${encodeURIComponent(args.pluginId)}/slash/${encodeURIComponent(args.name)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        args: args.args,
-        ...(args.threadId !== null ? { threadId: args.threadId } : {}),
-        ...(args.projectId !== null ? { projectId: args.projectId } : {}),
-      }),
-    },
-  );
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    error?: unknown;
-  } | null;
-  if (!response.ok || body?.ok !== true) {
-    throw new Error(
-      typeof body?.error === "string"
-        ? body.error
-        : `slash command failed (HTTP ${response.status})`,
-    );
-  }
-  return parsePluginSlashCommandAction(body);
-}

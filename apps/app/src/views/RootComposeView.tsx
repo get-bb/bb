@@ -1724,12 +1724,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => submitPromptInternal(null),
     [submitPromptInternal],
   );
-  const handleSendPluginInputs = useCallback(
-    (inputs: PromptInput[]) => {
-      void submitPromptInternal(inputs);
-    },
-    [submitPromptInternal],
-  );
 
   const isSubmitDisabled =
     !selectedProviderId ||
@@ -1804,9 +1798,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
-    // The homepage composer has no thread yet: plugin slash commands run
-    // with threadId null (design §4.9).
-    threadId: null,
     query: commandQuery,
   });
   const rootPanelEnvironmentId = reuseEnvironmentId;
@@ -2213,8 +2204,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         isLoadingMore: commandSuggestions.isLoadingMore,
         loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
-        runPluginCommand: commandSuggestions.runPluginCommand,
-        sendPluginInputs: handleSendPluginInputs,
       },
     }),
     [
@@ -2228,10 +2217,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       commandSuggestions.isLoading,
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
-      commandSuggestions.runPluginCommand,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
-      handleSendPluginInputs,
     ],
   );
   useEffect(() => {

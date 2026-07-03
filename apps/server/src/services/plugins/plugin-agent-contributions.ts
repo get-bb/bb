@@ -2,10 +2,8 @@ import type { ToolCallResponse } from "@bb/domain";
 import type {
   PluginAgentToolContext,
   PluginAgentToolRecord,
-  PluginAgentTurnContext,
 } from "./plugin-api.js";
 import type {
-  PluginAgentContextSection,
   PluginAgentToolContribution,
   PluginMentionResolveResult,
   PluginService,
@@ -22,7 +20,6 @@ import type {
 type PluginAgentContributions = Pick<
   PluginService,
   | "listSkillsRootPaths"
-  | "collectAgentContextSections"
   | "listAgentTools"
   | "findAgentTool"
   | "invokeAgentTool"
@@ -40,13 +37,6 @@ export function setPluginAgentContributions(
 /** Skills roots contributed by running plugins (the "plugin" skill tier). */
 export function getPluginSkillsRootPaths(): string[] {
   return contributions?.listSkillsRootPaths() ?? [];
-}
-
-/** Per-turn instruction sections from bb.agents.addContext providers. */
-export async function collectPluginAgentContextSections(
-  ctx: PluginAgentTurnContext,
-): Promise<PluginAgentContextSection[]> {
-  return contributions ? contributions.collectAgentContextSections(ctx) : [];
 }
 
 /** Native tools from bb.agents.registerTool, resolved live per session start. */

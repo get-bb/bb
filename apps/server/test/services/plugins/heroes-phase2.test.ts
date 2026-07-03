@@ -40,7 +40,6 @@ const APP_VERSION = "1.0.0";
 
 describe("hero plugin: small-ux-pack", () => {
   let server: RunningTestServer;
-  let projectId: string;
   let threadId: string;
 
   beforeEach(async () => {
@@ -55,7 +54,6 @@ describe("hero plugin: small-ux-pack", () => {
       hostId: host.id,
       path: "/tmp/small-ux-pack-source",
     });
-    projectId = project.id;
     const environment = seedEnvironment(server.deps, {
       hostId: host.id,
       projectId: project.id,
@@ -100,14 +98,13 @@ describe("hero plugin: small-ux-pack", () => {
     });
   }
 
-  it("lists both thread actions (with confirm metadata) and /standup in contributions", async () => {
+  it("lists both thread actions (with confirm metadata) in contributions", async () => {
     const response = await fetch(
       `${server.baseUrl}/api/v1/plugins/contributions`,
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       threadActions: unknown;
-      slashCommands: unknown;
     };
     expect(body.threadActions).toEqual([
       {
@@ -123,14 +120,6 @@ describe("hero plugin: small-ux-pack", () => {
         title: "Copy status",
         icon: "Clipboard",
         confirm: null,
-      },
-    ]);
-    expect(body.slashCommands).toEqual([
-      {
-        pluginId: "small-ux-pack",
-        name: "standup",
-        description:
-          "Draft a standup summary from this project's recent threads",
       },
     ]);
   });
@@ -189,38 +178,6 @@ describe("hero plugin: small-ux-pack", () => {
     expect(entry?.handlerStats.errorCount).toBe(1);
   });
 
-  it("/standup builds insertText from the project's recent thread titles", async () => {
-    const response = await post("/api/v1/plugins/small-ux-pack/slash/standup", {
-      threadId,
-      projectId,
-    });
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      ok: boolean;
-      action: string;
-      insertText: string;
-    };
-    expect(body.ok).toBe(true);
-    expect(body.action).toBe("insertText");
-    expect(body.insertText).toContain("Standup:");
-    expect(body.insertText).toContain("- Fix the login flow");
-    expect(body.insertText).toContain("- Ship the mentions popover");
-    expect(body.insertText).toContain("Blockers:");
-  });
-
-  it("/standup works from the homepage composer (null project) too", async () => {
-    const response = await post(
-      "/api/v1/plugins/small-ux-pack/slash/standup",
-      {},
-    );
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      action: string;
-      insertText: string;
-    };
-    expect(body.action).toBe("insertText");
-    expect(body.insertText).toContain("Standup:");
-  });
 });
 
 describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
@@ -264,7 +221,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
     return { environment, project, session, thread };
   }
 
-  it("docs_search, the addContext note, and the repo-conventions skill all ride thread.start", async () => {
+  it("docs_search and the repo-conventions skill ride thread.start", async () => {
     const { environment, project, thread } = seedThreadFixture(1);
     const execution = await resolveExecutionOptions(harness.deps, {
       threadId: thread.id,
@@ -302,12 +259,6 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
     expect(command.instructions).toContain(
       "Use the docs_search tool to look up repo conventions",
     );
-
-    // addContext: the conventions note rides the instructions.
-    expect(command.instructions).toContain(
-      'The following instructions come from the BB plugin "agent-enrichment":',
-    );
-    expect(command.instructions).toContain("conventional commits");
 
     // Skills tier: the plugin's skills/ directory is injected.
     expect(command.injectedSkillSources).toContainEqual(

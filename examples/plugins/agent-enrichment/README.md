@@ -12,8 +12,6 @@ its entire surface is agent-facing. It demonstrates:
   bad arguments become a tool error, not a plugin error) and converted to the
   JSON schema providers see. The tool rides the session's `dynamicTools`, so
   it appears on the next thread/turn start.
-- **`bb.agents.addContext`** — a short conventions note appended to every
-  thread turn's instructions, labeled with the plugin's id.
 - **`bb.ui.registerMentionProvider`** — type `@` in the composer and search
   the bundled docs by title; picking one inserts a pill, and the doc's full
   body is resolved at send time and attached as agent-only context.
@@ -48,7 +46,7 @@ bb plugin config agent-enrichment set caseSensitive true
 
 In a thread (next turn start after install): ask the agent to call the
 `docs_search` tool, `@`-mention a doc (type `@testing` in the composer), or
-just ask about repo conventions — the addContext note and the
-`repo-conventions` skill are already in its instructions.
+just ask about repo conventions — the `repo-conventions` skill is already
+available to it.
 
 After editing sources, `bb plugin reload agent-enrichment`.

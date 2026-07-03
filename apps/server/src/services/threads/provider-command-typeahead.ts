@@ -25,9 +25,7 @@ export const PROVIDER_COMMAND_DEFAULT_LIMIT = 8;
  */
 export const PROVIDER_COMMAND_LIMIT_MAX = 50;
 
-/** Exported so RESERVED_COMPOSER_SLASH_COMMANDS (plugin-api.ts) can be
- * asserted in sync by test/services/plugins/plugin-slash-commands.test.ts. */
-export const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
+const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
   {
     name: "compact",
     source: "command",

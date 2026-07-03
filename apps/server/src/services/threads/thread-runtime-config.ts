@@ -24,7 +24,6 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import {
-  collectPluginAgentContextSections,
   getPluginSkillsRootPaths,
   listPluginAgentTools,
 } from "../plugins/plugin-agent-contributions.js";
@@ -196,13 +195,6 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.logger,
     workspacePath,
   );
-  // Plugin context sections (design §4.4): assembled per turn, global to
-  // all threads in V1. Each provider is time-boxed and failure-isolated by
-  // the plugin service, so this await cannot stall turn submission.
-  const pluginContextSections = await collectPluginAgentContextSections({
-    threadId: args.thread.id,
-    projectId: args.thread.projectId,
-  });
   const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
   // Per-tool instructions: each dynamic tool carries its own snippet (the
   // built-in update_environment_directory guidance is one of them; plugin
@@ -217,12 +209,6 @@ export async function resolveThreadRuntimeCommandConfig(
         contribution.instructions,
       );
     }
-  }
-  for (const section of pluginContextSections) {
-    instructionSections.push(
-      `The following instructions come from the BB plugin "${section.pluginId}":`,
-      section.text,
-    );
   }
   if (dataDirAgentInstructions) {
     instructionSections.push(

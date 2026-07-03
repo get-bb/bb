@@ -13,7 +13,10 @@
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
       ],
-      "env": ["VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+      "env": [
+        "VITE_POSTHOG_KEY",
+        "VITE_POSTHOG_HOST"
+      ],
       "outputs": [
         "dist/**"
       ]
@@ -333,6 +336,17 @@
     "@bb/server#test": {
       "dependsOn": [
         "//#ensure-native-modules"
+      ]
+    },
+    "@bb/plugin-sdk#build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
+      ],
+      "outputs": [
+        "bundled-types/**"
       ]
     }
   }

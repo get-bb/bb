@@ -406,7 +406,6 @@ export function SideChatTabContent({
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId: promptContextEnvironmentId,
-    threadId: promptContextThreadId,
     query: commandQuery,
   });
   const uploadPromptAttachment = useUploadPromptAttachment();
@@ -653,32 +652,6 @@ export function SideChatTabContent({
     ],
   );
 
-  // Plugin slash-command `{ send }` results submit through the side chat's
-  // normal send/queue path (design §4.9), minus the draft bookkeeping.
-  const handleSendPluginInputs = useCallback(
-    (inputs: PromptInput[]) => {
-      setIsSideChatTurnSubmitting(true);
-      void sendOrQueueSideChatInput(inputs)
-        .catch((error) => {
-          if (!isMountedRef.current) {
-            return;
-          }
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to send side chat message",
-              lifecycleOperation: "send_message",
-            }),
-          );
-        })
-        .finally(() => {
-          if (isMountedRef.current) {
-            setIsSideChatTurnSubmitting(false);
-          }
-        });
-    },
-    [sendOrQueueSideChatInput],
-  );
 
   // A side chat hands results back to the main thread per agent message (the
   // "send to main thread" action under each reply) via the cross-thread
@@ -1159,8 +1132,6 @@ export function SideChatTabContent({
         isLoadingMore: commandSuggestions.isLoadingMore,
         loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
-        runPluginCommand: commandSuggestions.runPluginCommand,
-        sendPluginInputs: handleSendPluginInputs,
       },
     }),
     [
@@ -1169,10 +1140,8 @@ export function SideChatTabContent({
       commandSuggestions.isLoading,
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
-      commandSuggestions.runPluginCommand,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
-      handleSendPluginInputs,
       promptMentions.isError,
       promptMentions.isLoading,
       promptMentions.setQuery,

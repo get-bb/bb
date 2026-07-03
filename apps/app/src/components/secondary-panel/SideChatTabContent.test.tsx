@@ -611,7 +611,6 @@ describe("SideChatTabContent", () => {
         },
       ],
       environmentId: null,
-      threadId: "thr_side",
       query: null,
     });
     expect(screen.getByTestId("command-trigger").textContent).toBe("/");
@@ -634,7 +633,6 @@ describe("SideChatTabContent", () => {
           },
         ],
         environmentId: null,
-        threadId: "thr_side",
         query: "review",
       }),
     );

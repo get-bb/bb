@@ -21,7 +21,6 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
 import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
-import { appToast } from "@/components/ui/app-toast.js";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -30,24 +29,7 @@ import {
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
-import type {
-  PluginCommandSuggestion,
-  ProviderCommandSuggestion,
-} from "./mentions/types";
-
-vi.mock("@/components/ui/app-toast.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/components/ui/app-toast.js")>();
-  return {
-    ...actual,
-    appToast: {
-      success: vi.fn(),
-      error: vi.fn(),
-      message: vi.fn(),
-      warning: vi.fn(),
-    },
-  };
-});
+import type { ProviderCommandSuggestion } from "./mentions/types";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
@@ -108,7 +90,6 @@ function buildTypeaheadConfig({
       onQueryChange: () => {},
     },
     command: {
-      ...INERT_TYPEAHEAD_COMMAND_CONFIG,
       trigger: "/",
       suggestions: commandSuggestions,
       isLoading: false,
@@ -1049,9 +1030,14 @@ describe("PromptBoxInternal command typeahead submit", () => {
               onQueryChange: () => {},
             },
             command: {
-              ...INERT_TYPEAHEAD_COMMAND_CONFIG,
               trigger: "/",
               suggestions: [suggestion],
+              isLoading: false,
+              isError: false,
+              hasMore: false,
+              isLoadingMore: false,
+              loadMore: () => {},
+              onQueryChange: () => {},
             },
           }}
           mentionMenuPlacement="bottom"
@@ -1137,161 +1123,5 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
-  });
-});
-
-describe("PromptBoxInternal plugin slash commands", () => {
-  const pluginSuggestion: PluginCommandSuggestion = {
-    kind: "plugin-command",
-    pluginId: "linear",
-    name: "standup",
-    description: "Draft a standup summary",
-  };
-
-  function renderPluginCommandPromptBox({
-    runPluginCommand,
-    sendPluginInputs = vi.fn(),
-  }: {
-    runPluginCommand: TypeaheadConfig["command"]["runPluginCommand"];
-    sendPluginInputs?: TypeaheadConfig["command"]["sendPluginInputs"];
-  }) {
-    const onSubmit = vi.fn();
-    const changes: PromptChange[] = [];
-    const promptBoxRef = createRef<PromptBoxHandle>();
-
-    function Harness() {
-      const [value, setValue] = useState("");
-      const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
-        [],
-      );
-      return (
-        <PromptBoxInternal
-          value={value}
-          mentionRanges={mentionRanges}
-          onChange={(nextValue, nextMentions) => {
-            changes.push({ mentions: nextMentions, value: nextValue });
-            setValue(nextValue);
-            setMentionRanges(nextMentions);
-          }}
-          onSubmit={onSubmit}
-          typeahead={{
-            mention: {
-              suggestions: [],
-              isLoading: false,
-              isError: false,
-              onQueryChange: () => {},
-            },
-            command: {
-              ...INERT_TYPEAHEAD_COMMAND_CONFIG,
-              trigger: "/",
-              suggestions: [pluginSuggestion],
-              runPluginCommand,
-              sendPluginInputs,
-            },
-          }}
-          mentionMenuPlacement="bottom"
-          promptBoxRef={promptBoxRef}
-        />
-      );
-    }
-
-    render(<Harness />);
-    return { changes, onSubmit, promptBoxRef };
-  }
-
-  async function openPluginCommandMenu(
-    promptBoxRef: RefObject<PromptBoxHandle | null>,
-  ) {
-    await focusPromptEnd(promptBoxRef);
-    await act(async () => {
-      promptBoxRef.current?.insertTextAtCursor("/standup");
-    });
-    await act(async () => {});
-    await waitFor(() => expect(screen.queryByText("standup")).not.toBeNull());
-  }
-
-  it("lists plugin commands under a Plugin commands section", async () => {
-    const { promptBoxRef } = renderPluginCommandPromptBox({
-      runPluginCommand: vi.fn(async () => ({ kind: "none" as const })),
-    });
-    await openPluginCommandMenu(promptBoxRef);
-
-    expect(screen.getByText("Plugin commands")).toBeTruthy();
-    expect(screen.getByText("Draft a standup summary")).toBeTruthy();
-  });
-
-  it("runs the picked command with a pending row, removes the trigger token, and inserts the returned draft", async () => {
-    let resolveAction!: (action: {
-      kind: "insertText";
-      text: string;
-    }) => void;
-    const runPluginCommand = vi.fn(
-      () =>
-        new Promise<{ kind: "insertText"; text: string }>((resolve) => {
-          resolveAction = resolve;
-        }),
-    );
-    const { changes, promptBoxRef } = renderPluginCommandPromptBox({
-      runPluginCommand,
-    });
-    await openPluginCommandMenu(promptBoxRef);
-
-    await act(async () => {
-      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-    });
-
-    expect(runPluginCommand).toHaveBeenCalledWith(pluginSuggestion, "");
-    // The typed trigger token is removed immediately...
-    expect(latestValue(changes)).toBe("");
-    // ...and the menu shows the pending state while the POST is in flight.
-    expect(screen.getByText("Running /standup…")).toBeTruthy();
-
-    await act(async () => {
-      resolveAction({ kind: "insertText", text: "Standup draft" });
-    });
-
-    await waitFor(() =>
-      expect(latestValue(changes)).toContain("Standup draft"),
-    );
-    expect(screen.queryByText("Running /standup…")).toBeNull();
-  });
-
-  it("hands { send } inputs to the host's sendPluginInputs", async () => {
-    const inputs = [{ type: "text" as const, text: "note", mentions: [] }];
-    const sendPluginInputs = vi.fn();
-    const { onSubmit, promptBoxRef } = renderPluginCommandPromptBox({
-      runPluginCommand: vi.fn(async () => ({ kind: "send" as const, inputs })),
-      sendPluginInputs,
-    });
-    await openPluginCommandMenu(promptBoxRef);
-
-    await act(async () => {
-      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-    });
-    await waitFor(() => expect(sendPluginInputs).toHaveBeenCalledWith(inputs));
-    // The plugin command submits through sendPluginInputs, never the draft
-    // submit path (Enter on a plugin row must not also submit the composer).
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a rejected command as an error toast", async () => {
-    const { promptBoxRef } = renderPluginCommandPromptBox({
-      runPluginCommand: vi.fn(async () => {
-        throw new Error("standup boom");
-      }),
-    });
-    await openPluginCommandMenu(promptBoxRef);
-
-    await act(async () => {
-      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-    });
-
-    await waitFor(() =>
-      expect(vi.mocked(appToast.error)).toHaveBeenCalledWith(
-        "/standup failed",
-        { description: "standup boom" },
-      ),
-    );
-    expect(screen.queryByText("Running /standup…")).toBeNull();
   });
 });

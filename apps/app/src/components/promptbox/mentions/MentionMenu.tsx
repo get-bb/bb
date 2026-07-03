@@ -31,7 +31,7 @@ import type {
 /**
  * A row the menu can render — an `@`-mention suggestion or a command
  * suggestion (provider or plugin). They share a discriminant-free union via
- * their own `kind` field (`path`/`thread` vs `command`/`plugin-command`), so
+ * their own `kind` field (`path`/`thread` vs `command`), so
  * the composer's apply path can branch by kind without a separate callback
  * per menu mode.
  */
@@ -230,22 +230,16 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
 // Command sections derive from the shared `PROVIDER_COMMAND_SECTIONS` order and
 // `providerCommandSection` mapping in @bb/server-contract — the SAME definition
 // the server sorts the flat response by — so the menu's visual order and the
-// keyboard-nav order can't drift. The menu only adds the human-readable labels
-// and the trailing "plugin-command" section (plugin rows are appended after
-// provider rows by useCommandSuggestions, matching this order).
-type CommandSectionKind = ProviderCommandSection | "plugin-command";
+// keyboard-nav order can't drift. The menu only adds the human-readable labels.
+type CommandSectionKind = ProviderCommandSection;
 
-const COMMAND_SECTION_ORDER: readonly CommandSectionKind[] = [
-  ...PROVIDER_COMMAND_SECTIONS,
-  "plugin-command",
-];
+const COMMAND_SECTION_ORDER: readonly CommandSectionKind[] =
+  PROVIDER_COMMAND_SECTIONS;
 
 function getCommandSectionKind(
   item: ComposerCommandSuggestion,
 ): CommandSectionKind {
-  return item.kind === "plugin-command"
-    ? "plugin-command"
-    : providerCommandSection(item);
+  return providerCommandSection(item);
 }
 
 function getCommandSectionLabel(kind: CommandSectionKind): string {
@@ -255,9 +249,6 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
   if (kind === "skill") {
     return "Skills";
   }
-  if (kind === "plugin-command") {
-    return "Plugin commands";
-  }
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
@@ -266,15 +257,6 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
-  if (item.kind === "plugin-command") {
-    return (
-      <PluginIcon
-        pluginId={item.pluginId}
-        icon={null}
-        className={ROW_ICON_CLASS}
-      />
-    );
-  }
   return (
     <Icon name={promptCommandIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
   );
@@ -296,9 +278,6 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
 }
 
 function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
-  if (item.kind === "plugin-command") {
-    return `plugin-command-${item.pluginId}-${item.name}-${index}`;
-  }
   return `command-${item.source}-${item.origin}-${item.name}-${index}`;
 }
 
@@ -594,17 +573,6 @@ export function MentionMenu({
                 ? "Searching commands…"
                 : "Searching mentions…"}
             </span>
-          </div>
-        ) : innerState.kind === "plugin-pending" ? (
-          // A picked plugin slash command running server-side (plugin design
-          // §4.9): the menu stays open as the pending surface until the
-          // action resolves.
-          <div
-            className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
-            role="status"
-          >
-            <Icon name="Spinner" className="size-3.5 animate-spin" />
-            <span>Running /{innerState.name}…</span>
           </div>
         ) : innerState.kind === "error" ? (
           <div className="px-3 py-2 text-xs text-destructive">

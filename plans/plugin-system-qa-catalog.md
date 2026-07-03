@@ -91,6 +91,31 @@ as `examples/plugins/github`. What that flow proved:
       `bb plugin install <surviving dir>` restored the plugin with its
       `data.db` intact (kv/sqlite survive reinstall by design).
 
+## Verified live — autonomous CLI pass on the dev instance (2026-07-02, post-removals HEAD)
+
+Run against `scripts/bb-dev-app` on this branch (slash-command and
+addContext removals included), with agent-enrichment + small-ux-pack +
+slack-bot + scratch plugins:
+
+- [x] Both hero examples install and run clean on post-removal HEAD.
+- [x] Schedule actually FIRES: `*/1` cron ran on the minute (`last: ok`)
+      and next-run advanced.
+- [x] Plugin CLI return-shape validation: a wrong `run()` return prints
+      `cli run() must return { exitCode: number, stdout?, stderr? }` and
+      counts a handler error — clear contract error, plugin stays running.
+- [x] Degraded → running recovery: a plugin marked
+      `degraded (service ... did not stop)` returns to `running` on the
+      next reload once the service respects the abort.
+- [x] `bb plugin remove` removes the command + list entry immediately.
+- [x] FINDING (fixed): the scaffold's commented service example slept
+      through the abort signal (`await sleep(60_000)` in the loop), so any
+      plugin copying it went `degraded (service did not stop)` on every
+      reload. The scaffold now shows an abort-aware sleep.
+- [x] Catalog correction: thread attribution rides `originPluginId` on the
+      wire; the thread response has no `origin` field (`originKind` is the
+      fork/side-chat relationship) — the Phase-1 item text predated the
+      rename.
+
 ## Phase 1 — for you to test
 
 - [ ] **Settings UI toggle**: flip Plugins on/off in Settings → Experiments in
@@ -115,17 +140,24 @@ as `examples/plugins/github`. What that flow proved:
       install ./bb-plugin-demo --yes` → edit → `bb plugin reload demo` →
       change visible. (Verified 2026-07-02 via the github hero, authored
       from scratch on a packaged instance — see the section above.)
-- [ ] **Logs**: `bb plugin logs agent-enrichment -f` while running `bb docs`;
-      lines appear within ~1s.
-- [ ] **Schedules/services in list**: install slack-bot unconfigured →
+- [x] **Logs**: `bb plugin logs agent-enrichment -f` while running `bb docs`;
+      lines appear within ~1s. (Verified 2026-07-02: load + invoke lines
+      visible via `bb plugin logs <id> -n` immediately after the call.
+      Note: a plugin only gets a log file once it first calls `bb.log`.)
+- [x] **Schedules/services in list**: install slack-bot unconfigured →
       `bb plugin list` shows service state + `needs-configuration`; a plugin
       with a `*/1 * * * *` schedule shows next-run advancing each minute.
+      (Verified 2026-07-02: slack-bot `needs-configuration` with the
+      configure hint; scratch plugin's service `running`, schedule next-run
+      advanced AND fired with `last: ok`.)
 - [ ] **Reload under live service**: with slack-bot configured and connected,
       `bb plugin reload slack-bot` — no duplicate replies afterward (tested
       automatically; worth one real-world confirmation).
-- [ ] **Plugin thread attribution**: after the Slack bot spawns a thread,
-      `curl /api/v1/threads/<id>` shows `origin: "plugin"`,
-      `originPluginId: "slack-bot"` (UI badge lands with the frontend phase).
+- [x] **Plugin thread attribution**: after a plugin spawns a thread,
+      `curl /api/v1/threads/<id>` shows `originPluginId: "<id>"` (the
+      response has no `origin` field — `originKind` is the fork/side-chat
+      relationship). (Verified 2026-07-02 via a scratch plugin's
+      `bb.sdk.threads.spawn` with `environment: { type: "project-default" }`.)
 - [ ] **Laptop-sleep schedule behavior**: with a 5-min schedule, sleep the
       machine >5 min, wake — the missed run fires on the next sweep tick.
 
@@ -151,19 +183,20 @@ as `examples/plugins/github`. What that flow proved:
   zod v3 there). The examples avoid it by being pnpm workspace members with
   their own `node_modules`; a loader-provided zod alias is possible
   follow-up.
-- (Phase 2) Plugin slash-command `args` is unreachable from the shipped
-  composer — the trigger query stops at the first whitespace, so the
-  composer always sends `""`. Non-empty args only arrive via a direct
-  `POST /plugins/:id/slash/:name`. Composer args support is deliberate
-  backlog, not built yet. (The earlier "contributions refresh only on the
-  ≤30s stale time" gap is fixed: the server now broadcasts
-  `plugins-changed` and open pages refetch contributions live.)
+- (The earlier "contributions refresh only on the ≤30s stale time" gap is
+  fixed: the server now broadcasts `plugins-changed` and open pages refetch
+  contributions live.)
 
 ## Phase 2 — appended as slices land
 
 (builders: add your slice's manual QA items here)
 
-### P2.1 Plugin skills tier + bb.agents.addContext
+### P2.1 Plugin skills tier
+
+(bb.agents.addContext also shipped in this slice and was REMOVED 2026-07-02:
+per-turn programmatic instruction injection was invisible-to-the-user prompt
+text with a per-turn latency budget; plugin `skills/` directories cover
+standing agent knowledge declaratively. Its checklist items are gone below.)
 
 Prereq: `plugins` experiment on; dev server via `scripts/bb-dev-app` with
 `eval "$(scripts/bb-dev-app env)"`.
@@ -184,24 +217,8 @@ Prereq: `plugins` experiment on; dev server via `scripts/bb-dev-app` with
       (frontmatter `name` must match the dir name), run `pnpm bb:dev plugin
       reload agent-enrichment` — the next thread turn lists the new skill.
       No server restart needed.
-- [ ] **addContext section in instructions**: install a tiny context plugin:
-      `mkdir -p /tmp/bb-plugin-ctx`, write `package.json` with
-      `{ "name": "bb-plugin-ctx", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with
-      `export default (bb: any) => { bb.agents.addContext(() => "Always
-      mention the word pineapple in your first reply."); };`, then
-      `pnpm bb:dev plugin install /tmp/bb-plugin-ctx`. Spawn a thread with
-      any prompt — the reply mentions pineapple, and the thread's
-      instructions (daemon command log, or ask the agent to repeat its
-      instructions) contain
-      `The following instructions come from the BB plugin "ctx":`.
-- [ ] **Failure isolation**: change the provider body to
-      `new Promise(() => {})` (never resolves) and `pnpm bb:dev plugin
-      reload ctx` — turn submission still proceeds after the ~2s time box,
-      the section is absent, `bb plugin list` shows the error in the
-      plugin's handler stats, and the plugin stays `running`.
 - [ ] **Experiment gate**: turn the `plugins` experiment off — the next turn
-      has no plugin skills and no plugin context sections.
+      has no plugin skills.
 
 ### P2.2 Native dynamic tools (bb.agents.registerTool)
 
@@ -220,11 +237,14 @@ tool registered or reloaded mid-session is not hot-added).
       additionalProperties: false }, execute: () => "papaya" }); };`
       then `pnpm bb:dev plugin install /tmp/bb-plugin-fruit` —
       `bb plugin list` shows `fruit` running.
-- [ ] **codex e2e**: `pnpm bb:dev thread spawn --project proj_personal
+- [x] **codex e2e**: `pnpm bb:dev thread spawn --project proj_personal
       --provider codex --permission-mode workspace-write --prompt "Use the
       fruit_lookup tool and reply only with its result." --json` — the reply
       is `papaya` and the thread transcript shows a `fruit_lookup` tool call
-      (not a bash workaround).
+      (not a bash workaround). (Verified 2026-07-02: reply was exactly
+      `papaya`; the tool has no CLI/bash path so it had to be the native
+      call — and it dispatched the FIRST registrant's tool while a clashing
+      plugin was installed.)
 - [ ] **claude-code e2e**: same spawn with `--provider claude-code` — the
       tool call goes through the bb-bridge MCP proxy; reply is `papaya`.
       (pi and acp are the remaining provider matrix, same steps.)
@@ -241,11 +261,12 @@ tool registered or reloaded mid-session is not hot-added).
       plugin's handler error count in `bb plugin list --json` stays 0 (bad
       input is not a plugin error). Automated coverage:
       `plugin-agent-tools.test.ts`.
-- [ ] **Cross-plugin collision**: install a second plugin registering the
+- [x] **Cross-plugin collision**: install a second plugin registering the
       same `fruit_lookup` name — `bb plugin list` shows the second plugin
       `running` with status detail `tool "fruit_lookup" is already
       registered by plugin "fruit" — not registered`; the first plugin's
-      tool keeps working.
+      tool keeps working. (Verified 2026-07-02 verbatim, including the
+      first plugin's tool answering the codex call.)
 - [ ] **Next-session semantics**: while a thread is mid-turn, `pnpm bb:dev
       plugin reload fruit` — the running session keeps its old tool set;
       the next spawned thread (or next turn's session start) picks up
@@ -297,69 +318,17 @@ small-ux-pack example instead of the scratch plugin below.
       foreign Origin header → 403 (executes plugin code, local-auth
       guarded).
 
-### P2.4 Slash commands (bb.ui.registerSlashCommand)
+### P2.4 Slash commands — REMOVED (2026-07-02)
 
-Prereq: `plugins` experiment on; dev server via `scripts/bb-dev-app` with
-`eval "$(scripts/bb-dev-app env)"`. Slash commands ride the composer's `/`
-menu, so pick a provider with a command surface (claude-code works).
-
-- [ ] **Install a slash plugin**: `mkdir -p /tmp/bb-plugin-slash`, write
-      `package.json` with `{ "name": "bb-plugin-slash", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with:
-      `export default (bb: any) => {
-        bb.ui.registerSlashCommand({ name: "standup",
-          description: "Draft a standup summary",
-          run: async ({ args, threadId, projectId }) =>
-            ({ insertText: "Standup (" + (threadId ?? "no thread") + ", "
-              + (projectId ?? "no project") + "): " + args }) });
-        bb.ui.registerSlashCommand({ name: "send-note",
-          description: "Send a note as a message",
-          run: async () => ({ send: [{ type: "text",
-            text: "note from plugin", mentions: [] }] }) });
-        bb.ui.registerSlashCommand({ name: "slow-cmd",
-          description: "Resolve after 4s",
-          run: () => new Promise((r) =>
-            setTimeout(() => r({ insertText: "finally" }), 4000)) });
-        bb.ui.registerSlashCommand({ name: "boom-cmd",
-          description: "Always fails",
-          run: async () => { throw new Error("kaboom"); } });
-      };`
-      then `pnpm bb:dev plugin install /tmp/bb-plugin-slash --yes`.
-- [ ] **Menu inclusion (thread composer)**: open a claude-code thread, type
-      `/` in the follow-up composer — the menu lists a trailing **Plugin
-      commands** section with `standup`, `send-note`, `slow-cmd`,
-      `boom-cmd` (after Commands/Skills sections). Typing `/stand` filters
-      to `standup`.
-- [ ] **insertText from a thread**: pick `standup` (Enter or click) — the
-      typed `/stand` token disappears and
-      `Standup (thr_..., proj_...):` is inserted at the cursor as a draft
-      (nothing is sent).
-- [ ] **Homepage composer (null thread path)**: on the project home / new
-      thread composer, type `/standup` and pick it — inserted text reads
-      `Standup (no thread, proj_...):` (threadId is null before a thread
-      exists; projectId is the selected project).
-- [ ] **Pending state**: type `/slow` and pick `slow-cmd` — the `/` menu
-      stays open showing a spinner row "Running /slow-cmd…" for ~4s, then
-      `finally` is inserted at the cursor.
-- [ ] **{ send } submits a message**: in a thread, pick `send-note` — a
-      user message "note from plugin" is sent through the normal follow-up
-      path (queued instead if the thread is running).
-- [ ] **Error toast**: pick `boom-cmd` — an error toast "/boom-cmd failed —
-      kaboom"; the composer text is untouched apart from the removed
-      trigger token.
-- [ ] **Disappear on disable**: `pnpm bb:dev plugin disable slash` — after
-      the contributions query refreshes (≤30s stale time; reload to force
-      it), the Plugin commands section is gone from the `/` menu. Re-enable
-      brings it back.
-- [ ] **Reserved names**: a plugin registering `name: "compact"` fails to
-      load with `slash command "/compact" is a built-in composer command`
-      (`bb plugin list` shows status `error`).
-- [ ] **API surface** (curl, optional): `curl -X POST -H 'content-type:
-      application/json' -d '{"args":"hi","threadId":"thr_..."}'
-      http://<server>/api/v1/plugins/slash/slash/standup` → `{ ok: true,
-      action: "insertText", insertText: ... }`; omitting threadId/projectId
-      passes null to the handler; unknown command → 404; disabled plugin →
-      503; foreign Origin → 403; non-JSON body → 415.
+The plugin slash-command surface (`bb.ui.registerSlashCommand`, the
+composer "Plugin commands" section, and POST /plugins/:id/slash/:name) was
+removed deliberately: skills already ride the composer's `/` menu (plugin
+`skills/` dirs auto-import), which covers the "type / and pick a plugin
+capability" flow with the agent in the loop. The niche that surface held
+(agent-free composer macros: computed insertText drafts, deterministic
+sends) did not justify a parallel command path. Plugins that want a
+`/`-menu entry ship a skill; plugins that need code execution keep thread
+actions, CLI commands, rpc, and mention providers.
 
 ### P2.5 Mention providers (bb.ui.registerMentionProvider)
 
@@ -443,12 +412,8 @@ the live provider runs.
       appears carrying the thread's live status (e.g. `thread status is
       "idle"`); `bb plugin list` counts the handler error (deliberate — the
       action demonstrates the error path).
-- [ ] **/standup**: type `/standup` in a thread or homepage composer and
-      pick it — a draft ("Standup:" + up to five most recently updated
-      thread titles + "Blockers:") is inserted at the cursor, nothing sent.
-      On the homepage without a project it lists threads across projects.
 - [ ] **Re-install agent-enrichment** (extended in P2.6 with the native
-      tool, addContext, and a docs mention provider): `pnpm bb:dev plugin
+      tool and a docs mention provider): `pnpm bb:dev plugin
       install ./examples/plugins/agent-enrichment --yes`, then reload if it
       was already installed. Note: the example now depends on zod; inside
       this repo it is installed by `pnpm install` (the example is a
@@ -466,10 +431,6 @@ the live provider runs.
 - [ ] **Shared cache**: after the tool call, `pnpm bb:dev docs last` prints
       the tool's query — the CLI command and the native tool share one
       search helper and kv cache.
-- [ ] **addContext note**: in any fresh thread, ask "what do the plugin
-      instructions in your context say about commits?" — the reply reflects
-      the conventions note (`The following instructions come from the BB
-      plugin "agent-enrichment":` section in the thread instructions).
 
 ### Phase 2 end-to-end (the full manual pass)
 
@@ -482,24 +443,21 @@ One sitting, fresh dev server (`scripts/bb-dev-app current`,
 2. In the browser, open a thread that has run once: click **Summarize
    thread** (confirm → success toast → agent summary turn), then **Copy
    status** (error toast with the thread's status).
-3. Type **/standup** in the composer → standup draft inserted from recent
-   thread titles.
-4. Type **@testing** → pick the Plugin docs item → send → agent received
+3. Type **@testing** → pick the Plugin docs item → send → agent received
    the doc body as agent-only context (ask it, or check the daemon-bound
    input for the `Context for @Testing…` part).
-5. `pnpm bb:dev thread spawn --project proj_personal --provider codex
+4. `pnpm bb:dev thread spawn --project proj_personal --provider codex
    --permission-mode workspace-write --prompt "First call the docs_search
    tool with query 'conventional commits', then run 'bb docs last' in bash.
    Reply with both outputs." --json` — the transcript shows a native
    `docs_search` tool call AND a bash `bb docs last` whose output matches
    the tool's query (shared kv cache). Repeat with `--provider claude-code`
    for the MCP-proxy path.
-6. Ask any fresh thread to list its skills → `repo-conventions` and
-   `plugin-commands` are present; its instructions carry the
-   agent-enrichment conventions note.
-7. Turn the Plugins experiment off → header buttons, `/` menu section, and
+5. Ask any fresh thread to list its skills → `repo-conventions` and
+   `plugin-commands` are present.
+6. Turn the Plugins experiment off → header buttons and the
    mention group disappear after the contributions query refreshes; new
-   turns carry no plugin skills/context/tools.
+   turns carry no plugin skills/tools.
 
 ## Phase 3
 
@@ -689,63 +647,19 @@ server.
       own `dist/` writes do not trigger another cycle (one line per save,
       not an infinite rebuild loop).
 
-### P3.5 Linear hero
+### P3.5 Linear hero — REMOVED (2026-07-02)
 
-The full-stack hero (`examples/plugins/linear`, design §8): backend sync +
-frontend slots + mentions + CLI. Automated coverage:
-`apps/server/test/services/plugins/heroes-linear.test.ts` (install-time
-bundle build, schedule → cache → realtime, rpc surface, attributed spawn,
-mention search/resolve-at-send, CLI endpoint) and
-`apps/cli/src/__tests__/linear-example-bundle.test.ts` (built bundle
-registers exactly the three slots against a stub runtime). Checked items
-below were verified in the 2026-07-02 headless smoke; the rest need a real
-Linear API key and a browser.
-
-- [x] **Install + inventory** (live 2026-07-02): `pnpm bb:dev plugin install
-      ./examples/plugins/linear --yes` → `needs-configuration` with the
-      configure hint; `/api/v1/plugins` shows `app.hasApp: true` and a
-      bundle with `jsUrl`/`cssUrl` carrying `?h=<hash>`, `compatible: true`.
-- [x] **Assets over HTTP** (live 2026-07-02): `app.js` → 200
-      `text/javascript` containing `__bbPluginRuntime`; `app.css` → 200
-      `text/css` (Tailwind v4 output).
-- [x] **rpc + contributions unconfigured** (live 2026-07-02):
-      `POST /api/v1/plugins/linear/rpc/listIssues` → `{ ok: true, result:
-      { issues: [] } }`; contributions list the `bb linear` CLI command and
-      the `linear-issue` mention provider.
-- [x] **CLI needs-configuration shape** (live 2026-07-02): `bb linear
-      issues` → "No cached issues. Run `bb linear sync` first."; `bb linear
-      sync` → exit 1 with "Linear API key not set. Set apiKey … `bb plugin
-      config linear` …".
-- [ ] **Configure with a real Linear API key**: `bb plugin config linear set
-      apiKey lin_api_…` (+ optional `teamKey`, `defaultProject`), `bb plugin
-      reload linear` → status `running`; `bb linear sync` prints
-      "Synced N open issue(s)"; `bb linear issues` lists them with states
-      and a "last synced" footer.
-- [ ] **Homepage card fills**: open the app root → the "Open Linear issues"
-      section lists your issues (identifier, title, state); before the
-      first sync it shows the EmptyState hint pointing at Settings →
-      Plugins. Within 5 minutes of a Linear-side edit (or after `bb linear
-      sync`) the card refreshes in place via the `issues-updated` signal —
-      no page reload.
-- [ ] **Click an issue → thread spawns and navigates**: "Start work" on an
-      issue from a project's compose view → spawns in that project;
-      from the bare homepage → spawns in `defaultProject`; the app
-      navigates to the new thread; `curl /api/v1/threads/<id>` shows
-      `origin: "plugin"`, `originPluginId: "linear"` and the
-      `ENG-…: <title>` thread title. With no project anywhere, the click
-      surfaces the "set defaultProject" error instead of spawning.
-- [ ] **Board panel**: the sidebar shows a "Linear" entry → clicking lands
-      on `/plugins/linear/board` with issues grouped into by-state columns;
-      theme tokens follow the active palette.
-- [ ] **@mention an issue**: type `@ENG-` in the composer → a "Linear
-      issues" group appears; pick one and send → the agent receives the
-      issue's identifier/title/state/description as agent-only context
-      (ask it what issue it is working from).
-- [ ] **Issue tab on spawned threads**: open a thread spawned via "Start
-      work" → the right panel shows an "Issue" tab rendering the linked
-      issue; unrelated threads show NO Issue tab (the sync `visible()`
-      cache — see the plugin README's "sync-visible() pattern"); the tab
-      appears immediately after startWork navigation (no refresh).
+The Linear hero example (`examples/plugins/linear`) and its dedicated tests
+(heroes-linear.test.ts, linear-example-bundle.test.ts) were deleted: the
+github hero — authored from scratch on a packaged instance and checked in
+as `examples/plugins/github` — took over the full-stack showcase role
+without needing a third-party API key to exercise. Surfaces the linear
+example uniquely demonstrated live (mention provider + composer-menu logos,
+homepageSection, threadPanelTab with the sync visible() pattern, schedule →
+cache → realtime) remain covered by agent-enrichment (mention provider),
+small-ux-pack (thread actions), github (navPanel/rpc/realtime/service/CLI),
+and the automated suites; the sync visible() pattern stays documented in
+the bb-plugin-authoring skill.
 
 ### Phase 3 end-to-end (the full manual pass)
 
@@ -764,18 +678,19 @@ confirms them with eyes on a real browser:
 1. `pnpm bb:dev plugin new hello --app` + install; run the P3.3 slot checks
    (homepage card, all four slots, ErrorBoundary chip) and the P3.4 dev
    loop (edit → in-place update, no duplicates, disable removes UI live).
-2. Install the Linear hero and run the full "### P3.5 Linear hero" list
-   with a real API key.
+2. Install the github hero (`examples/plugins/github`; needs an authed
+   `gh` CLI) and click through its panel: issues/PRs tabs, detail view,
+   Send agent.
 3. Kill-switch with eyes: make hello's section component throw → chip only,
-   Linear's section and the rest of the app stay alive.
+   the github panel and the rest of the app stay alive.
 4. Stale bundle with eyes: path installs rebuild themselves on a version
    mismatch, so follow P3.2's npm prebuilt rule — install an npm-packed
    plugin whose `dist/app.meta.json` carries a different `sdkMajor`;
    confirm the backend stays `running`, the inventory shows
    `compatible: false`, and the frontend logs the "skipping until the
    plugin is updated" warning without crashing.
-5. Reload the Linear plugin twice (`bb plugin reload linear` ×2) with the
-   homepage open → still exactly one "Open Linear issues" section.
+5. Reload the github plugin twice (`bb plugin reload github` ×2) with its
+   panel open → still exactly one GitHub sidebar entry/panel registration.
 6. Turn the Plugins experiment off → every plugin surface (sections,
    panels, tabs, mentions, slash commands) disappears live; back on →
    returns without a restart.
@@ -859,14 +774,11 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 `plugin-slot-mounts` / `PluginThreadActions` / `MentionMenu` /
 `PluginsSettingsSection` tests.
 
-- [x] **Page chrome (default)**: the linear board panel shows a host title
-      bar — plugin logo + "Linear" left, the plugin's `headerContent`
-      (synced-issue count + a working Sync button with pending state)
-      right — above a FULL-WIDTH body (no prose max-width cap); the board's
-      state columns fill the width and scroll horizontally when they
-      overflow. (Verified 2026-07-02 via the github hero: logo + "GitHub"
-      title bar, live headerContent, full-width issues/PRs table, in daily
-      use on the packaged instance.)
+- [x] **Page chrome (default)**: a navPanel shows a host title bar —
+      plugin logo + title left, the plugin's `headerContent` right — above
+      a FULL-WIDTH body (no prose max-width cap). (Verified 2026-07-02 via
+      the github hero: logo + "GitHub" title bar, live headerContent,
+      full-width issues/PRs table, in daily use on the packaged instance.)
 - [ ] **headerContent containment**: a throwing `headerContent` disappears
       (console warning only); the title bar and panel body keep rendering,
       no "plugin crashed" chip for the accessory.
@@ -874,15 +786,15 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
       the entire panel area (no host padding, no title bar, headerContent
       ignored) and a crash inside it still collapses to the "plugin <id>
       crashed" chip.
-- [ ] **Logos everywhere**: with `examples/plugins/linear` installed (it
-      ships `logo.svg`), the plugin's logo replaces the bolt/named icon on:
-      the sidebar "Linear" row, the panel title bar, the composer command
-      menu's "Plugin commands" rows, the `@`-mention menu's "Linear issues"
-      rows, thread-header action buttons, and Settings → Plugins next to
-      the plugin id. A logo-less plugin falls back to its named `icon` /
-      the generic bolt on every one of those surfaces. (Sidebar row + panel
-      title bar verified live 2026-07-02 via the github hero's logo; the
-      composer/mention/thread-action rows still need the linear pass.)
+- [ ] **Logos everywhere**: with a logo-shipping plugin installed, its logo
+      replaces the bolt/named icon on: the sidebar row, the panel title
+      bar, the `@`-mention menu's provider rows (agent-enrichment's docs
+      provider after adding a logo, since linear was removed),
+      thread-header action buttons (small-ux-pack + logo), and Settings →
+      Plugins next to the plugin id. A logo-less plugin falls back to its
+      named `icon` / the generic bolt on every surface. (Sidebar row +
+      panel title bar verified live 2026-07-02 via the github hero's
+      logo.)
 - [ ] **Logo plumbing**: `GET /api/v1/plugins` entries carry
       `logoUrl` (hash-busted, null when no logo or plugin not running);
       `GET /api/v1/plugins/<id>/assets/logo?h=…` serves the file with the
@@ -914,7 +826,7 @@ reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
       surface (sidebar, panel title bar, composer menus, thread actions,
       Settings → Plugins) shows the dark variant; light mode shows
       `logo.svg`; a plugin with only a light logo keeps it in both modes.
-      The linear example ships both (dark mark for light theme, white mark
+      The github example ships both (dark mark for light theme, white mark
       for dark theme) — flip the theme in Settings and watch the mark swap
       live, no reload.
 - [ ] **PageBody**: `import { PageBody } from "@bb/plugin-sdk/app"` — a

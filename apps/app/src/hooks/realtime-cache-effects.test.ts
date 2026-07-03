@@ -151,7 +151,6 @@ describe("createRealtimeCacheEffects", () => {
     const contributionsKey = pluginContributionsQueryKey(true);
     queryClient.setQueryData(contributionsKey, {
       threadActions: [],
-      slashCommands: [],
       mentionProviders: [],
     });
 

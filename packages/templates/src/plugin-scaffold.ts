@@ -65,11 +65,20 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // Long-lived background work: starts after load, gets an AbortSignal on
-  // reload/disable/shutdown, and restarts with backoff if it crashes.
+  // reload/disable/shutdown, and restarts with backoff if it crashes. Sleeps
+  // must wake on abort — a plain setTimeout sleeps through the stop window
+  // and the plugin reports "degraded (service did not stop)" on reload.
   // bb.background.service("worker", {
   //   async start(signal) {
   //     while (!signal.aborted) {
-  //       await new Promise((resolve) => setTimeout(resolve, 60_000));
+  //       await new Promise((resolve) => {
+  //         const timer = setTimeout(resolve, 60_000);
+  //         signal.addEventListener(
+  //           "abort",
+  //           () => { clearTimeout(timer); resolve(undefined); },
+  //           { once: true },
+  //         );
+  //       });
   //     }
   //   },
   // });

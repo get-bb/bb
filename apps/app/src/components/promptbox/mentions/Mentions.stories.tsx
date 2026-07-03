@@ -235,24 +235,6 @@ const mixedWithPluginSuggestions: PromptMentionSuggestion[] = [
   ...pluginMentionSuggestions,
 ];
 
-// Plugin slash commands (plugin design §4.9) render after the provider
-// sections, mirroring useCommandSuggestions' append order.
-const pluginCommandSuggestions: ComposerCommandSuggestion[] = [
-  ...commandSuggestions.slice(0, 2),
-  {
-    kind: "plugin-command",
-    pluginId: "linear",
-    name: "standup",
-    description: "Draft a standup summary from Linear",
-  },
-  {
-    kind: "plugin-command",
-    pluginId: "linear",
-    name: "triage",
-    description: "Send the triage queue to this thread",
-  },
-];
-
 // ---------------------------------------------------------------------------
 // Per-row helper.
 // ---------------------------------------------------------------------------
@@ -410,21 +392,6 @@ export function Overview() {
         hint="long skill names, descriptions, and hints stay inside the menu"
       >
         <CommandRow state={makeCommandResultsState(longCommandSuggestions)} />
-      </StoryRow>
-      <StoryRow
-        label="plugin commands section"
-        hint="plugin slash commands trail the provider sections (design §4.9)"
-      >
-        <CommandRow
-          state={makeCommandResultsState(pluginCommandSuggestions)}
-          selectedIndex={2}
-        />
-      </StoryRow>
-      <StoryRow
-        label="plugin command pending"
-        hint="a picked plugin command running server-side keeps the menu open"
-      >
-        <CommandRow state={{ kind: "plugin-pending", name: "standup" }} />
       </StoryRow>
     </StoryCard>
   );

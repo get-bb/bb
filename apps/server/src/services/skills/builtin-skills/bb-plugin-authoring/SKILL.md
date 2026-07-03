@@ -1,6 +1,6 @@
 ---
 name: bb-plugin-authoring
-description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, slash command, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @bb/plugin-sdk/app contract with working patterns.
+description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @bb/plugin-sdk/app contract with working patterns.
 ---
 
 # Authoring bb plugins
@@ -281,17 +281,11 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
-### bb.agents — per-turn context and native tools
+### bb.agents — native tools
 
-```ts
-bb.agents.addContext(({ threadId, projectId }) =>
-  "This repo uses conventional commits; run `bb docs search <q>` for details.",
-);
-```
-
-Providers run on **every** thread turn (global in V1); return `null`/`""`
-to contribute nothing. Each call is time-boxed (2s) and failure-isolated —
-a slow or throwing provider is skipped and logged, never stalling the turn.
+To give agents standing knowledge (conventions, workflows), ship a
+`skills/` directory — there is deliberately no per-turn instruction
+injection API. For schema'd capabilities, register a native tool:
 
 ```ts
 import { z } from "zod";   // runtime import — declare zod as a plugin dependency
@@ -324,14 +318,6 @@ bb.ui.registerThreadAction({
   },
 });
 
-bb.ui.registerSlashCommand({
-  name: "standup", description: "Draft a standup",
-  async run({ args, threadId, projectId }) {           // threadId/projectId null on the homepage composer
-    return { insertText: "Standup:\n- " };             // or { send: [...] } or void
-    // NOTE: the shipped composer always sends args="" today — don't rely on args.
-  },
-});
-
 bb.ui.registerMentionProvider({
   id: "issue", label: "Issues",
   search({ query, projectId, threadId }) {             // as-you-type after "@"; 2s time box, failure = empty list
@@ -343,9 +329,11 @@ bb.ui.registerMentionProvider({
 });
 ```
 
-Thread actions render in the thread header; slash commands in the
-composer's `/` menu; mention items under `label` in the `@` menu. All
-handlers run server-side.
+Thread actions render in the thread header; mention items under `label`
+in the `@` menu. All handlers run server-side. There is deliberately no
+plugin slash-command surface: the composer's `/` menu lists skills, so a
+plugin capability that crafts a prompt for the agent ships as a `skills/`
+entry instead.
 
 ### bb.status
 
@@ -456,8 +444,8 @@ component collapses to a "plugin <id> crashed" chip; the rest of the app
 (and other plugins) stay alive.
 
 The sync `visible()` pattern (threadPanelTab): `visible` is synchronous but
-"should this tab show?" is usually server state. The canonical answer
-(documented in the linear example's README): keep a module-level cache
+"should this tab show?" is usually server state. The canonical answer:
+keep a module-level cache
 (e.g. `let linked: Set<string> | null`), prime it once at bundle load from
 a backend rpc like `listLinks` — guarded with `typeof document !==
 "undefined"` so evaluating the bundle outside a browser is side-effect
@@ -493,18 +481,13 @@ Reference examples in `examples/plugins/` (a bb checkout):
   Select/DropdownMenu/Badge/Skeleton/toast throughout, background sync
   service, rpc + realtime, project setting, a `bb github` CLI command, and
   agent-spawn buttons.
-- `linear` — full-stack hero: secret/select/project settings, sqlite +
-  migrate, kv, schedule, realtime, rpc, mention provider, CLI,
-  threads.spawn, and all frontend slots incl. the sync `visible()` pattern.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.
 - `agent-enrichment` — agent surfaces: CLI command, zod-schema native tool,
-  addContext note, docs mention provider, boolean setting, bundled
-  `skills/` directory.
+  docs mention provider, boolean setting, bundled `skills/` directory.
 - `small-ux-pack` — dependency-free host-rendered UI: two thread actions
-  (confirm + toast, and the automatic error-toast path) and an
-  `insertText` slash command.
+  (confirm + toast, and the automatic error-toast path).
 
 ## Gotchas
 
@@ -525,11 +508,10 @@ Reference examples in `examples/plugins/` (a bb checkout):
 - CLI `run(argv)` argv excludes the command name; core bb command names
   are reserved; readonly-sandboxed agent threads cannot reach the bb CLI
   (no loopback network).
-- addContext is 2s-time-boxed per turn; mention `search` likewise; mention
-  `resolve` runs at send time and a throw blocks the send.
+- Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
+  and a throw blocks the send.
 - Agent tool changes apply on the next session start, not mid-session;
   cross-plugin tool-name collisions drop the later registration.
-- Slash commands receive `args: ""` from the shipped composer today.
 - rpc/realtime payloads must survive JSON.stringify.
 - Handler stats shown by `bb plugin list` persist across reloads (reset on
   remove).

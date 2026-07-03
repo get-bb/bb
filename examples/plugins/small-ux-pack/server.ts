@@ -8,10 +8,6 @@
 // - bb.ui.registerThreadAction "Copy status": deliberately throws (the
 //   server cannot reach your clipboard) to demonstrate the automatic
 //   error-toast path.
-// - bb.ui.registerSlashCommand "/standup": drafts a standup summary from
-//   the project's most recent thread titles and inserts it into the
-//   composer via { insertText }.
-//
 // The type-only import below is erased at load time, so this file runs
 // as-is.
 import type { BbPluginApi } from "@bb/plugin-sdk";
@@ -57,29 +53,4 @@ export default function plugin(bb: BbPluginApi) {
     },
   });
 
-  bb.ui.registerSlashCommand({
-    name: "standup",
-    description: "Draft a standup summary from this project's recent threads",
-    async run({ projectId }) {
-      const threads = await bb.sdk.threads.list(
-        projectId === null ? {} : { projectId },
-      );
-      const recent = [...threads]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 5);
-      const lines =
-        recent.length === 0
-          ? ["- (no recent threads)"]
-          : recent.map((thread) => `- ${thread.title ?? thread.id}`);
-      return {
-        insertText: [
-          "Standup:",
-          ...lines,
-          "",
-          "Blockers:",
-          "- ",
-        ].join("\n"),
-      };
-    },
-  });
 }

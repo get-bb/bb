@@ -8,16 +8,13 @@ import semver from "semver";
 import type { DbConnection } from "@bb/db";
 import {
   PLUGIN_SDK_VERSION,
-  promptInputSchema,
   type DynamicTool,
-  type PromptInput,
   type Thread,
   type ToolCallResponse,
 } from "@bb/domain";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp } from "@bb/plugin-build";
-import { z } from "zod";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { ServerLogger } from "../../types.js";
@@ -69,14 +66,11 @@ import {
   type BbPluginApi,
   type PluginAgentToolContext,
   type PluginAgentToolRecord,
-  type PluginAgentTurnContext,
   type PluginApiHandle,
   type PluginBackgroundServiceRecord,
   type PluginCliContext,
   type PluginHttpRouteRecord,
   type PluginRpcHandler,
-  type PluginSlashCommandContext,
-  type PluginSlashCommandRecord,
   type PluginThreadActionRecord,
   type PluginThreadActionToast,
   type PluginThreadEventName,
@@ -224,18 +218,10 @@ export interface PluginServiceDeps {
   serviceStopTimeoutMs?: number;
   /** First restart delay after a service crash (doubles, capped at 60s). */
   serviceRestartBaseMs?: number;
-  /** Time box per bb.agents.addContext provider call; tests shrink it. */
-  contextProviderTimeoutMs?: number;
   /** Time box per mention provider search call; tests shrink it. */
   mentionSearchTimeoutMs?: number;
   /** Time box per mention provider resolve call at send; tests shrink it. */
   mentionResolveTimeoutMs?: number;
-}
-
-/** One labeled instruction section produced by a bb.agents context provider. */
-export interface PluginAgentContextSection {
-  pluginId: string;
-  text: string;
 }
 
 /** One native tool contributed by a running plugin (design §4.4). */
@@ -260,22 +246,6 @@ export type PluginThreadActionRunResult =
   | { outcome: "unknown-thread" }
   | { outcome: "ok"; toast: PluginThreadActionToast | null }
   | { outcome: "error"; error: string };
-
-/** One slash command contributed by a running plugin (design §4.9). */
-export interface PluginSlashCommandContribution {
-  pluginId: string;
-  name: string;
-  description: string;
-}
-
-/**
- * Normalized action envelope for a slash command's return value, returned by
- * POST /plugins/:id/slash/:name so the app can branch on `action`.
- */
-export type PluginSlashCommandAction =
-  | { action: "none" }
-  | { action: "insertText"; insertText: string }
-  | { action: "send"; send: PromptInput[] };
 
 /** One mention provider contributed by a running plugin (design §4.9). */
 export interface PluginMentionProviderContribution {
@@ -306,11 +276,6 @@ export interface PluginMentionSearchGroup {
 export type PluginMentionResolveResult =
   | { ok: true; context: string }
   | { ok: false; error: string };
-
-/** Result of running a slash command (POST /plugins/:id/slash/:name). */
-export type PluginSlashCommandRunResult =
-  | { outcome: "ok"; value: PluginSlashCommandAction }
-  | { outcome: "error"; error: string };
 
 /**
  * Narrow emitter the thread lifecycle seams call (design §4.5). Emission is
@@ -469,17 +434,6 @@ export interface PluginService {
    */
   listSkillsRootPaths(): string[];
   /**
-   * Run every loaded plugin's bb.agents.addContext providers for one turn
-   * (design §4.4). Providers run concurrently, each wrapped in the
-   * failure-isolation discipline (invokeWrapped) and time-boxed; a slow,
-   * throwing, or non-string-returning provider is skipped and logged so a
-   * plugin can never stall turn submission. Null/empty results are
-   * dropped. Sections are ordered by plugin id, then registration order.
-   */
-  collectAgentContextSections(
-    ctx: PluginAgentTurnContext,
-  ): Promise<PluginAgentContextSection[]>;
-  /**
    * Native tools of running plugins (bb.agents.registerTool), ordered by
    * plugin id then registration order, deduped defensively (first wins —
    * registration already blocks collisions). Appended to a session's
@@ -525,28 +479,6 @@ export interface PluginService {
     record: PluginThreadActionRecord,
     threadId: string,
   ): Promise<PluginThreadActionRunResult>;
-  /**
-   * Slash commands of running plugins (bb.ui.registerSlashCommand), ordered
-   * by plugin id then registration order, for GET /plugins/contributions.
-   * No plugin code runs; empty when the experiment is off.
-   */
-  listSlashCommandContributions(): PluginSlashCommandContribution[];
-  /** Live slash-command lookup for POST /plugins/:id/slash/:name. */
-  getSlashCommand(
-    id: string,
-    name: string,
-  ): PluginWireLookup<PluginSlashCommandRecord>;
-  /**
-   * Run a slash command (design §4.9) through invokeWrapped and normalize
-   * the returned action (void | { insertText } | { send }). A throwing or
-   * malformed-result handler maps to the "error" outcome — the app shows it
-   * as an error toast on the composer.
-   */
-  runSlashCommand(
-    id: string,
-    record: PluginSlashCommandRecord,
-    ctx: PluginSlashCommandContext,
-  ): Promise<PluginSlashCommandRunResult>;
   /**
    * Mention providers of running plugins (bb.ui.registerMentionProvider),
    * ordered by plugin id then registration order, for
@@ -596,7 +528,6 @@ export interface PluginService {
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
-const DEFAULT_CONTEXT_PROVIDER_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 // Resolve is looser than search: it blocks a send the user already committed
 // to, so it may do one real fetch — but it must not hang POST /threads/:id/send
@@ -724,55 +655,6 @@ function normalizeThreadActionResult(
   return { kind: kind as PluginThreadActionToast["kind"], message };
 }
 
-const slashCommandSendSchema = z.array(promptInputSchema).min(1);
-
-/**
- * Normalize a slash command's return value (void | { insertText } |
- * { send }) into the wire action envelope. Malformed results throw — the
- * caller runs this inside invokeWrapped so they count as handler errors,
- * not broken wire responses.
- */
-function normalizeSlashCommandResult(
-  name: string,
-  result: unknown,
-): PluginSlashCommandAction {
-  if (result === undefined || result === null) return { action: "none" };
-  if (typeof result !== "object") {
-    throw new Error(
-      `slash command "${name}" run() must return void, { insertText }, or { send }`,
-    );
-  }
-  const { insertText, send } = result as {
-    insertText?: unknown;
-    send?: unknown;
-  };
-  if (insertText !== undefined && send !== undefined) {
-    throw new Error(
-      `slash command "${name}" run() returned both insertText and send — return one`,
-    );
-  }
-  if (insertText !== undefined) {
-    if (typeof insertText !== "string" || insertText.length === 0) {
-      throw new Error(
-        `slash command "${name}" insertText must be a non-empty string`,
-      );
-    }
-    return { action: "insertText", insertText };
-  }
-  if (send !== undefined) {
-    const parsed = slashCommandSendSchema.safeParse(send);
-    if (!parsed.success) {
-      throw new Error(
-        `slash command "${name}" send must be a non-empty PromptInput array: ${z.prettifyError(parsed.error)}`,
-      );
-    }
-    return { action: "send", send: parsed.data };
-  }
-  throw new Error(
-    `slash command "${name}" run() must return void, { insertText }, or { send }`,
-  );
-}
-
 /**
  * Validate a mention provider's search() result and namespace item ids for
  * the wire ("<providerId>:<item id>"). Malformed results throw — the caller
@@ -829,8 +711,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
   const serviceRestartBaseMs =
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
-  const contextProviderTimeoutMs =
-    deps.contextProviderTimeoutMs ?? DEFAULT_CONTEXT_PROVIDER_TIMEOUT_MS;
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
@@ -2190,66 +2070,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         .flatMap(([, plugin]) => plugin.manifest.skillsRootPaths);
     },
 
-    async collectAgentContextSections(ctx) {
-      if (!deps.isEnabled() || loaded.size === 0) return [];
-      const tasks: Array<Promise<PluginAgentContextSection | null>> = [];
-      const entries = [...loaded.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
-      );
-      for (const [id, plugin] of entries) {
-        for (const provider of [...plugin.handle.contextProviders]) {
-          tasks.push(
-            (async () => {
-              const outcome = await invokeWrapped(
-                id,
-                "agent context provider",
-                async () => {
-                  const providerPromise = (async () => provider(ctx))();
-                  // The race abandons a timed-out provider; keep its eventual
-                  // rejection observed so it cannot surface as an unhandled
-                  // rejection later.
-                  providerPromise.catch(() => {});
-                  let timer: NodeJS.Timeout | undefined;
-                  try {
-                    const result = await Promise.race([
-                      providerPromise,
-                      new Promise<never>((_, reject) => {
-                        timer = setTimeout(
-                          () =>
-                            reject(
-                              new Error(
-                                `timed out after ${contextProviderTimeoutMs}ms`,
-                              ),
-                            ),
-                          contextProviderTimeoutMs,
-                        );
-                        timer.unref?.();
-                      }),
-                    ]);
-                    if (result === null || result === undefined) return null;
-                    if (typeof result !== "string") {
-                      throw new Error(
-                        "context provider must return a string or null",
-                      );
-                    }
-                    return result;
-                  } finally {
-                    if (timer !== undefined) clearTimeout(timer);
-                  }
-                },
-              );
-              if (!outcome.ok) return null;
-              const text = outcome.value?.trim() ?? "";
-              return text.length > 0 ? { pluginId: id, text } : null;
-            })(),
-          );
-        }
-      }
-      return (await Promise.all(tasks)).filter(
-        (section): section is PluginAgentContextSection => section !== null,
-      );
-    },
-
     listAgentTools() {
       return collectAgentTools().map(({ pluginId, record }) => ({
         pluginId,
@@ -2341,42 +2161,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         },
       );
       if (outcome.ok) return { outcome: "ok", toast: outcome.value };
-      return { outcome: "error", error: outcome.error };
-    },
-
-    listSlashCommandContributions() {
-      if (!deps.isEnabled()) return [];
-      const contributions: PluginSlashCommandContribution[] = [];
-      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
-      )) {
-        for (const record of plugin.handle.slashCommands) {
-          contributions.push({
-            pluginId: id,
-            name: record.name,
-            description: record.description,
-          });
-        }
-      }
-      return contributions;
-    },
-
-    getSlashCommand(id, name) {
-      return wireLookup(id, (plugin) =>
-        plugin.handle.slashCommands.find((record) => record.name === name),
-      );
-    },
-
-    async runSlashCommand(id, record, ctx) {
-      const outcome = await invokeWrapped(
-        id,
-        `slash command ${record.name}`,
-        async () => {
-          const result = await record.run(ctx);
-          return normalizeSlashCommandResult(record.name, result);
-        },
-      );
-      if (outcome.ok) return { outcome: "ok", value: outcome.value };
       return { outcome: "error", error: outcome.error };
     },
 

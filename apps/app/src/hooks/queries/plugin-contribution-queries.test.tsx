@@ -7,8 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  parsePluginSlashCommandAction,
-  runPluginSlashCommand,
   runPluginThreadAction,
   usePluginContributions,
 } from "./plugin-contribution-queries";
@@ -73,14 +71,6 @@ describe("usePluginContributions", () => {
           confirm: "Sync now?",
         },
       ],
-      slashCommands: [
-        {
-          pluginId: "linear",
-          name: "standup",
-          description: "Draft a standup summary",
-        },
-        { pluginId: "broken" }, // malformed: dropped at the boundary
-      ],
       mentionProviders: [
         { pluginId: "linear", id: "issues", label: "Linear issues" },
         { pluginId: "broken" }, // malformed: dropped at the boundary
@@ -106,13 +96,6 @@ describe("usePluginContributions", () => {
             title: "Sync issues",
             icon: null,
             confirm: "Sync now?",
-          },
-        ],
-        slashCommands: [
-          {
-            pluginId: "linear",
-            name: "standup",
-            description: "Draft a standup summary",
           },
         ],
         mentionProviders: [
@@ -153,7 +136,6 @@ describe("usePluginContributions", () => {
     await waitFor(() => {
       expect(result.current.data).toEqual({
         threadActions: [],
-        slashCommands: [],
         mentionProviders: [],
       });
     });
@@ -205,105 +187,5 @@ describe("runPluginThreadAction", () => {
         threadId: "thr_1",
       }),
     ).rejects.toThrow("action boom");
-  });
-});
-
-describe("runPluginSlashCommand", () => {
-  it("posts the composer context and resolves the insertText action", async () => {
-    const fetchMock = mockFetchJsonOnce({
-      ok: true,
-      action: "insertText",
-      insertText: "Standup draft",
-    });
-
-    await expect(
-      runPluginSlashCommand({
-        pluginId: "linear",
-        name: "standup",
-        args: "yesterday",
-        threadId: "thr_1",
-        projectId: "proj_1",
-      }),
-    ).resolves.toEqual({ kind: "insertText", text: "Standup draft" });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/linear/slash/standup",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          args: "yesterday",
-          threadId: "thr_1",
-          projectId: "proj_1",
-        }),
-      }),
-    );
-  });
-
-  it("omits null thread/project context (homepage composer)", async () => {
-    const fetchMock = mockFetchJsonOnce({ ok: true, action: "none" });
-
-    await expect(
-      runPluginSlashCommand({
-        pluginId: "linear",
-        name: "standup",
-        args: "",
-        threadId: null,
-        projectId: null,
-      }),
-    ).resolves.toEqual({ kind: "none" });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/linear/slash/standup",
-      expect.objectContaining({ body: JSON.stringify({ args: "" }) }),
-    );
-  });
-
-  it("resolves the send action with schema-validated inputs", async () => {
-    mockFetchJsonOnce({
-      ok: true,
-      action: "send",
-      send: [{ type: "text", text: "note", mentions: [] }],
-    });
-
-    await expect(
-      runPluginSlashCommand({
-        pluginId: "linear",
-        name: "send-note",
-        args: "",
-        threadId: "thr_1",
-        projectId: "proj_1",
-      }),
-    ).resolves.toEqual({
-      kind: "send",
-      inputs: [{ type: "text", text: "note", mentions: [] }],
-    });
-  });
-
-  it("throws the server's error message for handler failures", async () => {
-    mockFetchJsonOnce({ ok: false, error: "slash boom" }, { status: 500 });
-    await expect(
-      runPluginSlashCommand({
-        pluginId: "linear",
-        name: "boom",
-        args: "",
-        threadId: null,
-        projectId: null,
-      }),
-    ).rejects.toThrow("slash boom");
-  });
-});
-
-describe("parsePluginSlashCommandAction", () => {
-  it("throws on malformed envelopes", () => {
-    expect(() => parsePluginSlashCommandAction({ action: "insertText" })).toThrow(
-      "malformed slash command result",
-    );
-    expect(() =>
-      parsePluginSlashCommandAction({ action: "send", send: [] }),
-    ).toThrow("malformed slash command result");
-    expect(() => parsePluginSlashCommandAction({})).toThrow(
-      "malformed slash command result",
-    );
   });
 });

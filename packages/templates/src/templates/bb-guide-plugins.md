@@ -71,7 +71,7 @@ touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) also appear under Settings → Plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
-example `bb linear …`). Unknown `bb` commands are looked up against installed
+example `bb github …`). Unknown `bb` commands are looked up against installed
 plugins and proxied to the server, so plugin commands work exactly like core
 commands; core command names always win. Inside agent threads the generated
 `plugin-commands` skill lists the available plugin commands.
@@ -119,10 +119,10 @@ local/token/none auth); bb.rpc.register (the frontend data plane);
 bb.realtime.publish (ephemeral signals to open app pages);
 bb.background.service (long-lived, AbortSignal, restart w/ backoff) and
 bb.background.schedule (durable cron rows); bb.cli.register (a top-level
-`bb <name>` command agents run through bash); bb.agents.addContext
-(per-turn instruction text) and bb.agents.registerTool (native tools with
+`bb <name>` command agents run through bash); bb.agents.registerTool
+(native tools with
 zod or JSON-schema parameters); bb.ui.registerThreadAction /
-registerSlashCommand / registerMentionProvider (host-rendered UI — no
+registerMentionProvider (host-rendered UI — no
 frontend bundle needed); bb.status.needsConfiguration (report
 "unconfigured" instead of crashing); bb.onDispose (LIFO cleanup on
 reload/disable/shutdown).
@@ -136,7 +136,7 @@ For the complete authoring reference — exact signatures, working snippets
 for every surface, the reload lifecycle, testing tips, and gotchas — use
 the built-in `bb-plugin-authoring` skill (agents: it loads on demand;
 humans: apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/
-in a checkout). The `examples/plugins/` directory of a bb checkout has five
-reference plugins: github (gh-CLI-backed issue/PR browser on the shadcn UI
-kit), linear (full-stack), slack-bot (webhook bot), agent-enrichment (agent
+in a checkout). The `examples/plugins/` directory of a bb checkout has four
+reference plugins: github (full-stack: gh-CLI-backed issue/PR browser on
+the shadcn UI kit), slack-bot (webhook bot), agent-enrichment (agent
 surfaces), small-ux-pack (host-rendered UI).

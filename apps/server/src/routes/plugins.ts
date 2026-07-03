@@ -184,7 +184,6 @@ export function registerPluginRoutes(
     context.json({
       cliCommands: plugins.listCliContributions(),
       threadActions: plugins.listThreadActionContributions(),
-      slashCommands: plugins.listSlashCommandContributions(),
       mentionProviders: plugins.listMentionProviderContributions(),
     }),
   );
@@ -309,69 +308,6 @@ export function registerPluginRoutes(
     return context.json(
       result.toast ? { ok: true, toast: result.toast } : { ok: true },
     );
-  });
-
-  // Composer slash-command invocation (design §4.9). Executes plugin code
-  // with full server capabilities, so it takes the same local-origin guard
-  // as the rpc dispatcher. threadId/projectId are null when the command runs
-  // from the homepage (new-thread) composer.
-  app.post("/plugins/:id/slash/:name", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
-    const problem = localAuthProblem(context, deps);
-    if (problem) {
-      return context.json({ ok: false, error: problem.error }, problem.status);
-    }
-    const id = context.req.param("id");
-    const name = context.req.param("name");
-    // Body first, command second: no await between lookup and invocation
-    // (runSlashCommand registers its in-flight marker synchronously), so a
-    // reload during the body read cannot leave a stale record to run.
-    const body = (await context.req.json().catch(() => null)) as {
-      args?: unknown;
-      threadId?: unknown;
-      projectId?: unknown;
-    } | null;
-    const args = body?.args === undefined ? "" : body.args;
-    const threadId = body?.threadId === undefined ? null : body.threadId;
-    const projectId = body?.projectId === undefined ? null : body.projectId;
-    if (
-      typeof args !== "string" ||
-      (threadId !== null && typeof threadId !== "string") ||
-      (projectId !== null && typeof projectId !== "string")
-    ) {
-      return context.json(
-        {
-          ok: false,
-          error: "expected { args?: string, threadId?: string, projectId?: string }",
-        },
-        400,
-      );
-    }
-    const lookup = plugins.getSlashCommand(id, name);
-    if (lookup.outcome === "unknown-plugin") {
-      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
-    }
-    if (lookup.outcome === "not-running") {
-      return context.json(
-        { ok: false, error: notRunningError(id, lookup) },
-        503,
-      );
-    }
-    if (lookup.outcome === "not-found") {
-      return context.json(
-        { ok: false, error: `plugin "${id}" has no slash command "${name}"` },
-        404,
-      );
-    }
-    const result = await plugins.runSlashCommand(id, lookup.value, {
-      args,
-      threadId,
-      projectId,
-    });
-    if (result.outcome === "error") {
-      return context.json({ ok: false, error: result.error }, 500);
-    }
-    return context.json({ ok: true, ...result.value });
   });
 
   // Frontend bundle assets (design §5.1): the app dynamic-import()s app.js

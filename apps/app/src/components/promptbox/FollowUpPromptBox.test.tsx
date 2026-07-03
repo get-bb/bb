@@ -147,8 +147,6 @@ function createFollowUpPromptBoxProps(
         isLoadingMore: false,
         loadMore: vi.fn(),
         onQueryChange: vi.fn(),
-        runPluginCommand: vi.fn(async () => ({ kind: "none" as const })),
-        sendPluginInputs: vi.fn(),
       },
     },
     zenModeResetKey: "thr_test",

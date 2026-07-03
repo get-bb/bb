@@ -106,7 +106,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
         },
       ],
       threadActions: [],
-      slashCommands: [],
       mentionProviders: [],
     });
     // bb plugin list shows the registered command too.
@@ -122,7 +121,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(await response.json()).toEqual({
       cliCommands: [],
       threadActions: [],
-      slashCommands: [],
       mentionProviders: [],
     });
   });

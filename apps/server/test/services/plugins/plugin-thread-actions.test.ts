@@ -153,7 +153,6 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
     expect(await response.json()).toEqual({
       cliCommands: [],
       threadActions: [],
-      slashCommands: [],
       mentionProviders: [],
     });
   });
