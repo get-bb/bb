@@ -2396,6 +2396,16 @@ export function RootComposeView(props: RootComposeViewProps) {
       activeFixedSecondaryTab !== null &&
       isSecondaryFileTab(activeFixedSecondaryTab)
     ) {
+      // A lone new-tab placeholder respawns on close (an effect reopens one
+      // whenever the panel would otherwise be empty), so hide the panel
+      // instead of churning the placeholder.
+      if (
+        activeFixedSecondaryTab.kind === "new-tab" &&
+        fixedPanelTabsState.secondary.tabs.length === 1
+      ) {
+        closeSecondaryPanel();
+        return true;
+      }
       if (activeFixedSecondaryTab.kind === "terminal") {
         handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
       } else {
@@ -2411,6 +2421,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeFixedSecondaryTab,
     closeSecondaryPanel,
     closeTab,
+    fixedPanelTabsState.secondary.tabs,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
