@@ -28,7 +28,6 @@ export function SelectionAnnotationPopover({
   const open = selection !== null;
   const [comment, setComment] = useState("");
   const keyboardInset = useSoftKeyboardInset();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const virtualAnchorRef = useRef({
     getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
   });
@@ -36,24 +35,13 @@ export function SelectionAnnotationPopover({
   useEffect(() => {
     if (!open) {
       setComment("");
-      return;
     }
-    const frame = window.requestAnimationFrame(() =>
-      textareaRef.current?.focus(),
-    );
-    return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
-  // Dismiss on scroll/resize: the captured rect goes stale once the viewport
-  // moves. visualViewport resize (keyboard) is excluded so typing stays open.
-  useEffect(() => {
-    if (!open || typeof window === "undefined") return;
-    const dismiss = () => onDismiss();
-    window.addEventListener("scroll", dismiss, true);
-    return () => {
-      window.removeEventListener("scroll", dismiss, true);
-    };
-  }, [open, onDismiss]);
+  // Intentionally no scroll-to-dismiss: unlike the transient add-to-chat menu,
+  // this is a text box the user types into (and may scroll while doing so). On
+  // touch the drag-select's settle-scroll fires right after open, so dismissing
+  // on scroll made the box flash and vanish. Escape / click-outside still close.
 
   if (!selection) return null;
 
@@ -96,16 +84,11 @@ export function SelectionAnnotationPopover({
           }}
           className={ANNOTATION_POPOVER_CONTENT_CLASS}
           onEscapeKeyDown={() => onDismiss()}
-          onOpenAutoFocus={(event) => {
-            // Keep the native text selection; focus the comment field manually.
-            event.preventDefault();
-          }}
         >
           <p className="truncate text-xs font-medium text-muted-foreground">
             {locationLabel}
           </p>
           <textarea
-            ref={textareaRef}
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             onKeyDown={handleKeyDown}

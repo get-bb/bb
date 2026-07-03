@@ -64,13 +64,13 @@ const promptDraftStorageSchema = z.object({
     ),
   annotations: z
     .array(z.unknown())
-    .default([])
     .transform((items) =>
       items.flatMap((item) => {
         const result = promptDraftAnnotationSchema.safeParse(item);
         return result.success ? [result.data] : [];
       }),
-    ),
+    )
+    .optional(),
 });
 
 export function emptyPromptDraftState(): PromptDraftState {
@@ -78,7 +78,6 @@ export function emptyPromptDraftState(): PromptDraftState {
     text: "",
     mentions: [],
     attachments: [],
-    annotations: [],
   };
 }
 
@@ -430,6 +429,6 @@ export function promptInputToDraft(
     text: textSegments.join("\n\n"),
     mentions,
     attachments,
-    annotations,
+    ...(annotations.length > 0 ? { annotations } : {}),
   };
 }
