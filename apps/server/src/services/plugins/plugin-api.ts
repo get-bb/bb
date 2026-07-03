@@ -3,6 +3,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
+import { z } from "zod";
 import {
   deletePluginKvValue,
   getPluginKvValue,
@@ -10,6 +11,7 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
+import type { PromptInput } from "@bb/domain";
 import type { BbSdk, ThreadSpawnArgs } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
@@ -175,6 +177,10 @@ export interface BbPluginApi {
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */
   readonly cli: PluginCli;
+  /** Per-turn agent context contributions (design §4.4). */
+  readonly agents: PluginAgents;
+  /** Host-rendered UI contributions (design §4.9). */
+  readonly ui: PluginUi;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /**
@@ -340,6 +346,109 @@ export interface PluginCli {
   register(registration: PluginCliRegistration): void;
 }
 
+/** Per-turn context handed to bb.agents context providers (design §4.4). */
+export interface PluginAgentTurnContext {
+  threadId: string;
+  projectId: string;
+}
+
+export type PluginAgentContextProvider = (
+  ctx: PluginAgentTurnContext,
+) => string | null | Promise<string | null>;
+
+/** MCP-style content parts a native tool may return (design §4.4). */
+export type PluginAgentToolContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+export type PluginAgentToolResult =
+  | string
+  | { content: PluginAgentToolContentPart[]; isError?: boolean };
+
+/** Per-call context handed to a native tool's execute (design §4.4). */
+export interface PluginAgentToolContext {
+  threadId: string;
+  projectId: string;
+  /** The tool-call request's abort signal (aborts if the daemon round-trip
+   * is torn down mid-call). */
+  signal: AbortSignal;
+}
+
+export interface PluginAgentToolRegistrationBase {
+  /** Tool name shown to the model: [a-zA-Z0-9_-]+, unique across plugins,
+   * and not a built-in dynamic tool (see RESERVED_AGENT_TOOL_NAMES). */
+  name: string;
+  description: string;
+  /**
+   * Optional usage snippet appended to the thread instructions whenever
+   * this tool is in the session's tool set (mirrors the built-in
+   * update_environment_directory guidance). Keep it short.
+   */
+  instructions?: string;
+}
+
+export interface PluginAgents {
+  /**
+   * Register a per-turn instruction-section provider (design §4.4). Called
+   * during runtime-config assembly for every thread turn (global in V1);
+   * the returned text is appended to the thread's instructions, labeled
+   * with this plugin's id. Return null or an empty string to contribute
+   * nothing. Each call is time-boxed (2s) and failure-isolated: a slow or
+   * throwing provider is skipped and logged — it can never stall turn
+   * submission. Multiple providers per plugin are allowed.
+   */
+  addContext(provider: PluginAgentContextProvider): void;
+  /**
+   * Register a native dynamic tool (design §4.4). `parameters` is either a
+   * zod schema (validated per call; execute receives the parsed value) or a
+   * plain JSON-schema object (no validation; execute receives the raw
+   * arguments as `unknown`). Tool-set changes apply on the NEXT session
+   * start — a tool registered mid-session is not hot-added to running
+   * provider sessions. A second registration of the same name within this
+   * plugin replaces the first; a name already registered by another plugin
+   * is rejected and surfaced as this plugin's status detail.
+   */
+  registerTool<Schema extends z.ZodType>(
+    tool: PluginAgentToolRegistrationBase & {
+      parameters: Schema;
+      execute(
+        params: z.output<Schema>,
+        ctx: PluginAgentToolContext,
+      ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+    },
+  ): void;
+  registerTool(
+    tool: PluginAgentToolRegistrationBase & {
+      /** Raw JSON-schema escape hatch; params arrive unvalidated. */
+      parameters: Record<string, unknown>;
+      execute(
+        params: unknown,
+        ctx: PluginAgentToolContext,
+      ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+    },
+  ): void;
+}
+
+/** Runtime record of a registered native tool. */
+export interface PluginAgentToolRecord {
+  name: string;
+  description: string;
+  /** Instructions snippet for the thread-instructions assembly; null when
+   * the registration carried none (description-only). */
+  instructions: string | null;
+  /** JSON-schema object sent to providers as the tool's input schema. */
+  inputSchema: unknown;
+  /** Validates raw arguments: zod-backed for zod registrations,
+   * pass-through for raw JSON-schema ones. */
+  parse(
+    input: unknown,
+  ): { ok: true; value: unknown } | { ok: false; error: string };
+  execute(
+    params: unknown,
+    ctx: PluginAgentToolContext,
+  ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+}
+
 /**
  * Core `bb` CLI top-level command names (plus commander's built-in help).
  * Plugin CLI commands may not shadow these. Maintained by hand — kept in
@@ -360,6 +469,201 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "thread",
   "ui",
 ];
+
+/**
+ * Built-in dynamic tool names plugins may not shadow. Maintained by hand —
+ * kept in sync with the built-in tools in
+ * services/threads/thread-runtime-config.ts by
+ * test/services/plugins/plugin-agent-tools.test.ts.
+ */
+export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
+  "update_environment_directory",
+];
+
+/**
+ * Built-in composer slash commands plugins may not shadow. Maintained by
+ * hand — kept in sync with BUILT_IN_PROVIDER_COMMANDS in
+ * services/threads/provider-command-typeahead.ts by
+ * test/services/plugins/plugin-slash-commands.test.ts.
+ */
+export const RESERVED_COMPOSER_SLASH_COMMANDS: readonly string[] = ["compact"];
+
+/**
+ * Host-rendered UI contributions (design §4.9): declarative registrations
+ * served by GET /plugins/contributions and rendered by the shipped app — no
+ * frontend bundle required.
+ */
+export interface PluginThreadActionContext {
+  threadId: string;
+  projectId: string;
+}
+
+export interface PluginThreadActionToast {
+  kind: "success" | "error" | "info";
+  message: string;
+}
+
+export type PluginThreadActionResult = void | {
+  toast?: PluginThreadActionToast;
+};
+
+export interface PluginThreadActionRegistration {
+  /** Unique within this plugin: [a-zA-Z0-9_-]+ (becomes a URL segment). */
+  id: string;
+  /** Button label rendered in the thread header. */
+  title: string;
+  /** Optional icon name; the host falls back to a generic icon. */
+  icon?: string;
+  /** Optional confirmation prompt the host shows before running. */
+  confirm?: string;
+  /**
+   * Runs server-side when the user clicks the action. The host shows a
+   * pending state while in flight, the returned toast on completion, and an
+   * automatic error toast when this throws.
+   */
+  run(
+    ctx: PluginThreadActionContext,
+  ): PluginThreadActionResult | Promise<PluginThreadActionResult>;
+}
+
+/**
+ * Composer slash-command invocation context (design §4.9). `threadId` and
+ * `projectId` are null when the command runs from the homepage (new-thread)
+ * composer before a thread or project is committed.
+ */
+export interface PluginSlashCommandContext {
+  /**
+   * Text passed after the command name; "" when none. The shipped composer
+   * currently always sends "" — its trigger query stops at the first
+   * whitespace, so nothing typed after the name reaches the command.
+   * Non-empty args arrive only from a direct
+   * `POST /plugins/:id/slash/:name` (e.g. scripts or tests).
+   */
+  args: string;
+  threadId: string | null;
+  projectId: string | null;
+}
+
+/**
+ * Return contract: void completes silently, `insertText` inserts a draft
+ * into the composer at the cursor, `send` submits the inputs as a message
+ * through the composer's normal send path.
+ */
+export type PluginSlashCommandResult =
+  | void
+  | { insertText: string }
+  | { send: PromptInput[] };
+
+export interface PluginSlashCommandRegistration {
+  /** Menu name (`/<name>`): lowercase [a-z0-9-]+, and not a built-in
+   * composer command (see RESERVED_COMPOSER_SLASH_COMMANDS). */
+  name: string;
+  /** Shown next to the name in the composer's `/` menu. */
+  description: string;
+  /**
+   * Runs server-side when the user picks the command. The composer menu
+   * shows a pending state while in flight and an error toast when this
+   * throws.
+   */
+  run(
+    ctx: PluginSlashCommandContext,
+  ): PluginSlashCommandResult | Promise<PluginSlashCommandResult>;
+}
+
+/** Runtime record of a registered slash command. */
+export interface PluginSlashCommandRecord {
+  name: string;
+  description: string;
+  run: (
+    ctx: PluginSlashCommandContext,
+  ) => PluginSlashCommandResult | Promise<PluginSlashCommandResult>;
+}
+
+/** Search context handed to a mention provider (design §4.9). `projectId`/
+ * `threadId` are null when the composer has not committed one yet. */
+export interface PluginMentionSearchContext {
+  query: string;
+  projectId: string | null;
+  threadId: string | null;
+}
+
+/** One row a mention provider returns from `search`. `id` is the provider's
+ * own item id — the host namespaces it before it reaches the wire. */
+export interface PluginMentionItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon?: string;
+}
+
+export interface PluginMentionProviderRegistration {
+  /** Unique within this plugin: [a-zA-Z0-9_-]+ (no ":" — the host composes
+   * wire item ids as "<providerId>:<itemId>"). */
+  id: string;
+  /** Section label shown above this provider's rows in the mention menu. */
+  label: string;
+  /**
+   * Runs server-side as the user types after `@` in the composer. Each call
+   * is time-boxed (2s) and failure-isolated: a slow or throwing provider
+   * contributes an empty list — it can never break the mention menu.
+   */
+  search(
+    ctx: PluginMentionSearchContext,
+  ): PluginMentionItem[] | Promise<PluginMentionItem[]>;
+  /**
+   * Resolves one picked item into agent context, called once per unique
+   * item at message send time. The returned `context` is attached to the
+   * message as an agent-visible (user-hidden) prompt input. Throwing blocks
+   * the send with a visible error.
+   */
+  resolve(itemId: string): { context: string } | Promise<{ context: string }>;
+}
+
+/** Runtime record of a registered mention provider. */
+export interface PluginMentionProviderRecord {
+  id: string;
+  label: string;
+  search: (
+    ctx: PluginMentionSearchContext,
+  ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
+  resolve: (
+    itemId: string,
+  ) => { context: string } | Promise<{ context: string }>;
+}
+
+export interface PluginUi {
+  /**
+   * Register a thread action rendered in the shipped app's thread header
+   * (design §4.9). Multiple actions per plugin; ids must be unique within
+   * the plugin. Invoked via POST /plugins/:id/actions/:actionId.
+   */
+  registerThreadAction(action: PluginThreadActionRegistration): void;
+  /**
+   * Register a composer slash command rendered in the shipped app's `/`
+   * menu (design §4.9). Multiple commands per plugin; names must be unique
+   * within the plugin. Invoked via POST /plugins/:id/slash/:name.
+   */
+  registerSlashCommand(command: PluginSlashCommandRegistration): void;
+  /**
+   * Register an `@`-mention provider for the shipped app's composer
+   * (design §4.9). Items group under `label` in the mention menu; a picked
+   * item becomes a `{ kind: "plugin" }` mention resource whose context is
+   * resolved once at send time. Multiple providers per plugin; ids must be
+   * unique within the plugin.
+   */
+  registerMentionProvider(provider: PluginMentionProviderRegistration): void;
+}
+
+/** Runtime record of a registered thread action. */
+export interface PluginThreadActionRecord {
+  id: string;
+  title: string;
+  icon: string | null;
+  confirm: string | null;
+  run: (
+    ctx: PluginThreadActionContext,
+  ) => PluginThreadActionResult | Promise<PluginThreadActionResult>;
+}
 
 export interface PluginStatusApi {
   /**
@@ -415,6 +719,19 @@ const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // CLI command names become `bb <name>` invocations.
 const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
+// Agent tool names are shown to (and called by) the model.
+const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// Thread action ids become URL path segments.
+const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// Slash command names become `/<name>` menu entries and URL path segments.
+const SLASH_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
+
+// Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
+// ":" is excluded to keep the split unambiguous.
+const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 export type PluginSettingsListener = (
   next: Record<string, PluginSettingValue | undefined>,
   prev: Record<string, PluginSettingValue | undefined>,
@@ -443,8 +760,47 @@ export interface PluginApiHandle {
   schedules: PluginScheduleRecord[];
   /** The plugin's CLI command (`bb.cli.register`); null when none. */
   cli: { registration: PluginCliRegistrationRecord | null };
+  /** Per-turn context providers recorded by `bb.agents.addContext`. */
+  contextProviders: PluginAgentContextProvider[];
+  /** Native tools recorded by `bb.agents.registerTool`. */
+  agentTools: PluginAgentToolRecord[];
+  /** Thread actions recorded by `bb.ui.registerThreadAction`. */
+  threadActions: PluginThreadActionRecord[];
+  /** Slash commands recorded by `bb.ui.registerSlashCommand`. */
+  slashCommands: PluginSlashCommandRecord[];
+  /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
+  mentionProviders: PluginMentionProviderRecord[];
   /** Poison every method on the handle. */
   invalidate(): void;
+}
+
+/** Duck-typed zod detection: plugin sources may carry their own zod copy,
+ * so instanceof is useless — anything with safeParse is treated as zod. */
+function isZodSchemaLike(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { safeParse?: unknown }).safeParse === "function"
+  );
+}
+
+/** Compact issue summary from a (possibly foreign-instance) zod error. */
+function summarizeParseIssues(error: unknown): string {
+  const issues = (
+    error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
+  )?.issues;
+  if (Array.isArray(issues) && issues.length > 0) {
+    return issues
+      .map((issue) => {
+        const path =
+          Array.isArray(issue.path) && issue.path.length > 0
+            ? issue.path.join(".")
+            : "(input)";
+        return `${path}: ${issue.message ?? "invalid"}`;
+      })
+      .join("; ");
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -482,6 +838,12 @@ export function createPluginApi(options: {
   publishSignal: (channel: string, payload: unknown) => void;
   /** Marks the plugin needs-configuration in the loader's status table. */
   reportNeedsConfiguration: (message: string) => void;
+  /** Returns the owning plugin id when another plugin already registered
+   * this agent tool name (cross-plugin collisions lose, design §4.4). */
+  isAgentToolNameTaken: (name: string) => string | undefined;
+  /** Records an agent-tool registration problem as the plugin's status
+   * detail; the plugin itself keeps running. */
+  reportAgentToolProblem: (message: string) => void;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -491,6 +853,8 @@ export function createPluginApi(options: {
     getSdk,
     publishSignal,
     reportNeedsConfiguration,
+    isAgentToolNameTaken,
+    reportAgentToolProblem,
   } = options;
   let invalidated = false;
   let wrappedSdk: BbSdk | undefined;
@@ -517,7 +881,10 @@ export function createPluginApi(options: {
   const prefix = `[plugin:${pluginId}]`;
   // Every bb.log line goes to the prefixed server log and, as JSONL, to the
   // per-plugin log file served by GET /plugins/:id/logs (`bb plugin logs`).
-  function emitLog(level: "debug" | "info" | "warn" | "error", message: string): void {
+  function emitLog(
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+  ): void {
     logger[level](`${prefix} ${message}`);
     appendPluginLogLine(dataDir, pluginId, level, message);
   }
@@ -757,6 +1124,251 @@ export function createPluginApi(options: {
     },
   };
 
+  const contextProviders: PluginAgentContextProvider[] = [];
+  const agentTools: PluginAgentToolRecord[] = [];
+  const agents: PluginAgents = {
+    addContext(provider) {
+      assertLive();
+      if (typeof provider !== "function") {
+        throw new Error("agents.addContext requires a function provider");
+      }
+      contextProviders.push(provider);
+    },
+    registerTool(tool: {
+      name: string;
+      description: string;
+      instructions?: string;
+      parameters: unknown;
+      execute(
+        params: never,
+        ctx: PluginAgentToolContext,
+      ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+    }) {
+      assertLive();
+      const name = tool?.name;
+      if (typeof name !== "string" || !AGENT_TOOL_NAME_PATTERN.test(name)) {
+        throw new Error(
+          `invalid tool name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
+        );
+      }
+      if (RESERVED_AGENT_TOOL_NAMES.includes(name)) {
+        throw new Error(
+          `tool name "${name}" is a built-in bb tool — pick another name`,
+        );
+      }
+      if (
+        typeof tool.description !== "string" ||
+        tool.description.trim().length === 0
+      ) {
+        throw new Error(`tool "${name}" must provide a description`);
+      }
+      if (
+        tool.instructions !== undefined &&
+        typeof tool.instructions !== "string"
+      ) {
+        throw new Error(`tool "${name}" instructions must be a string`);
+      }
+      if (typeof tool.execute !== "function") {
+        throw new Error(
+          `tool "${name}" must provide an execute(params, ctx) function`,
+        );
+      }
+      const parameters: unknown = tool.parameters;
+      let inputSchema: unknown;
+      let parse: PluginAgentToolRecord["parse"];
+      if (isZodSchemaLike(parameters)) {
+        // The server's own zod 4 converts the schema; a schema from an
+        // incompatible zod copy inside the plugin fails here with a clear
+        // registration error instead of a broken wire schema later.
+        try {
+          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
+            io: "input",
+          });
+        } catch (error) {
+          throw new Error(
+            `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${
+              error instanceof Error ? error.message : String(error)
+            }) — use zod 4, or pass a plain JSON-schema object`,
+          );
+        }
+        parse = (input) => {
+          const result = (parameters as z.ZodType).safeParse(input);
+          if (result.success) return { ok: true, value: result.data };
+          return { ok: false, error: summarizeParseIssues(result.error) };
+        };
+      } else if (
+        typeof parameters === "object" &&
+        parameters !== null &&
+        !Array.isArray(parameters)
+      ) {
+        // Raw JSON-schema escape hatch: round-trip enforces serializability
+        // (the schema rides thread.start commands) and strips prototypes.
+        try {
+          inputSchema = JSON.parse(JSON.stringify(parameters));
+        } catch {
+          throw new Error(
+            `tool "${name}" parameters JSON schema is not JSON-serializable`,
+          );
+        }
+        parse = (input) => ({ ok: true, value: input });
+      } else {
+        throw new Error(
+          `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
+        );
+      }
+      const owner = isAgentToolNameTaken(name);
+      if (owner !== undefined) {
+        // Cross-plugin collision: the earlier registration wins; this one
+        // is dropped and surfaced as a status detail (design §4.4).
+        reportAgentToolProblem(
+          `tool "${name}" is already registered by plugin "${owner}" — not registered`,
+        );
+        return;
+      }
+      const record: PluginAgentToolRecord = {
+        name,
+        description: tool.description,
+        instructions:
+          tool.instructions !== undefined && tool.instructions.trim().length > 0
+            ? tool.instructions
+            : null,
+        inputSchema,
+        parse,
+        execute: (
+          tool.execute as (
+            params: unknown,
+            ctx: PluginAgentToolContext,
+          ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
+        ).bind(tool),
+      };
+      // Second registration of the same name within one plugin replaces
+      // the first.
+      const existingIndex = agentTools.findIndex(
+        (existing) => existing.name === name,
+      );
+      if (existingIndex >= 0) {
+        agentTools[existingIndex] = record;
+      } else {
+        agentTools.push(record);
+      }
+    },
+  };
+
+  const threadActions: PluginThreadActionRecord[] = [];
+  const slashCommands: PluginSlashCommandRecord[] = [];
+  const mentionProviders: PluginMentionProviderRecord[] = [];
+  const ui: PluginUi = {
+    registerThreadAction(action) {
+      assertLive();
+      const id = action?.id;
+      if (typeof id !== "string" || !THREAD_ACTION_ID_PATTERN.test(id)) {
+        throw new Error(
+          `invalid thread action id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
+        );
+      }
+      if (threadActions.some((record) => record.id === id)) {
+        throw new Error(`thread action "${id}" is already registered`);
+      }
+      if (
+        typeof action.title !== "string" ||
+        action.title.trim().length === 0
+      ) {
+        throw new Error(`thread action "${id}" must provide a title`);
+      }
+      if (action.icon !== undefined && typeof action.icon !== "string") {
+        throw new Error(`thread action "${id}" icon must be a string`);
+      }
+      if (action.confirm !== undefined && typeof action.confirm !== "string") {
+        throw new Error(`thread action "${id}" confirm must be a string`);
+      }
+      if (typeof action.run !== "function") {
+        throw new Error(
+          `thread action "${id}" must provide a run({ threadId, projectId }) function`,
+        );
+      }
+      threadActions.push({
+        id,
+        title: action.title,
+        icon:
+          action.icon !== undefined && action.icon.trim().length > 0
+            ? action.icon
+            : null,
+        confirm:
+          action.confirm !== undefined && action.confirm.trim().length > 0
+            ? action.confirm
+            : null,
+        run: action.run.bind(action),
+      });
+    },
+    registerSlashCommand(command) {
+      assertLive();
+      const name = command?.name;
+      if (typeof name !== "string" || !SLASH_COMMAND_NAME_PATTERN.test(name)) {
+        throw new Error(
+          `invalid slash command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
+        );
+      }
+      if (RESERVED_COMPOSER_SLASH_COMMANDS.includes(name)) {
+        throw new Error(
+          `slash command "/${name}" is a built-in composer command — pick another name`,
+        );
+      }
+      if (slashCommands.some((record) => record.name === name)) {
+        throw new Error(`slash command "${name}" is already registered`);
+      }
+      if (
+        typeof command.description !== "string" ||
+        command.description.trim().length === 0
+      ) {
+        throw new Error(`slash command "${name}" must provide a description`);
+      }
+      if (typeof command.run !== "function") {
+        throw new Error(
+          `slash command "${name}" must provide a run({ args, threadId, projectId }) function`,
+        );
+      }
+      slashCommands.push({
+        name,
+        description: command.description,
+        run: command.run.bind(command),
+      });
+    },
+    registerMentionProvider(provider) {
+      assertLive();
+      const id = provider?.id;
+      if (typeof id !== "string" || !MENTION_PROVIDER_ID_PATTERN.test(id)) {
+        throw new Error(
+          `invalid mention provider id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
+        );
+      }
+      if (mentionProviders.some((record) => record.id === id)) {
+        throw new Error(`mention provider "${id}" is already registered`);
+      }
+      if (
+        typeof provider.label !== "string" ||
+        provider.label.trim().length === 0
+      ) {
+        throw new Error(`mention provider "${id}" must provide a label`);
+      }
+      if (typeof provider.search !== "function") {
+        throw new Error(
+          `mention provider "${id}" must provide a search({ query, projectId, threadId }) function`,
+        );
+      }
+      if (typeof provider.resolve !== "function") {
+        throw new Error(
+          `mention provider "${id}" must provide a resolve(itemId) function`,
+        );
+      }
+      mentionProviders.push({
+        id,
+        label: provider.label.trim(),
+        search: provider.search.bind(provider),
+        resolve: provider.resolve.bind(provider),
+      });
+    },
+  };
+
   const cliRecord: PluginApiHandle["cli"] = { registration: null };
   const cli: PluginCli = {
     register(registration) {
@@ -800,7 +1412,9 @@ export function createPluginApi(options: {
         };
       });
       if (typeof registration.run !== "function") {
-        throw new Error(`cli command "${name}" must provide a run(argv, ctx) function`);
+        throw new Error(
+          `cli command "${name}" must provide a run(argv, ctx) function`,
+        );
       }
       // One registration per plugin: a second call replaces the first.
       cliRecord.registration = {
@@ -833,6 +1447,8 @@ export function createPluginApi(options: {
     realtime,
     background,
     cli,
+    agents,
+    ui,
     status,
     get sdk(): BbSdk {
       assertLive();
@@ -877,6 +1493,11 @@ export function createPluginApi(options: {
     backgroundServices,
     schedules,
     cli: cliRecord,
+    contextProviders,
+    agentTools,
+    threadActions,
+    slashCommands,
+    mentionProviders,
     invalidate() {
       invalidated = true;
     },

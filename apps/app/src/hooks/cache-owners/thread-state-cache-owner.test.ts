@@ -28,6 +28,7 @@ function makeThreadWithRuntime(
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,

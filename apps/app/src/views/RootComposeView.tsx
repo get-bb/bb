@@ -15,6 +15,7 @@ import {
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
+  type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadListEntry,
@@ -1603,13 +1604,24 @@ export function RootComposeView(props: RootComposeViewProps) {
     [projectId, promptDraft, uploadPromptAttachment],
   );
 
-  const submitPrompt = useCallback(async () => {
-    const submittedDraft = {
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    };
-    const submittedInput = promptDraftToInput(submittedDraft);
+  // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
+  // results (design §4.9) submit through the same thread-creation path
+  // without touching what the user has typed.
+  const submitPromptInternal = useCallback(async (
+    inputsOverride: PromptInput[] | null,
+  ) => {
+    const submittedDraft =
+      inputsOverride === null
+        ? {
+            text: promptDraft.text,
+            mentions: promptDraft.mentions,
+            attachments: promptDraft.attachments,
+          }
+        : null;
+    const submittedInput =
+      submittedDraft !== null
+        ? promptDraftToInput(submittedDraft)
+        : (inputsOverride ?? []);
     if (!projectId || !selectedProviderId || !selectedThreadModel) {
       return;
     }
@@ -1666,7 +1678,9 @@ export function RootComposeView(props: RootComposeViewProps) {
       clearReuseEnvironment();
       setForkSeed(null);
       setRootComposeFolderId(null);
-      promptDraft.clearIfCurrentMatches(submittedDraft);
+      if (submittedDraft !== null) {
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+      }
       if (props.surface === "popout") {
         props.onThreadCreated({
           projectId: thread.projectId,
@@ -1705,6 +1719,17 @@ export function RootComposeView(props: RootComposeViewProps) {
     serviceTier,
     supportsServiceTier,
   ]);
+
+  const submitPrompt = useCallback(
+    () => submitPromptInternal(null),
+    [submitPromptInternal],
+  );
+  const handleSendPluginInputs = useCallback(
+    (inputs: PromptInput[]) => {
+      void submitPromptInternal(inputs);
+    },
+    [submitPromptInternal],
+  );
 
   const isSubmitDisabled =
     !selectedProviderId ||
@@ -1779,6 +1804,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
+    // The homepage composer has no thread yet: plugin slash commands run
+    // with threadId null (design §4.9).
+    threadId: null,
     query: commandQuery,
   });
   const rootPanelEnvironmentId = reuseEnvironmentId;
@@ -2185,6 +2213,8 @@ export function RootComposeView(props: RootComposeViewProps) {
         isLoadingMore: commandSuggestions.isLoadingMore,
         loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
+        runPluginCommand: commandSuggestions.runPluginCommand,
+        sendPluginInputs: handleSendPluginInputs,
       },
     }),
     [
@@ -2198,8 +2228,10 @@ export function RootComposeView(props: RootComposeViewProps) {
       commandSuggestions.isLoading,
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
+      commandSuggestions.runPluginCommand,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
+      handleSendPluginInputs,
     ],
   );
   useEffect(() => {

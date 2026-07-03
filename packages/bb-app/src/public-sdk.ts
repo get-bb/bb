@@ -70,6 +70,12 @@ export interface PromptTextMention {
         origin: "project" | "user";
         source: "command" | "skill";
         trigger: "/";
+      }
+    | {
+        kind: "plugin";
+        itemId: string;
+        label: string;
+        pluginId: string;
       };
   start: number;
 }

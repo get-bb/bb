@@ -6,7 +6,14 @@ import type { Context } from "hono";
 import { createJiti } from "jiti";
 import semver from "semver";
 import type { DbConnection } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import {
+  promptInputSchema,
+  type DynamicTool,
+  type PromptInput,
+  type Thread,
+  type ToolCallResponse,
+} from "@bb/domain";
+import { z } from "zod";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { ServerLogger } from "../../types.js";
@@ -17,6 +24,7 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPluginSchedules,
@@ -43,12 +51,20 @@ import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
   createPluginApi,
   isNeedsConfigurationError,
+  RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
+  type PluginAgentToolContext,
+  type PluginAgentToolRecord,
+  type PluginAgentTurnContext,
   type PluginApiHandle,
   type PluginBackgroundServiceRecord,
   type PluginCliContext,
   type PluginHttpRouteRecord,
   type PluginRpcHandler,
+  type PluginSlashCommandContext,
+  type PluginSlashCommandRecord,
+  type PluginThreadActionRecord,
+  type PluginThreadActionToast,
   type PluginThreadEventName,
   type PluginThreadEventPayloads,
 } from "./plugin-api.js";
@@ -155,10 +171,11 @@ interface LoadedPlugin {
 
 export interface PluginServiceDeps {
   db: DbConnection;
-  /** Thread DTO assembly for lifecycle events + plugin-signal broadcast. */
+  /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
+   * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
     NotificationHub,
-    "getDaemonSessionIdForHost" | "notifyPluginSignal"
+    "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
   >;
   logger: ServerLogger;
   /** BB data dir: plugin sqlite files and secrets live under <dataDir>/plugins/<id>/. */
@@ -173,7 +190,93 @@ export interface PluginServiceDeps {
   serviceStopTimeoutMs?: number;
   /** First restart delay after a service crash (doubles, capped at 60s). */
   serviceRestartBaseMs?: number;
+  /** Time box per bb.agents.addContext provider call; tests shrink it. */
+  contextProviderTimeoutMs?: number;
+  /** Time box per mention provider search call; tests shrink it. */
+  mentionSearchTimeoutMs?: number;
+  /** Time box per mention provider resolve call at send; tests shrink it. */
+  mentionResolveTimeoutMs?: number;
 }
+
+/** One labeled instruction section produced by a bb.agents context provider. */
+export interface PluginAgentContextSection {
+  pluginId: string;
+  text: string;
+}
+
+/** One native tool contributed by a running plugin (design §4.4). */
+export interface PluginAgentToolContribution {
+  pluginId: string;
+  tool: DynamicTool;
+  /** Optional usage snippet for the thread-instructions assembly. */
+  instructions: string | null;
+}
+
+/** One thread action contributed by a running plugin (design §4.9). */
+export interface PluginThreadActionContribution {
+  pluginId: string;
+  id: string;
+  title: string;
+  icon: string | null;
+  confirm: string | null;
+}
+
+/** Result of running a thread action (POST /plugins/:id/actions/:actionId). */
+export type PluginThreadActionRunResult =
+  | { outcome: "unknown-thread" }
+  | { outcome: "ok"; toast: PluginThreadActionToast | null }
+  | { outcome: "error"; error: string };
+
+/** One slash command contributed by a running plugin (design §4.9). */
+export interface PluginSlashCommandContribution {
+  pluginId: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * Normalized action envelope for a slash command's return value, returned by
+ * POST /plugins/:id/slash/:name so the app can branch on `action`.
+ */
+export type PluginSlashCommandAction =
+  | { action: "none" }
+  | { action: "insertText"; insertText: string }
+  | { action: "send"; send: PromptInput[] };
+
+/** One mention provider contributed by a running plugin (design §4.9). */
+export interface PluginMentionProviderContribution {
+  pluginId: string;
+  id: string;
+  label: string;
+}
+
+/** One row in a mention search group. `itemId` is the wire-composed
+ * "<providerId>:<provider item id>" that rides the mention resource. */
+export interface PluginMentionSearchItem {
+  itemId: string;
+  title: string;
+  subtitle: string | null;
+  icon: string | null;
+}
+
+/** One provider's results for GET /plugins/mentions/search, grouped so the
+ * composer renders them under the provider's label. */
+export interface PluginMentionSearchGroup {
+  pluginId: string;
+  providerId: string;
+  label: string;
+  items: PluginMentionSearchItem[];
+}
+
+/** Result of resolving one plugin mention at send time (design §4.9). */
+export type PluginMentionResolveResult =
+  | { ok: true; context: string }
+  | { ok: false; error: string };
+
+/** Result of running a slash command (POST /plugins/:id/slash/:name). */
+export type PluginSlashCommandRunResult =
+  | { outcome: "ok"; value: PluginSlashCommandAction }
+  | { outcome: "error"; error: string };
 
 /**
  * Narrow emitter the thread lifecycle seams call (design §4.5). Emission is
@@ -229,7 +332,10 @@ export interface PluginService {
   install(source: string): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   remove(id: string): Promise<boolean>;
-  setEnabled(id: string, enabled: boolean): Promise<PluginListEntry | undefined>;
+  setEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<PluginListEntry | undefined>;
   reload(id?: string): Promise<void>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
@@ -303,6 +409,123 @@ export interface PluginService {
     ctx: PluginCliContext,
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
   /**
+   * Skills roots of running plugins (manifest bb.skills or the skills/
+   * convention dir), ordered by plugin id — the "plugin" precedence tier
+   * passed to resolveInjectedSkillSources per turn. Missing directories are
+   * tolerated downstream; empty when the experiment is off.
+   */
+  listSkillsRootPaths(): string[];
+  /**
+   * Run every loaded plugin's bb.agents.addContext providers for one turn
+   * (design §4.4). Providers run concurrently, each wrapped in the
+   * failure-isolation discipline (invokeWrapped) and time-boxed; a slow,
+   * throwing, or non-string-returning provider is skipped and logged so a
+   * plugin can never stall turn submission. Null/empty results are
+   * dropped. Sections are ordered by plugin id, then registration order.
+   */
+  collectAgentContextSections(
+    ctx: PluginAgentTurnContext,
+  ): Promise<PluginAgentContextSection[]>;
+  /**
+   * Native tools of running plugins (bb.agents.registerTool), ordered by
+   * plugin id then registration order, deduped defensively (first wins —
+   * registration already blocks collisions). Appended to a session's
+   * dynamicTools at thread.start/turn.submit time; changes apply on the
+   * NEXT session start. Empty when the experiment is off.
+   */
+  listAgentTools(): PluginAgentToolContribution[];
+  /** Resolve one registered native tool by name (same view as listAgentTools). */
+  findAgentTool(
+    name: string,
+  ): { pluginId: string; record: PluginAgentToolRecord } | undefined;
+  /**
+   * Run a native tool call (design §4.4). Invalid arguments (zod-backed
+   * registrations) return an isError tool result without touching the
+   * plugin; execute runs through invokeWrapped, so a throwing or
+   * malformed-result handler maps to an isError tool result too.
+   */
+  invokeAgentTool(args: {
+    pluginId: string;
+    record: PluginAgentToolRecord;
+    input: unknown;
+    ctx: PluginAgentToolContext;
+  }): Promise<ToolCallResponse>;
+  /**
+   * Thread actions of running plugins (bb.ui.registerThreadAction), ordered
+   * by plugin id then registration order, for GET /plugins/contributions.
+   * No plugin code runs; empty when the experiment is off.
+   */
+  listThreadActionContributions(): PluginThreadActionContribution[];
+  /** Live thread-action lookup for POST /plugins/:id/actions/:actionId. */
+  getThreadAction(
+    id: string,
+    actionId: string,
+  ): PluginWireLookup<PluginThreadActionRecord>;
+  /**
+   * Run a thread action (design §4.9): resolves the thread (its projectId
+   * rides into the handler context), runs `run` through invokeWrapped, and
+   * validates the returned toast. A throwing or malformed-result handler
+   * maps to the "error" outcome — the app shows it as an error toast.
+   */
+  runThreadAction(
+    id: string,
+    record: PluginThreadActionRecord,
+    threadId: string,
+  ): Promise<PluginThreadActionRunResult>;
+  /**
+   * Slash commands of running plugins (bb.ui.registerSlashCommand), ordered
+   * by plugin id then registration order, for GET /plugins/contributions.
+   * No plugin code runs; empty when the experiment is off.
+   */
+  listSlashCommandContributions(): PluginSlashCommandContribution[];
+  /** Live slash-command lookup for POST /plugins/:id/slash/:name. */
+  getSlashCommand(
+    id: string,
+    name: string,
+  ): PluginWireLookup<PluginSlashCommandRecord>;
+  /**
+   * Run a slash command (design §4.9) through invokeWrapped and normalize
+   * the returned action (void | { insertText } | { send }). A throwing or
+   * malformed-result handler maps to the "error" outcome — the app shows it
+   * as an error toast on the composer.
+   */
+  runSlashCommand(
+    id: string,
+    record: PluginSlashCommandRecord,
+    ctx: PluginSlashCommandContext,
+  ): Promise<PluginSlashCommandRunResult>;
+  /**
+   * Mention providers of running plugins (bb.ui.registerMentionProvider),
+   * ordered by plugin id then registration order, for
+   * GET /plugins/contributions. No plugin code runs; empty when the
+   * experiment is off.
+   */
+  listMentionProviderContributions(): PluginMentionProviderContribution[];
+  /**
+   * Run every loaded plugin's mention providers against one composer query
+   * (design §4.9). Providers run concurrently, each wrapped in the
+   * failure-isolation discipline (invokeWrapped) and time-boxed (2s); a
+   * slow, throwing, or malformed provider contributes an empty group.
+   * Groups are ordered by plugin id, then registration order; empty groups
+   * are dropped. Item ids are namespaced "<providerId>:<item id>".
+   */
+  searchMentions(args: {
+    query: string;
+    projectId: string | null;
+    threadId: string | null;
+  }): Promise<PluginMentionSearchGroup[]>;
+  /**
+   * Resolve one plugin mention at send time (design §4.9). `itemId` is the
+   * wire-composed "<providerId>:<item id>" from searchMentions. Runs the
+   * provider's resolve through invokeWrapped; any dispatch or handler
+   * problem maps to `{ ok: false, error }` so the send path can block with
+   * a clear error.
+   */
+  resolveMention(args: {
+    pluginId: string;
+    itemId: string;
+  }): Promise<PluginMentionResolveResult>;
+  /**
    * Last `tail` lines of the plugin's JSONL log file (bb.log output).
    * Undefined when the plugin is not installed.
    */
@@ -320,6 +543,12 @@ export interface PluginService {
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
+const DEFAULT_CONTEXT_PROVIDER_TIMEOUT_MS = 2_000;
+const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
+// Resolve is looser than search: it blocks a send the user already committed
+// to, so it may do one real fetch — but it must not hang POST /threads/:id/send
+// forever when a provider never settles.
+const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
@@ -354,6 +583,192 @@ async function settledWithin(
   }
 }
 
+/**
+ * Map a tool's return value (string | { content, isError? }) onto the wire
+ * ToolCallResponse the daemon round-trip expects. Malformed results throw —
+ * the caller runs this inside invokeWrapped so they count as handler errors.
+ */
+function normalizeAgentToolResult(
+  name: string,
+  result: unknown,
+): ToolCallResponse {
+  if (typeof result === "string") {
+    return {
+      success: true,
+      contentItems: [{ type: "inputText", text: result }],
+    };
+  }
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    Array.isArray((result as { content?: unknown }).content)
+  ) {
+    const { content, isError } = result as {
+      content: unknown[];
+      isError?: unknown;
+    };
+    const contentItems = content.map((part, index) => {
+      const typed = part as {
+        type?: unknown;
+        text?: unknown;
+        data?: unknown;
+        mimeType?: unknown;
+      };
+      if (typed?.type === "text" && typeof typed.text === "string") {
+        return { type: "inputText" as const, text: typed.text };
+      }
+      if (
+        typed?.type === "image" &&
+        typeof typed.data === "string" &&
+        typeof typed.mimeType === "string"
+      ) {
+        return {
+          type: "inputImage" as const,
+          imageUrl: `data:${typed.mimeType};base64,${typed.data}`,
+        };
+      }
+      throw new Error(
+        `content[${index}] must be { type: "text", text } or { type: "image", data, mimeType }`,
+      );
+    });
+    return { success: isError !== true, contentItems };
+  }
+  throw new Error(
+    `tool "${name}" execute() must return a string or { content: [...], isError? }`,
+  );
+}
+
+const THREAD_ACTION_TOAST_KINDS = new Set(["success", "error", "info"]);
+
+/**
+ * Validate a thread action's return value (void | { toast? }). Malformed
+ * results throw — the caller runs this inside invokeWrapped so they count
+ * as handler errors, not broken wire responses.
+ */
+function normalizeThreadActionResult(
+  actionId: string,
+  result: unknown,
+): PluginThreadActionToast | null {
+  if (result === undefined || result === null) return null;
+  if (typeof result !== "object") {
+    throw new Error(
+      `thread action "${actionId}" run() must return void or { toast? }`,
+    );
+  }
+  const toast = (result as { toast?: unknown }).toast;
+  if (toast === undefined || toast === null) return null;
+  const { kind, message } = toast as { kind?: unknown; message?: unknown };
+  if (
+    typeof kind !== "string" ||
+    !THREAD_ACTION_TOAST_KINDS.has(kind) ||
+    typeof message !== "string" ||
+    message.length === 0
+  ) {
+    throw new Error(
+      `thread action "${actionId}" toast must be { kind: "success" | "error" | "info", message: string }`,
+    );
+  }
+  return { kind: kind as PluginThreadActionToast["kind"], message };
+}
+
+const slashCommandSendSchema = z.array(promptInputSchema).min(1);
+
+/**
+ * Normalize a slash command's return value (void | { insertText } |
+ * { send }) into the wire action envelope. Malformed results throw — the
+ * caller runs this inside invokeWrapped so they count as handler errors,
+ * not broken wire responses.
+ */
+function normalizeSlashCommandResult(
+  name: string,
+  result: unknown,
+): PluginSlashCommandAction {
+  if (result === undefined || result === null) return { action: "none" };
+  if (typeof result !== "object") {
+    throw new Error(
+      `slash command "${name}" run() must return void, { insertText }, or { send }`,
+    );
+  }
+  const { insertText, send } = result as {
+    insertText?: unknown;
+    send?: unknown;
+  };
+  if (insertText !== undefined && send !== undefined) {
+    throw new Error(
+      `slash command "${name}" run() returned both insertText and send — return one`,
+    );
+  }
+  if (insertText !== undefined) {
+    if (typeof insertText !== "string" || insertText.length === 0) {
+      throw new Error(
+        `slash command "${name}" insertText must be a non-empty string`,
+      );
+    }
+    return { action: "insertText", insertText };
+  }
+  if (send !== undefined) {
+    const parsed = slashCommandSendSchema.safeParse(send);
+    if (!parsed.success) {
+      throw new Error(
+        `slash command "${name}" send must be a non-empty PromptInput array: ${z.prettifyError(parsed.error)}`,
+      );
+    }
+    return { action: "send", send: parsed.data };
+  }
+  throw new Error(
+    `slash command "${name}" run() must return void, { insertText }, or { send }`,
+  );
+}
+
+/**
+ * Validate a mention provider's search() result and namespace item ids for
+ * the wire ("<providerId>:<item id>"). Malformed results throw — the caller
+ * runs this inside invokeWrapped so they count as handler errors and the
+ * provider contributes an empty group.
+ */
+function normalizeMentionSearchItems(
+  providerId: string,
+  result: unknown,
+): PluginMentionSearchItem[] {
+  if (!Array.isArray(result)) {
+    throw new Error(
+      `mention provider "${providerId}" search() must return an array of items`,
+    );
+  }
+  return result.map((item, index) => {
+    const typed = item as {
+      id?: unknown;
+      title?: unknown;
+      subtitle?: unknown;
+      icon?: unknown;
+    } | null;
+    if (
+      typeof typed?.id !== "string" ||
+      typed.id.length === 0 ||
+      typeof typed.title !== "string" ||
+      typed.title.trim().length === 0 ||
+      (typed.subtitle !== undefined && typeof typed.subtitle !== "string") ||
+      (typed.icon !== undefined && typeof typed.icon !== "string")
+    ) {
+      throw new Error(
+        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon? }`,
+      );
+    }
+    return {
+      itemId: `${providerId}:${typed.id}`,
+      title: typed.title,
+      subtitle:
+        typeof typed.subtitle === "string" && typed.subtitle.trim().length > 0
+          ? typed.subtitle
+          : null,
+      icon:
+        typeof typed.icon === "string" && typed.icon.trim().length > 0
+          ? typed.icon
+          : null,
+    };
+  });
+}
+
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
@@ -361,6 +776,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
   const serviceRestartBaseMs =
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
+  const contextProviderTimeoutMs =
+    deps.contextProviderTimeoutMs ?? DEFAULT_CONTEXT_PROVIDER_TIMEOUT_MS;
+  const mentionSearchTimeoutMs =
+    deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
+  const mentionResolveTimeoutMs =
+    deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
   const statuses = new Map<
@@ -374,6 +795,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // needs-configuration messages reported during the current load; cleared
   // on the next load so a reconfigured plugin comes back as running.
   const needsConfiguration = new Map<string, string>();
+  // Agent-tool registration problems (cross-plugin name collisions): the
+  // plugin keeps running, but the dropped registration is surfaced as its
+  // status detail. Cleared on the next load.
+  const agentToolProblems = new Map<string, string>();
   // Cumulative per plugin for this server session (kept across reloads so a
   // reload cannot hide cost); removed with the plugin registration.
   const handlerStats = new Map<string, PluginHandlerStats>();
@@ -404,6 +829,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     setStatus(id, "needs-configuration", message);
   }
 
+  function reportAgentToolProblem(id: string, message: string): void {
+    agentToolProblems.set(id, message);
+    logger.warn(`[plugin:${id}] ${message}`);
+    // Post-load registration (mid-session): surface the detail right away.
+    // During load, loadOne applies it when it sets the final status.
+    if (statuses.get(id)?.status === "running") {
+      setStatus(id, "running", message);
+    }
+  }
+
+  /** Another loaded plugin already owns this tool name? Returns its id. */
+  function findAgentToolOwner(
+    name: string,
+    excludePluginId: string,
+  ): string | undefined {
+    for (const [otherId, plugin] of loaded) {
+      if (otherId === excludePluginId) continue;
+      if (plugin.handle.agentTools.some((tool) => tool.name === name)) {
+        return otherId;
+      }
+    }
+    return undefined;
+  }
+
   /** Start (or restart) one background service instance. */
   function runService(id: string, service: ServiceRuntime): void {
     const controller = new AbortController();
@@ -417,7 +866,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     service.current = current;
     current.then(
       () => onServiceSettled(id, service, { crashed: false }),
-      (error: unknown) => onServiceSettled(id, service, { crashed: true, error }),
+      (error: unknown) =>
+        onServiceSettled(id, service, { crashed: true, error }),
     );
   }
 
@@ -717,14 +1167,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     try {
       await stat(row.rootDir);
     } catch {
-      setStatus(row.id, "missing", `plugin directory not found: ${row.rootDir} (reinstall)`);
+      setStatus(
+        row.id,
+        "missing",
+        `plugin directory not found: ${row.rootDir} (reinstall)`,
+      );
       return;
     }
     let manifest: PluginManifest;
     try {
       manifest = await readPluginManifest(row.rootDir);
     } catch (error) {
-      setStatus(row.id, "error", error instanceof Error ? error.message : String(error));
+      setStatus(
+        row.id,
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
       return;
     }
     const engineProblem = checkEngineRange(manifest);
@@ -744,10 +1202,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       reportNeedsConfiguration: (message) => {
         reportNeedsConfiguration(row.id, message);
       },
+      isAgentToolNameTaken: (name) => findAgentToolOwner(name, row.id),
+      reportAgentToolProblem: (message) => {
+        reportAgentToolProblem(row.id, message);
+      },
     });
     // Fresh load: a plugin that was waiting on configuration gets to prove
     // itself again (its factory/services re-report if still unconfigured).
     needsConfiguration.delete(row.id);
+    agentToolProblems.delete(row.id);
     try {
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, { moduleCache: false });
@@ -774,7 +1237,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         message += " (native dependencies are not supported in BB plugins)";
       }
       setStatus(row.id, "error", message);
-      logger.warn(`plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`);
+      logger.warn(
+        `plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`,
+      );
       return;
     }
     const plugin: LoadedPlugin = {
@@ -815,8 +1280,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     // A factory (or an immediately-crashing service) may have already
     // reported needs-configuration; do not paper over it with "running".
+    // A dropped tool registration keeps the plugin running but rides along
+    // as the status detail.
     if (!needsConfiguration.has(row.id)) {
-      setStatus(row.id, "running");
+      setStatus(row.id, "running", agentToolProblems.get(row.id) ?? null);
     }
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
   }
@@ -937,6 +1404,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const row = getInstalledPlugin(deps.db, manifest.id);
       if (row) await loadOne(row);
       await syncCliSkill();
+      notifyPluginsChanged();
     }
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
@@ -1047,6 +1515,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
+  /**
+   * The live native-tool view: loaded plugins in id order, registration
+   * order within a plugin, deduped first-wins (defensive — registration
+   * already blocks cross-plugin collisions and reserved names).
+   */
+  function collectAgentTools(): Array<{
+    pluginId: string;
+    record: PluginAgentToolRecord;
+  }> {
+    if (!deps.isEnabled()) return [];
+    const seen = new Set<string>(RESERVED_AGENT_TOOL_NAMES);
+    const out: Array<{ pluginId: string; record: PluginAgentToolRecord }> = [];
+    for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      for (const record of plugin.handle.agentTools) {
+        if (seen.has(record.name)) continue;
+        seen.add(record.name);
+        out.push({ pluginId: id, record });
+      }
+    }
+    return out;
+  }
+
   function cliContributions(): PluginCliContribution[] {
     if (!deps.isEnabled()) return [];
     const contributions: PluginCliContribution[] = [];
@@ -1076,6 +1568,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `failed to sync the plugin-commands skill: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Broadcast that the set of running plugins (and therefore host-rendered
+   * contributions) changed, so open app pages re-fetch instead of waiting
+   * out their query stale time. Fired on install/remove/enable/disable/
+   * reload/experiment-toggle completion.
+   */
+  function notifyPluginsChanged(): void {
+    deps.hub.notifySystem(["plugins-changed"]);
   }
 
   function list(): PluginListEntry[] {
@@ -1158,11 +1660,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
       await loadAll();
       await syncCliSkill();
+      notifyPluginsChanged();
     },
 
     async stop() {
       await disposeAll();
       await syncCliSkill();
+      notifyPluginsChanged();
     },
 
     async onExperimentChanged(enabled) {
@@ -1173,6 +1677,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         statuses.clear();
       }
       await syncCliSkill();
+      notifyPluginsChanged();
     },
 
     list,
@@ -1191,6 +1696,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await disposeOne(id);
       statuses.delete(id);
       handlerStats.delete(id);
+      agentToolProblems.delete(id);
       const removed = deleteInstalledPlugin(deps.db, id);
       if (removed && row) {
         // Configuration goes with the registration (a future same-id plugin
@@ -1212,6 +1718,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
       }
       await syncCliSkill();
+      notifyPluginsChanged();
       return removed;
     },
 
@@ -1229,6 +1736,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
       }
       await syncCliSkill();
+      notifyPluginsChanged();
       return list().find((p) => p.id === id);
     },
 
@@ -1241,6 +1749,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await loadOne(row);
       }
       await syncCliSkill();
+      notifyPluginsChanged();
     },
 
     getApi(id) {
@@ -1395,6 +1904,366 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       if (outcome.ok) return outcome.value;
       return fail(`bb ${registration.name} failed: ${outcome.error}`);
+    },
+
+    listSkillsRootPaths() {
+      if (!deps.isEnabled()) return [];
+      return [...loaded.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([, plugin]) => plugin.manifest.skillsRootPaths);
+    },
+
+    async collectAgentContextSections(ctx) {
+      if (!deps.isEnabled() || loaded.size === 0) return [];
+      const tasks: Array<Promise<PluginAgentContextSection | null>> = [];
+      const entries = [...loaded.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+      for (const [id, plugin] of entries) {
+        for (const provider of [...plugin.handle.contextProviders]) {
+          tasks.push(
+            (async () => {
+              const outcome = await invokeWrapped(
+                id,
+                "agent context provider",
+                async () => {
+                  const providerPromise = (async () => provider(ctx))();
+                  // The race abandons a timed-out provider; keep its eventual
+                  // rejection observed so it cannot surface as an unhandled
+                  // rejection later.
+                  providerPromise.catch(() => {});
+                  let timer: NodeJS.Timeout | undefined;
+                  try {
+                    const result = await Promise.race([
+                      providerPromise,
+                      new Promise<never>((_, reject) => {
+                        timer = setTimeout(
+                          () =>
+                            reject(
+                              new Error(
+                                `timed out after ${contextProviderTimeoutMs}ms`,
+                              ),
+                            ),
+                          contextProviderTimeoutMs,
+                        );
+                        timer.unref?.();
+                      }),
+                    ]);
+                    if (result === null || result === undefined) return null;
+                    if (typeof result !== "string") {
+                      throw new Error(
+                        "context provider must return a string or null",
+                      );
+                    }
+                    return result;
+                  } finally {
+                    if (timer !== undefined) clearTimeout(timer);
+                  }
+                },
+              );
+              if (!outcome.ok) return null;
+              const text = outcome.value?.trim() ?? "";
+              return text.length > 0 ? { pluginId: id, text } : null;
+            })(),
+          );
+        }
+      }
+      return (await Promise.all(tasks)).filter(
+        (section): section is PluginAgentContextSection => section !== null,
+      );
+    },
+
+    listAgentTools() {
+      return collectAgentTools().map(({ pluginId, record }) => ({
+        pluginId,
+        tool: {
+          name: record.name,
+          description: record.description,
+          inputSchema: record.inputSchema,
+        },
+        instructions: record.instructions,
+      }));
+    },
+
+    findAgentTool(name) {
+      return collectAgentTools().find((entry) => entry.record.name === name);
+    },
+
+    async invokeAgentTool({ pluginId, record, input, ctx }) {
+      // Bad arguments are the model's problem, not the plugin's: respond
+      // with an isError result without running (or blaming) plugin code.
+      const parsed = record.parse(input);
+      if (!parsed.ok) {
+        return {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: `Invalid arguments for tool "${record.name}": ${parsed.error}`,
+            },
+          ],
+        };
+      }
+      const outcome = await invokeWrapped(
+        pluginId,
+        `tool ${record.name}`,
+        async () => {
+          const result = await record.execute(parsed.value, ctx);
+          return normalizeAgentToolResult(record.name, result);
+        },
+      );
+      if (outcome.ok) return outcome.value;
+      return {
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: `Tool "${record.name}" failed: ${outcome.error}`,
+          },
+        ],
+      };
+    },
+
+    listThreadActionContributions() {
+      if (!deps.isEnabled()) return [];
+      const contributions: PluginThreadActionContribution[] = [];
+      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        for (const record of plugin.handle.threadActions) {
+          contributions.push({
+            pluginId: id,
+            id: record.id,
+            title: record.title,
+            icon: record.icon,
+            confirm: record.confirm,
+          });
+        }
+      }
+      return contributions;
+    },
+
+    getThreadAction(id, actionId) {
+      return wireLookup(id, (plugin) =>
+        plugin.handle.threadActions.find((record) => record.id === actionId),
+      );
+    },
+
+    async runThreadAction(id, record, threadId) {
+      const thread = getThread(deps.db, threadId);
+      if (!thread) return { outcome: "unknown-thread" };
+      const outcome = await invokeWrapped(
+        id,
+        `thread action ${record.id}`,
+        async () => {
+          const result = await record.run({
+            threadId: thread.id,
+            projectId: thread.projectId,
+          });
+          return normalizeThreadActionResult(record.id, result);
+        },
+      );
+      if (outcome.ok) return { outcome: "ok", toast: outcome.value };
+      return { outcome: "error", error: outcome.error };
+    },
+
+    listSlashCommandContributions() {
+      if (!deps.isEnabled()) return [];
+      const contributions: PluginSlashCommandContribution[] = [];
+      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        for (const record of plugin.handle.slashCommands) {
+          contributions.push({
+            pluginId: id,
+            name: record.name,
+            description: record.description,
+          });
+        }
+      }
+      return contributions;
+    },
+
+    getSlashCommand(id, name) {
+      return wireLookup(id, (plugin) =>
+        plugin.handle.slashCommands.find((record) => record.name === name),
+      );
+    },
+
+    async runSlashCommand(id, record, ctx) {
+      const outcome = await invokeWrapped(
+        id,
+        `slash command ${record.name}`,
+        async () => {
+          const result = await record.run(ctx);
+          return normalizeSlashCommandResult(record.name, result);
+        },
+      );
+      if (outcome.ok) return { outcome: "ok", value: outcome.value };
+      return { outcome: "error", error: outcome.error };
+    },
+
+    listMentionProviderContributions() {
+      if (!deps.isEnabled()) return [];
+      const contributions: PluginMentionProviderContribution[] = [];
+      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        for (const record of plugin.handle.mentionProviders) {
+          contributions.push({
+            pluginId: id,
+            id: record.id,
+            label: record.label,
+          });
+        }
+      }
+      return contributions;
+    },
+
+    async searchMentions(args) {
+      if (!deps.isEnabled() || loaded.size === 0) return [];
+      const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
+      const entries = [...loaded.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+      for (const [id, plugin] of entries) {
+        for (const record of [...plugin.handle.mentionProviders]) {
+          tasks.push(
+            (async () => {
+              const outcome = await invokeWrapped(
+                id,
+                `mention search ${record.id}`,
+                async () => {
+                  const searchPromise = (async () =>
+                    record.search({
+                      query: args.query,
+                      projectId: args.projectId,
+                      threadId: args.threadId,
+                    }))();
+                  // The race abandons a timed-out search; keep its eventual
+                  // rejection observed so it cannot surface as an unhandled
+                  // rejection later.
+                  searchPromise.catch(() => {});
+                  let timer: NodeJS.Timeout | undefined;
+                  try {
+                    const result = await Promise.race([
+                      searchPromise,
+                      new Promise<never>((_, reject) => {
+                        timer = setTimeout(
+                          () =>
+                            reject(
+                              new Error(
+                                `timed out after ${mentionSearchTimeoutMs}ms`,
+                              ),
+                            ),
+                          mentionSearchTimeoutMs,
+                        );
+                        timer.unref?.();
+                      }),
+                    ]);
+                    return normalizeMentionSearchItems(record.id, result);
+                  } finally {
+                    if (timer !== undefined) clearTimeout(timer);
+                  }
+                },
+              );
+              if (!outcome.ok || outcome.value.length === 0) return null;
+              return {
+                pluginId: id,
+                providerId: record.id,
+                label: record.label,
+                items: outcome.value,
+              };
+            })(),
+          );
+        }
+      }
+      return (await Promise.all(tasks)).filter(
+        (group): group is PluginMentionSearchGroup => group !== null,
+      );
+    },
+
+    async resolveMention({ pluginId, itemId }) {
+      if (!deps.isEnabled()) {
+        return {
+          ok: false,
+          error:
+            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
+        };
+      }
+      const separatorIndex = itemId.indexOf(":");
+      const providerId =
+        separatorIndex > 0 ? itemId.slice(0, separatorIndex) : "";
+      const providerItemId =
+        separatorIndex > 0 ? itemId.slice(separatorIndex + 1) : "";
+      if (providerId.length === 0 || providerItemId.length === 0) {
+        return {
+          ok: false,
+          error: `malformed plugin mention item id ${JSON.stringify(itemId)}`,
+        };
+      }
+      const lookup = wireLookup(pluginId, (plugin) =>
+        plugin.handle.mentionProviders.find(
+          (record) => record.id === providerId,
+        ),
+      );
+      if (lookup.outcome === "unknown-plugin") {
+        return { ok: false, error: `unknown plugin "${pluginId}"` };
+      }
+      if (lookup.outcome === "not-running") {
+        const detail = lookup.detail ? ` — ${lookup.detail}` : "";
+        return {
+          ok: false,
+          error: `plugin "${pluginId}" is not running (status: ${lookup.status}${detail})`,
+        };
+      }
+      if (lookup.outcome === "not-found") {
+        return {
+          ok: false,
+          error: `plugin "${pluginId}" has no mention provider "${providerId}"`,
+        };
+      }
+      const provider = lookup.value;
+      const outcome = await invokeWrapped(
+        pluginId,
+        `mention resolve ${providerId}`,
+        async () => {
+          const resolvePromise = (async () =>
+            provider.resolve(providerItemId))();
+          // The race abandons a timed-out resolve; keep its eventual
+          // rejection observed so it cannot surface as an unhandled
+          // rejection later.
+          resolvePromise.catch(() => {});
+          let timer: NodeJS.Timeout | undefined;
+          let result: unknown;
+          try {
+            result = await Promise.race([
+              resolvePromise,
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                  () =>
+                    reject(
+                      new Error(`timed out after ${mentionResolveTimeoutMs}ms`),
+                    ),
+                  mentionResolveTimeoutMs,
+                );
+                timer.unref?.();
+              }),
+            ]);
+          } finally {
+            if (timer !== undefined) clearTimeout(timer);
+          }
+          const context = (result as { context?: unknown } | null)?.context;
+          if (typeof context !== "string" || context.trim().length === 0) {
+            throw new Error(
+              `mention provider "${providerId}" resolve() must return { context: string }`,
+            );
+          }
+          return context;
+        },
+      );
+      if (outcome.ok) return { ok: true, context: outcome.value };
+      return { ok: false, error: outcome.error };
     },
 
     async readLogTail(id, tail) {

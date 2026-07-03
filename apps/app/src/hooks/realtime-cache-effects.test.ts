@@ -30,6 +30,7 @@ import {
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
+import { pluginContributionsQueryKey } from "./queries/plugin-contribution-queries";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -143,6 +144,28 @@ describe("createRealtimeCacheEffects", () => {
         expect(dirty.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("invalidates the plugin contributions cache on plugins-changed", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const contributionsKey = pluginContributionsQueryKey(true);
+    queryClient.setQueryData(contributionsKey, {
+      threadActions: [],
+      slashCommands: [],
+      mentionProviders: [],
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["plugins-changed"],
+    });
+
+    // System changes flush immediately (no thread-style debounce), so
+    // `bb plugin reload/enable/disable` reaches open composers right away.
+    expect(queryClient.getQueryState(contributionsKey)?.isInvalidated).toBe(
+      true,
+    );
   });
 
   it.each(PROJECT_PROMPT_HISTORY_THREAD_CHANGES)(

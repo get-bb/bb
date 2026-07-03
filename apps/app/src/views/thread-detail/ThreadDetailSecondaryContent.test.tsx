@@ -239,6 +239,7 @@ function makeThread(
     providerId: "codex",
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     status: "idle",
     stopRequestedAt: null,

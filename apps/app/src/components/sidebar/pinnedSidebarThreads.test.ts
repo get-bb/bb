@@ -19,6 +19,7 @@ function createThread(
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,

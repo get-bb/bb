@@ -29,6 +29,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     projectId: "proj_1",
     providerId: "codex",
     originKind: null,
+    originPluginId: null,
     sourceThreadId: null,
     runtime: {
       displayStatus: "idle",

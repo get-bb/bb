@@ -147,11 +147,41 @@ export function registerPluginRoutes(
     context.json({ enabled: plugins.isEnabled(), plugins: plugins.list() }),
   );
 
-  // Fast metadata for the bb CLI's help/proxy path: no plugin code runs;
-  // empty (not an error) while the experiment is off.
+  // Fast metadata for the bb CLI's help/proxy path and the app's
+  // host-rendered UI contributions: no plugin code runs; empty (not an
+  // error) while the experiment is off.
   app.get("/plugins/contributions", (context) =>
-    context.json({ cliCommands: plugins.listCliContributions() }),
+    context.json({
+      cliCommands: plugins.listCliContributions(),
+      threadActions: plugins.listThreadActionContributions(),
+      slashCommands: plugins.listSlashCommandContributions(),
+      mentionProviders: plugins.listMentionProviderContributions(),
+    }),
   );
+
+  // Composer `@`-mention search across every plugin's mention providers
+  // (design §4.9). Executes plugin code, so it takes the same local-origin
+  // guard as the rpc dispatcher. Registered before the /plugins/:id/*
+  // routes so the static "mentions" segment cannot be captured as an id.
+  app.get("/plugins/mentions/search", async (context) => {
+    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    const query = (context.req.query("q") ?? "").trim();
+    if (query.length === 0) {
+      return context.json({ ok: true, groups: [] });
+    }
+    const projectId = context.req.query("projectId") ?? null;
+    const threadId = context.req.query("threadId") ?? null;
+    const groups = await plugins.searchMentions({
+      query,
+      projectId: projectId !== null && projectId.length > 0 ? projectId : null,
+      threadId: threadId !== null && threadId.length > 0 ? threadId : null,
+    });
+    return context.json({ ok: true, groups });
+  });
 
   // Proxied `bb <plugin-command>` / `bb plugin run` invocation (design §4.4).
   // Dispatch problems come back as { exitCode: 1, stderr } rather than HTTP
@@ -191,6 +221,121 @@ export function registerPluginRoutes(
       ctx,
     );
     return context.json(result);
+  });
+
+  // Host-rendered thread action invocation (design §4.9). Executes plugin
+  // code with full server capabilities, so it takes the same local-origin
+  // guard as the rpc dispatcher.
+  app.post("/plugins/:id/actions/:actionId", async (context) => {
+    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    const id = context.req.param("id");
+    const actionId = context.req.param("actionId");
+    const lookup = plugins.getThreadAction(id, actionId);
+    if (lookup.outcome === "unknown-plugin") {
+      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
+    }
+    if (lookup.outcome === "not-running") {
+      return context.json(
+        { ok: false, error: notRunningError(id, lookup) },
+        503,
+      );
+    }
+    if (lookup.outcome === "not-found") {
+      return context.json(
+        {
+          ok: false,
+          error: `plugin "${id}" has no thread action "${actionId}"`,
+        },
+        404,
+      );
+    }
+    const body = (await context.req.json().catch(() => null)) as {
+      threadId?: unknown;
+    } | null;
+    const threadId = body?.threadId;
+    if (typeof threadId !== "string" || threadId.length === 0) {
+      return context.json(
+        { ok: false, error: "expected { threadId: string }" },
+        400,
+      );
+    }
+    const result = await plugins.runThreadAction(id, lookup.value, threadId);
+    if (result.outcome === "unknown-thread") {
+      return context.json(
+        { ok: false, error: `unknown thread "${threadId}"` },
+        404,
+      );
+    }
+    if (result.outcome === "error") {
+      return context.json({ ok: false, error: result.error }, 500);
+    }
+    return context.json(
+      result.toast ? { ok: true, toast: result.toast } : { ok: true },
+    );
+  });
+
+  // Composer slash-command invocation (design §4.9). Executes plugin code
+  // with full server capabilities, so it takes the same local-origin guard
+  // as the rpc dispatcher. threadId/projectId are null when the command runs
+  // from the homepage (new-thread) composer.
+  app.post("/plugins/:id/slash/:name", async (context) => {
+    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    const id = context.req.param("id");
+    const name = context.req.param("name");
+    const lookup = plugins.getSlashCommand(id, name);
+    if (lookup.outcome === "unknown-plugin") {
+      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
+    }
+    if (lookup.outcome === "not-running") {
+      return context.json(
+        { ok: false, error: notRunningError(id, lookup) },
+        503,
+      );
+    }
+    if (lookup.outcome === "not-found") {
+      return context.json(
+        { ok: false, error: `plugin "${id}" has no slash command "${name}"` },
+        404,
+      );
+    }
+    const body = (await context.req.json().catch(() => null)) as {
+      args?: unknown;
+      threadId?: unknown;
+      projectId?: unknown;
+    } | null;
+    const args = body?.args === undefined ? "" : body.args;
+    const threadId = body?.threadId === undefined ? null : body.threadId;
+    const projectId = body?.projectId === undefined ? null : body.projectId;
+    if (
+      typeof args !== "string" ||
+      (threadId !== null && typeof threadId !== "string") ||
+      (projectId !== null && typeof projectId !== "string")
+    ) {
+      return context.json(
+        {
+          ok: false,
+          error: "expected { args?: string, threadId?: string, projectId?: string }",
+        },
+        400,
+      );
+    }
+    const result = await plugins.runSlashCommand(id, lookup.value, {
+      args,
+      threadId,
+      projectId,
+    });
+    if (result.outcome === "error") {
+      return context.json({ ok: false, error: result.error }, 500);
+    }
+    return context.json({ ok: true, ...result.value });
   });
 
   app.get("/plugins/:id/logs", async (context) => {

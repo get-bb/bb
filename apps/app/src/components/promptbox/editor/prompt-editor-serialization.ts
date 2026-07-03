@@ -515,6 +515,15 @@ export function promptMentionResourceFromSuggestion(
     };
   }
 
+  if (suggestion.kind === "plugin") {
+    return {
+      kind: "plugin",
+      pluginId: suggestion.pluginId,
+      itemId: suggestion.itemId,
+      label: suggestion.title.trim() || suggestion.itemId,
+    };
+  }
+
   return {
     kind: "path",
     source: suggestion.source,

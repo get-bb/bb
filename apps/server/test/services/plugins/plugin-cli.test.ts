@@ -105,6 +105,9 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
           ],
         },
       ],
+      threadActions: [],
+      slashCommands: [],
+      mentionProviders: [],
     });
     // bb plugin list shows the registered command too.
     const entry = harness.pluginService.list().find((p) => p.id === "acme");
@@ -116,7 +119,12 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     const response = await harness.app.request(
       `${BASE}/api/v1/plugins/contributions`,
     );
-    expect(await response.json()).toEqual({ cliCommands: [] });
+    expect(await response.json()).toEqual({
+      cliCommands: [],
+      threadActions: [],
+      slashCommands: [],
+      mentionProviders: [],
+    });
   });
 
   it("runs the command end to end: argv and ctx pass through verbatim", async () => {

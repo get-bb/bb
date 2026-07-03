@@ -234,9 +234,13 @@ const liveCommandSuggestions: ProviderCommandSuggestion[] = [
 ];
 
 function suggestionHaystack(suggestion: PromptMentionSuggestion): string {
-  return suggestion.kind === "thread"
-    ? `${suggestion.title ?? ""} ${suggestion.threadId}`.toLowerCase()
-    : `${suggestion.path} ${suggestion.name}`.toLowerCase();
+  if (suggestion.kind === "thread") {
+    return `${suggestion.title ?? ""} ${suggestion.threadId}`.toLowerCase();
+  }
+  if (suggestion.kind === "plugin") {
+    return `${suggestion.title} ${suggestion.subtitle ?? ""}`.toLowerCase();
+  }
+  return `${suggestion.path} ${suggestion.name}`.toLowerCase();
 }
 
 function filterLiveMentions(query: string): PromptMentionSuggestion[] {

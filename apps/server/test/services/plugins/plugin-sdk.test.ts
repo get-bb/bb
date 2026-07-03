@@ -63,7 +63,11 @@ describe("plugin bb.sdk bind gate", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-test-"));
     service = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",

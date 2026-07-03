@@ -33,6 +33,13 @@ export interface PluginManifest {
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
   appEntry: string | undefined;
+  /**
+   * Absolute skills-root directories auto-imported as the plugin skills
+   * tier (design §4.4). Defaults to `<rootDir>/skills`; `bb.skills` entries
+   * relocate the roots (a trailing `/*` is accepted and ignored) and an
+   * empty array opts out. Missing directories resolve to no skills.
+   */
+  skillsRootPaths: string[];
   rootDir: string;
 }
 
@@ -101,6 +108,9 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
   } catch {
     throw new Error(`manifest bb.server points at a missing file: ${bb.server}`);
   }
+  const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
+    resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
+  );
   return {
     id: derivePluginId(name),
     name,
@@ -108,6 +118,7 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
     bbEngineRange: engines?.bb,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
+    skillsRootPaths,
     rootDir,
   };
 }

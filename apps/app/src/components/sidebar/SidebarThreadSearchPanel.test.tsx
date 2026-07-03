@@ -60,6 +60,7 @@ function createThreadListEntry({
     lastReadAt: null,
     latestAttentionAt: 1000,
     originKind: null,
+    originPluginId: null,
     parentThreadId: null,
     pinSortKey: null,
     pinnedAt: null,

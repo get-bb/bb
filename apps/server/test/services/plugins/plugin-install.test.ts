@@ -153,7 +153,11 @@ describe("plugin install flows", () => {
     dataDir = join(workDir, "data");
     service = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir,
       appVersion: "0.9.0",

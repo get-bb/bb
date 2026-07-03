@@ -63,6 +63,9 @@ export function serializedTextForPromptMentionResource(
   if (resource.kind === "command") {
     return `${resource.trigger}${resource.name}`;
   }
+  if (resource.kind === "plugin") {
+    return `@${resource.label}`;
+  }
 
   const sourceQualifiedPath =
     resource.source === "thread-storage"

@@ -30,6 +30,27 @@ describe("prompt mention command triggers", () => {
     ).toBe(true);
   });
 
+  it("accepts plugin mention resources and requires all fields", () => {
+    const resource = {
+      kind: "plugin",
+      pluginId: "linear",
+      itemId: "issues:ISS-42",
+      label: "Fix login bug",
+    };
+    const parsed = promptMentionResourceSchema.safeParse(resource);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toEqual(resource);
+    }
+    expect(
+      promptMentionResourceSchema.safeParse({
+        kind: "plugin",
+        pluginId: "linear",
+        label: "Fix login bug",
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects legacy dollar command mention resources", () => {
     expect(
       promptMentionResourceSchema.safeParse({

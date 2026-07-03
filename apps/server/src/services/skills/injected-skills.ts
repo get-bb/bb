@@ -33,6 +33,13 @@ export interface ResolveInjectedSkillSourcesArgs {
   additionalSkillsRootPaths?: readonly string[];
   builtinSkillsRootPath: string;
   dataDir: string;
+  /**
+   * Skills roots contributed by running plugins (design §4.4). Their own
+   * precedence tier: overridden by project and user (data-dir/inherited)
+   * skills by name, and overriding built-ins by name. Earlier roots win
+   * plugin-vs-plugin name collisions.
+   */
+  pluginSkillsRootPaths?: readonly string[];
   projectSkillsRootPath?: string;
 }
 
@@ -359,9 +366,10 @@ function excludeCollisions(
 
 /**
  * Discovers the injected skills for a thread command from built-in skills
- * bundled with the server and data-dir skills under `<dataDir>/skills`.
- * User data-dir skills override inherited and built-in skills. Inherited roots
- * are ordered by priority, so earlier roots override later roots.
+ * bundled with the server, data-dir skills under `<dataDir>/skills`, and
+ * plugin skills roots. Precedence by name: project > data-dir/inherited
+ * user skills > plugin > builtin. Inherited roots are ordered by priority,
+ * so earlier roots override later roots.
  *
  * All source paths are server-machine paths that the local host daemon reads
  * from its filesystem.
@@ -410,13 +418,44 @@ export function resolveInjectedSkillSources(
     ],
     dataDirSources,
   );
+  // The plugin tier (design §4.4): sources ride the "data-dir" wire label —
+  // the daemon stages every sourceType identically, so the tier is purely a
+  // server-side precedence concept and needs no daemon-contract change.
+  const pluginSourceGroups = (args.pluginSkillsRootPaths ?? []).map(
+    (skillsRootPath) =>
+      readSkillsRoot({
+        logger,
+        skillsRootPath,
+        sourceType: "data-dir",
+      }),
+  );
+  const pluginSources = pluginSourceGroups.reduce<
+    HostDaemonInjectedSkillSource[]
+  >(
+    (higherPrioritySources, lowerPrioritySources) => [
+      ...higherPrioritySources,
+      ...excludeOverriddenLowerPriorityUserSources(logger, {
+        higherPrioritySources,
+        lowerPrioritySources,
+      }),
+    ],
+    [],
+  );
+  const activePluginSources = excludeOverriddenLowerPriorityUserSources(
+    logger,
+    {
+      higherPrioritySources: userSources,
+      lowerPrioritySources: pluginSources,
+    },
+  );
   const activeBuiltinSources = excludeOverriddenBuiltins(logger, {
     builtinSources,
-    userSources,
+    userSources: [...userSources, ...activePluginSources],
   });
   const globalSources = excludeCollisions(logger, [
     ...activeBuiltinSources,
     ...userSources,
+    ...activePluginSources,
   ]);
   const activeProjectSources = excludeCollisions(logger, projectSources);
   const projectNames = new Set(

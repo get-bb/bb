@@ -87,6 +87,7 @@ import {
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
 } from "../queries/query-keys";
+import { allPluginContributionsQueryKeyPrefix } from "../queries/plugin-contribution-queries";
 import { uiSourceStatusQueryKey } from "../queries/ui-source-queries";
 import {
   getProjectListInvalidationQueryKeys,
@@ -419,6 +420,11 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
     ],
+  },
+  // Plugin load/dispose/enable/disable/reload changes the host-rendered
+  // contributions (thread actions, slash commands, mention providers).
+  "plugins-changed": {
+    dirty: [dirtyPluginContributionQueries],
   },
   // The live page reload after a UI-source rebuild is owned entirely by the
   // server-injected recovery shim (outside the editable app bundle), so the
@@ -882,4 +888,8 @@ function dirtySystemExecutionOptionQueries(): QueryKey[] {
 
 function dirtyUiSourceStatusQueries(): QueryKey[] {
   return [uiSourceStatusQueryKey()];
+}
+
+function dirtyPluginContributionQueries(): QueryKey[] {
+  return [allPluginContributionsQueryKeyPrefix()];
 }

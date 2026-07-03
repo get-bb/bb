@@ -40,6 +40,7 @@ import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
+import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import { getLastProviderThreadId } from "./thread-events.js";
 import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
@@ -275,13 +276,29 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   ensureThreadCanStartRequest(thread);
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
-  const inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
+  let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
     formatQueuedMessageInputForSender({
       input: toThreadQueuedMessage(claimedQueuedMessage).content,
       senderThreadId: claimedQueuedMessage.senderThreadId,
     }),
   );
-  const input = groupedInputForRuntime(inputGroups);
+  let input = groupedInputForRuntime(inputGroups);
+  // Plugin mentions resolve once at send time (plugin design §4.9), exactly
+  // like the direct-send path in sendThreadMessage: this fast path dispatches
+  // straight to the daemon, so it must append the same agent-only context
+  // inputs itself. A resolve failure throws before the claim is consumed, so
+  // the message stays queued instead of silently losing its context.
+  const pluginMentionContext = await resolvePluginMentionContextInputs(input);
+  if (pluginMentionContext.length > 0) {
+    input = [...input, ...pluginMentionContext];
+    // Keep the grouped view aligned with the flat runtime input: the
+    // context rides the final group so a grouped send carries it too.
+    const lastGroup = inputGroups[inputGroups.length - 1]!;
+    inputGroups = [
+      ...inputGroups.slice(0, -1),
+      [...lastGroup, ...pluginMentionContext],
+    ];
+  }
   const payload = sendQueuedMessagePayload(
     { ...queuedMessage, content: input },
     args.mode,

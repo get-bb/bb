@@ -69,7 +69,11 @@ describe("plugin background services", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-bg-test-"));
     service = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
@@ -264,7 +268,11 @@ describe("plugin schedules", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sched-test-"));
     service = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",

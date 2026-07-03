@@ -726,6 +726,16 @@ importers:
         specifier: ^8.19.0
         version: 8.19.0
 
+  examples/plugins/agent-enrichment:
+    dependencies:
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+
+  examples/plugins/slack-bot: {}
+
+  examples/plugins/small-ux-pack: {}
+
   packages/agent-providers:
     dependencies:
       '@bb/domain':

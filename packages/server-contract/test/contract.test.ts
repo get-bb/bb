@@ -1021,6 +1021,7 @@ describe("server-contract canonical schemas", () => {
     ]);
     expect(SYSTEM_CHANGE_KINDS).toEqual([
       "config-changed",
+      "plugins-changed",
       "ui-reloaded",
       "ui-status-changed",
     ]);
@@ -1103,6 +1104,50 @@ describe("server-contract canonical schemas", () => {
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
+      }),
+    ).toThrow();
+  });
+
+  it("round-trips plugin mention resources on message input (plugin design §4.9)", () => {
+    const pluginMention = {
+      start: 0,
+      end: 14,
+      resource: {
+        kind: "plugin" as const,
+        pluginId: "linear",
+        itemId: "issues:ISS-42",
+        label: "Fix login bug",
+      },
+    };
+    const parsed = sendMessageRequestSchema.parse({
+      input: [
+        {
+          type: "text",
+          text: "@Fix login bug please",
+          mentions: [pluginMention],
+        },
+      ],
+      mode: "start",
+    });
+    expect(parsed.input[0]).toMatchObject({ mentions: [pluginMention] });
+
+    // All plugin resource fields are required — a partial resource fails.
+    expect(() =>
+      sendMessageRequestSchema.parse({
+        input: [
+          {
+            type: "text",
+            text: "@broken",
+            mentions: [
+              {
+                start: 0,
+                end: 7,
+                resource: { kind: "plugin", pluginId: "linear" },
+              },
+            ],
+          },
+        ],
+        mode: "start",
       }),
     ).toThrow();
   });

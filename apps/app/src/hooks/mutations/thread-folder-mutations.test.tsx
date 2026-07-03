@@ -32,6 +32,7 @@ function makeThreadListEntry(
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     archivedAt: 1,
     pinnedAt: null,

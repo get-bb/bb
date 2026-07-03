@@ -138,19 +138,23 @@ describe("hero plugin: agent-enrichment", () => {
     ).toBe(skillFile);
   });
 
-  it("ships a well-formed skills/ directory ready for the Phase-2 auto-import", () => {
-    // skills/ auto-import is Phase 2; this guards that the example's skill
-    // parses cleanly under the real injected-skill machinery.
+  it("auto-imports its skills/ directory through the plugin skills tier", () => {
+    const pluginSkillsRootPaths = harness.pluginService.listSkillsRootPaths();
+    expect(pluginSkillsRootPaths).toContain(
+      join(EXAMPLES_DIR, "agent-enrichment", "skills"),
+    );
+    // Resolved the same way thread-runtime-config wires the plugin tier.
     const sources = resolveInjectedSkillSources(testLogger, {
-      additionalSkillsRootPaths: [
-        join(EXAMPLES_DIR, "agent-enrichment", "skills"),
-      ],
       builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
+      pluginSkillsRootPaths,
     });
     const skill = sources.find((source) => source.name === "repo-conventions");
     expect(skill).toBeDefined();
     expect(skill?.description).toContain("Conventions");
+    expect(skill?.sourceRootPath).toBe(
+      join(EXAMPLES_DIR, "agent-enrichment", "skills", "repo-conventions"),
+    );
   });
 });
 

@@ -185,6 +185,17 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     label: z.string(),
     argumentHint: z.string().nullable(),
   }),
+  z.object({
+    kind: z.literal("plugin"),
+    pluginId: z.string(),
+    /**
+     * Opaque item reference minted by the server's mention search
+     * (`<providerId>:<provider item id>`); resolved back through the same
+     * plugin's mention provider at send time (plugin design §4.9).
+     */
+    itemId: z.string(),
+    label: z.string(),
+  }),
 ]);
 export type PromptMentionResource = z.infer<typeof promptMentionResourceSchema>;
 

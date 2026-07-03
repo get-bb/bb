@@ -57,6 +57,7 @@ import {
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -391,7 +392,7 @@ export async function sendThreadMessage(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
-  const inputGroups = payload.inputGroups
+  let inputGroups = payload.inputGroups
     ? payload.inputGroups.map((inputGroup) =>
         senderThreadId
           ? formatAgentThreadInput({
@@ -401,7 +402,7 @@ export async function sendThreadMessage(
           : inputGroup,
       )
     : undefined;
-  const input =
+  let input =
     inputGroups !== undefined
       ? groupedInputForRuntime(inputGroups)
       : senderThreadId
@@ -410,6 +411,23 @@ export async function sendThreadMessage(
             senderThreadId,
           })
         : payload.input;
+  // Plugin mentions resolve once at send time (plugin design §4.9): each
+  // unique mention becomes an agent-only context input appended after the
+  // user's message; a resolve failure throws a 422 before anything is
+  // persisted or dispatched.
+  const pluginMentionContext = await resolvePluginMentionContextInputs(input);
+  if (pluginMentionContext.length > 0) {
+    input = [...input, ...pluginMentionContext];
+    if (inputGroups !== undefined && inputGroups.length > 0) {
+      // Keep the grouped view aligned with the flat runtime input: the
+      // context rides the final group so a grouped send carries it too.
+      const lastGroup = inputGroups[inputGroups.length - 1]!;
+      inputGroups = [
+        ...inputGroups.slice(0, -1),
+        [...lastGroup, ...pluginMentionContext],
+      ];
+    }
+  }
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input,

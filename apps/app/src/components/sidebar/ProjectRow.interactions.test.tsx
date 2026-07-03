@@ -77,6 +77,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,

@@ -29,6 +29,7 @@ import {
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   createThreadRecord,
   getThreadSafe,
@@ -490,6 +491,16 @@ export async function createThreadFromRequest(
           })
         : rawRequestInput.environment,
   };
+  // Plugin mentions resolve once at send time (plugin design §4.9): each
+  // unique mention becomes an agent-only context input appended after the
+  // user's message; a resolve failure throws a 422 before the thread is
+  // created.
+  const pluginMentionContext = await resolvePluginMentionContextInputs(
+    requestInput.input,
+  );
+  if (pluginMentionContext.length > 0) {
+    requestInput.input = [...requestInput.input, ...pluginMentionContext];
+  }
   assertProjectWorkspaceCompatibility(project, requestInput);
   const originKind =
     requestInput.originKind ?? requestInput.childOrigin ?? null;

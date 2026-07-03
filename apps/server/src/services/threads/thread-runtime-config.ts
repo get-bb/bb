@@ -23,6 +23,11 @@ import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
+import {
+  collectPluginAgentContextSections,
+  getPluginSkillsRootPaths,
+  listPluginAgentTools,
+} from "../plugins/plugin-agent-contributions.js";
 import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
@@ -92,11 +97,36 @@ function requireWorkspacePath(
   return environment.path;
 }
 
-function resolveDynamicTools(thread: Thread): DynamicTool[] {
+interface DynamicToolContribution {
+  tool: DynamicTool;
+  /** Usage snippet appended to the thread instructions; null for none. */
+  instructions: string | null;
+  /** Contributing plugin id; null for built-in tools. */
+  pluginId: string | null;
+}
+
+/**
+ * The session's dynamic tool set: built-ins first, then native plugin tools
+ * (bb.agents.registerTool), resolved live at thread.start/turn.submit — so
+ * tool-set changes apply on the next session start, never mid-session.
+ * Side-chat threads get no dynamic tools.
+ */
+function resolveDynamicTools(thread: Thread): DynamicToolContribution[] {
   if (isSideChatThread(thread)) {
     return [];
   }
-  return [UPDATE_ENVIRONMENT_DIRECTORY_TOOL];
+  return [
+    {
+      tool: UPDATE_ENVIRONMENT_DIRECTORY_TOOL,
+      instructions: UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS,
+      pluginId: null,
+    },
+    ...listPluginAgentTools().map((contribution) => ({
+      tool: contribution.tool,
+      instructions: contribution.instructions,
+      pluginId: contribution.pluginId,
+    })),
+  ];
 }
 
 export function resolvePermissionEscalation(
@@ -149,20 +179,50 @@ export async function resolveThreadRuntimeCommandConfig(
     ],
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
+    // Skills roots of running plugins — resolved live each turn, so a
+    // reloaded plugin's skills apply on the next turn without a restart.
+    pluginSkillsRootPaths: getPluginSkillsRootPaths(),
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,
   );
-  const dynamicTools = resolveDynamicTools(args.thread);
+  const dynamicToolContributions = resolveDynamicTools(args.thread);
+  const dynamicTools = dynamicToolContributions.map(
+    (contribution) => contribution.tool,
+  );
   const workspaceAgentInstructions = readWorkspaceAgentInstructions(
     deps.logger,
     workspacePath,
   );
+  // Plugin context sections (design §4.4): assembled per turn, global to
+  // all threads in V1. Each provider is time-boxed and failure-isolated by
+  // the plugin service, so this await cannot stall turn submission.
+  const pluginContextSections = await collectPluginAgentContextSections({
+    threadId: args.thread.id,
+    projectId: args.thread.projectId,
+  });
   const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
-  if (dynamicTools.length > 0) {
-    instructionSections.push(UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS);
+  // Per-tool instructions: each dynamic tool carries its own snippet (the
+  // built-in update_environment_directory guidance is one of them; plugin
+  // tools are description-only unless they registered a snippet).
+  for (const contribution of dynamicToolContributions) {
+    if (!contribution.instructions) continue;
+    if (contribution.pluginId === null) {
+      instructionSections.push(contribution.instructions);
+    } else {
+      instructionSections.push(
+        `The following instructions come from the BB plugin "${contribution.pluginId}" for its tool "${contribution.tool.name}":`,
+        contribution.instructions,
+      );
+    }
+  }
+  for (const section of pluginContextSections) {
+    instructionSections.push(
+      `The following instructions come from the BB plugin "${section.pluginId}":`,
+      section.text,
+    );
   }
   if (dataDirAgentInstructions) {
     instructionSections.push(

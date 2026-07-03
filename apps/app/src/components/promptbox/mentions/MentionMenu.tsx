@@ -22,20 +22,21 @@ import { Icon, type IconName } from "@/components/ui/icon.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@/lib/utils";
 import type {
-  ProviderCommandSuggestion,
+  ComposerCommandSuggestion,
   PromptMentionSuggestion,
   TypeaheadMenuState,
 } from "@/components/promptbox/mentions/types";
 
 /**
- * A row the menu can render — either an `@`-mention suggestion or a command
- * suggestion. The two share a discriminant-free union via their own `kind`
- * field (`path`/`thread` vs `command`), so the composer's apply path can branch
- * by kind without a separate callback per menu mode.
+ * A row the menu can render — an `@`-mention suggestion or a command
+ * suggestion (provider or plugin). They share a discriminant-free union via
+ * their own `kind` field (`path`/`thread` vs `command`/`plugin-command`), so
+ * the composer's apply path can branch by kind without a separate callback
+ * per menu mode.
  */
 export type TypeaheadSuggestion =
   | PromptMentionSuggestion
-  | ProviderCommandSuggestion;
+  | ComposerCommandSuggestion;
 
 interface MentionMenuProps {
   state: TypeaheadMenuState;
@@ -91,7 +92,15 @@ function groupSections<TKind extends string, TItem>(args: {
 }
 
 type PathMentionSectionKind = "workspace" | "thread-storage";
-type MentionSectionKind = "threads" | "projects" | PathMentionSectionKind;
+// Plugin providers each get their own section, labeled by the provider
+// (plugin design §4.9); the section kind embeds pluginId + providerId so
+// identically-labeled providers from different plugins never merge.
+type PluginMentionSectionKind = `plugin:${string}`;
+type MentionSectionKind =
+  | "threads"
+  | "projects"
+  | PathMentionSectionKind
+  | PluginMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
 type SecondaryContextKind = "path" | "project";
 
@@ -102,6 +111,44 @@ const MENTION_SECTION_ORDER: readonly MentionSectionKind[] = [
   "thread-storage",
 ];
 
+/** Built-in sections first, then plugin provider sections in row order. */
+function getMentionSectionOrder(
+  suggestions: readonly PromptMentionSuggestion[],
+): MentionSectionKind[] {
+  const pluginKinds: PluginMentionSectionKind[] = [];
+  for (const item of suggestions) {
+    if (item.kind !== "plugin") continue;
+    const kind = getPluginSectionKind(item);
+    if (!pluginKinds.includes(kind)) {
+      pluginKinds.push(kind);
+    }
+  }
+  return [...MENTION_SECTION_ORDER, ...pluginKinds];
+}
+
+function getPluginSectionKind(
+  item: Extract<PromptMentionSuggestion, { kind: "plugin" }>,
+): PluginMentionSectionKind {
+  // Provider ids exclude ":" (enforced at registration), so this composite
+  // is unambiguous.
+  return `plugin:${item.pluginId}:${item.providerId}`;
+}
+
+/** Display label per plugin section kind (first row wins per provider). */
+function getPluginSectionLabels(
+  suggestions: readonly PromptMentionSuggestion[],
+): Map<PluginMentionSectionKind, string> {
+  const labels = new Map<PluginMentionSectionKind, string>();
+  for (const item of suggestions) {
+    if (item.kind !== "plugin") continue;
+    const kind = getPluginSectionKind(item);
+    if (!labels.has(kind)) {
+      labels.set(kind, item.providerLabel);
+    }
+  }
+  return labels;
+}
+
 function getMentionSectionKind(
   item: PromptMentionSuggestion,
 ): MentionSectionKind {
@@ -110,6 +157,9 @@ function getMentionSectionKind(
   }
   if (item.kind === "project") {
     return "projects";
+  }
+  if (item.kind === "plugin") {
+    return getPluginSectionKind(item);
   }
   return getPathSectionKind(item);
 }
@@ -120,14 +170,22 @@ function getPathSectionKind(
   return item.source === "thread-storage" ? "thread-storage" : "workspace";
 }
 
-function getMentionSectionLabel(kind: MentionSectionKind): string {
+function getMentionSectionLabel(
+  kind: MentionSectionKind,
+  pluginSectionLabels: ReadonlyMap<PluginMentionSectionKind, string>,
+): string {
   if (kind === "threads") {
     return "Threads";
   }
   if (kind === "projects") {
     return "Projects";
   }
-  return getPathSectionLabel(kind);
+  if (kind === "workspace" || kind === "thread-storage") {
+    return getPathSectionLabel(kind);
+  }
+  // Plugin sections display the provider's label; the kind itself is the
+  // pluginId + providerId identity, never shown.
+  return pluginSectionLabels.get(kind) ?? kind.slice("plugin:".length);
 }
 
 function getPathSectionLabel(kind: PathMentionSectionKind): string {
@@ -151,6 +209,10 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
     return `Project: ${item.name}`;
   }
 
+  if (item.kind === "plugin") {
+    return `${item.providerLabel}: ${item.title}`;
+  }
+
   return `${getPathSectionLabel(getPathSectionKind(item))}: ${item.path}`;
 }
 
@@ -158,28 +220,57 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
   if (item.kind === "path") {
     return `${item.kind}-${item.source}-${item.entryKind}-${item.path}-${index}`;
   }
+  if (item.kind === "plugin") {
+    return `${item.kind}-${item.pluginId}-${item.itemId}-${index}`;
+  }
   return `${item.kind}-${item.path}-${index}`;
 }
 
 // Command sections derive from the shared `PROVIDER_COMMAND_SECTIONS` order and
 // `providerCommandSection` mapping in @bb/server-contract — the SAME definition
 // the server sorts the flat response by — so the menu's visual order and the
-// keyboard-nav order can't drift. The menu only adds the human-readable labels.
-function getCommandSectionLabel(kind: ProviderCommandSection): string {
+// keyboard-nav order can't drift. The menu only adds the human-readable labels
+// and the trailing "plugin-command" section (plugin rows are appended after
+// provider rows by useCommandSuggestions, matching this order).
+type CommandSectionKind = ProviderCommandSection | "plugin-command";
+
+const COMMAND_SECTION_ORDER: readonly CommandSectionKind[] = [
+  ...PROVIDER_COMMAND_SECTIONS,
+  "plugin-command",
+];
+
+function getCommandSectionKind(
+  item: ComposerCommandSuggestion,
+): CommandSectionKind {
+  return item.kind === "plugin-command"
+    ? "plugin-command"
+    : providerCommandSection(item);
+}
+
+function getCommandSectionLabel(kind: CommandSectionKind): string {
   if (kind === "agent-command") {
     return "Commands";
   }
   if (kind === "skill") {
     return "Skills";
   }
+  if (kind === "plugin-command") {
+    return "Plugin commands";
+  }
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
-function getCommandIconName(item: ProviderCommandSuggestion): IconName {
+function getCommandIconName(item: ComposerCommandSuggestion): IconName {
+  if (item.kind === "plugin-command") {
+    return "Zap";
+  }
   return promptCommandIconName(item);
 }
 
-function getCommandKey(item: ProviderCommandSuggestion, index: number): string {
+function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
+  if (item.kind === "plugin-command") {
+    return `plugin-command-${item.pluginId}-${item.name}-${index}`;
+  }
   return `command-${item.source}-${item.origin}-${item.name}-${index}`;
 }
 
@@ -270,16 +361,15 @@ function MentionResults({
   onApply: (item: TypeaheadSuggestion) => void;
   itemRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
 }) {
-  const sections = useMemo(
-    () =>
-      groupSections({
-        suggestions,
-        order: MENTION_SECTION_ORDER,
-        sectionKind: getMentionSectionKind,
-        sectionLabel: getMentionSectionLabel,
-      }),
-    [suggestions],
-  );
+  const sections = useMemo(() => {
+    const pluginSectionLabels = getPluginSectionLabels(suggestions);
+    return groupSections({
+      suggestions,
+      order: getMentionSectionOrder(suggestions),
+      sectionKind: getMentionSectionKind,
+      sectionLabel: (kind) => getMentionSectionLabel(kind, pluginSectionLabels),
+    });
+  }, [suggestions]);
 
   if (sections.length === 0) {
     return (
@@ -309,6 +399,11 @@ function MentionResults({
                   item.projectName === undefined ? null : "project";
               } else if (item.kind === "project") {
                 primary = item.name;
+              } else if (item.kind === "plugin") {
+                primary = item.title;
+                secondaryContext = item.subtitle;
+                secondaryContextKind =
+                  item.subtitle === null ? null : "project";
               } else {
                 const directory = directoryFromPath(item.path);
                 primary = item.name;
@@ -351,7 +446,7 @@ function CommandResults({
   onApply,
   itemRefs,
 }: {
-  suggestions: readonly ProviderCommandSuggestion[];
+  suggestions: readonly ComposerCommandSuggestion[];
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
   itemRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
@@ -360,8 +455,8 @@ function CommandResults({
     () =>
       groupSections({
         suggestions,
-        order: PROVIDER_COMMAND_SECTIONS,
-        sectionKind: providerCommandSection,
+        order: COMMAND_SECTION_ORDER,
+        sectionKind: getCommandSectionKind,
         sectionLabel: getCommandSectionLabel,
       }),
     [suggestions],
@@ -395,7 +490,7 @@ function CommandResults({
                     {item.description !== null ? (
                       <MutedTrailing>{item.description}</MutedTrailing>
                     ) : null}
-                    {item.argumentHint !== null ? (
+                    {item.kind === "command" && item.argumentHint !== null ? (
                       <span className="shrink-0 text-subtle-foreground">
                         {item.argumentHint}
                       </span>
@@ -475,6 +570,17 @@ export function MentionMenu({
                 ? "Searching commands…"
                 : "Searching mentions…"}
             </span>
+          </div>
+        ) : innerState.kind === "plugin-pending" ? (
+          // A picked plugin slash command running server-side (plugin design
+          // §4.9): the menu stays open as the pending surface until the
+          // action resolves.
+          <div
+            className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
+            role="status"
+          >
+            <Icon name="Spinner" className="size-3.5 animate-spin" />
+            <span>Running /{innerState.name}…</span>
           </div>
         ) : innerState.kind === "error" ? (
           <div className="px-3 py-2 text-xs text-destructive">

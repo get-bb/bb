@@ -27,6 +27,7 @@ import {
   createPluginService,
   type PluginService,
 } from "./services/plugins/plugin-service.js";
+import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { createUiSourceService } from "./services/ui-source/ui-source.js";
 import { injectRecoveryShim } from "./services/ui-source/recovery-shim.js";
@@ -381,6 +382,8 @@ export function createApp(
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);
+  // Bridge runtime-config assembly to plugin skills + context (§4.4).
+  setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);

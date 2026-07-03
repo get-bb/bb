@@ -1,8 +1,9 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
+import type { SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -49,7 +50,11 @@ describe("plugin service", () => {
     experimentOn = true;
     service = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
@@ -122,7 +127,9 @@ describe("plugin service", () => {
     expect(globals.__cyclerVersion).toBe("v2");
     // LIFO: the second-registered hook runs first.
     expect(globals.__cyclerDisposals).toEqual(["second", "first"]);
-    expect(service.list().find((p) => p.id === "cycler")?.status).toBe("running");
+    expect(service.list().find((p) => p.id === "cycler")?.status).toBe(
+      "running",
+    );
   });
 
   it("stale API handles throw after reload", async () => {
@@ -168,7 +175,11 @@ describe("plugin service", () => {
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
       db,
-      hub: { getDaemonSessionIdForHost: () => null, notifyPluginSignal: () => 0 },
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.0.0",
@@ -218,7 +229,9 @@ describe("plugin service", () => {
 
     await service.onExperimentChanged(true);
     expect(globals.__gatedLoads).toBe(loadsAfterInstall + 1);
-    expect(service.list().find((p) => p.id === "gated")?.status).toBe("running");
+    expect(service.list().find((p) => p.id === "gated")?.status).toBe(
+      "running",
+    );
   });
 
   it("disable unloads and disposes; enable loads again", async () => {
@@ -236,5 +249,60 @@ describe("plugin service", () => {
     );
     const enabled = await service.setEnabled("switchable", true);
     expect(enabled?.status).toBe("running");
+  });
+});
+
+describe("plugins-changed broadcast", () => {
+  let db: DbConnection;
+  let workDir: string;
+  let notifySystem: ReturnType<
+    typeof vi.fn<(changes: SystemChangeKind[]) => void>
+  >;
+  let service: PluginService;
+
+  beforeEach(async () => {
+    db = createConnection(":memory:");
+    migrate(db);
+    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
+    notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
+    service = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem,
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      isEnabled: () => true,
+      loadTimeoutMs: 2000,
+    });
+  });
+
+  afterEach(async () => {
+    await service.stop();
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("broadcasts plugins-changed on install, reload, and enable/disable", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-notifier",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
+
+    notifySystem.mockClear();
+    await service.reload("notifier");
+    expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
+
+    notifySystem.mockClear();
+    await service.setEnabled("notifier", false);
+    expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
+
+    notifySystem.mockClear();
+    await service.setEnabled("notifier", true);
+    expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
   });
 });

@@ -33,6 +33,8 @@ interface ThreadDetailHeaderProps {
   isSecondaryPanelOpen: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
+  /** Plugin-contributed thread action buttons (design §4.9); optional. */
+  pluginActions?: ReactNode;
   threadHeaderGitActions: ThreadHeaderGitAction[];
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
@@ -45,6 +47,7 @@ export function ThreadDetailHeader({
   isSecondaryPanelOpen,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
+  pluginActions,
   threadHeaderGitActions,
   threadTitle,
   workspaceOpenButton,
@@ -95,6 +98,7 @@ export function ThreadDetailHeader({
 
   const actions = (
     <>
+      {pluginActions}
       {workspaceOpenButton}
       {primaryAction && secondaryActions.length > 0 ? (
         <SplitButton

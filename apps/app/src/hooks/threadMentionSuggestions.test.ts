@@ -33,6 +33,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,
     originKind: options.originKind ?? null,
+    originPluginId: null,
     childOrigin: options.childOrigin ?? null,
     archivedAt: null,
     pinnedAt: null,

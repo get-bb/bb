@@ -1,6 +1,7 @@
 import { MentionMenu } from "@/components/promptbox/mentions/MentionMenu";
 import type {
   CommandMenuState,
+  ComposerCommandSuggestion,
   MentionMenuState,
   ProviderCommandSuggestion,
   PromptMentionSuggestion,
@@ -179,6 +180,79 @@ const longCommandSuggestions: ProviderCommandSuggestion[] = [
   },
 ];
 
+// Plugin mention-provider rows (plugin design §4.9) trail the built-in
+// sources, each provider under its own label — mirroring
+// usePromptMentions' append order.
+const pluginMentionSuggestions: PromptMentionSuggestion[] = [
+  {
+    kind: "plugin",
+    pluginId: "linear",
+    providerId: "issues",
+    itemId: "issues:ISS-42",
+    providerLabel: "Linear issues",
+    title: "Fix login bug",
+    subtitle: "In progress",
+    replacement: "Fix login bug",
+  },
+  {
+    kind: "plugin",
+    pluginId: "linear",
+    providerId: "issues",
+    itemId: "issues:ISS-51",
+    providerLabel: "Linear issues",
+    title: "Ship mention providers end-to-end",
+    subtitle: "Todo",
+    replacement: "Ship mention providers end-to-end",
+  },
+  {
+    kind: "plugin",
+    pluginId: "linear",
+    providerId: "docs",
+    itemId: "docs:onboarding",
+    providerLabel: "Linear docs",
+    title: "Onboarding guide",
+    subtitle: null,
+    replacement: "Onboarding guide",
+  },
+  // A DIFFERENT plugin whose provider label collides with linear's "Linear
+  // issues": sections key on pluginId + providerId, so this stays its own
+  // section instead of merging into linear's.
+  {
+    kind: "plugin",
+    pluginId: "linear-mirror",
+    providerId: "issues",
+    itemId: "issues:MIR-7",
+    providerLabel: "Linear issues",
+    title: "Mirrored triage sweep",
+    subtitle: "Mirror",
+    replacement: "Mirrored triage sweep",
+  },
+];
+
+const mixedWithPluginSuggestions: PromptMentionSuggestion[] = [
+  ...threadSuggestions.slice(0, 1),
+  ...pathSuggestions.slice(0, 2),
+  ...pluginMentionSuggestions,
+];
+
+// Plugin slash commands (plugin design §4.9) render after the provider
+// sections, mirroring useCommandSuggestions' append order.
+const pluginCommandSuggestions: ComposerCommandSuggestion[] = [
+  ...commandSuggestions.slice(0, 2),
+  {
+    kind: "plugin-command",
+    pluginId: "linear",
+    name: "standup",
+    description: "Draft a standup summary from Linear",
+  },
+  {
+    kind: "plugin-command",
+    pluginId: "linear",
+    name: "triage",
+    description: "Send the triage queue to this thread",
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Per-row helper.
 // ---------------------------------------------------------------------------
@@ -202,11 +276,7 @@ function makeResultsState(args: ResultsStateConfig): MentionMenuState {
 function Row({ state, selectedIndex = 0 }: RowConfig) {
   return (
     <PromptStage>
-      <MentionMenu
-        state={state}
-        selectedIndex={selectedIndex}
-        onApply={noop}
-      />
+      <MentionMenu state={state} selectedIndex={selectedIndex} onApply={noop} />
     </PromptStage>
   );
 }
@@ -219,15 +289,12 @@ function MentionRow({
   selectedIndex?: number;
 }) {
   return (
-    <Row
-      state={{ trigger: "mention", state }}
-      selectedIndex={selectedIndex}
-    />
+    <Row state={{ trigger: "mention", state }} selectedIndex={selectedIndex} />
   );
 }
 
 function makeCommandResultsState(
-  suggestions: readonly ProviderCommandSuggestion[],
+  suggestions: readonly ComposerCommandSuggestion[],
 ): CommandMenuState {
   return {
     kind: "results",
@@ -243,10 +310,7 @@ function CommandRow({
   selectedIndex?: number;
 }) {
   return (
-    <Row
-      state={{ trigger: "command", state }}
-      selectedIndex={selectedIndex}
-    />
+    <Row state={{ trigger: "command", state }} selectedIndex={selectedIndex} />
   );
 }
 
@@ -266,7 +330,9 @@ export function Overview() {
         <MentionRow state={makeResultsState({ suggestions: [] })} />
       </StoryRow>
       <StoryRow label="path matches" hint="workspace and thread storage paths">
-        <MentionRow state={makeResultsState({ suggestions: pathSuggestions })} />
+        <MentionRow
+          state={makeResultsState({ suggestions: pathSuggestions })}
+        />
       </StoryRow>
       <StoryRow
         label="path matches (selected index)"
@@ -281,13 +347,34 @@ export function Overview() {
         label="thread matches"
         hint="parent and root threads; cross-project rows include project"
       >
-        <MentionRow state={makeResultsState({ suggestions: threadSuggestions })} />
+        <MentionRow
+          state={makeResultsState({ suggestions: threadSuggestions })}
+        />
       </StoryRow>
       <StoryRow
         label="mixed path + thread"
         hint="threads first (production order: usePromptMentions prepends threads)"
       >
-        <MentionRow state={makeResultsState({ suggestions: mixedSuggestions })} />
+        <MentionRow
+          state={makeResultsState({ suggestions: mixedSuggestions })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="plugin provider sections"
+        hint="each mention provider groups under its own label after the built-in sources (design §4.9)"
+      >
+        <MentionRow
+          state={makeResultsState({ suggestions: mixedWithPluginSuggestions })}
+          selectedIndex={3}
+        />
+      </StoryRow>
+      <StoryRow
+        label="plugin-only matches"
+        hint="a query that only plugin providers answer"
+      >
+        <MentionRow
+          state={makeResultsState({ suggestions: pluginMentionSuggestions })}
+        />
       </StoryRow>
       <StoryRow
         label="long path truncation"
@@ -323,6 +410,21 @@ export function Overview() {
         hint="long skill names, descriptions, and hints stay inside the menu"
       >
         <CommandRow state={makeCommandResultsState(longCommandSuggestions)} />
+      </StoryRow>
+      <StoryRow
+        label="plugin commands section"
+        hint="plugin slash commands trail the provider sections (design §4.9)"
+      >
+        <CommandRow
+          state={makeCommandResultsState(pluginCommandSuggestions)}
+          selectedIndex={2}
+        />
+      </StoryRow>
+      <StoryRow
+        label="plugin command pending"
+        hint="a picked plugin command running server-side keeps the menu open"
+      >
+        <CommandRow state={{ kind: "plugin-pending", name: "standup" }} />
       </StoryRow>
     </StoryCard>
   );
