@@ -4,7 +4,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The example now bundles real deps (hugeicons icon maps among them) —
+// parsing that graph blows the 5s default on cold CI runners.
+vi.setConfig({ testTimeout: 60_000 });
 import { buildPluginApp } from "@bb/plugin-build";
 
 /**
