@@ -728,6 +728,241 @@ export default async function plugin(bb: BbPluginApi) {
       };
     },
 
+    /** { repo, number } → full PR detail: overview, checks, reviews, timeline
+        comments, inline review threads (with diff hunks), and per-file
+        patches. Three live calls in parallel: `gh pr view` covers the
+        overview + reviews + issue-style comments, the REST pulls API covers
+        what it cannot — inline review comments and file patches. */
+    async getPull(input: unknown) {
+      const { repo, number } = requireItemInput(input);
+      const prFields =
+        "number,title,body,state,isDraft,author,createdAt,updatedAt,labels," +
+        "assignees,url,baseRefName,headRefName,additions,deletions," +
+        "changedFiles,reviewDecision,mergeStateStatus,statusCheckRollup," +
+        "comments,reviews,reviewRequests";
+      const [viewRaw, reviewCommentsRaw, filesRaw] = await Promise.all([
+        gh(["pr", "view", String(number), "-R", repo, "--json", prFields], 30_000),
+        gh(["api", `repos/${repo}/pulls/${number}/comments?per_page=100`], 30_000),
+        gh(["api", `repos/${repo}/pulls/${number}/files?per_page=100`], 30_000),
+      ]);
+
+      interface GhPullView extends GhListEntry {
+        isDraft?: unknown;
+        createdAt?: unknown;
+        baseRefName?: unknown;
+        headRefName?: unknown;
+        additions?: unknown;
+        deletions?: unknown;
+        changedFiles?: unknown;
+        reviewDecision?: unknown;
+        mergeStateStatus?: unknown;
+        statusCheckRollup?: Array<{
+          __typename?: unknown;
+          name?: unknown;
+          context?: unknown;
+          status?: unknown;
+          conclusion?: unknown;
+          state?: unknown;
+          detailsUrl?: unknown;
+          targetUrl?: unknown;
+        }>;
+        comments?: Array<{
+          author?: { login?: unknown };
+          body?: unknown;
+          createdAt?: unknown;
+        }>;
+        reviews?: Array<{
+          author?: { login?: unknown };
+          state?: unknown;
+          body?: unknown;
+          submittedAt?: unknown;
+        }>;
+        reviewRequests?: Array<{ login?: unknown; name?: unknown; slug?: unknown }>;
+      }
+      const view = JSON.parse(viewRaw) as GhPullView;
+
+      // CheckRun rows carry status/conclusion; classic StatusContext rows a
+      // single state. Normalize both to one traffic-light value.
+      const checks = (view.statusCheckRollup ?? []).map((entry) => {
+        const conclusion = String(entry.conclusion ?? entry.state ?? "").toUpperCase();
+        const running =
+          entry.conclusion === "" ||
+          ["IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING"].includes(
+            String(entry.status ?? entry.state ?? "").toUpperCase(),
+          );
+        const status =
+          conclusion === "SUCCESS"
+            ? "success"
+            : conclusion === "FAILURE" || conclusion === "ERROR" || conclusion === "TIMED_OUT"
+              ? "failure"
+              : running
+                ? "pending"
+                : "neutral";
+        return {
+          name: String(entry.name ?? entry.context ?? "check"),
+          status,
+          url: String(entry.detailsUrl ?? entry.targetUrl ?? ""),
+        };
+      });
+
+      interface GhReviewComment {
+        id?: unknown;
+        in_reply_to_id?: unknown;
+        path?: unknown;
+        line?: unknown;
+        original_line?: unknown;
+        diff_hunk?: unknown;
+        body?: unknown;
+        created_at?: unknown;
+        user?: { login?: unknown };
+      }
+      const reviewComments = JSON.parse(reviewCommentsRaw) as GhReviewComment[];
+      interface ReviewThread {
+        path: string;
+        line: number | null;
+        diffHunk: string;
+        comments: Array<{ author: string; body: string; createdAt: string }>;
+      }
+      // Group inline comments into threads: a comment without in_reply_to_id
+      // roots a thread, replies chain onto their root's thread.
+      const threadByRootId = new Map<number, ReviewThread>();
+      for (const comment of reviewComments) {
+        const id = Number(comment.id ?? NaN);
+        const replyTo = Number(comment.in_reply_to_id ?? NaN);
+        const entry = {
+          author: String(comment.user?.login ?? ""),
+          body: typeof comment.body === "string" ? comment.body : "",
+          createdAt: String(comment.created_at ?? ""),
+        };
+        const rootThread = Number.isFinite(replyTo) ? threadByRootId.get(replyTo) : undefined;
+        if (rootThread !== undefined) {
+          rootThread.comments.push(entry);
+          if (Number.isFinite(id)) threadByRootId.set(id, rootThread);
+          continue;
+        }
+        const line = Number(comment.line ?? comment.original_line ?? NaN);
+        const thread: ReviewThread = {
+          path: String(comment.path ?? ""),
+          line: Number.isFinite(line) ? line : null,
+          diffHunk: typeof comment.diff_hunk === "string" ? comment.diff_hunk : "",
+          comments: [entry],
+        };
+        if (Number.isFinite(id)) threadByRootId.set(id, thread);
+      }
+      const reviewThreads = [...new Set(threadByRootId.values())];
+
+      interface GhPullFile {
+        filename?: unknown;
+        status?: unknown;
+        additions?: unknown;
+        deletions?: unknown;
+        patch?: unknown;
+      }
+      const files = (JSON.parse(filesRaw) as GhPullFile[]).map((file) => {
+        const patch = typeof file.patch === "string" ? file.patch : null;
+        return {
+          path: String(file.filename ?? ""),
+          status: String(file.status ?? "modified"),
+          additions: Number(file.additions ?? 0),
+          deletions: Number(file.deletions ?? 0),
+          // Very large patches stay on GitHub — the panel shows a link.
+          patch: patch !== null && patch.length <= 20_000 ? patch : null,
+        };
+      });
+
+      return {
+        pull: {
+          repo,
+          number,
+          title: String(view.title ?? ""),
+          state: view.isDraft === true && String(view.state ?? "") === "OPEN"
+            ? "DRAFT"
+            : String(view.state ?? ""),
+          author: String(view.author?.login ?? ""),
+          body: typeof view.body === "string" ? view.body : "",
+          url: String(view.url ?? ""),
+          createdAt: String(view.createdAt ?? ""),
+          updatedAt: String(view.updatedAt ?? ""),
+          baseRefName: String(view.baseRefName ?? ""),
+          headRefName: String(view.headRefName ?? ""),
+          additions: Number(view.additions ?? 0),
+          deletions: Number(view.deletions ?? 0),
+          changedFiles: Number(view.changedFiles ?? files.length),
+          labels: (view.labels ?? []).map((label) => String(label?.name ?? "")),
+          assignees: (view.assignees ?? []).map((user) => String(user?.login ?? "")),
+          reviewDecision: String(view.reviewDecision ?? ""),
+          mergeStateStatus: String(view.mergeStateStatus ?? ""),
+          reviewRequests: (view.reviewRequests ?? [])
+            .map((entry) => String(entry.login ?? entry.name ?? entry.slug ?? ""))
+            .filter((name) => name.length > 0),
+          checks,
+          comments: (view.comments ?? []).map((comment) => ({
+            author: String(comment.author?.login ?? ""),
+            body: typeof comment.body === "string" ? comment.body : "",
+            createdAt: String(comment.createdAt ?? ""),
+          })),
+          reviews: (view.reviews ?? []).map((review) => ({
+            author: String(review.author?.login ?? ""),
+            state: String(review.state ?? ""),
+            body: typeof review.body === "string" ? review.body : "",
+            createdAt: String(review.submittedAt ?? ""),
+          })),
+          reviewThreads,
+          files,
+        },
+      };
+    },
+
+    /** { repo, number, body } → add a PR conversation comment. */
+    async commentPull(input: unknown) {
+      const { repo, number } = requireItemInput(input);
+      const body = (input as { body?: unknown })?.body;
+      if (typeof body !== "string" || body.trim().length === 0) {
+        throw new Error("comment body must be a non-empty string");
+      }
+      await gh(["pr", "comment", String(number), "-R", repo, "--body", body]);
+      return { ok: true };
+    },
+
+    /** { threadId } → the PR most relevant to a BB thread: the thread's own
+        environment PR (the branch the agent pushed) first, else a PR this
+        thread was spawned to review. Null when neither exists. */
+    async pullForThread(input: unknown) {
+      const threadId = (input as { threadId?: unknown })?.threadId;
+      if (typeof threadId !== "string" || threadId.length === 0) {
+        throw new Error("expected { threadId: string }");
+      }
+      try {
+        const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
+          environmentId?: string | null;
+        };
+        if (thread?.environmentId) {
+          const result = (await bb.sdk.environments.pullRequest({
+            environmentId: thread.environmentId,
+          })) as unknown as { pullRequest?: { url?: unknown } | null };
+          const url = result?.pullRequest?.url;
+          const match =
+            typeof url === "string"
+              ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)
+              : null;
+          if (match !== null) {
+            return { pull: { repo: match[1], number: Number(match[2]) } };
+          }
+        }
+      } catch {
+        // no environment / PR lookup failed — fall through to spawn links
+      }
+      const links = await listAllLinks();
+      for (const [key, threadLinks] of Object.entries(links)) {
+        const match = key.match(/^pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
+        if (match === null) continue;
+        if (threadLinks.some((link) => link.threadId === threadId)) {
+          return { pull: { repo: match[1], number: Number(match[2]) } };
+        }
+      }
+      return { pull: null };
+    },
+
     /** { repo, number, body } → add an issue comment. */
     async commentIssue(input: unknown) {
       const { repo, number } = requireItemInput(input);

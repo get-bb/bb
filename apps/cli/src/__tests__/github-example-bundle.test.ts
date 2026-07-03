@@ -130,8 +130,15 @@ describe("github example frontend bundle", () => {
     expect(typeof registered.navPanel[0]?.component).toBe("function");
     expect(typeof registered.navPanel[0]?.headerContent).toBe("function");
 
+    expect(registered.threadPanelAction).toHaveLength(1);
+    expect(registered.threadPanelAction[0]).toMatchObject({
+      id: "pull",
+      title: "GitHub PR",
+      icon: "Github",
+    });
+    expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
+
     expect(registered.homepageSection).toHaveLength(0);
-    expect(registered.threadPanelAction).toHaveLength(0);
     expect(registered.composerAccessory).toHaveLength(0);
   });
 });
