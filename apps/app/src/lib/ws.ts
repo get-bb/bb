@@ -1,12 +1,14 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
+  pluginSignalLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenFileSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
+  PluginSignal,
   RealtimeSubscriptionTarget,
   ThreadOpenFileSignal,
 } from "@bb/server-contract";
@@ -14,6 +16,7 @@ import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type OpenFileCallback = (signal: ThreadOpenFileSignal) => void;
+type PluginSignalCallback = (signal: PluginSignal) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
 export type WebSocketConnectionState =
@@ -31,6 +34,7 @@ export class WebSocketManager {
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private openFileCallbacks = new Set<OpenFileCallback>();
+  private pluginSignalCallbacks = new Set<PluginSignalCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
   // viewed opens the file when it is next viewed. Last write wins per thread.
@@ -73,37 +77,7 @@ export class WebSocketManager {
 
     this.socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(event.data);
-      } catch {
-        // Ignore malformed messages
-        return;
-      }
-
-      // Ephemeral "open this file in the secondary panel" broadcast. Buffer it
-      // per thread so the panel can open it now (if the thread is in view) or
-      // when the thread is next viewed; also notify live listeners.
-      const openFile = threadOpenFileSignalLenientSchema.safeParse(parsed);
-      if (openFile.success) {
-        this.pendingOpenByThreadId.set(openFile.data.threadId, openFile.data);
-        for (const cb of this.openFileCallbacks) {
-          cb(openFile.data);
-        }
-        return;
-      }
-
-      // Lenient parse: tolerate a newer server (unknown fields stripped,
-      // unknown change kinds filtered) instead of dropping whole messages
-      // on additive contract changes.
-      const msg = changedMessageLenientSchema.safeParse(parsed);
-      if (msg.success) {
-        for (const cb of this.callbacks) {
-          cb(msg.data);
-        }
-      } else {
-        console.error("Ignored invalid realtime message", msg.error);
-      }
+      this.handleIncomingMessage(event.data);
     };
 
     this.socket.onclose = () => {
@@ -111,6 +85,54 @@ export class WebSocketManager {
         this.hasConnected ? "reconnecting" : "connecting",
       );
     };
+  }
+
+  /**
+   * Parse and dispatch one raw server message. Public only so tests can
+   * exercise the routing without a live socket.
+   */
+  handleIncomingMessage(data: string): void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      // Ignore malformed messages
+      return;
+    }
+
+    // Ephemeral "open this file in the secondary panel" broadcast. Buffer it
+    // per thread so the panel can open it now (if the thread is in view) or
+    // when the thread is next viewed; also notify live listeners.
+    const openFile = threadOpenFileSignalLenientSchema.safeParse(parsed);
+    if (openFile.success) {
+      this.pendingOpenByThreadId.set(openFile.data.threadId, openFile.data);
+      for (const cb of this.openFileCallbacks) {
+        cb(openFile.data);
+      }
+      return;
+    }
+
+    // Ephemeral plugin realtime signal (bb.realtime.publish). Not buffered:
+    // only live useRealtime subscribers care, and V1 has no replay.
+    const pluginSignal = pluginSignalLenientSchema.safeParse(parsed);
+    if (pluginSignal.success) {
+      for (const cb of this.pluginSignalCallbacks) {
+        cb(pluginSignal.data);
+      }
+      return;
+    }
+
+    // Lenient parse: tolerate a newer server (unknown fields stripped,
+    // unknown change kinds filtered) instead of dropping whole messages
+    // on additive contract changes.
+    const msg = changedMessageLenientSchema.safeParse(parsed);
+    if (msg.success) {
+      for (const cb of this.callbacks) {
+        cb(msg.data);
+      }
+    } else {
+      console.error("Ignored invalid realtime message", msg.error);
+    }
   }
 
   disconnect(): void {
@@ -163,6 +185,13 @@ export class WebSocketManager {
     this.openFileCallbacks.add(callback);
     return () => {
       this.openFileCallbacks.delete(callback);
+    };
+  }
+
+  onPluginSignal(callback: PluginSignalCallback): () => void {
+    this.pluginSignalCallbacks.add(callback);
+    return () => {
+      this.pluginSignalCallbacks.delete(callback);
     };
   }
 

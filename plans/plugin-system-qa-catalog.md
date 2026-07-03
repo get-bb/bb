@@ -63,8 +63,9 @@ eval "$(scripts/bb-dev-app env)"    # point pnpm bb:dev at it
 
 ## Known gaps / backlog (not bugs, decisions)
 
-- `bb plugin dev` (watch + auto-reload) not built yet — design §6 lists it;
-  manual `bb plugin reload` is the loop for now.
+- `bb plugin dev` (watch + auto-reload) landed in P3.4: it rebuilds the
+  frontend bundle and reloads on change, and open pages pick up frontend
+  changes live (no page refresh). See "### P3.4 live reload + bb plugin dev".
 - Unknown-command proxy fails silently when the server is unreachable (e.g.
   no-network sandboxes) — consider a stderr hint "plugin lookup failed".
 - Settings are only configurable while a plugin is running (schema exists
@@ -431,3 +432,339 @@ One sitting, fresh dev server (`scripts/bb-dev-app current`,
 7. Turn the Plugins experiment off → header buttons, `/` menu section, and
    mention group disappear after the contributions query refreshes; new
    turns carry no plugin skills/context/tools.
+
+## Phase 3
+
+### P3.1 bb plugin build
+
+No server required for any of these (`bb plugin new` / `bb plugin build` are
+local commands).
+
+- [ ] **Scaffold with a frontend entry**: `pnpm bb:dev plugin new hello --app`
+      → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has
+      `"bb": { "server": "./server.ts", "app": "./app.tsx" }`. Without
+      `--app`, no `app.tsx` and no `bb.app` field (headless scaffold
+      unchanged).
+- [ ] **Build**: `pnpm bb:dev plugin build bb-plugin-hello` prints the three
+      output paths. Check the outputs:
+      - `dist/app.js` is a single ESM file with
+        `globalThis.__bbPluginRuntime` slot lookups and **no bundled React**
+        (grep: no `react.development`, no `__SECRET_INTERNALS`, no
+        `from "react"` imports remain).
+      - `dist/app.css` contains the scaffold's utility classes (e.g.
+        `.rounded-md`) — theme + utilities layers only, no preflight.
+      - `dist/app.meta.json` is `{ "sdkMajor": …, "sdkVersion": … }` matching
+        `PLUGIN_SDK_VERSION` in `@bb/domain` (no timestamps — rebuilds of
+        identical sources are byte-identical).
+- [ ] **Import guard**: `node -e "import('./bb-plugin-hello/dist/app.js')"`
+      fails with "must be loaded by the BB app" — the shims refuse to run
+      outside the host runtime.
+- [ ] **No app entry**: `pnpm bb:dev plugin build` in a headless plugin dir
+      errors with `no frontend entry: … no "bb": { "app": … }` and exit 1.
+- [ ] **Bad path**: `bb.app` pointing at a missing file errors with
+      "points at a missing file".
+
+### P3.2 bundle serving + loading
+
+Needs a running dev server with the Plugins experiment on, and a plugin
+scaffolded with `bb plugin new hello --app`.
+
+- [ ] **Install-time build (path)**: `pnpm bb:dev plugin install ./bb-plugin-hello`
+      → install succeeds and `bb-plugin-hello/dist/` now exists (app.js,
+      app.css, app.meta.json) even though you never ran `bb plugin build`.
+      Break `app.tsx` (syntax error) and re-install → the install itself
+      fails with the esbuild error; fix it and re-install.
+- [ ] **Inventory**: `curl <server>/api/v1/plugins | jq '.plugins[] | {id, app}'`
+      → the hello plugin has `app.hasApp: true` and a `bundle` object with
+      `jsUrl`/`cssUrl` (both carrying `?h=<hash>`), `hash`, `sdkMajor`,
+      `sdkVersion`, `compatible: true`. A headless plugin shows
+      `{ hasApp: false, bundle: null }`.
+- [ ] **Asset routes**: `curl -i "<server><jsUrl>"` → 200,
+      `content-type: text/javascript`, `cache-control: public, max-age=31536000,
+      immutable`; drop or change the `?h=` value → same body but
+      `cache-control: no-store`. `app.css` serves as `text/css`. Unknown
+      plugin id or a file other than app.js/app.css → 404.
+- [ ] **Host loading**: open the app with the experiment on → the browser
+      network tab shows one `app.js?h=…` import and an `app.css` stylesheet
+      link per running app-plugin; `document.head` contains
+      `link[data-bb-plugin-css="hello"]`; console:
+      `globalThis.__bbPluginRuntime` has react / reactDom / reactDomClient /
+      jsxRuntime / jsxDevRuntime / pluginSdkApp slots. No UI renders yet —
+      slots are P3.3.
+- [ ] **Containment**: hand-edit `bb-plugin-hello/dist/app.js` to
+      `throw new Error("boom")` at the top, reload the page → a single
+      console warning `[plugin:hello] frontend bundle failed to load: …`,
+      the rest of the app is untouched. (Re-run `bb plugin build` or
+      reinstall to restore.)
+- [ ] **Stale-SDK rebuild**: edit `dist/app.meta.json` to
+      `"sdkVersion": "0.0.0"` and run `pnpm bb:dev plugin reload hello` →
+      server log shows "rebuilding frontend bundle", the meta file is
+      restored to the current SDK version, and the inventory hash changes if
+      the sources changed.
+- [ ] **npm prebuilt rule**: `bb plugin install npm:<pkg>@<version>` for a
+      package that declares `bb.app` but publishes no `dist/` fails with
+      "npm plugins with a frontend (bb.app) must publish a prebuilt bundle".
+      An npm package whose `dist/app.meta.json` has a different `sdkMajor`
+      still installs and its backend runs, but the inventory shows
+      `compatible: false` and the frontend logs a "skipping until the plugin
+      is updated" warning instead of importing it.
+
+### P3.3 slots + plugin-sdk/app
+
+Needs a running dev server with the Plugins experiment on and a plugin
+scaffolded with `bb plugin new hello --app` (the scaffold now default-exports
+`definePluginApp` with a homepage section) installed via
+`pnpm bb:dev plugin install ./bb-plugin-hello`.
+
+- [ ] **Scaffold homepage section**: open the app root → below the compose
+      area a "bb-plugin-hello" section renders the hello card; it shows
+      "No project selected." at `/` and "Project: proj_…" when you open a
+      project's compose view (`/projects/<id>`). Tailwind classes from the
+      plugin's own `dist/app.css` apply, and theme tokens follow the active
+      palette (switch themes → the card recolors).
+- [ ] **All four slots**: edit `app.tsx` to also register
+      `navPanel({ id, title, icon: "Columns", path: "board", component })`,
+      `threadPanelTab({ id, title, component, visible })`, and
+      `composerAccessory({ id, component })`, rebuild + reload the plugin,
+      then reload the page:
+      the sidebar shows the nav entry above the project list (active state
+      when on the route) → clicking it lands on `/plugins/hello/board`
+      rendering the panel component; a thread's right panel shows the tab's
+      title button next to Info/Diff and clicking it renders the component
+      with that `threadId` (selection persists per thread across reloads);
+      the composer footer shows the accessory on both the homepage
+      (`projectId`/`threadId` null) and a thread view.
+- [ ] **visible() predicate**: make `visible: ({ threadId }) => false` →
+      the thread panel tab button disappears; a throwing predicate hides the
+      tab and logs one warning instead of crashing the panel.
+- [ ] **Junk default export**: change `app.tsx` to `export default 42`,
+      rebuild, reload the page → console shows
+      `[plugin:hello] frontend registration failed: …definePluginApp…`, no
+      hello UI renders anywhere, other plugins and the backend (settings,
+      thread events) still work.
+- [ ] **ErrorBoundary chip**: make the homepage section component `throw` →
+      only that section collapses to a "plugin hello crashed" chip (outline
+      pill, theme colors); the rest of the homepage, other slots, and other
+      plugins render normally; navigating away and back keeps the chip
+      (disabled for the session) until a reload of the page.
+- [ ] **Hooks**: in the panel component call `useRpc().call("<method>")`
+      against a `bb.rpc` method → result resolves; a method that throws
+      surfaces the server's error message. `useRealtime("chan", cb)` fires
+      when the backend runs `bb.realtime.publish("chan", {...})` (check via
+      a scheduled publish or thread action). `useSettings()` returns
+      non-secret values only (a secret key is absent) and refreshes after
+      `bb plugin config hello set … && bb plugin reload hello`.
+      `useBbNavigate().toThread(id)` opens the thread with its proper
+      project path; `toPluginPanel("board")` routes to the nav panel.
+- [ ] **Settings surface**: Settings → a "Plugins" section lists installed
+      plugins with version + status pills; the hello plugin (running) shows
+      its declared settings as a form — string input, boolean switch, select
+      picker, project picker (lists your projects), secret shown as a
+      password input with "[set]"/"[not set]" placeholder and never a value.
+      Change a value → Save → success toast; `bb plugin config hello` shows
+      the new value. A bad select value via curl PUT returns the validation
+      error as an error toast. Section absent while the experiment is off.
+- [ ] **Deep link before load**: open `/plugins/hello/board` in a fresh tab
+      → a quiet "not available" placeholder may flash, then the panel
+      renders once bundles load; the same placeholder persists for a removed
+      plugin's URL.
+
+### P3.4 live reload + bb plugin dev
+
+Needs a running dev server with the Plugins experiment on and a plugin
+scaffolded with `bb plugin new hello --app`, installed via
+`pnpm bb:dev plugin install ./bb-plugin-hello`. Run
+`eval "$(scripts/bb-dev-app env)"` first so `pnpm bb:dev` targets the dev
+server.
+
+- [ ] **Dev loop, frontend edit — no page refresh**: with the app open at
+      the homepage, run `pnpm bb:dev plugin dev ./bb-plugin-hello` (prints
+      "Watching … — Ctrl+C to stop"), then edit `app.tsx` (change the
+      section's visible text) and save → the CLI prints one cycle line
+      (`1 file changed · rebuilt app in Nms · reloaded hello`) and the
+      homepage section updates in place WITHOUT a page refresh (the slot
+      remounts; watch the text change).
+- [ ] **No duplicates on repeat**: save `app.tsx` two more times → still
+      exactly one "hello" homepage section (registrations replace wholesale,
+      never append).
+- [ ] **Backend edit**: edit `server.ts` (e.g. change an rpc/thread-action
+      response) and save → cycle line prints, backend behavior changes on
+      the next call; the frontend does NOT remount (bundle hash unchanged —
+      backend-only reload leaves mounted slots alone).
+- [ ] **Build failure recovers**: break `app.tsx` with a syntax error →
+      cycle prints `build failed: …` and the watcher stays alive (no reload
+      that cycle; the app keeps the last working UI). Fix the file → next
+      save rebuilds and reloads cleanly.
+- [ ] **Reload failure keeps watching**: stop the dev server mid-loop, save
+      a file → `reload failed: …` prints and the loop survives; restart the
+      server, save again → clean cycle.
+- [ ] **Disable removes UI live**: with the page open, `pnpm bb:dev plugin
+      disable hello` → the homepage section AND its CSS link
+      (`link[data-bb-plugin-css="hello"]` in devtools) disappear without a
+      refresh; `enable` brings them back.
+- [ ] **Crashed slot heals on reload**: make the section component throw →
+      "plugin hello crashed" chip; fix the component and save (dev loop
+      reloads) → the section renders again without a page refresh (crash
+      latch cleared + remount).
+- [ ] **Not-installed guidance**: `pnpm bb:dev plugin dev` in a plugin
+      directory that is not installed exits with "run \`bb plugin install
+      .\` first"; a directory without a `bb.server` package.json field is
+      rejected as not a plugin.
+- [ ] **dist/ never loops**: while `bb plugin dev` runs, confirm a cycle's
+      own `dist/` writes do not trigger another cycle (one line per save,
+      not an infinite rebuild loop).
+
+### P3.5 Linear hero
+
+The full-stack hero (`examples/plugins/linear`, design §8): backend sync +
+frontend slots + mentions + CLI. Automated coverage:
+`apps/server/test/services/plugins/heroes-linear.test.ts` (install-time
+bundle build, schedule → cache → realtime, rpc surface, attributed spawn,
+mention search/resolve-at-send, CLI endpoint) and
+`apps/cli/src/__tests__/linear-example-bundle.test.ts` (built bundle
+registers exactly the three slots against a stub runtime). Checked items
+below were verified in the 2026-07-02 headless smoke; the rest need a real
+Linear API key and a browser.
+
+- [x] **Install + inventory** (live 2026-07-02): `pnpm bb:dev plugin install
+      ./examples/plugins/linear --yes` → `needs-configuration` with the
+      configure hint; `/api/v1/plugins` shows `app.hasApp: true` and a
+      bundle with `jsUrl`/`cssUrl` carrying `?h=<hash>`, `compatible: true`.
+- [x] **Assets over HTTP** (live 2026-07-02): `app.js` → 200
+      `text/javascript` containing `__bbPluginRuntime`; `app.css` → 200
+      `text/css` (Tailwind v4 output).
+- [x] **rpc + contributions unconfigured** (live 2026-07-02):
+      `POST /api/v1/plugins/linear/rpc/listIssues` → `{ ok: true, result:
+      { issues: [] } }`; contributions list the `bb linear` CLI command and
+      the `linear-issue` mention provider.
+- [x] **CLI needs-configuration shape** (live 2026-07-02): `bb linear
+      issues` → "No cached issues. Run `bb linear sync` first."; `bb linear
+      sync` → exit 1 with "Linear API key not set. Set apiKey … `bb plugin
+      config linear` …".
+- [ ] **Configure with a real Linear API key**: `bb plugin config linear set
+      apiKey lin_api_…` (+ optional `teamKey`, `defaultProject`), `bb plugin
+      reload linear` → status `running`; `bb linear sync` prints
+      "Synced N open issue(s)"; `bb linear issues` lists them with states
+      and a "last synced" footer.
+- [ ] **Homepage card fills**: open the app root → the "Open Linear issues"
+      section lists your issues (identifier, title, state); before the
+      first sync it shows the EmptyState hint pointing at Settings →
+      Plugins. Within 5 minutes of a Linear-side edit (or after `bb linear
+      sync`) the card refreshes in place via the `issues-updated` signal —
+      no page reload.
+- [ ] **Click an issue → thread spawns and navigates**: "Start work" on an
+      issue from a project's compose view → spawns in that project;
+      from the bare homepage → spawns in `defaultProject`; the app
+      navigates to the new thread; `curl /api/v1/threads/<id>` shows
+      `origin: "plugin"`, `originPluginId: "linear"` and the
+      `ENG-…: <title>` thread title. With no project anywhere, the click
+      surfaces the "set defaultProject" error instead of spawning.
+- [ ] **Board panel**: the sidebar shows a "Linear" entry → clicking lands
+      on `/plugins/linear/board` with issues grouped into by-state columns;
+      theme tokens follow the active palette.
+- [ ] **@mention an issue**: type `@ENG-` in the composer → a "Linear
+      issues" group appears; pick one and send → the agent receives the
+      issue's identifier/title/state/description as agent-only context
+      (ask it what issue it is working from).
+- [ ] **Issue tab on spawned threads**: open a thread spawned via "Start
+      work" → the right panel shows an "Issue" tab rendering the linked
+      issue; unrelated threads show NO Issue tab (the sync `visible()`
+      cache — see the plugin README's "sync-visible() pattern"); the tab
+      appears immediately after startWork navigation (no refresh).
+
+### Phase 3 end-to-end (the full manual pass)
+
+One sitting, fresh dev server (`scripts/bb-dev-app current`,
+`eval "$(scripts/bb-dev-app env)"`, Plugins experiment on). Design §9
+Phase-3 exit criteria are covered by automation —
+kill-switch: `apps/app/src/components/plugin/PluginSlotMount.test.tsx`
+("collapses a throwing slot to a crash chip and keeps siblings alive");
+reload-twice-one-section: `apps/app/src/lib/plugin-frontend-reload.test.ts`
+("reloading twice leaves exactly one homepage section registered");
+stale bundle: `apps/app/src/lib/plugin-frontend.test.ts` ("skips
+incompatible bundles with a needs-update record") plus the server side in
+`apps/server/test/services/plugins/plugin-app-bundle.test.ts` — this pass
+confirms them with eyes on a real browser:
+
+1. `pnpm bb:dev plugin new hello --app` + install; run the P3.3 slot checks
+   (homepage card, all four slots, ErrorBoundary chip) and the P3.4 dev
+   loop (edit → in-place update, no duplicates, disable removes UI live).
+2. Install the Linear hero and run the full "### P3.5 Linear hero" list
+   with a real API key.
+3. Kill-switch with eyes: make hello's section component throw → chip only,
+   Linear's section and the rest of the app stay alive.
+4. Stale bundle with eyes: path installs rebuild themselves on a version
+   mismatch, so follow P3.2's npm prebuilt rule — install an npm-packed
+   plugin whose `dist/app.meta.json` carries a different `sdkMajor`;
+   confirm the backend stays `running`, the inventory shows
+   `compatible: false`, and the frontend logs the "skipping until the
+   plugin is updated" warning without crashing.
+5. Reload the Linear plugin twice (`bb plugin reload linear` ×2) with the
+   homepage open → still exactly one "Open Linear issues" section.
+6. Turn the Plugins experiment off → every plugin surface (sections,
+   panels, tabs, mentions, slash commands) disappears live; back on →
+   returns without a restart.
+
+### P3.6 authoring docs (bb-plugin-authoring skill + guide chapter)
+
+Automated coverage: the skill is pinned to the API by
+`apps/server/test/services/plugins/plugin-authoring-docs.test.ts` (every
+`BbPluginApi` key and every `PLUGIN_SDK_APP_EXPORT_NAMES` entry must appear
+in the SKILL.md) and the guide chapter by
+`apps/cli/src/__tests__/plugin-guide-docs.test.ts` (every `bb plugin`
+subcommand must appear in `bb guide plugins`).
+
+THE acceptance test — a bb agent writes a plugin for bb unassisted, using
+only the skill. Fresh dev server with the Plugins experiment on, then:
+
+```bash
+eval "$(scripts/bb-dev-app env)"
+pnpm bb:dev thread spawn --project proj_personal --provider codex \
+  --permission-mode workspace-write \
+  --title "P3.6: bb weather plugin via bb-plugin-authoring" \
+  --prompt 'Create and install a bb plugin that adds a `bb weather <city>` CLI command returning a canned string, using the bb-plugin-authoring skill.' \
+  --json
+```
+
+- [ ] The agent completes the whole loop unassisted: scaffolds with
+      `bb plugin new weather` (or equivalent), writes a `bb.cli.register`
+      handler returning the canned string, installs with
+      `bb plugin install . --yes`, and verifies by running
+      `bb weather <city>` itself (workspace-write is required — a readonly
+      sandbox blocks the bb CLI's loopback network).
+- [ ] `bb plugin list` afterwards shows the plugin `running` with its
+      `bb weather` command; `bb weather tokyo` prints the canned string
+      from any thread.
+- [ ] The thread transcript shows the bb-plugin-authoring skill being
+      used (not trial-and-error against the API).
+
+### Phase 3 review fixes (tester-visible changes)
+
+Behavior changes from the phase-3 review pass; each has automated
+regression coverage, listed here because a manual tester would notice:
+
+- [ ] **Failed frontend rebuild degrades, not lies**: make a path plugin's
+      `app.tsx` unbuildable and force a rebuild (stale `dist/app.meta.json`
+      sdkVersion) → after reload the backend stays `running`, `bb plugin
+      list` shows a `frontend bundle rebuild failed: …` status detail, the
+      UI shows no plugin frontend, and `/plugins/<id>/assets/app.js` 404s
+      (previously the stale bundle kept being served).
+- [ ] **Disabled plugins stop serving assets**: `bb plugin disable <id>` →
+      its `assets/app.js` URL 404s immediately; enable → 200 again.
+- [ ] **Failed reinstall keeps the old install**: break a git plugin's
+      tip (bad package.json or failing app build) and re-run `bb plugin
+      install git:…@ref` → install fails, but the previously installed
+      version still runs and survives `bb plugin reload` (previously the
+      old files were deleted before the new clone was validated).
+- [ ] **Settings saves refresh open pages**: with a plugin page open in two
+      windows, save a setting in one → the other's `useSettings()` view
+      updates within a second (plugins-changed broadcast on effective
+      change; a save of identical values does not broadcast).
+- [ ] **Meta-only bundle changes re-key**: an npm plugin whose
+      `dist/app.meta.json` changes (same js/css) now gets a fresh bundle
+      hash, so the frontend re-evaluates compatibility instead of keeping
+      a stale needs-update record.
+- [ ] **CSS reload has no unstyled flash**: during `bb plugin reload` of a
+      plugin with CSS, the old stylesheet stays until the new one loads.
+- [ ] `bb plugin token --rotate` is documented in `bb guide plugins` and
+      the authoring skill.

@@ -6,35 +6,20 @@ import {
   setPluginSettingsValues,
   type DbConnection,
 } from "@bb/db";
+import type {
+  PluginSettingDescriptor,
+  PluginSettingDescriptors,
+  PluginSettingValue,
+} from "@bb/plugin-sdk";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
-/**
- * Declarative settings descriptors (`bb.settings.define`). Deliberately plain
- * data — not zod — so the host can render settings forms and the CLI can
- * parse values without executing plugin code.
- */
-export type PluginSettingDescriptor =
-  | {
-      type: "string";
-      label: string;
-      description?: string;
-      /** Stored in a 0600 file under <dataDir>/plugins/<id>/secrets/, never in the db or sent to the frontend. */
-      secret?: true;
-      default?: string;
-    }
-  | { type: "boolean"; label: string; description?: string; default?: boolean }
-  | {
-      type: "select";
-      label: string;
-      description?: string;
-      options: string[];
-      default?: string;
-    }
-  | { type: "project"; label: string; description?: string; default?: string };
-
-export type PluginSettingDescriptors = Record<string, PluginSettingDescriptor>;
-
-export type PluginSettingValue = string | boolean;
+// The descriptor types are part of the backend plugin contract in
+// @bb/plugin-sdk; re-exported so server code keeps one import site.
+export type {
+  PluginSettingDescriptor,
+  PluginSettingDescriptors,
+  PluginSettingValue,
+} from "@bb/plugin-sdk";
 
 /** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {

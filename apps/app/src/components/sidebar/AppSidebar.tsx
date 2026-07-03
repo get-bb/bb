@@ -22,6 +22,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -311,6 +312,7 @@ export function AppSidebar({
             }}
           />
         </div>
+        <PluginNavSidebarItems onNavigate={closeOnMobile} />
         <SidebarContent>
           <ProjectList
             onNewProject={

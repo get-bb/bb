@@ -26,6 +26,7 @@ export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
+export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -124,6 +125,19 @@ export function getFolderArchivedRoutePath(folderId: string): string {
   )}`;
 }
 
+export interface PluginPanelRoutePathArgs {
+  pluginId: string;
+  /** The nav panel's registered `path` segment (validated: [a-zA-Z0-9_-]+). */
+  path: string;
+}
+
+export function getPluginPanelRoutePath({
+  pluginId,
+  path,
+}: PluginPanelRoutePathArgs): string {
+  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+}
+
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`
@@ -153,6 +167,7 @@ const baseRoutePatterns: readonly string[] = [
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  PLUGIN_PANEL_ROUTE_PATH,
 ];
 
 export const ROUTE_PATTERNS = baseRoutePatterns;

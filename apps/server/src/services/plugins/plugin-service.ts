@@ -7,12 +7,16 @@ import { createJiti } from "jiti";
 import semver from "semver";
 import type { DbConnection } from "@bb/db";
 import {
+  PLUGIN_SDK_VERSION,
   promptInputSchema,
   type DynamicTool,
   type PromptInput,
   type Thread,
   type ToolCallResponse,
 } from "@bb/domain";
+// The build engine's natives (esbuild, Tailwind oxide) are dynamically
+// imported inside buildPluginApp — importing this loads nothing heavy.
+import { buildPluginApp } from "@bb/plugin-build";
 import { z } from "zod";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
@@ -41,11 +45,18 @@ import {
 } from "../threads/thread-data.js";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
+  loadPluginAppBundle,
+  readPluginAppBundleMeta,
+  type PluginAppBundleSnapshot,
+  type PluginAppState,
+} from "./app-bundle.js";
+import {
   isCommitSha,
   managedInstallDir,
   npmInstallPrefix,
   parsePluginSource,
   runInstallCommand,
+  swapDirIntoPlace,
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
@@ -145,6 +156,12 @@ export interface PluginListEntry {
   schedules: PluginScheduleEntry[];
   /** The plugin's registered `bb` subcommand; null when none or not loaded. */
   cliCommand: { name: string; summary: string } | null;
+  /**
+   * Frontend bundle state (design §5.1), refreshed each time the plugin
+   * loads. `{ hasApp: false, bundle: null }` until a load has read the
+   * manifest this session (e.g. disabled-at-boot plugins).
+   */
+  app: PluginAppState;
 }
 
 /**
@@ -339,6 +356,16 @@ export interface PluginService {
   reload(id?: string): Promise<void>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
+  /**
+   * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
+   * plus the current content hash (the route compares ?h against it for
+   * cache policy). Undefined when the plugin has no loadable bundle, or no
+   * CSS for kind "css".
+   */
+  getAppAsset(
+    id: string,
+    kind: "js" | "css",
+  ): { path: string; hash: string } | undefined;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -784,10 +811,34 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
+  // Per-plugin lifecycle mutex: every load/dispose mutation for one plugin
+  // runs strictly serialized. disposeOne removes the `loaded` entry before
+  // stopServices finishes, so without this a concurrent reload/enable/
+  // install could enter loadOne mid-dispose (no loaded entry, no hung
+  // marker yet) and double-start the plugin's services.
+  const lifecycleChains = new Map<string, Promise<void>>();
+
+  function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const previous = lifecycleChains.get(id) ?? Promise.resolve();
+    const result = previous.then(fn);
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    lifecycleChains.set(id, tail);
+    void tail.then(() => {
+      if (lifecycleChains.get(id) === tail) lifecycleChains.delete(id);
+    });
+    return result;
+  }
   const statuses = new Map<
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
+  // Frontend bundle snapshots (design §5.1), keyed by plugin id: the wire
+  // state for list() plus the on-disk asset paths + content hash the asset
+  // routes serve. Refreshed on every load (install/boot/reload).
+  const appBundles = new Map<string, PluginAppBundleSnapshot>();
   // Services that ignored their abort past the stop bound. While a plugin
   // has entries here it is not re-loaded (that would double-start the
   // service); the marker clears when the hung start() finally settles.
@@ -1142,6 +1193,62 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     void id;
   }
 
+  /** Parsed source kind; stored sources always parse, but never throw here. */
+  function sourceKind(source: string): "path" | "git" | "npm" {
+    try {
+      return parsePluginSource(source).kind;
+    } catch {
+      return "path";
+    }
+  }
+
+  /**
+   * Refresh a plugin's frontend-bundle snapshot for this load (design §5.1).
+   * path:/git: sources are rebuilt first when the recorded SDK version
+   * differs from the running one (BB upgrade since the last build); npm
+   * bundles are served exactly as published — a stale major surfaces as
+   * `bundle.compatible: false` (the frontend skips it), never as a broken
+   * backend. A failed required rebuild clears the bundle (`bundle: null`,
+   * assets 404) rather than advertising the stale dist under a fresh hash,
+   * and returns a status detail; the backend keeps running.
+   */
+  async function refreshAppBundle(
+    row: InstalledPluginRow,
+    manifest: PluginManifest,
+  ): Promise<string | null> {
+    if (manifest.appEntry === undefined) {
+      appBundles.set(row.id, {
+        state: { hasApp: false, bundle: null },
+        assets: null,
+      });
+      return null;
+    }
+    if (sourceKind(row.source) !== "npm") {
+      const meta = await readPluginAppBundleMeta(row.rootDir);
+      if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
+        logger.info(
+          `plugin ${row.id}: rebuilding frontend bundle (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION})`,
+        );
+        try {
+          await buildPluginApp(row.rootDir);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logger.warn(
+            `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
+          );
+          appBundles.set(row.id, {
+            state: { hasApp: true, bundle: null },
+            assets: null,
+          });
+          return `frontend bundle rebuild failed: ${message}`;
+        }
+      }
+    }
+    appBundles.set(row.id, await loadPluginAppBundle(row.id, row.rootDir));
+    return null;
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<void> {
     if (!row.enabled) {
       setStatus(row.id, "disabled");
@@ -1190,6 +1297,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       setStatus(row.id, "incompatible", engineProblem);
       return;
     }
+    // Before the factory runs, so a backend load failure still leaves
+    // current bundle info in the inventory (the frontend only imports
+    // bundles of running plugins anyway).
+    const appBundleProblem = await refreshAppBundle(row, manifest);
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -1280,10 +1391,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     // A factory (or an immediately-crashing service) may have already
     // reported needs-configuration; do not paper over it with "running".
-    // A dropped tool registration keeps the plugin running but rides along
-    // as the status detail.
+    // A dropped tool registration or a failed frontend rebuild keeps the
+    // plugin running but rides along as the status detail.
     if (!needsConfiguration.has(row.id)) {
-      setStatus(row.id, "running", agentToolProblems.get(row.id) ?? null);
+      const details = [agentToolProblems.get(row.id), appBundleProblem].filter(
+        (detail): detail is string => typeof detail === "string",
+      );
+      setStatus(row.id, "running", details.length > 0 ? details.join("; ") : null);
     }
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
   }
@@ -1324,7 +1438,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   async function disposeAll(): Promise<void> {
     for (const id of [...loaded.keys()]) {
-      await disposeOne(id);
+      await withLifecycleLock(id, () => disposeOne(id));
     }
   }
 
@@ -1333,7 +1447,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       a.id.localeCompare(b.id),
     );
     for (const row of rows) {
-      await loadOne(row);
+      await withLifecycleLock(row.id, () => loadOne(row));
     }
   }
 
@@ -1368,15 +1482,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const HTTP_TOKEN_FILE = ".http-token";
 
   /**
-   * Shared install tail: validate the materialized files, refuse engine
+   * Validation half of an install: read the manifest, refuse engine
    * mismatches for managed sources (design §6 — install refuses, unlike
-   * load which marks `incompatible`), upsert the row, and (re)load.
+   * load which marks `incompatible`), and materialize/verify the frontend
+   * bundle. Managed (git:/npm:) installs run this against a staging dir so
+   * a failure never touches the currently-installed files.
    */
-  async function registerInstalled(args: {
+  async function validateInstallDir(args: {
     rootDir: string;
     source: string;
     refuseEngineMismatch: boolean;
-  }): Promise<PluginListEntry> {
+  }): Promise<PluginManifest> {
     const manifest = await readPluginManifest(args.rootDir);
     if (args.refuseEngineMismatch) {
       const engineProblem = checkEngineRange(manifest);
@@ -1386,6 +1502,49 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         );
       }
     }
+    // Frontend policy (design §5.1): path:/git: sources build dist/ at
+    // install time — a build failure fails the install, like a manifest
+    // error would. npm packages are never built here; they must ship a
+    // prebuilt dist (a major mismatch is tolerated: the backend runs, the
+    // frontend marks the bundle "needs update").
+    if (manifest.appEntry !== undefined) {
+      if (sourceKind(args.source) === "npm") {
+        const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
+          .then(() => true)
+          .catch(() => false);
+        if (!jsPresent || (await readPluginAppBundleMeta(args.rootDir)) === null) {
+          throw new Error(
+            `install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle — "${manifest.id}" is missing dist/app.js + dist/app.meta.json`,
+          );
+        }
+      } else {
+        try {
+          await buildPluginApp(args.rootDir);
+        } catch (error) {
+          throw new Error(
+            `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    return manifest;
+  }
+
+  /**
+   * Shared install tail: validate the materialized files (unless the caller
+   * already validated them in a staging dir), upsert the row, and (re)load.
+   */
+  async function registerInstalled(args: {
+    rootDir: string;
+    source: string;
+    refuseEngineMismatch: boolean;
+    /** True when validateInstallDir already ran against a staging copy of
+     * these exact files (managed installs validate before the swap). */
+    validated: boolean;
+  }): Promise<PluginListEntry> {
+    const manifest = args.validated
+      ? await readPluginManifest(args.rootDir)
+      : await validateInstallDir(args);
     const existing = getInstalledPlugin(deps.db, manifest.id);
     if (existing && existing.source !== args.source) {
       throw new Error(
@@ -1400,9 +1559,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       enabled: existing?.enabled ?? true,
     });
     if (deps.isEnabled()) {
-      await disposeOne(manifest.id);
-      const row = getInstalledPlugin(deps.db, manifest.id);
-      if (row) await loadOne(row);
+      await withLifecycleLock(manifest.id, async () => {
+        await disposeOne(manifest.id);
+        const row = getInstalledPlugin(deps.db, manifest.id);
+        if (row) await loadOne(row);
+      });
       await syncCliSkill();
       notifyPluginsChanged();
     }
@@ -1417,6 +1578,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       rootDir,
       source: `path:${rootDir}`,
       refuseEngineMismatch: false,
+      validated: false,
     });
   }
 
@@ -1430,8 +1592,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       "git",
       ...parsed.installDir.split("/"),
     );
-    // Re-install of the same spec is a refresh: drop the old clone.
-    await rm(targetDir, { recursive: true, force: true });
+    // Re-install of the same spec is a refresh — but the new clone is
+    // materialized and validated in a staging sibling and only swapped into
+    // place once it is fully good, so a failed refresh keeps the previous
+    // (still-loadable) install intact.
+    const stagingDir = `${targetDir}.staging`;
+    await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(targetDir), { recursive: true });
     const notFoundHint =
       '"git" was not found on PATH — git: plugin installs require git';
@@ -1440,12 +1606,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // A sha cannot be cloned with --branch; clone, then pin by checkout.
         await runInstallCommand(
           "git",
-          ["clone", "--quiet", parsed.url, targetDir],
+          ["clone", "--quiet", parsed.url, stagingDir],
           { notFoundHint },
         );
         await runInstallCommand("git", [
           "-C",
-          targetDir,
+          stagingDir,
           "checkout",
           "--quiet",
           "--detach",
@@ -1462,20 +1628,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             "--branch",
             parsed.ref,
             parsed.url,
-            targetDir,
+            stagingDir,
           ],
           { notFoundHint },
         );
       }
-      return await registerInstalled({
-        rootDir: targetDir,
+      await validateInstallDir({
+        rootDir: stagingDir,
         source,
         refuseEngineMismatch: true,
       });
+      await swapDirIntoPlace(stagingDir, targetDir);
     } catch (error) {
-      await rm(targetDir, { recursive: true, force: true });
+      await rm(stagingDir, { recursive: true, force: true });
       throw error;
     }
+    return registerInstalled({
+      rootDir: targetDir,
+      source,
+      refuseEngineMismatch: true,
+      validated: true,
+    });
   }
 
   async function installNpmSource(
@@ -1483,15 +1656,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     source: string,
   ): Promise<PluginListEntry> {
     const prefix = npmInstallPrefix(deps.dataDir, parsed.name, parsed.version);
-    await rm(prefix, { recursive: true, force: true });
-    await mkdir(prefix, { recursive: true });
+    // Materialize + validate in a staging sibling; swap only once good, so
+    // a failed refresh keeps the previous (still-loadable) install intact.
+    const stagingPrefix = `${prefix}.staging`;
+    await rm(stagingPrefix, { recursive: true, force: true });
+    await mkdir(stagingPrefix, { recursive: true });
     try {
       await runInstallCommand(
         "npm",
         [
           "install",
           "--prefix",
-          prefix,
+          stagingPrefix,
           "--ignore-scripts",
           "--omit=optional",
           "--no-audit",
@@ -1503,16 +1679,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             '"npm" was not found on PATH — npm: plugin installs require npm',
         },
       );
-      const rootDir = join(prefix, "node_modules", ...parsed.name.split("/"));
-      return await registerInstalled({
-        rootDir,
+      await validateInstallDir({
+        rootDir: join(stagingPrefix, "node_modules", ...parsed.name.split("/")),
         source,
         refuseEngineMismatch: true,
       });
+      await swapDirIntoPlace(stagingPrefix, prefix);
     } catch (error) {
-      await rm(prefix, { recursive: true, force: true });
+      await rm(stagingPrefix, { recursive: true, force: true });
       throw error;
     }
+    return registerInstalled({
+      rootDir: join(prefix, "node_modules", ...parsed.name.split("/")),
+      source,
+      refuseEngineMismatch: true,
+      validated: true,
+    });
   }
 
   /**
@@ -1622,6 +1804,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           cliCommand: cliRegistration
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
+          app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
         };
       });
   }
@@ -1675,6 +1858,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       } else {
         await disposeAll();
         statuses.clear();
+        appBundles.clear();
       }
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1693,10 +1877,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async remove(id) {
       const row = getInstalledPlugin(deps.db, id);
-      await disposeOne(id);
+      await withLifecycleLock(id, () => disposeOne(id));
       statuses.delete(id);
       handlerStats.delete(id);
       agentToolProblems.delete(id);
+      appBundles.delete(id);
       const removed = deleteInstalledPlugin(deps.db, id);
       if (removed && row) {
         // Configuration goes with the registration (a future same-id plugin
@@ -1726,14 +1911,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
       if (enabled) {
         const row = getInstalledPlugin(deps.db, id);
-        if (row && deps.isEnabled()) await loadOne(row);
-      } else {
-        await disposeOne(id);
-        // A hung service outranks "disabled": the degraded status (set by
-        // stopServices) is the only trace of the still-running start().
-        if ((hungServices.get(id)?.size ?? 0) === 0) {
-          setStatus(id, "disabled");
+        if (row && deps.isEnabled()) {
+          await withLifecycleLock(id, () => loadOne(row));
         }
+      } else {
+        await withLifecycleLock(id, async () => {
+          await disposeOne(id);
+          // A hung service outranks "disabled": the degraded status (set by
+          // stopServices) is the only trace of the still-running start().
+          if ((hungServices.get(id)?.size ?? 0) === 0) {
+            setStatus(id, "disabled");
+          }
+        });
       }
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1745,8 +1934,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         (row) => id === undefined || row.id === id,
       );
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        await disposeOne(row.id);
-        await loadOne(row);
+        await withLifecycleLock(row.id, async () => {
+          await disposeOne(row.id);
+          await loadOne(row);
+        });
       }
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1754,6 +1945,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     getApi(id) {
       return loaded.get(id)?.handle.api;
+    },
+
+    getAppAsset(id, kind) {
+      // Honest gate: assets are only downloadable while the plugin runtime
+      // is live. A disabled/errored/removed plugin's recorded snapshot may
+      // still ride the inventory for display, but its bytes are not served.
+      if (!loaded.has(id)) return undefined;
+      const assets = appBundles.get(id)?.assets;
+      if (!assets) return undefined;
+      const path = kind === "js" ? assets.jsPath : assets.cssPath;
+      if (path === null) return undefined;
+      return { path, hash: assets.hash };
     },
 
     async getSettings(id) {
@@ -1796,6 +1999,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
         }
+        // Effective values changed: broadcast so every open page's settings
+        // queries (plugin-sdk useSettings included) refetch instead of
+        // serving the pre-save snapshot until stale time.
+        notifyPluginsChanged();
       }
       return buildPluginSettingsView(storeArgs);
     },

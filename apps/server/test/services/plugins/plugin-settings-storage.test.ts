@@ -38,18 +38,22 @@ describe("plugin settings + storage", () => {
   let workDir: string;
   let dataDir: string;
   let service: PluginService;
+  let systemBroadcasts: string[][];
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-storage-test-"));
     dataDir = join(workDir, "data");
+    systemBroadcasts = [];
     service = createPluginService({
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginSignal: () => 0,
-        notifySystem: () => {},
+        notifySystem: (kinds) => {
+          systemBroadcasts.push([...kinds]);
+        },
       },
       logger,
       dataDir,
@@ -151,6 +155,23 @@ describe("plugin settings + storage", () => {
       expect(cleared?.values.apiKey).toEqual({ set: false });
       expect((await state().settings.get()).apiKey).toBeUndefined();
       expect(state().changes).toHaveLength(2);
+    });
+
+    it("broadcasts plugins-changed when a save changes effective values, not on a no-op", async () => {
+      await installConfigurable();
+      systemBroadcasts.length = 0;
+
+      await service.updateSettings("configurable", { note: "hi" });
+      expect(
+        systemBroadcasts.filter((kinds) => kinds.includes("plugins-changed")),
+      ).toHaveLength(1);
+
+      // Writing the same effective values again must not broadcast.
+      systemBroadcasts.length = 0;
+      await service.updateSettings("configurable", { note: "hi" });
+      expect(
+        systemBroadcasts.some((kinds) => kinds.includes("plugins-changed")),
+      ).toBe(false);
     });
 
     it("rejects unknown keys and type mismatches", async () => {

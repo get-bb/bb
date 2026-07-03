@@ -1,10 +1,13 @@
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { watch } from "node:fs";
+import { readFile, realpath } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { scaffoldPlugin } from "@bb/templates";
 import { action } from "../action.js";
+import { buildPluginApp } from "@bb/plugin-build";
+import { createPluginDevLoop } from "../plugin-dev-loop.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
@@ -312,8 +315,9 @@ export function registerPluginCommands(
     .description(
       "Scaffold a new plugin in ./bb-plugin-<name> (no server required)",
     )
+    .option("--app", "Also scaffold a frontend entry (app.tsx, built by `bb plugin build`)")
     .action(
-      action(async (name: string) => {
+      action(async (name: string, opts: { app?: boolean }) => {
         const packageName = name.startsWith("bb-plugin-")
           ? name
           : `bb-plugin-${name}`;
@@ -328,11 +332,116 @@ export function registerPluginCommands(
           targetDir,
           packageName,
           bbVersion: resolveBbCliVersion(),
+          app: opts.app ?? false,
         });
         console.log(`Created ${packageName}/`);
         console.log("Next steps:");
         console.log(`  cd ${packageName}`);
         console.log("  bb plugin install .");
+      }),
+    );
+
+  plugin
+    .command("build [path]")
+    .description(
+      "Compile the plugin's bb.app frontend entry into dist/ (app.js, app.css, app.meta.json; no server required)",
+    )
+    .action(
+      action(async (path: string | undefined) => {
+        const rootDir = resolve(process.cwd(), path ?? ".");
+        const result = await buildPluginApp(rootDir);
+        for (const file of [result.jsPath, result.cssPath, result.metaPath]) {
+          console.log(relative(process.cwd(), file));
+        }
+      }),
+    );
+
+  plugin
+    .command("dev [path]")
+    .description(
+      "Watch a plugin's sources: rebuild its frontend bundle (if it has one) and reload it on every change (Ctrl+C to stop)",
+    )
+    .action(
+      action(async (path: string | undefined) => {
+        const rootDir = resolve(process.cwd(), path ?? ".");
+        let manifest: { bb?: { server?: unknown; app?: unknown } };
+        try {
+          manifest = JSON.parse(
+            await readFile(join(rootDir, "package.json"), "utf8"),
+          ) as { bb?: { server?: unknown; app?: unknown } };
+        } catch {
+          console.error(
+            `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
+          );
+          process.exit(1);
+        }
+        if (typeof manifest.bb?.server !== "string") {
+          console.error(
+            `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
+          );
+          process.exit(1);
+        }
+        const hasApp = typeof manifest.bb.app === "string";
+        // The dev loop drives an *installed* plugin; match this directory
+        // against the server's installed rows (realpath tolerates symlinked
+        // checkouts).
+        const realDir = await realpath(rootDir).catch(() => rootDir);
+        const list = await callPlugins<PluginListResponse>(getUrl(), "", "GET");
+        if (!list.enabled) {
+          console.error(
+            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
+          );
+          process.exit(1);
+        }
+        const entry = list.plugins.find(
+          (candidate) =>
+            candidate.rootDir === rootDir || candidate.rootDir === realDir,
+        );
+        if (!entry) {
+          console.error(
+            `This directory is not installed as a plugin — run \`bb plugin install ${path ?? "."}\` first, then re-run \`bb plugin dev\`.`,
+          );
+          process.exit(1);
+        }
+        const loop = createPluginDevLoop({
+          pluginId: entry.id,
+          hasApp,
+          buildApp: async () => {
+            await buildPluginApp(rootDir);
+          },
+          reloadPlugin: async () => {
+            const result = await callPlugins<PluginMutationResult>(
+              getUrl(),
+              `/reload?id=${encodeURIComponent(entry.id)}`,
+              "POST",
+            );
+            if (!result.ok) throw new Error(result.error ?? "reload failed");
+          },
+          log: (line) => console.log(line),
+        });
+        // Node's recursive fs.watch covers macOS/Windows natively and Linux
+        // since Node 20 — zero extra dependencies for the CLI.
+        const watcher = watch(
+          rootDir,
+          { recursive: true },
+          (_event, filename) => {
+            if (typeof filename === "string" && filename.length > 0) {
+              loop.handleChange(filename);
+            }
+          },
+        );
+        console.log(
+          `Watching ${rootDir} for plugin "${entry.id}"${hasApp ? " (frontend rebuild + reload on change)" : " (reload on change)"} — Ctrl+C to stop.`,
+        );
+        await new Promise<void>((resolveDone) => {
+          const stop = (): void => {
+            watcher.close();
+            loop.dispose();
+            resolveDone();
+          };
+          process.once("SIGINT", stop);
+          process.once("SIGTERM", stop);
+        });
       }),
     );
 

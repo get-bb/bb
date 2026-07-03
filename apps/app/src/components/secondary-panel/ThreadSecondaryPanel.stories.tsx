@@ -30,12 +30,10 @@ const noop = () => {};
 function createStoryFixedPanelTab(
   panel: ThreadSecondaryPanelTab,
 ): SecondaryFixedPanelTab {
-  switch (panel) {
-    case "thread-info":
-      return createThreadInfoFixedPanelTab();
-    case "git-diff":
-      return createGitDiffFixedPanelTab();
-  }
+  // Stories exercise only the built-in fixed views, not plugin panel keys.
+  return panel === "git-diff"
+    ? createGitDiffFixedPanelTab()
+    : createThreadInfoFixedPanelTab();
 }
 
 function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {

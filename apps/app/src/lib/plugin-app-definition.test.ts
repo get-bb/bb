@@ -1,0 +1,229 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  collectPluginAppRegistrations,
+  definePluginApp,
+  interpretPluginFrontends,
+  isPluginAppDefinition,
+} from "./plugin-app-definition";
+import type { PluginFrontendRecord } from "./plugin-frontend";
+import type { PluginRegistrationSet } from "./plugin-slots";
+
+function Component() {
+  return null;
+}
+
+describe("definePluginApp", () => {
+  it("brands the setup for host detection", () => {
+    const definition = definePluginApp(() => {});
+    expect(isPluginAppDefinition(definition)).toBe(true);
+    expect(isPluginAppDefinition({})).toBe(false);
+    expect(isPluginAppDefinition({ __bbPluginApp: true })).toBe(false);
+    expect(isPluginAppDefinition(null)).toBe(false);
+  });
+
+  it("rejects a non-function setup", () => {
+    expect(() =>
+      definePluginApp(undefined as unknown as () => void),
+    ).toThrow(/setup function/);
+  });
+});
+
+describe("collectPluginAppRegistrations", () => {
+  it("collects every slot kind as plain data", () => {
+    const visible = () => true;
+    const definition = definePluginApp((app) => {
+      app.slots.homepageSection({
+        id: "issues",
+        title: "Issues",
+        component: Component,
+      });
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+      });
+      app.slots.threadPanelTab({
+        id: "issue",
+        title: "Issue",
+        component: Component,
+        visible,
+      });
+      app.slots.composerAccessory({ id: "picker", component: Component });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition);
+    expect(registrations.homepageSections).toEqual([
+      { id: "issues", title: "Issues", component: Component },
+    ]);
+    expect(registrations.navPanels).toEqual([
+      {
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+      },
+    ]);
+    expect(registrations.threadPanelTabs).toEqual([
+      { id: "issue", title: "Issue", component: Component, visible },
+    ]);
+    expect(registrations.composerAccessories).toEqual([
+      { id: "picker", component: Component },
+    ]);
+  });
+
+  it.each([
+    [
+      "bad id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.homepageSection({
+            id: "has space",
+            title: "X",
+            component: Component,
+          });
+        }),
+      /"id" must match/,
+    ],
+    [
+      "duplicate id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.composerAccessory({ id: "a", component: Component });
+          app.slots.composerAccessory({ id: "a", component: Component });
+        }),
+      /duplicate id/,
+    ],
+    [
+      "nav panel path with slash",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "a/b",
+            component: Component,
+          });
+        }),
+      /"path" must match/,
+    ],
+    [
+      "missing component",
+      () =>
+        definePluginApp((app) => {
+          app.slots.homepageSection({
+            id: "x",
+            title: "X",
+            component: undefined as never,
+          });
+        }),
+      /"component" must be/,
+    ],
+  ])("rejects %s", (_name, build, message) => {
+    expect(() => collectPluginAppRegistrations(build())).toThrow(message);
+  });
+});
+
+describe("interpretPluginFrontends", () => {
+  function loadedRecord(
+    pluginId: string,
+    defaultExport: unknown,
+  ): PluginFrontendRecord {
+    return {
+      pluginId,
+      status: "loaded",
+      module: { default: defaultExport },
+    };
+  }
+
+  it("stores a valid app's registrations and leaves the record loaded", () => {
+    const setRegistrations =
+      vi.fn<(pluginId: string, set: PluginRegistrationSet) => void>();
+    const records = new Map<string, PluginFrontendRecord>([
+      [
+        "good",
+        loadedRecord(
+          "good",
+          definePluginApp((app) => {
+            app.slots.composerAccessory({ id: "a", component: Component });
+          }),
+        ),
+      ],
+    ]);
+
+    interpretPluginFrontends(records, {
+      setRegistrations,
+      warn: () => {},
+    });
+
+    expect(records.get("good")?.status).toBe("loaded");
+    expect(setRegistrations).toHaveBeenCalledWith(
+      "good",
+      expect.objectContaining({
+        composerAccessories: [{ id: "a", component: Component }],
+      }),
+    );
+  });
+
+  it("contains a junk default export to that plugin only", () => {
+    const setRegistrations = vi.fn();
+    const warn = vi.fn();
+    const records = new Map<string, PluginFrontendRecord>([
+      ["junk", loadedRecord("junk", { not: "an app" })],
+      [
+        "good",
+        loadedRecord(
+          "good",
+          definePluginApp((app) => {
+            app.slots.composerAccessory({ id: "a", component: Component });
+          }),
+        ),
+      ],
+      ["broken", { pluginId: "broken", status: "failed", error: "boom" }],
+    ]);
+
+    interpretPluginFrontends(records, { setRegistrations, warn });
+
+    expect(records.get("junk")).toEqual({
+      pluginId: "junk",
+      status: "failed",
+      error: expect.stringContaining("definePluginApp"),
+    });
+    expect(records.get("good")?.status).toBe("loaded");
+    expect(records.get("broken")?.status).toBe("failed");
+    expect(setRegistrations).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("[plugin:junk]"),
+    );
+  });
+
+  it("contains a throwing setup", () => {
+    const setRegistrations = vi.fn();
+    const records = new Map<string, PluginFrontendRecord>([
+      [
+        "thrower",
+        loadedRecord(
+          "thrower",
+          definePluginApp(() => {
+            throw new Error("setup exploded");
+          }),
+        ),
+      ],
+    ]);
+
+    interpretPluginFrontends(records, {
+      setRegistrations,
+      warn: () => {},
+    });
+
+    expect(records.get("thrower")).toEqual({
+      pluginId: "thrower",
+      status: "failed",
+      error: "setup exploded",
+    });
+    expect(setRegistrations).not.toHaveBeenCalled();
+  });
+});

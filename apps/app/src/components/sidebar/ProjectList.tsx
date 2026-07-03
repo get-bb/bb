@@ -226,7 +226,9 @@ interface LocalSourcePathTarget {
   projectId: string;
 }
 
-const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
+// Exported for the plugin nav entries, which render as sibling rows of the
+// Automations action and must match its look exactly.
+export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_BASE_CLASS,
   LIST_HOVER_TRANSITION,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,

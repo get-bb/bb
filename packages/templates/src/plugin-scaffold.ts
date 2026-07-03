@@ -13,6 +13,11 @@ export interface ScaffoldPluginArgs {
   packageName: string;
   /** BB app version; engines.bb is pinned to ">=<major.minor>". */
   bbVersion: string;
+  /**
+   * Also scaffold a frontend entry (`app.tsx`, wired as `bb.app` and built
+   * by `bb plugin build`). Off by default so headless plugins stay lean.
+   */
+  app?: boolean;
 }
 
 /** "bb-plugin-hello" → "hello" (mirrors the server's id derivation). */
@@ -68,6 +73,68 @@ export default async function plugin(bb: BbPluginApi) {
 `;
 }
 
+function appEntrySource(packageName: string): string {
+  const id = pluginIdOf(packageName);
+  return `// ${packageName} — a BB plugin frontend entry.
+//
+// Compiled by \`bb plugin build\` into dist/app.js + dist/app.css. React and
+// @bb/plugin-sdk/app are provided by the BB app at load time (never bundled),
+// so this file must be loaded by BB, not imported directly.
+import { definePluginApp, useBbContext } from "@bb/plugin-sdk/app";
+
+function HelloCard() {
+  const { projectId } = useBbContext();
+  // Tailwind classes compile against the host theme's live CSS variables —
+  // derive colors from the theme tokens, never hardcoded grays.
+  return (
+    <div className="rounded-md border border-border bg-card p-3 text-sm text-foreground">
+      Hello from ${packageName}.{" "}
+      {projectId === null ? "No project selected." : \`Project: \${projectId}.\`}
+    </div>
+  );
+}
+
+// The default export must be definePluginApp(...); BB interprets it after
+// loading the bundle. Other slots: navPanel, threadPanelTab,
+// composerAccessory (see the bb guide's plugins chapter).
+export default definePluginApp((app) => {
+  app.slots.homepageSection({
+    id: "${id}-hello",
+    title: "${packageName}",
+    component: HelloCard,
+  });
+});
+`;
+}
+
+/**
+ * Typecheck-only tsconfig: server.ts compiles against the real BbPluginApi
+ * contract from @bb/plugin-sdk (type-only, erased at load time); app.tsx is
+ * included when the plugin declares a frontend entry.
+ */
+function tsconfigSource(app: boolean): string {
+  return `${JSON.stringify(
+    {
+      compilerOptions: {
+        strict: true,
+        target: "ES2022",
+        module: "ESNext",
+        moduleResolution: "bundler",
+        jsx: "react-jsx",
+        lib: ["ES2022", "DOM"],
+        // Only @types/node ambiently — stray ancestor node_modules/@types
+        // (e.g. bun-types in a home directory) must not leak in.
+        types: ["node"],
+        noEmit: true,
+        skipLibCheck: true,
+      },
+      include: app ? ["server.ts", "app.tsx"] : ["server.ts"],
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 function skillSource(): string {
   return `---
 name: example-skill
@@ -117,7 +184,7 @@ bb plugin config ${id} set greeting hi
  * The generated server.ts loads cleanly against the live plugin API.
  */
 export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
-  const { targetDir, packageName, bbVersion } = args;
+  const { targetDir, packageName, bbVersion, app = false } = args;
   try {
     await mkdir(targetDir, { recursive: false });
   } catch (error) {
@@ -134,13 +201,29 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         version: "0.1.0",
         type: "module",
         engines: { bb: enginesRange(bbVersion) },
-        bb: { server: "./server.ts" },
+        bb: app
+          ? { server: "./server.ts", app: "./app.tsx" }
+          : { server: "./server.ts" },
+        // Typecheck-only (BB provides the SDK — and react — at runtime;
+        // `bb plugin build` never bundles them). @bb/plugin-sdk is not
+        // published yet, so installing it works only inside a BB checkout
+        // for now.
+        devDependencies: {
+          "@bb/plugin-sdk": "*",
+          "@types/node": "^22.0.0",
+          ...(app ? { "@types/react": "^19.0.0" } : {}),
+          typescript: "^5.7.0",
+        },
       },
       null,
       2,
     ) + "\n",
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
+  await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
+  if (app) {
+    await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
+  }
   const skillDir = join(targetDir, "skills", "example-skill");
   await mkdir(skillDir, { recursive: true });
   await writeFile(join(skillDir, "SKILL.md"), skillSource());

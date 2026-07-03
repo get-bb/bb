@@ -1,3 +1,4 @@
+import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
@@ -143,6 +144,40 @@ export function managedInstallDir(
     return npmInstallPrefix(dataDir, parsed.name, parsed.version);
   }
   return undefined;
+}
+
+/**
+ * Promote a fully-materialized staging directory to its final location:
+ * the previous install (if any) moves aside, the staging dir is renamed
+ * into place, then the old copy is deleted. If the promotion rename fails,
+ * the previous install is restored — a failed reinstall must never strand
+ * a plugins row pointing at a deleted root.
+ */
+export async function swapDirIntoPlace(
+  stagingDir: string,
+  targetDir: string,
+): Promise<void> {
+  const previousDir = `${targetDir}.previous`;
+  await rm(previousDir, { recursive: true, force: true });
+  let hadPrevious = true;
+  try {
+    await rename(targetDir, previousDir);
+  } catch {
+    hadPrevious = false; // first install: nothing to move aside
+  }
+  try {
+    await rename(stagingDir, targetDir);
+  } catch (error) {
+    if (hadPrevious) {
+      try {
+        await rename(previousDir, targetDir);
+      } catch {
+        // Restore failed too; the .previous dir is left for manual recovery.
+      }
+    }
+    throw error;
+  }
+  if (hadPrevious) await rm(previousDir, { recursive: true, force: true });
 }
 
 export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;

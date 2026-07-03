@@ -29,6 +29,7 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { cn } from "@/lib/utils";
 
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
@@ -286,6 +287,7 @@ export function RootComposeSecondaryContent({
                   style={PAGE_SHELL_CONTENT_STYLE}
                 >
                   {children}
+                  <PluginHomepageSections />
                 </div>
               </div>
             </div>

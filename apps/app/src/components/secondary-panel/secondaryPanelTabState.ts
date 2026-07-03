@@ -99,6 +99,7 @@ export function isSecondaryFileTab(
       return true;
     case "thread-info":
     case "git-diff":
+    case "plugin-panel":
       return false;
   }
 }

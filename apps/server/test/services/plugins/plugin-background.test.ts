@@ -125,6 +125,68 @@ describe("plugin background services", () => {
     expect(reloaded?.services).toEqual([{ name: "conn", state: "running" }]);
   });
 
+  it("serializes concurrent reloads so a slow-stopping service never double-starts", async () => {
+    // Own instance: the stop bound must exceed the service's stop delay so
+    // the slow stop is a legitimate (non-hung) dispose in progress.
+    const local = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data-serialize"),
+      appVersion: "0.9.0",
+      isEnabled: () => true,
+      loadTimeoutMs: 2000,
+      serviceStopTimeoutMs: 2000,
+    });
+    try {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-slowstop",
+        serverSource: `
+          export default function plugin(bb: any) {
+            const g = globalThis as any;
+            g.__slowActive = g.__slowActive ?? 0;
+            g.__slowMaxActive = g.__slowMaxActive ?? 0;
+            g.__slowStarts = g.__slowStarts ?? 0;
+            bb.background.service("slow", {
+              start(signal: any) {
+                g.__slowStarts += 1;
+                g.__slowActive += 1;
+                g.__slowMaxActive = Math.max(g.__slowMaxActive, g.__slowActive);
+                return new Promise<void>((resolve) => {
+                  signal.addEventListener("abort", () => {
+                    // Slow-but-legitimate stop: the window in which an
+                    // unserialized concurrent load would double-start.
+                    setTimeout(() => {
+                      g.__slowActive -= 1;
+                      resolve();
+                    }, 300);
+                  });
+                });
+              },
+            });
+          }
+        `,
+      });
+      const entry = await local.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      await Promise.all([local.reload("slowstop"), local.reload("slowstop")]);
+      const reloaded = local.list().find((p) => p.id === "slowstop");
+      expect(reloaded?.status).toBe("running");
+      expect(reloaded?.services).toEqual([{ name: "slow", state: "running" }]);
+      // 1 install + 2 serialized reloads. Without the lifecycle lock the
+      // second reload loads mid-dispose and a second instance runs while
+      // the first is still stopping (maxActive 2).
+      expect(globals.__slowStarts).toBe(3);
+      expect(globals.__slowMaxActive).toBe(1);
+    } finally {
+      await local.stop();
+    }
+  });
+
   it("marks the plugin degraded when a service ignores its abort", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-stubborn",

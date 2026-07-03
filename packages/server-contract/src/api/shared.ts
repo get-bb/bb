@@ -192,6 +192,18 @@ export const pluginSignalSchema = z
   .strict();
 export type PluginSignal = z.infer<typeof pluginSignalSchema>;
 
+/**
+ * Lenient counterpart of {@link pluginSignalSchema} for INBOUND parsing on
+ * clients (mirrors threadOpenFileSignalLenientSchema): unknown fields from a
+ * newer server are stripped instead of dropping the whole signal.
+ */
+export const pluginSignalLenientSchema = z.object({
+  type: z.literal("plugin-signal"),
+  pluginId: z.string().min(1),
+  channel: z.string().min(1),
+  payload: z.unknown(),
+});
+
 export const workspaceFileSchema = z.object({
   path: z.string(),
   name: z.string(),

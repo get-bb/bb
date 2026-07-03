@@ -7,7 +7,7 @@
     "title": "./bin/title"
   },
   "scripts": {
-    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates",
+    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide",
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
@@ -17,12 +17,17 @@
     "@bb/config": "workspace:*",
     "@bb/core-ui": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/plugin-build": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
+    "@tailwindcss/node": "^4.3.0",
+    "@tailwindcss/oxide": "^4.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",
+    "esbuild": "^0.28.0",
+    "tailwindcss": "^4.3.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -227,6 +227,29 @@ describe("plugin install flows", () => {
       expect(second.status).toBe("running");
     });
 
+    it("keeps the previous install intact when a reinstall fails validation", async () => {
+      const repoDir = join(workDir, "repo-sturdy");
+      await writePluginFixture(repoDir, { name: "bb-plugin-sturdy" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "v1");
+      const source = `git:${repoDir}@main`;
+      const first = await service.install(source);
+      expect(first.status).toBe("running");
+
+      // The tip now carries a broken manifest: the refresh clone fails
+      // validation in its staging dir, so the live install must survive.
+      await writeFile(join(repoDir, "package.json"), "{ not json");
+      await commitAll(repoDir, "broken manifest");
+      await expect(service.install(source)).rejects.toThrowError();
+
+      // The registration still points at real, loadable files.
+      await stat(join(first.rootDir, "package.json"));
+      await service.reload("sturdy");
+      const entry = service.list().find((p) => p.id === "sturdy");
+      expect(entry?.status).toBe("running");
+      expect(entry?.version).toBe("0.1.0");
+    });
+
     it("hard-fails install on an engines.bb mismatch and cleans up the clone", async () => {
       const repoDir = join(workDir, "repo-too-new");
       await writePluginFixture(repoDir, {

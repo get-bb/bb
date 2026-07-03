@@ -36,6 +36,7 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
+import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
 import {
   useUpdateAppearance,
   useUpdateExperiments,
@@ -1062,6 +1063,8 @@ export function SettingsView() {
           popoutChatHotkey={experiments.popoutChatHotkey}
           uiForkingEnabled={experiments.uiForking}
         />
+
+        <PluginsSettingsSection />
       </div>
     </PageShell>
   );

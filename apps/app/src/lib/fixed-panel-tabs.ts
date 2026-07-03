@@ -7,6 +7,7 @@ import { createLocalStorageSyncStorage } from "./browser-storage";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
+  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
@@ -18,6 +19,7 @@ import {
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import {
+  parsePluginThreadPanelKey,
   type ThreadSecondaryPanel,
 } from "./thread-secondary-panel";
 
@@ -82,22 +84,20 @@ function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
     : disabledFixedPanelTabsStateAtom;
 }
 
-function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {
-  switch (panel) {
-    case "thread-info":
-      return createThreadInfoFixedPanelTab().id;
-    case "git-diff":
-      return createGitDiffFixedPanelTab().id;
+function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
+  if (panel === "thread-info") return createThreadInfoFixedPanelTab();
+  if (panel === "git-diff") return createGitDiffFixedPanelTab();
+  const parsed = parsePluginThreadPanelKey(panel);
+  if (parsed === null) {
+    // Plugin panel keys are validated at registration time, so an unparsable
+    // value cannot normally reach here; degrade to the info view.
+    return createThreadInfoFixedPanelTab();
   }
+  return createPluginPanelFixedPanelTab(parsed);
 }
 
-function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
-  switch (panel) {
-    case "thread-info":
-      return createThreadInfoFixedPanelTab();
-    case "git-diff":
-      return createGitDiffFixedPanelTab();
-  }
+function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {
+  return buildSecondaryPanelTab(panel).id;
 }
 
 function findActiveTerminalTab(

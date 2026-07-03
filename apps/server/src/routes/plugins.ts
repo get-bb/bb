@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { Context, Hono } from "hono";
 import {
   buildLocalAppOrigins,
@@ -234,6 +235,19 @@ export function registerPluginRoutes(
     }
     const id = context.req.param("id");
     const actionId = context.req.param("actionId");
+    // Body first, action second: no await between lookup and invocation
+    // (runThreadAction registers its in-flight marker synchronously), so a
+    // reload during the body read cannot leave a stale record to run.
+    const body = (await context.req.json().catch(() => null)) as {
+      threadId?: unknown;
+    } | null;
+    const threadId = body?.threadId;
+    if (typeof threadId !== "string" || threadId.length === 0) {
+      return context.json(
+        { ok: false, error: "expected { threadId: string }" },
+        400,
+      );
+    }
     const lookup = plugins.getThreadAction(id, actionId);
     if (lookup.outcome === "unknown-plugin") {
       return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
@@ -251,16 +265,6 @@ export function registerPluginRoutes(
           error: `plugin "${id}" has no thread action "${actionId}"`,
         },
         404,
-      );
-    }
-    const body = (await context.req.json().catch(() => null)) as {
-      threadId?: unknown;
-    } | null;
-    const threadId = body?.threadId;
-    if (typeof threadId !== "string" || threadId.length === 0) {
-      return context.json(
-        { ok: false, error: "expected { threadId: string }" },
-        400,
       );
     }
     const result = await plugins.runThreadAction(id, lookup.value, threadId);
@@ -290,22 +294,9 @@ export function registerPluginRoutes(
     }
     const id = context.req.param("id");
     const name = context.req.param("name");
-    const lookup = plugins.getSlashCommand(id, name);
-    if (lookup.outcome === "unknown-plugin") {
-      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
-    }
-    if (lookup.outcome === "not-running") {
-      return context.json(
-        { ok: false, error: notRunningError(id, lookup) },
-        503,
-      );
-    }
-    if (lookup.outcome === "not-found") {
-      return context.json(
-        { ok: false, error: `plugin "${id}" has no slash command "${name}"` },
-        404,
-      );
-    }
+    // Body first, command second: no await between lookup and invocation
+    // (runSlashCommand registers its in-flight marker synchronously), so a
+    // reload during the body read cannot leave a stale record to run.
     const body = (await context.req.json().catch(() => null)) as {
       args?: unknown;
       threadId?: unknown;
@@ -327,6 +318,22 @@ export function registerPluginRoutes(
         400,
       );
     }
+    const lookup = plugins.getSlashCommand(id, name);
+    if (lookup.outcome === "unknown-plugin") {
+      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
+    }
+    if (lookup.outcome === "not-running") {
+      return context.json(
+        { ok: false, error: notRunningError(id, lookup) },
+        503,
+      );
+    }
+    if (lookup.outcome === "not-found") {
+      return context.json(
+        { ok: false, error: `plugin "${id}" has no slash command "${name}"` },
+        404,
+      );
+    }
     const result = await plugins.runSlashCommand(id, lookup.value, {
       args,
       threadId,
@@ -336,6 +343,48 @@ export function registerPluginRoutes(
       return context.json({ ok: false, error: result.error }, 500);
     }
     return context.json({ ok: true, ...result.value });
+  });
+
+  // Frontend bundle assets (design §5.1): the app dynamic-import()s app.js
+  // and links app.css from here. URLs carry ?h=<content hash> — a matching
+  // hash gets immutable caching (the hash changes when the content does);
+  // anything else is no-store so a stale URL can never pin a stale bundle.
+  const APP_ASSET_CONTENT_TYPES = {
+    "app.js": { kind: "js", contentType: "text/javascript; charset=utf-8" },
+    "app.css": { kind: "css", contentType: "text/css; charset=utf-8" },
+  } as const;
+
+  app.get("/plugins/:id/assets/:file", async (context) => {
+    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    const file = context.req.param("file");
+    const spec =
+      file === "app.js" || file === "app.css"
+        ? APP_ASSET_CONTENT_TYPES[file]
+        : undefined;
+    if (!spec) {
+      return context.json({ ok: false, error: "unknown plugin asset" }, 404);
+    }
+    const asset = plugins.getAppAsset(context.req.param("id"), spec.kind);
+    if (!asset) {
+      return context.json(
+        { ok: false, error: "plugin has no loadable frontend bundle" },
+        404,
+      );
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(asset.path);
+    } catch {
+      return context.json({ ok: false, error: "bundle file missing" }, 404);
+    }
+    const cacheControl =
+      context.req.query("h") === asset.hash
+        ? "public, max-age=31536000, immutable"
+        : "no-store";
+    return context.body(new Uint8Array(bytes), 200, {
+      "content-type": spec.contentType,
+      "cache-control": cacheControl,
+    });
   });
 
   app.get("/plugins/:id/logs", async (context) => {
@@ -492,17 +541,30 @@ export function registerPluginRoutes(
         404,
       );
     }
-    const route = lookup.value;
+    const auth = lookup.value.auth;
     const problem =
-      route.auth === "local"
+      auth === "local"
         ? localAuthProblem(context, deps)
-        : route.auth === "token"
+        : auth === "token"
           ? await tokenAuthProblem(context, plugins, id)
           : null;
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
-    return plugins.invokeHttpRoute(id, route, context);
+    // The token check awaited; a reload may have swapped the routing table
+    // in the meantime. Re-resolve and invoke with no await in between
+    // (invokeHttpRoute registers its in-flight marker synchronously) so a
+    // stale handler can never run over a disposed plugin's handles. A route
+    // whose auth mode changed across the reload was authenticated under the
+    // old policy — refuse it rather than honoring the wrong check.
+    const fresh = plugins.getHttpRoute(id, context.req.method, subPath);
+    if (fresh.outcome !== "found" || fresh.value.auth !== auth) {
+      return context.json(
+        { ok: false, error: `plugin "${id}" reloaded during the request — retry` },
+        503,
+      );
+    }
+    return plugins.invokeHttpRoute(id, fresh.value, context);
   });
 
   // bb.rpc dispatcher (design §4.6): always "local" auth semantics —
@@ -514,6 +576,22 @@ export function registerPluginRoutes(
     const problem = localAuthProblem(context, deps);
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    // Body first, handler second: the handler must be resolved with no await
+    // between lookup and invocation (invokeRpcHandler registers its in-flight
+    // marker synchronously), or a reload during the body read could dispose
+    // the plugin after lookup and run a stale handler over closed handles.
+    const rawBody = await context.req.text();
+    let input: unknown;
+    if (rawBody.length > 0) {
+      try {
+        input = JSON.parse(rawBody);
+      } catch {
+        return context.json(
+          { ok: false, error: "request body must be JSON (the rpc input)" },
+          400,
+        );
+      }
     }
     const lookup = plugins.getRpcHandler(id, method);
     if (lookup.outcome === "unknown-plugin") {
@@ -530,18 +608,6 @@ export function registerPluginRoutes(
         { ok: false, error: `plugin "${id}" has no rpc method "${method}"` },
         404,
       );
-    }
-    const rawBody = await context.req.text();
-    let input: unknown;
-    if (rawBody.length > 0) {
-      try {
-        input = JSON.parse(rawBody);
-      } catch {
-        return context.json(
-          { ok: false, error: "request body must be JSON (the rpc input)" },
-          400,
-        );
-      }
     }
     const outcome = await plugins.invokeRpcHandler(
       id,

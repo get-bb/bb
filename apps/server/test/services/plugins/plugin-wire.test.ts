@@ -366,4 +366,57 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: expect.stringContaining("not JSON-serializable"),
     });
   });
+
+  it("rpc resolves the handler after the body arrives, so a reload during the body read never runs a stale handler", async () => {
+    // The handler closes over its load generation: a binding resolved
+    // before the body read (and invalidated by the mid-read reload) would
+    // answer with the disposed instance's generation.
+    const genDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
+      name: "bb-plugin-gen",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__wireGen = (g.__wireGen ?? 0) + 1;
+          const gen = g.__wireGen;
+          bb.rpc.register({ gen: async () => ({ gen }) });
+        }
+      `,
+    });
+    const installed = await harness.pluginService.installPath(genDir);
+    expect(installed.status).toBe("running");
+    const firstGen = (globalThis as Record<string, unknown>)
+      .__wireGen as number;
+
+    let releaseBody!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      releaseBody = resolveGate;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        await gate;
+        controller.enqueue(new TextEncoder().encode("{}"));
+        controller.close();
+      },
+    });
+    const responsePromise = harness.app.request(
+      `${BASE}/api/v1/plugins/gen/rpc/gen`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+        // Node fetch requires half-duplex for streamed request bodies.
+        duplex: "half",
+      } as RequestInit,
+    );
+    // Let the dispatcher reach its body read, then swap the handler.
+    await new Promise((resolveTick) => setTimeout(resolveTick, 25));
+    await harness.pluginService.reload("gen");
+    releaseBody();
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      result: { gen: firstGen + 1 },
+    });
+  });
 });
