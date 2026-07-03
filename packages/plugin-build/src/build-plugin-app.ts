@@ -12,6 +12,10 @@ import { isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { PLUGIN_SDK_APP_EXPORT_NAMES } from "@bb/plugin-sdk";
+import {
+  PLUGIN_THEME_CSS,
+  TW_ANIMATE_CSS,
+} from "./generated/plugin-theme.generated.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 
 /**
@@ -154,6 +158,15 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * runtime. Tailwind itself comes from the CLI's own installation (plugins do
  * not need tailwindcss installed), via `customCssResolver`.
  *
+ * The input embeds two generated constants (plugin-theme.generated.ts) so
+ * plugin utilities compile against the same tokens the host uses:
+ * - the host's `@theme` blocks — without the semantic-token bridge,
+ *   `bg-background`/`text-muted-foreground`/`rounded-lg` don't compile at all
+ *   (the default Tailwind theme has no such keys);
+ * - the vendored tw-animate-css source — the host ships it, component idiom
+ *   depends on it (`animate-in`/`fade-in-0`), and its style-only npm exports
+ *   can't be require.resolve'd from the packaged CLI.
+ *
  * The utilities are emitted inside `@scope ([data-bb-plugin-root])` — the
  * attribute every plugin mount root carries (PluginSlotMount) — so plugin
  * utility rules can never touch host elements. Without the scope, a plugin's
@@ -174,6 +187,10 @@ async function buildTailwindCss(rootDir: string): Promise<string> {
   const input = [
     `@layer theme, utilities;`,
     `@import "tailwindcss/theme.css" layer(theme);`,
+    // Same order as the host's theme.css: tw-animate first, then the host
+    // @theme blocks (so host tokens win any overlapping keys).
+    TW_ANIMATE_CSS,
+    PLUGIN_THEME_CSS,
     `@layer utilities {`,
     `  @scope ([data-bb-plugin-root]) {`,
     `    @tailwind utilities;`,

@@ -43,7 +43,11 @@ void createRoot;
 
 function Card() {
   const [count] = useState(0);
-  return <div className="line-clamp-3">count: {count}</div>;
+  return (
+    <div className="line-clamp-3 bg-background text-sm text-muted-foreground animate-in fade-in-0 rounded-lg">
+      count: {count}
+    </div>
+  );
 }
 
 export default definePluginApp(Card);
@@ -89,6 +93,20 @@ describe("buildPluginApp", () => {
 
     const css = await readFile(result.cssPath, "utf8");
     expect(css).toContain(".line-clamp-3");
+    // Host token bridge: semantic utilities compile against the live host
+    // CSS variables (no bridge → these classes are silently absent).
+    expect(css).toMatch(/\.bg-background\s*\{[^}]*var\(--background\)/);
+    expect(css).toMatch(/\.text-muted-foreground\s*\{[^}]*var\(--muted-foreground\)/);
+    expect(css).toMatch(/\.rounded-lg\s*\{[^}]*var\(--radius\)/);
+    // Host typography scale: the utility reads the token, and the plugin
+    // sheet carries the host's override (0.8125rem, not Tailwind's 0.875rem).
+    expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
+    expect(css).toContain("--text-sm: 0.8125rem");
+    // tw-animate-css utilities (host idiom for overlay open/close animation).
+    expect(css).toContain(".animate-in");
+    expect(css).toContain(".fade-in-0");
+    // Utilities stay plugin-scoped.
+    expect(css).toContain("@scope ([data-bb-plugin-root])");
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
     expect(meta).toEqual({
