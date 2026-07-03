@@ -542,6 +542,19 @@ export function promptCommandResourceFromSuggestion({
   suggestion,
   trigger,
 }: PromptCommandResourceFromSuggestionArgs): PromptMentionResource {
+  if (suggestion.source === "plugin") {
+    return {
+      kind: "command",
+      trigger,
+      name: suggestion.name,
+      source: suggestion.source,
+      origin: suggestion.origin,
+      label: suggestion.name,
+      argumentHint: suggestion.argumentHint,
+      pluginId: suggestion.pluginId,
+    };
+  }
+
   return {
     kind: "command",
     trigger,
@@ -550,8 +563,5 @@ export function promptCommandResourceFromSuggestion({
     origin: suggestion.origin,
     label: suggestion.name,
     argumentHint: suggestion.argumentHint,
-    ...(suggestion.source === "plugin" && suggestion.pluginId !== undefined
-      ? { pluginId: suggestion.pluginId }
-      : {}),
   };
 }

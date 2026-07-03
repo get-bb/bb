@@ -158,7 +158,34 @@ export type PromptMentionCommandOrigin = z.infer<
   typeof promptMentionCommandOriginSchema
 >;
 
-export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
+const promptMentionCommandResourceBaseFields = {
+  kind: z.literal("command"),
+  trigger: promptMentionCommandTriggerSchema,
+  name: z.string(),
+  label: z.string(),
+  argumentHint: z.string().nullable(),
+};
+
+const promptMentionCommandResourceSchema = z.discriminatedUnion("source", [
+  z.object({
+    ...promptMentionCommandResourceBaseFields,
+    source: z.literal("skill"),
+    origin: promptMentionCommandOriginSchema,
+  }),
+  z.object({
+    ...promptMentionCommandResourceBaseFields,
+    source: z.literal("command"),
+    origin: promptMentionCommandOriginSchema,
+  }),
+  z.object({
+    ...promptMentionCommandResourceBaseFields,
+    source: z.literal("plugin"),
+    origin: z.literal("user"),
+    pluginId: z.string().min(1),
+  }),
+]);
+
+export const promptMentionResourceSchema = z.union([
   z.object({
     kind: z.literal("thread"),
     threadId: z.string(),
@@ -177,16 +204,7 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     path: z.string(),
     label: z.string(),
   }),
-  z.object({
-    kind: z.literal("command"),
-    trigger: promptMentionCommandTriggerSchema,
-    name: z.string(),
-    source: promptMentionCommandSourceSchema,
-    origin: promptMentionCommandOriginSchema,
-    label: z.string(),
-    argumentHint: z.string().nullable(),
-    pluginId: z.string().min(1).optional(),
-  }),
+  promptMentionCommandResourceSchema,
   z.object({
     kind: z.literal("plugin"),
     pluginId: z.string(),
@@ -246,10 +264,20 @@ export const promptInputSchema = z.discriminatedUnion("type", [
 ]);
 export type PromptInput = z.infer<typeof promptInputSchema>;
 
-export interface PromptCommandSelector {
-  trigger: PromptMentionCommandTrigger;
-  name: string;
-}
+export type PromptCommandSelector =
+  | {
+      trigger: PromptMentionCommandTrigger;
+      name: string;
+      source: Exclude<PromptMentionCommandSource, "plugin">;
+      origin?: PromptMentionCommandOrigin;
+    }
+  | {
+      trigger: PromptMentionCommandTrigger;
+      name: string;
+      source: "plugin";
+      origin?: "user";
+      pluginId: string;
+    };
 
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 
@@ -262,11 +290,34 @@ function isSelectedPromptCommandMention(
   mention: PromptTextMention,
   selector: PromptCommandSelector,
 ): boolean {
-  return (
-    mention.resource.kind === "command" &&
-    mention.resource.trigger === selector.trigger &&
-    mention.resource.name === selector.name
-  );
+  if (
+    mention.resource.kind !== "command" ||
+    mention.resource.trigger !== selector.trigger ||
+    mention.resource.name !== selector.name
+  ) {
+    return false;
+  }
+
+  if (selector.source === "plugin") {
+    return (
+      mention.resource.source === "plugin" &&
+      mention.resource.pluginId === selector.pluginId &&
+      (selector.origin === undefined ||
+        mention.resource.origin === selector.origin)
+    );
+  }
+
+  if (mention.resource.source !== selector.source) {
+    return false;
+  }
+
+  if (
+    selector.origin !== undefined &&
+    mention.resource.origin !== selector.origin
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function promptInputHasCommandMention(

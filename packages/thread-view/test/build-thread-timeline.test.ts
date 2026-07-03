@@ -92,6 +92,29 @@ const planPromptInput: PromptInput[] = [
   },
 ];
 
+const pluginPlanPromptInput: PromptInput[] = [
+  {
+    type: "text",
+    text: "/plan inspect the failing command",
+    mentions: [
+      {
+        start: 0,
+        end: 5,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "plugin",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+          pluginId: "linear",
+        },
+      },
+    ],
+  },
+];
+
 interface PlanDeltaEventArgs {
   itemId?: string;
   seq: number;
@@ -904,6 +927,38 @@ describe("buildThreadTimelineFromEvents", () => {
         event.clientTurnRequested({
           requestId,
           text: "/plan inspect the failing command",
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "active",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toBeNull();
+  });
+
+  it("does not project active plan mode from a plugin command named plan", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: pluginPlanPromptInput,
         }),
         event.turnStarted(),
         event.inputAccepted({ clientRequestId: requestId }),

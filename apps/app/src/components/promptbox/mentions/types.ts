@@ -66,15 +66,24 @@ export type PromptMentionSuggestion =
  * composer's apply path inserts a prompt pill that serializes back to the
  * slash command token (`/<name>`).
  */
-export interface ProviderCommandSuggestion {
+interface ProviderCommandSuggestionBase {
   kind: "command";
   name: string;
-  source: ProviderCommandSource;
   origin: ProviderCommandOrigin;
   description: string | null;
   argumentHint: string | null;
-  pluginId?: string;
 }
+
+export type ProviderCommandSuggestion =
+  | (ProviderCommandSuggestionBase & {
+      source: Exclude<ProviderCommandSource, "plugin">;
+      pluginId?: never;
+    })
+  | (ProviderCommandSuggestionBase & {
+      source: "plugin";
+      origin: "user";
+      pluginId: string;
+    });
 
 /**
  * Build a {@link ProviderCommandSuggestion} from the wire-level
@@ -84,6 +93,18 @@ export interface ProviderCommandSuggestion {
 export function toProviderCommandSuggestion(
   command: ProviderCommand,
 ): ProviderCommandSuggestion {
+  if (command.source === "plugin") {
+    return {
+      kind: "command",
+      name: command.name,
+      source: command.source,
+      origin: command.origin,
+      description: command.description,
+      argumentHint: command.argumentHint,
+      pluginId: command.pluginId,
+    };
+  }
+
   return {
     kind: "command",
     name: command.name,
@@ -91,7 +112,6 @@ export function toProviderCommandSuggestion(
     origin: command.origin,
     description: command.description,
     argumentHint: command.argumentHint,
-    ...(command.source === "plugin" ? { pluginId: command.pluginId } : {}),
   };
 }
 

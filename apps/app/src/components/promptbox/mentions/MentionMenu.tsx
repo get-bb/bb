@@ -255,18 +255,21 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
-// Rows share one icon box; plugin rows show the plugin's logo when it ships
-// one (falling back to the generic bolt), everything else a named icon.
+// Rows share one icon box; plugin rows show the plugin's logo when the plugin
+// identity is present, falling back to the generic plugin icon for malformed
+// data. Everything else uses a named icon.
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
   if (item.source === "plugin") {
-    return (
+    return item.pluginId ? (
       <PluginIcon
-        pluginId={item.pluginId ?? item.name}
+        pluginId={item.pluginId}
         icon={null}
         className={ROW_ICON_CLASS}
       />
+    ) : (
+      <Icon name="Workflow" className={ROW_ICON_CLASS} aria-hidden />
     );
   }
   return (

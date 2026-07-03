@@ -39,12 +39,14 @@ function PromptMentionPillIcon({
     );
   }
   if (resource.kind === "command" && resource.source === "plugin") {
-    return (
+    return resource.pluginId ? (
       <PluginIcon
-        pluginId={resource.pluginId ?? resource.name}
+        pluginId={resource.pluginId}
         icon={null}
         className={PILL_ICON_CLASS}
       />
+    ) : (
+      <Icon name="Workflow" className={PILL_ICON_CLASS} aria-hidden />
     );
   }
   return (

@@ -876,6 +876,67 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand leaves plugin commands named plan in native plan mode", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const turnCmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_2222222298",
+      threadId: "bb-thread-plan",
+      providerThreadId: "claude-session-plan",
+      input: [
+        {
+          type: "text",
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "plan",
+                source: "plugin",
+                origin: "user",
+                label: "plan",
+                argumentHint: null,
+                pluginId: "linear",
+              },
+            },
+          ],
+        },
+      ],
+      options: {
+        ...workspaceWriteProviderExecutionContext,
+        claudeCodePermissionMode: "plan",
+      },
+    });
+
+    expect(turnCmd?.params).toMatchObject({
+      input: [
+        {
+          type: "text",
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "plan",
+                source: "plugin",
+                origin: "user",
+                label: "plan",
+                argumentHint: null,
+                pluginId: "linear",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("buildCommand turn/steer includes expectedTurnId", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({

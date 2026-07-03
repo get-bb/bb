@@ -30,6 +30,33 @@ describe("prompt mention command triggers", () => {
     ).toBe(true);
   });
 
+  it("requires plugin identity on plugin command mention resources", () => {
+    expect(
+      promptMentionResourceSchema.safeParse({
+        kind: "command",
+        trigger: "/",
+        name: "linear",
+        source: "plugin",
+        origin: "user",
+        label: "linear",
+        argumentHint: null,
+        pluginId: "linear",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      promptMentionResourceSchema.safeParse({
+        kind: "command",
+        trigger: "/",
+        name: "linear",
+        source: "plugin",
+        origin: "user",
+        label: "linear",
+        argumentHint: null,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts plugin mention resources and requires all fields", () => {
     const resource = {
       kind: "plugin",
@@ -100,12 +127,17 @@ describe("prompt command input helpers", () => {
     ];
 
     expect(
-      promptInputHasCommandMention(input, { trigger: "/", name: "plan" }),
+      promptInputHasCommandMention(input, {
+        trigger: "/",
+        name: "plan",
+        source: "command",
+      }),
     ).toBe(true);
     expect(
       removeCommandMentionsFromPromptInput(input, {
         trigger: "/",
         name: "plan",
+        source: "command",
       }),
     ).toEqual([
       {
@@ -130,13 +162,66 @@ describe("prompt command input helpers", () => {
     const input = [{ type: "text" as const, text: "/plan review", mentions: [] }];
 
     expect(
-      promptInputHasCommandMention(input, { trigger: "/", name: "plan" }),
+      promptInputHasCommandMention(input, {
+        trigger: "/",
+        name: "plan",
+        source: "command",
+      }),
     ).toBe(false);
     expect(
       removeCommandMentionsFromPromptInput(input, {
         trigger: "/",
         name: "plan",
+        source: "command",
       }),
     ).toEqual(input);
+  });
+
+  it("does not match plugin commands that share a built-in command name", () => {
+    const input = [
+      {
+        type: "text" as const,
+        text: "/plan review",
+        mentions: [
+          {
+            start: 0,
+            end: 5,
+            resource: {
+              kind: "command" as const,
+              trigger: "/" as const,
+              name: "plan",
+              source: "plugin" as const,
+              origin: "user" as const,
+              label: "plan",
+              argumentHint: null,
+              pluginId: "linear",
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(
+      promptInputHasCommandMention(input, {
+        trigger: "/",
+        name: "plan",
+        source: "command",
+      }),
+    ).toBe(false);
+    expect(
+      removeCommandMentionsFromPromptInput(input, {
+        trigger: "/",
+        name: "plan",
+        source: "command",
+      }),
+    ).toEqual(input);
+    expect(
+      promptInputHasCommandMention(input, {
+        trigger: "/",
+        name: "plan",
+        source: "plugin",
+        pluginId: "linear",
+      }),
+    ).toBe(true);
   });
 });

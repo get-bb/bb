@@ -10,7 +10,11 @@ import { parsePromptInput } from "./user-message-parsing.js";
 
 type PlanModeProviderId = ThreadTimelineActivePromptMode["providerId"];
 
-const PLAN_COMMAND_SELECTOR = { trigger: "/", name: "plan" } as const;
+const PLAN_COMMAND_SELECTOR = {
+  trigger: "/",
+  name: "plan",
+  source: "command",
+} as const;
 
 function isPlanModeProviderId(
   providerId: string | undefined,

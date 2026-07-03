@@ -26,7 +26,7 @@ export function promptMentionIconLabel(
   if (resource.kind === "project") {
     return "Project";
   }
-if (resource.kind === "command") {
+  if (resource.kind === "command") {
     if (resource.source === "skill") {
       return "Skill";
     }

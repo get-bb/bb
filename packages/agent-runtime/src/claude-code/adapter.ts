@@ -798,6 +798,7 @@ function stripClaudePlanCommandInput(
   return removeCommandMentionsFromPromptInput(input, {
     trigger: "/",
     name: "plan",
+    source: "command",
   });
 }
 

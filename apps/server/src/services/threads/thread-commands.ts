@@ -258,7 +258,11 @@ function toRuntimeExecutionOptions(
 ): RuntimeThreadExecutionOptions {
   const claudeCodePermissionMode: "plan" | undefined =
     args.providerId === "claude-code" &&
-    promptInputHasCommandMention(args.input, { trigger: "/", name: "plan" })
+    promptInputHasCommandMention(args.input, {
+      trigger: "/",
+      name: "plan",
+      source: "command",
+    })
       ? "plan"
       : undefined;
   const base = {

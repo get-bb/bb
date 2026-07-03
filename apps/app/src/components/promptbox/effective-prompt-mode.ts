@@ -32,7 +32,7 @@ export function isClaudePlanModePrompt({
     providerId === "claude-code" &&
     promptInputHasCommandMention(
       [{ type: "text", text: value, mentions: [...mentionRanges] }],
-      { trigger: "/", name: "plan" },
+      { trigger: "/", name: "plan", source: "command" },
     )
   );
 }
