@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `origin_plugin_id` text;

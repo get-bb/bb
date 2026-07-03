@@ -14,6 +14,8 @@ import type {
 } from "@bb/domain";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
+import type { AppDeps } from "../../types.js";
+import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import {
   isLiveParentThread,
   type ParentThread,
@@ -203,6 +205,31 @@ export function buildInitialProjectExecutionDefaults(): ProjectExecutionDefaults
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,
     }),
     serviceTier: DEFAULT_SERVICE_TIER,
+  };
+}
+
+/**
+ * Resolve the `{ type: "project-default" }` thread-creation environment into
+ * a concrete request. Server-owned defaulting policy for callers (plugins,
+ * scripts) that must not re-derive the compose flow's choices: the personal
+ * project gets a personal workspace on the primary host, and every other
+ * project gets a fresh managed worktree from the project source's default
+ * branch on the primary host. Throws a clear ApiError (502 host_unavailable)
+ * when no enrolled, connected host exists.
+ */
+export function resolveProjectDefaultThreadEnvironment(
+  deps: Pick<AppDeps, "config" | "db" | "hub">,
+  args: { projectId: string },
+): EnvironmentArgs {
+  if (args.projectId === PERSONAL_PROJECT_ID) {
+    // hostId is resolved to the primary host downstream, exactly like an
+    // app-composed personal thread that omits it.
+    return { type: "host", workspace: { type: "personal" } };
+  }
+  return {
+    type: "host",
+    hostId: requireConnectedPrimaryHostId(deps),
+    workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
   };
 }
 

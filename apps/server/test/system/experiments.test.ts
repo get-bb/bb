@@ -15,6 +15,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
+        plugins: false,
         uiForking: false,
       });
     });
@@ -29,6 +30,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
+          plugins: false,
           uiForking: true,
         }),
       });
@@ -37,12 +39,14 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        plugins: false,
         uiForking: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        plugins: false,
         uiForking: true,
       });
 
@@ -53,6 +57,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
+        plugins: false,
         uiForking: true,
       });
     });

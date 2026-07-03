@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 export interface ReadOrCreateSecretFileArgs {
   bytes: number;
@@ -49,4 +49,29 @@ export async function readOrCreateSecretFile(
     throw new Error(`Failed to initialize secret at ${secretPath}`);
   }
   return racedSecret;
+}
+
+/**
+ * Write a caller-supplied secret to `path` (0600), creating parent
+ * directories as needed. Atomic: written to a temp file in the same
+ * directory, then renamed over the target.
+ */
+export async function writeSecretFile(
+  path: string,
+  value: string,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tempPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await writeFile(tempPath, value, { encoding: "utf8", mode: 0o600 });
+    await rename(tempPath, path);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
+/** Delete a secret file; missing files are not an error. */
+export async function deleteSecretFile(path: string): Promise<void> {
+  await rm(path, { force: true });
 }

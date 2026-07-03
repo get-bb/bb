@@ -718,6 +718,7 @@ describe("thread runtime config", () => {
         claudeCodeMockCliTraffic: true,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
+        plugins: false,
         uiForking: false,
       });
 

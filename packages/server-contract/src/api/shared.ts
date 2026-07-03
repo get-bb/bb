@@ -127,6 +127,27 @@ export const environmentArgsSchema = z.discriminatedUnion("type", [
 ]);
 export type EnvironmentArgs = z.infer<typeof environmentArgsSchema>;
 
+/**
+ * Server-resolved environment default for thread creation: the server picks
+ * the host and workspace using its own defaulting policy (personal workspace
+ * for the personal project, a managed worktree on the primary host otherwise).
+ * For callers — plugins, scripts — that should not re-derive compose-flow
+ * policy. Accepted only by thread creation; automations and other surfaces
+ * keep the explicit {@link environmentArgsSchema}.
+ */
+export const projectDefaultEnvironmentSchema = z.object({
+  type: z.literal("project-default"),
+});
+
+export const createThreadEnvironmentArgsSchema = z.discriminatedUnion("type", [
+  reuseEnvironmentSchema,
+  hostEnvironmentSchema,
+  projectDefaultEnvironmentSchema,
+]);
+export type CreateThreadEnvironmentArgs = z.infer<
+  typeof createThreadEnvironmentArgsSchema
+>;
+
 export const pathListIncludeQueryValueSchema = z.enum(["true", "false"]);
 export type PathListIncludeQueryValue = z.infer<
   typeof pathListIncludeQueryValueSchema
@@ -150,6 +171,26 @@ export type ServerMessage = z.infer<typeof serverMessageSchema>;
  * to {@link ServerMessage}.
  */
 export const serverMessageLenientSchema = changedMessageLenientSchema;
+
+/**
+ * Ephemeral server→client WebSocket message carrying a plugin's
+ * `bb.realtime.publish(channel, payload)` signal. V1 broadcasts to every
+ * connected client — there is no per-channel subscription yet (client-side
+ * consumption lands with the plugin frontend runtime). Nothing is persisted;
+ * clients that predate this message type ignore it. `payload` is a
+ * JSON-serializable value (publish normalizes `undefined` to `null`). Strict
+ * schema guards the server's outgoing boundary (mirrors the thread-open-file
+ * signal in threads.ts).
+ */
+export const pluginSignalSchema = z
+  .object({
+    type: z.literal("plugin-signal"),
+    pluginId: z.string().min(1),
+    channel: z.string().min(1),
+    payload: z.unknown(),
+  })
+  .strict();
+export type PluginSignal = z.infer<typeof pluginSignalSchema>;
 
 export const workspaceFileSchema = z.object({
   path: z.string(),

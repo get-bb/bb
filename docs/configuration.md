@@ -222,6 +222,32 @@ packaged app this is usually `~/.bb/skills`. Project skills live under
 `<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or built-in
 skills.
 
+## Plugins
+
+Plugins are gated behind the "Plugins" experiment (Settings → Experiments, off
+by default). While the experiment is off, no plugin code loads and `bb plugin`
+commands report that plugins are disabled. Toggling the experiment applies
+live — enabling loads installed plugins, disabling unloads them.
+
+Plugin state lives under the data dir:
+
+```
+<dataDir>/plugins/<id>/data.db     Per-plugin SQLite database
+<dataDir>/plugins/<id>/secrets/    Secret settings and the plugin HTTP token
+<dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
+                                   at 5MB; read with `bb plugin logs <id>`)
+<dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
+<dataDir>/skills-generated/        Server-generated skills (the
+                                   plugin-commands skill listing plugin CLI
+                                   commands, injected into agent threads)
+```
+
+`bb plugin install npm:<name>@<version>` requires `npm` on PATH (packages are
+installed with `--ignore-scripts`); `git:<url>@<ref>` requires `git`. Local
+path installs register the directory in place and never delete it. Plugins are
+full-trust code running inside the bb server process: they can read all local
+bb data, including other plugins' secrets.
+
 ## Startup Flags
 
 Use launcher flags for per-run startup details:

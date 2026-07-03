@@ -23,6 +23,7 @@ import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
+import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import { isSideChatThread } from "./side-chat-thread.js";
@@ -138,7 +139,14 @@ export async function resolveThreadRuntimeCommandConfig(
 
   const { workspaceProvisionType } = args.environment;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
-    additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths,
+    // The server-generated skills root (plugin-commands) rides the data-dir
+    // tier; the plugin service only materializes it while the plugins
+    // experiment is on and a plugin registers a CLI command, and a missing
+    // root resolves to no skills.
+    additionalSkillsRootPaths: [
+      ...deps.config.inheritedSkillsRootPaths,
+      generatedSkillsRootPath(deps.config.dataDir),
+    ],
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     projectSkillsRootPath: path.join(workspacePath, ".bb", "skills"),

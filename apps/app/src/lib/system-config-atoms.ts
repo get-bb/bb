@@ -13,6 +13,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     claudeCodeMockCliTraffic: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
+    plugins: false,
     uiForking: false,
   },
   appearance: defaultAppTheme,

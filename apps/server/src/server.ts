@@ -22,6 +22,12 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerUiRoutes } from "./routes/ui.js";
+import { registerPluginRoutes } from "./routes/plugins.js";
+import {
+  createPluginService,
+  type PluginService,
+} from "./services/plugins/plugin-service.js";
+import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { createUiSourceService } from "./services/ui-source/ui-source.js";
 import { injectRecoveryShim } from "./services/ui-source/recovery-shim.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -64,6 +70,7 @@ export interface ServerApp {
   app: Hono;
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
+  pluginService: PluginService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -364,6 +371,16 @@ export function createApp(
     }
     return next();
   });
+  const pluginService = createPluginService({
+    db: deps.db,
+    hub: deps.hub,
+    logger: deps.logger,
+    dataDir: deps.config.dataDir,
+    appVersion: deps.config.appVersion,
+    isEnabled: () => getExperiments(deps.db).plugins,
+  });
+  // Bridge the thread lifecycle seams to this service's plugins (§4.5).
+  setPluginThreadEventEmitter(pluginService.events);
   const publicApi = new Hono();
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
@@ -373,7 +390,8 @@ export function createApp(
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
-  registerSystemRoutes(publicApi, deps);
+  registerSystemRoutes(publicApi, deps, pluginService);
+  registerPluginRoutes(publicApi, deps, pluginService);
   const uiSource = options?.appDir
     ? createUiSourceService({
         dataDir: deps.config.dataDir,
@@ -561,5 +579,6 @@ export function createApp(
         server: wss,
       }),
     injectWebSocket,
+    pluginService,
   };
 }

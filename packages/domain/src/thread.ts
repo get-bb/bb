@@ -382,6 +382,8 @@ export const threadSchema = z.object({
   originKind: threadOriginKindSchema.nullable(),
   /** @deprecated Use originKind. */
   childOrigin: threadChildOriginSchema.nullable(),
+  /** Id of the plugin that spawned this thread; null for non-plugin origins. */
+  originPluginId: z.string().nullable(),
   archivedAt: z.number().nullable(),
   pinnedAt: z.number().nullable(),
   deletedAt: z.number().nullable(),

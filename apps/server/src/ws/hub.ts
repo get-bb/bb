@@ -17,6 +17,7 @@ import type {
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
+  pluginSignalSchema,
   serverMessageSchema,
   terminalServerMessageSchema,
   threadOpenFileSignalSchema,
@@ -569,6 +570,33 @@ export class NotificationHub implements DbNotifier {
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
       socket.send(payload);
+      delivered += 1;
+    }
+    return delivered;
+  }
+
+  /**
+   * Broadcast an ephemeral plugin realtime signal (`bb.realtime.publish`) to
+   * every connected client. V1 broadcasts to all clients — per-channel
+   * subscriptions arrive with the plugin frontend runtime. Returns how many
+   * clients the signal reached.
+   */
+  notifyPluginSignal(
+    pluginId: string,
+    channel: string,
+    payload: unknown,
+  ): number {
+    const message = JSON.stringify(
+      pluginSignalSchema.parse({
+        type: "plugin-signal",
+        pluginId,
+        channel,
+        payload,
+      }),
+    );
+    let delivered = 0;
+    for (const socket of this.clientKeysBySocket.keys()) {
+      socket.send(message);
       delivered += 1;
     }
     return delivered;

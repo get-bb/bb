@@ -19,6 +19,7 @@
     "@bb/domain": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",

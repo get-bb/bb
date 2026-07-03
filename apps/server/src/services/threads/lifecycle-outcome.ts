@@ -8,6 +8,7 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import type { ServerLogger } from "../../types.js";
+import { emitPluginThreadLifecycleOutcome } from "../plugins/plugin-thread-events.js";
 
 interface ApplyLoggedThreadLifecycleEventDeps {
   db: DbConnection;
@@ -50,6 +51,7 @@ export function applyLoggedThreadLifecycleEvent(
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEvent(deps.db, deps.hub, args);
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
+  emitPluginThreadLifecycleOutcome(outcome);
   return outcome;
 }
 
@@ -64,5 +66,8 @@ export function applyLoggedThreadLifecycleEventInTransaction(
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
+  // Plugin dispatch is deferred to the next macrotask, i.e. after the
+  // caller's synchronous transaction has committed.
+  emitPluginThreadLifecycleOutcome(outcome);
   return outcome;
 }

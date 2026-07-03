@@ -3,6 +3,7 @@ export {
   listTemplates,
   renderTemplate,
 } from "./render-template.js";
+export { scaffoldPlugin, type ScaffoldPluginArgs } from "./plugin-scaffold.js";
 export type {
   TemplateId,
   TemplateVariables,

@@ -66,6 +66,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      'originPluginId is present exactly when origin is "plugin" (enforced by refinement); omission means a non-plugin origin.',
+    fields: ["createThreadRequestSchema.originPluginId"],
+  },
+  {
+    reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.folderId",
@@ -777,6 +782,7 @@ describe("server-contract canonical schemas", () => {
           sourceThreadId: null,
           originKind: null,
           childOrigin: null,
+          originPluginId: null,
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,

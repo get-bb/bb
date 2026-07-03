@@ -250,12 +250,19 @@ function ExperimentsStory({
           popoutChatHotkey,
         }))
       }
+      onPluginsEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          plugins: enabled,
+        }))
+      }
       onUiForkingEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           uiForking: enabled,
         }))
       }
+      pluginsEnabled={state.experiments.plugins}
       popoutChatEnabled={state.experiments.popoutChat}
       popoutChatHotkey={state.experiments.popoutChatHotkey}
       uiForkingEnabled={state.experiments.uiForking}

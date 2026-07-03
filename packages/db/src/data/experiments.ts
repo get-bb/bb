@@ -11,6 +11,7 @@ export function getExperiments(db: DbConnection): Experiments {
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
       popoutChat: systemExperiments.popoutChat,
       popoutChatHotkey: systemExperiments.popoutChatHotkey,
+      plugins: systemExperiments.plugins,
       uiForking: systemExperiments.uiForking,
     })
     .from(systemExperiments)
@@ -31,6 +32,7 @@ export function setExperiments(
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
       popoutChat: experiments.popoutChat,
       popoutChatHotkey: experiments.popoutChatHotkey,
+      plugins: experiments.plugins,
       uiForking: experiments.uiForking,
       updatedAt,
     })
@@ -40,6 +42,7 @@ export function setExperiments(
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
         popoutChat: experiments.popoutChat,
         popoutChatHotkey: experiments.popoutChatHotkey,
+        plugins: experiments.plugins,
         uiForking: experiments.uiForking,
         updatedAt,
       },

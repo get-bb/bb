@@ -158,6 +158,7 @@ describe("production static cache headers", () => {
       claudeCodeMockCliTraffic: false,
       popoutChat: false,
       popoutChatHotkey: "Alt+Space",
+      plugins: false,
       uiForking: true,
     });
     const uiDir = join(harness.config.dataDir, "ui");

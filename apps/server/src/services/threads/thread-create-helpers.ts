@@ -12,6 +12,7 @@ import type { LocalPathProjectSource } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import type { ThreadCreateServiceRequest } from "./thread-create-request.js";
 import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
 
@@ -168,7 +169,7 @@ export function createThreadRecord(
   }
 
   try {
-    return createThread(deps.db, deps.hub, {
+    const thread = createThread(deps.db, deps.hub, {
       projectId: args.request.projectId,
       environmentId: args.environmentId,
       providerId: args.request.providerId,
@@ -178,8 +179,11 @@ export function createThreadRecord(
       parentThreadId: args.request.parentThreadId ?? null,
       sourceThreadId: args.request.sourceThreadId ?? null,
       originKind: args.request.originKind ?? args.request.childOrigin,
+      originPluginId: args.request.originPluginId ?? null,
       status: args.status ?? "starting",
     });
+    emitPluginThreadCreated(thread);
+    return thread;
   } catch (error) {
     if (
       folderId !== null &&

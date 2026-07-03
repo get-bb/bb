@@ -188,6 +188,33 @@ export type {
 } from "./threads.js";
 
 export { getExperiments, setExperiments } from "./experiments.js";
+export {
+  deleteInstalledPlugin,
+  getInstalledPlugin,
+  listInstalledPlugins,
+  setInstalledPluginEnabled,
+  upsertInstalledPlugin,
+  type InstalledPluginRow,
+} from "./plugins.js";
+export {
+  deleteAllPluginSettings,
+  deletePluginKvValue,
+  getPluginKvValue,
+  getPluginSettingsValues,
+  listPluginKvKeys,
+  setPluginKvValue,
+  setPluginSettingsValues,
+} from "./plugin-storage.js";
+export {
+  claimPluginScheduledRun,
+  deletePluginSchedules,
+  listDuePluginSchedules,
+  listPluginSchedules,
+  prunePluginSchedules,
+  recordPluginScheduleResult,
+  upsertPluginSchedule,
+  type PluginScheduleRow,
+} from "./plugin-schedules.js";
 
 export {
   getStoredThemeId,

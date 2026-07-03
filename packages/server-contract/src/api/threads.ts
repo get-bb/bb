@@ -28,7 +28,7 @@ import {
   timelineWorkflowWorkRowSchema,
 } from "../thread-timeline.js";
 import {
-  environmentArgsSchema,
+  createThreadEnvironmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
@@ -52,6 +52,7 @@ export const threadCreateOriginSchema = z.enum([
   "cli",
   "automation",
   "sdk",
+  "plugin",
 ]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
@@ -105,6 +106,11 @@ export const createThreadRequestSchema = z
     projectId: z.string().min(1),
     providerId: z.string().min(1).optional(),
     origin: threadCreateOriginSchema,
+    /**
+     * Id of the plugin that spawned this thread. Present exactly when
+     * origin is "plugin" (enforced below); persisted for attribution.
+     */
+    originPluginId: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     // A source-derived side-chat preload may establish the cloned provider
     // session without a first prompt. Normal starts and forks require at least
@@ -116,7 +122,7 @@ export const createThreadRequestSchema = z
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeSchema.optional(),
     executionInputSources: createExecutionInputSourcesSchema.optional(),
-    environment: environmentArgsSchema,
+    environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     folderId: z.string().min(1).nullable().optional(),
     sourceThreadId: z.string().min(1).optional(),
@@ -127,6 +133,20 @@ export const createThreadRequestSchema = z
     childOrigin: threadChildOriginSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
+    if (value.origin === "plugin" && value.originPluginId === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId is required when origin is "plugin"',
+        path: ["originPluginId"],
+      });
+    }
+    if (value.origin !== "plugin" && value.originPluginId !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId requires origin "plugin"',
+        path: ["originPluginId"],
+      });
+    }
     const originKind = value.originKind ?? value.childOrigin;
     if (originKind === null && value.input.length === 0) {
       ctx.addIssue({

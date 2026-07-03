@@ -2,6 +2,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -150,11 +151,74 @@ export const systemExperiments = sqliteTable("system_experiments", {
   }).notNull(),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
   popoutChatHotkey: text("popout_chat_hotkey").notNull(),
+  plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   uiForking: integer("ui_forking", { mode: "boolean" })
     .notNull()
     .default(false),
   updatedAt: integer("updated_at").notNull(),
 });
+
+// Installed plugins registered by `bb plugin install`. Rows hold durable
+// registration facts only; live status (running/error/…) is plugin-loader
+// memory served via GET /api/v1/plugins.
+export const installedPlugins = sqliteTable("plugins", {
+  id: text("id").primaryKey(),
+  /** Install source spec: "path:<abs>" | "git:<spec>" | "npm:<spec>". */
+  source: text("source").notNull(),
+  /** Absolute directory containing the plugin's package.json. */
+  rootDir: text("root_dir").notNull(),
+  /** package.json version recorded at install/update time. */
+  version: text("version").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  installedAt: integer("installed_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// Namespaced plugin key/value storage (`bb.storage.kv`). Values are JSON text;
+// the plugin API caps them at 256KB before they reach this table.
+export const pluginKv = sqliteTable(
+  "plugin_kv",
+  {
+    pluginId: text("plugin_id").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.pluginId, table.key] })],
+);
+
+// Non-secret plugin settings values (`bb.settings`). Values are JSON text;
+// `secret: true` values live in files under <dataDir>/plugins/<id>/secrets/
+// instead, never in the database.
+export const pluginSettings = sqliteTable(
+  "plugin_settings",
+  {
+    pluginId: text("plugin_id").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.pluginId, table.key] })],
+);
+
+// Durable rows for `bb.background.schedule`. Registration (plugin load)
+// upserts the row and computes next_run_at; the periodic sweep claims a due
+// row with a compare-and-swap on next_run_at, but only while its plugin is
+// loaded. Dispose keeps rows; removing the plugin deletes them.
+export const pluginSchedules = sqliteTable(
+  "plugin_schedules",
+  {
+    pluginId: text("plugin_id").notNull(),
+    name: text("name").notNull(),
+    cron: text("cron").notNull(),
+    nextRunAt: integer("next_run_at").notNull(),
+    lastRunAt: integer("last_run_at"),
+    lastStatus: text("last_status").$type<"running" | "ok" | "error">(),
+    lastError: text("last_error"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.pluginId, table.name] })],
+);
 
 // Single-row table (id = "current") holding the app-wide appearance: the active
 // palette id (a built-in theme id, or a custom theme name whose CSS lives on
@@ -288,6 +352,9 @@ export const threads = sqliteTable(
     childOrigin: text("child_origin", {
       enum: threadChildOriginValues,
     }),
+    // Id of the plugin that spawned this thread (create origin "plugin").
+    // NULL for every other origin.
+    originPluginId: text("origin_plugin_id"),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),

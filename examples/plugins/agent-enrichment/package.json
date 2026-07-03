@@ -1,0 +1,9 @@
+{
+  "name": "bb-plugin-agent-enrichment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "bb": ">=0.9" },
+  "bb": { "server": "./server.ts" },
+  "keywords": ["bb-plugin"]
+}

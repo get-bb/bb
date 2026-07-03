@@ -46,6 +46,7 @@ describe("runPeriodicSweeps", () => {
             throw new Error("machine auth prune failed");
           }),
         },
+        pluginSchedules: harness.pluginService,
       };
 
       await runPeriodicSweeps(deps);
@@ -75,6 +76,7 @@ describe("runPeriodicSweeps", () => {
       const deps = {
         ...harness.deps,
         logger,
+        pluginSchedules: harness.pluginService,
       };
       let laterJobRuns = 0;
       const jobs: PeriodicSweepJob[] = [
@@ -134,9 +136,10 @@ describe("runPeriodicSweeps", () => {
         },
       ];
 
-      const firstSweep = runPeriodicSweepJobs(harness.deps, jobs, 10_000);
+      const deps = { ...harness.deps, pluginSchedules: harness.pluginService };
+      const firstSweep = runPeriodicSweepJobs(deps, jobs, 10_000);
       await jobStarted;
-      await runPeriodicSweepJobs(harness.deps, jobs, 10_001);
+      await runPeriodicSweepJobs(deps, jobs, 10_001);
       expect(runCount).toBe(1);
       releaseRunningJob(releaseJob);
       await firstSweep;
@@ -157,9 +160,10 @@ describe("runPeriodicSweeps", () => {
         },
       ];
 
-      await runPeriodicSweepJobs(harness.deps, jobs, 20_000);
-      await runPeriodicSweepJobs(harness.deps, jobs, 20_999);
-      await runPeriodicSweepJobs(harness.deps, jobs, 21_000);
+      const deps = { ...harness.deps, pluginSchedules: harness.pluginService };
+      await runPeriodicSweepJobs(deps, jobs, 20_000);
+      await runPeriodicSweepJobs(deps, jobs, 20_999);
+      await runPeriodicSweepJobs(deps, jobs, 21_000);
 
       expect(runCount).toBe(2);
     });

@@ -3,13 +3,18 @@ import { wrapStandardWebsocket } from "./realtime-client.js";
 import type { BbRealtimeSocket, BbRealtimeSocketFactory } from "./transport.js";
 
 function decodeWsMessageData(data: RawData): string {
+  if (typeof data === "string") {
+    return data;
+  }
   if (Array.isArray(data)) {
     return Buffer.concat(data).toString("utf8");
   }
   if (Buffer.isBuffer(data)) {
     return data.toString("utf8");
   }
-  return Buffer.from(data).toString("utf8");
+  // Remaining case is an ArrayBuffer; go through Uint8Array so every
+  // @types/node Buffer.from overload set accepts it.
+  return Buffer.from(new Uint8Array(data)).toString("utf8");
 }
 
 /**

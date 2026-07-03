@@ -232,6 +232,31 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 (`--muted-foreground` etc.), and the semantic colors (`--destructive`,
 `--success`, …). Ship one file with a `:root, .light` block and a `.dark` block.
 
+## Plugins
+
+- A bb plugin is a TypeScript package running inside the bb server, extending
+  it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
+  subcommands that agents run through bash like any other command.
+- **Enable it first.** Plugins are an experiment, off by default: turn on
+  **"Plugins"** under Settings → Experiments. Until then, `bb plugin` commands
+  report that plugins are disabled.
+- Commands:
+  - `bb plugin install <src>` — local path, `git:<url>@<ref>`, or
+    `npm:<name>@<version>` (npm on PATH required for `npm:`). Installs prompt
+    for confirmation (plugins are full-trust code); pass `--yes` to skip.
+  - `bb plugin list` — status, background services, schedules, handler timings,
+    and each plugin's contributed `bb` command.
+  - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
+    `bb plugin remove <id>`.
+  - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
+    settings. Reload the plugin after configuring (`bb plugin reload <id>`).
+  - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
+  - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
+- Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
+  them directly — unknown `bb` commands are resolved against installed plugins
+  and proxied to the server. Core command names always win. In agent threads,
+  the injected `plugin-commands` skill lists what is available.
+
 ## Modifying the App UI
 
 `bb ui` lets you reshape the bb frontend itself — not just colors, but layout,

@@ -85,6 +85,12 @@ export const experimentsSchema = z.object({
     .max(ELECTRON_ACCELERATOR_MAX_LENGTH)
     .refine(isValidElectronAccelerator),
   /**
+   * Plugins: enables the plugin system (loader, `bb plugin` commands, plugin
+   * API routes). Off by default — when off no plugin code is loaded and the
+   * plugin endpoints return a structured "disabled" error.
+   */
+  plugins: z.boolean(),
+  /**
    * UI forking: lets `bb ui` fork, edit, build, and live-reload the frontend
    * itself. Off by default — when off the `bb ui` commands are disabled and the
    * shipped UI is always served, even if a fork was built earlier.
@@ -97,5 +103,6 @@ export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
+  plugins: false,
   uiForking: false,
 };

@@ -155,7 +155,9 @@ export interface ExperimentsSettingsSectionProps {
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
+  onPluginsEnabledChange: (enabled: boolean) => void;
   onUiForkingEnabledChange: (enabled: boolean) => void;
+  pluginsEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
   uiForkingEnabled: boolean;
@@ -666,6 +668,7 @@ export function GeneralSettingsSection({
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
+const PLUGINS_EXPERIMENT_LABEL = "Plugins";
 const UI_FORKING_EXPERIMENT_LABEL = "UI forking";
 
 interface HotkeyRecorderProps {
@@ -848,9 +851,11 @@ export function ExperimentsSettingsSection({
   desktopShellAvailable,
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
   onUiForkingEnabledChange,
+  pluginsEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
   uiForkingEnabled,
@@ -871,6 +876,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PLUGINS_EXPERIMENT_LABEL}
+          description="Enable BB plugins (bb plugin). Plugins are full-trust code that extends the server and UI. Off unloads all plugin code."
+        >
+          <Switch
+            checked={pluginsEnabled}
+            disabled={disabled}
+            onCheckedChange={onPluginsEnabledChange}
+            aria-label={PLUGINS_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1028,12 +1045,19 @@ export function SettingsView() {
               popoutChatHotkey: hotkey,
             })
           }
+          onPluginsEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              plugins: enabled,
+            })
+          }
           onUiForkingEnabledChange={(enabled) =>
             updateExperimentsMutation.mutate({
               ...experiments,
               uiForking: enabled,
             })
           }
+          pluginsEnabled={experiments.plugins}
           popoutChatEnabled={experiments.popoutChat}
           popoutChatHotkey={experiments.popoutChatHotkey}
           uiForkingEnabled={experiments.uiForking}

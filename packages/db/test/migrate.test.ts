@@ -212,12 +212,23 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its ui_forking column (added by 0048) is, so the forward
-  // re-migrate can re-add it.
+  // rewound — but its ui_forking column (added by 0048) and plugins column
+  // (added by 0049) are, so the forward re-migrate can re-add them.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN ui_forking")
+    .run();
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
+    .run();
+  // threads.origin_plugin_id was added by 0051; rewind it the same way.
+  db.$client
+    .prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id")
     .run();
 }
 

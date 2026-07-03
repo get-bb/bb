@@ -38,7 +38,10 @@ import {
   resolveStableThreadRequestEnvironment,
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
-import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
+import {
+  resolveCreateThreadEnvironment,
+  resolveProjectDefaultThreadEnvironment,
+} from "./thread-default-policy.js";
 import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
@@ -455,12 +458,38 @@ async function createProvisioningThread(
 
 export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
-  requestInput: ThreadCreateServiceRequestInput,
+  rawRequestInput: ThreadCreateServiceRequestInput,
 ) {
   const project = requirePublicProjectForThreadCreate(
     deps,
-    requestInput.projectId,
+    rawRequestInput.projectId,
   );
+  if (rawRequestInput.origin === "plugin") {
+    if (rawRequestInput.originPluginId === undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        'originPluginId is required when origin is "plugin"',
+      );
+    }
+  } else if (rawRequestInput.originPluginId !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      'originPluginId requires origin "plugin"',
+    );
+  }
+  // Resolve the server-owned "project-default" environment marker into a
+  // concrete environment before any workspace/provisioning logic runs.
+  const requestInput = {
+    ...rawRequestInput,
+    environment:
+      rawRequestInput.environment.type === "project-default"
+        ? resolveProjectDefaultThreadEnvironment(deps, {
+            projectId: rawRequestInput.projectId,
+          })
+        : rawRequestInput.environment,
+  };
   assertProjectWorkspaceCompatibility(project, requestInput);
   const originKind =
     requestInput.originKind ?? requestInput.childOrigin ?? null;

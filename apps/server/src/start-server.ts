@@ -229,7 +229,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
-  const { app, closeWebSockets, injectWebSocket } = createApp(
+  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     {
       appVersion,
       bbAppManagedConfig,
@@ -261,6 +261,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     machineAuth,
     pendingInteractions,
+    pluginSchedules: pluginService,
     telemetry,
     terminalSessions,
   };
@@ -283,6 +284,16 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   );
   telemetry.capture({ name: "app_started" });
 
+  // Plugins load after the listener is up: they are additive, and a slow
+  // plugin must not delay serving. Bind the loopback SDK first so bb.sdk is
+  // usable from the moment factories run.
+  pluginService.bindSdk({
+    baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
+  });
+  void pluginService.start().catch((error: unknown) => {
+    logger.error({ err: error }, "Plugin startup failed");
+  });
+
   const sweepInterval = setInterval(() => {
     void runPeriodicSweeps(sweepDeps);
   }, 10_000);
@@ -296,6 +307,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      await pluginService.stop().catch((error: unknown) => {
+        logger.warn({ err: error }, "Plugin shutdown failed");
+      });
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

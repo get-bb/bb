@@ -13,6 +13,7 @@ import {
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { ServerAppDeps } from "../types.js";
+import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
 import {
   resolveVoiceTranscriptionEnabled,
@@ -31,7 +32,11 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 
-export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
+export function registerSystemRoutes(
+  app: Hono,
+  deps: ServerAppDeps,
+  pluginService: PluginService,
+): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
@@ -58,11 +63,19 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   get(routes.config, (context) => context.json(buildSystemConfigResponse()));
 
   put(routes.experiments, (context, payload) => {
+    const previous = getExperiments(deps.db);
     setExperiments(deps.db, payload);
     // The same kind a config reload broadcasts: every window re-reads
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(getExperiments(deps.db));
+    const next = getExperiments(deps.db);
+    if (previous.plugins !== next.plugins) {
+      // Live toggle: enable loads all enabled plugins, disable disposes them.
+      void pluginService.onExperimentChanged(next.plugins).catch((error) => {
+        deps.logger.error({ err: error }, "Plugin experiment toggle failed");
+      });
+    }
+    return context.json(next);
   });
 
   put(routes.appearance, (context, payload) => {
