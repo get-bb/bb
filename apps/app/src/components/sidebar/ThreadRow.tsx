@@ -97,6 +97,7 @@ interface ThreadRowContainerArgs {
   className: string;
   dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
+  showDragCursor: boolean;
   stickyLevel?: number;
   style: CSSProperties;
 }
@@ -122,13 +123,14 @@ function renderThreadRowContainer({
   className,
   dragBindings,
   onClickCapture,
+  showDragCursor,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
   // Draggable rows show a grab cursor over the whole row.
   const containerClassName = cn(
     className,
-    dragBindings && "cursor-grab active:cursor-grabbing",
+    showDragCursor && "cursor-grab active:cursor-grabbing",
   );
   if (stickyLevel !== undefined) {
     return (
@@ -342,6 +344,7 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
+  const showDragCursor = rowDragBindings !== undefined && thread.pinnedAt === null;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -385,7 +388,7 @@ function ThreadRowComponent({
           "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
           // Draggable rows show a grab affordance; the link still selects on
           // click since a drag needs the activation distance.
-          rowDragBindings && "cursor-grab active:cursor-grabbing",
+          showDragCursor && "cursor-grab active:cursor-grabbing",
         )}
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -458,6 +461,7 @@ function ThreadRowComponent({
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
+    showDragCursor,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
