@@ -946,8 +946,14 @@ export function RootComposeView(props: RootComposeViewProps) {
         text: promptDraft.text,
         mentions: promptDraft.mentions,
         attachments: promptDraft.attachments,
+        annotations: promptDraft.annotations,
       }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+    [
+      promptDraft.annotations,
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
+    ],
   );
   const rootComposeZenModeStorageKey = useMemo(
     () =>
@@ -1618,6 +1624,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             text: promptDraft.text,
             mentions: promptDraft.mentions,
             attachments: promptDraft.attachments,
+            annotations: promptDraft.annotations,
           }
         : null;
     const submittedInput =
@@ -2947,6 +2954,13 @@ export function RootComposeView(props: RootComposeViewProps) {
       uploadPromptAttachment.isPending,
     ],
   );
+  const annotationsConfig = useMemo(
+    () => ({
+      items: promptDraft.annotations ?? [],
+      onRemove: promptDraft.removeAnnotation,
+    }),
+    [promptDraft.annotations, promptDraft.removeAnnotation],
+  );
   const executionConfig = useMemo(
     () => ({
       provider: {
@@ -3231,6 +3245,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       history={historyConfig}
       typeahead={typeaheadConfig}
       attachments={attachmentsConfig}
+      annotations={annotationsConfig}
       {...providerPromptActionProps}
       modeConfig={{
         environment: environmentConfig,

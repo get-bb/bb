@@ -28,7 +28,9 @@ export interface PromptDraftState {
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
-  annotations: PromptDraftAnnotation[];
+  // Optional so existing in-memory draft literals (tests, handoff seeds) stay
+  // valid; store-managed drafts always carry an array via the storage schema.
+  annotations?: PromptDraftAnnotation[];
 }
 
 const promptDraftAnnotationSchema = z.object({
@@ -161,7 +163,7 @@ export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
     draft.text.length === 0 &&
     draft.mentions.length === 0 &&
     draft.attachments.length === 0 &&
-    draft.annotations.length === 0
+    (draft.annotations?.length ?? 0) === 0
   );
 }
 
@@ -185,7 +187,7 @@ export function serializePromptDraftStorage(
   const text = draft.text;
   const mentions = draft.mentions;
   const attachments = draft.attachments;
-  const annotations = draft.annotations;
+  const annotations = draft.annotations ?? [];
   if (isPromptDraftEmpty(draft)) {
     return null;
   }
@@ -343,7 +345,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
     });
   }
 
-  for (const annotation of draft.annotations) {
+  for (const annotation of draft.annotations ?? []) {
     input.push({
       type: "annotation",
       path: annotation.path,

@@ -15,6 +15,7 @@ import type {
 } from "@bb/domain";
 import {
   PromptBoxInternal,
+  type AnnotationsConfig,
   type AttachmentsConfig,
   type HistoryConfig,
   type PromptBoxAction,
@@ -140,6 +141,7 @@ type ContextWindowUsage = ComponentProps<
 export interface FollowUpPromptBoxProps {
   id?: string;
   attachments: AttachmentsConfig;
+  annotations?: AnnotationsConfig;
   /**
    * Slot for the stack of context cards above the prompt input — today
    * <ContextBanner> + <QueuedMessagesList>, both wrapped in PromptStackCard
@@ -207,6 +209,7 @@ function FollowUpPromptBoxStackOnly({
 function FollowUpPromptBoxWithComposer({
   id,
   attachments,
+  annotations,
   stack,
   activePromptMode,
   composer,
@@ -385,6 +388,7 @@ function FollowUpPromptBoxWithComposer({
           }}
           typeahead={typeahead}
           attachments={attachments}
+          annotations={annotations}
           promptActions={promptActions}
           zenMode={{
             layout: "thread",

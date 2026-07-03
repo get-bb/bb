@@ -459,8 +459,14 @@ export function ThreadDetailPromptArea({
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
+      annotations: promptDraft.annotations,
     }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+    [
+      promptDraft.annotations,
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
+    ],
   );
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),
@@ -880,6 +886,14 @@ export function ThreadDetailPromptArea({
     ],
   );
 
+  const annotationsConfig = useMemo(
+    () => ({
+      items: promptDraft.annotations ?? [],
+      onRemove: promptDraft.removeAnnotation,
+    }),
+    [promptDraft.annotations, promptDraft.removeAnnotation],
+  );
+
   const composerConfig = useMemo(
     () => ({
       history: {
@@ -1207,6 +1221,7 @@ export function ThreadDetailPromptArea({
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={attachmentsConfig}
+      annotations={annotationsConfig}
       stack={promptStack}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
