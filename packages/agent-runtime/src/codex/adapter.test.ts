@@ -2458,6 +2458,21 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("translateEvent drops codex generic warning notifications as noise", () => {
+    const adapter = createCodexProviderAdapter();
+
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "warning",
+        params: {
+          threadId: "t1",
+          message: "failed to parse plugin hooks config",
+        },
+      }),
+    ).toEqual([]);
+  });
+
   it("translateEvent item/mcpToolCall/progress maps to shared tool progress", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(

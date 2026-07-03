@@ -184,7 +184,11 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "turn/moderationMetadata": "unknown",
   "turn/plan/updated": "normalized",
   "turn/started": "normalized",
-  warning: "unknown",
+  // Codex's generic warning channel carries internal, unactionable notices (e.g.
+  // "failed to parse plugin hooks config"); drop it instead of leaking a raw row.
+  // Structured configWarning/deprecationNotice have their own handled path and
+  // still render.
+  warning: "noise",
   "windows/worldWritableWarning": "unknown",
   "windowsSandbox/setupCompleted": "unknown",
 } satisfies Record<CodexServerNotificationMethod, ProviderRawEventCoverage>;
