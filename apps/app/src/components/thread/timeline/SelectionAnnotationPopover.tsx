@@ -11,6 +11,14 @@ export interface SelectionAnnotationPopoverProps {
   locationLabel: string;
   onSubmit: (comment: string) => void;
   onDismiss: () => void;
+  /**
+   * Portal target. On touch the diff renders inside a vaul modal drawer that
+   * `aria-hidden`s everything outside its subtree, so a popover portaled to
+   * `<body>` renders but is hidden and non-interactive. Passing the drawer
+   * element keeps the popover inside it; the drawer's transform is `none` once
+   * settled, so viewport-anchored positioning stays correct.
+   */
+  portalContainer?: HTMLElement | null;
 }
 
 /**
@@ -24,6 +32,7 @@ export function SelectionAnnotationPopover({
   locationLabel,
   onSubmit,
   onDismiss,
+  portalContainer,
 }: SelectionAnnotationPopoverProps) {
   const open = selection !== null;
   const [comment, setComment] = useState("");
@@ -71,7 +80,7 @@ export function SelectionAnnotationPopover({
       }}
     >
       <PopoverPrimitive.Anchor virtualRef={virtualAnchorRef} />
-      <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Portal container={portalContainer ?? undefined}>
         <PopoverPrimitive.Content
           side={anchorSide}
           align="center"

@@ -11,7 +11,11 @@ import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@/components/ui/button.js";
-import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
+import {
+  usePierreLineSelectionActions,
+  type PierreLineSelectionAnnotateArgs,
+} from "@/components/git-diff/PierreLineSelectionActions.js";
+import { usePromptAnnotationComposer } from "@/components/promptbox/prompt-annotation-context.js";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { CopyButton } from "@/components/ui/copy-button.js";
@@ -887,11 +891,28 @@ function FilePreviewCode({
       }),
     [file.contents, path],
   );
+  const annotationComposer = usePromptAnnotationComposer();
+  const addAnnotation = annotationComposer?.addAnnotation;
+  const onSelectionAnnotate = useMemo(
+    () =>
+      addAnnotation === undefined
+        ? undefined
+        : ({ range, quotedText, comment }: PierreLineSelectionAnnotateArgs) =>
+            addAnnotation({
+              path,
+              startLine: Math.min(range.start, range.end),
+              endLine: Math.max(range.start, range.end),
+              quotedText,
+              comment,
+            }),
+    [addAnnotation, path],
+  );
   const lineSelectionActions = usePierreLineSelectionActions({
     buildSelectionText,
     containerRef,
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
+    onSelectionAnnotate,
   });
   const options = useMemo<FileOptions<undefined>>(
     () => ({

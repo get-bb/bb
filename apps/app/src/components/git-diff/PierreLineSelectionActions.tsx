@@ -645,6 +645,11 @@ export function usePierreLineSelectionActions({
     // Prefer the comment flow when a consumer supports annotations; fall back to
     // the plain add-to-chat menu (terminal/prose) otherwise.
     if (onSelectionAnnotate !== undefined) {
+      // When the diff is inside a vaul drawer (touch), portal the popover into
+      // the drawer so it isn't aria-hidden by the drawer's focus scope.
+      const drawerContainer =
+        containerRef.current?.closest<HTMLElement>("[data-vaul-drawer]") ??
+        null;
       return (
         <SelectionAnnotationPopover
           selection={activeSelection}
@@ -653,6 +658,7 @@ export function usePierreLineSelectionActions({
           }
           onSubmit={handleAnnotateSubmit}
           onDismiss={dismissSelection}
+          portalContainer={drawerContainer}
         />
       );
     }
