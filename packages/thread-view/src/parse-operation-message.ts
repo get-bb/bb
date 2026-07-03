@@ -14,6 +14,15 @@ import {
   provisioningTitleForStatus,
   readProvisioningTranscript,
 } from "./provisioning-helpers.js";
+
+// Codex methods reclassified as noise in the adapter's visibility metadata.
+// New turns never emit these as provider/unhandled; this hides rows persisted
+// before that fix so old threads read clean in dev too.
+const HIDDEN_CODEX_UNHANDLED_RAW_TYPES = new Set([
+  "hook/started",
+  "hook/completed",
+  "warning",
+]);
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionPermissionGrantGrantScope,
@@ -437,6 +446,12 @@ export function parseOperationMessage(
   const threadName = options?.threadName ?? "";
   if (decoded.type === "provider/unhandled") {
     if (options?.includeProviderUnhandledOperations !== true) {
+      return null;
+    }
+    if (
+      decoded.providerId === "codex" &&
+      HIDDEN_CODEX_UNHANDLED_RAW_TYPES.has(decoded.rawType)
+    ) {
       return null;
     }
 
