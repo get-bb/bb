@@ -39,8 +39,8 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import {
-  BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+  BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 
@@ -410,9 +410,9 @@ describe("desktop preload browser API", () => {
     expect(snapshots).toEqual([snapshot]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
-    expect(electronMock.sendCalls).not.toContainEqual({
-      channel: BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
-      payload: null,
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+      payload: true,
     });
     expect(popoutThreads).toEqual([
       { projectId: "proj_a", threadId: "thr_a" },
@@ -420,7 +420,7 @@ describe("desktop preload browser API", () => {
     ]);
   });
 
-  it("asks main to close the window when no close-window listener handles the request", async () => {
+  it("answers unhandled close-window requests so main closes the window", async () => {
     await loadPreload();
 
     emitIpcPayload({
@@ -429,8 +429,8 @@ describe("desktop preload browser API", () => {
     });
 
     expect(electronMock.sendCalls).toContainEqual({
-      channel: BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
-      payload: null,
+      channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+      payload: false,
     });
   });
 });

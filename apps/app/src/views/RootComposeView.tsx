@@ -2284,30 +2284,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
-  const handleCloseWindowRequest = useCallback(() => {
-    if (
-      !isPersistedSecondaryPanelOpen ||
-      activeFixedSecondaryTab === null ||
-      !isSecondaryFileTab(activeFixedSecondaryTab)
-    ) {
-      return false;
-    }
-    closeTab(activeFixedSecondaryTab.id);
-    return true;
-  }, [activeFixedSecondaryTab, closeTab, isPersistedSecondaryPanelOpen]);
-  useEffect(() => {
-    if (props.surface !== "page") {
-      return;
-    }
-    const desktopInfo = getBbDesktopInfo();
-    if (
-      desktopInfo === null ||
-      desktopInfo.onCloseWindowRequest === undefined
-    ) {
-      return;
-    }
-    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, props.surface]);
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
       closeSecondaryPanel();
@@ -2409,6 +2385,42 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
+  const handleCloseWindowRequest = useCallback(() => {
+    // Gate on the visible panel state, not the persisted flag: on compact
+    // viewports the drawer can be dismissed while tabs stay persisted, and
+    // Cmd+W must not consume hidden tabs.
+    if (
+      !isSecondaryPanelOpen ||
+      activeFixedSecondaryTab === null ||
+      !isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      return false;
+    }
+    if (activeFixedSecondaryTab.kind === "terminal") {
+      handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+    } else {
+      closeTab(activeFixedSecondaryTab.id);
+    }
+    return true;
+  }, [
+    activeFixedSecondaryTab,
+    closeTab,
+    handleCloseTerminalTab,
+    isSecondaryPanelOpen,
+  ]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(

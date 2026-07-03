@@ -1076,26 +1076,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
-  const handleCloseWindowRequest = useCallback(() => {
-    if (
-      !isPersistedSecondaryPanelOpenForSurface ||
-      activeFixedSecondaryTab === null ||
-      !isSecondaryFileTab(activeFixedSecondaryTab)
-    ) {
-      return false;
-    }
-    if (activeFixedSecondaryTab.kind === "side-chat") {
-      closeSideChatTab(activeFixedSecondaryTab.id);
-    } else {
-      closeTab(activeFixedSecondaryTab.id);
-    }
-    return true;
-  }, [
-    activeFixedSecondaryTab,
-    closeSideChatTab,
-    closeTab,
-    isPersistedSecondaryPanelOpenForSurface,
-  ]);
   useEffect(() => {
     if (props.surface !== "page") {
       return;
@@ -1106,19 +1086,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
   }, [handleOpenNewTab, props.surface]);
-  useEffect(() => {
-    if (props.surface !== "page") {
-      return;
-    }
-    const desktopInfo = getBbDesktopInfo();
-    if (
-      desktopInfo === null ||
-      desktopInfo.onCloseWindowRequest === undefined
-    ) {
-      return;
-    }
-    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, props.surface]);
   useEffect(() => {
     if (props.surface !== "page" || getBbDesktopInfo() === null) {
       return;
@@ -1186,6 +1153,45 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [closeTerminal, removeFixedTerminalTab, threadId],
   );
+  const handleCloseWindowRequest = useCallback(() => {
+    // Gate on the visible panel state, not the persisted flag: on compact
+    // viewports the drawer can be dismissed while tabs stay persisted, and
+    // Cmd+W must not consume hidden tabs.
+    if (
+      !isSecondaryPanelOpen ||
+      activeFixedSecondaryTab === null ||
+      !isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      return false;
+    }
+    if (activeFixedSecondaryTab.kind === "terminal") {
+      handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+    } else if (activeFixedSecondaryTab.kind === "side-chat") {
+      closeSideChatTab(activeFixedSecondaryTab.id);
+    } else {
+      closeTab(activeFixedSecondaryTab.id);
+    }
+    return true;
+  }, [
+    activeFixedSecondaryTab,
+    closeSideChatTab,
+    closeTab,
+    handleCloseTerminalTab,
+    isSecondaryPanelOpen,
+  ]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);

@@ -89,9 +89,10 @@ import {
 } from "./desktop-update-ipc.js";
 import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
 import {
-  BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+  BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
 import {
   createDesktopBrowserViewManager,
@@ -468,10 +469,36 @@ function shouldEnableServerDaemonLogsMenu(): boolean {
   );
 }
 
-function isDesktopCloseCommandTarget(
-  value: unknown,
-): value is Pick<BrowserWindow, "webContents"> {
-  return value instanceof BrowserWindow;
+// Close requests routed through the renderer, keyed by webContents id. If the
+// renderer never answers (crashed, hung, or still loading), the timer closes
+// the window from the main process like the native close role used to.
+const pendingCloseWindowRequests = new Map<number, NodeJS.Timeout>();
+
+function requestRendererWindowClose(browserWindow: BrowserWindow): void {
+  const webContentsId = browserWindow.webContents.id;
+  const pending = pendingCloseWindowRequests.get(webContentsId);
+  if (pending !== undefined) {
+    clearTimeout(pending);
+  }
+  pendingCloseWindowRequests.set(
+    webContentsId,
+    setTimeout(() => {
+      pendingCloseWindowRequests.delete(webContentsId);
+      if (!browserWindow.isDestroyed()) {
+        browserWindow.close();
+      }
+    }, CLOSE_WINDOW_REQUEST_TIMEOUT_MS),
+  );
+  browserWindow.webContents.send(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, null);
+}
+
+function closeFocusedDetachedDevTools(): void {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.webContents.isDevToolsFocused()) {
+      browserWindow.webContents.closeDevTools();
+      return;
+    }
+  }
 }
 
 function refreshApplicationMenu(): void {
@@ -489,13 +516,23 @@ function refreshApplicationMenu(): void {
       );
     },
     closeWindowOrSideTab(browserWindow) {
-      if (!isDesktopCloseCommandTarget(browserWindow)) {
+      if (browserWindow === undefined) {
+        // A focused detached DevTools window is the key window but never
+        // surfaces as a BaseWindow here; the native close role used to
+        // close it.
+        closeFocusedDetachedDevTools();
         return;
       }
-      browserWindow.webContents.send(
-        BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
-        null,
-      );
+      if (
+        !(browserWindow instanceof BrowserWindow) ||
+        browserWindow === logViewerWindow
+      ) {
+        // Windows that don't run the app preload can't answer the renderer
+        // round trip, so close them directly.
+        browserWindow.close();
+        return;
+      }
+      requestRendererWindowClose(browserWindow);
     },
     openServerDaemonLogs() {
       void openServerDaemonLogs();
@@ -1124,8 +1161,15 @@ function registerDesktopUpdateIpc(): void {
     nativeTheme.themeSource = parsed.data;
   });
 
-  ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_CHANNEL, (event) => {
-    BrowserWindow.fromWebContents(event.sender)?.close();
+  ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, (event, payload) => {
+    const pending = pendingCloseWindowRequests.get(event.sender.id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      pendingCloseWindowRequests.delete(event.sender.id);
+    }
+    if (payload === false) {
+      BrowserWindow.fromWebContents(event.sender)?.close();
+    }
   });
   // The in-app browser tab hands off the current address to the system
   // browser. The URL originates from a possibly-hostile page, so only open

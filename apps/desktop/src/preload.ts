@@ -49,8 +49,8 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
-  BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+  BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -297,9 +297,9 @@ ipcRenderer.on(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, () => {
   for (const listener of closeWindowRequestListeners) {
     handled = listener() || handled;
   }
-  if (!handled) {
-    ipcRenderer.send(BB_DESKTOP_CLOSE_WINDOW_CHANNEL, null);
-  }
+  // Always answer: main closes the window on `false` and falls back to
+  // closing it itself if no answer arrives in time.
+  ipcRenderer.send(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, handled);
 });
 
 ipcRenderer.on(BB_DESKTOP_BROWSER_STATE_CHANNEL, (_event, payload: unknown) => {
