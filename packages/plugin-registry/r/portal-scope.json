@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "portal-scope",
+  "type": "registry:lib",
+  "title": "portal-scope",
+  "description": "BB lib \"portal-scope\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/lib/portal-scope.ts",
+      "content": "/**\n * Plugin flavor of the app's `lib/portal-scope.ts` (registry override —\n * component files are byte-identical between the app and the registry; only\n * this file differs). Everything a plugin renders is plugin-scoped, so the\n * scope attribute is unconditional: portaled overlay content (dialog,\n * select, popover, …) lands in document.body, outside the plugin's\n * `[data-bb-plugin-root]` mount, and must carry its own scope root for the\n * plugin's compiled stylesheet (`@scope ([data-bb-plugin-root])`) to reach\n * it. In the host app the same hook reads the plugin-slot context instead,\n * so host overlays stay out of plugin scopes.\n */\nexport function usePortalScopeProps(): { \"data-bb-plugin-root\"?: \"\" } {\n  return { \"data-bb-plugin-root\": \"\" };\n}\n",
+      "type": "registry:lib",
+      "target": "lib/portal-scope.ts"
+    }
+  ]
+}

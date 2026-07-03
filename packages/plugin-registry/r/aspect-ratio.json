@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "aspect-ratio",
+  "type": "registry:ui",
+  "title": "aspect-ratio",
+  "description": "BB ui \"aspect-ratio\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "dependencies": [
+    "@radix-ui/react-aspect-ratio"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/aspect-ratio.tsx",
+      "content": "import * as AspectRatioPrimitive from \"@radix-ui/react-aspect-ratio\"\n\nconst AspectRatio = AspectRatioPrimitive.Root\n\nexport { AspectRatio }\n",
+      "type": "registry:ui",
+      "target": "components/ui/aspect-ratio.tsx"
+    }
+  ]
+}

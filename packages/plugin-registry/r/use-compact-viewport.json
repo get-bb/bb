@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-compact-viewport",
+  "type": "registry:hook",
+  "title": "use-compact-viewport",
+  "description": "BB hook \"use-compact-viewport\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "use-media-query"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/hooks/use-compact-viewport.tsx",
+      "content": "import {\n  createContext,\n  createElement,\n  useContext,\n  type ReactNode,\n} from \"react\";\n\nimport { useMediaQuery } from \"./use-media-query.js\";\n\nexport const COMPACT_VIEWPORT_QUERY = \"(max-width: 767px)\";\n\nconst CompactViewportOverrideContext = createContext<boolean | null>(null);\n\ninterface CompactViewportOverrideProviderProps {\n  children: ReactNode;\n  isCompactViewport: boolean;\n}\n\nexport function CompactViewportOverrideProvider({\n  children,\n  isCompactViewport,\n}: CompactViewportOverrideProviderProps) {\n  return createElement(\n    CompactViewportOverrideContext.Provider,\n    { value: isCompactViewport },\n    children,\n  );\n}\n\nexport function useIsCompactViewport(): boolean {\n  const override = useContext(CompactViewportOverrideContext);\n  const isCompactViewport = useMediaQuery(COMPACT_VIEWPORT_QUERY);\n  if (override !== null) {\n    return override;\n  }\n  return isCompactViewport;\n}\n",
+      "type": "registry:hook",
+      "target": "components/ui/hooks/use-compact-viewport.tsx"
+    }
+  ]
+}

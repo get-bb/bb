@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "skeleton",
+  "type": "registry:ui",
+  "title": "skeleton",
+  "description": "BB ui \"skeleton\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/skeleton.tsx",
+      "content": "/* shadcn/ui-derived */\nimport type { HTMLAttributes } from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport function Skeleton({\n  className,\n  ...props\n}: HTMLAttributes<HTMLDivElement>) {\n  return (\n    <div\n      className={cn(\"animate-pulse rounded-md bg-surface-selected\", className)}\n      {...props}\n    />\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/skeleton.tsx"
+    }
+  ]
+}

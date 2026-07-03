@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-browser-dimming-modal",
+  "type": "registry:hook",
+  "title": "use-browser-dimming-modal",
+  "description": "BB hook \"use-browser-dimming-modal\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/hooks/useBrowserDimmingModal.ts",
+      "content": "/**\n * Plugin flavor of the app's `hooks/useBrowserDimmingModal.ts` (registry\n * override): a no-op. In the host app this hook hides the native in-app\n * browser WebContentsView while a modal is open (a DOM backdrop cannot dim\n * an OS-level overlay); that coordination lives in host state a plugin\n * bundle deliberately does not share. Plugin dialogs simply skip it — the\n * host dims the browser for its own modals only.\n */\nexport function useBrowserDimmingModal(_active: boolean): void {}\n\n/** Host flavor reports live modal state; plugins have none. */\nexport function useIsBrowserDimmingModalOpen(): boolean {\n  return false;\n}\n",
+      "type": "registry:hook",
+      "target": "hooks/useBrowserDimmingModal.ts"
+    }
+  ]
+}
