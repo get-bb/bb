@@ -6,12 +6,16 @@ import { z } from "zod";
  * The `bb` field of a plugin's package.json. `server` is the backend entry
  * (factory default export). `app` is the optional frontend entry (compiled by
  * `bb plugin build`; unused until the frontend runtime phase). `skills`
- * relocates/filters the auto-imported `skills/` convention directory.
+ * relocates/filters the auto-imported `skills/` convention directory. `logo`
+ * relocates the auto-detected `logo.(svg|png|webp)` root file; `logoDark`
+ * does the same for the optional dark-theme variant (`logo-dark.*`).
  */
 const bbManifestFieldSchema = z.object({
   server: z.string().min(1),
   app: z.string().min(1).optional(),
   skills: z.array(z.string().min(1)).optional(),
+  logo: z.string().min(1).optional(),
+  logoDark: z.string().min(1).optional(),
 });
 
 const pluginPackageJsonSchema = z.object({
@@ -33,6 +37,18 @@ export interface PluginManifest {
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
   appEntry: string | undefined;
+  /**
+   * Absolute path of the sidebar/menu logo declared via `bb.logo` (svg, png,
+   * or webp). Undefined when not declared — the loader then auto-detects
+   * `logo.svg` / `logo.png` / `logo.webp` at the plugin root.
+   */
+  logoPath: string | undefined;
+  /**
+   * Absolute path of the dark-theme logo variant declared via `bb.logoDark`.
+   * Undefined when not declared — the loader then auto-detects
+   * `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp` at the plugin root.
+   */
+  logoDarkPath: string | undefined;
   /**
    * Absolute skills-root directories auto-imported as the plugin skills
    * tier (design §4.4). Defaults to `<rootDir>/skills`; `bb.skills` entries
@@ -111,6 +127,20 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
   );
+  const resolveLogoEntry = (
+    entry: string | undefined,
+    label: string,
+  ): string | undefined => {
+    if (entry === undefined) return undefined;
+    if (!/\.(svg|png|webp)$/i.test(entry)) {
+      throw new Error(
+        `manifest ${label} must point at a .svg, .png, or .webp file, got "${entry}"`,
+      );
+    }
+    return resolveEntry(rootDir, entry, label);
+  };
+  const logoPath = resolveLogoEntry(bb.logo, "bb.logo");
+  const logoDarkPath = resolveLogoEntry(bb.logoDark, "bb.logoDark");
   return {
     id: derivePluginId(name),
     name,
@@ -118,6 +148,8 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
     bbEngineRange: engines?.bb,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
+    logoPath,
+    logoDarkPath,
     skillsRootPaths,
     rootDir,
   };

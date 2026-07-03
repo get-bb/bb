@@ -7,6 +7,7 @@ import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type { PluginSdkApp } from "@bb/plugin-sdk";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import { interpretPluginFrontends } from "./plugin-app-definition";
+import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
   removePluginSlotRegistrations,
@@ -182,24 +183,33 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   const body = (await response.json()) as { plugins?: unknown };
   if (!Array.isArray(body.plugins)) return [];
   const candidates: PluginFrontendCandidate[] = [];
+  // Same fetch feeds the logo store: every surface rendering a plugin
+  // contribution (sidebar, menus, thread actions) resolves logos from it.
+  const logoUrls = new Map<string, PluginLogoUrls>();
   for (const entry of body.plugins) {
     const typed = entry as {
       id?: unknown;
       enabled?: unknown;
       status?: unknown;
+      logoUrl?: unknown;
+      logoDarkUrl?: unknown;
       app?: { bundle?: unknown };
     } | null;
-    if (
-      typeof typed?.id !== "string" ||
-      typed.enabled !== true ||
-      typed.status !== "running"
-    ) {
+    if (typeof typed?.id !== "string") continue;
+    const logoUrl = typeof typed.logoUrl === "string" ? typed.logoUrl : null;
+    const logoDarkUrl =
+      typeof typed.logoDarkUrl === "string" ? typed.logoDarkUrl : null;
+    if (logoUrl !== null || logoDarkUrl !== null) {
+      logoUrls.set(typed.id, { logoUrl, logoDarkUrl });
+    }
+    if (typed.enabled !== true || typed.status !== "running") {
       continue;
     }
     const bundle = typed.app?.bundle;
     if (!isFrontendBundle(bundle)) continue;
     candidates.push({ pluginId: typed.id, bundle });
   }
+  setPluginLogoUrls(logoUrls);
   return candidates;
 }
 

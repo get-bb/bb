@@ -64,6 +64,8 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
+        // Default filled at collection time (host renders it as-is).
+        chrome: "page",
       },
     ]);
     expect(registrations.threadPanelTabs).toEqual([
@@ -122,8 +124,58 @@ describe("collectPluginAppRegistrations", () => {
         }),
       /"component" must be/,
     ],
+    [
+      "nav panel with an unknown chrome mode",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            chrome: "frameless" as never,
+          });
+        }),
+      /"chrome" must be "page" or "none"/,
+    ],
+    [
+      "nav panel with a non-component headerContent",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            headerContent: "nope" as never,
+          });
+        }),
+      /"headerContent" must be a React component/,
+    ],
   ])("rejects %s", (_name, build, message) => {
     expect(() => collectPluginAppRegistrations(build())).toThrow(message);
+  });
+
+  it("keeps an explicit chrome + headerContent registration", () => {
+    function Accessory() {
+      return null;
+    }
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        chrome: "none",
+        headerContent: Accessory,
+      });
+    });
+    expect(collectPluginAppRegistrations(definition).navPanels[0]).toMatchObject(
+      { chrome: "none", headerContent: Accessory },
+    );
   });
 });
 

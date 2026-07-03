@@ -35,11 +35,38 @@ function allowedAppOrigins(deps: PluginRoutesDeps): Set<string> {
 }
 
 /**
- * "local" auth (design §4.6): the request must come from the local BB app.
- * Origin (when present) must be an allowed app origin, Host must be a local
- * app host (blunts CSRF and DNS rebinding), and non-GET requests must carry
- * a JSON content type so browsers are forced into a CORS preflight the
- * allowlist denies.
+ * Ports BB legitimately serves the app on (server, dev app, appUrl).
+ * Deliberately EXPLICIT ports only: mapping https' implicit 443 here would
+ * make every ordinary internet origin match whenever appUrl is a standard
+ * https URL. Standard-port deployments are covered by the exact-origin
+ * allowlist instead.
+ */
+function knownAppPorts(deps: PluginRoutesDeps): Set<string> {
+  const ports = new Set<string>([String(deps.config.serverPort)]);
+  if (deps.config.devAppPort !== undefined) {
+    ports.add(String(deps.config.devAppPort));
+  }
+  if (deps.config.appUrl !== undefined) {
+    try {
+      const port = new URL(deps.config.appUrl).port;
+      if (port.length > 0) ports.add(port);
+    } catch {
+      // Ignore an unparseable appUrl; the other ports still apply.
+    }
+  }
+  return ports;
+}
+
+/**
+ * "local" auth (design §4.6): the request must come from the BB app itself.
+ * The load-bearing CSRF defense is the JSON-only rule below — a cross-origin
+ * JSON POST always triggers a CORS preflight, which the server's allowlist
+ * denies. The Origin check adds a cheap second layer, but it must tolerate
+ * BB being served over LAN/Tailscale addresses the server cannot enumerate
+ * (and the dev proxy rewriting Host): any origin on a known BB app port is
+ * accepted. There is deliberately NO Host allowlist — pinning Host only on
+ * plugin routes adds no real protection while the rest of the local API has
+ * none (a whole-server story is the actual fix; design doc §10).
  */
 function localAuthProblem(
   context: Context,
@@ -48,24 +75,26 @@ function localAuthProblem(
   const allowedOrigins = allowedAppOrigins(deps);
   const requestUrl = new URL(context.req.url);
   const origin = context.req.header("origin");
-  if (
-    origin !== undefined &&
-    origin !== requestUrl.origin &&
-    !allowedOrigins.has(origin)
-  ) {
-    return {
-      status: 403,
-      error: `origin "${origin}" is not a local BB app origin`,
-    };
-  }
-  const allowedHosts = new Set(
-    [...allowedOrigins].map((allowed) => new URL(allowed).host),
-  );
-  if (!allowedHosts.has(requestUrl.host)) {
-    return {
-      status: 403,
-      error: `host "${requestUrl.host}" is not a local BB app host`,
-    };
+  if (origin !== undefined && origin !== requestUrl.origin) {
+    // Only an origin with an EXPLICIT port can match the port rule —
+    // implicit-port origins (ordinary internet sites) must match the exact
+    // allowlist.
+    let originPort: string | null = null;
+    try {
+      const port = new URL(origin).port;
+      originPort = port.length > 0 ? port : null;
+    } catch {
+      originPort = null;
+    }
+    if (
+      !allowedOrigins.has(origin) &&
+      (originPort === null || !knownAppPorts(deps).has(originPort))
+    ) {
+      return {
+        status: 403,
+        error: `origin "${origin}" is not a local BB app origin`,
+      };
+    }
   }
   const method = context.req.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
@@ -357,6 +386,29 @@ export function registerPluginRoutes(
   app.get("/plugins/:id/assets/:file", async (context) => {
     if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const file = context.req.param("file");
+    // The plugin's logo (logo.(svg|png|webp) / manifest bb.logo) and its
+    // optional dark-theme variant (logo-dark.* / bb.logoDark): same
+    // hash-busting cache policy and live-runtime gating as the bundle assets.
+    if (file === "logo" || file === "logo-dark") {
+      const logo = plugins.getLogoAsset(context.req.param("id"), file);
+      if (!logo) {
+        return context.json({ ok: false, error: "plugin has no logo" }, 404);
+      }
+      let bytes: Buffer;
+      try {
+        bytes = await readFile(logo.path);
+      } catch {
+        return context.json({ ok: false, error: "logo file missing" }, 404);
+      }
+      const cacheControl =
+        context.req.query("h") === logo.hash
+          ? "public, max-age=31536000, immutable"
+          : "no-store";
+      return context.body(new Uint8Array(bytes), 200, {
+        "content-type": logo.contentType,
+        "cache-control": cacheControl,
+      });
+    }
     const spec =
       file === "app.js" || file === "app.css"
         ? APP_ASSET_CONTENT_TYPES[file]

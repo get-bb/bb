@@ -282,6 +282,13 @@ export default async function plugin(bb: BbPluginApi) {
   // rpc — the frontend bundle's data plane (app.tsx calls these).
   // ------------------------------------------------------------------
   bb.rpc.register({
+    /** () → { count } — force a Linear fetch now (the board header's Sync
+     * button). Publishes "issues-updated" via syncIssues on changes. */
+    async sync() {
+      const result = await syncIssues();
+      return { count: result.count };
+    },
+
     /** { filter? } → { issues } from the cache (no network). */
     listIssues(input: unknown) {
       const filter =

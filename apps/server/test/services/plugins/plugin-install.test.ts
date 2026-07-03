@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import type { Logger } from "@bb/logger";
-import { scaffoldPlugin } from "@bb/templates";
+import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import {
   managedInstallDir,
   parsePluginSource,

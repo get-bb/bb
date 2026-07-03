@@ -10,12 +10,21 @@ import type {
   PluginThreadPanelTabProps,
 } from "@bb/plugin-sdk";
 import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
+import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
+  type PluginNavPanelSlot,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { PLUGIN_PANEL_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginPanelView } from "@/views/PluginPanelView";
+import {
+  PluginPanelHeaderActions,
+  PluginPanelHeaderCenter,
+} from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
 import { PluginHomepageSections } from "./PluginHomepageSections";
@@ -40,6 +49,7 @@ function registrationSet(
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
@@ -175,6 +185,160 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(
       screen.getByText(/This plugin panel is not available/),
     ).toBeDefined();
+  });
+
+  it("renders the plugin's logo in the sidebar row when one is served, named icon otherwise", () => {
+    setPluginLogoUrls(
+      new Map([
+        ["demo", { logoUrl: "/api/v1/plugins/demo/assets/logo?h=cafe", logoDarkUrl: null }],
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [
+          { id: "board", title: "Demo board", icon: "Columns", path: "board", component: Board },
+        ],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "plain",
+      registrationSet({
+        navPanels: [
+          { id: "list", title: "Plain list", icon: "Columns", path: "list", component: Board },
+        ],
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginNavSidebarItems />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByTestId("plugin-logo-demo").getAttribute("src"),
+    ).toBe("/api/v1/plugins/demo/assets/logo?h=cafe");
+    // No logo → named-icon fallback (an svg, no img).
+    expect(screen.queryByTestId("plugin-logo-plain")).toBeNull();
+    const plainRow = screen.getByText("Plain list").closest("button");
+    expect(plainRow?.querySelector("svg")).not.toBeNull();
+  });
+});
+
+describe("plugin panel chrome (shared header + body modes)", () => {
+  function PanelBody() {
+    return <div>panel body</div>;
+  }
+
+  function panelSlot(
+    overrides: Partial<PluginNavPanelSlot>,
+  ): PluginNavPanelSlot {
+    return {
+      id: "board",
+      title: "Demo board",
+      icon: "Columns",
+      path: "board",
+      component: PanelBody,
+      pluginId: "demo",
+      generation: 1,
+      ...overrides,
+    };
+  }
+
+  function renderPanelBody(route = "/plugins/demo/board") {
+    return render(
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders logo + title in the header center and headerContent in the actions", () => {
+    setPluginLogoUrls(
+      new Map([
+        ["demo", { logoUrl: "/api/v1/plugins/demo/assets/logo?h=cafe", logoDarkUrl: null }],
+      ]),
+    );
+    function HeaderAccessory() {
+      return <button type="button">Sync now</button>;
+    }
+    const panel = panelSlot({ headerContent: HeaderAccessory });
+    render(
+      <>
+        <PluginPanelHeaderCenter panel={panel} />
+        <PluginPanelHeaderActions panel={panel} />
+      </>,
+    );
+    expect(screen.getByText("Demo board")).toBeDefined();
+    expect(
+      screen.getByTestId("plugin-logo-demo").getAttribute("src"),
+    ).toBe("/api/v1/plugins/demo/assets/logo?h=cafe");
+    expect(screen.getByRole("button", { name: "Sync now" })).toBeDefined();
+  });
+
+  it("hides a throwing headerContent without breaking the header (no crash chip)", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function ExplodingAccessory(): never {
+      throw new Error("accessory exploded");
+    }
+    const panel = panelSlot({ headerContent: ExplodingAccessory });
+    render(
+      <>
+        <PluginPanelHeaderCenter panel={panel} />
+        <PluginPanelHeaderActions panel={panel} />
+      </>,
+    );
+    // The header center survives; the accessory is hidden, not chip-ified.
+    expect(screen.getByText("Demo board")).toBeDefined();
+    expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
+  });
+
+  it('suppresses headerContent in "none" mode (the plugin owns the body)', () => {
+    function HeaderAccessory() {
+      return <button type="button">ignored</button>;
+    }
+    const panel = panelSlot({
+      chrome: "none",
+      headerContent: HeaderAccessory,
+    });
+    const { container } = render(<PluginPanelHeaderActions panel={panel} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it('renders the body full-bleed in "none" mode with no heading of its own', () => {
+    function FullBleed() {
+      return <div>full bleed body</div>;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [
+          panelSlot({ component: FullBleed, chrome: "none" }),
+        ],
+      }),
+    );
+    renderPanelBody();
+    expect(screen.getByText("full bleed body")).toBeDefined();
+    // The view is body-only: the title lives in the shared app header.
+    expect(screen.queryByRole("heading", { name: "Demo board" })).toBeNull();
+  });
+
+  it('still contains a crashing "none" panel inside the error boundary', () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      throw new Error("panel crashed");
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [panelSlot({ component: Crashes, chrome: "none" })],
+      }),
+    );
+    renderPanelBody();
+    expect(screen.getByText("plugin demo crashed")).toBeDefined();
   });
 });
 

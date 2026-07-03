@@ -4,10 +4,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { PluginThreadActionContribution } from "@/hooks/queries/plugin-contribution-queries";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import {
   PluginThreadActionButtons,
   PluginThreadActions,
-  pluginThreadActionIconName,
 } from "./PluginThreadActions";
 
 const mockToast = vi.hoisted(() => ({
@@ -200,10 +204,55 @@ describe("PluginThreadActionButtons", () => {
   });
 });
 
-describe("pluginThreadActionIconName", () => {
+describe("pluginIconName", () => {
   it("uses a known icon name and falls back to Zap otherwise", () => {
-    expect(pluginThreadActionIconName("GitBranch")).toBe("GitBranch");
-    expect(pluginThreadActionIconName("beaker")).toBe("Zap");
-    expect(pluginThreadActionIconName(null)).toBe("Zap");
+    expect(pluginIconName("GitBranch")).toBe("GitBranch");
+    expect(pluginIconName("beaker")).toBe("Zap");
+    expect(pluginIconName(null)).toBe("Zap");
+  });
+});
+
+describe("plugin logo on thread action buttons", () => {
+  afterEach(() => {
+    resetPluginLogoStoreForTest();
+  });
+
+  it("renders the plugin's logo instead of the bolt when one is served", () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "linear",
+          {
+            logoUrl: "/api/v1/plugins/linear/assets/logo?h=abc",
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
+    render(
+      <PluginThreadActionButtons
+        actions={[makeAction()]}
+        pendingActionKey={null}
+        onRun={() => {}}
+      />,
+    );
+    const logo = screen.getByTestId("plugin-logo-linear");
+    expect(logo.getAttribute("src")).toBe(
+      "/api/v1/plugins/linear/assets/logo?h=abc",
+    );
+  });
+
+  it("falls back to the named icon without a logo", () => {
+    render(
+      <PluginThreadActionButtons
+        actions={[makeAction()]}
+        pendingActionKey={null}
+        onRun={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("plugin-logo-linear")).toBeNull();
+    // The generic bolt fallback renders as an svg inside the button.
+    const button = screen.getByRole("button", { name: "Run tests" });
+    expect(button.querySelector("svg")).not.toBeNull();
   });
 });

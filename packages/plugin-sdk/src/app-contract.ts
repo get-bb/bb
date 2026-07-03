@@ -1,4 +1,14 @@
-import type { MouseEventHandler, ReactNode, ComponentType } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ComponentType,
+  CSSProperties,
+  HTMLAttributes,
+  InputHTMLAttributes,
+  LabelHTMLAttributes,
+  MouseEventHandler,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
@@ -62,6 +72,20 @@ export interface PluginNavPanelRegistration {
   /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
   path: string;
   component: ComponentType<PluginNavPanelProps>;
+  /**
+   * Panel chrome (default "page"): "page" renders the host title bar (plugin
+   * logo + `title` + your `headerContent`) above a full-width padded body;
+   * "none" hands the ENTIRE panel area to `component` — no host padding, no
+   * title bar (`headerContent` is ignored) — only the per-plugin error
+   * boundary remains.
+   */
+  chrome?: "page" | "none";
+  /**
+   * Optional component rendered on the right side of the "page" title bar
+   * (e.g. a sync button or a count). Contained separately from the body: a
+   * throwing headerContent is hidden without breaking the title bar.
+   */
+  headerContent?: ComponentType<PluginNavPanelProps>;
 }
 
 export interface PluginThreadPanelTabRegistration {
@@ -148,26 +172,315 @@ export interface BbNavigate {
 }
 
 // ---------------------------------------------------------------------------
-// UI kit (curated, additive-only). Deliberately small: internal app
-// components are NOT part of this surface.
+// UI kit — the host's shadcn/ui-derived components, exposed under stock
+// shadcn/ui names with stock props so standard shadcn code works as-is.
+// Rendered by the host (theme tokens, dark mode, and portalled overlays work
+// for free). Additive-only within an SDK major; the prop types below are the
+// guaranteed contract — host components may accept more at runtime, but only
+// these are stable. Internal app components beyond this surface are NOT
+// exposed.
 // ---------------------------------------------------------------------------
 
-export interface PluginButtonProps {
-  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost";
-  size?: "default" | "sm" | "lg" | "icon";
-  type?: "button" | "submit" | "reset";
-  disabled?: boolean;
+/** Placement side for popover-style overlay content. */
+export type PluginUiSide = "top" | "right" | "bottom" | "left";
+/** Placement alignment for popover-style overlay content. */
+export type PluginUiAlign = "start" | "center" | "end";
+
+/** Baseline props shared by styled kit parts. */
+export interface PluginUiPartProps {
   className?: string;
+  style?: CSSProperties;
   children?: ReactNode;
-  onClick?: MouseEventHandler<HTMLButtonElement>;
+}
+
+// --- Buttons, badges, cards ------------------------------------------------
+
+export interface PluginButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title"> {
+  variant?:
+    | "default"
+    | "destructive"
+    | "outline"
+    | "secondary"
+    | "ghost"
+    | "link";
+  size?: "default" | "sm" | "lg" | "icon";
+  /** Render the child element instead of a <button>, merging props (Slot). */
+  asChild?: boolean;
+}
+
+export interface PluginBadgeProps extends HTMLAttributes<HTMLDivElement> {
+  variant?: "default" | "secondary" | "destructive" | "outline";
+}
+
+/** shadcn Card family: Card, CardHeader, CardTitle, …, all plain divs. */
+export type PluginCardProps = HTMLAttributes<HTMLDivElement>;
+
+// --- Form controls -----------------------------------------------------------
+
+export type PluginInputProps = InputHTMLAttributes<HTMLInputElement>;
+
+export type PluginTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+export type PluginLabelProps = LabelHTMLAttributes<HTMLLabelElement>;
+
+export interface PluginSwitchProps {
+  checked?: boolean;
+  defaultChecked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+  style?: CSSProperties;
   "aria-label"?: string;
 }
 
-export interface PluginCardProps {
-  title?: string;
+export interface PluginCheckboxProps {
+  checked?: boolean | "indeterminate";
+  defaultChecked?: boolean | "indeterminate";
+  onCheckedChange?: (checked: boolean | "indeterminate") => void;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  value?: string;
+  id?: string;
+  className?: string;
+  style?: CSSProperties;
+  "aria-label"?: string;
+}
+
+// --- Select ------------------------------------------------------------------
+
+export interface PluginSelectProps {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  children?: ReactNode;
+}
+
+export interface PluginSelectTriggerProps {
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+  disabled?: boolean;
+  id?: string;
+  "aria-label"?: string;
+}
+
+export interface PluginSelectValueProps {
+  placeholder?: ReactNode;
   className?: string;
   children?: ReactNode;
 }
+
+export interface PluginSelectContentProps extends PluginUiPartProps {
+  position?: "item-aligned" | "popper";
+  side?: PluginUiSide;
+  align?: PluginUiAlign;
+  sideOffset?: number;
+}
+
+export interface PluginSelectItemProps extends PluginUiPartProps {
+  value: string;
+  disabled?: boolean;
+  textValue?: string;
+}
+
+// --- Tabs --------------------------------------------------------------------
+
+export interface PluginTabsProps {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  orientation?: "horizontal" | "vertical";
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+}
+
+export interface PluginTabsListProps extends PluginUiPartProps {
+  loop?: boolean;
+}
+
+export interface PluginTabsTriggerProps extends PluginUiPartProps {
+  value: string;
+  disabled?: boolean;
+}
+
+export interface PluginTabsContentProps extends PluginUiPartProps {
+  value: string;
+}
+
+// --- Dialog ------------------------------------------------------------------
+
+export interface PluginDialogProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  modal?: boolean;
+  children?: ReactNode;
+}
+
+export interface PluginOverlayTriggerProps {
+  /** Render the child element instead of the default tag, merging props. */
+  asChild?: boolean;
+  className?: string;
+  children?: ReactNode;
+  disabled?: boolean;
+}
+
+export interface PluginDialogCloseProps extends PluginOverlayTriggerProps {
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+}
+
+/** DialogHeader / DialogFooter — plain layout divs. */
+export type PluginDialogSectionProps = HTMLAttributes<HTMLDivElement>;
+
+// --- DropdownMenu ------------------------------------------------------------
+
+export interface PluginDropdownMenuProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  modal?: boolean;
+  children?: ReactNode;
+}
+
+export interface PluginMenuContentProps extends PluginUiPartProps {
+  side?: PluginUiSide;
+  align?: PluginUiAlign;
+  sideOffset?: number;
+  alignOffset?: number;
+}
+
+export interface PluginDropdownMenuItemProps extends PluginUiPartProps {
+  disabled?: boolean;
+  /** Indent to align with checkbox/radio items (shadcn `inset`). */
+  inset?: boolean;
+  onSelect?: (event: Event) => void;
+}
+
+export interface PluginDropdownMenuCheckboxItemProps
+  extends PluginUiPartProps {
+  checked?: boolean | "indeterminate";
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  onSelect?: (event: Event) => void;
+}
+
+export interface PluginDropdownMenuRadioGroupProps {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children?: ReactNode;
+}
+
+export interface PluginDropdownMenuRadioItemProps extends PluginUiPartProps {
+  value: string;
+  disabled?: boolean;
+  onSelect?: (event: Event) => void;
+}
+
+export interface PluginDropdownMenuLabelProps extends PluginUiPartProps {
+  inset?: boolean;
+}
+
+export interface PluginDropdownMenuSubProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: ReactNode;
+}
+
+export interface PluginDropdownMenuSubTriggerProps extends PluginUiPartProps {
+  inset?: boolean;
+  disabled?: boolean;
+}
+
+export interface PluginPortalProps {
+  children?: ReactNode;
+}
+
+// --- Popover / Tooltip ---------------------------------------------------------
+
+export interface PluginPopoverProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  modal?: boolean;
+  children?: ReactNode;
+}
+
+export interface PluginPopoverContentProps extends PluginUiPartProps {
+  side?: PluginUiSide;
+  align?: PluginUiAlign;
+  sideOffset?: number;
+  alignOffset?: number;
+}
+
+export interface PluginTooltipProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  delayDuration?: number;
+  disableHoverableContent?: boolean;
+  children?: ReactNode;
+}
+
+export interface PluginTooltipProviderProps {
+  delayDuration?: number;
+  skipDelayDuration?: number;
+  disableHoverableContent?: boolean;
+  children: ReactNode;
+}
+
+export interface PluginTooltipContentProps extends PluginUiPartProps {
+  side?: PluginUiSide;
+  align?: PluginUiAlign;
+  sideOffset?: number;
+  alignOffset?: number;
+  hidden?: boolean;
+}
+
+// --- Misc primitives ---------------------------------------------------------
+
+export interface PluginSeparatorProps {
+  className?: string;
+  style?: CSSProperties;
+  orientation?: "horizontal" | "vertical";
+  decorative?: boolean;
+}
+
+export type PluginSkeletonProps = HTMLAttributes<HTMLDivElement>;
+
+// --- Toast (sonner) ------------------------------------------------------------
+
+export interface PluginToastOptions {
+  id?: string | number;
+  description?: ReactNode;
+  duration?: number;
+}
+
+/**
+ * sonner's `toast` — the host renders the `<Toaster>`, so calling this from
+ * plugin code shows a normal app toast.
+ */
+export interface PluginToast {
+  (message: ReactNode, options?: PluginToastOptions): string | number;
+  success(message: ReactNode, options?: PluginToastOptions): string | number;
+  error(message: ReactNode, options?: PluginToastOptions): string | number;
+  info(message: ReactNode, options?: PluginToastOptions): string | number;
+  warning(message: ReactNode, options?: PluginToastOptions): string | number;
+  loading(message: ReactNode, options?: PluginToastOptions): string | number;
+  dismiss(id?: string | number): void;
+}
+
+// --- BB extras (not part of shadcn) --------------------------------------------
 
 export interface PluginEmptyStateProps {
   message: string;
@@ -177,6 +490,17 @@ export interface PluginEmptyStateProps {
 export interface PluginMarkdownProps {
   content: string;
   className?: string;
+}
+
+/**
+ * Props for `PageBody` — the opt-in navPanel layout wrapper. `chrome: "page"`
+ * bodies are full-width by default; wrapping your content in `<PageBody>`
+ * gives the classic centered, width-capped column used by the host's own
+ * settings-style pages.
+ */
+export interface PluginPageBodyProps {
+  className?: string;
+  children?: ReactNode;
 }
 
 export interface PluginSpinnerProps {
@@ -199,10 +523,73 @@ export interface PluginSdkApp {
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
+  toast: PluginToast;
+  // shadcn/ui surface (stock names + props).
+  Badge: ComponentType<PluginBadgeProps>;
   Button: ComponentType<PluginButtonProps>;
   Card: ComponentType<PluginCardProps>;
+  CardContent: ComponentType<PluginCardProps>;
+  CardDescription: ComponentType<PluginCardProps>;
+  CardFooter: ComponentType<PluginCardProps>;
+  CardHeader: ComponentType<PluginCardProps>;
+  CardTitle: ComponentType<PluginCardProps>;
+  Checkbox: ComponentType<PluginCheckboxProps>;
+  Dialog: ComponentType<PluginDialogProps>;
+  DialogClose: ComponentType<PluginDialogCloseProps>;
+  DialogContent: ComponentType<PluginUiPartProps>;
+  DialogDescription: ComponentType<PluginUiPartProps>;
+  DialogFooter: ComponentType<PluginDialogSectionProps>;
+  DialogHeader: ComponentType<PluginDialogSectionProps>;
+  DialogOverlay: ComponentType<PluginUiPartProps>;
+  DialogTitle: ComponentType<PluginUiPartProps>;
+  DialogTrigger: ComponentType<PluginOverlayTriggerProps>;
+  DropdownMenu: ComponentType<PluginDropdownMenuProps>;
+  DropdownMenuCheckboxItem: ComponentType<PluginDropdownMenuCheckboxItemProps>;
+  DropdownMenuContent: ComponentType<PluginMenuContentProps>;
+  DropdownMenuGroup: ComponentType<PluginUiPartProps>;
+  DropdownMenuItem: ComponentType<PluginDropdownMenuItemProps>;
+  DropdownMenuLabel: ComponentType<PluginDropdownMenuLabelProps>;
+  DropdownMenuPortal: ComponentType<PluginPortalProps>;
+  DropdownMenuRadioGroup: ComponentType<PluginDropdownMenuRadioGroupProps>;
+  DropdownMenuRadioItem: ComponentType<PluginDropdownMenuRadioItemProps>;
+  DropdownMenuSeparator: ComponentType<PluginUiPartProps>;
+  DropdownMenuShortcut: ComponentType<HTMLAttributes<HTMLSpanElement>>;
+  DropdownMenuSub: ComponentType<PluginDropdownMenuSubProps>;
+  DropdownMenuSubContent: ComponentType<PluginUiPartProps>;
+  DropdownMenuSubTrigger: ComponentType<PluginDropdownMenuSubTriggerProps>;
+  DropdownMenuTrigger: ComponentType<PluginOverlayTriggerProps>;
+  Input: ComponentType<PluginInputProps>;
+  Label: ComponentType<PluginLabelProps>;
+  Popover: ComponentType<PluginPopoverProps>;
+  PopoverAnchor: ComponentType<PluginUiPartProps>;
+  PopoverContent: ComponentType<PluginPopoverContentProps>;
+  PopoverTrigger: ComponentType<PluginOverlayTriggerProps>;
+  Select: ComponentType<PluginSelectProps>;
+  SelectContent: ComponentType<PluginSelectContentProps>;
+  SelectGroup: ComponentType<PluginUiPartProps>;
+  SelectItem: ComponentType<PluginSelectItemProps>;
+  SelectLabel: ComponentType<PluginUiPartProps>;
+  SelectScrollDownButton: ComponentType<PluginUiPartProps>;
+  SelectScrollUpButton: ComponentType<PluginUiPartProps>;
+  SelectSeparator: ComponentType<PluginUiPartProps>;
+  SelectTrigger: ComponentType<PluginSelectTriggerProps>;
+  SelectValue: ComponentType<PluginSelectValueProps>;
+  Separator: ComponentType<PluginSeparatorProps>;
+  Skeleton: ComponentType<PluginSkeletonProps>;
+  Switch: ComponentType<PluginSwitchProps>;
+  Tabs: ComponentType<PluginTabsProps>;
+  TabsContent: ComponentType<PluginTabsContentProps>;
+  TabsList: ComponentType<PluginTabsListProps>;
+  TabsTrigger: ComponentType<PluginTabsTriggerProps>;
+  Textarea: ComponentType<PluginTextareaProps>;
+  Tooltip: ComponentType<PluginTooltipProps>;
+  TooltipContent: ComponentType<PluginTooltipContentProps>;
+  TooltipProvider: ComponentType<PluginTooltipProviderProps>;
+  TooltipTrigger: ComponentType<PluginOverlayTriggerProps>;
+  // BB extras (not shadcn).
   EmptyState: ComponentType<PluginEmptyStateProps>;
   Markdown: ComponentType<PluginMarkdownProps>;
+  PageBody: ComponentType<PluginPageBodyProps>;
   Spinner: ComponentType<PluginSpinnerProps>;
 }
 
@@ -213,12 +600,73 @@ export interface PluginSdkApp {
  * list fails the type assertion below.
  */
 export const PLUGIN_SDK_APP_EXPORT_NAMES = [
+  "Badge",
   "Button",
   "Card",
+  "CardContent",
+  "CardDescription",
+  "CardFooter",
+  "CardHeader",
+  "CardTitle",
+  "Checkbox",
+  "Dialog",
+  "DialogClose",
+  "DialogContent",
+  "DialogDescription",
+  "DialogFooter",
+  "DialogHeader",
+  "DialogOverlay",
+  "DialogTitle",
+  "DialogTrigger",
+  "DropdownMenu",
+  "DropdownMenuCheckboxItem",
+  "DropdownMenuContent",
+  "DropdownMenuGroup",
+  "DropdownMenuItem",
+  "DropdownMenuLabel",
+  "DropdownMenuPortal",
+  "DropdownMenuRadioGroup",
+  "DropdownMenuRadioItem",
+  "DropdownMenuSeparator",
+  "DropdownMenuShortcut",
+  "DropdownMenuSub",
+  "DropdownMenuSubContent",
+  "DropdownMenuSubTrigger",
+  "DropdownMenuTrigger",
   "EmptyState",
+  "Input",
+  "Label",
   "Markdown",
+  "PageBody",
+  "Popover",
+  "PopoverAnchor",
+  "PopoverContent",
+  "PopoverTrigger",
+  "Select",
+  "SelectContent",
+  "SelectGroup",
+  "SelectItem",
+  "SelectLabel",
+  "SelectScrollDownButton",
+  "SelectScrollUpButton",
+  "SelectSeparator",
+  "SelectTrigger",
+  "SelectValue",
+  "Separator",
+  "Skeleton",
   "Spinner",
+  "Switch",
+  "Tabs",
+  "TabsContent",
+  "TabsList",
+  "TabsTrigger",
+  "Textarea",
+  "Tooltip",
+  "TooltipContent",
+  "TooltipProvider",
+  "TooltipTrigger",
   "definePluginApp",
+  "toast",
   "useBbContext",
   "useBbNavigate",
   "useRealtime",

@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { PluginSettingsForm } from "./PluginsSettingsSection";
+import { PluginRow, PluginSettingsForm } from "./PluginsSettingsSection";
 
 interface RecordedRequest {
   url: string;
@@ -115,5 +115,60 @@ describe("PluginSettingsForm", () => {
     expect(JSON.parse(String(put?.init?.body))).toEqual({
       values: { apiKey: "sk-123" },
     });
+  });
+});
+
+describe("PluginRow settings gating", () => {
+  function rowPlugin(status: string, logoUrl: string | null = null) {
+    return {
+      id: "linear",
+      version: "0.1.0",
+      enabled: true,
+      status,
+      statusDetail: null,
+      logoUrl,
+      logoDarkUrl: null,
+    };
+  }
+
+  it("renders the settings form for a needs-configuration plugin (regression: the plugin that most needs configuring must be configurable)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginRow plugin={rowPlugin("needs-configuration")} />, {
+      wrapper,
+    });
+    expect(await screen.findByLabelText("Greeting")).toBeTruthy();
+  });
+
+  it("renders no form for an errored plugin (no schema exists server-side)", () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginRow plugin={rowPlugin("error")} />, { wrapper });
+    expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows the plugin's logo next to the id when served, nothing otherwise", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const logoUrl = "/api/v1/plugins/linear/assets/logo?h=f00d";
+    const { unmount } = render(
+      <PluginRow plugin={rowPlugin("running", logoUrl)} />,
+      { wrapper },
+    );
+    expect(
+      screen.getByTestId("plugin-settings-logo-linear").getAttribute("src"),
+    ).toBe(logoUrl);
+    unmount();
+
+    render(<PluginRow plugin={rowPlugin("running")} />, { wrapper });
+    expect(screen.queryByTestId("plugin-settings-logo-linear")).toBeNull();
   });
 });

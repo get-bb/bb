@@ -10,21 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.js";
-import { Icon, ICON_NAMES, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import { appToast } from "@/components/ui/app-toast.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   runPluginThreadAction,
   usePluginContributions,
   type PluginThreadActionContribution,
   type PluginThreadActionToast,
 } from "@/hooks/queries/plugin-contribution-queries";
-
-/** Plugin icon hints are freeform strings; unknown ones get a generic icon. */
-export function pluginThreadActionIconName(icon: string | null): IconName {
-  return icon !== null && (ICON_NAMES as readonly string[]).includes(icon)
-    ? (icon as IconName)
-    : "Zap";
-}
 
 function showActionToast(toast: PluginThreadActionToast): void {
   if (toast.kind === "success") {
@@ -77,13 +71,11 @@ export function PluginThreadActionButtons({
               onRun(action);
             }}
           >
-            <Icon
-              name={
-                isPending ? "Spinner" : pluginThreadActionIconName(action.icon)
-              }
-              className={isPending ? "animate-spin" : undefined}
-              aria-hidden="true"
-            />
+            {isPending ? (
+              <Icon name="Spinner" className="animate-spin" aria-hidden="true" />
+            ) : (
+              <PluginIcon pluginId={action.pluginId} icon={action.icon} />
+            )}
             {action.title}
           </Button>
         );

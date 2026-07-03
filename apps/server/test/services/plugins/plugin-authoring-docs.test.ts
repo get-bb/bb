@@ -9,6 +9,7 @@ import {
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
   type PluginNavPanelProps,
+  type PluginNavPanelRegistration,
   type PluginSettingDescriptor,
   type PluginThreadEventPayloads,
   type PluginThreadPanelTabProps,
@@ -158,6 +159,31 @@ const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
   : never = true;
 void _assertAllSlotPropFieldsListed;
 
+/**
+ * Mirrors PluginNavPanelRegistration (app-contract.ts) — the one slot whose
+ * registration carries behavior fields (`chrome`, `headerContent`) beyond
+ * id/title/component, so those must stay documented too. Compile-time
+ * checked in both directions like the slot props above.
+ */
+const NAV_PANEL_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "path",
+  "component",
+  "chrome",
+  "headerContent",
+] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
+
+type MissingNavPanelRegistrationField = Exclude<
+  keyof PluginNavPanelRegistration,
+  (typeof NAV_PANEL_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllNavPanelRegistrationFieldsListed: MissingNavPanelRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllNavPanelRegistrationFieldsListed;
+
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
 
@@ -211,6 +237,25 @@ describe("bb-plugin-authoring skill", () => {
         ).toContain(field);
       }
     }
+  });
+
+  it("documents every navPanel registration field (incl. chrome + headerContent)", () => {
+    for (const field of NAV_PANEL_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `navPanel registration field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+    // Both chrome modes must be spelled out.
+    expect(skill).toContain('"page"');
+    expect(skill).toContain('"none"');
+  });
+
+  it("documents the plugin logo convention (both theme variants)", () => {
+    expect(skill).toContain("logo.svg");
+    expect(skill).toContain("bb.logo");
+    expect(skill).toContain("logo-dark.svg");
+    expect(skill).toContain("bb.logoDark");
   });
 
   it("documents every frontend slot and its prop fields", () => {

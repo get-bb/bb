@@ -4,7 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
-import { scaffoldPlugin } from "@bb/templates";
+import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { buildPluginApp } from "@bb/plugin-build";
 import { createPluginDevLoop } from "../plugin-dev-loop.js";

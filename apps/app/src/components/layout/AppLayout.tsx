@@ -8,7 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Link, useLocation } from "react-router-dom";
+import { Link, matchPath, useLocation } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -34,7 +34,12 @@ import { cn } from "@/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
+import {
+  PluginPanelHeaderActions,
+  PluginPanelHeaderCenter,
+} from "@/components/plugin/PluginPanelHeader";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
@@ -53,6 +58,7 @@ import {
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   isProjectlessProjectId,
+  PLUGIN_PANEL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -235,6 +241,10 @@ interface AppHeaderProps {
   isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
+  /** Registered navPanel when this is a plugin panel route (design §5.2):
+   * the shared header shows plugin logo + title, plus the registration's
+   * `headerContent` as the actions. */
+  pluginPanel?: PluginNavPanelSlot;
   meta: {
     title: string;
     subtitle?: string;
@@ -249,6 +259,7 @@ function AppHeader({
   isSettingsView,
   projectId,
   project,
+  pluginPanel,
   meta,
 }: AppHeaderProps) {
   const headerBreadcrumbs = meta.breadcrumbs;
@@ -260,7 +271,9 @@ function AppHeader({
     Boolean(headerTitle) ||
     Boolean(meta.subtitle);
 
-  const center = hasCenterContent ? (
+  const center = pluginPanel ? (
+    <PluginPanelHeaderCenter panel={pluginPanel} />
+  ) : hasCenterContent ? (
     <div className="min-w-0 flex-1">
       {headerBreadcrumbs ? (
         <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
@@ -311,8 +324,9 @@ function AppHeader({
     </div>
   ) : null;
 
-  const actions =
-    usesProjectChromeStyle &&
+  const actions = pluginPanel ? (
+    <PluginPanelHeaderActions panel={pluginPanel} />
+  ) : usesProjectChromeStyle &&
     projectId &&
     !isProjectlessProjectId(projectId) ? (
       <>
@@ -389,6 +403,17 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
+  // Plugin panel routes ride the shared header (design §5.2): logo + panel
+  // title in the center, the registration's headerContent as the actions.
+  const { navPanels } = usePluginSlots();
+  const pluginPanelMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
+  const pluginPanel = pluginPanelMatch
+    ? navPanels.find(
+        (candidate) =>
+          candidate.pluginId === pluginPanelMatch.params.pluginId &&
+          candidate.path === pluginPanelMatch.params.panelPath,
+      )
+    : undefined;
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -503,6 +528,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const documentTitle = (() => {
     if (isThreadView) {
       return threadDisplayTitle;
+    }
+    if (pluginPanel) {
+      return pluginPanel.title;
     }
     if (isAutomationDetailView) {
       return `${automationName} · Automations`;
@@ -655,6 +683,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   isSettingsView={isSettingsView}
                   projectId={projectId}
                   project={project}
+                  pluginPanel={pluginPanel}
                   meta={meta}
                 />
               ) : null}

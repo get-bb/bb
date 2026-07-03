@@ -60,8 +60,13 @@ Frontend entries (app.tsx) default-export `definePluginApp` from
 navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelTab
 (right panel next to Info/Diff), composerAccessory (prompt box footer). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate — plus a small UI kit (Button, Card, EmptyState, Markdown,
-Spinner). A crashing slot collapses to a "plugin <id> crashed" chip without
+useBbNavigate — plus a UI kit of stock shadcn/ui components under stock
+names/props (Button, Badge, Card*, Input, Textarea, Label, Checkbox, Switch,
+Select*, Tabs*, Dialog*, DropdownMenu*, Popover*, Tooltip*, Separator,
+Skeleton, toast) so standard shadcn code works as-is, and bb extras
+(EmptyState, Markdown, Spinner, PageBody; PageBody opts a full-width navPanel
+body back into the classic centered column). A crashing slot collapses to a
+"plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) also appear under Settings → Plugins.
 
@@ -84,13 +89,25 @@ watches and reloads on every save. The manifest is package.json: `bb.server`
 into agent threads; default `skills/`), and `engines.bb` (supported bb
 range). The plugin id is the package name minus `bb-plugin-`.
 
+Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
+shows it wherever the plugin's contributions appear — the sidebar entry,
+panel title bar, composer command and @-mention menus, thread action
+buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
+relocates the file (svg/png/webp only). An optional dark-theme variant —
+logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
+the app is in dark mode. Without a logo bb falls back to the contribution's
+named icon. Reload the plugin to pick up logo changes.
+
 The backend entry default-exports a factory receiving the full plugin API:
 
   import type { BbPluginApi } from "@bb/plugin-sdk";
   export default async function plugin(bb: BbPluginApi) { ... }
 
-The import is type-only and erased at load; the scaffold's tsconfig
-typechecks server.ts (and app.tsx) against the real contracts. The API in
+The import is type-only and erased at load; the scaffold ships the full API
+as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
+`npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
+needed. Confused, or need a symbol the types don't explain? Clone the repo:
+https://github.com/ymichael/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
@@ -119,6 +136,7 @@ For the complete authoring reference — exact signatures, working snippets
 for every surface, the reload lifecycle, testing tips, and gotchas — use
 the built-in `bb-plugin-authoring` skill (agents: it loads on demand;
 humans: apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/
-in a checkout). The `examples/plugins/` directory of a bb checkout has four
-reference plugins: linear (full-stack), slack-bot (webhook bot),
-agent-enrichment (agent surfaces), small-ux-pack (host-rendered UI).
+in a checkout). The `examples/plugins/` directory of a bb checkout has five
+reference plugins: github (gh-CLI-backed issue/PR browser on the shadcn UI
+kit), linear (full-stack), slack-bot (webhook bot), agent-enrichment (agent
+surfaces), small-ux-pack (host-rendered UI).

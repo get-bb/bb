@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
+  CardContent,
   EmptyState,
   Markdown,
   Spinner,
@@ -200,6 +201,41 @@ function OpenIssuesSection({ projectId }: PluginHomepageSectionProps) {
   );
 }
 
+/**
+ * Rendered by the host on the RIGHT side of the panel title bar ("page"
+ * chrome): a compact sync affordance — synced-issue count + a Sync button
+ * calling the backend's `sync` rpc. The refreshed cache comes back through
+ * the "issues-updated" realtime signal (useIssues refetches everywhere).
+ */
+function BoardHeaderContent() {
+  const rpc = useRpc();
+  const { issues } = useIssues();
+  const [syncing, setSyncing] = useState(false);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const sync = useCallback(() => {
+    setSyncing(true);
+    setSyncFailed(false);
+    rpc
+      .call("sync")
+      .catch(() => setSyncFailed(true))
+      .finally(() => setSyncing(false));
+  }, [rpc]);
+  return (
+    <>
+      <span className="text-xs text-muted-foreground">
+        {syncFailed
+          ? "Sync failed — check the API key"
+          : issues === null
+            ? "Loading…"
+            : `${issues.length} synced ${issues.length === 1 ? "issue" : "issues"}`}
+      </span>
+      <Button size="sm" variant="outline" disabled={syncing} onClick={sync}>
+        {syncing ? "Syncing…" : "Sync"}
+      </Button>
+    </>
+  );
+}
+
 function Board() {
   const { issues, error } = useIssues();
 
@@ -217,8 +253,12 @@ function Board() {
   }, [issues]);
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto p-4">
-      <h2 className="text-sm font-semibold text-foreground">Linear board</h2>
+    // The host's "page" chrome already renders the navPanel title bar (logo,
+    // title, BoardHeaderContent) — do not repeat any of it here
+    // (bb-plugin-authoring skill: "panel title" note). The body is
+    // full-width: state columns flex to fill it and scroll horizontally
+    // when they overflow.
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       {error !== null ? (
         <EmptyState message={error} />
       ) : issues === null ? (
@@ -228,9 +268,9 @@ function Board() {
       ) : issues.length === 0 ? (
         <EmptyState message={EMPTY_HINT} />
       ) : (
-        <div className="flex flex-1 items-start gap-4 overflow-x-auto">
+        <div className="flex flex-1 items-start gap-3 overflow-x-auto pb-2">
           {columns.map(([state, stateIssues]) => (
-            <div key={state} className="w-64 shrink-0">
+            <div key={state} className="min-w-64 flex-1 shrink-0">
               <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
                 {state}{" "}
                 <span className="font-normal">({stateIssues.length})</span>
@@ -238,12 +278,14 @@ function Board() {
               <div className="flex flex-col gap-2">
                 {stateIssues.map((issue) => (
                   <Card key={issue.id}>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {issue.identifier}
-                    </p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {issue.title}
-                    </p>
+                    <CardContent className="p-3">
+                      <p className="font-mono text-xs text-muted-foreground">
+                        {issue.identifier}
+                      </p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {issue.title}
+                      </p>
+                    </CardContent>
                   </Card>
                 ))}
               </div>
@@ -333,6 +375,10 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    // "page" chrome (the default): the host title bar shows the plugin's
+    // logo.svg + title on the left and this accessory on the right. Set
+    // `chrome: "none"` instead to own the entire panel area yourself.
+    headerContent: BoardHeaderContent,
   });
   app.slots.threadPanelTab({
     id: "issue",

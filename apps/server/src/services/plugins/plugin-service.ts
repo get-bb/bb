@@ -46,9 +46,12 @@ import {
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
+  loadPluginLogos,
   readPluginAppBundleMeta,
   type PluginAppBundleSnapshot,
   type PluginAppState,
+  type PluginLogoSet,
+  type PluginLogoVariant,
 } from "./app-bundle.js";
 import {
   isCommitSha,
@@ -162,6 +165,20 @@ export interface PluginListEntry {
    * manifest this session (e.g. disabled-at-boot plugins).
    */
   app: PluginAppState;
+  /**
+   * Hash-busted URL of the plugin's logo asset (logo.(svg|png|webp) at the
+   * plugin root, or the manifest's `bb.logo`). Null when the plugin ships
+   * no logo — or is not currently loaded (the asset route only serves live
+   * plugins, so an unservable URL never rides the inventory).
+   */
+  logoUrl: string | null;
+  /**
+   * Hash-busted URL of the optional dark-theme logo variant
+   * (logo-dark.(svg|png|webp) at the plugin root, or the manifest's
+   * `bb.logoDark`). Same gating as logoUrl; the frontend prefers it while
+   * the app is in dark mode.
+   */
+  logoDarkUrl: string | null;
 }
 
 /**
@@ -366,6 +383,15 @@ export interface PluginService {
     id: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
+  /**
+   * On-disk logo backing GET /plugins/:id/assets/logo (variant "logo") or
+   * .../logo-dark (variant "logo-dark"). Same gating as getAppAsset:
+   * undefined unless the plugin is currently loaded and ships that variant.
+   */
+  getLogoAsset(
+    id: string,
+    variant: PluginLogoVariant,
+  ): { path: string; contentType: string; hash: string } | undefined;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -839,6 +865,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
   const appBundles = new Map<string, PluginAppBundleSnapshot>();
+  // Logo snapshots (light + optional dark variant), refreshed alongside
+  // appBundles on every load. Entries are only servable (and only advertised
+  // via logoUrl/logoDarkUrl) while the plugin is in `loaded` — same honest
+  // gate as getAppAsset.
+  const logos = new Map<string, PluginLogoSet>();
   // Services that ignored their abort past the stop bound. While a plugin
   // has entries here it is not re-loaded (that would double-start the
   // service); the marker clears when the hung start() finally settles.
@@ -1301,6 +1332,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // current bundle info in the inventory (the frontend only imports
     // bundles of running plugins anyway).
     const appBundleProblem = await refreshAppBundle(row, manifest);
+    // Logo refresh rides every load too, so `bb plugin reload` picks up a
+    // changed/added/removed logo file (either variant).
+    logos.set(row.id, await loadPluginLogos(row.id, row.rootDir, manifest));
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -1805,6 +1839,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
+          // Only advertise URLs the asset route will actually serve (it
+          // gates on the live runtime, like the bundle assets).
+          logoUrl: loaded.has(row.id)
+            ? (logos.get(row.id)?.logo?.url ?? null)
+            : null,
+          logoDarkUrl: loaded.has(row.id)
+            ? (logos.get(row.id)?.logoDark?.url ?? null)
+            : null,
         };
       });
   }
@@ -1859,6 +1901,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await disposeAll();
         statuses.clear();
         appBundles.clear();
+        logos.clear();
       }
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1882,6 +1925,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       handlerStats.delete(id);
       agentToolProblems.delete(id);
       appBundles.delete(id);
+      logos.delete(id);
       const removed = deleteInstalledPlugin(deps.db, id);
       if (removed && row) {
         // Configuration goes with the registration (a future same-id plugin
@@ -1959,6 +2003,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return { path, hash: assets.hash };
     },
 
+    getLogoAsset(id, variant) {
+      // Same honest gate as getAppAsset: bytes only while the runtime is
+      // live (matches the inventory's logoUrl/logoDarkUrl gating).
+      if (!loaded.has(id)) return undefined;
+      const set = logos.get(id);
+      const logo = variant === "logo-dark" ? set?.logoDark : set?.logo;
+      if (!logo) return undefined;
+      return { path: logo.path, contentType: logo.contentType, hash: logo.hash };
+    },
+
     async getSettings(id) {
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
@@ -2003,6 +2057,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // queries (plugin-sdk useSettings included) refetch instead of
         // serving the pre-save snapshot until stale time.
         notifyPluginsChanged();
+        // A plugin stuck on needs-configuration is waiting for exactly this
+        // save — reload it so the new values take effect without a manual
+        // `bb plugin reload` (the NeedsConfigurationError contract documents
+        // this). Healthy plugins are NOT reloaded: they read settings lazily
+        // via settings.get(), and restarting live services on every toggle
+        // would be disruptive.
+        if (statuses.get(id)?.status === "needs-configuration") {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row) {
+            await withLifecycleLock(id, async () => {
+              await disposeOne(id);
+              await loadOne(row);
+            });
+            notifyPluginsChanged();
+          }
+        }
       }
       return buildPluginSettingsView(storeArgs);
     },

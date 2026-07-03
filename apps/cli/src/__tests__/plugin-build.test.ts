@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { scaffoldPlugin } from "@bb/templates";
+import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { buildPluginApp } from "@bb/plugin-build";
 
 // Pass-through wrapper around the real Tailwind compiler (a third-party

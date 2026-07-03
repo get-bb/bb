@@ -1,5 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  PLUGIN_SDK_APP_DTS,
+  PLUGIN_SDK_DTS,
+} from "./generated/plugin-sdk-dts.generated.js";
 
 /**
  * `bb plugin new` scaffold. Lives in @bb/templates because both the CLI
@@ -108,9 +112,11 @@ export default definePluginApp((app) => {
 }
 
 /**
- * Typecheck-only tsconfig: server.ts compiles against the real BbPluginApi
- * contract from @bb/plugin-sdk (type-only, erased at load time); app.tsx is
- * included when the plugin declares a frontend entry.
+ * Typecheck-only tsconfig: server.ts compiles against the BbPluginApi contract
+ * (type-only, erased at load time); app.tsx is included when the plugin
+ * declares a frontend entry. `@bb/plugin-sdk` resolves to the bundled `.d.ts`
+ * files shipped in `types/` — the workspace package is unpublished, so authors
+ * get real types without it on disk.
  */
 function tsconfigSource(app: boolean): string {
   return `${JSON.stringify(
@@ -125,10 +131,17 @@ function tsconfigSource(app: boolean): string {
         // Only @types/node ambiently — stray ancestor node_modules/@types
         // (e.g. bun-types in a home directory) must not leak in.
         types: ["node"],
+        baseUrl: ".",
+        paths: {
+          "@bb/plugin-sdk": ["./types/bb-plugin-sdk.d.ts"],
+          "@bb/plugin-sdk/app": ["./types/bb-plugin-sdk-app.d.ts"],
+        },
         noEmit: true,
         skipLibCheck: true,
       },
-      include: app ? ["server.ts", "app.tsx"] : ["server.ts"],
+      include: app
+        ? ["server.ts", "app.tsx", "types"]
+        : ["server.ts", "types"],
     },
     null,
     2,
@@ -176,6 +189,17 @@ bb plugin reload ${id}
 bb plugin config ${id}
 bb plugin config ${id} set greeting hi
 \`\`\`
+
+## Types & API reference
+
+\`types/bb-plugin-sdk.d.ts\` (and \`types/bb-plugin-sdk-app.d.ts\` for the
+frontend) are the full, bundled BB plugin API — \`tsconfig.json\` maps
+\`@bb/plugin-sdk\` to them, so your editor and \`tsc\` see real types with no extra
+install. Ask BB to write plugins for you: the \`bb-plugin-authoring\` skill
+documents the whole surface with examples.
+
+Confused by the API, or need something the types don't explain? Clone the BB
+repo and read the source: <https://github.com/ymichael/bb>.
 `;
 }
 
@@ -204,15 +228,20 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         bb: app
           ? { server: "./server.ts", app: "./app.tsx" }
           : { server: "./server.ts" },
-        // Typecheck-only (BB provides the SDK — and react — at runtime;
-        // `bb plugin build` never bundles them). @bb/plugin-sdk is not
-        // published yet, so installing it works only inside a BB checkout
-        // for now.
+        // Typecheck-only. The BbPluginApi/SDK types come from the bundled
+        // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
+        // unpublished workspace package is never needed. These deps supply the
+        // real npm types the bundle references (zod/hono/better-sqlite3, plus
+        // react for the frontend); BB provides them all at runtime, and
+        // `bb plugin build` never bundles them.
         devDependencies: {
-          "@bb/plugin-sdk": "*",
+          "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
           ...(app ? { "@types/react": "^19.0.0" } : {}),
+          "better-sqlite3": "^12.0.0",
+          hono: "^4.11.9",
           typescript: "^5.7.0",
+          zod: "^4.3.6",
         },
       },
       null,
@@ -221,8 +250,18 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
+  // Bundled type declarations so the plugin typechecks without the (unpublished)
+  // @bb/plugin-sdk workspace package on disk. tsconfig `paths` maps the imports
+  // here.
+  const typesDir = join(targetDir, "types");
+  await mkdir(typesDir, { recursive: true });
+  await writeFile(join(typesDir, "bb-plugin-sdk.d.ts"), PLUGIN_SDK_DTS);
   if (app) {
     await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
+    await writeFile(
+      join(typesDir, "bb-plugin-sdk-app.d.ts"),
+      PLUGIN_SDK_APP_DTS,
+    );
   }
   const skillDir = join(targetDir, "skills", "example-skill");
   await mkdir(skillDir, { recursive: true });

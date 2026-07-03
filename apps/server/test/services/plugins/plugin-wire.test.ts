@@ -124,7 +124,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(appOrigin.status).toBe(200);
   });
 
-  it("local auth rejects foreign origins and non-local hosts", async () => {
+  it("local auth rejects foreign origins but tolerates LAN/Tailscale serving", async () => {
     const foreignOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: EVIL_ORIGIN } },
@@ -135,15 +135,23 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: expect.stringContaining("not a local BB app origin"),
     });
 
-    // DNS rebinding shape: attacker's hostname resolves here, Host survives.
-    const foreignHost = await harness.app.request(
-      "http://rebind.evil.example/api/v1/plugins/wire/http/hello",
+    // Tailscale/LAN serving (regression): the app reaches the server through
+    // the dev proxy, so the browser origin is a non-loopback host on a known
+    // BB app port while the request URL origin differs. Must be allowed.
+    const tailscaleOrigin = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/hello`,
+      { headers: { origin: "http://100.64.158.8:3334" } },
     );
-    expect(foreignHost.status).toBe(403);
-    expect(await foreignHost.json()).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("not a local BB app host"),
-    });
+    expect(tailscaleOrigin.status).toBe(200);
+
+    // A foreign origin on a random port stays rejected even with a
+    // rebinding-shaped request URL; a same-origin non-loopback URL passes
+    // (no Host allowlist — LAN serving is legitimate).
+    const sameOriginLan = await harness.app.request(
+      "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "http://100.64.158.8:3334" } },
+    );
+    expect(sameOriginLan.status).toBe(200);
   });
 
   it("local auth requires application/json on non-GET requests", async () => {

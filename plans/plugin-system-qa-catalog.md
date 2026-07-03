@@ -24,6 +24,73 @@ eval "$(scripts/bb-dev-app env)"    # point pnpm bb:dev at it
       Readonly mode CANNOT do this — codex readonly sandbox has no network,
       so every `bb` CLI call fails there (looks like "unknown command").
 
+## Verified live in the browser (2026-07-02, autonomous dev-browser session)
+
+All checks against the dev app with the linear + agent-enrichment +
+small-ux-pack examples installed and a real Linear API key configured:
+
+- [x] Homepage "Open Linear issues" section renders real synced issues.
+- [x] Click "Start work" → thread spawned, titled from the issue, prompt
+      carries identifier/state/description, agent starts (thr_wmzu6jbvs7).
+- [x] "Issue" threadPanelTab appears ONLY on the issue-linked thread
+      (sync visible() pattern) and renders issue details via plugin rpc.
+- [x] Linear board nav panel at /plugins/linear/board (Todo column + card).
+- [x] Settings → Plugins: both plugins with status pills; linear form with
+      secret [set] field, team key, and the project picker; save works.
+- [x] Thread actions "Summarize thread" + "Copy status" appear in the
+      thread header immediately after installing small-ux-pack (live
+      contributions refetch, no refresh).
+- [x] /standup listed under a "Plugin commands" group in the command menu.
+- [x] @TES mention shows a "Linear issues" group with the synced issue.
+- [x] Full author loop: bb plugin new --app → install → bb plugin dev →
+      edit app.tsx → homepage hot-swaps WITHOUT page reload (window marker
+      survived the whole session) → injected throw → crash chip, siblings
+      alive (Linear section + app chrome) → fix → save-to-heal recovery.
+- [x] Fixed during the session: settings form hidden for
+      needs-configuration plugins; settings save now auto-reloads a
+      needs-configuration plugin; Tailscale/LAN origin 403s; node:fs
+      scaffold leak crashing the browser bundle.
+
+Observation for later polish: startWork into a repo-less default project
+(e.g. Personal) gives the agent nothing to code against — consider a
+project picker on the homepage card or an issue→project mapping setting.
+
+## Verified live — GitHub hero authored from scratch on a packaged instance (2026-07-02)
+
+A worker agent wrote `bb-plugin-github` end to end on a PACKAGED bb-app
+(`:41100`, fresh data dir — not the dev server), the user iterated on it,
+and a second agent migrated it to the stock-shadcn UI kit. Now checked in
+as `examples/plugins/github`. What that flow proved:
+
+- [x] **Packaged-app author loop**: `bb plugin new github --app` (scaffold
+      with bundled `types/*.d.ts`) → edit → `bb plugin install .` → edit →
+      reload, all against the packaged build — surfaced and then confirmed
+      the fix for the toolchain packaging bug (esbuild/@tailwindcss/jiti now
+      ship as bb-app deps; no symlink workaround).
+- [x] **Install-time build + serving on a prod build**: path install built
+      `dist/` itself; inventory shows `app.hasApp: true`, hash-busted
+      `jsUrl`/`cssUrl`, `compatible: true`; the app loads the bundle and
+      renders the panel.
+- [x] **navPanel + headerContent + logos**: sidebar entry renders the
+      plugin's `logo.svg` (dark variant shipped too), panel title bar shows
+      logo + title with the plugin's `headerContent` on the right.
+- [x] **rpc under real load**: 328 handler calls / 0 errors in
+      `bb plugin list --json` after an evening of browsing issues/PRs.
+- [x] **Realtime + background service**: `sync` service `running`; panel
+      refreshes via `issues-updated`-style signals while browsing.
+- [x] **CLI command registration**: `bb github` listed in contributions and
+      `bb plugin list`.
+- [x] **Settings (project picker)**: declared `extraRepos` (string) +
+      `defaultProject` (project) render in Settings → Plugins and
+      `bb plugin config github`.
+- [x] **Stock-shadcn kit migration**: an agent moved the app to the new kit
+      (Tabs/Select/DropdownMenu/Badge/Skeleton/Input/Textarea/toast) from
+      the migration brief + authoring skill; typechecks against the bundled
+      types standalone.
+- [x] **Reinstall-from-files recovery**: after the instance db was lost,
+      `bb plugin install <surviving dir>` restored the plugin with its
+      `data.db` intact (kv/sqlite survive reinstall by design).
+
 ## Phase 1 — for you to test
 
 - [ ] **Settings UI toggle**: flip Plugins on/off in Settings → Experiments in
@@ -44,9 +111,10 @@ eval "$(scripts/bb-dev-app env)"    # point pnpm bb:dev at it
       `--ignore-scripts` (no postinstall runs) and engines hard-fail on a
       too-new range (on a packaged/real-version server — dev servers report
       0.0.0 and skip the engines gate by design).
-- [ ] **Author loop**: `bb plugin new demo` → edit server.ts → `bb plugin
+- [x] **Author loop**: `bb plugin new demo` → edit server.ts → `bb plugin
       install ./bb-plugin-demo --yes` → edit → `bb plugin reload demo` →
-      change visible. (Note: `bb plugin dev` watch mode is a known gap, below.)
+      change visible. (Verified 2026-07-02 via the github hero, authored
+      from scratch on a packaged instance — see the section above.)
 - [ ] **Logs**: `bb plugin logs agent-enrichment -f` while running `bb docs`;
       lines appear within ~1s.
 - [ ] **Schedules/services in list**: install slack-bot unconfigured →
@@ -440,11 +508,12 @@ One sitting, fresh dev server (`scripts/bb-dev-app current`,
 No server required for any of these (`bb plugin new` / `bb plugin build` are
 local commands).
 
-- [ ] **Scaffold with a frontend entry**: `pnpm bb:dev plugin new hello --app`
+- [x] **Scaffold with a frontend entry**: `pnpm bb:dev plugin new hello --app`
       → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has
       `"bb": { "server": "./server.ts", "app": "./app.tsx" }`. Without
       `--app`, no `app.tsx` and no `bb.app` field (headless scaffold
-      unchanged).
+      unchanged). (Verified 2026-07-02: github hero scaffolded with --app on
+      a packaged instance, incl. the new bundled `types/` dir.)
 - [ ] **Build**: `pnpm bb:dev plugin build bb-plugin-hello` prints the three
       output paths. Check the outputs:
       - `dist/app.js` is a single ESM file with
@@ -469,28 +538,34 @@ local commands).
 Needs a running dev server with the Plugins experiment on, and a plugin
 scaffolded with `bb plugin new hello --app`.
 
-- [ ] **Install-time build (path)**: `pnpm bb:dev plugin install ./bb-plugin-hello`
+- [x] **Install-time build (path)**: `pnpm bb:dev plugin install ./bb-plugin-hello`
       → install succeeds and `bb-plugin-hello/dist/` now exists (app.js,
       app.css, app.meta.json) even though you never ran `bb plugin build`.
       Break `app.tsx` (syntax error) and re-install → the install itself
-      fails with the esbuild error; fix it and re-install.
-- [ ] **Inventory**: `curl <server>/api/v1/plugins | jq '.plugins[] | {id, app}'`
+      fails with the esbuild error; fix it and re-install. (Verified
+      2026-07-02 via the github hero on a packaged instance — including the
+      failure path, which surfaced the toolchain packaging bug as real
+      install errors before the fix.)
+- [x] **Inventory**: `curl <server>/api/v1/plugins | jq '.plugins[] | {id, app}'`
       → the hello plugin has `app.hasApp: true` and a `bundle` object with
       `jsUrl`/`cssUrl` (both carrying `?h=<hash>`), `hash`, `sdkMajor`,
       `sdkVersion`, `compatible: true`. A headless plugin shows
-      `{ hasApp: false, bundle: null }`.
+      `{ hasApp: false, bundle: null }`. (Verified 2026-07-02 for the
+      app-plugin half via the github hero's `bb plugin list --json`;
+      headless-plugin shape still covered by automation only.)
 - [ ] **Asset routes**: `curl -i "<server><jsUrl>"` → 200,
       `content-type: text/javascript`, `cache-control: public, max-age=31536000,
       immutable`; drop or change the `?h=` value → same body but
       `cache-control: no-store`. `app.css` serves as `text/css`. Unknown
       plugin id or a file other than app.js/app.css → 404.
-- [ ] **Host loading**: open the app with the experiment on → the browser
+- [x] **Host loading**: open the app with the experiment on → the browser
       network tab shows one `app.js?h=…` import and an `app.css` stylesheet
       link per running app-plugin; `document.head` contains
       `link[data-bb-plugin-css="hello"]`; console:
       `globalThis.__bbPluginRuntime` has react / reactDom / reactDomClient /
       jsxRuntime / jsxDevRuntime / pluginSdkApp slots. No UI renders yet —
-      slots are P3.3.
+      slots are P3.3. (Verified 2026-07-02: the github hero's bundle+CSS
+      load and render on a packaged instance.)
 - [ ] **Containment**: hand-edit `bb-plugin-hello/dist/app.js` to
       `throw new Error("boom")` at the top, reload the page → a single
       console warning `[plugin:hello] frontend bundle failed to load: …`,
@@ -726,17 +801,23 @@ pnpm bb:dev thread spawn --project proj_personal --provider codex \
   --json
 ```
 
-- [ ] The agent completes the whole loop unassisted: scaffolds with
+- [x] The agent completes the whole loop unassisted: scaffolds with
       `bb plugin new weather` (or equivalent), writes a `bb.cli.register`
       handler returning the canned string, installs with
       `bb plugin install . --yes`, and verifies by running
       `bb weather <city>` itself (workspace-write is required — a readonly
-      sandbox blocks the bb CLI's loopback network).
-- [ ] `bb plugin list` afterwards shows the plugin `running` with its
+      sandbox blocks the bb CLI's loopback network). (Exceeded 2026-07-02:
+      a worker agent authored the entire github hero — navPanel app, rpc,
+      sync service, settings, logos, AND a `bb github` CLI command — from
+      scratch on a packaged instance; a second agent later migrated it to
+      the shadcn kit from a brief.)
+- [x] `bb plugin list` afterwards shows the plugin `running` with its
       `bb weather` command; `bb weather tokyo` prints the canned string
-      from any thread.
+      from any thread. (github equivalent: `running` with `bb github`.)
 - [ ] The thread transcript shows the bb-plugin-authoring skill being
-      used (not trial-and-error against the API).
+      used (not trial-and-error against the API). (Unverifiable for the
+      github hero — the authoring thread's transcript was lost with the
+      instance db; re-confirm on the next agent-authored plugin.)
 
 ### Phase 3 review fixes (tester-visible changes)
 
@@ -768,3 +849,76 @@ regression coverage, listed here because a manual tester would notice:
       plugin with CSS, the old stylesheet stays until the new one loads.
 - [ ] `bb plugin token --rotate` is documented in `bb guide plugins` and
       the authoring skill.
+
+### Panel chrome + plugin logos
+
+navPanel chrome control, panel title-bar `headerContent`, plugin logos on
+every contribution surface, and the plugin-CSS containment fix. Automated
+coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
+`plugin-app-bundle.test.ts` (@scope regression), and the app's
+`plugin-slot-mounts` / `PluginThreadActions` / `MentionMenu` /
+`PluginsSettingsSection` tests.
+
+- [x] **Page chrome (default)**: the linear board panel shows a host title
+      bar — plugin logo + "Linear" left, the plugin's `headerContent`
+      (synced-issue count + a working Sync button with pending state)
+      right — above a FULL-WIDTH body (no prose max-width cap); the board's
+      state columns fill the width and scroll horizontally when they
+      overflow. (Verified 2026-07-02 via the github hero: logo + "GitHub"
+      title bar, live headerContent, full-width issues/PRs table, in daily
+      use on the packaged instance.)
+- [ ] **headerContent containment**: a throwing `headerContent` disappears
+      (console warning only); the title bar and panel body keep rendering,
+      no "plugin crashed" chip for the accessory.
+- [ ] **`chrome: "none"`**: a panel registered with `chrome: "none"` gets
+      the entire panel area (no host padding, no title bar, headerContent
+      ignored) and a crash inside it still collapses to the "plugin <id>
+      crashed" chip.
+- [ ] **Logos everywhere**: with `examples/plugins/linear` installed (it
+      ships `logo.svg`), the plugin's logo replaces the bolt/named icon on:
+      the sidebar "Linear" row, the panel title bar, the composer command
+      menu's "Plugin commands" rows, the `@`-mention menu's "Linear issues"
+      rows, thread-header action buttons, and Settings → Plugins next to
+      the plugin id. A logo-less plugin falls back to its named `icon` /
+      the generic bolt on every one of those surfaces. (Sidebar row + panel
+      title bar verified live 2026-07-02 via the github hero's logo; the
+      composer/mention/thread-action rows still need the linear pass.)
+- [ ] **Logo plumbing**: `GET /api/v1/plugins` entries carry
+      `logoUrl` (hash-busted, null when no logo or plugin not running);
+      `GET /api/v1/plugins/<id>/assets/logo?h=…` serves the file with the
+      right image content-type, immutable when the hash matches, `no-store`
+      otherwise, 404 when absent or the plugin is disabled. `logo.svg`
+      beats `logo.png` beats `logo.webp`; manifest `bb.logo` relocates it
+      (svg/png/webp only — anything else fails install/load with a clear
+      error); `bb plugin reload` picks up a changed logo (new hash).
+- [ ] **Plugin CSS can no longer break host layout** (regression fix): with
+      the linear plugin loaded, a host `flex-col sm:flex-row` element (e.g.
+      the Settings rows for Theme / Markdown formatting) still computes
+      `flex-direction: row` at ≥640px. `dist/app.css` now wraps all
+      utilities in `@scope ([data-bb-plugin-root])` (every slot mount and
+      the headerContent wrapper carry that attribute), so plugin utilities
+      apply only inside plugin subtrees — previously the plugin's plain
+      `.flex-col` overrode host responsive utilities page-wide.
+
+### Theme-aware logos + PageBody
+
+Dark-logo variant + the PageBody UI-kit export. Automated coverage:
+`plugin-logo.test.ts` (logo-dark detection/override/escape/inventory/
+reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
+`plugin-sdk-app-impl.test.tsx` (PageBody render + export sync).
+
+- [ ] **Dark logo variant**: `logo-dark.(svg|png|webp)` at the plugin root
+      (or manifest `bb.logoDark`, same svg>png>webp precedence and rules)
+      is served at `GET /plugins/<id>/assets/logo-dark` and rides the
+      inventory as `logoDarkUrl`. With the app in dark mode every logo
+      surface (sidebar, panel title bar, composer menus, thread actions,
+      Settings → Plugins) shows the dark variant; light mode shows
+      `logo.svg`; a plugin with only a light logo keeps it in both modes.
+      The linear example ships both (dark mark for light theme, white mark
+      for dark theme) — flip the theme in Settings and watch the mark swap
+      live, no reload.
+- [ ] **PageBody**: `import { PageBody } from "@bb/plugin-sdk/app"` — a
+      navPanel body (full-width by default) wrapped in `<PageBody>` renders
+      as the classic centered `max-w-3xl` column, like Settings.
+      (Note: PLUGIN_SDK_VERSION was reverted 0.2.0 → 0.1.0 pre-release;
+      existing dev installs stamped 0.2.0 simply rebuild on next load.)

@@ -12,6 +12,11 @@
       "source": "./src/generated/templates.generated.ts",
       "types": "./src/generated/templates.generated.ts",
       "default": "./src/generated/templates.generated.ts"
+    },
+    "./plugin-scaffold": {
+      "source": "./src/plugin-scaffold.ts",
+      "types": "./src/plugin-scaffold.ts",
+      "default": "./src/plugin-scaffold.ts"
     }
   },
   "types": "./src/index.ts",

@@ -98,6 +98,11 @@ export interface PluginSlotMountProps {
 /**
  * The wrapper around every mounted plugin slot component: provides the
  * plugin id to the SDK hooks and contains crashes to this instance.
+ *
+ * The `data-bb-plugin-root` element is the scoping root for the plugin's
+ * compiled stylesheet — `bb plugin build` wraps every utility rule in
+ * `@scope ([data-bb-plugin-root])`, so plugin CSS can never leak onto host
+ * elements. `display: contents` keeps the wrapper layout-neutral.
  */
 export function PluginSlotMount({
   pluginId,
@@ -111,7 +116,13 @@ export function PluginSlotMount({
         pluginId={pluginId}
         instanceKey={pluginSlotInstanceKey(pluginId, slotKind, slotId)}
       >
-        {children}
+        <div
+          data-bb-plugin-root=""
+          data-bb-plugin={pluginId}
+          className="contents"
+        >
+          {children}
+        </div>
       </PluginSlotBoundary>
     </PluginContext.Provider>
   );

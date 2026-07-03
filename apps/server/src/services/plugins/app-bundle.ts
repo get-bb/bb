@@ -49,6 +49,104 @@ export interface PluginAppBundleSnapshot {
   assets: PluginAppAssets | null;
 }
 
+// ---------------------------------------------------------------------------
+// Plugin logos (convention over configuration): logo.(svg|png|webp) at the
+// plugin root — that precedence — or the manifest's `bb.logo` override, plus
+// an optional dark-theme variant (logo-dark.* / `bb.logoDark`, same rules).
+// Served at GET /plugins/:id/assets/logo (and .../logo-dark) with the same
+// hash-busting scheme as the bundle assets; refreshed on every load like the
+// bundle snapshot.
+// ---------------------------------------------------------------------------
+
+const LOGO_CONTENT_TYPES: Record<string, string> = {
+  svg: "image/svg+xml",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+/** Asset names (and convention-filename stems) of the two logo variants. */
+export type PluginLogoVariant = "logo" | "logo-dark";
+
+/** Extensions probed at the plugin root, in precedence order. */
+const LOGO_CONVENTION_EXTENSIONS = ["svg", "png", "webp"];
+
+/** On-disk logo record backing GET /plugins/:id/assets/logo[-dark] + *Url. */
+export interface PluginLogoSnapshot {
+  /** App-relative asset URL, content-hash query included. */
+  url: string;
+  path: string;
+  contentType: string;
+  /** sha256 (first 16 hex chars) over the logo bytes. */
+  hash: string;
+}
+
+/** Both logo variants of one plugin; either is null when absent. */
+export interface PluginLogoSet {
+  logo: PluginLogoSnapshot | null;
+  logoDark: PluginLogoSnapshot | null;
+}
+
+/**
+ * Detect and hash one logo variant. `manifestPath` (from `bb.logo` /
+ * `bb.logoDark`) replaces convention detection when declared; a
+ * declared-but-unreadable file resolves to null (no logo) rather than
+ * failing the load.
+ */
+async function loadPluginLogoVariant(
+  pluginId: string,
+  rootDir: string,
+  manifestPath: string | undefined,
+  variant: PluginLogoVariant,
+): Promise<PluginLogoSnapshot | null> {
+  const candidates =
+    manifestPath !== undefined
+      ? [manifestPath]
+      : LOGO_CONVENTION_EXTENSIONS.map((extension) =>
+          join(rootDir, `${variant}.${extension}`),
+        );
+  for (const path of candidates) {
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(path);
+    } catch {
+      continue;
+    }
+    const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+    const contentType = LOGO_CONTENT_TYPES[extension];
+    if (contentType === undefined) continue; // manifest schema already rejects
+    const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+    return {
+      url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${variant}?h=${hash}`,
+      path,
+      contentType,
+      hash,
+    };
+  }
+  return null;
+}
+
+/** Detect and hash both logo variants (see {@link loadPluginLogoVariant}). */
+export async function loadPluginLogos(
+  pluginId: string,
+  rootDir: string,
+  manifest: { logoPath: string | undefined; logoDarkPath: string | undefined },
+): Promise<PluginLogoSet> {
+  return {
+    logo: await loadPluginLogoVariant(
+      pluginId,
+      rootDir,
+      manifest.logoPath,
+      "logo",
+    ),
+    logoDark: await loadPluginLogoVariant(
+      pluginId,
+      rootDir,
+      manifest.logoDarkPath,
+      "logo-dark",
+    ),
+  };
+}
+
 /**
  * Parse `dist/app.meta.json` contents strictly, or null when malformed:
  * sdkMajor must be a non-negative safe integer, sdkVersion a valid semver,

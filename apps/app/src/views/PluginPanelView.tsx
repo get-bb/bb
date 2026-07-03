@@ -11,6 +11,15 @@ import { usePluginSlots } from "@/lib/plugin-slots";
  * not loaded, disabled, or removed) degrades to a quiet placeholder — plugin
  * frontends load after first paint, so a deep link can land here briefly
  * before registrations arrive.
+ *
+ * This view renders ONLY the panel body. The title chrome (plugin logo +
+ * panel title + the registration's `headerContent`) lives in the shared app
+ * header — AppLayout's AppHeader + PluginPanelHeader — so plugin panels get
+ * the same chrome as Settings/Automations. Body per the registration's
+ * `chrome` (default "page"):
+ * - "page": full-width PageShell body (no prose max-width cap).
+ * - "none": the plugin component owns the entire body region — no host
+ *   padding — with only the error boundary remaining.
  */
 export function PluginPanelView() {
   const { pluginId, panelPath } = useParams<{
@@ -24,32 +33,44 @@ export function PluginPanelView() {
         candidate.pluginId === pluginId && candidate.path === panelPath,
     ) ?? null;
 
-  return (
-    <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        {panel === null ? (
-          <EmptyStatePanel className="rounded-lg p-6 text-sm">
-            This plugin panel is not available. The plugin may still be
-            loading, or it has been disabled or removed.
-          </EmptyStatePanel>
-        ) : (
-          <>
-            <h1 className="text-sm font-semibold text-foreground">
-              {panel.title}
-            </h1>
-            <PluginSlotMount
-              // Generation in the key: a P3.4 reload remounts the slot
-              // (fresh error-boundary state).
-              key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-              pluginId={panel.pluginId}
-              slotKind="navPanel"
-              slotId={panel.id}
-            >
-              <panel.component />
-            </PluginSlotMount>
-          </>
-        )}
+  if (panel === null) {
+    return (
+      <PageShell contentClassName="pt-4 md:pt-5">
+        <EmptyStatePanel className="rounded-lg p-6 text-sm">
+          This plugin panel is not available. The plugin may still be
+          loading, or it has been disabled or removed.
+        </EmptyStatePanel>
+      </PageShell>
+    );
+  }
+
+  // Generation in the key: a P3.4 reload remounts the slot (fresh
+  // error-boundary state).
+  const mount = (
+    <PluginSlotMount
+      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+      pluginId={panel.pluginId}
+      slotKind="navPanel"
+      slotId={panel.id}
+    >
+      <panel.component />
+    </PluginSlotMount>
+  );
+
+  if (panel.chrome === "none") {
+    // Full-bleed: the component owns the entire body region. The negative
+    // margins undo the app layout's `p-4 md:p-5` route padding (same trick
+    // as PageShell's bleed, plus the bottom edge).
+    return (
+      <div className="-m-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-m-5">
+        {mount}
       </div>
+    );
+  }
+
+  return (
+    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-none">
+      {mount}
     </PageShell>
   );
 }

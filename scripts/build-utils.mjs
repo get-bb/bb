@@ -22,6 +22,22 @@ export const NATIVE_EXTERNAL_PACKAGES = [
   "pino-roll",
   "thread-stream",
   "utf-8-validate",
+  // The plugin frontend build toolchain (@bb/plugin-build). Only the bb CLI
+  // and server invoke it, but it is reachable through @bb/cli's import graph,
+  // so any bundle that includes the CLI (the host-daemon bundles) otherwise
+  // drags in esbuild + Tailwind's native .node addons and fails to bundle.
+  // Externalized everywhere: they resolve from node_modules at runtime when a
+  // plugin build actually runs, and are never loaded otherwise. They must be
+  // runtime `dependencies` of every package that ships a bundle importing them
+  // (packages/bb-app) so npm/pnpm installs them alongside the bundle.
+  "esbuild",
+  "@tailwindcss/node",
+  "@tailwindcss/oxide",
+  "lightningcss",
+  // jiti loads plugin server entries as TypeScript at runtime and lazily
+  // require()s its own transform files (babel.cjs); bundling it breaks that
+  // lazy resolution, so it must stay external + a shipped dependency.
+  "jiti",
 ];
 
 export function externalPackagePatterns(packageNames) {

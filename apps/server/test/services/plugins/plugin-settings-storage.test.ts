@@ -361,4 +361,61 @@ describe("plugin settings + storage", () => {
       expect(rerunRow.count).toBe(1);
     });
   });
+
+  it("saving settings auto-reloads a needs-configuration plugin (regression: pasting the key in Settings must take effect)", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-needs-key",
+      serverSource: `
+        export default async function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__needsKeyLoads = (g.__needsKeyLoads ?? 0) + 1;
+          const settings = bb.settings.define({
+            apiKey: { type: "string", label: "API key", secret: true },
+          });
+          const values = await settings.get();
+          if (!values.apiKey) {
+            bb.status.needsConfiguration("set apiKey first");
+          }
+        }
+      `,
+    });
+    const globals = globalThis as Record<string, unknown>;
+    delete globals.__needsKeyLoads;
+    await service.installPath(rootDir);
+    expect(service.list().find((p) => p.id === "needs-key")?.status).toBe(
+      "needs-configuration",
+    );
+    expect(globals.__needsKeyLoads).toBe(1);
+
+    await service.updateSettings("needs-key", { apiKey: "shhh" });
+    // The save reloaded the plugin; the fresh factory saw the key.
+    expect(globals.__needsKeyLoads).toBe(2);
+    expect(service.list().find((p) => p.id === "needs-key")?.status).toBe(
+      "running",
+    );
+  });
+
+  it("saving settings does NOT reload a healthy running plugin", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-healthy",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__healthyLoads = (g.__healthyLoads ?? 0) + 1;
+          bb.settings.define({
+            note: { type: "string", label: "Note" },
+          });
+        }
+      `,
+    });
+    const globals = globalThis as Record<string, unknown>;
+    delete globals.__healthyLoads;
+    await service.installPath(rootDir);
+    await service.updateSettings("healthy", { note: "hi" });
+    expect(globals.__healthyLoads).toBe(1);
+    expect(service.list().find((p) => p.id === "healthy")?.status).toBe(
+      "running",
+    );
+  });
+
 });

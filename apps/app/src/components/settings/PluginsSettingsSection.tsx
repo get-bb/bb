@@ -27,6 +27,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { usePreferredTheme } from "@/hooks/useTheme";
 
 /**
  * The Settings "Plugins" section (plugin design §5.2 settingsSection):
@@ -287,10 +288,37 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   );
 }
 
-function PluginRow({ plugin }: { plugin: PluginListItem }) {
+/**
+ * Statuses whose factory ran, so a settings schema exists server-side. A
+ * needs-configuration plugin MUST be configurable here — that status exists
+ * precisely to send the user to this form — and degraded plugins are loaded
+ * too. Errored/missing/incompatible plugins have no schema to render.
+ */
+const PLUGIN_STATUSES_WITH_SETTINGS = [
+  "running",
+  "needs-configuration",
+  "degraded",
+];
+
+/** Exported for tests (status gating of the settings form). */
+export function PluginRow({ plugin }: { plugin: PluginListItem }) {
+  const theme = usePreferredTheme();
+  const logoUrl =
+    theme === "dark" && plugin.logoDarkUrl !== null
+      ? plugin.logoDarkUrl
+      : plugin.logoUrl;
   return (
     <div className="py-3 first:pt-0 last:pb-0" data-testid={`plugin-row-${plugin.id}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {logoUrl !== null ? (
+          <img
+            src={logoUrl}
+            alt=""
+            aria-hidden="true"
+            data-testid={`plugin-settings-logo-${plugin.id}`}
+            className="size-4 shrink-0 rounded-sm object-contain"
+          />
+        ) : null}
         <span className="text-sm font-medium text-foreground">
           {plugin.id}
         </span>
@@ -309,7 +337,7 @@ function PluginRow({ plugin }: { plugin: PluginListItem }) {
           {plugin.statusDetail}
         </p>
       ) : null}
-      {plugin.enabled && plugin.status === "running" ? (
+      {plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status) ? (
         <PluginSettingsForm pluginId={plugin.id} />
       ) : null}
     </div>

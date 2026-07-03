@@ -22,18 +22,35 @@ export interface PluginListItem {
   enabled: boolean;
   status: string;
   statusDetail: string | null;
+  /** Hash-busted logo asset URL; null when the plugin ships no logo. */
+  logoUrl: string | null;
+  /** Dark-theme logo variant URL; null when the plugin ships none. */
+  logoDarkUrl: string | null;
 }
 
-function isPluginListItem(value: unknown): value is PluginListItem {
-  if (typeof value !== "object" || value === null) return false;
+function parsePluginListItem(value: unknown): PluginListItem | null {
+  if (typeof value !== "object" || value === null) return null;
   const item = value as Record<string, unknown>;
-  return (
-    typeof item.id === "string" &&
-    typeof item.version === "string" &&
-    typeof item.enabled === "boolean" &&
-    typeof item.status === "string" &&
-    (item.statusDetail === null || typeof item.statusDetail === "string")
-  );
+  if (
+    typeof item.id !== "string" ||
+    typeof item.version !== "string" ||
+    typeof item.enabled !== "boolean" ||
+    typeof item.status !== "string" ||
+    !(item.statusDetail === null || typeof item.statusDetail === "string")
+  ) {
+    return null;
+  }
+  return {
+    id: item.id,
+    version: item.version,
+    enabled: item.enabled,
+    status: item.status,
+    statusDetail: item.statusDetail,
+    // Absent on older servers → no logo, never a dropped row.
+    logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
+    logoDarkUrl:
+      typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
+  };
 }
 
 export async function fetchPluginList(
@@ -47,7 +64,9 @@ export async function fetchPluginList(
     plugins?: unknown;
   } | null;
   return Array.isArray(body?.plugins)
-    ? body.plugins.filter(isPluginListItem)
+    ? body.plugins
+        .map(parsePluginListItem)
+        .filter((item): item is PluginListItem => item !== null)
     : [];
 }
 

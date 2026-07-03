@@ -17,8 +17,9 @@
   },
   "types": "./src/index.ts",
   "scripts": {
+    "build": "node scripts/build-bundled-dts.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
@@ -30,6 +31,8 @@
     "@types/react": "^19.0.0",
     "better-sqlite3": "12.10.0",
     "hono": "4.11.9",
+    "rollup": "^4.62.2",
+    "rollup-plugin-dts": "^6.4.1",
     "typescript": "^5.7.0",
     "zod": "^4.3.6"
   },

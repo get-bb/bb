@@ -41,15 +41,30 @@ The manifest is `package.json`:
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
+- Logo (optional, convention over configuration) — a `logo.svg`, `logo.png`,
+  or `logo.webp` at the plugin root (that precedence) is auto-detected and
+  shown wherever bb renders your plugin's contributions: the sidebar entry,
+  the panel title bar, composer command/mention menus, thread action
+  buttons, and Settings → Plugins. `bb.logo: "./assets/mark.svg"` relocates
+  it (svg/png/webp only; anything else fails the manifest). An optional
+  dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
+  at the root (same precedence), or `bb.logoDark` (same rules) — is
+  preferred whenever the app is in dark mode, falling back to the light
+  logo. Without a logo, contributions fall back to their named `icon` hint
+  or a generic bolt. Picked up on `bb plugin reload`.
 - `engines.bb` — semver range checked against the bb version at load.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
   and CLI commands.
 
-The scaffold's `tsconfig.json` typechecks `server.ts` (and `app.tsx`)
-against the real contracts — run `npx tsc --noEmit` after `npm install`
-inside a bb checkout. Backend imports from `@bb/plugin-sdk` MUST be
-type-only (`import type { BbPluginApi } from "@bb/plugin-sdk"`); they are
+The scaffold ships the full API as bundled type declarations in `types/`
+(`bb-plugin-sdk.d.ts`, plus `bb-plugin-sdk-app.d.ts` for `--app`); its
+`tsconfig.json` maps `@bb/plugin-sdk` to them, so `npm install && npx tsc
+--noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
+are the authoritative, exhaustive surface: read them (or the source at
+<https://github.com/ymichael/bb>, cloned) when you need an exact signature or
+a symbol this skill doesn't cover. Backend imports from `@bb/plugin-sdk` MUST
+be type-only (`import type { BbPluginApi } from "@bb/plugin-sdk"`); they are
 erased when the server loads the file, so `server.ts` runs as-is with zero
 runtime dependencies.
 
@@ -356,7 +371,7 @@ the host's shared runtime, so the bundle only works inside bb.
 
 ```tsx
 import { definePluginApp, useRpc, useRealtime, useSettings, useBbContext, useBbNavigate,
-         Button, Card, EmptyState, Markdown, Spinner } from "@bb/plugin-sdk/app";
+         Button, Card, CardContent, Dialog, DialogContent, toast } from "@bb/plugin-sdk/app";
 
 export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
@@ -370,9 +385,22 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
-- `navPanel` → `{}` — it owns the whole route at
-  `/plugins/<pluginId>/<path>` and gets its own sidebar entry.
-  Registration: `{ id, title, icon, path, component }`.
+- `navPanel` → `{}` — owns the whole route at `/plugins/<pluginId>/<path>`
+  and gets its own sidebar entry.
+  Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
+  The host renders your plugin logo + `title` into the SHARED app header
+  (the same chrome as Settings/Automations) with your optional
+  `headerContent` component as the header actions on the right — so do NOT
+  repeat the title inside your component; the body below is yours,
+  full-width. `headerContent` is plugin code inside host chrome and is
+  contained separately: a throw hides the accessory without breaking the
+  header or the panel body. `chrome: "page"` (the default) gives the body
+  the standard page padding at full width — wrap your content in
+  `<PageBody>` (see the UI kit) to opt back into the classic centered,
+  width-capped column instead; `chrome: "none"` is the escape hatch — your
+  `component` owns the ENTIRE body region with zero host padding
+  (`headerContent` is ignored; the shared header still shows logo + title)
+  and only the crash boundary remains.
 - `threadPanelTab` → `{ threadId: string }` — a tab in the thread's right
   panel. Registration: `{ id, title, component, visible? }`; `visible` is
   **synchronous**, runs per render, and a throw hides the tab.
@@ -390,8 +418,38 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path) }`.
 
-UI kit (the whole curated list): `Button`, `Card`, `EmptyState`,
-`Markdown`, `Spinner`. Internal bb app components are NOT importable.
+UI kit — **stock shadcn/ui components, stock names, stock props**: write
+standard shadcn code and it works as-is, rendered by the host so theme
+tokens, dark mode, and portalled overlays (dialogs, menus) are automatic.
+The full export list:
+
+- Buttons/badges/cards: `Button`, `Badge`, `Card`, `CardHeader`,
+  `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`
+- Form: `Input`, `Textarea`, `Label`, `Checkbox`, `Switch`, `Select`,
+  `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`,
+  `SelectGroup`, `SelectLabel`, `SelectSeparator`, `SelectScrollUpButton`,
+  `SelectScrollDownButton`
+- Tabs: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`
+- Dialog: `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`,
+  `DialogFooter`, `DialogTitle`, `DialogDescription`, `DialogClose`,
+  `DialogOverlay`
+- Menu: `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`,
+  `DropdownMenuItem`, `DropdownMenuCheckboxItem`, `DropdownMenuRadioGroup`,
+  `DropdownMenuRadioItem`, `DropdownMenuLabel`, `DropdownMenuSeparator`,
+  `DropdownMenuShortcut`, `DropdownMenuGroup`, `DropdownMenuPortal`,
+  `DropdownMenuSub`, `DropdownMenuSubTrigger`, `DropdownMenuSubContent`
+- Overlay: `Popover`, `PopoverTrigger`, `PopoverContent`, `PopoverAnchor`,
+  `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider`
+- Misc: `Separator`, `Skeleton`, and `toast` (sonner's toast function — the
+  host renders the Toaster; `toast.success("Saved")` just works)
+- bb extras (not shadcn): `EmptyState`, `Markdown`, `PageBody`, `Spinner`
+
+Internal bb app components beyond this list are NOT importable. `PageBody`
+is a layout wrapper for `navPanel` bodies (full-width by default):
+`<PageBody>…</PageBody>` renders the same centered `max-w-3xl` column as
+the host's settings-style pages; `className` extends or overrides it. One
+deviation from stock shadcn: `Dialog` renders as a bottom drawer on compact
+viewports (the host's responsive behavior) — same API.
 
 Crash isolation: each slot mounts inside an ErrorBoundary — a throwing
 component collapses to a "plugin <id> crashed" chip; the rest of the app
@@ -430,6 +488,11 @@ hardcoded colors break custom palettes.
 
 Reference examples in `examples/plugins/` (a bb checkout):
 
+- `github` — shadcn-UI-kit showcase: a gh-CLI-backed issue/PR browser in a
+  single navPanel (with `headerContent`), hash-based sub-navigation, Tabs/
+  Select/DropdownMenu/Badge/Skeleton/toast throughout, background sync
+  service, rpc + realtime, project setting, a `bb github` CLI command, and
+  agent-spawn buttons.
 - `linear` — full-stack hero: secret/select/project settings, sqlite +
   migrate, kv, schedule, realtime, rpc, mention provider, CLI,
   threads.spawn, and all frontend slots incl. the sync `visible()` pattern.

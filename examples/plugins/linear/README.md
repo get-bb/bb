@@ -33,9 +33,13 @@ What it demonstrates (every plugin layer):
   so agents (via bash) and humans share the same surface.
 - **Frontend slots** (`app.tsx`, built by `bb plugin build` or automatically
   at install): an "Open Linear issues" homepage section (click → start work
-  → navigate to the new thread), a "Linear" nav panel with a by-state board,
-  and an "Issue" thread panel tab that appears only on threads spawned from
-  an issue.
+  → navigate to the new thread), a "Linear" nav panel with a full-width
+  by-state board plus a `headerContent` sync affordance (issue count + Sync
+  button) in the shared app header, and an "Issue" thread panel tab that
+  appears only on threads spawned from an issue. The `logo.svg` at the
+  plugin root shows up on every contribution surface (sidebar, header,
+  composer menus, Settings → Plugins); `logo-dark.svg` is the white variant
+  bb prefers while the app is in dark mode.
 
 ## Setup
 

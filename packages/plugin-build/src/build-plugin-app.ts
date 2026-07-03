@@ -153,6 +153,17 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * the compiled classes resolve against the host's live CSS variables at
  * runtime. Tailwind itself comes from the CLI's own installation (plugins do
  * not need tailwindcss installed), via `customCssResolver`.
+ *
+ * The utilities are emitted inside `@scope ([data-bb-plugin-root])` — the
+ * attribute every plugin mount root carries (PluginSlotMount) — so plugin
+ * utility rules can never touch host elements. Without the scope, a plugin's
+ * plain `.flex-col` (same `utilities` layer, later stylesheet) overrides the
+ * host's `sm:flex-row` everywhere: a media query adds no specificity, so the
+ * later plain rule wins and host layouts silently collapse. `@scope` adds no
+ * specificity of its own, so cascade order WITHIN the plugin's sheet is
+ * unchanged. Theme variables and `@property` registrations stay top-level:
+ * `:root` vars must land on the document root (status quo — the host defines
+ * the same tokens) and `@property` is invalid when nested.
  */
 async function buildTailwindCss(rootDir: string): Promise<string> {
   const [{ compile }, { Scanner }] = await Promise.all([
@@ -163,7 +174,11 @@ async function buildTailwindCss(rootDir: string): Promise<string> {
   const input = [
     `@layer theme, utilities;`,
     `@import "tailwindcss/theme.css" layer(theme);`,
-    `@import "tailwindcss/utilities.css" layer(utilities);`,
+    `@layer utilities {`,
+    `  @scope ([data-bb-plugin-root]) {`,
+    `    @tailwind utilities;`,
+    `  }`,
+    `}`,
     ``,
   ].join("\n");
   const compiler = await compile(input, {

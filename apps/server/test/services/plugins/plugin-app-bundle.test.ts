@@ -109,7 +109,19 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const css = await harness.app.request(`${BASE}${bundle.cssUrl}`);
     expect(css.status).toBe(200);
     expect(css.headers.get("content-type")).toContain("text/css");
-    expect(await css.text()).toContain("line-clamp-2");
+    const cssText = await css.text();
+    expect(cssText).toContain("line-clamp-2");
+    // Regression (plugin CSS leak): the utilities layer must open straight
+    // into @scope ([data-bb-plugin-root]) so plugin utility rules apply only
+    // inside plugin mounts. Unscoped, a plugin's plain `.flex-col` (same
+    // `utilities` layer, later stylesheet) overrides the host's
+    // `sm:flex-row` on every host element — media queries add no
+    // specificity, so the later plain rule wins page-wide.
+    expect(cssText).toMatch(
+      /@layer utilities \{\s*@scope \(\[data-bb-plugin-root\]\) \{/,
+    );
+    // And no utility rule sits in the utilities layer outside that scope.
+    expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
 
     // Wrong/absent hash still serves current bytes, but uncached.
     const staleHash = await harness.app.request(

@@ -18,6 +18,7 @@ import {
   promptMentionIconName,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@/lib/utils";
@@ -260,11 +261,38 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
-function getCommandIconName(item: ComposerCommandSuggestion): IconName {
+// Rows share one icon box; plugin rows show the plugin's logo when it ships
+// one (falling back to the generic bolt), everything else a named icon.
+const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
+
+function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
   if (item.kind === "plugin-command") {
-    return "Zap";
+    return (
+      <PluginIcon
+        pluginId={item.pluginId}
+        icon={null}
+        className={ROW_ICON_CLASS}
+      />
+    );
   }
-  return promptCommandIconName(item);
+  return (
+    <Icon name={promptCommandIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+  );
+}
+
+function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
+  if (item.kind === "plugin") {
+    return (
+      <PluginIcon
+        pluginId={item.pluginId}
+        icon={null}
+        className={ROW_ICON_CLASS}
+      />
+    );
+  }
+  return (
+    <Icon name={getMentionIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
+  );
 }
 
 function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
@@ -295,7 +323,7 @@ function MutedTrailingPath({ children }: { children: string }) {
 interface SuggestionRowProps {
   index: number;
   selectedIndex: number;
-  iconName: IconName;
+  icon: ReactNode;
   primary: string;
   /** Muted context rendered after the primary label (mention dir / project, or
    * command description + argument hint). */
@@ -309,7 +337,7 @@ interface SuggestionRowProps {
 function SuggestionRow({
   index,
   selectedIndex,
-  iconName,
+  icon,
   primary,
   trailing,
   title,
@@ -338,11 +366,7 @@ function SuggestionRow({
       title={title}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <Icon
-          name={iconName}
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
+        {icon}
         <span className="truncate text-foreground">{primary}</span>
         {trailing}
       </div>
@@ -416,7 +440,7 @@ function MentionResults({
                   key={getMentionKey(item, index)}
                   index={index}
                   selectedIndex={selectedIndex}
-                  iconName={getMentionIconName(item)}
+                  icon={getMentionIcon(item)}
                   primary={primary}
                   trailing={
                     secondaryContext === null ? null : secondaryContextKind ===
@@ -481,7 +505,7 @@ function CommandResults({
                 key={getCommandKey(item, index)}
                 index={index}
                 selectedIndex={selectedIndex}
-                iconName={getCommandIconName(item)}
+                icon={getCommandIcon(item)}
                 primary={item.name}
                 // description sits inline after the name (muted); argumentHint
                 // trails it, further muted, so the name stays the anchor.

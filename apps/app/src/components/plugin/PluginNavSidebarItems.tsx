@@ -1,7 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
-import { pluginThreadActionIconName } from "@/components/thread/PluginThreadActions";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -33,7 +32,10 @@ function PluginNavSidebarItemList({
   const location = useLocation();
   return (
     <div
-      className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+      // -mt-1 tightens the seam against the primary-actions block (its py-2
+      // bottom) so the first panel row sits on the same 4px (space-y-1) rhythm
+      // as New thread / Automations above it, instead of an 8px gap.
+      className="-mt-1 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
     >
       {navPanels.map((panel) => {
@@ -59,7 +61,7 @@ function PluginNavSidebarItemList({
               void navigate(path);
             }}
           >
-            <Icon name={pluginThreadActionIconName(panel.icon)} />
+            <PluginIcon pluginId={panel.pluginId} icon={panel.icon} />
             <span className="min-w-0 flex-1 truncate text-left">
               {panel.title}
             </span>
