@@ -3,6 +3,7 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
 import { cn } from "@/lib/utils";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import {
   type ResponsiveOverlayContextValue,
   useResponsiveRoot,
@@ -140,6 +141,9 @@ const PopoverContent = React.forwardRef<
     ref,
   ) => {
     const { isCompactViewport, open, onOpenChange } = useResponsivePopover();
+    // Unconditional (rules of hooks — the compact branch returns early); the
+    // compact drawer path is covered by DrawerContent's own stamp.
+    const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
       // Forward DOM-level props (event handlers, data-*, aria-*) but strip
@@ -172,6 +176,7 @@ const PopoverContent = React.forwardRef<
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           ref={ref}
+          {...scopeProps}
           align={align}
           sideOffset={sideOffset}
           className={cn(

@@ -3,6 +3,7 @@ import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "@/lib/utils";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import {
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
@@ -42,6 +43,9 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
+    // Portaled outside every plugin mount; re-attach the plugin CSS scope
+    // when rendered from a plugin slot (see portal-scope.ts).
+    {...usePortalScopeProps()}
     className={cn(
       "fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]",
       className,
@@ -59,6 +63,7 @@ const DrawerContent = React.forwardRef<
     <DrawerOverlay />
     <DrawerPrimitive.Content
       ref={ref}
+      {...usePortalScopeProps()}
       className={cn(
         "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[85dvh] flex-col rounded-t-xl border bg-background",
         className,
