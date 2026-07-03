@@ -159,15 +159,20 @@ function matchesQuery(command: ProviderCommand, query: string): boolean {
 }
 
 /**
- * Collapse same-`(source, name)` collisions. Built-in agent commands are the
+ * Collapse same command-identity collisions. Built-in agent commands are the
  * canonical row for their names; otherwise project-origin entries win over
  * user-origin ones. Cross-source duplicates (a `skill` and a `command` with the
  * same name) are intentionally retained — they are distinct invocations.
+ * Plugin commands also include pluginId in their identity, so different
+ * plugins can expose the same slash name without hiding each other.
  */
 function dedupeBySourceAndName(commands: ProviderCommand[]): ProviderCommand[] {
   const byKey = new Map<string, ProviderCommand>();
   for (const command of commands) {
-    const key = `${command.source} ${command.name}`;
+    const key =
+      command.source === "plugin"
+        ? `${command.source} ${command.pluginId} ${command.name}`
+        : `${command.source} ${command.name}`;
     const existing = byKey.get(key);
     if (!existing || commandOriginRank(command) > commandOriginRank(existing)) {
       byKey.set(key, command);

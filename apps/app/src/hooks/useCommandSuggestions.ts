@@ -100,7 +100,13 @@ export function promptActionCommandSuggestions({
     .filter((suggestion) => commandSuggestionMatchesQuery(suggestion, query));
 }
 
-function mergeCommandSuggestions(
+function commandSuggestionIdentity(suggestion: ProviderCommandSuggestion): string {
+  return suggestion.source === "plugin"
+    ? `${suggestion.source}:${suggestion.pluginId}:${suggestion.name}`
+    : `${suggestion.source}:${suggestion.name}`;
+}
+
+export function mergeCommandSuggestions(
   preferred: readonly ProviderCommandSuggestion[],
   fallback: readonly ProviderCommandSuggestion[],
 ): ProviderCommandSuggestion[] {
@@ -108,7 +114,7 @@ function mergeCommandSuggestions(
   const seen = new Set<string>();
 
   for (const suggestion of [...preferred, ...fallback]) {
-    const key = `${suggestion.source}:${suggestion.name}`;
+    const key = commandSuggestionIdentity(suggestion);
     if (seen.has(key)) {
       continue;
     }

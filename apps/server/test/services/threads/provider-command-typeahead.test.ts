@@ -143,4 +143,44 @@ describe("buildCommandListResponse", () => {
     });
     expect(response.truncated).toBe(false);
   });
+
+  it("keeps same-named plugin CLI commands from different plugins", () => {
+    const response = buildCommandListResponse({
+      commands: [],
+      pluginCommands: [
+        {
+          pluginId: "linear",
+          name: "open",
+          summary: "Open Linear issue",
+        },
+        {
+          pluginId: "github",
+          name: "open",
+          summary: "Open GitHub issue",
+        },
+      ],
+      limit: 10,
+      offset: 0,
+      query: "open",
+    });
+
+    expect(response.commands).toEqual([
+      {
+        name: "open",
+        source: "plugin",
+        origin: "user",
+        description: "Open Linear issue",
+        argumentHint: null,
+        pluginId: "linear",
+      },
+      {
+        name: "open",
+        source: "plugin",
+        origin: "user",
+        description: "Open GitHub issue",
+        argumentHint: null,
+        pluginId: "github",
+      },
+    ]);
+  });
 });
