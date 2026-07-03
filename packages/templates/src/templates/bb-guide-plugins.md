@@ -65,8 +65,10 @@ refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
-navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelTab
-(right panel next to Info/Diff), composerAccessory (prompt box footer). Hooks:
+navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelAction
+(an entry in the thread right panel's new-tab Actions list whose run() can
+open closable panel tabs with JSON params), composerAccessory (prompt box
+footer). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate. Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
@@ -74,7 +76,8 @@ components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, and vaul are runtime-shimmed (never bundled), everything else
+sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
+renderer) are runtime-shimmed (never bundled), everything else
 bundles from the plugin's node_modules (`npm install` for authors;
 consumers install prebuilt dist). A crashing slot collapses to a
 "plugin <id> crashed" chip without
@@ -139,7 +142,7 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, navPanel,
-threadPanelTab, composerAccessory) via definePluginApp, use the hooks
+threadPanelAction, composerAccessory) via definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and
 tw-animate-css utilities compile in plugin builds).

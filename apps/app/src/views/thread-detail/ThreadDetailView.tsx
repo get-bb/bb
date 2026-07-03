@@ -121,6 +121,11 @@ import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import {
+  PluginPanelTabContent,
+  usePluginPanelActions,
+} from "@/components/plugin/PluginPanelActions";
 import { Icon } from "@/components/ui/icon.js";
 import {
   getBbDesktopInfo,
@@ -553,6 +558,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeWorkspaceFilePath,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
+    activePluginPanelTab,
     activeSideChatTabId,
     activateSideChatTab,
     browserTabs,
@@ -562,6 +568,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     closeSideChatTab,
     isNewTabActive,
     openTab,
+    openPluginPanel,
     openSideChat,
     openExistingSideChatTab,
     orderedSecondaryFileTabs,
@@ -576,6 +583,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
+  });
+  const pluginPanelActions = usePluginPanelActions({
+    openPluginPanel,
+    threadId,
   });
   useThreadOpenFileSignal({
     threadId,
@@ -1325,6 +1336,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               statusLabel: null,
               onSelect: () => activateSideChatTab(tab.id),
               onClose: () => closeSideChatTab(tab.id),
+            };
+          case "plugin-panel":
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <PluginIcon
+                  pluginId={tab.pluginId}
+                  icon={null}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
             };
         }
       },
@@ -2101,6 +2128,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
+      pluginActions={pluginPanelActions}
     />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
@@ -2136,6 +2164,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onSelectionAddToChat={handleSelectionAddToChat}
       threadId={thread.id}
     />
+  ) : activePluginPanelTab ? (
+    <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   // Side-chat tabs, like browser tabs, keep a live conversation surface mounted

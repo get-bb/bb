@@ -27,9 +27,15 @@ export interface PluginHomepageSectionProps {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface PluginNavPanelProps {}
 
-/** Props passed to a `threadPanelTab` component. */
-export interface PluginThreadPanelTabProps {
+/** Props passed to a panel tab opened by a `threadPanelAction`. */
+export interface PluginThreadPanelProps {
   threadId: string;
+  /**
+   * The JSON value the action's `openPanel` call passed (round-tripped
+   * through persistence, so the tab restores across reloads); null when the
+   * action opened the panel without params.
+   */
+  params: unknown;
 }
 
 /** Props passed to a `composerAccessory` component. */
@@ -80,17 +86,41 @@ export interface PluginNavPanelRegistration {
   headerContent?: ComponentType<PluginNavPanelProps>;
 }
 
-export interface PluginThreadPanelTabRegistration {
+/** Context handed to a `threadPanelAction`'s `run`. */
+export interface PluginThreadPanelActionContext {
+  /** The thread whose panel launcher invoked the action. */
+  threadId: string;
+  /**
+   * Open a tab in the thread's side panel rendering this action's
+   * `component`. `title` labels the tab (default: the action's `title`);
+   * `params` must be JSON-serializable — it is persisted with the tab and
+   * reaches the component as its `params` prop. Opening with params
+   * identical to an already-open tab of this action focuses that tab
+   * (updating its title) instead of duplicating it. May be called more than
+   * once (different params ⇒ multiple tabs) or not at all.
+   */
+  openPanel(options?: { title?: string; params?: unknown }): void;
+}
+
+export interface PluginThreadPanelActionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
+  /** Label of the action row in the panel's new-tab launcher. */
   title: string;
-  component: ComponentType<PluginThreadPanelTabProps>;
   /**
-   * Optional synchronous visibility predicate, evaluated per thread on
-   * render. V1 is sync-only (the design allows async later); keep it cheap
-   * and side-effect free. A throwing predicate hides the tab.
+   * Icon hint (BB icon name) used when the plugin ships no logo; the
+   * launcher row and opened tabs prefer the plugin's logo.
    */
-  visible?: (context: { threadId: string }) => boolean;
+  icon?: string;
+  /** Rendered inside every panel tab this action opens. */
+  component: ComponentType<PluginThreadPanelProps>;
+  /**
+   * Runs when the user activates the action: call your RPC methods, show a
+   * toast, and/or open panel tabs via `context.openPanel`. Omitted =
+   * immediately open a panel tab with defaults. Errors (sync or async) are
+   * contained and logged; they never break the launcher.
+   */
+  run?(context: PluginThreadPanelActionContext): void | Promise<void>;
 }
 
 export interface PluginComposerAccessoryRegistration {
@@ -106,7 +136,7 @@ export interface PluginComposerAccessoryRegistration {
 export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
-  threadPanelTab(registration: PluginThreadPanelTabRegistration): void;
+  threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
 }
 

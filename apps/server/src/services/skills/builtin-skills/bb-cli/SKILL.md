@@ -266,8 +266,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection, navPanel,
-    threadPanelTab, composerAccessory) with hooks (useRpc, useRealtime,
-    useSettings, useBbContext, useBbNavigate) and a small UI kit. Installed
+    threadPanelAction, composerAccessory) with hooks (useRpc, useRealtime,
+    useSettings, useBbContext, useBbNavigate); components are vendored
+    shadcn source the plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins

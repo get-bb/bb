@@ -41,7 +41,10 @@ import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
  * Shim policy (plugin design §5.5): ONLY packages with singleton/global
  * behavior — one React, the portaling radix families (shared
  * dismissable-layer/focus/scroll-lock/aria-hidden world), sonner (`toast()`
- * must reach the host toaster), vaul (mutates document.body styles) — plus
+ * must reach the host toaster), vaul (mutates document.body styles),
+ * @pierre/diffs (its react FileDiff reads the host's
+ * WorkerPoolContextProvider — context identity requires one module copy —
+ * and sharing keeps shiki's grammars out of every plugin bundle) — plus
  * the SDK surface itself. Everything else (non-portal radix, cva/clsx/
  * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
  * plugin's own node_modules.
@@ -53,6 +56,8 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   "react/jsx-runtime": "jsxRuntime",
   "react/jsx-dev-runtime": "jsxDevRuntime",
   "@bb/plugin-sdk/app": "pluginSdkApp",
+  "@pierre/diffs": "pierreDiffs",
+  "@pierre/diffs/react": "pierreDiffsReact",
   "@radix-ui/react-alert-dialog": "radixAlertDialog",
   "@radix-ui/react-context-menu": "radixContextMenu",
   "@radix-ui/react-dialog": "radixDialog",

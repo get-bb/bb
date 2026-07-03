@@ -369,7 +369,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
   app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
-  app.slots.threadPanelTab({ id: "issue", title: "Issue", component: IssueTab, visible: ({ threadId }) => linked.has(threadId) });
+  app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
   app.slots.composerAccessory({ id: "hint", component: Hint });
 });
 ```
@@ -394,9 +394,19 @@ Slot props contracts (versioned, additive-only):
   `component` owns the ENTIRE body region with zero host padding
   (`headerContent` is ignored; the shared header still shows logo + title)
   and only the crash boundary remains.
-- `threadPanelTab` → `{ threadId: string }` — a tab in the thread's right
-  panel. Registration: `{ id, title, component, visible? }`; `visible` is
-  **synchronous**, runs per render, and a throw hides the tab.
+- `threadPanelAction` → an entry in the thread right panel's new-tab
+  Actions list (next to "Start side chat" / "Start terminal"), labeled
+  `title` with your plugin logo. Registration:
+  `{ id, title, icon?, component, run? }`. Activating it calls
+  `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
+  call `openPanel({ title?, params? })` to open a closable panel tab
+  rendering `component` with `{ threadId: string, params: unknown }`.
+  Omitting `run` opens a tab immediately with defaults. `params` must be
+  JSON-serializable — it persists with the tab across reloads (null when
+  none was passed); identical action+params re-opens focus the existing
+  tab (title refreshed), different params open sibling tabs. The tab pill
+  shows your plugin logo + the tab title. Errors thrown from `run` (sync
+  or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 
@@ -434,9 +444,17 @@ only `definePluginApp` + the hooks):
 - Never bundled (runtime-shimmed, import freely): react, the portaling
   radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
   `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,
-  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`. Your vendored overlays
-  therefore share the host's dismissable-layer/focus/scroll-lock world —
-  stacking against host overlays behaves correctly.
+  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`, `@pierre/diffs` (+
+  `/react`). Your vendored overlays therefore share the host's
+  dismissable-layer/focus/scroll-lock world — stacking against host
+  overlays behaves correctly.
+- Syntax-highlighted diffs: `parsePatchFiles` from `@pierre/diffs` +
+  `FileDiff` from `@pierre/diffs/react` render patches exactly like the
+  app's own diff panel (the host provides the highlighting worker pool via
+  React context on every plugin surface; add `@pierre/diffs` to
+  devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
+  when your patch source (e.g. the GitHub REST API) omits it — see
+  `examples/plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
@@ -457,15 +475,13 @@ Crash isolation: each slot mounts inside an ErrorBoundary — a throwing
 component collapses to a "plugin <id> crashed" chip; the rest of the app
 (and other plugins) stay alive.
 
-The sync `visible()` pattern (threadPanelTab): `visible` is synchronous but
-"should this tab show?" is usually server state. The canonical answer:
-keep a module-level cache
-(e.g. `let linked: Set<string> | null`), prime it once at bundle load from
-a backend rpc like `listLinks` — guarded with `typeof document !==
-"undefined"` so evaluating the bundle outside a browser is side-effect
-free — refresh it on a realtime signal, update it optimistically after
-mutations, and have `visible()` do a pure cache read (false until loaded,
-so no dead tab ever flashes).
+The `run` pattern (threadPanelAction): `run` is the place to resolve
+server state before deciding what to open — e.g. call a backend rpc, then
+`openPanel({ title: issue.title, params: { issueId: issue.id } })`, or
+`toast.error("No linked issue")` and open nothing. The panel component
+should treat `params` as untrusted input (it round-trips through
+persistence) and re-fetch fresh data by id rather than embedding whole
+payloads in params.
 
 Styling: Tailwind classes compile against the host theme's live CSS
 variables — use host token classes (`bg-card`, `text-foreground`,

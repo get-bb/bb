@@ -1,17 +1,27 @@
 // bb-plugin-github — the frontend bundle.
 //
 // A GitHub panel: Issues / Pull Requests as a filterable table (state chips,
-// "Assigned to me", text search), inline status + assignee editing, and an
-// issue detail view with a metadata sidebar. "Send agent" buttons everywhere
-// an issue or PR shows up. Deep links use the URL hash
-// (#/issues/<owner>/<repo>/<n>) since navPanel owns a single route today.
+// "Assigned to me", text search), inline status + assignee editing, issue and
+// pull-request detail views with a metadata sidebar (the PR view covers
+// checks, reviews, inline review threads, and per-file diffs — VS Code's
+// GitHub integration, shrunk to a panel). "Send agent" buttons everywhere an
+// issue or PR shows up. Deep links use the URL hash
+// (#/issues/<owner>/<repo>/<n>, #/pulls/<owner>/<repo>/<n>) since navPanel
+// owns a single route today. A threadPanelAction opens the same PR view in a
+// thread's right panel, auto-resolved to that thread's PR.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
   useRealtime,
   useRpc,
+  type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
+// Shimmed to the host's copy at build time (shared worker-pool context +
+// shiki stays out of the plugin bundle) — diffs render with the same syntax
+// highlighting as the app's own diff panel.
+import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,6 +73,61 @@ interface IssueDetail extends Omit<Item, "kind"> {
   comments: IssueComment[];
 }
 
+interface PullCheck {
+  name: string;
+  status: "success" | "failure" | "pending" | "neutral";
+  url: string;
+}
+
+interface PullReview {
+  author: string;
+  state: string;
+  body: string;
+  createdAt: string;
+}
+
+interface ReviewThread {
+  path: string;
+  line: number | null;
+  diffHunk: string;
+  comments: IssueComment[];
+}
+
+interface PullFile {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch: string | null;
+}
+
+interface PullDetail {
+  repo: string;
+  number: number;
+  title: string;
+  state: string; // OPEN | DRAFT | MERGED | CLOSED
+  author: string;
+  body: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  baseRefName: string;
+  headRefName: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  labels: string[];
+  assignees: string[];
+  reviewDecision: string;
+  mergeStateStatus: string;
+  reviewRequests: string[];
+  checks: PullCheck[];
+  comments: IssueComment[];
+  reviews: PullReview[];
+  reviewThreads: ReviewThread[];
+  files: PullFile[];
+}
+
 interface RepoInfo {
   repo: string;
   projectId: string | null;
@@ -105,10 +170,17 @@ type Route =
   | { view: "issues" }
   | { view: "pulls" }
   | { view: "new" }
-  | { view: "issue"; repo: string; number: number };
+  | { view: "issue"; repo: string; number: number }
+  | { view: "pull"; repo: string; number: number };
 
 function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter((p) => p.length > 0);
+  if (parts[0] === "pulls" && parts.length === 4) {
+    const number = Number(parts[3]);
+    if (Number.isFinite(number)) {
+      return { view: "pull", repo: `${parts[1]}/${parts[2]}`, number };
+    }
+  }
   if (parts[0] === "pulls") return { view: "pulls" };
   if (parts[0] === "new") return { view: "new" };
   if (parts[0] === "issues" && parts.length === 4) {
@@ -130,6 +202,8 @@ function routeToHash(route: Route): string {
       return "#/new";
     case "issue":
       return `#/issues/${route.repo}/${route.number}`;
+    case "pull":
+      return `#/pulls/${route.repo}/${route.number}`;
   }
 }
 
@@ -897,13 +971,13 @@ function ItemsTable({
   items,
   error,
   hasFilter,
-  onOpenIssue,
+  onOpenItem,
 }: {
   kind: "issue" | "pr";
   items: Item[] | null;
   error: string | null;
   hasFilter: boolean;
-  onOpenIssue: (repo: string, number: number) => void;
+  onOpenItem: (repo: string, number: number) => void;
 }) {
   const links = useLinks();
 
@@ -930,11 +1004,7 @@ function ItemsTable({
             key={`${item.repo}#${item.number}`}
             item={item}
             links={links[`${kind}:${item.repo}#${item.number}`]}
-            onOpen={() =>
-              kind === "issue"
-                ? onOpenIssue(item.repo, item.number)
-                : window.open(item.url, "_blank")
-            }
+            onOpen={() => onOpenItem(item.repo, item.number)}
           />
         ))}
       </div>
@@ -1279,6 +1349,638 @@ function IssueDetailView({
 }
 
 // ---------------------------------------------------------------------------
+// Pull request detail — the VS Code-style PR view. One component serves both
+// the nav panel (two-column with a metadata sidebar) and the thread side
+// panel (compact single column via `compact`).
+// ---------------------------------------------------------------------------
+
+function pullStateBadgeParts(state: string): { dot: string; label: string } {
+  if (state === "DRAFT") return { dot: "bg-muted-foreground/60", label: "draft" };
+  if (state === "OPEN") return { dot: "bg-green-500", label: "open" };
+  if (state === "MERGED") return { dot: "bg-purple-500", label: "merged" };
+  return { dot: "bg-red-500", label: "closed" };
+}
+
+function PullStateBadge({ state }: { state: string }) {
+  const { dot, label } = pullStateBadgeParts(state);
+  return (
+    <Badge variant="outline" className="gap-1.5 font-normal">
+      <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+      {label}
+    </Badge>
+  );
+}
+
+const REVIEW_STATE_LABELS: Record<string, string> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "requested changes",
+  COMMENTED: "commented",
+  DISMISSED: "dismissed",
+  PENDING: "review requested",
+};
+
+function reviewStateClass(state: string): string {
+  if (state === "APPROVED") return "text-green-600 dark:text-green-400";
+  if (state === "CHANGES_REQUESTED") return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
+}
+
+function ReviewDecisionBadge({ decision }: { decision: string }) {
+  if (decision === "APPROVED") {
+    return <Badge className="bg-green-600 text-white hover:bg-green-600">approved</Badge>;
+  }
+  if (decision === "CHANGES_REQUESTED") {
+    return <Badge variant="destructive">changes requested</Badge>;
+  }
+  if (decision === "REVIEW_REQUIRED") {
+    return <Badge variant="secondary">review required</Badge>;
+  }
+  return null;
+}
+
+function checkDotClass(status: PullCheck["status"]): string {
+  if (status === "success") return "bg-green-500";
+  if (status === "failure") return "bg-red-500";
+  if (status === "pending") return "animate-pulse bg-yellow-500";
+  return "bg-muted-foreground/50";
+}
+
+function ChecksSection({ checks }: { checks: PullCheck[] }) {
+  const [open, setOpen] = useState(() => checks.some((check) => check.status === "failure"));
+  if (checks.length === 0) return null;
+  const passing = checks.filter((check) => check.status === "success").length;
+  const failing = checks.filter((check) => check.status === "failure").length;
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span
+          className={`size-2 shrink-0 rounded-full ${
+            failing > 0 ? "bg-red-500" : passing === checks.length ? "bg-green-500" : "animate-pulse bg-yellow-500"
+          }`}
+        />
+        <span className="font-medium text-foreground">Checks</span>
+        <span className="text-xs text-muted-foreground">
+          {passing}/{checks.length} passing{failing > 0 ? ` · ${failing} failing` : ""}
+        </span>
+        <span className="ml-auto text-xs text-muted-foreground">{open ? "▾" : "▸"}</span>
+      </button>
+      {open ? (
+        <div className="divide-y divide-border border-t border-border">
+          {checks.map((check, index) => (
+            <div key={`${check.name}-${index}`} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+              <span className={`size-2 shrink-0 rounded-full ${checkDotClass(check.status)}`} />
+              <span className="min-w-0 flex-1 truncate text-foreground">{check.name}</span>
+              {check.url.length > 0 ? (
+                <a
+                  href={check.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 text-muted-foreground underline hover:text-foreground"
+                >
+                  details ↗
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The host toggles dark mode via a `dark` class on <html>; pierre's diff
+    themes are picked per render, so track it live. */
+function useIsDarkTheme(): boolean {
+  const [dark, setDark] = useState(() =>
+    document.documentElement.classList.contains("dark"),
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() =>
+      setDark(document.documentElement.classList.contains("dark")),
+    );
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
+/**
+ * A patch (or single `@@` hunk) rendered through the host's @pierre/diffs —
+ * syntax highlighting included (the host provides the worker pool via
+ * context). GitHub's REST patches lack the `diff --git` header, so one is
+ * synthesized; unparseable input falls back to plain mono text.
+ */
+function DiffPatch({ path, patch }: { path: string; patch: string }) {
+  const dark = useIsDarkTheme();
+  const fileDiff = useMemo<FileDiffMetadata | null>(() => {
+    const normalized = patch.replace(/\r\n/g, "\n").trimEnd();
+    if (normalized.length === 0) return null;
+    const text = normalized.startsWith("diff --git")
+      ? `${normalized}\n`
+      : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${normalized}\n`;
+    try {
+      return parsePatchFiles(text)[0]?.files[0] ?? null;
+    } catch {
+      return null;
+    }
+  }, [path, patch]);
+  const options = useMemo(
+    () =>
+      ({
+        diffStyle: "unified",
+        overflow: "scroll",
+        disableFileHeader: true,
+        themeType: dark ? "dark" : "light",
+      }) as const,
+    [dark],
+  );
+  if (fileDiff === null) {
+    return (
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-xs leading-5 text-foreground/80">
+        {patch}
+      </pre>
+    );
+  }
+  return <PierreFileDiff fileDiff={fileDiff} options={options} />;
+}
+
+function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/50"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span className="shrink-0 text-xs text-muted-foreground">{open ? "▾" : "▸"}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+          {file.path}
+        </span>
+        {file.status !== "modified" ? (
+          <Badge variant="secondary" className="shrink-0 font-normal text-muted-foreground">
+            {file.status}
+          </Badge>
+        ) : null}
+        <span className="shrink-0 text-xs text-green-600 dark:text-green-400">
+          +{file.additions}
+        </span>
+        <span className="shrink-0 text-xs text-red-600 dark:text-red-400">
+          −{file.deletions}
+        </span>
+      </button>
+      {open ? (
+        file.patch !== null ? (
+          <div className="border-t border-border">
+            <DiffPatch path={file.path} patch={file.patch} />
+          </div>
+        ) : (
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            Diff too large to inline —{" "}
+            <a href={`${url}/files`} target="_blank" rel="noreferrer" className="underline">
+              view on GitHub ↗
+            </a>
+          </p>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** An inline review thread: file/line header, the tail of its diff hunk for
+    context, then the comment chain. */
+function ReviewThreadCard({ thread }: { thread: ReviewThread }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <p className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 font-mono text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">{thread.path}</span>
+        {thread.line !== null ? <span className="shrink-0">:{thread.line}</span> : null}
+      </p>
+      {thread.diffHunk.length > 0 ? (
+        <div className="border-b border-border">
+          <DiffPatch path={thread.path} patch={thread.diffHunk} />
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-3 p-3">
+        {thread.comments.map((entry, index) => (
+          <div key={index}>
+            <p className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <Avatar login={entry.author} size="size-4" />
+              <span className="font-medium text-foreground">{entry.author}</span> ·{" "}
+              {relativeTime(entry.createdAt)}
+            </p>
+            <Markdown content={entry.body} className="text-sm" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type PullTimelineEntry =
+  | { type: "comment"; author: string; body: string; createdAt: string }
+  | { type: "review"; author: string; state: string; body: string; createdAt: string };
+
+function PullTimeline({ pull }: { pull: PullDetail }) {
+  const entries = useMemo<PullTimelineEntry[]>(() => {
+    const merged: PullTimelineEntry[] = [
+      ...pull.comments.map((comment) => ({ type: "comment" as const, ...comment })),
+      // Body-less COMMENTED reviews are the containers of inline threads
+      // (rendered separately below); showing them here would be noise.
+      ...pull.reviews
+        .filter((review) => review.body.length > 0 || review.state !== "COMMENTED")
+        .map((review) => ({ type: "review" as const, ...review })),
+    ];
+    return merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [pull]);
+  if (entries.length === 0 && pull.reviewThreads.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-xs font-semibold text-muted-foreground">
+        Activity · {entries.length + pull.reviewThreads.length}
+      </h3>
+      {entries.map((entry, index) => (
+        <div key={index} className="rounded-lg border border-border bg-card p-3">
+          <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+            <Avatar login={entry.author} />
+            <span className="font-medium text-foreground">{entry.author}</span>
+            {entry.type === "review" ? (
+              <span className={`font-medium ${reviewStateClass(entry.state)}`}>
+                {REVIEW_STATE_LABELS[entry.state] ?? entry.state.toLowerCase()}
+              </span>
+            ) : null}
+            · {relativeTime(entry.createdAt)}
+          </p>
+          {entry.body.length > 0 ? <Markdown content={entry.body} className="text-sm" /> : null}
+        </div>
+      ))}
+      {pull.reviewThreads.map((thread, index) => (
+        <ReviewThreadCard key={index} thread={thread} />
+      ))}
+    </div>
+  );
+}
+
+function PullReviewersList({ pull }: { pull: PullDetail }) {
+  const rows = useMemo(() => {
+    const latest = new Map<string, { login: string; state: string }>();
+    for (const review of pull.reviews) {
+      if (review.author.length > 0) {
+        latest.set(review.author, { login: review.author, state: review.state });
+      }
+    }
+    for (const login of pull.reviewRequests) {
+      latest.set(login, { login, state: "PENDING" });
+    }
+    return [...latest.values()];
+  }, [pull]);
+  if (rows.length === 0) return <p className="text-sm text-muted-foreground">No reviewers</p>;
+  return (
+    <>
+      {rows.map((row) => (
+        <p key={row.login} className="flex items-center gap-2 text-sm text-foreground">
+          <Avatar login={row.login} />
+          <span className="min-w-0 truncate">{row.login}</span>
+          <span className={`ml-auto shrink-0 text-xs ${reviewStateClass(row.state)}`}>
+            {REVIEW_STATE_LABELS[row.state] ?? row.state.toLowerCase()}
+          </span>
+        </p>
+      ))}
+    </>
+  );
+}
+
+function PullCommentBox({
+  repo,
+  number,
+  onPosted,
+}: {
+  repo: string;
+  number: number;
+  onPosted: () => void;
+}) {
+  const rpc = useRpc();
+  const [comment, setComment] = useState("");
+  const [posting, setPosting] = useState(false);
+  const post = useCallback(() => {
+    if (comment.trim().length === 0) return;
+    setPosting(true);
+    rpc
+      .call("commentPull", { repo, number, body: comment })
+      .then(() => {
+        setComment("");
+        onPosted();
+      })
+      .catch((error: unknown) => toast.error(errorText(error)))
+      .finally(() => setPosting(false));
+  }, [rpc, repo, number, comment, onPosted]);
+  return (
+    <div className="flex flex-col gap-2">
+      <Textarea
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
+        placeholder="Leave a comment…"
+        rows={3}
+      />
+      <div className="flex justify-end">
+        <Button size="sm" disabled={posting || comment.trim().length === 0} onClick={post}>
+          {posting ? "Posting…" : "Comment"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PullDetailView({
+  repo,
+  number,
+  onBack,
+  backLabel = "Pull requests",
+  compact = false,
+}: {
+  repo: string;
+  number: number;
+  onBack?: () => void;
+  backLabel?: string;
+  compact?: boolean;
+}) {
+  const rpc = useRpc();
+  const links = useLinks();
+  const { spawn, spawningKey } = useSpawn();
+  const [pull, setPull] = useState<PullDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    rpc.call("getPull", { repo, number }).then(
+      (result) => {
+        const detail = (result as { pull?: PullDetail })?.pull;
+        if (detail === undefined) throw new Error("malformed getPull result");
+        setPull(detail);
+        setError(null);
+      },
+      (err: unknown) => setError(errorText(err)),
+    );
+  }, [rpc, repo, number]);
+  useEffect(() => {
+    setPull(null);
+    load();
+  }, [load]);
+
+  if (error !== null) return <EmptyState message={error} />;
+  if (pull === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  const pullLinks = links[`pr:${repo}#${number}`];
+  const mainColumn = (
+    <div className="flex min-w-0 flex-1 flex-col gap-4">
+      <ChecksSection checks={pull.checks} />
+
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+          <Avatar login={pull.author} />
+          <span className="font-medium text-foreground">{pull.author}</span>
+          opened this pull request · updated {relativeTime(pull.updatedAt)}
+        </div>
+        <div className="p-4">
+          {pull.body.length > 0 ? (
+            <Markdown content={pull.body} className="text-sm" />
+          ) : (
+            <p className="text-sm text-muted-foreground">(no description)</p>
+          )}
+        </div>
+      </div>
+
+      <PullTimeline pull={pull} />
+
+      {pull.files.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xs font-semibold text-muted-foreground">
+            Files changed · {pull.files.length}
+            <span className="ml-2 font-normal">
+              <span className="text-green-600 dark:text-green-400">+{pull.additions}</span>{" "}
+              <span className="text-red-600 dark:text-red-400">−{pull.deletions}</span>
+            </span>
+          </h3>
+          {pull.files.map((file) => (
+            <FileDiffCard key={file.path} file={file} url={pull.url} />
+          ))}
+        </div>
+      ) : null}
+
+      <PullCommentBox repo={repo} number={number} onPosted={load} />
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        {onBack !== undefined ? (
+          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
+            ← {backLabel}
+          </Button>
+        ) : null}
+        <span className="min-w-0 truncate">
+          {repo} · #{number}
+        </span>
+        <span className="flex-1" />
+        <a
+          href={pull.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 underline hover:text-foreground"
+        >
+          Open on GitHub ↗
+        </a>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <h2
+          className={`min-w-0 flex-1 font-semibold text-foreground ${compact ? "text-base" : "text-xl"}`}
+        >
+          {pull.title} <span className="font-normal text-muted-foreground">#{pull.number}</span>
+        </h2>
+        <Button
+          size="sm"
+          disabled={spawningKey !== null}
+          onClick={() => spawn("startReview", repo, number)}
+        >
+          {spawningKey !== null ? "Starting…" : "Review with agent"}
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <PullStateBadge state={pull.state} />
+        <ReviewDecisionBadge decision={pull.reviewDecision} />
+        <span className="font-mono">
+          {pull.baseRefName} ← {pull.headRefName}
+        </span>
+        <span>
+          <span className="text-green-600 dark:text-green-400">+{pull.additions}</span>{" "}
+          <span className="text-red-600 dark:text-red-400">−{pull.deletions}</span> ·{" "}
+          {pull.changedFiles} file{pull.changedFiles === 1 ? "" : "s"}
+        </span>
+        <LabelChips labels={pull.labels} className="flex flex-wrap" />
+        <ThreadPills links={pullLinks} />
+      </div>
+
+      {compact ? (
+        mainColumn
+      ) : (
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {mainColumn}
+          <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-56">
+            <div className="flex flex-col gap-1">
+              <SidebarHeading>Reviewers</SidebarHeading>
+              <PullReviewersList pull={pull} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <SidebarHeading>Assignees</SidebarHeading>
+              {pull.assignees.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No one assigned</p>
+              ) : (
+                pull.assignees.map((login) => (
+                  <p key={login} className="flex items-center gap-2 text-sm text-foreground">
+                    <Avatar login={login} />
+                    <span className="truncate">{login}</span>
+                  </p>
+                ))
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <SidebarHeading>Labels</SidebarHeading>
+              {pull.labels.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None yet</p>
+              ) : (
+                <LabelChips labels={pull.labels} className="flex flex-wrap" />
+              )}
+            </div>
+            {pullLinks !== undefined && pullLinks.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <SidebarHeading>Agents</SidebarHeading>
+                <ThreadPills links={pullLinks} />
+              </div>
+            ) : null}
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The thread side panel (threadPanelAction): auto-resolve the thread's own PR
+// (its environment branch's PR, else the PR it was spawned to review) and
+// show the compact PR view; fall back to a picker over cached open PRs.
+// ---------------------------------------------------------------------------
+
+function PullPickerList({ onPick }: { onPick: (repo: string, number: number) => void }) {
+  const { items, error } = useItems("pr");
+  if (error !== null) return <EmptyState message={error} />;
+  if (items === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-5 w-full" />
+        <Skeleton className="h-5 w-5/6" />
+        <Skeleton className="h-5 w-2/3" />
+      </div>
+    );
+  }
+  const open = items.filter((item) => item.state === "OPEN");
+  if (open.length === 0) {
+    return <EmptyState message="No open pull requests in the tracked repos." />;
+  }
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="divide-y divide-border">
+        {open.map((item) => (
+          <button
+            key={`${item.repo}#${item.number}`}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/50"
+            onClick={() => onPick(item.repo, item.number)}
+          >
+            <StateDot kind="pr" state={item.state} />
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              #{item.number}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.title}</span>
+            <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+              {item.repo}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PullPanelTab({ threadId }: PluginThreadPanelProps) {
+  const rpc = useRpc();
+  const [resolved, setResolved] = useState(false);
+  const [selected, setSelected] = useState<{ repo: string; number: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    rpc.call("pullForThread", { threadId }).then(
+      (result) => {
+        if (cancelled) return;
+        const pull = (result as { pull?: { repo?: unknown; number?: unknown } | null })?.pull;
+        if (pull && typeof pull.repo === "string" && typeof pull.number === "number") {
+          setSelected({ repo: pull.repo, number: pull.number });
+        }
+        setResolved(true);
+      },
+      () => {
+        if (!cancelled) setResolved(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [rpc, threadId]);
+
+  if (!resolved) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+  if (selected === null) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">
+          No pull request is linked to this thread yet — pick one:
+        </p>
+        <PullPickerList onPick={(repo, number) => setSelected({ repo, number })} />
+      </div>
+    );
+  }
+  return (
+    <PullDetailView
+      repo={selected.repo}
+      number={selected.number}
+      compact
+      backLabel="All PRs"
+      onBack={() => setSelected(null)}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // New issue form.
 // ---------------------------------------------------------------------------
 
@@ -1452,13 +2154,13 @@ function ListView({
   query,
   setQuery,
   repos,
-  onOpenIssue,
+  onOpenItem,
 }: {
   kind: "issue" | "pr";
   query: string;
   setQuery: (query: string) => void;
   repos: RepoInfo[];
-  onOpenIssue: (repo: string, number: number) => void;
+  onOpenItem: (repo: string, number: number) => void;
 }) {
   const { items, error } = useItems(kind);
   const viewer = useViewer();
@@ -1475,7 +2177,7 @@ function ListView({
         items={filtered}
         error={error}
         hasFilter={query.trim().length > 0}
-        onOpenIssue={onOpenIssue}
+        onOpenItem={onOpenItem}
       />
     </>
   );
@@ -1513,6 +2215,15 @@ function GithubPanelBody({
         repo={route.repo}
         number={route.number}
         onBack={() => navigate({ view: "issues" })}
+      />
+    );
+  }
+  if (route.view === "pull") {
+    return (
+      <PullDetailView
+        repo={route.repo}
+        number={route.number}
+        onBack={() => navigate({ view: "pulls" })}
       />
     );
   }
@@ -1556,7 +2267,9 @@ function GithubPanelBody({
         query={query}
         setQuery={setQuery}
         repos={status?.repos ?? []}
-        onOpenIssue={(repo, number) => navigate({ view: "issue", repo, number })}
+        onOpenItem={(repo, number) =>
+          navigate(kind === "pr" ? { view: "pull", repo, number } : { view: "issue", repo, number })
+        }
       />
     </div>
   );
@@ -1570,5 +2283,11 @@ export default definePluginApp((app) => {
     path: "github",
     component: GithubPanel,
     headerContent: PanelHeader,
+  });
+  app.slots.threadPanelAction({
+    id: "pull",
+    title: "GitHub PR",
+    icon: "Github",
+    component: PullPanelTab,
   });
 });

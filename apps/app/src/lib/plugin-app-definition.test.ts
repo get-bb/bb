@@ -30,7 +30,7 @@ describe("definePluginApp", () => {
 
 describe("collectPluginAppRegistrations", () => {
   it("collects every slot kind as plain data", () => {
-    const visible = () => true;
+    const run = () => {};
     const definition = definePluginApp((app) => {
       app.slots.homepageSection({
         id: "issues",
@@ -44,11 +44,12 @@ describe("collectPluginAppRegistrations", () => {
         path: "board",
         component: Component,
       });
-      app.slots.threadPanelTab({
+      app.slots.threadPanelAction({
         id: "issue",
         title: "Issue",
+        icon: "Columns",
         component: Component,
-        visible,
+        run,
       });
       app.slots.composerAccessory({ id: "picker", component: Component });
     });
@@ -68,8 +69,8 @@ describe("collectPluginAppRegistrations", () => {
         chrome: "page",
       },
     ]);
-    expect(registrations.threadPanelTabs).toEqual([
-      { id: "issue", title: "Issue", component: Component, visible },
+    expect(registrations.threadPanelActions).toEqual([
+      { id: "issue", title: "Issue", icon: "Columns", component: Component, run },
     ]);
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
@@ -111,6 +112,19 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"path" must match/,
+    ],
+    [
+      "thread panel action with a non-function run",
+      () =>
+        definePluginApp((app) => {
+          app.slots.threadPanelAction({
+            id: "x",
+            title: "X",
+            component: Component,
+            run: "nope" as never,
+          });
+        }),
+      /"run" must be a function/,
     ],
     [
       "missing component",

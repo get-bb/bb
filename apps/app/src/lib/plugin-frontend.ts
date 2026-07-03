@@ -21,6 +21,8 @@ import * as radixSelect from "@radix-ui/react-select";
 import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
 import * as vaul from "vaul";
+import * as pierreDiffs from "@pierre/diffs";
+import * as pierreDiffsReact from "@pierre/diffs/react";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type { PluginSdkApp } from "@bb/plugin-sdk";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
@@ -165,6 +167,8 @@ interface BbPluginRuntime {
   radixTooltip: unknown;
   sonner: unknown;
   vaul: unknown;
+  pierreDiffs: unknown;
+  pierreDiffsReact: unknown;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -200,6 +204,8 @@ export function installPluginRuntime(): void {
     radixTooltip,
     sonner,
     vaul,
+    pierreDiffs,
+    pierreDiffsReact,
   };
 }
 

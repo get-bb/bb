@@ -7,8 +7,9 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   PluginComposerAccessoryProps,
   PluginHomepageSectionProps,
-  PluginThreadPanelTabProps,
+  PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
+import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -30,9 +31,10 @@ import { PluginComposerAccessories } from "./PluginComposerAccessories";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import {
-  PluginThreadPanelTabButtons,
-  PluginThreadPanelTabContent,
-} from "./PluginThreadPanelTabs";
+  PluginPanelTabContent,
+  usePluginPanelActions,
+  type OpenPluginPanelArgs,
+} from "./PluginPanelActions";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -40,7 +42,7 @@ function registrationSet(
   return {
     homepageSections: [],
     navPanels: [],
-    threadPanelTabs: [],
+    threadPanelActions: [],
     composerAccessories: [],
     ...overrides,
   };
@@ -342,95 +344,154 @@ describe("plugin panel chrome (shared header + body modes)", () => {
   });
 });
 
-describe("plugin thread panel tabs", () => {
-  function TabProbe({ threadId }: PluginThreadPanelTabProps) {
-    return <div>tab body for {threadId}</div>;
+describe("plugin thread panel actions", () => {
+  function PanelProbe({ threadId, params }: PluginThreadPanelProps) {
+    return (
+      <div>
+        panel body for {threadId} / {JSON.stringify(params)}
+      </div>
+    );
   }
 
-  it("shows a button per visible tab and reports the panel key on click", () => {
+  function ActionsProbe({
+    threadId,
+    openPluginPanel,
+  }: {
+    threadId: string | null;
+    openPluginPanel: (args: OpenPluginPanelArgs) => void;
+  }) {
+    const entries = usePluginPanelActions({ openPluginPanel, threadId });
+    return (
+      <div>
+        {entries.map((entry) => (
+          <button key={entry.id} type="button" onClick={entry.onSelect}>
+            {entry.title}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  it("opens a panel tab with defaults when the action has no run", () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
-        threadPanelTabs: [
-          { id: "issue", title: "Issue", component: TabProbe },
-          {
-            id: "hidden",
-            title: "Hidden",
-            component: TabProbe,
-            visible: () => false,
-          },
+        threadPanelActions: [
+          { id: "issue", title: "Issue", component: PanelProbe },
         ],
       }),
     );
-    const onPanelChange = vi.fn();
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_9"]}>
-        <PluginThreadPanelTabButtons
-          activePanel="thread-info"
-          hasActiveFileTab={false}
-          onPanelChange={onPanelChange}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.queryByText("Hidden")).toBeNull();
+    const openPluginPanel = vi.fn();
+    render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
     fireEvent.click(screen.getByText("Issue"));
-    expect(onPanelChange).toHaveBeenCalledWith("plugin:demo:issue");
+    expect(openPluginPanel).toHaveBeenCalledWith({
+      pluginId: "demo",
+      actionId: "issue",
+      title: "Issue",
+      paramsJson: null,
+    });
   });
 
-  it("hides a tab whose visible() throws instead of crashing the strip", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("passes ctx to run; openPanel serializes params and applies the title", () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
-        threadPanelTabs: [
+        threadPanelActions: [
           {
-            id: "explosive",
-            title: "Explosive",
-            component: TabProbe,
-            visible: () => {
-              throw new Error("predicate exploded");
+            id: "issue",
+            title: "Issue",
+            component: PanelProbe,
+            run: ({ threadId, openPanel }) => {
+              openPanel({ title: `Issue for ${threadId}`, params: { n: 1 } });
             },
           },
-          { id: "steady", title: "Steady", component: TabProbe },
         ],
       }),
     );
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_9"]}>
-        <PluginThreadPanelTabButtons
-          activePanel="thread-info"
-          hasActiveFileTab={false}
-          onPanelChange={() => {}}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.queryByText("Explosive")).toBeNull();
-    expect(screen.getByText("Steady")).toBeDefined();
+    const openPluginPanel = vi.fn();
+    render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
+    fireEvent.click(screen.getByText("Issue"));
+    expect(openPluginPanel).toHaveBeenCalledWith({
+      pluginId: "demo",
+      actionId: "issue",
+      title: "Issue for thr_9",
+      paramsJson: JSON.stringify({ n: 1 }),
+    });
   });
 
-  it("renders the active tab's component with the route thread id", () => {
+  it("contains a throwing run (sync) and non-serializable params (no open, no crash)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
-        threadPanelTabs: [
-          { id: "issue", title: "Issue", component: TabProbe },
+        threadPanelActions: [
+          {
+            id: "boom",
+            title: "Boom",
+            component: PanelProbe,
+            run: () => {
+              throw new Error("action exploded");
+            },
+          },
+          {
+            id: "cyclic",
+            title: "Cyclic",
+            component: PanelProbe,
+            run: ({ openPanel }) => openPanel({ params: cyclic }),
+          },
         ],
       }),
     );
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_9"]}>
-        <PluginThreadPanelTabContent panelKey="plugin:demo:issue" />
-      </MemoryRouter>,
-    );
-    expect(screen.getByText("tab body for thr_9")).toBeDefined();
+    const openPluginPanel = vi.fn();
+    render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
+    fireEvent.click(screen.getByText("Boom"));
+    fireEvent.click(screen.getByText("Cyclic"));
+    expect(openPluginPanel).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
-  it("degrades to a placeholder when the selected tab is gone", () => {
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_9"]}>
-        <PluginThreadPanelTabContent panelKey="plugin:ghost:issue" />
-      </MemoryRouter>,
+  it("offers no actions outside a thread context", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "issue", title: "Issue", component: PanelProbe },
+        ],
+      }),
     );
+    render(<ActionsProbe threadId={null} openPluginPanel={vi.fn()} />);
+    expect(screen.queryByText("Issue")).toBeNull();
+  });
+
+  it("renders an open tab's component with the thread id and parsed params", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "issue", title: "Issue", component: PanelProbe },
+        ],
+      }),
+    );
+    const tab = createPluginPanelFixedPanelTab({
+      actionId: "issue",
+      paramsJson: JSON.stringify({ n: 1 }),
+      pluginId: "demo",
+      title: "Issue #1",
+    });
+    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
+    expect(screen.getByText('panel body for thr_9 / {"n":1}')).toBeDefined();
+  });
+
+  it("degrades to a placeholder when the tab's action is gone", () => {
+    const tab = createPluginPanelFixedPanelTab({
+      actionId: "issue",
+      paramsJson: null,
+      pluginId: "ghost",
+      title: "Issue",
+    });
+    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
     expect(screen.getByText(/This plugin tab is not available/)).toBeDefined();
   });
 });

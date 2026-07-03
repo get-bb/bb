@@ -66,6 +66,8 @@ import { Button } from "@/components/ui/button.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -1996,6 +1998,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
   const {
+    activePluginPanelTab,
     activeHostFileEnvironmentId,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -2589,6 +2592,25 @@ export function RootComposeView(props: RootComposeViewProps) {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
+          case "plugin-panel":
+            // Plugin panel tabs are opened from a thread's launcher; the root
+            // panel offers no plugin actions, but its persisted state must
+            // still render any tab kind without crashing.
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <PluginIcon
+                  pluginId={tab.pluginId}
+                  icon={null}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
         }
       },
     );
@@ -2886,6 +2908,11 @@ export function RootComposeView(props: RootComposeViewProps) {
           state={{ kind: "loading" }}
         />
       )
+    ) : activePluginPanelTab ? (
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        threadId={rootPanelThreadId}
+      />
     ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const rootPanelMetadataContent = useMemo(

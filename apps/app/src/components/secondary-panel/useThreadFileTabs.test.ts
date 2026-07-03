@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { TerminalSession } from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -251,5 +251,90 @@ describe("useThreadFileTabs active owners", () => {
     expect(result.current.activeStorageFilePath).toBe("artifact.txt");
     expect(result.current.activeStorageFileThreadId).toBe("thr_file");
     expect(result.current.activeStorageFileEnvironmentId).toBe("env_file");
+  });
+});
+
+describe("useThreadFileTabs plugin panel tabs", () => {
+  it("opens, focuses identical re-opens (title refreshed), and opens siblings for new params", () => {
+    const threadId = "plugin-panel-open";
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue #1",
+        paramsJson: '{"n":1}',
+      }),
+    );
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(1);
+    const firstTab = result.current.activePluginPanelTab;
+    expect(firstTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "demo",
+      actionId: "issue",
+      title: "Issue #1",
+      paramsJson: '{"n":1}',
+    });
+
+    // Identical params: no new tab, but the title refreshes.
+    act(() =>
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue #1 (renamed)",
+        paramsJson: '{"n":1}',
+      }),
+    );
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(1);
+    expect(result.current.activePluginPanelTab?.id).toBe(firstTab?.id);
+    expect(result.current.activePluginPanelTab?.title).toBe(
+      "Issue #1 (renamed)",
+    );
+
+    // Different params: a sibling tab opens and becomes active.
+    act(() =>
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue #2",
+        paramsJson: '{"n":2}',
+      }),
+    );
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(2);
+    expect(result.current.activePluginPanelTab?.paramsJson).toBe('{"n":2}');
+  });
+
+  it("replaces a transient new-tab like the other launchers", () => {
+    const threadId = "plugin-panel-replace-new-tab";
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    expect(result.current.isNewTabActive).toBe(true);
+    act(() =>
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue",
+        paramsJson: null,
+      }),
+    );
+    expect(result.current.isNewTabActive).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
+    ).toEqual(["plugin-panel"]);
   });
 });
