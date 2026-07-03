@@ -15,6 +15,7 @@ import {
   getThreadEventScopeTurnId,
   jsonValueSchema,
   requireThreadEventScopeTurnId,
+  renderAnnotationInputText,
   turnScope,
 } from "@bb/domain";
 import type {
@@ -695,6 +696,12 @@ function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
         return {
           type: "text",
           text: `[Attached file: ${chunk.path}]`,
+          text_elements: [],
+        };
+      case "annotation":
+        return {
+          type: "text",
+          text: renderAnnotationInputText(chunk),
           text_elements: [],
         };
     }

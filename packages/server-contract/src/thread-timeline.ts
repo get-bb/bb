@@ -83,6 +83,16 @@ export type TimelineConversationAttachments = z.infer<
   typeof timelineConversationAttachmentsSchema
 >;
 
+export const timelineConversationAnnotationSchema = z.object({
+  path: z.string(),
+  startLine: z.number().int().nonnegative(),
+  endLine: z.number().int().nonnegative(),
+  comment: z.string(),
+});
+export type TimelineConversationAnnotation = z.infer<
+  typeof timelineConversationAnnotationSchema
+>;
+
 export const timelineConversationTurnRequestKindValues = [
   "message",
   "steer",
@@ -117,6 +127,7 @@ export const timelineUserConversationRowSchema =
     systemMessageSubject: systemMessageSubjectSchema.nullable(),
     turnRequest: timelineConversationTurnRequestSchema,
     mentions: z.array(promptTextMentionSchema),
+    annotations: z.array(timelineConversationAnnotationSchema).optional(),
   });
 export type TimelineUserConversationRow = z.infer<
   typeof timelineUserConversationRowSchema

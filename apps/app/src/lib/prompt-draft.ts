@@ -15,11 +15,30 @@ import {
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
+export interface PromptDraftAnnotation {
+  id: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  quotedText: string;
+  comment: string;
+}
+
 export interface PromptDraftState {
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
+  annotations: PromptDraftAnnotation[];
 }
+
+const promptDraftAnnotationSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  startLine: z.number().int().nonnegative(),
+  endLine: z.number().int().nonnegative(),
+  quotedText: z.string(),
+  comment: z.string(),
+});
 
 const promptDraftStorageSchema = z.object({
   text: z.string().default(""),
@@ -41,6 +60,15 @@ const promptDraftStorageSchema = z.object({
         return result.success ? [result.data] : [];
       }),
     ),
+  annotations: z
+    .array(z.unknown())
+    .default([])
+    .transform((items) =>
+      items.flatMap((item) => {
+        const result = promptDraftAnnotationSchema.safeParse(item);
+        return result.success ? [result.data] : [];
+      }),
+    ),
 });
 
 export function emptyPromptDraftState(): PromptDraftState {
@@ -48,6 +76,7 @@ export function emptyPromptDraftState(): PromptDraftState {
     text: "",
     mentions: [],
     attachments: [],
+    annotations: [],
   };
 }
 
@@ -131,7 +160,8 @@ export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   return (
     draft.text.length === 0 &&
     draft.mentions.length === 0 &&
-    draft.attachments.length === 0
+    draft.attachments.length === 0 &&
+    draft.annotations.length === 0
   );
 }
 
@@ -155,6 +185,7 @@ export function serializePromptDraftStorage(
   const text = draft.text;
   const mentions = draft.mentions;
   const attachments = draft.attachments;
+  const annotations = draft.annotations;
   if (isPromptDraftEmpty(draft)) {
     return null;
   }
@@ -162,6 +193,7 @@ export function serializePromptDraftStorage(
     text,
     ...(mentions.length > 0 ? { mentions } : {}),
     attachments,
+    ...(annotations.length > 0 ? { annotations } : {}),
   });
 }
 
@@ -311,6 +343,17 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
     });
   }
 
+  for (const annotation of draft.annotations) {
+    input.push({
+      type: "annotation",
+      path: annotation.path,
+      startLine: annotation.startLine,
+      endLine: annotation.endLine,
+      quotedText: annotation.quotedText,
+      comment: annotation.comment,
+    });
+  }
+
   return input;
 }
 
@@ -320,6 +363,7 @@ export function promptInputToDraft(
   const textSegments: string[] = [];
   const mentions: PromptTextMention[] = [];
   const attachments: PromptDraftState["attachments"] = [];
+  const annotations: PromptDraftAnnotation[] = [];
   let textOffset = 0;
 
   for (const chunk of input) {
@@ -365,6 +409,18 @@ export function promptInputToDraft(
         sizeBytes: chunk.sizeBytes ?? 0,
         ...(chunk.mimeType ? { mimeType: chunk.mimeType } : {}),
       });
+      continue;
+    }
+
+    if (chunk.type === "annotation") {
+      annotations.push({
+        id: `annotation-${annotations.length}`,
+        path: chunk.path,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        quotedText: chunk.quotedText,
+        comment: chunk.comment,
+      });
     }
   }
 
@@ -372,5 +428,6 @@ export function promptInputToDraft(
     text: textSegments.join("\n\n"),
     mentions,
     attachments,
+    annotations,
   };
 }

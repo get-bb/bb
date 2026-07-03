@@ -15,6 +15,7 @@ import type {
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+import type { TimelineConversationAnnotation } from "@bb/server-contract";
 import type { EventProjection } from "./event-projection.js";
 
 export const eventProjectionMessageStatusValues = [
@@ -101,6 +102,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
     localImagePaths?: string[];
     localFilePaths?: string[];
   };
+  annotations?: TimelineConversationAnnotation[];
 }
 
 export interface EventProjectionAssistantTextMessage extends EventProjectionMessageBase {

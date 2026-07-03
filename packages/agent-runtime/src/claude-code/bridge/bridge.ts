@@ -22,6 +22,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  renderAnnotationInputText,
   type PendingInteractionGrantedPermissionProfile,
   type PermissionEscalation,
 } from "@bb/domain";
@@ -104,6 +105,14 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
     name: z.string().optional(),
     sizeBytes: z.number().optional(),
     mimeType: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("annotation"),
+    path: z.string(),
+    startLine: z.number(),
+    endLine: z.number(),
+    quotedText: z.string(),
+    comment: z.string(),
   }),
 ]);
 
@@ -1458,6 +1467,9 @@ function buildPromptText(input: unknown): string | undefined {
             sizeBytes: entry.sizeBytes,
           }),
         );
+        break;
+      case "annotation":
+        chunks.push(renderAnnotationInputText(entry));
         break;
     }
   }

@@ -3,6 +3,7 @@ import {
   type PromptTextMention,
   type ThreadEvent,
 } from "@bb/domain";
+import type { TimelineConversationAnnotation } from "@bb/server-contract";
 import type { EventMeta } from "./event-decode.js";
 import type { AcceptedClientRequest } from "./accepted-client-request-context.js";
 import type {
@@ -27,6 +28,7 @@ export function parsePromptInput(
   localImagePaths: string[];
   localFilePaths: string[];
   mentions: PromptTextMention[];
+  annotations: TimelineConversationAnnotation[];
 } | null {
   if (!Array.isArray(input) || input.length === 0) return null;
 
@@ -38,6 +40,7 @@ export function parsePromptInput(
   const localImagePaths: string[] = [];
   const localFilePaths: string[] = [];
   const mentions: PromptTextMention[] = [];
+  const annotations: TimelineConversationAnnotation[] = [];
   let textOffset = 0;
 
   for (const part of input) {
@@ -83,11 +86,25 @@ export function parsePromptInput(
           localFilePaths.push(part.path);
         }
         break;
+      case "annotation":
+        annotations.push({
+          path: part.path,
+          startLine: part.startLine,
+          endLine: part.endLine,
+          comment: part.comment,
+        });
+        break;
     }
   }
 
   const text = textParts.join("");
-  if (!text && webImages === 0 && localImages === 0 && localFiles === 0) {
+  if (
+    !text &&
+    webImages === 0 &&
+    localImages === 0 &&
+    localFiles === 0 &&
+    annotations.length === 0
+  ) {
     return null;
   }
 
@@ -100,6 +117,7 @@ export function parsePromptInput(
     localImagePaths,
     localFilePaths,
     mentions,
+    annotations,
   };
 }
 
@@ -305,6 +323,9 @@ function buildClientUserMessage({
     text: parsedInput.text,
     mentions: parsedInput.mentions,
     attachments: buildAttachments(parsedInput),
+    ...(parsedInput.annotations.length > 0
+      ? { annotations: parsedInput.annotations }
+      : {}),
   };
 }
 
