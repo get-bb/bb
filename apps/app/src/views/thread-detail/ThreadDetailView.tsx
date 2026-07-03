@@ -1157,23 +1157,29 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     // Gate on the visible panel state, not the persisted flag: on compact
     // viewports the drawer can be dismissed while tabs stay persisted, and
     // Cmd+W must not consume hidden tabs.
-    if (
-      !isSecondaryPanelOpen ||
-      activeFixedSecondaryTab === null ||
-      !isSecondaryFileTab(activeFixedSecondaryTab)
-    ) {
+    if (!isSecondaryPanelOpen) {
       return false;
     }
-    if (activeFixedSecondaryTab.kind === "terminal") {
-      handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
-    } else if (activeFixedSecondaryTab.kind === "side-chat") {
-      closeSideChatTab(activeFixedSecondaryTab.id);
-    } else {
-      closeTab(activeFixedSecondaryTab.id);
+    if (
+      activeFixedSecondaryTab !== null &&
+      isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      if (activeFixedSecondaryTab.kind === "terminal") {
+        handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+      } else if (activeFixedSecondaryTab.kind === "side-chat") {
+        closeSideChatTab(activeFixedSecondaryTab.id);
+      } else {
+        closeTab(activeFixedSecondaryTab.id);
+      }
+      return true;
     }
+    // No closable tab is active (e.g. thread-info or git-diff): hide the
+    // panel before letting the next Cmd+W close the window.
+    closeSecondaryPanel();
     return true;
   }, [
     activeFixedSecondaryTab,
+    closeSecondaryPanel,
     closeSideChatTab,
     closeTab,
     handleCloseTerminalTab,
