@@ -76,7 +76,8 @@ components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, and vaul are runtime-shimmed (never bundled), everything else
+sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
+renderer) are runtime-shimmed (never bundled), everything else
 bundles from the plugin's node_modules (`npm install` for authors;
 consumers install prebuilt dist). A crashing slot collapses to a
 "plugin <id> crashed" chip without

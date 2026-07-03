@@ -702,7 +702,12 @@ scoped bundle. `@bb/plugin-sdk/app` shrinks to `definePluginApp` + the five hook
   alert-dialog, popover, select, dropdown-menu, context-menu, menubar, hover-card,
   tooltip, navigation-menu (the host adds the few of these it doesn't ship yet; all
   small) — plus `sonner` and `vaul`: one dismissable-layer/focus/scroll-lock/aria-hidden
-  world, `toast()` reaches the host toaster, no body-style fights. Export manifests
+  world, `toast()` reaches the host toaster, no body-style fights. *(Extended
+  2026-07-03: `@pierre/diffs` + `@pierre/diffs/react` joined the shim list — FileDiff
+  reads the host's WorkerPoolContextProvider, and React context identity requires one
+  module copy; sharing also keeps shiki's grammars out of plugin bundles. The host
+  provides a worker pool on every plugin surface: thread routes already had one,
+  PluginPanelView now wraps nav panels in its own.)* Export manifests
   generated per release like the react lists. Everything without singleton semantics
   bundles from plugin node_modules into the plugin's own dist: non-portal radix
   (accordion, avatar, checkbox, slider, progress, radio-group, scroll-area, tabs, slot,

@@ -17,6 +17,11 @@ import {
   useRpc,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
+// Shimmed to the host's copy at build time (shared worker-pool context +
+// shiki stays out of the plugin bundle) — diffs render with the same syntax
+// highlighting as the app's own diff panel.
+import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1446,23 +1451,63 @@ function ChecksSection({ checks }: { checks: PullCheck[] }) {
   );
 }
 
-function diffLineClass(line: string): string {
-  if (line.startsWith("+")) return "bg-green-500/10 text-green-700 dark:text-green-400";
-  if (line.startsWith("-")) return "bg-red-500/10 text-red-700 dark:text-red-400";
-  if (line.startsWith("@@")) return "bg-accent/40 text-muted-foreground";
-  return "text-foreground/80";
+/** The host toggles dark mode via a `dark` class on <html>; pierre's diff
+    themes are picked per render, so track it live. */
+function useIsDarkTheme(): boolean {
+  const [dark, setDark] = useState(() =>
+    document.documentElement.classList.contains("dark"),
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() =>
+      setDark(document.documentElement.classList.contains("dark")),
+    );
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
 }
 
-function DiffPatch({ patch }: { patch: string }) {
-  return (
-    <pre className="overflow-x-auto font-mono text-xs leading-5">
-      {patch.split("\n").map((line, index) => (
-        <div key={index} className={`px-3 ${diffLineClass(line)}`}>
-          {line.length > 0 ? line : " "}
-        </div>
-      ))}
-    </pre>
+/**
+ * A patch (or single `@@` hunk) rendered through the host's @pierre/diffs —
+ * syntax highlighting included (the host provides the worker pool via
+ * context). GitHub's REST patches lack the `diff --git` header, so one is
+ * synthesized; unparseable input falls back to plain mono text.
+ */
+function DiffPatch({ path, patch }: { path: string; patch: string }) {
+  const dark = useIsDarkTheme();
+  const fileDiff = useMemo<FileDiffMetadata | null>(() => {
+    const normalized = patch.replace(/\r\n/g, "\n").trimEnd();
+    if (normalized.length === 0) return null;
+    const text = normalized.startsWith("diff --git")
+      ? `${normalized}\n`
+      : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${normalized}\n`;
+    try {
+      return parsePatchFiles(text)[0]?.files[0] ?? null;
+    } catch {
+      return null;
+    }
+  }, [path, patch]);
+  const options = useMemo(
+    () =>
+      ({
+        diffStyle: "unified",
+        overflow: "scroll",
+        disableFileHeader: true,
+        themeType: dark ? "dark" : "light",
+      }) as const,
+    [dark],
   );
+  if (fileDiff === null) {
+    return (
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-xs leading-5 text-foreground/80">
+        {patch}
+      </pre>
+    );
+  }
+  return <PierreFileDiff fileDiff={fileDiff} options={options} />;
 }
 
 function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
@@ -1492,7 +1537,7 @@ function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
       {open ? (
         file.patch !== null ? (
           <div className="border-t border-border">
-            <DiffPatch patch={file.patch} />
+            <DiffPatch path={file.path} patch={file.patch} />
           </div>
         ) : (
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
@@ -1510,16 +1555,15 @@ function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
 /** An inline review thread: file/line header, the tail of its diff hunk for
     context, then the comment chain. */
 function ReviewThreadCard({ thread }: { thread: ReviewThread }) {
-  const hunkTail = thread.diffHunk.split("\n").slice(-6).join("\n");
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <p className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 font-mono text-xs text-muted-foreground">
         <span className="min-w-0 truncate">{thread.path}</span>
         {thread.line !== null ? <span className="shrink-0">:{thread.line}</span> : null}
       </p>
-      {hunkTail.length > 0 ? (
+      {thread.diffHunk.length > 0 ? (
         <div className="border-b border-border">
-          <DiffPatch patch={hunkTail} />
+          <DiffPatch path={thread.path} patch={thread.diffHunk} />
         </div>
       ) : null}
       <div className="flex flex-col gap-3 p-3">

@@ -444,9 +444,17 @@ only `definePluginApp` + the hooks):
 - Never bundled (runtime-shimmed, import freely): react, the portaling
   radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
   `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,
-  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`. Your vendored overlays
-  therefore share the host's dismissable-layer/focus/scroll-lock world —
-  stacking against host overlays behaves correctly.
+  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`, `@pierre/diffs` (+
+  `/react`). Your vendored overlays therefore share the host's
+  dismissable-layer/focus/scroll-lock world — stacking against host
+  overlays behaves correctly.
+- Syntax-highlighted diffs: `parsePatchFiles` from `@pierre/diffs` +
+  `FileDiff` from `@pierre/diffs/react` render patches exactly like the
+  app's own diff panel (the host provides the highlighting worker pool via
+  React context on every plugin surface; add `@pierre/diffs` to
+  devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
+  when your patch source (e.g. the GitHub REST API) omits it — see
+  `examples/plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`

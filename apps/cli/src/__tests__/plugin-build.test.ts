@@ -149,7 +149,7 @@ describe("buildPluginApp", () => {
     }
   });
 
-  it("shims the shared-singleton packages (portal radix, sonner, vaul)", async () => {
+  it("shims the shared-singleton packages (portal radix, sonner, vaul, @pierre/diffs)", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
     await writeFile(
       join(root, "app.tsx"),
@@ -158,7 +158,9 @@ describe("buildPluginApp", () => {
         `import * as AlertDialog from "@radix-ui/react-alert-dialog";`,
         `import { toast } from "sonner";`,
         `import { Drawer } from "vaul";`,
-        `export default () => [Dialog, AlertDialog, toast, Drawer];`,
+        `import { parsePatchFiles } from "@pierre/diffs";`,
+        `import { FileDiff } from "@pierre/diffs/react";`,
+        `export default () => [Dialog, AlertDialog, toast, Drawer, parsePatchFiles, FileDiff];`,
       ].join("\n"),
     );
     const { jsPath } = await buildPluginApp(root);
@@ -168,6 +170,8 @@ describe("buildPluginApp", () => {
       "radixAlertDialog",
       "sonner",
       "vaul",
+      "pierreDiffs",
+      "pierreDiffsReact",
     ]) {
       expect(js).toContain(`.${slot}`);
     }
@@ -175,6 +179,7 @@ describe("buildPluginApp", () => {
     expect(js).not.toMatch(/from\s*["']@radix-ui/);
     expect(js).not.toMatch(/from\s*["']sonner/);
     expect(js).not.toMatch(/from\s*["']vaul/);
+    expect(js).not.toMatch(/from\s*["']@pierre/);
   });
 
   it("shims explicit react/jsx-dev-runtime imports (dev-mode transform output)", async () => {

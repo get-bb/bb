@@ -1,8 +1,22 @@
 import { useParams } from "react-router-dom";
+import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import {
+  createDiffWorker,
+  getDiffWorkerPoolSize,
+} from "@/lib/diff-worker-pool";
 import { usePluginSlots } from "@/lib/plugin-slots";
+
+// Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to
+// the host's copy); syntax highlighting needs a worker pool in React context.
+// Thread routes get theirs from ThreadDetailRoute — nav panels get one here.
+const WORKER_POOL_OPTIONS = {
+  workerFactory: createDiffWorker,
+  poolSize: getDiffWorkerPoolSize(),
+};
+const HIGHLIGHTER_OPTIONS = {};
 
 /**
  * The route surface for plugin `navPanel` slots (plugin design §5.2):
@@ -46,7 +60,7 @@ export function PluginPanelView() {
 
   // Generation in the key: a P3.4 reload remounts the slot (fresh
   // error-boundary state).
-  const mount = (
+  const slotMount = (
     <PluginSlotMount
       key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
       pluginId={panel.pluginId}
@@ -56,6 +70,19 @@ export function PluginPanelView() {
       <panel.component />
     </PluginSlotMount>
   );
+  // The provider spawns workers eagerly; environments without Worker
+  // (jsdom tests) just render diffs unhighlighted.
+  const mount =
+    typeof Worker === "undefined" ? (
+      slotMount
+    ) : (
+      <WorkerPoolContextProvider
+        poolOptions={WORKER_POOL_OPTIONS}
+        highlighterOptions={HIGHLIGHTER_OPTIONS}
+      >
+        {slotMount}
+      </WorkerPoolContextProvider>
+    );
 
   if (panel.chrome === "none") {
     // Full-bleed: the component owns the entire body region. The negative

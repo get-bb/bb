@@ -99,6 +99,8 @@ describe("github example frontend bundle", () => {
       vaul: componentStub,
       radixDropdownMenu: componentStub,
       radixSelect: componentStub,
+      pierreDiffs: componentStub,
+      pierreDiffsReact: componentStub,
     };
     const mod = (await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href

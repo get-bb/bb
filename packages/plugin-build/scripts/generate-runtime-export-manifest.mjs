@@ -6,10 +6,10 @@
 // script after upgrading react or any shimmed package:
 //
 //   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 // Resolve React exactly as the host app does — apps/app owns the runtime the
@@ -40,6 +40,11 @@ const RUNTIME_MODULE_IDS = [
   // toast() must reach the host toaster; vaul mutates document.body styles.
   "sonner",
   "vaul",
+  // Diff rendering: FileDiff reads the host's WorkerPoolContextProvider
+  // (React context identity requires one module copy) and sharing keeps
+  // shiki's grammars out of plugin bundles.
+  "@pierre/diffs",
+  "@pierre/diffs/react",
 ];
 
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -49,8 +54,36 @@ const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
  * internals like __CLIENT_INTERNALS_…) are host-runtime plumbing, not plugin
  * API — plugins get the same object via the default export anyway.
  */
-function namedExportsOf(moduleId) {
-  const mod = appRequire(moduleId);
+async function loadRuntimeModule(moduleId) {
+  try {
+    return appRequire(moduleId);
+  } catch {
+    // ESM-only package (import-only exports map, e.g. @pierre/diffs):
+    // resolve its export entry by hand through the app's node_modules and
+    // dynamic-import it.
+    const parts = moduleId.split("/");
+    const pkgName = moduleId.startsWith("@")
+      ? parts.slice(0, 2).join("/")
+      : parts[0];
+    const subpath = `.${moduleId.slice(pkgName.length)}`;
+    const pkgDir = path.join(
+      scriptDir, "..", "..", "..", "apps", "app", "node_modules", pkgName,
+    );
+    const pkg = JSON.parse(
+      await readFile(path.join(pkgDir, "package.json"), "utf8"),
+    );
+    const entry = pkg.exports?.[subpath];
+    const rel =
+      typeof entry === "string" ? entry : (entry?.import ?? entry?.default);
+    if (typeof rel !== "string") {
+      throw new Error(`cannot resolve ${moduleId} from ${pkgDir}`);
+    }
+    return await import(pathToFileURL(path.join(pkgDir, rel)).href);
+  }
+}
+
+async function namedExportsOf(moduleId) {
+  const mod = await loadRuntimeModule(moduleId);
   return Object.keys(mod)
     .filter(
       (key) =>
@@ -60,12 +93,16 @@ function namedExportsOf(moduleId) {
 }
 
 const reactVersion = appRequire("react/package.json").version;
-const entries = RUNTIME_MODULE_IDS.map(
-  (id) =>
-    `  ${JSON.stringify(id)}: [\n${namedExportsOf(id)
+const entryChunks = [];
+for (const id of RUNTIME_MODULE_IDS) {
+  const names = await namedExportsOf(id);
+  entryChunks.push(
+    `  ${JSON.stringify(id)}: [\n${names
       .map((name) => `    ${JSON.stringify(name)},`)
       .join("\n")}\n  ],`,
-).join("\n");
+  );
+}
+const entries = entryChunks.join("\n");
 
 const output = `// GENERATED FILE — do not edit by hand.
 // Named exports of the shared runtime modules (react@${reactVersion} + the

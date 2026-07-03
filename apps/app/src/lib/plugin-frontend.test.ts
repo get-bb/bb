@@ -144,10 +144,13 @@ describe("installPluginRuntime", () => {
       unknown
     >;
     // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
-    // shared-singleton packages: portal radix families, sonner, vaul).
+    // shared-singleton packages: portal radix families, sonner, vaul,
+    // @pierre/diffs).
     expect(Object.keys(runtime).sort()).toEqual([
       "jsxDevRuntime",
       "jsxRuntime",
+      "pierreDiffs",
+      "pierreDiffsReact",
       "pluginSdkApp",
       "radixAlertDialog",
       "radixContextMenu",
