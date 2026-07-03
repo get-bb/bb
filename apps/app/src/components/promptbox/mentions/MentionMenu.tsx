@@ -249,6 +249,9 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
   if (kind === "skill") {
     return "Skills";
   }
+  if (kind === "plugin") {
+    return "Plugins";
+  }
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
@@ -257,6 +260,15 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
+  if (item.source === "plugin") {
+    return (
+      <PluginIcon
+        pluginId={item.pluginId ?? item.name}
+        icon={null}
+        className={ROW_ICON_CLASS}
+      />
+    );
+  }
   return (
     <Icon name={promptCommandIconName(item)} className={ROW_ICON_CLASS} aria-hidden />
   );
@@ -278,7 +290,7 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
 }
 
 function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
-  return `command-${item.source}-${item.origin}-${item.name}-${index}`;
+  return `command-${item.source}-${item.origin}-${item.pluginId ?? ""}-${item.name}-${index}`;
 }
 
 /** Muted, end-truncated trailing text (project name, command description/hint). */

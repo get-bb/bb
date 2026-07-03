@@ -541,6 +541,32 @@ describe("prompt editor serialization", () => {
     });
   });
 
+  it("preserves plugin identity in plugin command mention resources", () => {
+    expect(
+      promptCommandResourceFromSuggestion({
+        trigger: "/",
+        suggestion: {
+          kind: "command",
+          name: "linear",
+          source: "plugin",
+          origin: "user",
+          description: "Linear tools",
+          argumentHint: null,
+          pluginId: "linear",
+        },
+      }),
+    ).toEqual({
+      kind: "command",
+      trigger: "/",
+      name: "linear",
+      source: "plugin",
+      origin: "user",
+      label: "linear",
+      argumentHint: null,
+      pluginId: "linear",
+    });
+  });
+
   it("serializes a selected skill as a pill without materializing argument hint text", () => {
     const text = "/review ";
     const mentions: PromptTextMention[] = [

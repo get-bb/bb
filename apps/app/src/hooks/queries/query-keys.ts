@@ -226,6 +226,9 @@ export type ProjectCommandsQueryKey = readonly [
   number,
   number,
 ];
+export type AllProjectCommandsQueryKeyPrefix = readonly [
+  typeof PROJECT_COMMANDS_QUERY_KEY,
+];
 export type ProjectCommandsPagesQueryKey = readonly [
   typeof PROJECT_COMMANDS_PAGES_QUERY_KEY,
   string | undefined,
@@ -233,6 +236,9 @@ export type ProjectCommandsPagesQueryKey = readonly [
   string | null,
   string,
   number,
+];
+export type AllProjectCommandsPagesQueryKeyPrefix = readonly [
+  typeof PROJECT_COMMANDS_PAGES_QUERY_KEY,
 ];
 export type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
@@ -722,6 +728,10 @@ export function projectCommandsQueryKey(
   ];
 }
 
+export function allProjectCommandsQueryKeyPrefix(): AllProjectCommandsQueryKeyPrefix {
+  return [PROJECT_COMMANDS_QUERY_KEY];
+}
+
 export function projectCommandsPagesQueryKey(
   projectId: string | undefined,
   providerId: string | undefined,
@@ -737,6 +747,10 @@ export function projectCommandsPagesQueryKey(
     query,
     limit,
   ];
+}
+
+export function allProjectCommandsPagesQueryKeyPrefix(): AllProjectCommandsPagesQueryKeyPrefix {
+  return [PROJECT_COMMANDS_PAGES_QUERY_KEY];
 }
 
 export function threadStorageFilesQueryKey(

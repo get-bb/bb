@@ -385,7 +385,7 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
-  registerProjectRoutes(publicApi, deps);
+  registerProjectRoutes(publicApi, deps, pluginService);
   registerThreadFolderRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);

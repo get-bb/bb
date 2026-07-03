@@ -205,10 +205,10 @@ describe("PluginThreadActionButtons", () => {
 });
 
 describe("pluginIconName", () => {
-  it("uses a known icon name and falls back to Zap otherwise", () => {
+  it("uses a known icon name and falls back to the generic plugin icon otherwise", () => {
     expect(pluginIconName("GitBranch")).toBe("GitBranch");
-    expect(pluginIconName("beaker")).toBe("Zap");
-    expect(pluginIconName(null)).toBe("Zap");
+    expect(pluginIconName("beaker")).toBe("Workflow");
+    expect(pluginIconName(null)).toBe("Workflow");
   });
 });
 
@@ -217,7 +217,7 @@ describe("plugin logo on thread action buttons", () => {
     resetPluginLogoStoreForTest();
   });
 
-  it("renders the plugin's logo instead of the bolt when one is served", () => {
+  it("renders the plugin's logo instead of the generic icon when one is served", () => {
     setPluginLogoUrls(
       new Map([
         [
@@ -251,7 +251,7 @@ describe("plugin logo on thread action buttons", () => {
       />,
     );
     expect(screen.queryByTestId("plugin-logo-linear")).toBeNull();
-    // The generic bolt fallback renders as an svg inside the button.
+    // The generic plugin fallback renders as an svg inside the button.
     const button = screen.getByRole("button", { name: "Run tests" });
     expect(button.querySelector("svg")).not.toBeNull();
   });

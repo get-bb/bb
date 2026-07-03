@@ -73,6 +73,7 @@ export interface ProviderCommandSuggestion {
   origin: ProviderCommandOrigin;
   description: string | null;
   argumentHint: string | null;
+  pluginId?: string;
 }
 
 /**
@@ -90,6 +91,7 @@ export function toProviderCommandSuggestion(
     origin: command.origin,
     description: command.description,
     argumentHint: command.argumentHint,
+    ...(command.source === "plugin" ? { pluginId: command.pluginId } : {}),
   };
 }
 

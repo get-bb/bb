@@ -136,6 +136,7 @@ export type PromptMentionCommandTrigger = z.infer<
 
 export const promptMentionCommandSourceValues = [
   "skill",
+  "plugin",
   "command",
 ] as const;
 export const promptMentionCommandSourceSchema = z.enum(
@@ -184,6 +185,7 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     origin: promptMentionCommandOriginSchema,
     label: z.string(),
     argumentHint: z.string().nullable(),
+    pluginId: z.string().min(1).optional(),
   }),
   z.object({
     kind: z.literal("plugin"),

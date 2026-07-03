@@ -550,5 +550,8 @@ export function promptCommandResourceFromSuggestion({
     origin: suggestion.origin,
     label: suggestion.name,
     argumentHint: suggestion.argumentHint,
+    ...(suggestion.source === "plugin" && suggestion.pluginId !== undefined
+      ? { pluginId: suggestion.pluginId }
+      : {}),
   };
 }

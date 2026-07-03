@@ -1,11 +1,13 @@
 import { useContext, type KeyboardEvent, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import type { PromptMentionResource } from "@bb/domain";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionIconName,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
@@ -20,6 +22,39 @@ const EDITOR_MENTION_PILL_CLASS = cn(
   PROMPT_MENTION_PILL_CLASS,
   "selection:bg-transparent [&_*]:selection:bg-transparent",
 );
+const PILL_ICON_CLASS = "-ml-px size-4 shrink-0 self-center";
+
+function PromptMentionPillIcon({
+  resource,
+}: {
+  resource: PromptMentionResource;
+}) {
+  if (resource.kind === "plugin") {
+    return (
+      <PluginIcon
+        pluginId={resource.pluginId}
+        icon={null}
+        className={PILL_ICON_CLASS}
+      />
+    );
+  }
+  if (resource.kind === "command" && resource.source === "plugin") {
+    return (
+      <PluginIcon
+        pluginId={resource.pluginId ?? resource.name}
+        icon={null}
+        className={PILL_ICON_CLASS}
+      />
+    );
+  }
+  return (
+    <Icon
+      name={promptMentionIconName(resource)}
+      className={PILL_ICON_CLASS}
+      aria-hidden
+    />
+  );
+}
 
 /**
  * Renders an inserted prompt mention as a pill with a leading type icon (file,
@@ -110,11 +145,7 @@ export function PromptMentionPillNodeView({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <Icon
-        name={promptMentionIconName(resource)}
-        className="-ml-px size-4 shrink-0 self-center"
-        aria-hidden
-      />
+      <PromptMentionPillIcon resource={resource} />
       <span className={cn("truncate", activate && "group-hover:underline")}>
         {resource.label}
       </span>

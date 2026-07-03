@@ -35,6 +35,12 @@ const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
   },
 ];
 
+export interface PluginCommandContributionForTypeahead {
+  pluginId: string;
+  name: string;
+  summary: string;
+}
+
 export function providerHasCommandSurface(providerId: string): boolean {
   if (!isAgentProviderId(providerId)) {
     return false;
@@ -110,8 +116,26 @@ function toProviderCommand(command: HostProviderCommand): ProviderCommand {
   };
 }
 
+function toPluginProviderCommand(
+  command: PluginCommandContributionForTypeahead,
+): ProviderCommand {
+  return {
+    name: command.name,
+    source: "plugin",
+    origin: "user",
+    description: command.summary,
+    argumentHint: null,
+    pluginId: command.pluginId,
+  };
+}
+
 function commandSearchNames(command: ProviderCommand): string[] {
   const name = command.name.toLowerCase();
+  if (command.source === "plugin") {
+    return command.pluginId.toLowerCase() === name
+      ? [name]
+      : [name, command.pluginId.toLowerCase()];
+  }
   if (command.source !== "skill") {
     return [name];
   }
@@ -199,6 +223,7 @@ function compareForQuery(
 
 export interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
+  pluginCommands?: readonly PluginCommandContributionForTypeahead[];
   limit: number;
   offset: number;
   query: string | undefined;
@@ -222,6 +247,7 @@ export function buildCommandListResponse(
     [
       ...BUILT_IN_PROVIDER_COMMANDS,
       ...args.commands.map(toProviderCommand),
+      ...(args.pluginCommands ?? []).map(toPluginProviderCommand),
     ].filter((command) => matchesQuery(command, query)),
   ).sort((a, b) => compareForQuery(a, b, query));
   const end = args.offset + args.limit;

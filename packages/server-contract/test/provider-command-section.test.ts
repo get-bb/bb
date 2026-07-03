@@ -13,6 +13,9 @@ describe("providerCommandSection", () => {
     expect(providerCommandSection({ source: "skill", origin: "user" })).toBe(
       "skill",
     );
+    expect(providerCommandSection({ source: "plugin", origin: "user" })).toBe(
+      "plugin",
+    );
     expect(
       providerCommandSection({ source: "command", origin: "builtin" }),
     ).toBe("agent-command");
@@ -30,6 +33,7 @@ describe("providerCommandSectionRank", () => {
     expect(PROVIDER_COMMAND_SECTIONS).toEqual([
       "agent-command",
       "skill",
+      "plugin",
       "project-command",
       "user-command",
     ]);
@@ -46,6 +50,10 @@ describe("providerCommandSectionRank", () => {
       source: "command",
       origin: "project",
     });
+    const pluginRank = providerCommandSectionRank({
+      source: "plugin",
+      origin: "user",
+    });
     const userRank = providerCommandSectionRank({
       source: "command",
       origin: "user",
@@ -53,10 +61,12 @@ describe("providerCommandSectionRank", () => {
 
     expect(agentCommandRank).toBe(0);
     expect(skillRank).toBe(1);
-    expect(projectRank).toBe(2);
-    expect(userRank).toBe(3);
+    expect(pluginRank).toBe(2);
+    expect(projectRank).toBe(3);
+    expect(userRank).toBe(4);
     expect(agentCommandRank).toBeLessThan(skillRank);
-    expect(skillRank).toBeLessThan(projectRank);
+    expect(skillRank).toBeLessThan(pluginRank);
+    expect(pluginRank).toBeLessThan(projectRank);
     expect(projectRank).toBeLessThan(userRank);
   });
 });

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export function pluginIconName(icon: string | null): IconName {
   return icon !== null && (ICON_NAMES as readonly string[]).includes(icon)
     ? (icon as IconName)
-    : "Zap";
+    : "Workflow";
 }
 
 /**

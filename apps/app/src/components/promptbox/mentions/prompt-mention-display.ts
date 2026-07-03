@@ -26,8 +26,11 @@ export function promptMentionIconLabel(
   if (resource.kind === "project") {
     return "Project";
   }
-  if (resource.kind === "command") {
-    return resource.source === "skill" ? "Skill" : "Command";
+if (resource.kind === "command") {
+    if (resource.source === "skill") {
+      return "Skill";
+    }
+    return resource.source === "plugin" ? "Plugin" : "Command";
   }
   if (resource.kind === "plugin") {
     return "Plugin";
@@ -57,7 +60,7 @@ export function promptMentionIconName(
   if (resource.kind === "plugin") {
     // Matches the plugin slash-command rows so plugin contributions share
     // one visual identity in the composer.
-    return "Zap";
+    return "Workflow";
   }
   return resource.entryKind === "directory" ? "Folder" : "File";
 }
@@ -65,6 +68,9 @@ export function promptMentionIconName(
 export function promptCommandIconName(command: PromptCommandLike): IconName {
   if (command.source === "skill") {
     return "Zap";
+  }
+  if (command.source === "plugin") {
+    return "Workflow";
   }
   if (command.name === "plan") {
     return "ListTodo";

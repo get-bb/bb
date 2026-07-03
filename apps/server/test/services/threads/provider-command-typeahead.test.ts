@@ -102,4 +102,45 @@ describe("buildCommandListResponse", () => {
       },
     ]);
   });
+
+  it("adds plugin CLI commands in the plugin section", () => {
+    const response = buildCommandListResponse({
+      commands: [
+        skill("review", { origin: "user" }),
+        {
+          name: "review",
+          source: "command",
+          origin: "project",
+          description: "Legacy review command",
+          argumentHint: null,
+        },
+      ],
+      pluginCommands: [
+        {
+          pluginId: "linear",
+          name: "linear",
+          summary: "Linear tools",
+        },
+      ],
+      limit: 10,
+      offset: 0,
+      query: "",
+    });
+
+    expect(response.commands.map((command) => command.source)).toEqual([
+      "command",
+      "skill",
+      "plugin",
+      "command",
+    ]);
+    expect(response.commands[2]).toEqual({
+      name: "linear",
+      source: "plugin",
+      origin: "user",
+      description: "Linear tools",
+      argumentHint: null,
+      pluginId: "linear",
+    });
+    expect(response.truncated).toBe(false);
+  });
 });

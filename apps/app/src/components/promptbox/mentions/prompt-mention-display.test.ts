@@ -22,4 +22,10 @@ describe("promptCommandIconName", () => {
       "Terminal",
     );
   });
+
+  it("uses a distinct generic icon for plugin commands", () => {
+    expect(promptCommandIconName({ name: "linear", source: "plugin" })).toBe(
+      "Workflow",
+    );
+  });
 });

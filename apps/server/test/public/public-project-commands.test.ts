@@ -1,4 +1,7 @@
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { setExperiments } from "@bb/db";
 import type {
   HostProviderCommand,
   HostDaemonOnlineRpcRequestMessage,
@@ -80,6 +83,24 @@ function legacyCommand(
     description: overrides.description ?? null,
     argumentHint: overrides.argumentHint ?? null,
   };
+}
+
+async function writePlugin(
+  dir: string,
+  options: { name: string; serverSource: string },
+): Promise<string> {
+  const rootDir = join(dir, options.name);
+  await mkdir(rootDir, { recursive: true });
+  await writeFile(
+    join(rootDir, "package.json"),
+    JSON.stringify({
+      name: options.name,
+      version: "0.1.0",
+      bb: { server: "./server.ts" },
+    }),
+  );
+  await writeFile(join(rootDir, "server.ts"), options.serverSource);
+  return rootDir;
 }
 
 describe("public project command typeahead route", () => {
@@ -206,6 +227,67 @@ describe("public project command typeahead route", () => {
         cwd: "/tmp/codex-commands-env",
         builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
       });
+    });
+  });
+
+  it("includes running plugin CLI commands in slash command typeahead", async () => {
+    await withTestHarness(async (harness) => {
+      setExperiments(harness.db, { ...defaultExperiments, plugins: true });
+      const pluginRoot = await writePlugin(
+        join(harness.config.dataDir, "fixtures"),
+        {
+          name: "bb-plugin-linear",
+          serverSource: `
+            export default function plugin(bb: any) {
+              bb.cli.register({
+                name: "linear",
+                summary: "Linear tools",
+                commands: [],
+                run() {
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                },
+              });
+            }
+          `,
+        },
+      );
+      const plugin = await harness.pluginService.installPath(pluginRoot);
+      expect(plugin.status).toBe("running");
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-plugin",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/plugin-commands-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/plugin-commands-env",
+      });
+      registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [skill("review", "user")],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}&query=linear`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands).toEqual([
+        {
+          name: "linear",
+          source: "plugin",
+          origin: "user",
+          description: "Linear tools",
+          argumentHint: null,
+          pluginId: "linear",
+        },
+      ]);
+      expect(body.truncated).toBe(false);
     });
   });
 

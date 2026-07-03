@@ -15,6 +15,8 @@ import {
   environmentWorkStatusQueryKey,
   hostPathExistenceQueryKey,
   projectPathsQueryKey,
+  projectCommandsPagesQueryKey,
+  projectCommandsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
@@ -146,12 +148,32 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
-  it("invalidates the plugin contributions cache on plugins-changed", () => {
+  it("invalidates plugin contribution and command caches on plugins-changed", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const contributionsKey = pluginContributionsQueryKey(true);
+    const commandsKey = projectCommandsQueryKey(
+      "project-1",
+      "codex",
+      "env-1",
+      "",
+      0,
+      50,
+    );
+    const commandPagesKey = projectCommandsPagesQueryKey(
+      "project-1",
+      "codex",
+      "env-1",
+      "",
+      50,
+    );
     queryClient.setQueryData(contributionsKey, {
       threadActions: [],
       mentionProviders: [],
+    });
+    queryClient.setQueryData(commandsKey, { commands: [], truncated: false });
+    queryClient.setQueryData(commandPagesKey, {
+      pages: [{ commands: [], truncated: false }],
+      pageParams: [0],
     });
 
     effects.handleChanged({
@@ -163,6 +185,10 @@ describe("createRealtimeCacheEffects", () => {
     // System changes flush immediately (no thread-style debounce), so
     // `bb plugin reload/enable/disable` reaches open composers right away.
     expect(queryClient.getQueryState(contributionsKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(commandPagesKey)?.isInvalidated).toBe(
       true,
     );
   });

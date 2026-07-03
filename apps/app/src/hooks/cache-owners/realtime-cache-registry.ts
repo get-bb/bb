@@ -61,6 +61,8 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allProjectCommandsPagesQueryKeyPrefix,
+  allProjectCommandsQueryKeyPrefix,
   allAutomationDetailQueryKeyPrefix,
   allAutomationRunsQueryKeyPrefix,
   automationsQueryKey,
@@ -435,6 +437,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "plugins-changed": {
     dirty: [
       dirtyPluginContributionQueries,
+      dirtyProjectCommandQueries,
       dirtyPluginManagementQueries,
       reconcilePluginFrontendBundles,
     ],
@@ -905,6 +908,13 @@ function dirtyUiSourceStatusQueries(): QueryKey[] {
 
 function dirtyPluginContributionQueries(): QueryKey[] {
   return [allPluginContributionsQueryKeyPrefix()];
+}
+
+function dirtyProjectCommandQueries(): QueryKey[] {
+  return [
+    allProjectCommandsQueryKeyPrefix(),
+    allProjectCommandsPagesQueryKeyPrefix(),
+  ];
 }
 
 function dirtyPluginManagementQueries(): QueryKey[] {
