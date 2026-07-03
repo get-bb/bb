@@ -8,8 +8,8 @@
     "lucide-react"
   ],
   "registryDependencies": [
-    "button",
-    "utils"
+    "@bb/button",
+    "@bb/utils"
   ],
   "files": [
     {

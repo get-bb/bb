@@ -5,7 +5,7 @@
   "title": "overlay-trigger",
   "description": "BB ui \"overlay-trigger\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

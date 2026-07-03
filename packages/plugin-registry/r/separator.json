@@ -8,7 +8,7 @@
     "@radix-ui/react-separator"
   ],
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

@@ -10,8 +10,8 @@
     "lucide-react"
   ],
   "registryDependencies": [
-    "portal-scope",
-    "utils"
+    "@bb/portal-scope",
+    "@bb/utils"
   ],
   "files": [
     {

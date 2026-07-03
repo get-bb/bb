@@ -8,7 +8,7 @@
     "@radix-ui/react-hover-card"
   ],
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

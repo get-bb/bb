@@ -5,7 +5,7 @@
   "title": "skeleton",
   "description": "BB ui \"skeleton\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

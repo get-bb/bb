@@ -5,8 +5,8 @@
   "title": "switch",
   "description": "BB ui \"switch\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "motion",
-    "utils"
+    "@bb/motion",
+    "@bb/utils"
   ],
   "files": [
     {

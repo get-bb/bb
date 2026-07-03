@@ -285,7 +285,11 @@ const starterTypeOnlyDeps = new Set();
         : starterBundledDeps
       ).add(dep);
     }
-    itemQueue.push(...(item.registryDependencies ?? []));
+    itemQueue.push(
+      ...(item.registryDependencies ?? []).map((name) =>
+        name.replace(/^@bb\//, ""),
+      ),
+    );
   }
 }
 starterFiles.sort((a, b) => a.target.localeCompare(b.target));

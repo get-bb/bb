@@ -9,8 +9,8 @@
     "class-variance-authority"
   ],
   "registryDependencies": [
-    "motion",
-    "utils"
+    "@bb/motion",
+    "@bb/utils"
   ],
   "files": [
     {

@@ -9,7 +9,7 @@
     "lucide-react"
   ],
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

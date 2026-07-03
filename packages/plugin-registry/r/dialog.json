@@ -9,13 +9,13 @@
     "@radix-ui/react-slot"
   ],
   "registryDependencies": [
-    "drawer",
-    "icon",
-    "overlay-trigger",
-    "portal-scope",
-    "responsive-overlay",
-    "use-browser-dimming-modal",
-    "utils"
+    "@bb/drawer",
+    "@bb/icon",
+    "@bb/overlay-trigger",
+    "@bb/portal-scope",
+    "@bb/responsive-overlay",
+    "@bb/use-browser-dimming-modal",
+    "@bb/utils"
   ],
   "files": [
     {

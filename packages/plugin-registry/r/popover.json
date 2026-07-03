@@ -8,10 +8,10 @@
     "@radix-ui/react-popover"
   ],
   "registryDependencies": [
-    "overlay-trigger",
-    "portal-scope",
-    "responsive-overlay",
-    "utils"
+    "@bb/overlay-trigger",
+    "@bb/portal-scope",
+    "@bb/responsive-overlay",
+    "@bb/utils"
   ],
   "files": [
     {

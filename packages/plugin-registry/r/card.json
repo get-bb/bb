@@ -5,7 +5,7 @@
   "title": "card",
   "description": "BB ui \"card\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

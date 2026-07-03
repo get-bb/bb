@@ -8,7 +8,7 @@
     "recharts"
   ],
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

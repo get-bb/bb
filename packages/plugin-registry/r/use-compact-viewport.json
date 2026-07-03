@@ -5,7 +5,7 @@
   "title": "use-compact-viewport",
   "description": "BB hook \"use-compact-viewport\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "use-media-query"
+    "@bb/use-media-query"
   ],
   "files": [
     {

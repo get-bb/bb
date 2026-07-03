@@ -8,14 +8,14 @@
     "@radix-ui/react-dropdown-menu"
   ],
   "registryDependencies": [
-    "coarse-pointer-sizing",
-    "icon",
-    "menu-item-hover",
-    "motion",
-    "overlay-trigger",
-    "portal-scope",
-    "responsive-overlay",
-    "utils"
+    "@bb/coarse-pointer-sizing",
+    "@bb/icon",
+    "@bb/menu-item-hover",
+    "@bb/motion",
+    "@bb/overlay-trigger",
+    "@bb/portal-scope",
+    "@bb/responsive-overlay",
+    "@bb/utils"
   ],
   "files": [
     {

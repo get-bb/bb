@@ -5,7 +5,7 @@
   "title": "table",
   "description": "BB ui \"table\" — vendored from the BB app's own source (version-matched to this BB release).",
   "registryDependencies": [
-    "utils"
+    "@bb/utils"
   ],
   "files": [
     {

@@ -8,10 +8,10 @@
     "@radix-ui/react-slot"
   ],
   "registryDependencies": [
-    "drawer",
-    "overlay-trigger",
-    "use-compact-viewport",
-    "use-pointer-coarse"
+    "@bb/drawer",
+    "@bb/overlay-trigger",
+    "@bb/use-compact-viewport",
+    "@bb/use-pointer-coarse"
   ],
   "files": [
     {

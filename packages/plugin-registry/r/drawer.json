@@ -8,9 +8,9 @@
     "vaul"
   ],
   "registryDependencies": [
-    "overlay-trigger",
-    "portal-scope",
-    "utils"
+    "@bb/overlay-trigger",
+    "@bb/portal-scope",
+    "@bb/utils"
   ],
   "files": [
     {

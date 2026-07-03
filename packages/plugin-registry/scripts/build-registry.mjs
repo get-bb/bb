@@ -190,7 +190,14 @@ for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
       ? { dependencies: [...dependencies].sort().map(pinned) }
       : {}),
     ...(registryDependencies.size > 0
-      ? { registryDependencies: [...registryDependencies].sort() }
+      ? {
+          // Namespaced: the shadcn CLI resolves UNPREFIXED registryDependencies
+          // against the default ui.shadcn.com registry, not the originating
+          // one — cross-item references must carry @bb/ explicitly.
+          registryDependencies: [...registryDependencies]
+            .sort()
+            .map((name) => `@bb/${name}`),
+        }
       : {}),
     files: [
       {

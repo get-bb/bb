@@ -9,8 +9,8 @@
     "class-variance-authority"
   ],
   "registryDependencies": [
-    "toggle",
-    "utils"
+    "@bb/toggle",
+    "@bb/utils"
   ],
   "files": [
     {
