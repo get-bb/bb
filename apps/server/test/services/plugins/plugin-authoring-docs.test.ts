@@ -12,7 +12,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginSettingDescriptor,
   type PluginThreadEventPayloads,
-  type PluginThreadPanelTabProps,
+  type PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
 
 /**
@@ -131,7 +131,7 @@ void _assertAllThreadEventFieldsListed;
 type SlotPropsByName = {
   homepageSection: PluginHomepageSectionProps;
   navPanel: PluginNavPanelProps;
-  threadPanelTab: PluginThreadPanelTabProps;
+  threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
 };
 
@@ -142,7 +142,7 @@ void _assertAllSlotsListed;
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
   navPanel: [],
-  threadPanelTab: ["threadId"],
+  threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];

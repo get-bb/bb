@@ -1,3 +1,4 @@
+import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import {
   NewTabActions,
   NewTabFileSearch,
@@ -16,6 +17,7 @@ export interface NewTabPageProps extends NewTabPageFileSearchProps {
   onStartSideChat?: StartSideChatHandler;
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
+  pluginActions?: readonly PluginPanelActionEntry[];
 }
 
 /**
@@ -32,6 +34,7 @@ export function NewTabPage({
   onSelect,
   onStartSideChat,
   onStartTerminal,
+  pluginActions,
   projectId,
   recentItemsThreadId,
   showFileSearch,
@@ -48,6 +51,7 @@ export function NewTabPage({
             onStartSideChat={onStartSideChat}
             onOpenBrowser={onOpenBrowser}
             onStartTerminal={onStartTerminal}
+            pluginActions={pluginActions}
           />
         }
         initialQuery={initialQuery}

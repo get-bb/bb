@@ -27,6 +27,8 @@ import {
   type FileSearchSuggestion,
 } from "@/hooks/useFileSearchSuggestions";
 import type { FileSearchSelection } from "./useThreadFileTabs";
+import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   useThreadRecentItems,
   THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
@@ -69,6 +71,8 @@ export interface NewTabActionsProps {
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
+  /** Plugin `threadPanelAction` rows, rendered after the built-in entries. */
+  pluginActions?: readonly PluginPanelActionEntry[];
 }
 
 interface FileResultRowProps {
@@ -741,6 +745,7 @@ export function NewTabActions({
   onStartSideChat,
   onOpenBrowser,
   onStartTerminal,
+  pluginActions,
 }: NewTabActionsProps) {
   const showStartSideChatEntry = onStartSideChat !== undefined;
   const showOpenBrowserEntry =
@@ -761,7 +766,10 @@ export function NewTabActions({
   }, [onStartTerminal]);
 
   const hasOpenActions =
-    showStartSideChatEntry || showOpenBrowserEntry || showStartTerminalEntry;
+    showStartSideChatEntry ||
+    showOpenBrowserEntry ||
+    showStartTerminalEntry ||
+    (pluginActions !== undefined && pluginActions.length > 0);
 
   if (!hasOpenActions) {
     return null;
@@ -805,6 +813,27 @@ export function NewTabActions({
               onSelect={handleStartTerminal}
             />
           ) : null}
+          {pluginActions?.map((action) => (
+            <LauncherTile
+              key={action.id}
+              id={action.id}
+              isActive={false}
+              variant="action"
+              onActivate={() => undefined}
+              onSelect={action.onSelect}
+            >
+              <span className={LAUNCHER_ROW_ICON_CLASS}>
+                <PluginIcon
+                  pluginId={action.pluginId}
+                  icon={action.icon}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-foreground">
+                {action.title}
+              </span>
+            </LauncherTile>
+          ))}
         </div>
       </section>
     </div>

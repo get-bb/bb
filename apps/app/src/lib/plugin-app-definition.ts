@@ -5,7 +5,7 @@ import {
   type PluginComposerAccessoryRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
-  type PluginThreadPanelTabRegistration,
+  type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 import type { PluginFrontendRecord } from "./plugin-frontend";
 import type { PluginRegistrationSet } from "./plugin-slots";
@@ -82,12 +82,12 @@ export function collectPluginAppRegistrations(
 ): PluginRegistrationSet {
   const homepageSections: PluginHomepageSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
-  const threadPanelTabs: PluginThreadPanelTabRegistration[] = [];
+  const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
     navPanel: new Set<string>(),
-    threadPanelTab: new Set<string>(),
+    threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
   };
 
@@ -140,23 +140,26 @@ export function collectPluginAppRegistrations(
             : {}),
         });
       },
-      threadPanelTab(registration) {
-        const kind = "slots.threadPanelTab";
+      threadPanelAction(registration) {
+        const kind = "slots.threadPanelAction";
         const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadPanelTab, id);
+        requireUniqueId(kind, seenIds.threadPanelAction, id);
         if (
-          registration.visible !== undefined &&
-          typeof registration.visible !== "function"
+          registration.run !== undefined &&
+          typeof registration.run !== "function"
         ) {
-          throw new Error(`${kind}: "visible" must be a function when set`);
+          throw new Error(`${kind}: "run" must be a function when set`);
         }
-        threadPanelTabs.push({
+        threadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          component: requireComponent(kind, registration.component),
-          ...(registration.visible !== undefined
-            ? { visible: registration.visible }
+          ...(registration.icon !== undefined
+            ? {
+                icon: requireNonEmptyString(kind, "icon", registration.icon),
+              }
             : {}),
+          component: requireComponent(kind, registration.component),
+          ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
       composerAccessory(registration) {
@@ -171,7 +174,12 @@ export function collectPluginAppRegistrations(
     },
   });
 
-  return { homepageSections, navPanels, threadPanelTabs, composerAccessories };
+  return {
+    homepageSections,
+    navPanels,
+    threadPanelActions,
+    composerAccessories,
+  };
 }
 
 export interface InterpretPluginFrontendsDeps {

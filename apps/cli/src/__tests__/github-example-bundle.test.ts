@@ -68,7 +68,7 @@ describe("github example frontend bundle", () => {
     const registered: Record<string, SlotRegistration[]> = {
       homepageSection: [],
       navPanel: [],
-      threadPanelTab: [],
+      threadPanelAction: [],
       composerAccessory: [],
     };
     // Vendored components read e.g. `Primitive.Trigger.displayName` at
@@ -115,7 +115,7 @@ describe("github example frontend bundle", () => {
       slots: {
         homepageSection: (r) => registered.homepageSection.push(r),
         navPanel: (r) => registered.navPanel.push(r),
-        threadPanelTab: (r) => registered.threadPanelTab.push(r),
+        threadPanelAction: (r) => registered.threadPanelAction.push(r),
         composerAccessory: (r) => registered.composerAccessory.push(r),
       },
     });
@@ -131,7 +131,7 @@ describe("github example frontend bundle", () => {
     expect(typeof registered.navPanel[0]?.headerContent).toBe("function");
 
     expect(registered.homepageSection).toHaveLength(0);
-    expect(registered.threadPanelTab).toHaveLength(0);
+    expect(registered.threadPanelAction).toHaveLength(0);
     expect(registered.composerAccessory).toHaveLength(0);
   });
 });

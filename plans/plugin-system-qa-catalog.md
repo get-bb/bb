@@ -34,6 +34,8 @@ small-ux-pack examples installed and a real Linear API key configured:
       carries identifier/state/description, agent starts (thr_wmzu6jbvs7).
 - [x] "Issue" threadPanelTab appears ONLY on the issue-linked thread
       (sync visible() pattern) and renders issue details via plugin rpc.
+      *(Historical: threadPanelTab was reworked into threadPanelAction on
+      2026-07-03 — see the threadPanelAction section below.)*
 - [x] Linear board nav panel at /plugins/linear/board (Todo column + card).
 - [x] Settings → Plugins: both plugins with status pills; linear form with
       secret [set] field, team key, and the project picker; save works.
@@ -557,14 +559,17 @@ scaffolded with `bb plugin new hello --app` (the scaffold now default-exports
       palette (switch themes → the card recolors).
 - [ ] **All four slots**: edit `app.tsx` to also register
       `navPanel({ id, title, icon: "Columns", path: "board", component })`,
-      `threadPanelTab({ id, title, component, visible })`, and
+      `threadPanelAction({ id, title, component, run? })`, and
       `composerAccessory({ id, component })`, rebuild + reload the plugin,
       then reload the page:
       the sidebar shows the nav entry above the project list (active state
       when on the route) → clicking it lands on `/plugins/hello/board`
-      rendering the panel component; a thread's right panel shows the tab's
-      title button next to Info/Diff and clicking it renders the component
-      with that `threadId` (selection persists per thread across reloads);
+      rendering the panel component; a thread's right panel "+" new-tab
+      page lists the action under Actions (plugin logo icon) and selecting
+      it opens a closable tab (plugin logo + title) rendering the component
+      with `{ threadId, params }` — the tab persists per thread across
+      reloads (params round-trip), re-selecting with identical params
+      focuses the existing tab, and `run` errors only log a warning;
       the composer footer shows the accessory on both the homepage
       (`projectId`/`threadId` null) and a thread view.
 - [ ] **visible() predicate**: make `visible: ({ threadId }) => false` →
@@ -876,3 +881,30 @@ export sync).
       dist/server.js (+ meta) and no app bundle.
 - [ ] **Stale prebuilt degrade**: server.meta.json with a wrong sdkMajor →
       loader falls back to source (warn logged), never a crash.
+
+## threadPanelAction rework (2026-07-03)
+
+`threadPanelTab` (fixed toggle next to Info/Diff, sync `visible()`) was
+replaced by `threadPanelAction`: an Actions row in the right panel's
+new-tab page whose `run({ threadId, openPanel })` opens closable
+`plugin-panel` file-strip tabs carrying persisted JSON params. Automated:
+`plugin-slot-mounts.test.tsx` (default open, ctx/params/title, error
+containment, no-thread, content render + placeholder),
+`plugin-app-definition.test.ts` (collector validation),
+authoring-docs pins (`threadPanelAction: ["threadId", "params"]`).
+
+- [ ] **Action row live**: install a plugin registering a
+      threadPanelAction → open a thread → "+" new tab → the action lists
+      under Actions with the plugin logo; selecting it replaces the
+      new-tab with a closable tab (logo + title) rendering the component.
+- [ ] **Params + dedupe**: `openPanel({ title, params })` twice with the
+      same params focuses one tab; different params open a second tab;
+      both restore after a page reload with their params.
+- [ ] **run error containment**: a `run` that throws (or rejects) logs a
+      console warning, shows no tab, launcher stays usable.
+- [ ] **Plugin gone degrade**: disable the plugin with its tab persisted →
+      reopening the thread shows the "not available" placeholder, not a
+      crash.
+- [ ] **Old persisted state**: pre-rework localStorage with a plugin-panel
+      fixed tab fails schema parse → that thread's panel state resets
+      cleanly (fresh default panel, no error).

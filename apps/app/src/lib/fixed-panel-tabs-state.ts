@@ -126,10 +126,12 @@ const terminalFixedPanelTabSchema = z
   .strict();
 const pluginPanelFixedPanelTabSchema = z
   .object({
+    actionId: z.string().min(1),
     id: z.string().min(1),
     kind: z.literal("plugin-panel"),
+    paramsJson: z.string().nullable(),
     pluginId: z.string().min(1),
-    tabId: z.string().min(1),
+    title: z.string().min(1),
   })
   .strict();
 const sideChatFixedPanelTabSchema = z
@@ -180,17 +182,21 @@ export interface GitDiffFixedPanelTab {
 }
 
 /**
- * A plugin `threadPanelTab` fixed view (plugin design §5.2). Like
- * thread-info/git-diff it is toggled from the panel chrome rather than
- * rendered as a closable file tab. Persisting the pair keeps the selection
- * across reloads; if the plugin/tab is gone the content degrades to a
+ * A panel tab opened by a plugin `threadPanelAction` (plugin design §5.2) —
+ * a closable file-strip tab like terminal/side-chat, not a fixed view.
+ * `paramsJson` is the JSON-serialized `openPanel` params (null = none); it
+ * is part of the tab identity, so the same action can hold several tabs
+ * with different params while identical re-opens focus the existing one.
+ * If the plugin/action is gone on restore the content degrades to a
  * placeholder.
  */
 export interface PluginPanelFixedPanelTab {
+  actionId: string;
   id: string;
   kind: "plugin-panel";
+  paramsJson: string | null;
   pluginId: string;
-  tabId: string;
+  title: string;
 }
 
 export interface WorkspaceFilePreviewFixedPanelTab {
@@ -294,7 +300,8 @@ export type SecondaryFileFixedPanelTab =
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | SideChatFixedPanelTab
-  | TerminalFixedPanelTab;
+  | TerminalFixedPanelTab
+  | PluginPanelFixedPanelTab;
 
 export type FixedPanelTab = SecondaryFixedPanelTab;
 
@@ -393,8 +400,10 @@ interface CreateTerminalFixedPanelTabArgs {
 }
 
 interface CreatePluginPanelFixedPanelTabArgs {
+  actionId: string;
+  paramsJson: string | null;
   pluginId: string;
-  tabId: string;
+  title: string;
 }
 
 interface BuildFixedPanelTabIdArgs {
@@ -513,18 +522,25 @@ export function createGitDiffFixedPanelTab(): GitDiffFixedPanelTab {
 }
 
 export function createPluginPanelFixedPanelTab({
+  actionId,
+  paramsJson,
   pluginId,
-  tabId,
+  title,
 }: CreatePluginPanelFixedPanelTabArgs): PluginPanelFixedPanelTab {
   return {
+    actionId,
+    // Params are part of the identity (title is not): re-opening the same
+    // action with the same params focuses the existing tab, different
+    // params open a sibling tab.
     id: buildFixedPanelTabId({
       environmentId: null,
       kind: "plugin-panel",
-      path: `${pluginId}:${tabId}`,
+      path: `${pluginId}:${actionId}:${paramsJson ?? ""}`,
     }),
     kind: "plugin-panel",
+    paramsJson,
     pluginId,
-    tabId,
+    title,
   };
 }
 
@@ -714,8 +730,10 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
           };
     case "plugin-panel": {
       const id = createPluginPanelFixedPanelTab({
+        actionId: tab.actionId,
+        paramsJson: tab.paramsJson,
         pluginId: tab.pluginId,
-        tabId: tab.tabId,
+        title: tab.title,
       }).id;
       return tab.id === id ? tab : { ...tab, id };
     }
@@ -978,7 +996,9 @@ export function areFixedPanelTabsEquivalent(
       return (
         b.kind === "plugin-panel" &&
         a.pluginId === b.pluginId &&
-        a.tabId === b.tabId
+        a.actionId === b.actionId &&
+        a.paramsJson === b.paramsJson &&
+        a.title === b.title
       );
     case "workspace-file-preview":
       return (

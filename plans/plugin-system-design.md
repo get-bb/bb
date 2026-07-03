@@ -534,9 +534,12 @@ export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "linear-issues", title: "Linear", component: IssuesCard });
   app.slots.navPanel({ id: "linear", title: "Linear", icon: "columns",
                        path: "linear", component: BoardView });
-  app.slots.threadPanelTab({ id: "linear-issue", title: "Issue",
-                             visible: ({ threadId }) => hasLinkedIssue(threadId),
-                             component: ThreadIssueTab });
+  app.slots.threadPanelAction({ id: "linear-issue", title: "Open issue",
+                                component: ThreadIssuePanel,
+                                run: async ({ threadId, openPanel }) => {
+                                  const issue = await findLinkedIssue(threadId);
+                                  openPanel({ title: issue.key, params: { issueId: issue.id } });
+                                } });
   app.slots.composerAccessory({ id: "linear-picker", component: IssuePicker });
 });
 ```
@@ -547,7 +550,7 @@ V1 slot set with **versioned per-slot props contracts** (additive-only within a 
 | --- | --- | --- |
 | `homepageSection` | `{ projectId: string \| null }` | `RootComposeSecondaryContent.tsx` |
 | `navPanel` | `{}` (own route) | `AppRoutes` + `AppSidebar.tsx` (route + sidebar entry + nav state) |
-| `threadPanelTab` | `{ threadId }`, `visible(ctx)` predicate | `SecondaryPanelTabStrip.tsx` (extends the typed panel-tab union — localized but not one-line) |
+| `threadPanelAction` | action: `run({ threadId, openPanel })`; opened tab: `{ threadId, params }` | `NewTabFileSearch.tsx` Actions list; tabs are `plugin-panel` file-strip tabs (`fixed-panel-tabs-state.ts`) *(reworked 2026-07-03: replaced the fixed `threadPanelTab` toggle — actions run code and open closable, param-carrying tabs with the plugin logo as tab icon)* |
 | `composerAccessory` | `{ projectId, threadId: string \| null }` | `PromptBoxInternal.tsx` (`footerStart` slot prop already exists) |
 | `settingsSection` | auto-generated from settings schema | `SettingsView.tsx` |
 
@@ -813,7 +816,8 @@ guide templates (plugin-commands chapter), the `bb-cli` builtin skill,
 key)* — settings (`apiKey`, `teamKey`); sqlite issue cache; `background.schedule`
 sync; `bb.cli.register` (`bb linear issues|start`) so agents and humans share the surface;
 `registerMentionProvider` (@ENG-123 → issue context); rpc `listIssues/startWork`; slots:
-`homepageSection`, `navPanel` board, `threadPanelTab` with `visible` predicate.
+`homepageSection`, `navPanel` board, `threadPanelTab` with `visible` predicate
+(that slot has since been reworked into `threadPanelAction`).
 
 **Slack bot** — settings (`botToken` secret, `appToken` secret, `channelId`,
 `mode` select, `project` picker); `background.service` socket-mode connection

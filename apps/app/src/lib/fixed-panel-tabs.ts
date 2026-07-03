@@ -7,7 +7,6 @@ import { createLocalStorageSyncStorage } from "./browser-storage";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
-  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
@@ -18,10 +17,7 @@ import {
   type FixedPanelTabsState,
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
-import {
-  parsePluginThreadPanelKey,
-  type ThreadSecondaryPanel,
-} from "./thread-secondary-panel";
+import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
 
 const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
 
@@ -85,15 +81,8 @@ function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
 }
 
 function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
-  if (panel === "thread-info") return createThreadInfoFixedPanelTab();
   if (panel === "git-diff") return createGitDiffFixedPanelTab();
-  const parsed = parsePluginThreadPanelKey(panel);
-  if (parsed === null) {
-    // Plugin panel keys are validated at registration time, so an unparsable
-    // value cannot normally reach here; degrade to the info view.
-    return createThreadInfoFixedPanelTab();
-  }
-  return createPluginPanelFixedPanelTab(parsed);
+  return createThreadInfoFixedPanelTab();
 }
 
 function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {

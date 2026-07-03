@@ -19,7 +19,7 @@ function registrationSet(
   return {
     homepageSections: [],
     navPanels: [],
-    threadPanelTabs: [],
+    threadPanelActions: [],
     composerAccessories: [],
     ...overrides,
   };

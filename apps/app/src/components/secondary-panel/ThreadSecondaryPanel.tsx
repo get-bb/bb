@@ -29,14 +29,7 @@ import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
-import {
-  buildPluginThreadPanelKey,
-  type ThreadSecondaryPanel as ThreadSecondaryPanelTab,
-} from "@/lib/thread-secondary-panel";
-import {
-  PluginThreadPanelTabButtons,
-  PluginThreadPanelTabContent,
-} from "@/components/plugin/PluginThreadPanelTabs";
+import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
@@ -211,7 +204,6 @@ function resolveActiveFixedPanel({
     case "git-diff":
       return canUseGitUi ? "git-diff" : "thread-info";
     case "plugin-panel":
-      return buildPluginThreadPanelKey(activeTab.pluginId, activeTab.tabId);
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
@@ -299,8 +291,6 @@ export function ThreadSecondaryPanel({
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
-  const isPluginPanelActive =
-    activeFixedPanel !== "thread-info" && activeFixedPanel !== "git-diff";
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
   // Inline, the panel slides out at a fixed width (clipped by the panel), so the
   // body content must stay mounted through the close animation (and across
@@ -489,18 +479,6 @@ export function ThreadSecondaryPanel({
                 <Icon name="FileDiff" />
               </Button>
             ) : null}
-            <PluginThreadPanelTabButtons
-              activePanel={activeFixedPanel}
-              hasActiveFileTab={hasActiveFileTab}
-              onPanelChange={onPanelChange}
-              className={cn(
-                SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-                // The shared chrome class is icon-sized; these carry a text
-                // label, so let them size to it.
-                "w-auto px-2 max-md:pointer-coarse:w-auto",
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-              )}
-            />
             {showNewTabButton ? (
               <NewTabButton
                 onOpenNewTab={onOpenNewTab}
@@ -609,8 +587,6 @@ export function ThreadSecondaryPanel({
                 ))
               : null}
           </div>
-        ) : isPluginPanelActive ? (
-          <PluginThreadPanelTabContent panelKey={activeFixedPanel} />
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
             environmentId={environmentId}

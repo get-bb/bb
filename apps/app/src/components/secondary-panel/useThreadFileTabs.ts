@@ -8,6 +8,7 @@ import {
   createBrowserFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
+  createPluginPanelFixedPanelTab,
   createSideChatFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
@@ -19,6 +20,7 @@ import {
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
   ThreadStorageFileTabState,
@@ -457,6 +459,37 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
+  // Opens (or focuses) a plugin panel tab from a `threadPanelAction`. Params
+  // are part of the tab identity: identical params focus the existing tab
+  // (refreshing its title), different params open a sibling tab. Launched
+  // from the new-tab page, so the transient new-tab is replaced like the
+  // file/browser launchers do.
+  const openPluginPanel = useCallback(
+    ({ pluginId, actionId, title, paramsJson }: OpenPluginPanelArgs) => {
+      const tab = createPluginPanelFixedPanelTab({
+        actionId,
+        paramsJson,
+        pluginId,
+        title,
+      });
+      updateFixedPanelTabsState((state) => {
+        const existing = findSecondaryPanelTab(state.secondary.tabs, tab.id);
+        if (existing !== null && existing.kind === "plugin-panel") {
+          const withTitle =
+            existing.title === title
+              ? state
+              : updateSecondaryPanelTabInState({
+                  state,
+                  tab: { ...existing, title },
+                });
+          return activateSecondaryPanelTabInState(withTitle, tab.id);
+        }
+        return replaceNewTabWithSecondaryPanelTabInState({ state, tab });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
   // Opens a side chat: normally appends a fresh tab because the source message
   // is not a stable identity; the New tab launcher can opt into replacing its
   // transient tab, matching file/browser launcher behavior.
@@ -655,6 +688,8 @@ export function useThreadFileTabs({
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
   const activeSideChatTab =
     activeTab?.kind === "side-chat" ? activeTab : null;
+  const activePluginPanelTab =
+    activeTab?.kind === "plugin-panel" ? activeTab : null;
 
   return {
     activateTab,
@@ -674,6 +709,7 @@ export function useThreadFileTabs({
     activeWorkspaceFileProjectId: activeWorkspaceFileTab?.projectId ?? null,
     activeWorkspaceFileSource: activeWorkspaceFileTab?.source ?? null,
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
+    activePluginPanelTab,
     activeSideChatTabId: activeSideChatTab?.id ?? null,
     activateSideChatTab,
     browserTabs,
@@ -681,6 +717,7 @@ export function useThreadFileTabs({
     closeSideChatTab,
     closeTab,
     isNewTabActive: activeNewTab !== null,
+    openPluginPanel,
     openSideChat,
     openExistingSideChatTab,
     openTab,

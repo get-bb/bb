@@ -3,7 +3,7 @@ import type {
   PluginComposerAccessoryRegistration,
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
-  PluginThreadPanelTabRegistration,
+  PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 
 /**
@@ -17,7 +17,7 @@ import type {
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
-  threadPanelTabs: readonly PluginThreadPanelTabRegistration[];
+  threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
 }
 
@@ -36,8 +36,8 @@ export interface PluginHomepageSectionSlot
   extends PluginHomepageSectionRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
-export interface PluginThreadPanelTabSlot
-  extends PluginThreadPanelTabRegistration, PluginSlotBase {}
+export interface PluginThreadPanelActionSlot
+  extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerAccessorySlot
   extends PluginComposerAccessoryRegistration, PluginSlotBase {}
 
@@ -45,14 +45,14 @@ export interface PluginComposerAccessorySlot
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
   navPanels: readonly PluginNavPanelSlot[];
-  threadPanelTabs: readonly PluginThreadPanelTabSlot[];
+  threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   homepageSections: [],
   navPanels: [],
-  threadPanelTabs: [],
+  threadPanelActions: [],
   composerAccessories: [],
 };
 
@@ -66,12 +66,12 @@ function buildSnapshot(): PluginSlotSnapshot {
   const next: {
     homepageSections: PluginHomepageSectionSlot[];
     navPanels: PluginNavPanelSlot[];
-    threadPanelTabs: PluginThreadPanelTabSlot[];
+    threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
   } = {
     homepageSections: [],
     navPanels: [],
-    threadPanelTabs: [],
+    threadPanelActions: [],
     composerAccessories: [],
   };
   for (const pluginId of pluginIds) {
@@ -84,8 +84,8 @@ function buildSnapshot(): PluginSlotSnapshot {
     for (const registration of set.navPanels) {
       next.navPanels.push({ ...registration, pluginId, generation });
     }
-    for (const registration of set.threadPanelTabs) {
-      next.threadPanelTabs.push({ ...registration, pluginId, generation });
+    for (const registration of set.threadPanelActions) {
+      next.threadPanelActions.push({ ...registration, pluginId, generation });
     }
     for (const registration of set.composerAccessories) {
       next.composerAccessories.push({ ...registration, pluginId, generation });
