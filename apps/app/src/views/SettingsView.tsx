@@ -882,7 +882,7 @@ export function ExperimentsSettingsSection({
 
         <SettingsWithControl
           label={PLUGINS_EXPERIMENT_LABEL}
-          description="Enable BB plugins (bb plugin). Plugins are full-trust code that extends the server and UI. Off unloads all plugin code."
+          description="Enable BB plugins (bb plugin). Plugins are full-trust code that extends the server and UI. This feature is unstable, and plugins might break in the future. Off unloads all plugin code."
         >
           <Switch
             checked={pluginsEnabled}
