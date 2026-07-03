@@ -1,6 +1,8 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import {
+  CLOSE_WINDOW_ACCELERATOR,
+  CLOSE_WINDOW_MENU_LABEL,
   OPEN_NEW_TAB_ACCELERATOR,
   OPEN_NEW_TAB_MENU_LABEL,
   SERVER_DAEMON_LOGS_MENU_LABEL,
@@ -47,6 +49,7 @@ function findSubmenuItem(
 describe("application menu", () => {
   it("shows a developer tools toggle in the view menu", () => {
     const template = buildApplicationMenuTemplate({
+      closeWindowOrSideTab() {},
       createNewWindow() {},
       openNewTab() {},
       openServerDaemonLogs() {},
@@ -67,6 +70,7 @@ describe("application menu", () => {
   it("shows a new-tab command in the file menu", () => {
     const openNewTab = vi.fn();
     const template = buildApplicationMenuTemplate({
+      closeWindowOrSideTab() {},
       createNewWindow() {},
       openNewTab,
       openServerDaemonLogs() {},
@@ -89,8 +93,37 @@ describe("application menu", () => {
     expect(openNewTab).toHaveBeenCalledOnce();
   });
 
+  it("routes the close-window accelerator through the app before closing", () => {
+    const closeWindowOrSideTab = vi.fn();
+    const browserWindow = {};
+    const template = buildApplicationMenuTemplate({
+      closeWindowOrSideTab,
+      createNewWindow() {},
+      openNewTab() {},
+      openServerDaemonLogs() {},
+      serverDaemonLogsMenuEnabled: true,
+    });
+
+    const menuItem = findSubmenuItem({
+      itemLabel: CLOSE_WINDOW_MENU_LABEL,
+      parentLabel: "File",
+      template,
+    });
+
+    expect(menuItem).not.toBeNull();
+    expect(menuItem?.accelerator).toBe(CLOSE_WINDOW_ACCELERATOR);
+    expect(menuItem?.role).toBeUndefined();
+    menuItem?.click?.(
+      undefined as never,
+      browserWindow as never,
+      undefined as never,
+    );
+    expect(closeWindowOrSideTab).toHaveBeenCalledWith(browserWindow);
+  });
+
   it("shows an enabled server and daemon logs item for owned runtimes", () => {
     const template = buildApplicationMenuTemplate({
+      closeWindowOrSideTab() {},
       createNewWindow() {},
       openNewTab() {},
       openServerDaemonLogs() {},
@@ -109,6 +142,7 @@ describe("application menu", () => {
 
   it("shows a disabled server and daemon logs item for attached runtimes", () => {
     const template = buildApplicationMenuTemplate({
+      closeWindowOrSideTab() {},
       createNewWindow() {},
       openNewTab() {},
       openServerDaemonLogs() {},

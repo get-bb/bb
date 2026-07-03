@@ -3,11 +3,14 @@ import { app, Menu, type MenuItemConstructorOptions } from "electron";
 export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
 export const OPEN_NEW_TAB_ACCELERATOR = "CmdOrCtrl+T";
 export const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
+export const CLOSE_WINDOW_ACCELERATOR = "CmdOrCtrl+W";
+export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
 export interface InstallApplicationMenuArgs {
   openNewTab(): void;
+  closeWindowOrSideTab(browserWindow: unknown): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
   serverDaemonLogsMenuEnabled: boolean;
@@ -64,7 +67,13 @@ export function buildApplicationMenuTemplate(
           label: "New Window",
         },
         { type: "separator" },
-        { role: "close" },
+        {
+          accelerator: CLOSE_WINDOW_ACCELERATOR,
+          click(_menuItem, browserWindow) {
+            args.closeWindowOrSideTab(browserWindow ?? undefined);
+          },
+          label: CLOSE_WINDOW_MENU_LABEL,
+        },
       ],
     },
     {

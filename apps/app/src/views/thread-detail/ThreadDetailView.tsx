@@ -146,6 +146,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
@@ -1075,6 +1076,26 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
+  const handleCloseWindowRequest = useCallback(() => {
+    if (
+      !isPersistedSecondaryPanelOpenForSurface ||
+      activeFixedSecondaryTab === null ||
+      !isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      return false;
+    }
+    if (activeFixedSecondaryTab.kind === "side-chat") {
+      closeSideChatTab(activeFixedSecondaryTab.id);
+    } else {
+      closeTab(activeFixedSecondaryTab.id);
+    }
+    return true;
+  }, [
+    activeFixedSecondaryTab,
+    closeSideChatTab,
+    closeTab,
+    isPersistedSecondaryPanelOpenForSurface,
+  ]);
   useEffect(() => {
     if (props.surface !== "page") {
       return;
@@ -1085,6 +1106,19 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
   }, [handleOpenNewTab, props.surface]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   useEffect(() => {
     if (props.surface !== "page" || getBbDesktopInfo() === null) {
       return;

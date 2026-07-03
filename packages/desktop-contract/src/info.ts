@@ -21,6 +21,7 @@ export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
 export type BbDesktopOpenNewTabHandler = () => void;
+export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
   /**
@@ -46,6 +47,15 @@ export interface BbDesktopApi extends BbDesktopInfo {
    */
   onOpenNewTab?(
     listener: BbDesktopOpenNewTabHandler,
+  ): BbDesktopInfoUnsubscribe;
+  /**
+   * Subscribe to native desktop close-window requests. Return true when the
+   * renderer handled the request, for example by closing an active secondary
+   * panel tab; returning false preserves the native close-window fallback.
+   * Optional for desktop shells that predate this command.
+   */
+  onCloseWindowRequest?(
+    listener: BbDesktopCloseWindowRequestHandler,
   ): BbDesktopInfoUnsubscribe;
   /**
    * Open a URL in the user's default system browser, leaving the in-app

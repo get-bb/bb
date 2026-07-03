@@ -126,6 +126,7 @@ import {
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
+  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
 } from "@/lib/bb-desktop";
@@ -174,6 +175,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
@@ -2282,6 +2284,30 @@ export function RootComposeView(props: RootComposeViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
+  const handleCloseWindowRequest = useCallback(() => {
+    if (
+      !isPersistedSecondaryPanelOpen ||
+      activeFixedSecondaryTab === null ||
+      !isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      return false;
+    }
+    closeTab(activeFixedSecondaryTab.id);
+    return true;
+  }, [activeFixedSecondaryTab, closeTab, isPersistedSecondaryPanelOpen]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
       closeSecondaryPanel();

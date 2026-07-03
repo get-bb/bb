@@ -88,7 +88,11 @@ import {
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
-import { BB_DESKTOP_OPEN_NEW_TAB_CHANNEL } from "./desktop-window-command-ipc.js";
+import {
+  BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
+  BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+  BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+} from "./desktop-window-command-ipc.js";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
@@ -464,6 +468,12 @@ function shouldEnableServerDaemonLogsMenu(): boolean {
   );
 }
 
+function isDesktopCloseCommandTarget(
+  value: unknown,
+): value is Pick<BrowserWindow, "webContents"> {
+  return value instanceof BrowserWindow;
+}
+
 function refreshApplicationMenu(): void {
   installApplicationMenu({
     createNewWindow() {
@@ -475,6 +485,15 @@ function refreshApplicationMenu(): void {
     openNewTab() {
       desktopWindowFactory?.sendToFocusedWindow(
         BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+        null,
+      );
+    },
+    closeWindowOrSideTab(browserWindow) {
+      if (!isDesktopCloseCommandTarget(browserWindow)) {
+        return;
+      }
+      browserWindow.webContents.send(
+        BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
         null,
       );
     },
@@ -1103,6 +1122,10 @@ function registerDesktopUpdateIpc(): void {
       return;
     }
     nativeTheme.themeSource = parsed.data;
+  });
+
+  ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_CHANNEL, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
   });
   // The in-app browser tab hands off the current address to the system
   // browser. The URL originates from a possibly-hostile page, so only open

@@ -38,7 +38,11 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
-import { BB_DESKTOP_OPEN_NEW_TAB_CHANNEL } from "../src/desktop-window-command-ipc.js";
+import {
+  BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
+  BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+  BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+} from "../src/desktop-window-command-ipc.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -300,6 +304,7 @@ describe("desktop preload browser API", () => {
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
+    let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const state: BbDesktopBrowserState = {
@@ -337,6 +342,10 @@ describe("desktop preload browser API", () => {
     });
     api.onOpenNewTab?.(() => {
       openNewTabCount += 1;
+    });
+    api.onCloseWindowRequest?.(() => {
+      closeWindowRequestCount += 1;
+      return true;
     });
     api.popout.onThreadChanged((thread) => {
       popoutThreads.push(thread);
@@ -379,6 +388,10 @@ describe("desktop preload browser API", () => {
       payload: null,
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+      payload: null,
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
       payload: { projectId: "proj_a", threadId: "thr_a", extra: true },
     });
@@ -395,10 +408,29 @@ describe("desktop preload browser API", () => {
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
+    expect(electronMock.sendCalls).not.toContainEqual({
+      channel: BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
+      payload: null,
+    });
     expect(popoutThreads).toEqual([
       { projectId: "proj_a", threadId: "thr_a" },
       null,
     ]);
+  });
+
+  it("asks main to close the window when no close-window listener handles the request", async () => {
+    await loadPreload();
+
+    emitIpcPayload({
+      channel: BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
+      payload: null,
+    });
+
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: BB_DESKTOP_CLOSE_WINDOW_CHANNEL,
+      payload: null,
+    });
   });
 });
