@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
+  TimelineConversationAnnotation,
   TimelineConversationAttachments,
   TimelineRowBase,
   TimelineUserConversationRow,
@@ -25,6 +26,7 @@ import {
   buildAttachmentItems,
   type ConversationAttachmentItems,
 } from "./ConversationAttachments.js";
+import { ConversationAnnotations } from "./ConversationAnnotations.js";
 import {
   GeneratedConversationMessage,
   generatedConversationBodySlice,
@@ -66,6 +68,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  annotations?: readonly TimelineConversationAnnotation[];
   onAddToChat?: (text: string) => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
@@ -154,6 +157,7 @@ export type ConversationMessageContentProps =
 interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  annotations: readonly TimelineConversationAnnotation[];
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
@@ -332,6 +336,7 @@ function buildAddToChatAttachments(
 function UserConversationMessage({
   addToChatAttachments,
   attachmentItems,
+  annotations,
   childOrigin,
   initiator,
   mentions,
@@ -449,6 +454,7 @@ function UserConversationMessage({
             onOpenLocalFileLink={onOpenLocalFileLink}
             projectId={projectId}
           />
+          <ConversationAnnotations annotations={annotations} />
         </div>
         {messageText || addToChatAttachments.length > 0 ? (
           <div className="mt-1 flex justify-end">
@@ -575,6 +581,7 @@ export function ConversationMessageContent(
       <UserConversationMessage
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
+        annotations={props.annotations ?? []}
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
