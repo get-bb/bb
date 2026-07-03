@@ -1,11 +1,48 @@
 // A tiny zero-dependency markdown renderer for issue/comment bodies.
 // Supports: # headings, paragraphs, fenced code blocks, - lists,
-// `inline code`, **bold**, *italic*, and [links](url). Everything is built
-// as React elements, so no HTML is ever injected.
+// `inline code`, **bold**, *italic*, [links](url), ![images](url), and raw
+// `<img …>` tags (GitHub's attachment uploader emits HTML img tags, not
+// markdown). Everything is built as React elements — img attributes are
+// extracted and whitelisted, so no HTML is ever injected.
 import { cn } from "@/lib/utils";
 
 const INLINE_PATTERN =
-  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)\s]+\))/g;
+  // Image forms first: `![…](…)` must win over the link pattern (which
+  // would otherwise match its tail), and `<img …>` before generic text.
+  /(!\[[^\]]*\]\([^)\s]+\))|(<img\s[^>]*?\/?>)|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)\s]+\))/g;
+
+/** Extract a quoted attribute from a raw `<img …>` tag. */
+function imgAttribute(tag: string, name: string): string | undefined {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`));
+  return match?.[1];
+}
+
+/**
+ * Safe image element from an alt/src pair (+ optional intrinsic size from a
+ * raw img tag). Only http(s) sources render — anything else falls back to
+ * the original text. `h-auto`/`max-w-full` keep clamped images undistorted.
+ */
+function renderImage(
+  key: number,
+  src: string | undefined,
+  alt: string,
+  raw: string,
+  width?: string,
+  height?: string,
+): React.ReactNode {
+  if (!src || !/^https?:\/\//.test(src)) return raw;
+  return (
+    <img
+      key={key}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      {...(width && /^\d+$/.test(width) ? { width: Number(width) } : {})}
+      {...(height && /^\d+$/.test(height) ? { height: Number(height) } : {})}
+      className="my-1 inline-block h-auto max-w-full rounded-md border border-border"
+    />
+  );
+}
 
 function renderInline(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -15,7 +52,28 @@ function renderInline(text: string): React.ReactNode[] {
     const index = match.index ?? 0;
     if (index > last) nodes.push(text.slice(last, index));
     const token = match[0];
-    if (token.startsWith("`")) {
+    if (token.startsWith("![")) {
+      const closeBracket = token.indexOf("](");
+      nodes.push(
+        renderImage(
+          key++,
+          token.slice(closeBracket + 2, -1),
+          token.slice(2, closeBracket),
+          token,
+        ),
+      );
+    } else if (token.startsWith("<img")) {
+      nodes.push(
+        renderImage(
+          key++,
+          imgAttribute(token, "src"),
+          imgAttribute(token, "alt") ?? "",
+          token,
+          imgAttribute(token, "width"),
+          imgAttribute(token, "height"),
+        ),
+      );
+    } else if (token.startsWith("`")) {
       nodes.push(
         <code
           key={key++}
