@@ -872,7 +872,8 @@ per-plugin ErrorBoundaries, replace-wholesale frontend reload.
 exactly one homepage section; stale-bundle test (old `__bbSdk` major → "needs update"
 badge, no crash).
 
-**Phase 4 — component registry + prebuilt distribution.** (Formerly the
+**Phase 4 — component registry + prebuilt distribution.** *(BUILT 2026-07-03, same
+day as the decisions — commits P4.1–P4.7 on the phase branch.)* (Formerly the
 "component-registry track"; promoted to a numbered phase 2026-07-03. Replaces the
 host-provided kit, §5.5; adds prebuilt consumer distribution, §6. No shared machinery
 with swizzle/partial-forks, which renumber to Phases 5/6.) Ordered so each step ships
