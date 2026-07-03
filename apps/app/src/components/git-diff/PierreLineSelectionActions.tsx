@@ -18,8 +18,21 @@ import {
   type SelectionAnchorSide,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
+import { SelectionAnnotationPopover } from "@/components/thread/timeline/SelectionAnnotationPopover.js";
 
 const LINE_SELECTION_MENU_INLINE_OFFSET_PX = 72;
+
+export interface PierreLineSelectionAnnotateArgs {
+  range: SelectedLineRange;
+  quotedText: string;
+  comment: string;
+}
+
+function lineRangeLabel(range: SelectedLineRange): string {
+  const startLine = Math.min(range.start, range.end);
+  const endLine = Math.max(range.start, range.end);
+  return startLine === endLine ? `Line ${startLine}` : `Lines ${startLine}-${endLine}`;
+}
 
 let documentPointerStartPoint: SelectionAnchorPoint | null = null;
 let documentPointerReleaseAnchor: SelectionAnchor | null = null;
@@ -35,6 +48,7 @@ export interface UsePierreLineSelectionActionsArgs {
   containerRef: RefObject<HTMLElement | null>;
   enabled: boolean;
   onSelectionAddToChat?: (text: string) => void;
+  onSelectionAnnotate?: (args: PierreLineSelectionAnnotateArgs) => void;
   resolveAnchorPoint?: (args: {
     anchorSide: SelectionAnchorSide;
     containerElement: HTMLElement | null;
@@ -286,6 +300,7 @@ export function usePierreLineSelectionActions({
   containerRef,
   enabled,
   onSelectionAddToChat,
+  onSelectionAnnotate,
   resolveAnchorPoint,
 }: UsePierreLineSelectionActionsArgs): PierreLineSelectionActions {
   const [activeRange, setActiveRange] = useState<SelectedLineRange | null>(
@@ -463,7 +478,7 @@ export function usePierreLineSelectionActions({
     documentPointerReleaseAnchor = null;
   }, []);
 
-  const handleGutterUtilityClick = useCallback(
+  const openSelectionForRange = useCallback(
     (range: SelectedLineRange) => {
       if (!enabled) {
         return;
@@ -591,8 +606,14 @@ export function usePierreLineSelectionActions({
         lastLineSelectionAnchorRef.current = pointerAnchor;
       }
       setPreviewRange(range);
+      // Open the comment popup as soon as the drag is released. Previously this
+      // only fired on a subsequent click of the hover-revealed gutter "+"
+      // button, which never got tapped on touch ("drag works, nothing pops up").
+      if (range !== null) {
+        openSelectionForRange(range);
+      }
     },
-    [enabled],
+    [enabled, openSelectionForRange],
   );
 
   const handleSelectionAddToChat = useCallback(
@@ -603,31 +624,63 @@ export function usePierreLineSelectionActions({
     [dismissSelection, onSelectionAddToChat],
   );
 
-  const menu = useMemo(
-    () =>
-      enabled ? (
-        <TimelineSelectionMenu
+  const handleAnnotateSubmit = useCallback(
+    (comment: string) => {
+      if (activeRange !== null && activeSelection !== null) {
+        onSelectionAnnotate?.({
+          range: activeRange,
+          quotedText: activeSelection.text,
+          comment,
+        });
+      }
+      dismissSelection();
+    },
+    [activeRange, activeSelection, dismissSelection, onSelectionAnnotate],
+  );
+
+  const menu = useMemo(() => {
+    if (!enabled) {
+      return null;
+    }
+    // Prefer the comment flow when a consumer supports annotations; fall back to
+    // the plain add-to-chat menu (terminal/prose) otherwise.
+    if (onSelectionAnnotate !== undefined) {
+      return (
+        <SelectionAnnotationPopover
           selection={activeSelection}
-          onAddToChat={
-            onSelectionAddToChat === undefined
-              ? undefined
-              : handleSelectionAddToChat
+          locationLabel={
+            activeRange !== null ? lineRangeLabel(activeRange) : ""
           }
+          onSubmit={handleAnnotateSubmit}
           onDismiss={dismissSelection}
         />
-      ) : null,
-    [
-      activeSelection,
-      dismissSelection,
-      enabled,
-      handleSelectionAddToChat,
-      onSelectionAddToChat,
-    ],
-  );
+      );
+    }
+    return (
+      <TimelineSelectionMenu
+        selection={activeSelection}
+        onAddToChat={
+          onSelectionAddToChat === undefined
+            ? undefined
+            : handleSelectionAddToChat
+        }
+        onDismiss={dismissSelection}
+      />
+    );
+  }, [
+    activeRange,
+    activeSelection,
+    dismissSelection,
+    enabled,
+    handleAnnotateSubmit,
+    handleSelectionAddToChat,
+    onSelectionAddToChat,
+    onSelectionAnnotate,
+  ]);
 
   return {
     menu,
-    onGutterUtilityClick: handleGutterUtilityClick,
+    onGutterUtilityClick: openSelectionForRange,
     onLineSelectionChange: handleLineSelectionChange,
     onLineSelectionEnd: handleLineSelectionEnd,
     onLineSelectionStart: handleLineSelectionStart,

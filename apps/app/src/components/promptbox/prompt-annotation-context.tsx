@@ -1,0 +1,35 @@
+import { createContext, useContext, type ReactNode } from "react";
+import type { PromptDraftAnnotation } from "@/lib/prompt-draft";
+
+export type PromptAnnotationInput = Omit<PromptDraftAnnotation, "id">;
+
+interface PromptAnnotationComposer {
+  addAnnotation: (annotation: PromptAnnotationInput) => void;
+}
+
+const PromptAnnotationComposerContext =
+  createContext<PromptAnnotationComposer | null>(null);
+
+interface PromptAnnotationComposerProviderProps {
+  addAnnotation: (annotation: PromptAnnotationInput) => void;
+  children: ReactNode;
+}
+
+export function PromptAnnotationComposerProvider({
+  addAnnotation,
+  children,
+}: PromptAnnotationComposerProviderProps) {
+  return (
+    <PromptAnnotationComposerContext.Provider value={{ addAnnotation }}>
+      {children}
+    </PromptAnnotationComposerContext.Provider>
+  );
+}
+
+/**
+ * Returns the composer's addAnnotation, or null when a diff/code surface renders
+ * outside a composer (e.g. stories) so line-range comments simply stay off.
+ */
+export function usePromptAnnotationComposer(): PromptAnnotationComposer | null {
+  return useContext(PromptAnnotationComposerContext);
+}

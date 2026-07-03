@@ -93,6 +93,10 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  PromptAnnotationComposerProvider,
+  type PromptAnnotationInput,
+} from "@/components/promptbox/prompt-annotation-context";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -928,6 +932,16 @@ export function RootComposeView(props: RootComposeViewProps) {
   const handleRootPanelSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       promptDraft.addQuote(text, attachments);
+      setStartedComposing(true);
+      window.requestAnimationFrame(() => {
+        promptBoxRef.current?.focusEnd();
+      });
+    },
+    [promptDraft],
+  );
+  const handleRootPanelAnnotate = useCallback(
+    (annotation: PromptAnnotationInput) => {
+      promptDraft.addAnnotation({ id: crypto.randomUUID(), ...annotation });
       setStartedComposing(true);
       window.requestAnimationFrame(() => {
         promptBoxRef.current?.focusEnd();
@@ -3282,7 +3296,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   }
 
   return (
-    <>
+    <PromptAnnotationComposerProvider addAnnotation={handleRootPanelAnnotate}>
       {providerCliInstallLogDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
@@ -3343,6 +3357,6 @@ export function RootComposeView(props: RootComposeViewProps) {
           </>
         )}
       </RootComposeSecondaryContent>
-    </>
+    </PromptAnnotationComposerProvider>
   );
 }
