@@ -358,8 +358,10 @@ React and the SDK are **never bundled** — `bb plugin build` shims them to
 the host's shared runtime, so the bundle only works inside bb.
 
 ```tsx
-import { definePluginApp, useRpc, useRealtime, useSettings, useBbContext, useBbNavigate,
-         Button, Card, CardContent, Dialog, DialogContent, toast } from "@bb/plugin-sdk/app";
+import { definePluginApp, useRpc, useRealtime, useSettings, useBbContext, useBbNavigate } from "@bb/plugin-sdk/app";
+import { toast } from "sonner";                      // shimmed to the host toaster
+import { Button } from "@/components/ui/button";    // vendored source YOU own
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
@@ -383,9 +385,9 @@ Slot props contracts (versioned, additive-only):
   full-width. `headerContent` is plugin code inside host chrome and is
   contained separately: a throw hides the accessory without breaking the
   header or the panel body. `chrome: "page"` (the default) gives the body
-  the standard page padding at full width — wrap your content in
-  `<PageBody>` (see the UI kit) to opt back into the classic centered,
-  width-capped column instead; `chrome: "none"` is the escape hatch — your
+  the standard page padding at full width — wrap your content in a
+  `mx-auto w-full max-w-3xl space-y-4` div to opt back into the classic
+  centered, width-capped column instead; `chrome: "none"` is the escape hatch — your
   `component` owns the ENTIRE body region with zero host padding
   (`headerContent` is ignored; the shared header still shows logo + title)
   and only the crash boundary remains.
@@ -406,38 +408,47 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path) }`.
 
-UI kit — **stock shadcn/ui components, stock names, stock props**: write
-standard shadcn code and it works as-is, rendered by the host so theme
-tokens, dark mode, and portalled overlays (dialogs, menus) are automatic.
-The full export list:
+UI components — **vendored shadcn source you own** (the shadcn model; the
+old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
+only `definePluginApp` + the hooks):
 
-- Buttons/badges/cards: `Button`, `Badge`, `Card`, `CardHeader`,
-  `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`
-- Form: `Input`, `Textarea`, `Label`, `Checkbox`, `Switch`, `Select`,
-  `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`,
-  `SelectGroup`, `SelectLabel`, `SelectSeparator`, `SelectScrollUpButton`,
-  `SelectScrollDownButton`
-- Tabs: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`
-- Dialog: `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`,
-  `DialogFooter`, `DialogTitle`, `DialogDescription`, `DialogClose`,
-  `DialogOverlay`
-- Menu: `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`,
-  `DropdownMenuItem`, `DropdownMenuCheckboxItem`, `DropdownMenuRadioGroup`,
-  `DropdownMenuRadioItem`, `DropdownMenuLabel`, `DropdownMenuSeparator`,
-  `DropdownMenuShortcut`, `DropdownMenuGroup`, `DropdownMenuPortal`,
-  `DropdownMenuSub`, `DropdownMenuSubTrigger`, `DropdownMenuSubContent`
-- Overlay: `Popover`, `PopoverTrigger`, `PopoverContent`, `PopoverAnchor`,
-  `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider`
-- Misc: `Separator`, `Skeleton`, and `toast` (sonner's toast function — the
-  host renders the Toaster; `toast.success("Saved")` just works)
-- bb extras (not shadcn): `EmptyState`, `Markdown`, `PageBody`, `Spinner`
+- `bb plugin new --app` pre-vendors button, card, input, dialog (plus their
+  support files: `lib/utils`, `lib/portal-scope`, icon, responsive-overlay,
+  drawer, hooks) into `components/ui/` etc., and writes a `components.json`
+  whose `@bb` registry is pinned to the release tag matching the running
+  BB. Import via the `@/*` alias: `import { Button } from
+  "@/components/ui/button"` (tsconfig maps it; `bb plugin build` reads it).
+- Add more with stock shadcn tooling: `npx shadcn add @bb/select
+  @bb/table` — the BB registry carries the full stock set (~44 items:
+  accordion, alert-dialog, calendar, chart, command, form, sheet, table,
+  …), generated from the BB app's own component source, so vendored code is
+  version-matched to your BB by construction. Edit the copies freely; they
+  never change out from under you. Re-running `shadcn add` is the manual
+  update path.
+- `toast`: `import { toast } from "sonner"` — runtime-shimmed to the host's
+  Toaster (`toast.success("Saved")` just works; never mount your own
+  `<Toaster>`).
+- Never bundled (runtime-shimmed, import freely): react, the portaling
+  radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
+  `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,
+  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`. Your vendored overlays
+  therefore share the host's dismissable-layer/focus/scroll-lock world —
+  stacking against host overlays behaves correctly.
+- Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
+  cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
+  after adding components (`bb plugin new` runs the first one; `shadcn add`
+  installs each item's declared deps). Consumers never need npm — ship your
+  built `dist/`.
+- Styling: Tailwind classes compile against the host theme's live CSS
+  variables (`bg-background`, `text-muted-foreground`, `rounded-lg`, and
+  `animate-in`/`fade-in-0` via tw-animate-css) — derive colors from theme
+  tokens, never hardcoded grays.
+- The old bb extras (`EmptyState`, `Markdown`, `PageBody`, `Spinner`) are
+  gone — write your own (each is a few lines; see
+  `examples/plugins/github/components/` for reference implementations).
 
-Internal bb app components beyond this list are NOT importable. `PageBody`
-is a layout wrapper for `navPanel` bodies (full-width by default):
-`<PageBody>…</PageBody>` renders the same centered `max-w-3xl` column as
-the host's settings-style pages; `className` extends or overrides it. One
-deviation from stock shadcn: `Dialog` renders as a bottom drawer on compact
-viewports (the host's responsive behavior) — same API.
+One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
+compact viewports (the host's responsive behavior) — same API.
 
 Crash isolation: each slot mounts inside an ErrorBoundary — a throwing
 component collapses to a "plugin <id> crashed" chip; the rest of the app
@@ -476,11 +487,11 @@ hardcoded colors break custom palettes.
 
 Reference examples in `examples/plugins/` (a bb checkout):
 
-- `github` — shadcn-UI-kit showcase: a gh-CLI-backed issue/PR browser in a
-  single navPanel (with `headerContent`), hash-based sub-navigation, Tabs/
-  Select/DropdownMenu/Badge/Skeleton/toast throughout, background sync
-  service, rpc + realtime, project setting, a `bb github` CLI command, and
-  agent-spawn buttons.
+- `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
+  in a single navPanel (with `headerContent`), hash-based sub-navigation,
+  vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
+  throughout, background sync service, rpc + realtime, project setting, a
+  `bb github` CLI command, and agent-spawn buttons.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

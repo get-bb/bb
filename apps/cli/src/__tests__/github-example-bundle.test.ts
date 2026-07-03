@@ -1,6 +1,8 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { cp, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildPluginApp } from "@bb/plugin-build";
@@ -45,6 +47,18 @@ describe("github example frontend bundle", () => {
         return name !== "dist" && name !== "node_modules";
       },
     });
+    // The temp copy has no node_modules; link the deps the bundle actually
+    // inlines (shimmed packages — react, radix portal families, sonner, vaul
+    // — never resolve from disk) so buildPluginApp can bundle them.
+    await linkBundledDeps(pluginDir, [
+      "class-variance-authority",
+      "clsx",
+      "tailwind-merge",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-tabs",
+      "@hugeicons/react",
+      "@hugeicons/core-free-icons",
+    ]);
     const { jsPath } = await buildPluginApp(pluginDir);
 
     const registered: Record<string, SlotRegistration[]> = {
@@ -53,12 +67,34 @@ describe("github example frontend bundle", () => {
       threadPanelTab: [],
       composerAccessory: [],
     };
+    // Vendored components read e.g. `Primitive.Trigger.displayName` at
+    // module scope, so shimmed slots must answer any property chain — a
+    // self-returning proxy does.
+    const componentStub: unknown = new Proxy(function stub() {}, {
+      get: (target, prop) =>
+        prop === "prototype"
+          ? Reflect.get(target, prop)
+          : (componentStub as object),
+      set: () => true,
+    });
     (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
-      react: {},
+      // Bundled radix primitives (slot, tabs) call these at module scope.
+      react: {
+        forwardRef: (render: unknown) => render,
+        createContext: () => ({}),
+        memo: (component: unknown) => component,
+      },
+      reactDom: componentStub,
+      reactDomClient: componentStub,
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       pluginSdkApp: {
         definePluginApp: (setup: unknown) => ({ __bbPluginApp: true, setup }),
       },
+      // Shimmed singleton packages the vendored components import.
+      sonner: componentStub,
+      vaul: componentStub,
+      radixDropdownMenu: componentStub,
+      radixSelect: componentStub,
     };
     const mod = (await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href
@@ -95,3 +131,39 @@ describe("github example frontend bundle", () => {
     expect(registered.composerAccessory).toHaveLength(0);
   });
 });
+
+/**
+ * Symlinks real packages (resolved through apps/app, which depends on all of
+ * them) into the temp plugin dir's node_modules — same pattern as
+ * plugin-build.test.ts's linkScaffoldDeps.
+ */
+async function linkBundledDeps(
+  targetDir: string,
+  packageNames: string[],
+): Promise<void> {
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const appRequire = createRequire(
+    join(testDir, "..", "..", "..", "app", "package.json"),
+  );
+  for (const name of packageNames) {
+    const entry = appRequire.resolve(name);
+    let packageRoot = dirname(entry);
+    while (true) {
+      const candidate = join(packageRoot, "package.json");
+      if (existsSync(candidate)) {
+        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
+          name?: string;
+        };
+        if (parsed.name === name) break;
+      }
+      const parent = dirname(packageRoot);
+      if (parent === packageRoot) {
+        throw new Error(`could not find package root for ${name}`);
+      }
+      packageRoot = parent;
+    }
+    const linkPath = join(targetDir, "node_modules", name);
+    await mkdir(dirname(linkPath), { recursive: true });
+    await symlink(packageRoot, linkPath, "dir");
+  }
+}

@@ -7,8 +7,15 @@
 // (#/issues/<owner>/<repo>/<n>) since navPanel owns a single route today.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Badge,
-  Button,
+  definePluginApp,
+  useBbNavigate,
+  useRealtime,
+  useRpc,
+} from "@bb/plugin-sdk/app";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
@@ -16,26 +23,21 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  EmptyState,
-  Input,
-  Markdown,
-  PageBody,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Skeleton,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  Textarea,
-  definePluginApp,
-  toast,
-  useBbNavigate,
-  useRealtime,
-  useRpc,
-} from "@bb/plugin-sdk/app";
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/empty-state";
+import { Markdown } from "@/components/markdown-lite";
+import { PageBody } from "@/components/page-body";
 
 interface Item {
   repo: string;
@@ -432,14 +434,14 @@ function matchesQuery(item: Item, query: ParsedQuery, viewer: string | null): bo
   if (query.states.length > 0 && !query.states.includes(item.state)) return false;
   if (query.assignees.length > 0) {
     const wanted = query.assignees.map((login) =>
-      login === "@me" ? (viewer?.toLowerCase() ?? " ") : login,
+      login === "@me" ? (viewer?.toLowerCase() ?? "\u0000") : login,
     );
     if (!item.assignees.some((login) => wanted.includes(login.toLowerCase()))) return false;
   }
   if (query.authors.length > 0) {
     const author = item.author.toLowerCase();
     const wanted = query.authors.map((login) =>
-      login === "@me" ? (viewer?.toLowerCase() ?? " ") : login,
+      login === "@me" ? (viewer?.toLowerCase() ?? "\u0000") : login,
     );
     if (!wanted.includes(author)) return false;
   }

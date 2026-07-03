@@ -13,10 +13,19 @@
     "skipLibCheck": true,
     "types": [
       "node"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
   },
   "include": [
     "server.ts",
-    "app.tsx"
+    "app.tsx",
+    "components",
+    "lib",
+    "hooks"
   ]
 }

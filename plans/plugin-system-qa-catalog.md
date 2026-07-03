@@ -829,8 +829,50 @@ reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
       The github example ships both (dark mark for light theme, white mark
       for dark theme) — flip the theme in Settings and watch the mark swap
       live, no reload.
-- [ ] **PageBody**: `import { PageBody } from "@bb/plugin-sdk/app"` — a
-      navPanel body (full-width by default) wrapped in `<PageBody>` renders
-      as the classic centered `max-w-3xl` column, like Settings.
+- [x] ~~**PageBody**~~ REMOVED 2026-07-03 with the host-provided UI kit
+      (design §5.5): `@bb/plugin-sdk/app` is hooks-only; plugins write their
+      own `mx-auto w-full max-w-3xl` wrapper (github example has one).
       (Note: PLUGIN_SDK_VERSION was reverted 0.2.0 → 0.1.0 pre-release;
       existing dev installs stamped 0.2.0 simply rebuild on next load.)
+
+
+## Phase 4 — component registry + prebuilt distribution (built 2026-07-03)
+
+The host-provided UI kit is REMOVED (design §5.5): `@bb/plugin-sdk/app` is
+hooks-only (`definePluginApp` + useRpc/useRealtime/useSettings/useBbContext/
+useBbNavigate). Components are vendored shadcn source from the in-repo
+registry (`packages/plugin-registry`, served raw from GitHub at
+`desktop-v<version>` tags); react + the ten portaling radix families +
+sonner + vaul are runtime-shimmed; everything else bundles per plugin.
+Automated coverage: `plugin-build.test.ts` (token bridge, tw-animate,
+singleton shims, scaffold build), `portal-scope.test.tsx`,
+`plugin-frontend.test.ts` (18-slot runtime), `vendor-all-items.test.ts`
+(every registry item compiles through the real build), registry/theme/
+templates `--check` drift gates, `plugin-sdk-app-impl.test.tsx` (hooks-only
+export sync).
+
+- [ ] **Vendored styling live**: install the github example; its vendored
+      Tabs/Select/DropdownMenu render themed (tokens follow palette flips),
+      dropdown/select popovers are styled (portal scope stamp), and
+      open/close animates (tw-animate in the plugin CSS pass).
+- [ ] **Cross-copy overlay stacking**: with a vendored plugin dialog open,
+      open a host overlay above it — Escape/outside-click dismiss the right
+      layer only (shared radix via shims).
+- [ ] **toast → host toaster**: `import { toast } from "sonner"` in plugin
+      code raises the host's toaster (github example uses it).
+- [ ] **Scaffold out of the box**: `bb plugin new hello --app` → npm install
+      runs (or prints the manual step) → `bb plugin build` succeeds →
+      installed plugin renders the Card/Button homepage section.
+- [ ] **shadcn add against the registry**: in a scaffold,
+      `npx shadcn add @bb/select` (components.json pinned ref; use a branch
+      ref pre-release) vendors select + its closure; build + render works.
+- [ ] **components.json ref pinning**: scaffold from a real-version BB pins
+      `desktop-v<version>`; dev build (0.0.0) pins `main`.
+- [ ] **Prebuilt consumer install**: a git-kind install with committed
+      dist/ (server.js + app.js) loads with NO node_modules and no npm on
+      the machine; path installs still load from source (edit + reload
+      shows the change without rebuilding dist).
+- [ ] **Headless build**: `bb plugin build` on a server-only plugin emits
+      dist/server.js (+ meta) and no app bundle.
+- [ ] **Stale prebuilt degrade**: server.meta.json with a wrong sdkMajor →
+      loader falls back to source (warn logged), never a crash.

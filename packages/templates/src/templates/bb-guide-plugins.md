@@ -60,12 +60,15 @@ Frontend entries (app.tsx) default-export `definePluginApp` from
 navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelTab
 (right panel next to Info/Diff), composerAccessory (prompt box footer). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate — plus a UI kit of stock shadcn/ui components under stock
-names/props (Button, Badge, Card*, Input, Textarea, Label, Checkbox, Switch,
-Select*, Tabs*, Dialog*, DropdownMenu*, Popover*, Tooltip*, Separator,
-Skeleton, toast) so standard shadcn code works as-is, and bb extras
-(EmptyState, Markdown, Spinner, PageBody; PageBody opts a full-width navPanel
-body back into the classic centered column). A crashing slot collapses to a
+useBbNavigate. Components are vendored shadcn source the plugin owns (the
+shadcn model): `bb plugin new --app` pre-vendors a starter set into
+components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
+component registry (the full stock shadcn set, version-matched to the
+running BB via the pinned ref in components.json). `import { toast } from
+"sonner"` reaches the host toaster; react, the portaling radix families,
+sonner, and vaul are runtime-shimmed (never bundled), everything else
+bundles from the plugin's node_modules (`npm install` for authors;
+consumers install prebuilt dist). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) also appear under Settings → Plugins.
@@ -128,9 +131,10 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, navPanel,
-threadPanelTab, composerAccessory) via definePluginApp and use the hooks
-and UI kit listed above; styling is Tailwind against the host theme's
-tokens only.
+threadPanelTab, composerAccessory) via definePluginApp, use the hooks
+listed above, and render vendored components; styling is Tailwind against
+the host theme's tokens only (semantic classes like bg-background and
+tw-animate-css utilities compile in plugin builds).
 
 For the complete authoring reference — exact signatures, working snippets
 for every surface, the reload lifecycle, testing tips, and gotchas — use
@@ -138,5 +142,5 @@ the built-in `bb-plugin-authoring` skill (agents: it loads on demand;
 humans: apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/
 in a checkout). The `examples/plugins/` directory of a bb checkout has four
 reference plugins: github (full-stack: gh-CLI-backed issue/PR browser on
-the shadcn UI kit), slack-bot (webhook bot), agent-enrichment (agent
-surfaces), small-ux-pack (host-rendered UI).
+vendored shadcn components), slack-bot (webhook bot), agent-enrichment
+(agent surfaces), small-ux-pack (host-rendered UI).
