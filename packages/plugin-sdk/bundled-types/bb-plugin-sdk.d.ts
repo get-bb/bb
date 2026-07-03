@@ -299,8 +299,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -722,6 +722,16 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         name: z$1.ZodOptional<z$1.ZodString>;
         sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
         mimeType: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"annotation">;
+        path: z$1.ZodString;
+        startLine: z$1.ZodNumber;
+        endLine: z$1.ZodNumber;
+        quotedText: z$1.ZodString;
+        comment: z$1.ZodString;
     }, z$1.core.$strip>], "type">>;
     model: z$1.ZodOptional<z$1.ZodString>;
     serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
@@ -891,6 +901,16 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         name: z$1.ZodOptional<z$1.ZodString>;
         sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
         mimeType: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"annotation">;
+        path: z$1.ZodString;
+        startLine: z$1.ZodNumber;
+        endLine: z$1.ZodNumber;
+        quotedText: z$1.ZodString;
+        comment: z$1.ZodString;
     }, z$1.core.$strip>], "type">>;
     model: z$1.ZodOptional<z$1.ZodString>;
     serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
