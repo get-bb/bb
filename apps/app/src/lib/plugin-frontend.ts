@@ -3,6 +3,24 @@ import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
 import * as jsxRuntime from "react/jsx-runtime";
 import * as jsxDevRuntime from "react/jsx-dev-runtime";
+// Shared-singleton packages (plugin design §5.5): the portaling radix
+// families + sonner + vaul. Vendored plugin components import these
+// specifiers; `bb plugin build` shims them to the slots installed below, so
+// plugin overlays live in the host's dismissable-layer/focus/scroll-lock
+// world and plugin toast() reaches the host toaster. Importing them here
+// (menubar/hover-card/etc. included) is what puts them in the host bundle.
+import * as radixAlertDialog from "@radix-ui/react-alert-dialog";
+import * as radixContextMenu from "@radix-ui/react-context-menu";
+import * as radixDialog from "@radix-ui/react-dialog";
+import * as radixDropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as radixHoverCard from "@radix-ui/react-hover-card";
+import * as radixMenubar from "@radix-ui/react-menubar";
+import * as radixNavigationMenu from "@radix-ui/react-navigation-menu";
+import * as radixPopover from "@radix-ui/react-popover";
+import * as radixSelect from "@radix-ui/react-select";
+import * as radixTooltip from "@radix-ui/react-tooltip";
+import * as sonner from "sonner";
+import * as vaul from "vaul";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type { PluginSdkApp } from "@bb/plugin-sdk";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
@@ -135,6 +153,18 @@ interface BbPluginRuntime {
   jsxRuntime: unknown;
   jsxDevRuntime: unknown;
   pluginSdkApp: PluginSdkApp;
+  radixAlertDialog: unknown;
+  radixContextMenu: unknown;
+  radixDialog: unknown;
+  radixDropdownMenu: unknown;
+  radixHoverCard: unknown;
+  radixMenubar: unknown;
+  radixNavigationMenu: unknown;
+  radixPopover: unknown;
+  radixSelect: unknown;
+  radixTooltip: unknown;
+  sonner: unknown;
+  vaul: unknown;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -158,6 +188,18 @@ export function installPluginRuntime(): void {
     // the curated UI kit. Kept in type-sync with the facade package via
     // `satisfies PluginSdkApp` in plugin-sdk-app-impl.
     pluginSdkApp: pluginSdkAppImplementation,
+    radixAlertDialog,
+    radixContextMenu,
+    radixDialog,
+    radixDropdownMenu,
+    radixHoverCard,
+    radixMenubar,
+    radixNavigationMenu,
+    radixPopover,
+    radixSelect,
+    radixTooltip,
+    sonner,
+    vaul,
   };
 }
 

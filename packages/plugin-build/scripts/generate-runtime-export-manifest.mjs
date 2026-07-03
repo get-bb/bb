@@ -1,8 +1,9 @@
 // Regenerates src/runtime-export-manifest.ts from the repo's installed
-// React. `bb plugin build` shims the shared-runtime modules (react,
-// react-dom, ...) as ESM re-exports over globalThis.__bbPluginRuntime, and ESM
-// needs static named-export lists — so we introspect the real modules once and
-// check the result in. Rerun this script after a React upgrade:
+// shared-runtime packages. `bb plugin build` shims the shared-runtime modules
+// (react, the portaling radix families, sonner, vaul, ...) as ESM re-exports
+// over globalThis.__bbPluginRuntime, and ESM needs static named-export lists —
+// so we introspect the real modules once and check the result in. Rerun this
+// script after upgrading react or any shimmed package:
 //
 //   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
 import { writeFile } from "node:fs/promises";
@@ -23,6 +24,22 @@ const RUNTIME_MODULE_IDS = [
   "react-dom/client",
   "react/jsx-runtime",
   "react/jsx-dev-runtime",
+  // Portaling radix families (plugin design §5.5): shimmed so vendored
+  // components share the host's dismissable-layer/focus/scroll-lock world.
+  // Non-portal radix has no singleton semantics and bundles per plugin.
+  "@radix-ui/react-alert-dialog",
+  "@radix-ui/react-context-menu",
+  "@radix-ui/react-dialog",
+  "@radix-ui/react-dropdown-menu",
+  "@radix-ui/react-hover-card",
+  "@radix-ui/react-menubar",
+  "@radix-ui/react-navigation-menu",
+  "@radix-ui/react-popover",
+  "@radix-ui/react-select",
+  "@radix-ui/react-tooltip",
+  // toast() must reach the host toaster; vaul mutates document.body styles.
+  "sonner",
+  "vaul",
 ];
 
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -51,11 +68,12 @@ const entries = RUNTIME_MODULE_IDS.map(
 ).join("\n");
 
 const output = `// GENERATED FILE — do not edit by hand.
-// Named exports of the shared React runtime modules (react@${reactVersion}),
-// introspected from the host app's installed React. Consumed by
+// Named exports of the shared runtime modules (react@${reactVersion} + the
+// shimmed radix/sonner/vaul packages), introspected from the host app's
+// installed copies. Consumed by
 // \`bb plugin build\` to emit static ESM re-export shims over
-// globalThis.__bbPluginRuntime. Regenerate after a React upgrade:
-//   node apps/cli/scripts/generate-runtime-export-manifest.mjs
+// globalThis.__bbPluginRuntime. Regenerate after upgrading a shimmed package:
+//   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
 
 export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
 ${entries}

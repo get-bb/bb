@@ -23,8 +23,8 @@ import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
  * runtime-loadable frontend bundle:
  *
  * - `dist/app.js` — single ESM file, production jsx-runtime forced. The
- *   shared-runtime modules (react, react-dom, react-dom/client,
- *   react/jsx-runtime, react/jsx-dev-runtime, @bb/plugin-sdk/app) are never
+ *   shared-runtime modules (react ×5, @bb/plugin-sdk/app, the portaling
+ *   radix families, sonner, vaul — see RUNTIME_SLOT_BY_SPECIFIER) are never
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
  *   second copy (and its "Invalid hook call" crashes) is impossible.
@@ -36,7 +36,16 @@ import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
  *   before loading the bundle.
  */
 
-/** Runtime slot on `globalThis.__bbPluginRuntime` per shimmed specifier. */
+/**
+ * Runtime slot on `globalThis.__bbPluginRuntime` per shimmed specifier.
+ * Shim policy (plugin design §5.5): ONLY packages with singleton/global
+ * behavior — one React, the portaling radix families (shared
+ * dismissable-layer/focus/scroll-lock/aria-hidden world), sonner (`toast()`
+ * must reach the host toaster), vaul (mutates document.body styles) — plus
+ * the SDK surface itself. Everything else (non-portal radix, cva/clsx/
+ * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
+ * plugin's own node_modules.
+ */
 const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   react: "react",
   "react-dom": "reactDom",
@@ -44,6 +53,18 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   "react/jsx-runtime": "jsxRuntime",
   "react/jsx-dev-runtime": "jsxDevRuntime",
   "@bb/plugin-sdk/app": "pluginSdkApp",
+  "@radix-ui/react-alert-dialog": "radixAlertDialog",
+  "@radix-ui/react-context-menu": "radixContextMenu",
+  "@radix-ui/react-dialog": "radixDialog",
+  "@radix-ui/react-dropdown-menu": "radixDropdownMenu",
+  "@radix-ui/react-hover-card": "radixHoverCard",
+  "@radix-ui/react-menubar": "radixMenubar",
+  "@radix-ui/react-navigation-menu": "radixNavigationMenu",
+  "@radix-ui/react-popover": "radixPopover",
+  "@radix-ui/react-select": "radixSelect",
+  "@radix-ui/react-tooltip": "radixTooltip",
+  sonner: "sonner",
+  vaul: "vaul",
 };
 
 /**
@@ -84,8 +105,13 @@ function shimModuleSource(specifier: string, slot: string): string {
 }
 
 const SHIM_NAMESPACE = "bb-plugin-runtime-shim";
-const SHIM_FILTER =
-  /^(react|react-dom|react-dom\/client|react\/jsx-runtime|react\/jsx-dev-runtime|@bb\/plugin-sdk\/app)$/;
+// Derived from the slot map so the two can never drift; everything not
+// matched here bundles normally from the plugin's node_modules.
+const SHIM_FILTER = new RegExp(
+  `^(${Object.keys(RUNTIME_SLOT_BY_SPECIFIER)
+    .map((specifier) => specifier.replace(/[/@.-]/g, "\\$&"))
+    .join("|")})$`,
+);
 
 function runtimeShimPlugin(): Plugin {
   return {

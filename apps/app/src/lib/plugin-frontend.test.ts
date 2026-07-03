@@ -143,14 +143,27 @@ describe("installPluginRuntime", () => {
       string,
       unknown
     >;
-    // The shim slot names `bb plugin build` emits.
+    // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
+    // shared-singleton packages: portal radix families, sonner, vaul).
     expect(Object.keys(runtime).sort()).toEqual([
       "jsxDevRuntime",
       "jsxRuntime",
       "pluginSdkApp",
+      "radixAlertDialog",
+      "radixContextMenu",
+      "radixDialog",
+      "radixDropdownMenu",
+      "radixHoverCard",
+      "radixMenubar",
+      "radixNavigationMenu",
+      "radixPopover",
+      "radixSelect",
+      "radixTooltip",
       "react",
       "reactDom",
       "reactDomClient",
+      "sonner",
+      "vaul",
     ]);
     // Identity matters: plugins must get the app's own React, not a copy.
     expect((runtime.react as { useState: unknown }).useState).toBe(

@@ -139,6 +139,34 @@ describe("buildPluginApp", () => {
     }
   });
 
+  it("shims the shared-singleton packages (portal radix, sonner, vaul)", async () => {
+    await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
+    await writeFile(
+      join(root, "app.tsx"),
+      [
+        `import * as Dialog from "@radix-ui/react-dialog";`,
+        `import * as AlertDialog from "@radix-ui/react-alert-dialog";`,
+        `import { toast } from "sonner";`,
+        `import { Drawer } from "vaul";`,
+        `export default () => [Dialog, AlertDialog, toast, Drawer];`,
+      ].join("\n"),
+    );
+    const { jsPath } = await buildPluginApp(root);
+    const js = await readFile(jsPath, "utf8");
+    for (const slot of [
+      "radixDialog",
+      "radixAlertDialog",
+      "sonner",
+      "vaul",
+    ]) {
+      expect(js).toContain(`.${slot}`);
+    }
+    // Never bundled, never left as bare imports — always the runtime shim.
+    expect(js).not.toMatch(/from\s*["']@radix-ui/);
+    expect(js).not.toMatch(/from\s*["']sonner/);
+    expect(js).not.toMatch(/from\s*["']vaul/);
+  });
+
   it("shims explicit react/jsx-dev-runtime imports (dev-mode transform output)", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
     await writeFile(
