@@ -54,7 +54,7 @@ The whole system launches behind a `plugins` system experiment (same gate style 
 | Name | "Plugins" (`bb plugin …`, `<dataDir>/plugins`, `@bb/plugin-sdk`) |
 | `bb ui fork` | Keep behind experiment during V1; deprecate after heroes prove parity |
 | Rollout | Behind a `plugins` experiment until Phase 3 stabilizes |
-| Component reuse | Curated `@bb/plugin-sdk/app` kit (stable) + full internal module registry (`unstable_`, Phase 5) |
+| Component reuse | Vendored shadcn-style copies from the in-repo registry (§5.5; the host-provided kit was removed 2026-07-03) + full internal module registry (`unstable_`, Phase 6) |
 
 ### Non-goals for V1
 
@@ -111,6 +111,9 @@ registrations, the SQLite file, realtime channels.
 
 **Loader.** The server creates one jiti instance (`createJiti`, `moduleCache: false`; jiti
 becomes a direct server dependency) and imports each enabled plugin's `server` entry.
+*(Amended 2026-07-03: when a fresh, SDK-compatible `dist/server.js` exists — the
+prebuilt backend bundle, §6 — the loader imports that instead; jiti-from-source is the
+dev/fallback path.)*
 `@bb/plugin-sdk` resolves to the live in-process implementation via a tiny emitted shim:
 the server build (`scripts/build-node-entry.mjs`) emits `dist/plugin-sdk-runtime.js`
 alongside the bundle (same pattern as the existing `--external ./start-server.js`), which
@@ -551,12 +554,14 @@ V1 slot set with **versioned per-slot props contracts** (additive-only within a 
 Hooks from `@bb/plugin-sdk/app`: `useRpc<Rpc>()`, `useRealtime<Channels>()`,
 `useSettings()` (secrets excluded), `useBbContext()` (current project/thread selection),
 and `useBbNavigate()` with **typed helpers** (`toThread(id)`, `toPluginPanel(path)`) — no
-guessed URL schemes. Plus the `@bb/plugin-sdk/app` **UI kit**: a curated re-export of BB
-primitives (Button, Card, Tabs, EmptyState, Markdown, …), versioned with the SDK and
-grown additively as heroes need components — this is the *stable* reuse surface. Internal
-app components are deliberately not part of it (reachable internals become load-bearing —
-the Obsidian lesson); they are reachable through the unstable module registry (§5.4)
-instead.
+guessed URL schemes. *(A host-provided UI kit — 65 shadcn-shaped component re-exports —
+shipped with Phase 3 and was REMOVED by decision 2026-07-03: it froze every component's
+props into a pinned compatibility surface, so any app component evolution became a
+plugin-breaking change. Components now reach plugins as vendored shadcn-style source
+copies from the in-repo registry, §5.5. `@bb/plugin-sdk/app` keeps only
+`definePluginApp` + the hooks.)* Internal app components are deliberately not reachable
+directly (reachable internals become load-bearing — the Obsidian lesson); they are
+reachable through the unstable module registry (§5.4) instead.
 
 ### 5.3 `unstable_swizzle` (growth tier)
 
@@ -598,9 +603,9 @@ component's source files into the plugin as a **reference starting point**, pull
 the version-matched UI source (dev checkout, or the `ensureClonedUiSource` clone at the
 `desktop-v<version>` tag that `bb ui fork` already uses); the author adapts its imports to
 the plugin SDK by hand. Making ejected source compile *unmodified* is the partial-fork
-tier — §5.4, scheduled as Phase 5.
+tier — §5.4, scheduled as Phase 6.
 
-### 5.4 `unstable_modules` — partial UI forks (Phase 5)
+### 5.4 `unstable_modules` — partial UI forks (Phase 6)
 
 The full-power tier: the host exposes its internal module graph at runtime so a plugin
 can eject a real slice of the UI — a component, a view, the whole homepage — edit the
@@ -612,7 +617,15 @@ copied source, and compile it against the live app.
   are already in the graph; the glob retains some otherwise-tree-shaken files and changes
   chunking).
 - **Build side**: `bb plugin build` rewrites host-internal import specifiers in ejected
-  code to top-level-await shims over the registry.
+  code to synchronous registry reads, and emits the list of referenced host module paths
+  into `app.meta.json`. The host `Promise.all`-preloads that manifest *before*
+  `import()`ing the bundle, so by evaluation time every registry slot is populated — the
+  exact property the Phase-3 react/`@bb/plugin-sdk/app` shims already rely on. No
+  top-level-await shims: TLA would make the whole bundle async, serialize plugin mount
+  behind sequential chunk fetches (a per-module request waterfall), and hard-commit the
+  bundle format for zero steady-state benefit. A manifest path missing from the running
+  build fails the preload legibly (plugin status, not a broken app), which also gives
+  upgrade-drift detection *before* the bundle evaluates.
 - **Why this beats vendoring**: the registry hands back the *live* host modules, so
   singletons stay correct — ejected code shares the host's Jotai atoms, query client, and
   router instead of dragging in second copies. This is the guarantee whole-app forking
@@ -624,6 +637,105 @@ copied source, and compile it against the live app.
   and the Swizzleable fallback renders stock UI. The `bb ui fork` experience with a
   safety net: an upgrade conflict downgrades one component to stock instead of holding
   the whole UI hostage on a rebase.
+
+### 5.5 Component registry (shadcn-style) — REPLACES the host-provided kit
+
+*(Designed 2026-07-03, after Phase 3 shipped. Decision: remove the host-provided
+component kit entirely — not an opt-in eject tier alongside it.)* Plugins get UI
+components the way every shadcn app does: vendored source copies in their own tree
+(`./components/ui/<name>`), installed via stock `npx shadcn add @bb/<name>` against a
+BB-owned registry, edited freely, compiled by `bb plugin build` into the plugin's own
+scoped bundle. `@bb/plugin-sdk/app` shrinks to `definePluginApp` + the five hooks.
+
+- **Why removal beats coexistence.** The 65-component kit made every component's props a
+  pinned compatibility surface (`PLUGIN_SDK_APP_EXPORT_NAMES` + sync tests) — the app's
+  own components could never evolve without risking plugin breakage, forever. Vendored
+  copies invert the ownership: plugins own their UI (drift is the model, as in every
+  shadcn app), and `apps/app` components evolve freely. It also deletes a whole rendering
+  path (the 72-member `plugin-sdk-app-impl`, the shadcn-shaped prop types in
+  `app-contract.ts`, the export-sync tests) and removes the models-know-shadcn caveat —
+  what agents write against is literally stock shadcn source in the plugin tree.
+- **Single source, no extraction needed.** Registry items are generated in place from
+  `apps/app/src/components/ui/*` (already shadcn-shaped, already `@/` aliased). With no
+  kit implementation to share, the `@bb/ui` package extraction is unnecessary — the
+  registry build reads the app's components directly. `registry.json` is an explicit
+  item list: the shadcn-shaped files are items; the BB-specific components sharing the
+  directory (markdown-preview, pill, page-shell, …) are not, until deliberately added as
+  `@bb`-branded items later.
+- **Full stock coverage (decision 2026-07-03).** The registry carries the ENTIRE stock
+  shadcn set (~46 items), not just what the app uses. The directory currently holds 19
+  shadcn families; the missing ~27 (accordion, alert, alert-dialog, avatar, sheet,
+  table, form, calendar, chart, command, hover-card, menubar, scroll-area, slider,
+  toggle, toggle-group, progress, radio-group, breadcrumb, pagination, carousel,
+  input-otp, resizable, collapsible, aspect-ratio, navigation-menu, …) get checked in as
+  stock source even where the app does not yet use them — zero app-bundle cost (nothing
+  imports them), typecheck keeps them compiling, and the CI vendor-every-item fixture is
+  their behavioral coverage. Exception: shadcn's `sidebar` is skipped (app-shell-scale,
+  meaningless inside plugin slots, and BB's own `sidebar.tsx` occupies the name).
+  Consequences: `apps/app` gains the remaining radix packages plus the heavy libs
+  (react-day-picker, recharts, embla, cmdk, input-otp, react-hook-form) as typecheck
+  deps; the shim list extends only to the portaling radix families the full set adds
+  (alert-dialog, hover-card, menubar, navigation-menu — sheet rides the dialog package;
+  see the runtime-sharing bullet). Every item declares its npm `dependencies` and
+  `shadcn add` auto-installs them — author-side installs are accepted (2026-07-03);
+  consumers never build (prebuilt distribution, §6).
+  **context-based portal scoping** — the portal wrapper stamps `data-bb-plugin-root` on
+  portal content iff a plugin-scope context is present (provided by `PluginSlotMount`),
+  so the identical source serves the host tree (no attribute) and vendored plugin copies
+  (scoped). Required for vendored overlays to be styled at all.
+- **In-repo registry, GitHub-served, no server surface.** Registry source +
+  `registry.json` live in the repo; generated `r/*.json` items are checked in with a
+  `--check` freshness gate (same pattern as templates and the bundled .d.ts).
+  Distribution is raw GitHub URLs. **Version-matching**: `bb plugin new` bakes the
+  release tag into the scaffolded URL template
+  (`https://raw.githubusercontent.com/ymichael/bb/desktop-v<version>/…/r/{name}.json`);
+  dev builds (0.0.0) pin `main`. `registryDependencies` resolve within the same
+  namespace template, keeping the dependency closure version-consistent.
+- **Runtime sharing — shim ONLY what has singleton/global behavior; bundle everything
+  else.** *(Simplified 2026-07-03 after the prebuilt-distribution decision: author-side
+  npm installs are accepted and consumers get prebuilt bundles, so "keeps plugins
+  npm-free" is no longer a shim justification.)* Extend the `__bbPluginRuntime` shim
+  allowlist (react ×5 today) with the PORTALING/global radix families — dialog,
+  alert-dialog, popover, select, dropdown-menu, context-menu, menubar, hover-card,
+  tooltip, navigation-menu (the host adds the few of these it doesn't ship yet; all
+  small) — plus `sonner` and `vaul`: one dismissable-layer/focus/scroll-lock/aria-hidden
+  world, `toast()` reaches the host toaster, no body-style fights. Export manifests
+  generated per release like the react lists. Everything without singleton semantics
+  bundles from plugin node_modules into the plugin's own dist: non-portal radix
+  (accordion, avatar, checkbox, slider, progress, radio-group, scroll-area, tabs, slot,
+  …), cva/clsx/tailwind-merge, lucide-react (must never be shimmed — would force all
+  ~1,500 icons into the host bundle), react-hook-form, day-picker, cmdk, embla,
+  recharts. The filter stays an allowlist, so unshimmed imports bundling is the default
+  behavior, not a special case. `@tanstack/react-query` stays excluded (sharing the live
+  client is Phase 6's job). Policy: shimmed radix majors ride the plugin SDK major.
+- **Plugin CSS-pass prerequisites (now hard requirements — vendored components do not
+  render styled without them):** the `buildTailwindCss` input needs (a) an `@theme`
+  block mapping shadcn semantic tokens (`--color-background` → `var(--background)` etc.)
+  to the host's live CSS variables — today `bg-background` does not even compile in
+  plugin builds — and (b) `tw-animate-css` (host ships it; component classes use
+  `animate-in`/`fade-in-0` — currently silently dead in plugin builds).
+- **Scaffold integration (required):** `bb plugin new` pre-vendors a starter set
+  (button, card, input, dialog + `lib/utils.ts`), writes `components.json` with the
+  `@bb` namespace pinned to the version tag, the `@/*` tsconfig alias, `lucide-react` in
+  deps (installed when npm is available), and a README section on adding more components
+  and re-syncing after BB upgrades.
+- **Docs integration (required):** rewrite the UI-kit sections of the
+  `bb-plugin-authoring` builtin skill and `bb-guide-plugins.md`: components are vendored
+  source you own; the `npx shadcn add @bb/<name>` flow; the granularity rule (overlay
+  primitives vendor as whole families, never per-part); shimmed-package list and what it
+  means. Standard AGENTS.md same-change discipline. The bundled .d.ts shrinks to the
+  hooks surface.
+- **Migration (kit removal is a breaking change inside the experiment):** the github and
+  small-ux-pack examples re-import from `./components/ui/*`; delete the kit members from
+  `plugin-sdk-app-impl.tsx`, the shadcn prop types from `app-contract.ts`, and shrink
+  `PLUGIN_SDK_APP_EXPORT_NAMES` to `definePluginApp` + hooks; QA-catalog kit items
+  re-pointed at the vendored flow.
+- **Recorded downsides (accepted):** every UI plugin bundles its component copies,
+  icons, and non-portal deps (~tens of KB; the heavy portaling radix families are
+  shimmed); fixes to app components don't propagate to existing plugins (re-running
+  `shadcn add` is the manual update path); look-and-feel drift is by design (theme
+  tokens still track the user's palette live); authors need npm installs (accepted
+  2026-07-03) — consumers never do (prebuilt distribution, §6).
 
 ## 6. Distribution and CLI
 
@@ -639,6 +751,22 @@ bb plugin logs <id> [-f]
 bb plugin run <id> <argv…>             # explicit form of plugin CLI commands
 bb plugin swizzle --list
 ```
+
+**Prebuilt distribution (decision 2026-07-03).** `bb plugin build` also emits
+`dist/server.js` — an esbuild node-platform bundle of the backend entry with the
+plugin's npm deps inlined (external: the `@bb/plugin-sdk` runtime shim + the
+native-external list; native deps are unsupported in V1 regardless). The loader prefers
+a fresh, SDK-compatible `dist/server.js`; jiti-from-source remains the dev path
+(`bb plugin dev`, path installs without dist). With `dist/app.js` already
+self-contained, a shipped `dist/` makes consumer installs copy+verify+register — no
+build, no npm, no node_modules, on both halves, including npm-less machines. Authors
+npm-install freely and ship dist (npm tarball `files` includes it; git-distributed
+plugins commit it — the scaffold's dist-gitignore carries a "remove when publishing via
+git" note). Install-time build stays as the fallback when dist is absent. Upgrades:
+prebuilt bundles load across BB upgrades within the same SDK major; on a major bump,
+rebuild-at-boot where toolchain+deps allow, else a legible `needs update` status.
+Accepted trade: committed dist is an opaque artifact next to its source — consistent
+with the full-trust install model (§4.2), stated, not verified.
 
 npm installs go to `<dataDir>/plugins/npm/<name>@<version>/` via
 `npm install --prefix --ignore-scripts --omit=optional` — `--ignore-scripts` kills
@@ -744,7 +872,43 @@ per-plugin ErrorBoundaries, replace-wholesale frontend reload.
 exactly one homepage section; stale-bundle test (old `__bbSdk` major → "needs update"
 badge, no crash).
 
-**Phase 4 — swizzle + fork deprecation.** `Swizzleable` boundaries (initial five),
+**Phase 4 — component registry + prebuilt distribution.** (Formerly the
+"component-registry track"; promoted to a numbered phase 2026-07-03. Replaces the
+host-provided kit, §5.5; adds prebuilt consumer distribution, §6. No shared machinery
+with swizzle/partial-forks, which renumber to Phases 5/6.) Ordered so each step ships
+standalone value:
+1. CSS-pass fixes: shadcn `@theme` token preset + `tw-animate-css` in `buildTailwindCss`
+   (fixes utilities that are silently dead in plugin builds today).
+2. Context-based portal scoping in the app's components (fixes the live
+   `className`-on-portal bug; prerequisite for vendored overlays to be styled).
+3. Runtime shims: the portaling radix families (dialog, alert-dialog, popover, select,
+   dropdown-menu, context-menu, menubar, hover-card, tooltip, navigation-menu) + sonner
+   + vaul on `__bbPluginRuntime`, with generated export manifests; host adds the few
+   portal families it doesn't ship yet (small; measure).
+4. Registry: check in the ~27 missing stock shadcn families (full-set coverage, §5.5);
+   `registry.json` + generated `r/*.json` from `apps/app/src/components/ui`, checked in
+   with `--check` gate; scaffold pre-vendored starter set + `components.json`
+   (version-tag-pinned `@bb` namespace + `@/*` alias + lucide-react dep).
+5. Kit removal + migration: shrink `@bb/plugin-sdk/app` to `definePluginApp` + hooks;
+   delete `plugin-sdk-app-impl` kit members, `app-contract` prop types, export-sync
+   pins; migrate github + small-ux-pack examples to vendored components; rewrite
+   skill/guide UI sections; regenerate bundled .d.ts.
+6. Prebuilt distribution (§6): `dist/server.js` backend bundle emitted by
+   `bb plugin build`; loader prefers it over jiti source; scaffold `files`/gitignore
+   publish convention; install flow skips build when dist present + compatible.
+*Exit criteria*: `bb plugin new` output builds and renders out of the box using only
+vendored components (no component imports from `@bb/plugin-sdk/app` anywhere in
+examples or scaffold); `npx shadcn add @bb/select` against the GitHub registry
+compiles and renders styled + animated in a plugin panel; its `toast()` reaches the
+host toaster; a host overlay above a vendored plugin dialog dismisses/stacks correctly
+(shared radix); `PLUGIN_SDK_APP_EXPORT_NAMES` equals `definePluginApp` + hooks; a
+plugin shipping committed `dist/` installs and runs on a machine with no npm and no
+plugin node_modules.
+*Validation*: CI fixture plugin that vendors every registry item and builds; regression
+test for plugin `className` on vendored portal content; stacking test (plugin dialog +
+host overlay, Escape/outside-click each way); registry `--check` drift gate.
+
+**Phase 5 — swizzle + fork deprecation.** `Swizzleable` boundaries (initial five),
 boot-frozen registry, Original-fallback error boundaries, `bb plugin swizzle --list`,
 `bb plugin swizzle eject <name>` (reference-copy from version-matched UI source);
 deprecate `bb ui fork` in CLI output and docs; removal once heroes + one real swizzle
@@ -753,9 +917,11 @@ user confirm parity.
 fully replaces it from an ejected reference copy; a throwing wrapper degrades to stock
 `ThreadHeader`; fork deprecation notice shipped.
 
-**Phase 5 — partial UI forks.** `unstable_modules` registry (`import.meta.glob` over app
+**Phase 6 — partial UI forks.** `unstable_modules` registry (`import.meta.glob` over app
 src + `@bb/thread-view`/`@bb/core-ui`), host-internal import rewriting in
-`bb plugin build`, eject-that-compiles.
+`bb plugin build` (synchronous registry reads + a module-path manifest in `app.meta.json`
+the host preloads before bundle import — see §5.4; no top-level-await shims),
+eject-that-compiles.
 *Exit criteria*: a plugin ejects `RootComposeView`, meaningfully edits it, and survives a
 BB upgrade via the boot-time rebuild path; a deliberately broken rebuild degrades to
 stock UI with a legible `error` status.
