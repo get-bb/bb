@@ -335,8 +335,33 @@ export function registerPluginCommands(
           app: opts.app ?? false,
         });
         console.log(`Created ${packageName}/`);
+        // App scaffolds vendor components whose npm deps must be installed
+        // before `bb plugin build` bundles them. Best-effort: authors need
+        // npm anyway (design §5.5); a failure here just surfaces the manual
+        // step.
+        let installed = false;
+        if (opts.app) {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          try {
+            await promisify(execFile)(
+              "npm",
+              ["install", "--no-fund", "--no-audit"],
+              { cwd: targetDir },
+            );
+            installed = true;
+            console.log("Installed component dependencies (npm install).");
+          } catch {
+            console.warn(
+              "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
+            );
+          }
+        }
         console.log("Next steps:");
         console.log(`  cd ${packageName}`);
+        if (opts.app && !installed) {
+          console.log("  npm install");
+        }
         console.log("  bb plugin install .");
       }),
     );

@@ -1,9 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   PLUGIN_SDK_APP_DTS,
   PLUGIN_SDK_DTS,
 } from "./generated/plugin-sdk-dts.generated.js";
+import {
+  PLUGIN_STARTER_DEPENDENCIES,
+  PLUGIN_STARTER_FILES,
+  PLUGIN_STARTER_TYPE_DEPENDENCIES,
+} from "./generated/plugin-starter-files.generated.js";
 
 /**
  * `bb plugin new` scaffold. Lives in @bb/templates because both the CLI
@@ -32,6 +37,51 @@ function pluginIdOf(packageName: string): string {
 function enginesRange(bbVersion: string): string {
   const match = /^(\d+)\.(\d+)/.exec(bbVersion);
   return match ? `>=${match[1]}.${match[2]}` : ">=0.0";
+}
+
+/**
+ * Git ref the scaffold's component registry URL pins to: the release tag
+ * matching the running BB, so `npx shadcn add @bb/<name>` vendors component
+ * source version-matched to this install by construction. Dev builds
+ * (0.0.0) track main.
+ */
+function registryRef(bbVersion: string): string {
+  return bbVersion === "0.0.0" ? "main" : `desktop-v${bbVersion}`;
+}
+
+/**
+ * shadcn `components.json`: lets stock `npx shadcn add @bb/<name>` pull more
+ * components from the BB registry (checked-in items served raw from GitHub;
+ * see packages/plugin-registry). Registry components install into
+ * components/ui/ + lib/ + hooks/ via the aliases below; `bb plugin build`
+ * resolves the `@/*` alias through tsconfig paths.
+ */
+function componentsJsonSource(bbVersion: string): string {
+  return `${JSON.stringify(
+    {
+      $schema: "https://ui.shadcn.com/schema.json",
+      style: "new-york",
+      tsx: true,
+      tailwind: {
+        config: "",
+        css: "app.css",
+        baseColor: "neutral",
+        cssVariables: true,
+      },
+      aliases: {
+        components: "@/components",
+        ui: "@/components/ui",
+        lib: "@/lib",
+        utils: "@/lib/utils",
+        hooks: "@/hooks",
+      },
+      registries: {
+        "@bb": `https://raw.githubusercontent.com/ymichael/bb/${registryRef(bbVersion)}/packages/plugin-registry/r/{name}.json`,
+      },
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 function serverEntrySource(packageName: string): string {
@@ -93,17 +143,43 @@ function appEntrySource(packageName: string): string {
 // Compiled by \`bb plugin build\` into dist/app.js + dist/app.css. React and
 // @bb/plugin-sdk/app are provided by the BB app at load time (never bundled),
 // so this file must be loaded by BB, not imported directly.
+//
+// The components under components/ui/ are YOURS: vendored source (shadcn
+// model), edit freely. Add more from the BB registry with
+// \`npx shadcn add @bb/<name>\` (see components.json) — dialogs, dropdowns,
+// tables, the full shadcn set, version-matched to this BB install. Run
+// \`npm install\` once before \`bb plugin build\`.
 import { definePluginApp, useBbContext } from "@bb/plugin-sdk/app";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 function HelloCard() {
   const { projectId } = useBbContext();
   // Tailwind classes compile against the host theme's live CSS variables —
   // derive colors from the theme tokens, never hardcoded grays.
   return (
-    <div className="rounded-md border border-border bg-card p-3 text-sm text-foreground">
-      Hello from ${packageName}.{" "}
-      {projectId === null ? "No project selected." : \`Project: \${projectId}.\`}
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>${packageName}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex items-center gap-3 text-sm text-muted-foreground">
+        <span>
+          {projectId === null
+            ? "No project selected."
+            : \`Project: \${projectId}.\`}
+        </span>
+        <Button size="sm" variant="outline" asChild>
+          <a href="https://github.com/ymichael/bb" target="_blank" rel="noreferrer">
+            Docs
+          </a>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -144,12 +220,15 @@ function tsconfigSource(app: boolean): string {
         paths: {
           "@bb/plugin-sdk": ["./types/bb-plugin-sdk.d.ts"],
           "@bb/plugin-sdk/app": ["./types/bb-plugin-sdk-app.d.ts"],
+          // Vendored components import via "@/..." (shadcn convention);
+          // esbuild reads this mapping too during `bb plugin build`.
+          ...(app ? { "@/*": ["./*"] } : {}),
         },
         noEmit: true,
         skipLibCheck: true,
       },
       include: app
-        ? ["server.ts", "app.tsx", "types"]
+        ? ["server.ts", "app.tsx", "types", "components", "lib", "hooks"]
         : ["server.ts", "types"],
     },
     null,
@@ -172,12 +251,33 @@ Describe when to use this skill and the steps to follow.
 `;
 }
 
-function readmeSource(packageName: string): string {
+function readmeSource(packageName: string, app: boolean): string {
   const id = pluginIdOf(packageName);
+  const componentsSection = app
+    ? `
+## UI components
+
+\`components/ui/\` is vendored source you own (the shadcn model): edit the
+files freely — they never update out from under you. Add more from the BB
+component registry (the full shadcn set, version-matched to your BB install
+via the pinned ref in \`components.json\`):
+
+\`\`\`
+npx shadcn add @bb/dialog @bb/select
+\`\`\`
+
+Run \`npm install\` once before \`bb plugin build\` — the vendored components'
+npm deps bundle into your dist. React, and BB-shimmed packages like the
+radix portal primitives and \`sonner\` (\`import { toast } from "sonner"\`
+reaches BB's own toaster), are provided by the BB app at runtime and never
+bundled. Ship \`dist/\` (npm tarball or committed for git installs) so
+people installing your plugin never need npm.
+`
+    : "";
   return `# ${packageName}
 
 A BB plugin.
-
+${componentsSection}
 ## Install
 
 From this directory:
@@ -243,6 +343,11 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         // real npm types the bundle references (zod/hono/better-sqlite3, plus
         // react for the frontend); BB provides them all at runtime, and
         // `bb plugin build` never bundles them.
+        // Real runtime deps of the vendored starter components — esbuild
+        // bundles these into dist/app.js, so they must be installed to
+        // build (`npm install` once; authors need npm, consumers get
+        // prebuilt dist/).
+        ...(app ? { dependencies: PLUGIN_STARTER_DEPENDENCIES } : {}),
         devDependencies: {
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
@@ -251,6 +356,8 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           hono: "^4.11.9",
           typescript: "^5.7.0",
           zod: "^4.3.6",
+          // Runtime-shimmed by BB (never bundled) — types only.
+          ...(app ? PLUGIN_STARTER_TYPE_DEPENDENCIES : {}),
         },
       },
       null,
@@ -271,10 +378,22 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
       join(typesDir, "bb-plugin-sdk-app.d.ts"),
       PLUGIN_SDK_APP_DTS,
     );
+    // Vendored starter components (shadcn model — the author owns and edits
+    // them) + components.json so `npx shadcn add @bb/<name>` pulls more from
+    // the BB registry at the version tag matching this install.
+    for (const file of PLUGIN_STARTER_FILES) {
+      const filePath = join(targetDir, file.target);
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, file.content);
+    }
+    await writeFile(
+      join(targetDir, "components.json"),
+      componentsJsonSource(bbVersion),
+    );
   }
   const skillDir = join(targetDir, "skills", "example-skill");
   await mkdir(skillDir, { recursive: true });
   await writeFile(join(skillDir, "SKILL.md"), skillSource());
   await writeFile(join(targetDir, ".gitignore"), "dist/\nnode_modules/\n");
-  await writeFile(join(targetDir, "README.md"), readmeSource(packageName));
+  await writeFile(join(targetDir, "README.md"), readmeSource(packageName, app));
 }

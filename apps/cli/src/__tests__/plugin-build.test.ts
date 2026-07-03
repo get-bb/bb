@@ -1,7 +1,17 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
@@ -234,6 +244,17 @@ describe("buildPluginApp", () => {
       bbVersion: "0.9.0",
       app: true,
     });
+    // The vendored starter components bundle real npm deps (`bb plugin new`
+    // runs npm install for authors); the offline test links them from the
+    // repo's own install instead.
+    await linkScaffoldDeps(targetDir, [
+      "class-variance-authority",
+      "clsx",
+      "tailwind-merge",
+      "@radix-ui/react-slot",
+      "@hugeicons/react",
+      "@hugeicons/core-free-icons",
+    ]);
     const result = await buildPluginApp(targetDir);
     const js = await readFile(result.jsPath, "utf8");
     expect(js).toContain("globalThis.__bbPluginRuntime");
@@ -243,7 +264,9 @@ describe("buildPluginApp", () => {
     // The scaffold's default export must be a definePluginApp product the
     // host interpreter accepts (a stub runtime stands in for the BB app).
     (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
-      react: {},
+      // The vendored starter components bundle radix Slot, which calls
+      // forwardRef at module scope — the stub must provide it.
+      react: { forwardRef: (render: unknown) => render },
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       pluginSdkApp: {
         definePluginApp: (setup: unknown) => ({
@@ -264,3 +287,39 @@ describe("buildPluginApp", () => {
     }
   });
 });
+
+/**
+ * Symlink packages from the repo's install (resolved the way apps/app sees
+ * them) into a scaffold's node_modules so esbuild can bundle the vendored
+ * starter components without a network install.
+ */
+async function linkScaffoldDeps(
+  targetDir: string,
+  packageNames: string[],
+): Promise<void> {
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const appRequire = createRequire(
+    join(testDir, "..", "..", "..", "app", "package.json"),
+  );
+  for (const name of packageNames) {
+    const entry = appRequire.resolve(name);
+    let packageRoot = dirname(entry);
+    while (true) {
+      const candidate = join(packageRoot, "package.json");
+      if (existsSync(candidate)) {
+        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
+          name?: string;
+        };
+        if (parsed.name === name) break;
+      }
+      const parent = dirname(packageRoot);
+      if (parent === packageRoot) {
+        throw new Error(`could not find package root for ${name}`);
+      }
+      packageRoot = parent;
+    }
+    const linkPath = join(targetDir, "node_modules", name);
+    await mkdir(dirname(linkPath), { recursive: true });
+    await symlink(packageRoot, linkPath, "dir");
+  }
+}
