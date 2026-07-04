@@ -7,7 +7,8 @@ GitHub issues and pull requests inside BB, with one-click agent dispatch.
 - **Sidebar panel** (GitHub logo, full width): Issues and Pull requests tabs
   across every tracked repo, with a repo filter (persisted in localStorage)
   and a New issue form.
-- **Issue detail**: markdown body, comments, comment box, "Send agent".
+- **Issue detail**: markdown body, comments, comment box, status,
+  assignee, and label editing, plus "Send agent".
   Deep-linkable via the URL hash: `#/issues/<owner>/<repo>/<number>`.
 - **Send agent / Review with agent**: spawns a BB worker thread on the issue
   (or a review thread on the PR) in the repo's BB project. The issue/PR then

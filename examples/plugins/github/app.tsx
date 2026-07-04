@@ -415,7 +415,7 @@ function LabelChips({ labels, className }: { labels: string[]; className?: strin
 }
 
 // ---------------------------------------------------------------------------
-// Mutations (status + assignees) with optimistic-friendly callbacks.
+// Mutations (status, assignees, labels) with optimistic-friendly callbacks.
 // ---------------------------------------------------------------------------
 
 function useIssueMutations() {
@@ -432,7 +432,12 @@ function useIssueMutations() {
       rpc.call("setAssignees", { repo, number, assignees }),
     [rpc],
   );
-  return { setIssueState, setAssignees };
+  const setLabels = useCallback(
+    (repo: string, number: number, labels: string[]) =>
+      rpc.call("setLabels", { repo, number, labels }),
+    [rpc],
+  );
+  return { setIssueState, setAssignees, setLabels };
 }
 
 // ---------------------------------------------------------------------------
@@ -1107,6 +1112,67 @@ function AssigneePicker({
   );
 }
 
+function LabelPicker({
+  repo,
+  labels,
+  onToggle,
+}: {
+  repo: string;
+  labels: string[];
+  onToggle: (label: string, enabled: boolean) => void;
+}) {
+  const rpc = useRpc();
+  const [available, setAvailable] = useState<string[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    if (available !== null) return;
+    rpc.call("repositoryLabels", { repo }).then(
+      (result) => {
+        const list = (result as { labels?: unknown })?.labels;
+        setAvailable(Array.isArray(list) ? list.map(String) : []);
+      },
+      (error: unknown) => setLoadError(errorText(error)),
+    );
+  }, [rpc, repo, available]);
+
+  const ordered =
+    available === null
+      ? null
+      : [...new Set([...labels, ...available])].sort((a, b) => a.localeCompare(b));
+
+  return (
+    <DropdownMenu onOpenChange={(open) => open && load()}>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-muted-foreground">
+          Edit
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto">
+        <DropdownMenuLabel>Labels</DropdownMenuLabel>
+        {loadError !== null ? (
+          <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+        ) : ordered === null ? (
+          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+        ) : ordered.length === 0 ? (
+          <DropdownMenuItem disabled>No labels in repo</DropdownMenuItem>
+        ) : (
+          ordered.map((label) => (
+            <DropdownMenuCheckboxItem
+              key={label}
+              checked={labels.includes(label)}
+              onCheckedChange={(checked) => onToggle(label, checked === true)}
+              onSelect={(event) => event.preventDefault()}
+            >
+              <span className="min-w-0 truncate">{label}</span>
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function IssueDetailView({
   repo,
   number,
@@ -1119,7 +1185,7 @@ function IssueDetailView({
   const rpc = useRpc();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
-  const { setIssueState, setAssignees } = useIssueMutations();
+  const { setIssueState, setAssignees, setLabels } = useIssueMutations();
   const [detail, setDetail] = useState<IssueDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [comment, setComment] = useState("");
@@ -1170,6 +1236,24 @@ function IssueDetailView({
       });
     },
     [setAssignees, repo, number, load],
+  );
+
+  const toggleLabel = useCallback(
+    (label: string, enabled: boolean) => {
+      let next: string[] = [];
+      setDetail((prev) => {
+        if (prev === null) return prev;
+        next = enabled
+          ? [...new Set([...prev.labels, label])]
+          : prev.labels.filter((entry) => entry !== label);
+        return { ...prev, labels: next };
+      });
+      setLabels(repo, number, next).catch((err: unknown) => {
+        toast.error(errorText(err));
+        load();
+      });
+    },
+    [setLabels, repo, number, load],
   );
 
   const postComment = useCallback(() => {
@@ -1328,7 +1412,10 @@ function IssueDetailView({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <SidebarHeading>Labels</SidebarHeading>
+            <div className="flex items-center justify-between">
+              <SidebarHeading>Labels</SidebarHeading>
+              <LabelPicker repo={repo} labels={detail.labels} onToggle={toggleLabel} />
+            </div>
             {detail.labels.length === 0 ? (
               <p className="text-sm text-muted-foreground">None yet</p>
             ) : (
