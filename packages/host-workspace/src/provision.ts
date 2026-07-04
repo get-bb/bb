@@ -53,6 +53,7 @@ interface ProvisionBase {
 
 export interface DestroyWorkspaceArgs {
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
 }
 
 export type UnmanagedCheckoutOpts =
@@ -98,6 +99,7 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   timeoutMs: number;
   worktreeInitScript?: string | null;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
 }
 
 export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
@@ -110,6 +112,7 @@ export interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   /** Existing worktree path to reconnect */
   path: string;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
 }
 
 export interface PersonalWorkspaceOpts extends ProvisionBase {
@@ -698,6 +701,7 @@ async function provisionWorktree(
     pruneEmptyParent: true,
     signal: opts.signal,
     worktreeInitScript: opts.worktreeInitScript,
+    worktreePortBase: opts.worktreePortBase,
   });
 
   return new ProvisionedHostWorkspace({
@@ -713,6 +717,7 @@ async function provisionWorktree(
         pruneEmptyParent: true,
         worktreeTeardownScript:
           args?.worktreeTeardownScript ?? opts.worktreeTeardownScript,
+        worktreePortBase: args?.worktreePortBase ?? opts.worktreePortBase,
       }),
   });
 }
@@ -780,6 +785,7 @@ async function reconnectManagedWorktree(
         pruneEmptyParent: true,
         worktreeTeardownScript:
           args?.worktreeTeardownScript ?? opts.worktreeTeardownScript,
+        worktreePortBase: args?.worktreePortBase ?? opts.worktreePortBase,
       }),
     opts.signal,
   );

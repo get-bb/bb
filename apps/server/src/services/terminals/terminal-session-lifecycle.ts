@@ -25,6 +25,7 @@ import type {
   TerminalSessionCloseReason,
   TerminalSessionPurpose,
 } from "@bb/domain";
+import { buildWorktreePortEnv } from "@bb/domain";
 import type {
   HostDaemonDaemonWsMessage,
   HostDaemonServerWsMessage,
@@ -307,6 +308,7 @@ interface CreateTerminalArgs {
 
 interface TerminalCreatePayload {
   cols: number;
+  env?: Record<string, string>;
   rows: number;
   start?: NonNullable<CreateTerminalRequest["start"]>;
   title?: string;
@@ -550,8 +552,15 @@ export class TerminalSessionLifecycle {
   async createProjectRunCommandTerminal(
     args: CreateProjectRunCommandTerminalArgs,
   ): Promise<TerminalSession> {
+    const environment =
+      args.target.kind === "environment"
+        ? requireEnvironment(this.options.db, args.target.environmentId)
+        : null;
     const payload: TerminalCreatePayload = {
       cols: DEFAULT_RUN_COMMAND_TERMINAL_COLS,
+      ...(environment
+        ? { env: buildWorktreePortEnv(environment.worktreePortBase) }
+        : {}),
       rows: DEFAULT_RUN_COMMAND_TERMINAL_ROWS,
       start: {
         mode: "command",
@@ -633,6 +642,7 @@ export class TerminalSessionLifecycle {
       ...(args.threadId !== null ? { threadId: args.threadId } : {}),
       target: launchTarget.daemonTarget,
       cols: args.payload.cols,
+      ...(args.payload.env ? { env: args.payload.env } : {}),
       rows: args.payload.rows,
       start,
     };

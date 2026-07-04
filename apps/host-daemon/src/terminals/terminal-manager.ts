@@ -124,6 +124,7 @@ interface ShutdownTerminalArgs {
 }
 
 interface BuildTerminalEnvArgs {
+  commandEnv?: Record<string, string>;
   shellEnv: NodeJS.ProcessEnv;
   terminalId: string;
 }
@@ -311,6 +312,7 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
     ...sanitizeInheritedChildProcessEnv({ env: process.env }),
     ...args.shellEnv,
     BB_TERMINAL_SESSION_ID: args.terminalId,
+    ...(args.commandEnv ?? {}),
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
     // zsh emits a highlighted "%" by default when a prompt follows output
@@ -522,6 +524,7 @@ export class TerminalManager {
         cols: message.cols,
         cwd: target.cwd,
         env: buildTerminalEnv({
+          commandEnv: message.env,
           shellEnv: this.options.runtimeManager.getShellEnv(),
           terminalId: message.terminalId,
         }),

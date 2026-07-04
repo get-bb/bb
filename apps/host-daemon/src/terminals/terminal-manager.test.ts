@@ -441,6 +441,7 @@ describe("TerminalManager", () => {
         },
       },
       cols: 100,
+      env: { BB_PORT: "43300", BB_PORT_1: "43301" },
       rows: 30,
       start: { mode: "command", command: "pnpm dev" },
     });
@@ -448,6 +449,10 @@ describe("TerminalManager", () => {
     expect(harness.adapter.spawned[0]?.args).toMatchObject({
       args: ["-lc", "pnpm dev"],
       file: "/bin/zsh",
+    });
+    expect(harness.adapter.spawned[0]?.args.env).toMatchObject({
+      BB_PORT: "43300",
+      BB_PORT_1: "43301",
     });
     expect(harness.messages).toContainEqual(
       expect.objectContaining({

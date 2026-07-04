@@ -202,6 +202,7 @@ export function toProvisionWorkspaceOptions(
         timeoutMs: command.setupTimeoutMs,
         worktreeInitScript: command.worktreeInitScript,
         worktreeTeardownScript: command.worktreeTeardownScript,
+        worktreePortBase: command.worktreePortBase,
         onProgress,
       };
     }

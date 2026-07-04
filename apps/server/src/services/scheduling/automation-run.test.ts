@@ -294,7 +294,9 @@ describe("executeScriptRun environment injection", () => {
       projectId,
       hostId,
       path: "/tmp/workspace",
-      workspaceProvisionType: "unmanaged",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+      worktreePortBase: 43400,
       status: "ready",
     });
     const automation = seedScriptAutomation();
@@ -335,6 +337,9 @@ describe("executeScriptRun environment injection", () => {
       BB_ENVIRONMENT_ID: environmentRow.id,
       BB_AUTOMATION_ID: automation.id,
       BB_AUTOMATION_RUN_ID: run.id,
+      BB_PORT: "43400",
+      BB_PORT_1: "43401",
+      BB_PORT_9: "43409",
     });
   });
 });

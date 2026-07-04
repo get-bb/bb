@@ -27,7 +27,8 @@ message agents, or inspect projects, providers, and environments.
 - Project Settings also has a freeform run command for starting the repo. The
   sidebar run button starts it in a terminal for the project checkout or a
   worktree row, turns into a stop button while active, and shows active run
-  state in the sidebar.
+  state in the sidebar. Managed worktree run commands receive `BB_PORT` plus
+  `BB_PORT_1` through `BB_PORT_9` for per-worktree local servers.
 
 ## Remote Client
 

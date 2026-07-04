@@ -151,6 +151,7 @@ export function seedEnvironment(
     baseBranch?: string | null;
     defaultBranch?: string | null;
     mergeBaseBranch?: string | null;
+    worktreePortBase?: number | null;
   },
 ) {
   return createEnvironment(deps.db, deps.hub, {
@@ -168,6 +169,9 @@ export function seedEnvironment(
     defaultBranch:
       args.defaultBranch !== undefined ? args.defaultBranch : "main",
     mergeBaseBranch: args.mergeBaseBranch ?? null,
+    ...(args.worktreePortBase !== undefined
+      ? { worktreePortBase: args.worktreePortBase }
+      : {}),
   });
 }
 

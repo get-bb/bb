@@ -112,6 +112,7 @@ export type EnvironmentProvisionCommandArgs =
       setupTimeoutMs: number;
       worktreeInitScript: string | null;
       worktreeTeardownScript: string | null;
+      worktreePortBase: number | null;
     }
   | {
       workspaceProvisionType: "personal";
@@ -147,6 +148,7 @@ export function buildEnvironmentProvisionCommand(
         setupTimeoutMs: args.setupTimeoutMs,
         worktreeInitScript: args.worktreeInitScript,
         worktreeTeardownScript: args.worktreeTeardownScript,
+        worktreePortBase: args.worktreePortBase,
       };
     case "personal":
       return {

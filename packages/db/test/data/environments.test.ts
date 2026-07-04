@@ -38,6 +38,33 @@ function createNotifierSpy(): DbNotifier {
 }
 
 describe("environments", () => {
+  it("allocates stable 10-port blocks for managed worktrees", () => {
+    const { db, host, project } = setup();
+
+    const first = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    });
+    const second = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    });
+    const unmanaged = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      status: "ready",
+    });
+
+    expect(first.worktreePortBase).toBe(42000);
+    expect(second.worktreePortBase).toBe(42010);
+    expect(unmanaged.worktreePortBase).toBeNull();
+  });
+
   it("emits metadata-changed when merge base branch changes", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {

@@ -187,10 +187,11 @@ describe("workspace provisioning", () => {
       branchName: "configured-init",
       baseBranch: "main",
       environmentId: "env-init",
+      worktreePortBase: 43100,
       worktreeInitScript: [
         "set -euo pipefail",
         `marker=${shellSingleQuote(markerPath)}`,
-        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_SOURCE_PATH" "$BB_WORKTREE_BRANCH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" > "$marker"',
+        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_SOURCE_PATH" "$BB_WORKTREE_BRANCH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" "$BB_PORT" "$BB_PORT_1" "$BB_PORT_9" > "$marker"',
       ].join("\n"),
       timeoutMs: 900000,
     });
@@ -207,6 +208,9 @@ describe("workspace provisioning", () => {
         "configured-init",
         "env-init",
         "init",
+        "43100",
+        "43101",
+        "43109",
         "",
       ].join("\n"),
     );
@@ -230,16 +234,26 @@ describe("workspace provisioning", () => {
     await removeWorktree({
       path: targetPath,
       environmentId: "env-teardown",
+      worktreePortBase: 43200,
       worktreeTeardownScript: [
         "set -euo pipefail",
         `marker=${shellSingleQuote(markerPath)}`,
-        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" > "$marker"',
+        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" "$BB_PORT" "$BB_PORT_1" "$BB_PORT_9" > "$marker"',
       ].join("\n"),
       pruneEmptyParent: true,
     });
 
     await expect(fs.readFile(markerPath, "utf8")).resolves.toBe(
-      [realTargetPath, targetPath, "env-teardown", "teardown", ""].join("\n"),
+      [
+        realTargetPath,
+        targetPath,
+        "env-teardown",
+        "teardown",
+        "43200",
+        "43201",
+        "43209",
+        "",
+      ].join("\n"),
     );
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });

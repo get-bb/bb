@@ -39,6 +39,7 @@ interface EnvironmentDestroyTarget {
   id: string;
   path: string;
   projectId: string;
+  worktreePortBase: number | null;
   workspaceProvisionType: WorkspaceProvisionType;
 }
 
@@ -270,6 +271,7 @@ function dispatchEnvironmentDestroy(
       environmentId: environment.id,
       workspaceContext: workspaceContextFromPath(environment),
       worktreeTeardownScript: project?.worktreeTeardownScript ?? null,
+      worktreePortBase: environment.worktreePortBase,
     },
     execution,
     hostId: environment.hostId,
@@ -436,6 +438,7 @@ async function advanceEnvironmentCleanup(
       id: claimedEnvironment.id,
       path: claimedEnvironment.path,
       projectId: claimedEnvironment.projectId,
+      worktreePortBase: claimedEnvironment.worktreePortBase,
       workspaceProvisionType: claimedEnvironment.workspaceProvisionType,
     },
     execution,

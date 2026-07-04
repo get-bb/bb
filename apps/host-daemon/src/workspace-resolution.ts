@@ -40,6 +40,7 @@ interface ResolveWorkspaceForCommandArgs {
    */
   targetThreadId?: string;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
   workspaceContext: WorkspaceContext;
 }
 
@@ -143,6 +144,9 @@ export async function resolveWorkspaceForCommand(
         workspaceContext: args.workspaceContext,
         ...(args.worktreeTeardownScript !== undefined
           ? { worktreeTeardownScript: args.worktreeTeardownScript }
+          : {}),
+        ...(args.worktreePortBase !== undefined
+          ? { worktreePortBase: args.worktreePortBase }
           : {}),
       },
       args.runtimeManager,

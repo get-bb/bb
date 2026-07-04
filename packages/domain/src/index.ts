@@ -46,3 +46,4 @@ export * from "./thread-timeline-active-prompt-mode.js";
 export * from "./thread-timeline-goal.js";
 export * from "./thread-timeline-pending-todos.js";
 export * from "./thread.js";
+export * from "./worktree-port-env.js";

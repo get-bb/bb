@@ -848,6 +848,7 @@ function buildManagedEnvironmentPlan(
         setupTimeoutMs: SETUP_TIMEOUT_MS,
         worktreeInitScript: args.worktreeInitScript,
         worktreeTeardownScript: args.worktreeTeardownScript,
+        worktreePortBase: environment.worktreePortBase,
       });
 
       return buildDirectEnvironmentProvisionRequest({

@@ -218,6 +218,7 @@ describe("environment command dispatch", () => {
         setupTimeoutMs: 900000,
         worktreeInitScript: null,
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       harness.dispatchOptions(),
     );
@@ -252,6 +253,7 @@ describe("environment command dispatch", () => {
         timeoutMs: 900000,
         worktreeInitScript: null,
         worktreeTeardownScript: null,
+        worktreePortBase: null,
         onProgress: expect.any(Function),
         signal: expect.any(AbortSignal),
       },
@@ -620,6 +622,7 @@ describe("environment command dispatch", () => {
           setupTimeoutMs: 900000,
           worktreeInitScript: null,
           worktreeTeardownScript: null,
+          worktreePortBase: null,
         },
         makeDispatchOptions({
           runtimeManager: manager,
@@ -695,6 +698,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       makeDispatchOptions({
         runtimeManager: harness.manager,
@@ -730,6 +734,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       makeDispatchOptions({
         runtimeManager: harness.manager,
@@ -802,6 +807,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       dispatchOptions,
     ).then((result) => {
@@ -841,6 +847,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       makeDispatchOptions({ runtimeManager: harness.manager }),
     );
@@ -854,6 +861,7 @@ describe("environment command dispatch", () => {
         environmentId: "env-restart",
         path: "/tmp/env-1",
         worktreeTeardownScript: null,
+        worktreePortBase: null,
         signal: expect.any(AbortSignal),
       },
     ]);
@@ -889,6 +897,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       makeDispatchOptions({ runtimeManager: manager }),
     );
@@ -903,6 +912,7 @@ describe("environment command dispatch", () => {
           workspaceProvisionType: "managed-worktree",
         },
         worktreeTeardownScript: null,
+        worktreePortBase: null,
       },
       makeDispatchOptions({ runtimeManager: manager }),
     );

@@ -65,6 +65,10 @@ Contract:
 - bb injects `BB_WORKTREE_PATH`, `BB_WORKTREE_PHASE`, and `BB_ENVIRONMENT_ID`
   when known. Init scripts also receive `BB_WORKTREE_BRANCH` and
   `BB_SOURCE_PATH` when known.
+- Managed worktrees also receive a stable 10-port range. `BB_PORT` is the first
+  port in the range, and `BB_PORT_1` through `BB_PORT_9` are the next nine
+  ports. Use these when a dev server, worker, or database needs a per-worktree
+  local port.
 - stdout and stderr stream into the provisioning transcript for init scripts.
 - A non-zero init exit, signal, cancellation, or timeout fails provisioning and
   the thread doesn't start.
@@ -79,6 +83,20 @@ If the Project Settings init script is blank, bb falls back to a tracked
 creates a worktree, it runs the file inside the new worktree before handing the
 thread to the agent. The legacy file must be tracked by git; a file that exists
 only in your current working copy will not appear in a fresh worktree.
+
+## Worktree Run Command Ports
+
+The Project Settings **Run command** runs inside the selected checkout. For a
+managed worktree, bb injects the same 10-port range into the terminal
+environment:
+
+```bash
+pnpm dev --port "$BB_PORT"
+```
+
+The port assignment is stable for that environment, so stopping and restarting
+the run command reuses the same range. Different managed worktrees get different
+ranges.
 
 ## Cleanup
 
