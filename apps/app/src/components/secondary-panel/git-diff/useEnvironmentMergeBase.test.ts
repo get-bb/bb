@@ -26,6 +26,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     projectId: "project-1",
     status: "ready",
     updatedAt: 1,
+    worktreePortBase: null,
     workspaceProvisionType: "managed-worktree",
     ...overrides,
   };

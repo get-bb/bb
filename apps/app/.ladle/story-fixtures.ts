@@ -383,6 +383,7 @@ export function makeEnvironment(
     workspaceProvisionType: "managed-worktree",
     branchName: BRANCH_NAMES.feature,
     baseBranch: BRANCH_NAMES.default,
+    worktreePortBase: null,
     defaultBranch: BRANCH_NAMES.default,
     mergeBaseBranch: null,
     status: "ready",

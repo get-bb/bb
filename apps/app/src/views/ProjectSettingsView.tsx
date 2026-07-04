@@ -213,7 +213,7 @@ export function ProjectSettingsView() {
         </SettingsSection>
         <SettingsSection
           title="Worktree Lifecycle"
-          description="Shell snippets for managed worktree setup and cleanup."
+          description="Shell snippets for managed worktree setup and cleanup. Use $BB_PORT, or $BB_PORT_1 through $BB_PORT_9, for per-worktree local ports."
         >
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>

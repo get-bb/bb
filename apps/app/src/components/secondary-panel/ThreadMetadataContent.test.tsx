@@ -48,6 +48,7 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
     defaultBranch: "main",
     mergeBaseBranch: null,
     status: "ready",
+    worktreePortBase: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,

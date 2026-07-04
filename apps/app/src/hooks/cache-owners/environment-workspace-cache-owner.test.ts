@@ -21,6 +21,7 @@ function createEnvironment(): Environment {
     projectId: "proj_1",
     status: "ready",
     updatedAt: 2000,
+    worktreePortBase: null,
     workspaceProvisionType: "managed-worktree",
   };
 }
