@@ -127,3 +127,41 @@ export const systemConfigReloadResponseSchema = z.object({
 export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;
+
+export const skillBundleStepSchema = z
+  .object({
+    text: z.string().min(1),
+  })
+  .strict();
+export type SkillBundleStep = z.infer<typeof skillBundleStepSchema>;
+
+export const skillBundleSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().nullable(),
+    steps: z.array(skillBundleStepSchema).min(1),
+    position: z.number().int().nonnegative(),
+    createdAt: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export type SkillBundle = z.infer<typeof skillBundleSchema>;
+
+export const skillBundleListResponseSchema = z.object({
+  bundles: z.array(skillBundleSchema),
+});
+export type SkillBundleListResponse = z.infer<
+  typeof skillBundleListResponseSchema
+>;
+
+export const upsertSkillBundleRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(240).nullable(),
+    steps: z.array(skillBundleStepSchema).min(1),
+  })
+  .strict();
+export type UpsertSkillBundleRequest = z.infer<
+  typeof upsertSkillBundleRequestSchema
+>;

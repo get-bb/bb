@@ -400,6 +400,13 @@
       "when": 1783195203768,
       "tag": "0056_equal_sharon_ventura",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1783196869180,
+      "tag": "0057_small_yellowjacket",
+      "breakpoints": true
     }
   ]
 }

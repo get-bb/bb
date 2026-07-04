@@ -201,6 +201,26 @@ export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
 >;
 
+export const createQueuedMessageBundleRequestSchema = z.object({
+  clientRequestId: z.string().min(1).optional(),
+  steps: z.array(z.array(promptInputSchema).min(1)).min(1),
+  model: z.string().optional(),
+  serviceTier: serviceTierSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
+  permissionMode: permissionModeSchema.optional(),
+  executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
+});
+export type CreateQueuedMessageBundleRequest = z.infer<
+  typeof createQueuedMessageBundleRequestSchema
+>;
+
+export const createQueuedMessageBundleResponseSchema = z.object({
+  queuedMessages: z.array(threadQueuedMessageSchema),
+});
+export type CreateQueuedMessageBundleResponse = z.infer<
+  typeof createQueuedMessageBundleResponseSchema
+>;
+
 export const sendQueuedMessageRequestSchema = z.object({
   mode: sendQueuedMessageModeSchema,
 });

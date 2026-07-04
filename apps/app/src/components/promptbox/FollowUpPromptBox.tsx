@@ -40,7 +40,9 @@ import {
   shouldDisablePermissionPickerForPromptMode,
 } from "./effective-prompt-mode";
 
-type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
+type PromptBoxWithScrollAnchorProps = ComponentProps<
+  typeof PromptBoxInternal
+> & {
   scrollToBottomOnSubmit?: boolean;
 };
 
@@ -177,6 +179,7 @@ export interface FollowUpPromptBoxProps {
   readOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
+  bundleActions?: ReactNode;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -220,6 +223,7 @@ function FollowUpPromptBoxWithComposer({
   readOnly,
   typeahead,
   promptActions,
+  bundleActions,
   zenModeResetKey,
   focusEndKey,
 }: FollowUpPromptBoxWithComposerProps) {
@@ -249,8 +253,13 @@ function FollowUpPromptBoxWithComposer({
     ? composer.onModifierSubmit
     : undefined;
   const footerStart = useMemo(
-    () => <ExecutionControls {...execution} disabled={readOnly} />,
-    [execution, readOnly],
+    () => (
+      <>
+        {bundleActions}
+        <ExecutionControls {...execution} disabled={readOnly} />
+      </>
+    ),
+    [bundleActions, execution, readOnly],
   );
   const promptModeInput = useMemo(
     () => ({
@@ -258,11 +267,7 @@ function FollowUpPromptBoxWithComposer({
       value: composer.message,
       mentionRanges: composer.mentionRanges,
     }),
-    [
-      composer.mentionRanges,
-      composer.message,
-      execution.provider.selectedId,
-    ],
+    [composer.mentionRanges, composer.message, execution.provider.selectedId],
   );
   const permissionDisplayOverride = useMemo(
     () =>

@@ -12,9 +12,12 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
+import type { SkillBundle } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { Input } from "@/components/ui/input.js";
 import { Switch } from "@/components/ui/switch.js";
+import { Textarea } from "@/components/ui/textarea.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   DropdownMenu,
@@ -40,8 +43,14 @@ import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSec
 import {
   useUpdateAppearance,
   useUpdateExperiments,
+  useCreateSkillBundle,
+  useDeleteSkillBundle,
+  useUpdateSkillBundle,
 } from "@/hooks/mutations/settings-mutations";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import {
+  useSkillBundles,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
@@ -375,10 +384,7 @@ function LocalOpenTargetPreferenceControl({
                 key={target.id}
                 onSelect={() => onTargetChange(target.id)}
               >
-                <WorkspaceOpenTargetIcon
-                  target={target}
-                  className="size-5"
-                />
+                <WorkspaceOpenTargetIcon target={target} className="size-5" />
                 <span className="min-w-0 truncate">{target.label}</span>
                 <Icon
                   name="Check"
@@ -433,8 +439,7 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL =
-  "Markdown formatting in prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -942,6 +947,239 @@ export function ExperimentsSettingsSection({
   );
 }
 
+interface SkillBundleDraft {
+  id: string | null;
+  name: string;
+  description: string;
+  steps: string[];
+}
+
+const EMPTY_SKILL_BUNDLE_DRAFT: SkillBundleDraft = {
+  id: null,
+  name: "",
+  description: "",
+  steps: [""],
+};
+
+function skillBundleDraftFromBundle(bundle: SkillBundle): SkillBundleDraft {
+  return {
+    id: bundle.id,
+    name: bundle.name,
+    description: bundle.description ?? "",
+    steps: bundle.steps.map((step) => step.text),
+  };
+}
+
+function normalizeSkillBundleDraft(draft: SkillBundleDraft) {
+  const name = draft.name.trim();
+  const description = draft.description.trim();
+  const steps = draft.steps
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .map((text) => ({ text }));
+  if (name.length === 0 || steps.length === 0) {
+    return null;
+  }
+  return {
+    name,
+    description: description.length > 0 ? description : null,
+    steps,
+  };
+}
+
+export function SkillBundlesSettingsSection() {
+  const skillBundlesQuery = useSkillBundles();
+  const createSkillBundle = useCreateSkillBundle();
+  const updateSkillBundle = useUpdateSkillBundle();
+  const deleteSkillBundle = useDeleteSkillBundle();
+  const [draft, setDraft] = useState<SkillBundleDraft>(
+    EMPTY_SKILL_BUNDLE_DRAFT,
+  );
+  const normalizedDraft = useMemo(
+    () => normalizeSkillBundleDraft(draft),
+    [draft],
+  );
+  const isSaving =
+    createSkillBundle.isPending ||
+    updateSkillBundle.isPending ||
+    deleteSkillBundle.isPending;
+
+  const updateStep = (index: number, value: string) => {
+    setDraft((current) => ({
+      ...current,
+      steps: current.steps.map((step, stepIndex) =>
+        stepIndex === index ? value : step,
+      ),
+    }));
+  };
+  const removeStep = (index: number) => {
+    setDraft((current) => {
+      const steps = current.steps.filter((_, stepIndex) => stepIndex !== index);
+      return { ...current, steps: steps.length > 0 ? steps : [""] };
+    });
+  };
+  const saveDraft = () => {
+    if (!normalizedDraft) {
+      return;
+    }
+    if (draft.id) {
+      updateSkillBundle.mutate(
+        { id: draft.id, ...normalizedDraft },
+        { onSuccess: () => setDraft(EMPTY_SKILL_BUNDLE_DRAFT) },
+      );
+      return;
+    }
+    createSkillBundle.mutate(normalizedDraft, {
+      onSuccess: () => setDraft(EMPTY_SKILL_BUNDLE_DRAFT),
+    });
+  };
+
+  return (
+    <SettingsSection
+      title="Skill bundles"
+      description="Save ordered prompt sequences that can be queued from a thread."
+    >
+      <div className="space-y-4">
+        <div className="space-y-2">
+          {(skillBundlesQuery.data?.bundles ?? []).map((bundle) => (
+            <div
+              key={bundle.id}
+              className="rounded-md border border-border bg-card p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {bundle.name}
+                  </div>
+                  {bundle.description ? (
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {bundle.description}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {bundle.steps.length} step
+                    {bundle.steps.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={isSaving}
+                    onClick={() => setDraft(skillBundleDraftFromBundle(bundle))}
+                    aria-label={`Edit ${bundle.name}`}
+                  >
+                    <Icon name="Edit" className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={isSaving}
+                    onClick={() => deleteSkillBundle.mutate(bundle.id)}
+                    aria-label={`Delete ${bundle.name}`}
+                  >
+                    <Icon name="Trash2" className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {skillBundlesQuery.data?.bundles.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+              No skill bundles configured.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3 rounded-md border border-border p-3">
+          <Input
+            value={draft.name}
+            placeholder="Bundle name"
+            disabled={isSaving}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, name: event.target.value }))
+            }
+          />
+          <Input
+            value={draft.description}
+            placeholder="Description"
+            disabled={isSaving}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                description: event.target.value,
+              }))
+            }
+          />
+          <div className="space-y-2">
+            {draft.steps.map((step, index) => (
+              <div key={index} className="flex items-start gap-2">
+                <Textarea
+                  value={step}
+                  placeholder={`Step ${index + 1}`}
+                  disabled={isSaving}
+                  className="min-h-20"
+                  onChange={(event) => updateStep(index, event.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSaving || draft.steps.length === 1}
+                  onClick={() => removeStep(index)}
+                  aria-label={`Remove step ${index + 1}`}
+                >
+                  <Icon name="X" className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isSaving}
+              onClick={() =>
+                setDraft((current) => ({
+                  ...current,
+                  steps: [...current.steps, ""],
+                }))
+              }
+            >
+              <Icon name="Plus" className="size-4" />
+              Step
+            </Button>
+            <div className="flex items-center gap-2">
+              {draft.id ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isSaving}
+                  onClick={() => setDraft(EMPTY_SKILL_BUNDLE_DRAFT)}
+                >
+                  Cancel
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSaving || normalizedDraft === null}
+                onClick={saveDraft}
+              >
+                {draft.id ? "Save bundle" : "Create bundle"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </SettingsSection>
+  );
+}
+
 export function SettingsView() {
   const navigate = useNavigate();
   const themePreference = useThemePreference();
@@ -1020,6 +1258,8 @@ export function SettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
+
+        <SkillBundlesSettingsSection />
 
         <ExperimentsSettingsSection
           claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}

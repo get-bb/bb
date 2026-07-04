@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
+  CreateQueuedMessageBundleRequest,
   CreateQueuedMessageRequest,
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
@@ -39,8 +40,13 @@ import {
   type SendThreadMessageTransaction,
   type StopThreadTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
+import { invalidateThreadQueueQueries } from "../cache-owners/mutation-cache-effects";
 
 export interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
+  id: string;
+}
+
+export interface CreateThreadQueuedMessageBundleMutationRequest extends CreateQueuedMessageBundleRequest {
   id: string;
 }
 
@@ -224,6 +230,43 @@ export function useCreateThreadQueuedMessage() {
         queuedMessage,
         threadId: variables.id,
         transaction: context,
+      });
+    },
+  });
+}
+
+export function useCreateThreadQueuedMessageBundle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to queue skill bundle.",
+      lifecycleOperation: "queue_message_bundle",
+      showErrorToast: false,
+    },
+    mutationFn: ({
+      id,
+      clientRequestId,
+      steps,
+      model,
+      serviceTier,
+      reasoningLevel,
+      permissionMode,
+      executionInputSources,
+    }: CreateThreadQueuedMessageBundleMutationRequest) =>
+      api.createThreadQueuedMessageBundle(id, {
+        ...(clientRequestId !== undefined ? { clientRequestId } : {}),
+        steps,
+        model,
+        serviceTier,
+        reasoningLevel,
+        permissionMode,
+        executionInputSources,
+      }),
+    onSuccess: (_result, variables) => {
+      invalidateThreadQueueQueries({
+        queryClient,
+        threadId: variables.id,
       });
     },
   });

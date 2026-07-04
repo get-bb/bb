@@ -1,9 +1,13 @@
 import {
+  createSkillBundle,
+  deleteSkillBundle,
   getExperiments,
+  listSkillBundles,
   getStoredFaviconColor,
   getStoredThemeId,
   setExperiments,
   setStoredAppearance,
+  updateSkillBundle,
 } from "@bb/db";
 import { customThemeNameSchema, isBuiltInThemeId } from "@bb/domain";
 import {
@@ -37,7 +41,7 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
@@ -116,6 +120,37 @@ export function registerSystemRoutes(
       ),
     }),
   );
+
+  get(routes.skillBundles, (context) =>
+    context.json({ bundles: listSkillBundles(deps.db) }),
+  );
+
+  post(routes.createSkillBundle, (context, payload) =>
+    context.json(createSkillBundle(deps.db, payload), 201),
+  );
+
+  patch(routes.updateSkillBundle, (context, payload) => {
+    const bundle = updateSkillBundle(deps.db, context.req.param("id"), payload);
+    if (!bundle) {
+      throw new ApiError(
+        404,
+        "skill_bundle_not_found",
+        "Skill bundle not found",
+      );
+    }
+    return context.json(bundle);
+  });
+
+  del(routes.deleteSkillBundle, (context) => {
+    if (!deleteSkillBundle(deps.db, context.req.param("id"))) {
+      throw new ApiError(
+        404,
+        "skill_bundle_not_found",
+        "Skill bundle not found",
+      );
+    }
+    return context.json({ ok: true });
+  });
 
   post(routes.reloadConfig, async (context) => {
     try {

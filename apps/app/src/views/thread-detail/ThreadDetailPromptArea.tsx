@@ -1,6 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { IconName } from "@/components/ui/icon.js";
+import { Button } from "@/components/ui/button.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
@@ -8,6 +15,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
+  PromptInput,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -17,6 +25,7 @@ import type {
 } from "@bb/domain";
 import type {
   PullRequestMergeMethod,
+  SkillBundle,
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
@@ -55,6 +64,7 @@ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCreateThreadQueuedMessage,
+  useCreateThreadQueuedMessageBundle,
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
@@ -67,6 +77,7 @@ import {
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
+import { useSkillBundles } from "@/hooks/queries/system-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
@@ -95,6 +106,91 @@ import {
 } from "./threadDetailPromptSubmission";
 
 const ignorePromptBannerFileClick = () => {};
+
+const LEADING_SLASH_COMMAND_PATTERN = /^\/([A-Za-z0-9:_-]+)/;
+
+function skillBundleStepToPromptInput(text: string): PromptInput[] {
+  const match = LEADING_SLASH_COMMAND_PATTERN.exec(text);
+  if (!match) {
+    return [{ type: "text", text, mentions: [] }];
+  }
+  const commandText = match[0];
+  const commandName = match[1] ?? commandText.slice(1);
+  return [
+    {
+      type: "text",
+      text,
+      mentions: [
+        {
+          start: 0,
+          end: commandText.length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: commandName,
+            source: "skill",
+            origin: "user",
+            label: commandName,
+            argumentHint: null,
+          },
+        },
+      ],
+    },
+  ];
+}
+
+interface SkillBundleActionsMenuProps {
+  bundles: readonly SkillBundle[];
+  disabled: boolean;
+  onRunBundle: (bundle: SkillBundle) => void;
+}
+
+function SkillBundleActionsMenu({
+  bundles,
+  disabled,
+  onRunBundle,
+}: SkillBundleActionsMenuProps) {
+  if (bundles.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          disabled={disabled}
+          aria-label="Skill bundles"
+        >
+          <Icon name="ListTodo" className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        sideOffset={4}
+        className="w-56"
+        mobileTitle="Skill bundles"
+      >
+        {bundles.map((bundle) => (
+          <DropdownMenuItem
+            key={bundle.id}
+            onSelect={() => onRunBundle(bundle)}
+          >
+            <Icon
+              name="ListTodo"
+              className="size-4 text-muted-foreground"
+              aria-hidden
+            />
+            <span className="min-w-0 truncate">{bundle.name}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
   "thread-detail-follow-up-composer";
@@ -281,11 +377,13 @@ export function ThreadDetailPromptArea({
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
+  const createQueuedMessageBundle = useCreateThreadQueuedMessageBundle();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const setQueuedMessageGroupBoundary =
     useSetThreadQueuedMessageGroupBoundary();
+  const { data: skillBundlesData } = useSkillBundles();
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
@@ -422,6 +520,7 @@ export function ThreadDetailPromptArea({
     environmentGoneStatus !== null || thread.archivedAt !== null;
   const isQueueMutationPending =
     createQueuedMessage.isPending ||
+    createQueuedMessageBundle.isPending ||
     sendQueuedMessage.isPending ||
     deleteQueuedMessage.isPending ||
     reorderQueuedMessage.isPending ||
@@ -430,6 +529,7 @@ export function ThreadDetailPromptArea({
   const isFollowUpSubmitting =
     sendMessage.isPending ||
     createQueuedMessage.isPending ||
+    createQueuedMessageBundle.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
@@ -602,6 +702,47 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
+
+  const handleRunSkillBundle = useCallback(
+    async (bundle: SkillBundle) => {
+      const steps = bundle.steps
+        .map((step) => step.text.trim())
+        .filter((text) => text.length > 0)
+        .map(skillBundleStepToPromptInput);
+      if (steps.length === 0) {
+        return;
+      }
+
+      try {
+        await createQueuedMessageBundle.mutateAsync({
+          id: thread.id,
+          steps,
+          ...(followUpExecutionSelection
+            ? {
+                model: followUpExecutionSelection.model,
+                serviceTier: followUpExecutionSelection.supportsServiceTier
+                  ? followUpExecutionSelection.serviceTier
+                  : undefined,
+                reasoningLevel: followUpExecutionSelection.reasoningLevel,
+                permissionMode: followUpExecutionSelection.permissionMode,
+                executionInputSources:
+                  followUpExecutionSelection.executionInputSources,
+              }
+            : {}),
+        });
+        setAttachmentError(null);
+      } catch (nextError) {
+        appToast.error(
+          getMutationErrorMessage({
+            error: nextError,
+            fallbackMessage: "Failed to queue skill bundle",
+            lifecycleOperation: "queue_message",
+          }),
+        );
+      }
+    },
+    [createQueuedMessageBundle, followUpExecutionSelection, thread.id],
+  );
 
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
@@ -1006,6 +1147,31 @@ export function ThreadDetailPromptArea({
     ],
   );
 
+  const skillBundleActions = useMemo(
+    () => (
+      <SkillBundleActionsMenu
+        bundles={skillBundlesData?.bundles ?? []}
+        disabled={
+          !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+          runtimeDisplayStatus === "provisioning" ||
+          runtimeDisplayStatus === "starting" ||
+          runtimeDisplayStatus === "waiting-for-host" ||
+          isFollowUpSubmitting ||
+          isQueueMutationPending
+        }
+        onRunBundle={handleRunSkillBundle}
+      />
+    ),
+    [
+      handleRunSkillBundle,
+      isFollowUpSubmitting,
+      isQueueMutationPending,
+      runtimeDisplayStatus,
+      skillBundlesData?.bundles,
+      submitMode.kind,
+    ],
+  );
+
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
@@ -1232,6 +1398,7 @@ export function ThreadDetailPromptArea({
       execution={executionConfig}
       permission={permissionConfig}
       typeahead={typeaheadConfig}
+      bundleActions={skillBundleActions}
       {...providerPromptActionProps}
     />
   );

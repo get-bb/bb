@@ -3,6 +3,7 @@ import { toRecord } from "@bb/core-ui";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
+  SkillBundleListResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
@@ -14,6 +15,7 @@ import {
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
+  skillBundlesQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg } from "./query-helpers";
@@ -53,9 +55,7 @@ function shouldRetrySystemExecutionOptions(
   }
 
   if (error instanceof api.HttpError) {
-    return (
-      error.status === 408 || error.status === 429 || error.status >= 500
-    );
+    return error.status === 408 || error.status === 429 || error.status >= 500;
   }
 
   return true;
@@ -92,6 +92,15 @@ export function useSystemConfig(options?: QueryOptions) {
     queryKey: systemConfigQueryKey(),
     queryFn: ({ signal }) => api.getSystemConfig(signal),
     enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useSkillBundles(options?: QueryOptions) {
+  return useQuery<SkillBundleListResponse>({
+    queryKey: skillBundlesQueryKey(),
+    queryFn: ({ signal }) => api.listSkillBundles(signal),
+    enabled: options?.enabled ?? true,
     staleTime: 60_000,
   });
 }

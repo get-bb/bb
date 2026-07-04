@@ -50,6 +50,8 @@ import type {
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  CreateQueuedMessageBundleRequest,
+  CreateQueuedMessageBundleResponse,
   CreateQueuedMessageRequest,
   CreateThreadFolderRequest,
   CreateThreadRequest,
@@ -106,6 +108,8 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  SkillBundle,
+  SkillBundleListResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemExecutionOptionsQuery,
@@ -158,6 +162,7 @@ import type {
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
+  UpsertSkillBundleRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
@@ -173,6 +178,7 @@ import {
   createTerminalRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
+  createQueuedMessageBundleRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
   deleteThreadRequestSchema,
@@ -228,6 +234,7 @@ import {
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
+  upsertSkillBundleRequestSchema,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
@@ -235,6 +242,7 @@ type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
+type PathSkillBundleId = { param: { id: string } };
 
 export const publicApiRoutes = {
   projects: {
@@ -754,6 +762,16 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
     }),
+    createQueuedMessageBundle: defineRoute({
+      path: "/threads/:id/queued-message-bundles",
+      method: "post",
+      request: jsonRequest<PathId, CreateQueuedMessageBundleRequest>(
+        createQueuedMessageBundleRequestSchema,
+      ),
+      response: jsonResponse<CreateQueuedMessageBundleResponse>({
+        status: 201,
+      }),
+    }),
     /**
      * Send a previously queued message in the requested mode, then delete the
      * queued message.
@@ -1012,6 +1030,34 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<ThemeCatalogResponse>(),
     }),
+    skillBundles: defineRoute({
+      path: "/settings/skill-bundles",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SkillBundleListResponse>(),
+    }),
+    createSkillBundle: defineRoute({
+      path: "/settings/skill-bundles",
+      method: "post",
+      request: jsonRequest<EmptyInput, UpsertSkillBundleRequest>(
+        upsertSkillBundleRequestSchema,
+      ),
+      response: jsonResponse<SkillBundle>({ status: 201 }),
+    }),
+    updateSkillBundle: defineRoute({
+      path: "/settings/skill-bundles/:id",
+      method: "patch",
+      request: jsonRequest<PathSkillBundleId, UpsertSkillBundleRequest>(
+        upsertSkillBundleRequestSchema,
+      ),
+      response: jsonResponse<SkillBundle>(),
+    }),
+    deleteSkillBundle: defineRoute({
+      path: "/settings/skill-bundles/:id",
+      method: "delete",
+      request: noRequest<PathSkillBundleId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",
       method: "post",
@@ -1156,10 +1202,7 @@ export function createPublicApiClient(
   baseUrl: string,
   options?: PublicApiClientOptions,
 ) {
-  return hc<PublicApiRoutes>(
-    `${baseUrl}/api/v1`,
-    toHonoClientOptions(options),
-  );
+  return hc<PublicApiRoutes>(`${baseUrl}/api/v1`, toHonoClientOptions(options));
 }
 
 export function createApiClient(

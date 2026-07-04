@@ -237,6 +237,20 @@ export const appTheme = sqliteTable("app_theme", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const skillBundles = sqliteTable(
+  "skill_bundles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    steps: text("steps").notNull(),
+    position: integer("position").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("skill_bundles_position_idx").on(table.position)],
+);
+
 export const projectSources = sqliteTable(
   "project_sources",
   {
