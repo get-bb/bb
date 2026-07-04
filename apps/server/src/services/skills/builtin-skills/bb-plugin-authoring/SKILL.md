@@ -404,8 +404,14 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
-- `navPanel` → `{}` — owns the whole route at `/plugins/<pluginId>/<path>`
-  and gets its own sidebar entry.
+- `navPanel` → `{ subPath: string }` — owns the whole route at
+  `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
+  is the route remainder after the panel root (`""` at the root), so deep
+  links like `/plugins/notes/notes/work/ideas.md` land with
+  `subPath: "work/ideas.md"`. Navigate within the panel via
+  `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
+  back/forward then walks panel-internal history (prefer this over hash
+  routing).
   Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
   The host renders your plugin logo + `title` into the SHARED app header
   (the same chrome as Settings/Automations) with your optional
@@ -445,7 +451,7 @@ Hooks:
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path) }`.
+- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?) }`.
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
@@ -533,7 +539,7 @@ hardcoded colors break custom palettes.
 Reference examples in `examples/plugins/` (a bb checkout):
 
 - `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
-  in a single navPanel (with `headerContent`), hash-based sub-navigation,
+  in a single navPanel (with `headerContent`), subPath-based sub-navigation,
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.

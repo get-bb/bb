@@ -65,7 +65,9 @@ refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
-navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelAction
+navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
+arrives as the component's subPath prop for panel-internal deep links),
+threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
 footer). Hooks:

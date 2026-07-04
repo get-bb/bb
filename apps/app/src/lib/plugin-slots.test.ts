@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginHomepageSectionProps } from "@bb/plugin-sdk";
+import type { PluginNavPanelProps, PluginHomepageSectionProps } from "@bb/plugin-sdk";
 import {
   getPluginSlotSnapshot,
   removePluginSlotRegistrations,
@@ -10,6 +10,9 @@ import {
 } from "./plugin-slots";
 
 function SectionComponent(_props: Partial<PluginHomepageSectionProps>) {
+  return null;
+}
+function PanelComponent(_props: PluginNavPanelProps) {
   return null;
 }
 
@@ -98,7 +101,7 @@ describe("plugin slot store", () => {
             title: "Board",
             icon: "columns",
             path: "board",
-            component: SectionComponent,
+            component: PanelComponent,
           },
         ],
       }),

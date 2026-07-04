@@ -178,8 +178,17 @@ export function useBbNavigate(): BbNavigate {
     [navigate],
   );
   const toPluginPanel = useCallback(
-    (path: string) => {
-      void navigate(getPluginPanelRoutePath({ pluginId, path }));
+    (path: string, options?: { subPath?: string; replace?: boolean }) => {
+      void navigate(
+        getPluginPanelRoutePath({
+          pluginId,
+          path,
+          ...(options?.subPath !== undefined
+            ? { subPath: options.subPath }
+            : {}),
+        }),
+        options?.replace ? { replace: true } : undefined,
+      );
     },
     [navigate, pluginId],
   );

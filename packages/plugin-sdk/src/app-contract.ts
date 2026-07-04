@@ -24,8 +24,17 @@ export interface PluginHomepageSectionProps {
 }
 
 /** Props passed to a `navPanel` component (it owns its whole route). */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PluginNavPanelProps {}
+export interface PluginNavPanelProps {
+  /**
+   * The route remainder after the panel root, "" at the root. The panel's
+   * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
+   * `/plugins/notes/notes/work/ideas.md` renders the panel with
+   * `subPath: "work/ideas.md"`. Navigate within the panel via
+   * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
+   * back/forward then walks panel-internal history.
+   */
+  subPath: string;
+}
 
 /** Props passed to a panel tab opened by a `threadPanelAction`. */
 export interface PluginThreadPanelProps {
@@ -189,8 +198,16 @@ export interface BbContext {
 export interface BbNavigate {
   toThread(threadId: string): void;
   toProject(projectId: string): void;
-  /** Navigate to one of this plugin's own nav panels by its `path`. */
-  toPluginPanel(path: string): void;
+  /**
+   * Navigate to one of this plugin's own nav panels by its `path`.
+   * `subPath` targets a location inside the panel (the component's
+   * `subPath` prop); `replace` swaps the current history entry instead of
+   * pushing — use it for redirects so back does not bounce.
+   */
+  toPluginPanel(
+    path: string,
+    options?: { subPath?: string; replace?: boolean },
+  ): void;
 }
 
 // ---------------------------------------------------------------------------

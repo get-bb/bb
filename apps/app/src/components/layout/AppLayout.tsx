@@ -245,6 +245,8 @@ interface AppHeaderProps {
    * the shared header shows plugin logo + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
+  /** The panel route's splat remainder ("" at the panel root). */
+  pluginPanelSubPath?: string;
   meta: {
     title: string;
     subtitle?: string;
@@ -260,6 +262,7 @@ function AppHeader({
   projectId,
   project,
   pluginPanel,
+  pluginPanelSubPath,
   meta,
 }: AppHeaderProps) {
   const headerBreadcrumbs = meta.breadcrumbs;
@@ -325,7 +328,10 @@ function AppHeader({
   ) : null;
 
   const actions = pluginPanel ? (
-    <PluginPanelHeaderActions panel={pluginPanel} />
+    <PluginPanelHeaderActions
+      panel={pluginPanel}
+      subPath={pluginPanelSubPath ?? ""}
+    />
   ) : usesProjectChromeStyle &&
     projectId &&
     !isProjectlessProjectId(projectId) ? (
@@ -684,6 +690,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   projectId={projectId}
                   project={project}
                   pluginPanel={pluginPanel}
+                  pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
                   meta={meta}
                 />
               ) : null}

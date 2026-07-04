@@ -27,6 +27,15 @@ interface PluginHomepageSectionProps {
 }
 /** Props passed to a `navPanel` component (it owns its whole route). */
 interface PluginNavPanelProps {
+    /**
+     * The route remainder after the panel root, "" at the root. The panel's
+     * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
+     * `/plugins/notes/notes/work/ideas.md` renders the panel with
+     * `subPath: "work/ideas.md"`. Navigate within the panel via
+     * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
+     * back/forward then walks panel-internal history.
+     */
+    subPath: string;
 }
 /** Props passed to a panel tab opened by a `threadPanelAction`. */
 interface PluginThreadPanelProps {
@@ -166,8 +175,16 @@ interface BbContext {
 interface BbNavigate {
     toThread(threadId: string): void;
     toProject(projectId: string): void;
-    /** Navigate to one of this plugin's own nav panels by its `path`. */
-    toPluginPanel(path: string): void;
+    /**
+     * Navigate to one of this plugin's own nav panels by its `path`.
+     * `subPath` targets a location inside the panel (the component's
+     * `subPath` prop); `replace` swaps the current history entry instead of
+     * pushing — use it for redirects so back does not bounce.
+     */
+    toPluginPanel(path: string, options?: {
+        subPath?: string;
+        replace?: boolean;
+    }): void;
 }
 /**
  * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
@@ -329,8 +346,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -1237,6 +1254,48 @@ interface EnvironmentsArea {
 }
 declare function createEnvironmentsArea(args: CreateSdkAreaArgs): EnvironmentsArea;
 
+/**
+ * Host file primitives. `hostId` may be omitted to target the server's
+ * primary (local) host. `rootPath`, when set, confines the target beneath
+ * that absolute root on the host (symlink-safe).
+ */
+interface FileReadArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+}
+interface FileWriteArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+    content: string;
+    /** Defaults to "utf8". */
+    contentEncoding?: "utf8" | "base64";
+    /** Defaults to false. */
+    createParents?: boolean;
+    /**
+     * Optimistic-concurrency guard: omitted → unconditional write; a hash →
+     * write only when the current content hashes to it (use `read().sha256`);
+     * null → create-only. A failed guard resolves to the `conflict` outcome.
+     */
+    expectedSha256?: string | null;
+}
+interface FileListArgs {
+    hostId?: string;
+    path: string;
+    query?: string;
+    limit?: number;
+}
+type FileReadResult = PublicApiOutput<"/files/read", "$post">;
+type FileWriteResult = PublicApiOutput<"/files/write", "$post">;
+type FileListResult = PublicApiOutput<"/files/list", "$post">;
+interface FilesArea {
+    read(args: FileReadArgs): Promise<FileReadResult>;
+    write(args: FileWriteArgs): Promise<FileWriteResult>;
+    list(args: FileListArgs): Promise<FileListResult>;
+}
+declare function createFilesArea(args: CreateSdkAreaArgs): FilesArea;
+
 interface GuideRenderArgs {
     chapter?: string;
 }
@@ -1623,6 +1682,7 @@ declare function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea;
 interface BbSdk extends BbRealtime {
     automations: ReturnType<typeof createAutomationsArea>;
     environments: ReturnType<typeof createEnvironmentsArea>;
+    files: ReturnType<typeof createFilesArea>;
     guide: ReturnType<typeof createGuideArea>;
     hosts: ReturnType<typeof createHostsArea>;
     projects: ReturnType<typeof createProjectsArea>;

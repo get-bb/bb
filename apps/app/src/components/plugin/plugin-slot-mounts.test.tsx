@@ -176,6 +176,44 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(screen.getByText("board panel body")).toBeDefined();
   });
 
+  it("passes the route splat to the panel as subPath ('' at the root)", () => {
+    function SubPathProbe({ subPath }: { subPath: string }) {
+      return <div>subPath: "{subPath}"</div>;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [
+          {
+            id: "board",
+            title: "Demo board",
+            icon: "columns",
+            path: "board",
+            component: SubPathProbe,
+          },
+        ],
+      }),
+    );
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/plugins/demo/board/work/ideas.md"]}>
+        <Routes>
+          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('subPath: "work/ideas.md"')).toBeDefined();
+    unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/plugins/demo/board"]}>
+        <Routes>
+          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('subPath: ""')).toBeDefined();
+  });
+
   it("shows a placeholder for an unknown plugin panel route", () => {
     render(
       <MemoryRouter initialEntries={["/plugins/ghost/board"]}>
@@ -269,7 +307,7 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     render(
       <>
         <PluginPanelHeaderCenter panel={panel} />
-        <PluginPanelHeaderActions panel={panel} />
+        <PluginPanelHeaderActions panel={panel} subPath="" />
       </>,
     );
     expect(screen.getByText("Demo board")).toBeDefined();
@@ -289,7 +327,7 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     render(
       <>
         <PluginPanelHeaderCenter panel={panel} />
-        <PluginPanelHeaderActions panel={panel} />
+        <PluginPanelHeaderActions panel={panel} subPath="" />
       </>,
     );
     // The header center survives; the accessory is hidden, not chip-ified.
@@ -305,7 +343,7 @@ describe("plugin panel chrome (shared header + body modes)", () => {
       chrome: "none",
       headerContent: HeaderAccessory,
     });
-    const { container } = render(<PluginPanelHeaderActions panel={panel} />);
+    const { container } = render(<PluginPanelHeaderActions panel={panel} subPath="" />);
     expect(container.innerHTML).toBe("");
   });
 

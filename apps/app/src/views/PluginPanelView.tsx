@@ -36,10 +36,14 @@ const HIGHLIGHTER_OPTIONS = {};
  *   padding — with only the error boundary remaining.
  */
 export function PluginPanelView() {
-  const { pluginId, panelPath } = useParams<{
+  const params = useParams<{
     pluginId: string;
     panelPath: string;
+    "*": string;
   }>();
+  const { pluginId, panelPath } = params;
+  // The route's trailing splat: panel-internal location ("" at the root).
+  const subPath = params["*"] ?? "";
   const { navPanels } = usePluginSlots();
   const panel =
     navPanels.find(
@@ -67,7 +71,7 @@ export function PluginPanelView() {
       slotKind="navPanel"
       slotId={panel.id}
     >
-      <panel.component />
+      <panel.component subPath={subPath} />
     </PluginSlotMount>
   );
   // The provider spawns workers eagerly; environments without Worker

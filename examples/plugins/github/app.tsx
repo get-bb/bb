@@ -7,7 +7,7 @@
 // GitHub integration, shrunk to a panel). "Send agent" buttons everywhere an
 // issue or PR shows up. Deep links use the URL hash
 // (#/issues/<owner>/<repo>/<n>, #/pulls/<owner>/<repo>/<n>) since navPanel
-// owns a single route today. A threadPanelAction opens the same PR view in a
+// owns /plugins/github/github/* via subPath routing. A threadPanelAction opens the same PR view in a
 // thread's right panel, auto-resolved to that thread's PR.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -15,6 +15,7 @@ import {
   useBbNavigate,
   useRealtime,
   useRpc,
+  type PluginNavPanelProps,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
 // Shimmed to the host's copy at build time (shared worker-pool context +
@@ -162,9 +163,13 @@ function relativeTime(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hash routing — the navPanel owns one route, so sub-navigation lives in the
-// URL hash: #/issues, #/pulls, #/new, #/issues/<owner>/<repo>/<number>.
+// Sub-routing — the navPanel owns /plugins/github/github/*, so sub-navigation
+// lives in the route's subPath: "issues", "pulls", "new",
+// "issues/<owner>/<repo>/<number>". Deep-linkable, and browser back/forward
+// walks panel history.
 // ---------------------------------------------------------------------------
+
+const PANEL_PATH = "github";
 
 type Route =
   | { view: "issues" }
@@ -173,8 +178,8 @@ type Route =
   | { view: "issue"; repo: string; number: number }
   | { view: "pull"; repo: string; number: number };
 
-function parseHash(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter((p) => p.length > 0);
+function parseSubPath(subPath: string): Route {
+  const parts = subPath.split("/").filter((p) => p.length > 0);
   if (parts[0] === "pulls" && parts.length === 4) {
     const number = Number(parts[3]);
     if (Number.isFinite(number)) {
@@ -192,32 +197,30 @@ function parseHash(hash: string): Route {
   return { view: "issues" };
 }
 
-function routeToHash(route: Route): string {
+function routeToSubPath(route: Route): string {
   switch (route.view) {
     case "issues":
-      return "#/issues";
+      return "issues";
     case "pulls":
-      return "#/pulls";
+      return "pulls";
     case "new":
-      return "#/new";
+      return "new";
     case "issue":
-      return `#/issues/${route.repo}/${route.number}`;
+      return `issues/${route.repo}/${route.number}`;
     case "pull":
-      return `#/pulls/${route.repo}/${route.number}`;
+      return `pulls/${route.repo}/${route.number}`;
   }
 }
 
-function useHashRoute(): [Route, (route: Route) => void] {
-  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
-  useEffect(() => {
-    const onChange = () => setRoute(parseHash(window.location.hash));
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-  const navigate = useCallback((next: Route) => {
-    window.location.hash = routeToHash(next);
-    setRoute(next);
-  }, []);
+function useSubPathRoute(subPath: string): [Route, (route: Route) => void] {
+  const bbNavigate = useBbNavigate();
+  const route = useMemo(() => parseSubPath(subPath), [subPath]);
+  const navigate = useCallback(
+    (next: Route) => {
+      bbNavigate.toPluginPanel(PANEL_PATH, { subPath: routeToSubPath(next) });
+    },
+    [bbNavigate],
+  );
   return [route, navigate];
 }
 
@@ -2117,8 +2120,8 @@ function PanelHeader() {
 const QUERY_KEY = "bb-plugin-github:query";
 const DEFAULT_QUERY = "is:open ";
 
-function GithubPanel() {
-  const [route, navigate] = useHashRoute();
+function GithubPanel({ subPath }: PluginNavPanelProps) {
+  const [route, navigate] = useSubPathRoute(subPath);
   const { status } = useStatus();
   const [query, setQueryState] = useState<string>(() => {
     try {

@@ -141,7 +141,7 @@ void _assertAllSlotsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
-  navPanel: [],
+  navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
 } as const satisfies {
