@@ -77,10 +77,13 @@ starts.
 | `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset. |
 | `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                        |
 | `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-4o-transcribe`.                       |
+| `BB_OMP_BINARY`    | `bb-app env`    | Optional                | Absolute path to the `omp` CLI used by the omp provider. Defaults to `omp` on PATH; install and authenticate omp itself.  |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
+
+The `omp` provider is different: it drives the user-installed `omp` CLI, so bb does not manage its credentials. Install `omp` separately and authenticate through omp itself (run `omp` and use `/login`); auth and model config live in `~/.omp/agent`. If the `omp` binary is not on PATH, set `BB_OMP_BINARY` to its absolute path.
 
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the

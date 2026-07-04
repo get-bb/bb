@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -10,7 +11,10 @@ import {
 } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
-import { stripModelBrandPrefix } from "./model-brand-prefix";
+import {
+  groupModelOptionsByProvider,
+  stripModelBrandPrefix,
+} from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@/components/ui/button.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
@@ -311,6 +315,10 @@ export function ModelReasoningPicker({
     activeModelLoadErrorMessage ?? "Could not load models.";
   const activeModelOptions = previewModelOptions;
   const activeMoreModelOptions = previewMoreModelOptions;
+  const modelGroups = useMemo(
+    () => groupModelOptionsByProvider(activeModelOptions),
+    [activeModelOptions],
+  );
   const hasActiveModelOptions = activeModelOptions.length > 0;
   const activeModelErrorIsProviderSpecific =
     activeModelLoadErrorMatches && activeModelLoadError !== null;
@@ -559,7 +567,7 @@ export function ModelReasoningPicker({
                 "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
             )}
           >
-            {isShowingModelError ? null : (
+            {isShowingModelError || modelGroups ? null : (
               <MenuSectionLabel>Model</MenuSectionLabel>
             )}
             {activeModelIsLoading ? (
@@ -573,19 +581,41 @@ export function ModelReasoningPicker({
               </div>
             ) : hasActiveModelOptions ? (
               <>
-                {activeModelOptions.map((option) => (
-                  <MenuRowButton
-                    key={option.value}
-                    // The menu always reflects the provider whose models it lists
-                    // (either committed or previewed) — strip with `activeProviderId`.
-                    label={stripModelBrandPrefix(
-                      option.label,
-                      activeProviderId,
-                    )}
-                    selected={!isPreviewing && option.value === modelValue}
-                    onClick={() => handleModelSelect(option.value)}
-                  />
-                ))}
+                {modelGroups
+                  ? modelGroups.map((group) => (
+                      <Fragment key={group.providerLabel}>
+                        <MenuSectionLabel>
+                          {group.providerLabel}
+                        </MenuSectionLabel>
+                        {group.options.map((option) => (
+                          <MenuRowButton
+                            key={option.value}
+                            label={stripModelBrandPrefix(
+                              option.label,
+                              activeProviderId,
+                            )}
+                            selected={
+                              !isPreviewing && option.value === modelValue
+                            }
+                            onClick={() => handleModelSelect(option.value)}
+                          />
+                        ))}
+                      </Fragment>
+                    ))
+                  : activeModelOptions.map((option) => (
+                      <MenuRowButton
+                        key={option.value}
+                        // The menu always reflects the provider whose models it
+                        // lists (either committed or previewed) — strip with
+                        // `activeProviderId`.
+                        label={stripModelBrandPrefix(
+                          option.label,
+                          activeProviderId,
+                        )}
+                        selected={!isPreviewing && option.value === modelValue}
+                        onClick={() => handleModelSelect(option.value)}
+                      />
+                    ))}
                 {activeMoreModelOptions.length > 0 ? (
                   isCompactViewport ? (
                     <>

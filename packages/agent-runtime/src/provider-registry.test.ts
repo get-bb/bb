@@ -343,6 +343,19 @@ describe("provider registry", () => {
         },
         available: true,
       },
+      {
+        id: "omp",
+        displayName: "oh-my-pi",
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: false,
+          supportsServiceTier: false,
+          supportsUserQuestion: false,
+          supportsFork: false,
+          supportedPermissionModes: ["full"],
+        },
+        available: true,
+      },
       { id: "acp-cursor", displayName: "Cursor", available: true },
     ]);
   });

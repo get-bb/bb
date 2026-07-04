@@ -350,6 +350,47 @@ describe("public thread default routes", () => {
     });
   });
 
+  it("fails thread creation without a model when omp has no stored defaults", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-missing-omp",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-defaults-missing-omp",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "omp",
+          input: [{ type: "text", text: "Create without defaults" }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: expect.stringContaining("provider omp"),
+      });
+      expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
+        0,
+      );
+    });
+  });
+
   it("rejects thread creation without an origin at the public API boundary", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

@@ -7,7 +7,7 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
-Providers are agent backends (e.g., codex, claude-code). Each supports different models.
+Providers are agent backends (e.g., codex, claude-code, omp). Each supports different models. The omp provider drives the user-installed `omp` CLI; install and authenticate it via omp itself.
 
   bb provider list                        List available providers
   bb provider models [providerId]         List models for a provider

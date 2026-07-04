@@ -64,8 +64,8 @@ describe("appendCustomModels", () => {
     ).toEqual(["low", "medium", "high", "xhigh", "ultracode", "max"]);
   });
 
-  it("caps codex and pi custom models at xhigh (no max)", () => {
-    for (const providerId of ["codex", "pi"] as const) {
+  it("caps codex, pi, and omp custom models at xhigh (no max)", () => {
+    for (const providerId of ["codex", "pi", "omp"] as const) {
       const { models } = appendCustomModels({
         customModels: [{ providerId, model: "custom-model" }],
         models: [],

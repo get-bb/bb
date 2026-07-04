@@ -314,6 +314,13 @@ describe("thread runtime config", () => {
       name: "defaults Pi child execution permission mode to full",
       requestedModel: "openai-codex/gpt-5.4",
     },
+    {
+      childProviderId: "omp",
+      expectedPermissionMode: "full",
+      parentProviderId: "omp",
+      name: "defaults OMP child execution permission mode to full",
+      requestedModel: "openai-codex/gpt-5.4",
+    },
   ])(
     "$name",
     async ({
@@ -554,6 +561,37 @@ describe("thread runtime config", () => {
           },
         }),
       ).rejects.toThrow("Provider pi only supports full permission mode.");
+    });
+  });
+
+  it("rejects permission modes unsupported by omp", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-permission-mode-unsupported-omp",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "omp",
+      });
+
+      await expect(
+        resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: "openai/codex-mini",
+            permissionMode: "workspace-write",
+            source: "client/turn/requested",
+          },
+        }),
+      ).rejects.toThrow("Provider omp only supports full permission mode.");
     });
   });
 

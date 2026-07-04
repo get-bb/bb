@@ -1847,6 +1847,48 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("returns null default execution options for stale stored omp capabilities", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { providerId: "omp" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 205 }),
+          input: [{ type: "text", text: "Prior request" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "openai/codex-mini",
+            reasoningLevel: "medium",
+            permissionMode: "workspace-write",
+            serviceTier: "default",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/default-execution-options`,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toBeNull();
+    });
+  });
+
   it("fails loudly when the latest stored request event is malformed", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

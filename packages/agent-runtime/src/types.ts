@@ -36,10 +36,17 @@ export interface AgentRuntimePiSkillRoot {
   skillDirectoryRootPath: string;
 }
 
+export interface AgentRuntimeOmpSkillRoot {
+  id: string;
+  providerId: "omp";
+  skillDirectoryRootPath: string;
+}
+
 export type AgentRuntimeSkillRoot =
   | AgentRuntimeClaudeCodeSkillRoot
   | AgentRuntimeCodexSkillRoot
-  | AgentRuntimePiSkillRoot;
+  | AgentRuntimePiSkillRoot
+  | AgentRuntimeOmpSkillRoot;
 
 /**
  * Final per-thread state snapshot taken when a provider process exits,

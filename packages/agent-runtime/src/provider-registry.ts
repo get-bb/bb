@@ -19,6 +19,7 @@ import {
 } from "./acp/profiles.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
+import { createOmpProviderAdapter } from "./omp/adapter.js";
 import { createPiProviderAdapter } from "./pi/adapter.js";
 import type {
   ProviderAdapter,
@@ -51,6 +52,10 @@ const builtInProviders = [
   {
     createAdapter: (options) => createPiProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("pi"),
+  },
+  {
+    createAdapter: (options) => createOmpProviderAdapter(options),
+    info: getBuiltInAgentProviderInfo("omp"),
   },
   ...ACP_AGENT_PROFILES.map((profile) => ({
     createAdapter: (options: ProviderAdapterFactoryOptions) =>
