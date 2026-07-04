@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginAppSlots,
   type PluginComposerAccessoryProps,
+  type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
   type PluginNavPanelProps,
@@ -133,6 +134,7 @@ type SlotPropsByName = {
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  fileOpener: PluginFileOpenerProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -144,6 +146,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  fileOpener: ["path", "source"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };

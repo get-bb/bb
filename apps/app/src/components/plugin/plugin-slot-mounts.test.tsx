@@ -47,6 +47,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    fileOpeners: [],
     ...overrides,
   };
 }
@@ -681,5 +682,91 @@ describe("plugin thread panel actions", () => {
     });
     render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
     expect(screen.getByText(/This plugin tab is not available/)).toBeDefined();
+  });
+});
+
+describe("plugin file opener tabs", () => {
+  function MarkdownEditorProbe({
+    path,
+    source,
+  }: {
+    path: string;
+    source: { kind: string; environmentId: string | null };
+  }) {
+    return (
+      <div>
+        editor {path} @ {source.kind}:{String(source.environmentId)}
+      </div>
+    );
+  }
+
+  it("renders the opener component with parsed path + source", () => {
+    setPluginSlotRegistrations(
+      "notes",
+      registrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: MarkdownEditorProbe,
+          },
+        ],
+      }),
+    );
+    const tab = createPluginPanelFixedPanelTab({
+      actionId: "file-opener:editor",
+      paramsJson: JSON.stringify({
+        path: "notes/todo.md",
+        source: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: "env_1",
+          projectId: null,
+        },
+      }),
+      pluginId: "notes",
+      title: "todo.md",
+    });
+    render(<PluginPanelTabContent tab={tab} threadId={null} />);
+    expect(
+      screen.getByText("editor notes/todo.md @ workspace:env_1"),
+    ).toBeDefined();
+  });
+
+  it("degrades to a placeholder when the opener is gone or params are junk", () => {
+    const orphanTab = createPluginPanelFixedPanelTab({
+      actionId: "file-opener:gone",
+      paramsJson: JSON.stringify({ path: "a.md", source: { kind: "workspace" } }),
+      pluginId: "ghost",
+      title: "a.md",
+    });
+    const { unmount } = render(
+      <PluginPanelTabContent tab={orphanTab} threadId={null} />,
+    );
+    expect(screen.getByText(/file opener is not available/)).toBeDefined();
+    unmount();
+
+    setPluginSlotRegistrations(
+      "notes",
+      registrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: MarkdownEditorProbe,
+          },
+        ],
+      }),
+    );
+    const junkParamsTab = createPluginPanelFixedPanelTab({
+      actionId: "file-opener:editor",
+      paramsJson: "not json",
+      pluginId: "notes",
+      title: "junk",
+    });
+    render(<PluginPanelTabContent tab={junkParamsTab} threadId={null} />);
+    expect(screen.getByText(/file opener is not available/)).toBeDefined();
   });
 });

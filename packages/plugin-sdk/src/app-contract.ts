@@ -53,6 +53,25 @@ export interface PluginComposerAccessoryProps {
   threadId: string | null;
 }
 
+/**
+ * Where a file being opened by a `fileOpener` lives. `path` semantics follow
+ * the source: workspace paths are relative to the environment's worktree,
+ * thread-storage paths are relative to the thread's storage root, host paths
+ * are absolute on the thread's host.
+ */
+export interface PluginFileOpenerSource {
+  kind: "workspace" | "host" | "thread-storage";
+  threadId: string | null;
+  environmentId: string | null;
+  projectId: string | null;
+}
+
+/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
+export interface PluginFileOpenerProps {
+  path: string;
+  source: PluginFileOpenerSource;
+}
+
 // ---------------------------------------------------------------------------
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
@@ -138,6 +157,25 @@ export interface PluginComposerAccessoryRegistration {
   component: ComponentType<PluginComposerAccessoryProps>;
 }
 
+/**
+ * Register this plugin as a viewer/editor for file extensions. The user
+ * picks (and can set as default) an opener per extension via the file tab's
+ * "Open with" menu; matching files opened in the panel then render
+ * `component` in a plugin tab instead of the built-in preview. Applies to
+ * working-tree, host, and thread-storage files — never to git-ref snapshots
+ * (diff views always use the built-in preview). The built-in preview stays
+ * one menu click away, and a missing/disabled opener falls back to it.
+ */
+export interface PluginFileOpenerRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label in the "Open with" menu (e.g. "Notes editor"). */
+  title: string;
+  /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+  extensions: readonly string[];
+  component: ComponentType<PluginFileOpenerProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -147,6 +185,7 @@ export interface PluginAppSlots {
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+  fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 
 export interface PluginAppBuilder {

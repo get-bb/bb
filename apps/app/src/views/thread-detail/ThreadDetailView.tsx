@@ -127,6 +127,7 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import { useOpenWithTabMenu } from "@/components/plugin/useOpenWithTabMenu";
 import { Icon } from "@/components/ui/icon.js";
 import {
   getBbDesktopInfo,
@@ -573,6 +574,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openSideChat,
     openExistingSideChatTab,
     orderedSecondaryFileTabs,
+    replaceSecondaryPanelTab,
     reorderFileTab,
     selectFileSearchResult,
     setSideChatThreadId,
@@ -588,6 +590,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const pluginPanelActions = usePluginPanelActions({
     openPluginPanel,
     threadId,
+  });
+  const buildTabMenuItems = useOpenWithTabMenu({
+    replaceTab: replaceSecondaryPanelTab,
   });
   useThreadOpenFileSignal({
     threadId,
@@ -1295,6 +1300,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1305,6 +1311,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1316,6 +1323,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isPinned: tab.isPinned,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1360,6 +1368,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
                 />
               ),
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1371,6 +1380,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activateSideChatTab,
     activeFixedSecondaryTabId,
     activeSideChatTabId,
+    buildTabMenuItems,
     closeTab,
     closeSideChatTab,
     handleActivateFileTab,

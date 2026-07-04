@@ -441,6 +441,20 @@ Slot props contracts (versioned, additive-only):
   or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `fileOpener` → `{ path: string, source }` — register as a viewer/editor
+  for file extensions: `{ id, title, extensions: ["md"], component }`.
+  Users pick it (and can set it as the default per extension) from a file
+  tab's right-click "Open with" menu; matching files opened in the right
+  panel then render your component in a plugin tab instead of the built-in
+  preview — this includes links clicked in rendered markdown, the file
+  picker, and `bb thread open`. `source` is
+  `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
+  projectId }` (nullable fields) and `path` follows the source (workspace:
+  worktree-relative; host: absolute; thread-storage: storage-relative).
+  Applies only to live file content — git-ref snapshots and deleted files
+  always use the built-in preview, and a removed/disabled opener degrades
+  back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
+  CAS-save the content.
 
 Hooks:
 

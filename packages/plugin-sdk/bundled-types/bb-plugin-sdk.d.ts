@@ -53,6 +53,23 @@ interface PluginComposerAccessoryProps {
     threadId: string | null;
 }
 /**
+ * Where a file being opened by a `fileOpener` lives. `path` semantics follow
+ * the source: workspace paths are relative to the environment's worktree,
+ * thread-storage paths are relative to the thread's storage root, host paths
+ * are absolute on the thread's host.
+ */
+interface PluginFileOpenerSource {
+    kind: "workspace" | "host" | "thread-storage";
+    threadId: string | null;
+    environmentId: string | null;
+    projectId: string | null;
+}
+/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
+interface PluginFileOpenerProps {
+    path: string;
+    source: PluginFileOpenerSource;
+}
+/**
  * Slot/panel ids and nav-panel paths must match this pattern (letters,
  * digits, `-`, `_`): they ride URLs and persisted panel-tab keys.
  */
@@ -130,11 +147,30 @@ interface PluginComposerAccessoryRegistration {
     id: string;
     component: ComponentType<PluginComposerAccessoryProps>;
 }
+/**
+ * Register this plugin as a viewer/editor for file extensions. The user
+ * picks (and can set as default) an opener per extension via the file tab's
+ * "Open with" menu; matching files opened in the panel then render
+ * `component` in a plugin tab instead of the built-in preview. Applies to
+ * working-tree, host, and thread-storage files — never to git-ref snapshots
+ * (diff views always use the built-in preview). The built-in preview stays
+ * one menu click away, and a missing/disabled opener falls back to it.
+ */
+interface PluginFileOpenerRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Label in the "Open with" menu (e.g. "Notes editor"). */
+    title: string;
+    /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+    extensions: readonly string[];
+    component: ComponentType<PluginFileOpenerProps>;
+}
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
     navPanel(registration: PluginNavPanelRegistration): void;
     threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
     composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+    fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
@@ -389,8 +425,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             in_progress: "in_progress";
+            completed: "completed";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2142,4 +2178,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };

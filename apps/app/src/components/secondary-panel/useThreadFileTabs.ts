@@ -20,6 +20,9 @@ import {
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
+import { createFileOpenerTabForRequest } from "@/components/plugin/file-opener-tabs";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
@@ -405,14 +408,31 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState,
   ]);
 
+  const { fileOpeners } = usePluginSlots();
+  const fileOpenerPreference = useFileOpenerPreferenceValue();
+
   const openTab = useCallback(
     (request: OpenSecondaryPanelTabRequest) => {
-      const tab = createTabForOpenRequest({
+      // Default-opener diversion (plugin design §5.2): every file-open flow
+      // funnels through here (links, file search, `bb thread open`), so a
+      // preferred plugin opener applies uniformly. Falls through to the
+      // built-in tab when no opener matches.
+      const openerTab = createFileOpenerTabForRequest({
+        fileOpeners,
+        preference: fileOpenerPreference,
         projectId,
         request,
         resolvedEnvironmentId,
         threadId: resolvedFileOwnerThreadId,
       });
+      const tab =
+        openerTab ??
+        createTabForOpenRequest({
+          projectId,
+          request,
+          resolvedEnvironmentId,
+          threadId: resolvedFileOwnerThreadId,
+        });
       if (tab === null) return;
 
       if (
@@ -433,12 +453,35 @@ export function useThreadFileTabs({
       });
     },
     [
+      fileOpenerPreference,
+      fileOpeners,
       recordRecentItem,
       projectId,
       resolvedEnvironmentId,
       resolvedFileOwnerThreadId,
       updateFixedPanelTabsState,
     ],
+  );
+
+  // "Open with…" switches a file tab's viewer in place: activate/insert the
+  // replacement, then drop the original (identity-keyed tabs mean the
+  // replacement may already exist — it is focused instead of duplicated).
+  const replaceSecondaryPanelTab = useCallback(
+    ({ fromTabId, toTab }: { fromTabId: string; toTab: FixedPanelTab }) => {
+      updateFixedPanelTabsState((state) => {
+        const opened = openSecondaryPanelTabInState({ state, tab: toTab });
+        const tabs = opened.secondary.tabs.filter(
+          (candidate) => candidate.id !== fromTabId || candidate.id === toTab.id,
+        );
+        return setSecondaryPanelTabsInState({
+          activeTabId: toTab.id,
+          isOpen: opened.secondary.isOpen,
+          state: opened,
+          tabs,
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
   );
 
   const activateTab = useCallback(
@@ -722,6 +765,7 @@ export function useThreadFileTabs({
     openExistingSideChatTab,
     openTab,
     orderedSecondaryFileTabs,
+    replaceSecondaryPanelTab,
     reorderFileTab,
     selectFileSearchResult,
     setSideChatThreadId,

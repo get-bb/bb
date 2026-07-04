@@ -5,6 +5,10 @@ import {
   type PluginThreadPanelActionSlot,
 } from "@/lib/plugin-slots";
 import type { PluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  fileOpenerIdFromActionId,
+  parseFileOpenerParams,
+} from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 /**
@@ -125,6 +129,20 @@ export function PluginPanelTabContent({
   tab: PluginPanelFixedPanelTab;
   threadId: string | null | undefined;
 }) {
+  const openerId = fileOpenerIdFromActionId(tab.actionId);
+  if (openerId !== null) {
+    return <FileOpenerTabContent openerId={openerId} tab={tab} />;
+  }
+  return <ActionTabContent tab={tab} threadId={threadId} />;
+}
+
+function ActionTabContent({
+  tab,
+  threadId,
+}: {
+  tab: PluginPanelFixedPanelTab;
+  threadId: string | null | undefined;
+}) {
   const { threadPanelActions } = usePluginSlots();
   const action =
     threadPanelActions.find(
@@ -165,6 +183,56 @@ export function PluginPanelTabContent({
         slotId={action.id}
       >
         <action.component threadId={threadId} params={params} />
+      </PluginSlotMount>
+    </div>
+  );
+}
+
+/**
+ * A file diverted to a plugin `fileOpener` (see file-opener-tabs.ts). Same
+ * degrade rules as action tabs: missing opener/plugin or unparsable params
+ * render a placeholder, never a crash.
+ */
+function FileOpenerTabContent({
+  openerId,
+  tab,
+}: {
+  openerId: string;
+  tab: PluginPanelFixedPanelTab;
+}) {
+  const { fileOpeners } = usePluginSlots();
+  const opener =
+    fileOpeners.find(
+      (candidate) =>
+        candidate.pluginId === tab.pluginId && candidate.id === openerId,
+    ) ?? null;
+  const file = useMemo(
+    () => parseFileOpenerParams(tab.paramsJson),
+    [tab.paramsJson],
+  );
+  if (opener === null || file === null) {
+    return (
+      <div className="p-4">
+        <EmptyStatePanel className="rounded-lg p-6 text-sm">
+          This file opener is not available. The plugin may still be loading,
+          or it has been disabled or removed — reopen the file to use the
+          built-in preview.
+        </EmptyStatePanel>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      data-testid="plugin-file-opener-tab-content"
+    >
+      <PluginSlotMount
+        key={`${opener.pluginId}/${opener.id}/${opener.generation}`}
+        pluginId={opener.pluginId}
+        slotKind="fileOpener"
+        slotId={opener.id}
+      >
+        <opener.component path={file.path} source={file.source} />
       </PluginSlotMount>
     </div>
   );

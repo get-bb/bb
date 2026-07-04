@@ -68,6 +68,7 @@ import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
+import { useOpenWithTabMenu } from "@/components/plugin/useOpenWithTabMenu";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -2034,6 +2035,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isNewTabActive,
     openTab,
     orderedSecondaryFileTabs,
+    replaceSecondaryPanelTab,
     reorderFileTab,
     selectFileSearchResult,
     updateBrowserTab,
@@ -2047,6 +2049,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     retainedTerminalId,
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
+  });
+  const buildTabMenuItems = useOpenWithTabMenu({
+    replaceTab: replaceSecondaryPanelTab,
   });
   const activeRootHostFileThreadId =
     activeHostFileThreadId ??
@@ -2548,6 +2553,7 @@ export function RootComposeView(props: RootComposeViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -2558,6 +2564,7 @@ export function RootComposeView(props: RootComposeViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -2569,6 +2576,7 @@ export function RootComposeView(props: RootComposeViewProps) {
               isPinned: tab.isPinned,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -2606,9 +2614,9 @@ export function RootComposeView(props: RootComposeViewProps) {
               onClose: () => closeTab(tab.id),
             };
           case "plugin-panel":
-            // Plugin panel tabs are opened from a thread's launcher; the root
-            // panel offers no plugin actions, but its persisted state must
-            // still render any tab kind without crashing.
+            // Plugin action tabs are opened from a thread's launcher; the
+            // root panel offers no plugin actions, but file-opener tabs open
+            // here too and persisted state must render any kind.
             return {
               id: tab.id,
               filename: tab.title,
@@ -2621,6 +2629,7 @@ export function RootComposeView(props: RootComposeViewProps) {
                 />
               ),
               statusLabel: null,
+              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };

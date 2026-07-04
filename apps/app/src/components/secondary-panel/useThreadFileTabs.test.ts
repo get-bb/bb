@@ -13,6 +13,10 @@ import {
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
 import { useThreadFileTabs } from "./useThreadFileTabs";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 
 type TerminalSessionOverrides = Partial<TerminalSession>;
 
@@ -41,6 +45,7 @@ function terminalSession(
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  resetPluginSlotStoreForTest();
 });
 
 describe("useThreadFileTabs terminal pruning", () => {
@@ -336,5 +341,190 @@ describe("useThreadFileTabs plugin panel tabs", () => {
     expect(
       result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
     ).toEqual(["plugin-panel"]);
+  });
+});
+
+describe("useThreadFileTabs file opener diversion", () => {
+  function NotesEditor() {
+    return null;
+  }
+
+  function registerNotesOpener() {
+    setPluginSlotRegistrations("notes", {
+      homepageSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerAccessories: [],
+      fileOpeners: [
+        {
+          id: "editor",
+          title: "Notes editor",
+          extensions: ["md"],
+          component: NotesEditor,
+        },
+      ],
+    });
+  }
+
+  function setDefaultOpener() {
+    window.localStorage.setItem(
+      "bb.fileOpenerByExtension",
+      JSON.stringify({ md: "notes:editor" }),
+    );
+  }
+
+  it("diverts working-tree markdown opens to the preferred opener tab", () => {
+    registerNotesOpener();
+    setDefaultOpener();
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId: "opener-divert",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "todo.md",
+    });
+    const params = JSON.parse(
+      result.current.activePluginPanelTab?.paramsJson ?? "null",
+    ) as { path: string; source: { kind: string; environmentId: string | null } };
+    expect(params.path).toBe("notes/todo.md");
+    expect(params.source).toMatchObject({
+      kind: "workspace",
+      environmentId: "env_1",
+    });
+  });
+
+  it("keeps the built-in preview for ref snapshots and unmatched extensions", () => {
+    registerNotesOpener();
+    setDefaultOpener();
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId: "opener-skip",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    // A git-ref snapshot never diverts, even for a matching extension.
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "head" },
+          statusLabel: null,
+        },
+      }),
+    );
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+
+    // Unmatched extension stays built-in too.
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "src/index.ts",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
+  });
+
+  it("falls back to the built-in preview when the preferred opener is gone", () => {
+    // Preference points at an opener that is not registered (plugin removed).
+    setDefaultOpener();
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId: "opener-gone",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+  });
+
+  it("replaces a tab in place for Open with switches", () => {
+    registerNotesOpener();
+    const { result } = renderHook(() =>
+      useThreadFileTabs({
+        threadId: "opener-switch",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    // Open built-in (no default set), then switch to the opener tab.
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+    const builtinTabId = result.current.orderedSecondaryFileTabs[0]?.id;
+    expect(builtinTabId).toBeDefined();
+
+    act(() =>
+      result.current.replaceSecondaryPanelTab({
+        fromTabId: builtinTabId ?? "",
+        toTab: {
+          kind: "plugin-panel",
+          id: "fixed:plugin-panel:x:none",
+          pluginId: "notes",
+          actionId: "file-opener:editor",
+          title: "todo.md",
+          paramsJson: "{}",
+        },
+      }),
+    );
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(1);
+    expect(result.current.activePluginPanelTab?.actionId).toBe(
+      "file-opener:editor",
+    );
   });
 });

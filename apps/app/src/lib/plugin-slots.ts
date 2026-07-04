@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   PluginComposerAccessoryRegistration,
+  PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
   PluginThreadPanelActionRegistration,
@@ -19,6 +20,7 @@ export interface PluginRegistrationSet {
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
+  fileOpeners: readonly PluginFileOpenerRegistration[];
 }
 
 interface PluginSlotBase {
@@ -40,6 +42,8 @@ export interface PluginThreadPanelActionSlot
   extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerAccessorySlot
   extends PluginComposerAccessoryRegistration, PluginSlotBase {}
+export interface PluginFileOpenerSlot
+  extends PluginFileOpenerRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -47,6 +51,7 @@ export interface PluginSlotSnapshot {
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
+  fileOpeners: readonly PluginFileOpenerSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -54,6 +59,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   navPanels: [],
   threadPanelActions: [],
   composerAccessories: [],
+  fileOpeners: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -68,11 +74,13 @@ function buildSnapshot(): PluginSlotSnapshot {
     navPanels: PluginNavPanelSlot[];
     threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
+    fileOpeners: PluginFileOpenerSlot[];
   } = {
     homepageSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    fileOpeners: [],
   };
   for (const pluginId of pluginIds) {
     const set = registrationsByPluginId.get(pluginId);
@@ -89,6 +97,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.composerAccessories) {
       next.composerAccessories.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.fileOpeners) {
+      next.fileOpeners.push({ ...registration, pluginId, generation });
     }
   }
   return next;
