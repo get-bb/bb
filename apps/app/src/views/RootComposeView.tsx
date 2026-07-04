@@ -3337,6 +3337,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        onOpenSecondaryPanel={handleOpenNewTab}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,
           canUseGitUi: false,

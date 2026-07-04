@@ -18,6 +18,7 @@ import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { useCompactSecondaryPanelSwipeOpen } from "@/components/secondary-panel/useCompactSecondaryPanelSwipeOpen";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -63,6 +64,7 @@ interface RootComposeSecondaryContentProps {
   children: ReactNode;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
+  onOpenSecondaryPanel: () => void;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -72,9 +74,15 @@ export function RootComposeSecondaryContent({
   children,
   contentClassName,
   isSecondaryPanelOpen,
+  onOpenSecondaryPanel,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const renderAsDrawer = useIsCompactViewport();
+  const compactSecondaryPanelSwipeOpenHandlers =
+    useCompactSecondaryPanelSwipeOpen({
+      enabled: renderAsDrawer && !isSecondaryPanelOpen,
+      onOpen: onOpenSecondaryPanel,
+    });
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
@@ -217,7 +225,10 @@ export function RootComposeSecondaryContent({
   ) : null;
 
   return (
-    <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
+    <div
+      {...compactSecondaryPanelSwipeOpenHandlers}
+      className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5"
+    >
       {/* Size container so the secondary panel's content can be pinned to its
           open width in container-query units (cqw) — a fixed-width layer that
           translates in (rather than reflowing) while the panel's flex width

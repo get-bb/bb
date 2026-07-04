@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport.js";
 import {
@@ -28,6 +28,7 @@ interface PanelProps {
 interface RenderRootComposeArgs {
   isCompactViewport: boolean;
   isSecondaryPanelOpen: boolean;
+  onOpenSecondaryPanel?: () => void;
 }
 
 type TestDesktopWindow = {
@@ -154,6 +155,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
     >
       <RootComposeSecondaryContent
         isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+        onOpenSecondaryPanel={renderArgs.onOpenSecondaryPanel ?? noop}
         secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
       >
         <div data-testid="root-compose-content" />
@@ -171,6 +173,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
         >
           <RootComposeSecondaryContent
             isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+            onOpenSecondaryPanel={renderArgs.onOpenSecondaryPanel ?? noop}
             secondaryPanel={createSecondaryPanel(
               renderArgs.isSecondaryPanelOpen,
             )}
@@ -294,5 +297,37 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(
       screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
     ).toBe("true");
+  });
+
+  it("opens the compact right panel from a left swipe across the main content", () => {
+    const onOpenSecondaryPanel = vi.fn();
+
+    renderRootCompose({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: false,
+      onOpenSecondaryPanel,
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("root-compose-content"), {
+      button: 0,
+      clientX: 900,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 760,
+      clientY: 104,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 760,
+      clientY: 104,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+
+    expect(onOpenSecondaryPanel).toHaveBeenCalledTimes(1);
   });
 });

@@ -2215,6 +2215,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         isConversationCollapsed={isConversationCollapsed}
         surface={props.surface}
+        onOpenSecondaryPanel={toggleSecondaryPanel}
         onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{
           thread,
