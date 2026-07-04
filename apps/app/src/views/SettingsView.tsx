@@ -154,7 +154,9 @@ export interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   desktopShellAvailable: boolean;
+  firstmateEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onFirstmateEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
@@ -670,6 +672,7 @@ export function GeneralSettingsSection({
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
+const FIRSTMATE_EXPERIMENT_LABEL = "Firstmate";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
 const UI_FORKING_EXPERIMENT_LABEL = "UI forking";
 
@@ -852,7 +855,9 @@ export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   desktopShellAvailable,
   disabled,
+  firstmateEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onFirstmateEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
@@ -878,6 +883,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={FIRSTMATE_EXPERIMENT_LABEL}
+          description="Enable the native Firstmate liaison surface and orchestration skill."
+        >
+          <Switch
+            checked={firstmateEnabled}
+            disabled={disabled}
+            onCheckedChange={onFirstmateEnabledChange}
+            aria-label={FIRSTMATE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1031,10 +1048,17 @@ export function SettingsView() {
             systemConfigQuery.data === undefined ||
             updateExperimentsMutation.isPending
           }
+          firstmateEnabled={experiments.firstmate}
           onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
             updateExperimentsMutation.mutate({
               ...experiments,
               claudeCodeMockCliTraffic: enabled,
+            })
+          }
+          onFirstmateEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              firstmate: enabled,
             })
           }
           onPopoutChatEnabledChange={(enabled) =>

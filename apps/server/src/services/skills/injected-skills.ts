@@ -33,6 +33,7 @@ export interface ResolveInjectedSkillSourcesArgs {
   additionalSkillsRootPaths?: readonly string[];
   builtinSkillsRootPath: string;
   dataDir: string;
+  disabledBuiltinSkillNames?: readonly string[];
   /**
    * Skills roots contributed by running plugins (design §4.4). Their own
    * precedence tier: overridden by project and user (data-dir/inherited)
@@ -390,7 +391,9 @@ export function resolveInjectedSkillSources(
     logger,
     skillsRootPath: args.builtinSkillsRootPath,
     sourceType: "builtin",
-  });
+  }).filter(
+    (source) => !(args.disabledBuiltinSkillNames ?? []).includes(source.name),
+  );
 
   const dataDirSources = readSkillsRoot({
     logger,

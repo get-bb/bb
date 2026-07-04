@@ -25,6 +25,7 @@ import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -46,6 +47,8 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const FIRSTMATE_INITIAL_PROMPT =
+  "Use Firstmate mode. Act as my single liaison across BB threads and subthreads: inspect the current BB context, propose a small crew plan, and spawn or steer mate threads only when parallel work is useful.";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
@@ -76,6 +79,7 @@ export function AppSidebar({
   showTopReserve,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
+  const systemConfig = useSystemConfig();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
   const { isAutomationsView } = useRouteState();
@@ -91,6 +95,7 @@ export function AppSidebar({
   const threadSearchActiveDescendantId =
     threadSearchNavigationItems[threadSearchActiveIndex]?.optionId;
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const firstmateEnabled = systemConfig.data?.experiments.firstmate === true;
 
   const focusThreadSearchInput = useCallback(() => {
     if (isPointerCoarse) return;
@@ -168,6 +173,16 @@ export function AppSidebar({
   const handleOpenAutomations = useCallback(() => {
     closeOnMobile();
     void navigate(getAutomationsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenFirstmate = useCallback(() => {
+    closeOnMobile();
+    void navigate(getRootComposeRoutePath(), {
+      state: {
+        focusPrompt: true,
+        initialPrompt: FIRSTMATE_INITIAL_PROMPT,
+      },
+    });
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -300,6 +315,7 @@ export function AppSidebar({
           <ProjectListActionButtons
             onNewChat={handleNewChat}
             onOpenAutomations={handleOpenAutomations}
+            onOpenFirstmate={firstmateEnabled ? handleOpenFirstmate : undefined}
             isAutomationsActive={isAutomationsView}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,

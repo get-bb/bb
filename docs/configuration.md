@@ -88,6 +88,19 @@ bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
 the default local packaged server at `http://127.0.0.1:38886`; set it for remote
 or non-default servers.
 
+## Native Experimental Integrations
+
+Native integrations are gated under **Settings → Experiments** and are off by
+default.
+
+**Firstmate** adds a sidebar entry that opens the normal BB composer in
+Firstmate mode, plus an injected `firstmate` skill for provider-backed threads.
+The skill bundles the upstream Firstmate operating manual, internal skills, and
+brief scaffold as source references, then maps Firstmate's crew and secondmate
+lifecycle onto BB-native projects, threads, child threads, provider settings,
+permissions, and worktrees. Disabling the experiment hides the sidebar entry and
+removes the built-in Firstmate skill from newly-started thread sessions.
+
 ## Client SSH Targets
 
 `~/.bb/client.json` is local to the machine showing the UI. The CLI resolves the

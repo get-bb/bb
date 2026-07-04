@@ -151,6 +151,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
   }).notNull(),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
   popoutChatHotkey: text("popout_chat_hotkey").notNull(),
+  firstmate: integer("firstmate", { mode: "boolean" })
+    .notNull()
+    .default(false),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   uiForking: integer("ui_forking", { mode: "boolean" })
     .notNull()

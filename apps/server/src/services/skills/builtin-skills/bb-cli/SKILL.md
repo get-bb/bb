@@ -55,6 +55,12 @@ message agents, or inspect projects, providers, and environments.
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
+- The Firstmate native integration is experimental. When the user enables
+  **"Firstmate"** under Settings → Experiments, the app shows a Firstmate
+  sidebar entry and provider-backed sessions receive the `firstmate` skill.
+  That skill bundles the upstream Firstmate prompt package as references and
+  maps its crew/secondmate lifecycle onto BB threads. When off, the sidebar
+  entry and built-in skill are hidden.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.

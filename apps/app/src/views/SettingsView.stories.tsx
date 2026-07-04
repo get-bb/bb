@@ -232,10 +232,17 @@ function ExperimentsStory({
       }
       desktopShellAvailable={desktopShellAvailable}
       disabled={false}
+      firstmateEnabled={state.experiments.firstmate}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           claudeCodeMockCliTraffic: enabled,
+        }))
+      }
+      onFirstmateEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          firstmate: enabled,
         }))
       }
       onPopoutChatEnabledChange={(enabled) =>

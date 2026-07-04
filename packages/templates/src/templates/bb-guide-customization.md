@@ -10,6 +10,15 @@ Customization commands
 bb can be reshaped while it runs, at two levels: the color palette (`bb theme`)
 and the frontend itself (`bb ui`).
 
+Native experimental integrations
+
+Settings → Experiments contains opt-in native integrations. "Firstmate" enables
+a sidebar entry that opens the normal BB composer in Firstmate mode and injects
+the built-in `firstmate` skill into newly-started provider sessions. The skill
+bundles upstream Firstmate prompt references and maps its crew/secondmate model
+onto BB threads. Turning it off hides the sidebar entry and removes that built-in
+skill from future sessions.
+
 Theming — the app-wide color palette
 
 `bb theme` controls a set of CSS-variable overrides, persisted server-side and
