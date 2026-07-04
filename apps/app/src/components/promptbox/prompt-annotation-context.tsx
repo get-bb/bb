@@ -5,6 +5,7 @@ export type PromptAnnotationInput = Omit<PromptDraftAnnotation, "id">;
 
 interface PromptAnnotationComposer {
   addAnnotation: (annotation: PromptAnnotationInput) => void;
+  annotations: readonly PromptDraftAnnotation[];
 }
 
 const PromptAnnotationComposerContext =
@@ -12,15 +13,22 @@ const PromptAnnotationComposerContext =
 
 interface PromptAnnotationComposerProviderProps {
   addAnnotation: (annotation: PromptAnnotationInput) => void;
+  annotations?: readonly PromptDraftAnnotation[];
   children: ReactNode;
 }
 
 export function PromptAnnotationComposerProvider({
   addAnnotation,
+  annotations = [],
   children,
 }: PromptAnnotationComposerProviderProps) {
   return (
-    <PromptAnnotationComposerContext.Provider value={{ addAnnotation }}>
+    <PromptAnnotationComposerContext.Provider
+      value={{
+        addAnnotation,
+        annotations,
+      }}
+    >
       {children}
     </PromptAnnotationComposerContext.Provider>
   );

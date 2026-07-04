@@ -633,9 +633,9 @@ export function usePierreLineSelectionActions({
           comment,
         });
       }
-      dismissSelection();
+      setActiveSelection(null);
     },
-    [activeRange, activeSelection, dismissSelection, onSelectionAnnotate],
+    [activeRange, activeSelection, onSelectionAnnotate],
   );
 
   const menu = useMemo(() => {

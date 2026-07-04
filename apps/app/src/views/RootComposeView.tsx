@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { nanoid } from "nanoid";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
@@ -941,7 +942,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const handleRootPanelAnnotate = useCallback(
     (annotation: PromptAnnotationInput) => {
-      promptDraft.addAnnotation({ id: crypto.randomUUID(), ...annotation });
+      promptDraft.addAnnotation({ id: nanoid(), ...annotation });
       setStartedComposing(true);
       window.requestAnimationFrame(() => {
         promptBoxRef.current?.focusEnd();
@@ -3296,7 +3297,10 @@ export function RootComposeView(props: RootComposeViewProps) {
   }
 
   return (
-    <PromptAnnotationComposerProvider addAnnotation={handleRootPanelAnnotate}>
+    <PromptAnnotationComposerProvider
+      addAnnotation={handleRootPanelAnnotate}
+      annotations={promptDraft.annotations ?? []}
+    >
       {providerCliInstallLogDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent

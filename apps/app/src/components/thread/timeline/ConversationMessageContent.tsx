@@ -56,6 +56,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  workspaceRootPath?: string;
 }
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
@@ -140,7 +141,6 @@ export interface ConversationMessageContentAssistantProps
   /** Shows the hover-revealed copy/fork/side-chat action footer. */
   showActions: boolean;
   turnRequest: null;
-  workspaceRootPath?: string;
 }
 
 /**
@@ -175,6 +175,7 @@ interface UserConversationMessageProps {
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
@@ -354,6 +355,7 @@ function UserConversationMessage({
   systemMessageSubject,
   text,
   turnRequest,
+  workspaceRootPath,
 }: UserConversationMessageProps) {
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
@@ -454,7 +456,11 @@ function UserConversationMessage({
             onOpenLocalFileLink={onOpenLocalFileLink}
             projectId={projectId}
           />
-          <ConversationAnnotations annotations={annotations} />
+          <ConversationAnnotations
+            annotations={annotations}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            workspaceRootPath={workspaceRootPath}
+          />
         </div>
         {messageText || addToChatAttachments.length > 0 ? (
           <div className="mt-1 flex justify-end">
@@ -599,6 +605,7 @@ export function ConversationMessageContent(
         systemMessageSubject={props.systemMessageSubject}
         text={text}
         turnRequest={props.turnRequest}
+        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }

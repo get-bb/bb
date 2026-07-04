@@ -20,6 +20,7 @@ import {
   usePierreLineSelectionActions,
   type PierreLineSelectionAnnotateArgs,
 } from "./PierreLineSelectionActions.js";
+import { PierrePromptAnnotationMarkers } from "./PierrePromptAnnotationMarkers.js";
 import { usePromptAnnotationComposer } from "@/components/promptbox/prompt-annotation-context.js";
 import {
   getWrappedImageIndex,
@@ -1123,6 +1124,7 @@ function GitDiffCardRawDiffBody({
   onSelectionAddToChat,
 }: GitDiffCardRawDiffBodyProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [annotationRenderRevision, setAnnotationRenderRevision] = useState(0);
   const displayStyle = getDiffPatchDisplayStyle(fileDiffOptions);
   const buildSelectionText = useCallback(
     (range: SelectedLineRange) =>
@@ -1141,6 +1143,13 @@ function GitDiffCardRawDiffBody({
   const annotationComposer = usePromptAnnotationComposer();
   const addAnnotation = annotationComposer?.addAnnotation;
   const filePath = normalizeGitDiffPath(fileDiff.name) ?? fileDiff.name;
+  const fileAnnotations = useMemo(
+    () =>
+      (annotationComposer?.annotations ?? []).filter(
+        (annotation) => annotation.path === filePath,
+      ),
+    [annotationComposer?.annotations, filePath],
+  );
   const onSelectionAnnotate = useMemo(
     () =>
       addAnnotation === undefined
@@ -1177,6 +1186,9 @@ function GitDiffCardRawDiffBody({
       onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
       onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
+      onPostRender: () => {
+        setAnnotationRenderRevision((revision) => revision + 1);
+      },
     }),
     [
       fileDiffOptions,
@@ -1190,7 +1202,7 @@ function GitDiffCardRawDiffBody({
   return (
     <div
       ref={containerRef}
-      className="overflow-x-auto"
+      className="relative overflow-x-auto"
       onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
       onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
@@ -1202,6 +1214,11 @@ function GitDiffCardRawDiffBody({
           selectedLines={lineSelectionActions.selectedRange}
         />
       </div>
+      <PierrePromptAnnotationMarkers
+        annotations={fileAnnotations}
+        containerRef={containerRef}
+        renderRevision={annotationRenderRevision}
+      />
       {lineSelectionActions.menu}
     </div>
   );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { nanoid } from "nanoid";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
@@ -829,7 +830,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const addAnnotationToComposer = selectionPromptDraft.addAnnotation;
   const handleAddAnnotation = useCallback(
     (annotation: PromptAnnotationInput) => {
-      addAnnotationToComposer({ id: crypto.randomUUID(), ...annotation });
+      addAnnotationToComposer({ id: nanoid(), ...annotation });
       setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
     [addAnnotationToComposer],
@@ -2168,7 +2169,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
-   <PromptAnnotationComposerProvider addAnnotation={handleAddAnnotation}>
+   <PromptAnnotationComposerProvider
+    addAnnotation={handleAddAnnotation}
+    annotations={selectionPromptDraft.annotations ?? []}
+   >
     <UrlOpenRoutingProvider
       openInAppBrowser={
         canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null

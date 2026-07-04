@@ -15,6 +15,7 @@ import {
   usePierreLineSelectionActions,
   type PierreLineSelectionAnnotateArgs,
 } from "@/components/git-diff/PierreLineSelectionActions.js";
+import { PierrePromptAnnotationMarkers } from "@/components/git-diff/PierrePromptAnnotationMarkers.js";
 import { usePromptAnnotationComposer } from "@/components/promptbox/prompt-annotation-context.js";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
@@ -877,6 +878,7 @@ function FilePreviewCode({
 }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [annotationRenderRevision, setAnnotationRenderRevision] = useState(0);
   const workerPool = useWorkerPool();
   const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
   const [workerPoolStats, setWorkerPoolStats] =
@@ -893,6 +895,13 @@ function FilePreviewCode({
   );
   const annotationComposer = usePromptAnnotationComposer();
   const addAnnotation = annotationComposer?.addAnnotation;
+  const fileAnnotations = useMemo(
+    () =>
+      (annotationComposer?.annotations ?? []).filter(
+        (annotation) => annotation.path === path,
+      ),
+    [annotationComposer?.annotations, path],
+  );
   const onSelectionAnnotate = useMemo(
     () =>
       addAnnotation === undefined
@@ -931,6 +940,9 @@ function FilePreviewCode({
       onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
       onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
+      onPostRender: () => {
+        setAnnotationRenderRevision((revision) => revision + 1);
+      },
     }),
     [
       lineOverflowMode,
@@ -1050,7 +1062,7 @@ function FilePreviewCode({
   return (
     <div
       ref={containerRef}
-      className="min-h-0 flex-auto"
+      className="relative min-h-0 flex-auto"
       style={FILE_PREVIEW_VIEW_STYLE}
       data-file-preview-line-number={targetLineNumber ?? undefined}
       onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
@@ -1063,6 +1075,11 @@ function FilePreviewCode({
         file={file}
         options={options}
         selectedLines={selectedLines}
+      />
+      <PierrePromptAnnotationMarkers
+        annotations={fileAnnotations}
+        containerRef={containerRef}
+        renderRevision={annotationRenderRevision}
       />
       {lineSelectionActions.menu}
     </div>

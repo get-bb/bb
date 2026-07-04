@@ -74,10 +74,10 @@ function AnnotationCommentForm({
         className="min-h-16 text-sm"
       />
       <div className="flex justify-end gap-1.5">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" onClick={onSubmit}>
+        <Button type="button" size="sm" onClick={onSubmit}>
           Add to chat
         </Button>
       </div>
