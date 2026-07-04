@@ -56,6 +56,30 @@ const threadSecondaryPanelBooleanStorage =
     serialize: (value) => String(value),
   });
 
+/**
+ * Height of the desktop terminal dock as a percentage of the right panel's
+ * vertical space. A global chrome preference (like the secondary panel width),
+ * so it persists across threads and reloads.
+ */
+export const DEFAULT_TERMINAL_DOCK_HEIGHT_PERCENT = 35;
+export const terminalDockHeightPercentAtom = atomWithStorage<number>(
+  "bb.thread.terminalDock.heightPercent",
+  DEFAULT_TERMINAL_DOCK_HEIGHT_PERCENT,
+  secondaryPanelWidthStorage,
+  { getOnInit: true },
+);
+
+/** Whether the desktop terminal dock is collapsed (shown by default). Global. */
+export const terminalDockCollapsedAtom = atomWithStorage<boolean>(
+  "bb.thread.terminalDock.collapsed",
+  false,
+  threadSecondaryPanelBooleanStorage,
+  { getOnInit: true },
+);
+
+/** Transient: true while the terminal dock resize handle is being dragged. */
+export const terminalDockResizingAtom = atom(false);
+
 function hasThreadId(
   threadId: ThreadSecondaryPanelThreadId,
 ): threadId is ResolvedThreadSecondaryPanelThreadId {

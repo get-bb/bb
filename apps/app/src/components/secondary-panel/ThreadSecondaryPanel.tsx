@@ -3,14 +3,22 @@ import {
   type FocusEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { Panel, PanelResizeHandle } from "react-resizable-panels";
+import {
+  type ImperativePanelHandle,
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+} from "react-resizable-panels";
+import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
@@ -48,7 +56,12 @@ import {
   type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
-import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
+import {
+  terminalDockCollapsedAtom,
+  terminalDockHeightPercentAtom,
+  terminalDockResizingAtom,
+  threadSecondaryPanelResizingAtom,
+} from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import {
   GitDiffTabContent,
@@ -75,6 +88,11 @@ const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 // While the conversation is collapsed the panel fills the content area, so its
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
+// The desktop terminal dock splits the panel body into two rows. These bound the
+// vertical (height) split; the split redistributes height only, so the panel's
+// width (and its cqw swipe math) is untouched.
+const TERMINAL_DOCK_CONTENT_MIN_SIZE_PERCENT = 25;
+const TERMINAL_DOCK_MIN_SIZE_PERCENT = 12;
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
@@ -188,6 +206,14 @@ export interface ThreadSecondaryPanelProps {
    * Caller is responsible for wrapping the content in a Drawer in that case.
    */
   renderAsDrawer: boolean;
+  /**
+   * The desktop terminal dock. When provided together with `showTerminalDock`,
+   * the panel body splits into two rows: the active content on top and this dock
+   * on the bottom. Absent on the drawer/compact layout, which keeps terminals as
+   * top tabs.
+   */
+  terminalDock?: ReactNode;
+  showTerminalDock?: boolean;
 }
 
 function resolveActiveFixedPanel({
@@ -246,6 +272,8 @@ export function ThreadSecondaryPanel({
   isConversationCollapsed,
   onToggleConversationCollapse,
   renderAsDrawer,
+  terminalDock,
+  showTerminalDock = false,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
   const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
@@ -374,6 +402,60 @@ export function ThreadSecondaryPanel({
     }
     onPanelFocus();
   };
+
+  const panelBodyContent = (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {/*
+        The browser deck owns native-view visibility/retention and renders
+        content only when a browser tab is active. The normal content slot is
+        suppressed in that case because the deck fills the region.
+      */}
+      {browserDeck}
+      {sideChatDeck}
+      {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
+        <div
+          className={
+            isTerminalTabActive
+              ? "min-h-0 flex-1 overflow-hidden"
+              : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
+          }
+          data-file-preview-scroll-container={
+            isTerminalTabActive ? undefined : ""
+          }
+        >
+          {shouldRenderFileTabContent
+            ? (fileTabContent ?? (
+                <EmptyStatePanel className="mx-4 rounded-lg">
+                  No file preview content provided.
+                </EmptyStatePanel>
+              ))
+            : null}
+        </div>
+      ) : isDiffPanelActive ? (
+        <GitDiffTabContent
+          environmentId={environmentId}
+          target={gitDiffTarget}
+          isDiffPanelActive={isDiffPanelActive}
+          gitDiffViewOptions={gitDiffViewOptions}
+          onOpenFileInEditor={onOpenFileInEditor}
+          onOpenFilePreview={onOpenFilePreview}
+          onSelectionAddToChat={onSelectionAddToChat}
+          workspaceRootPath={workspaceRootPath}
+        />
+      ) : (
+        <ThreadInfoTabContent metadataContent={metadataContent} />
+      )}
+    </div>
+  );
+  const secondaryPanelBody =
+    showTerminalDock && !renderAsDrawer && terminalDock ? (
+      <TerminalDockSplit
+        bodyContent={panelBodyContent}
+        terminalDock={terminalDock}
+      />
+    ) : (
+      panelBodyContent
+    );
 
   const asideMarkup = (
     <aside
@@ -560,48 +642,7 @@ export function ThreadSecondaryPanel({
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        {/*
-          The browser deck owns native-view visibility/retention and renders
-          content only when a browser tab is active. The normal content slot is
-          suppressed in that case because the deck fills the region.
-        */}
-        {browserDeck}
-        {sideChatDeck}
-        {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
-          <div
-            className={
-              isTerminalTabActive
-                ? "min-h-0 flex-1 overflow-hidden"
-                : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
-            }
-            data-file-preview-scroll-container={
-              isTerminalTabActive ? undefined : ""
-            }
-          >
-            {shouldRenderFileTabContent
-              ? (fileTabContent ?? (
-                  <EmptyStatePanel className="mx-4 rounded-lg">
-                    No file preview content provided.
-                  </EmptyStatePanel>
-                ))
-              : null}
-          </div>
-        ) : isDiffPanelActive ? (
-          <GitDiffTabContent
-            environmentId={environmentId}
-            target={gitDiffTarget}
-            isDiffPanelActive={isDiffPanelActive}
-            gitDiffViewOptions={gitDiffViewOptions}
-            onOpenFileInEditor={onOpenFileInEditor}
-            onOpenFilePreview={onOpenFilePreview}
-            onSelectionAddToChat={onSelectionAddToChat}
-            workspaceRootPath={workspaceRootPath}
-          />
-        ) : (
-          <ThreadInfoTabContent metadataContent={metadataContent} />
-        )}
-      </div>
+      {secondaryPanelBody}
     </aside>
   );
 
@@ -743,5 +784,183 @@ function SecondaryPanelResizeHandle({
         )}
       />
     </PanelResizeHandle>
+  );
+}
+
+interface TerminalDockSplitProps {
+  bodyContent: ReactNode;
+  terminalDock: ReactNode;
+}
+
+/**
+ * Splits the right panel body into two rows on the desktop layout: the active
+ * content on top and the terminal dock on the bottom, with a draggable seam.
+ * The PanelGroup stays mounted across collapse (the dock panel collapses to zero
+ * via its imperative handle and a thin bar renders below the group), so the
+ * content pane's live decks and scroll position are never torn down. The split
+ * redistributes height only, so the panel's width (and its cqw swipe math) is
+ * untouched.
+ */
+function TerminalDockSplit({
+  bodyContent,
+  terminalDock,
+}: TerminalDockSplitProps) {
+  const collapsed = useAtomValue(terminalDockCollapsedAtom);
+  const setCollapsed = useSetAtom(terminalDockCollapsedAtom);
+  const dockHeightPercent = useAtomValue(terminalDockHeightPercentAtom);
+  const setDockHeightPercent = useSetAtom(terminalDockHeightPercentAtom);
+  const setDockResizing = useSetAtom(terminalDockResizingAtom);
+  const isDockResizing = useAtomValue(terminalDockResizingAtom);
+  const dockPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const lastDockSizeRef = useRef(dockHeightPercent);
+
+  const handleDockResize = useCallback((size: number) => {
+    if (size > 0) {
+      lastDockSizeRef.current = size;
+    }
+  }, []);
+  const handleDockDragging = useCallback<SecondaryPanelDraggingHandler>(
+    (isDragging) => {
+      setDockResizing(isDragging);
+      if (isDragging) {
+        applyResizeCursor("vertical");
+        return;
+      }
+      clearResizeCursor();
+      if (lastDockSizeRef.current > 0) {
+        setDockHeightPercent(lastDockSizeRef.current);
+      }
+    },
+    [setDockHeightPercent, setDockResizing],
+  );
+
+  // Drive the dock panel's collapse imperatively so the group (and both panels)
+  // stay mounted. Initial size comes from each panel's defaultSize; only animate
+  // on subsequent toggles, mirroring the conversation-collapse layout effect.
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    const panel = dockPanelRef.current;
+    if (panel === null) {
+      return;
+    }
+    if (collapsed) {
+      panel.collapse();
+    } else {
+      panel.expand(
+        lastDockSizeRef.current > 0 ? lastDockSizeRef.current : dockHeightPercent,
+      );
+    }
+  }, [collapsed, dockHeightPercent]);
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* position:fixed overlay; keeps the pointer out of content-pane iframes
+          mid-drag so react-resizable-panels' pointer tracking never freezes. */}
+      <IframeDragGuardOverlay active={isDockResizing} />
+      <PanelGroup
+        direction="vertical"
+        id="thread-secondary-panel-body-group"
+        className="min-h-0 min-w-0 flex-1"
+        style={{ overflow: "clip" }}
+      >
+        <Panel
+          id="thread-secondary-panel-content"
+          order={1}
+          minSize={TERMINAL_DOCK_CONTENT_MIN_SIZE_PERCENT}
+          defaultSize={collapsed ? 100 : 100 - dockHeightPercent}
+          className="flex min-h-0 min-w-0 flex-col overflow-clip"
+        >
+          {bodyContent}
+        </Panel>
+        <TerminalDockResizeHandle
+          collapsed={collapsed}
+          onDragging={handleDockDragging}
+        />
+        <Panel
+          ref={dockPanelRef}
+          id="thread-secondary-panel-terminal-dock"
+          order={2}
+          collapsible
+          collapsedSize={0}
+          minSize={TERMINAL_DOCK_MIN_SIZE_PERCENT}
+          defaultSize={collapsed ? 0 : dockHeightPercent}
+          onResize={handleDockResize}
+          className="flex min-h-0 min-w-0 flex-col overflow-clip"
+        >
+          {terminalDock}
+        </Panel>
+      </PanelGroup>
+      {collapsed ? (
+        <TerminalDockCollapsedBar onExpand={() => setCollapsed(false)} />
+      ) : null}
+    </div>
+  );
+}
+
+function TerminalDockResizeHandle({
+  collapsed,
+  onDragging,
+}: {
+  collapsed: boolean;
+  onDragging: SecondaryPanelDraggingHandler;
+}) {
+  const isResizing = useAtomValue(terminalDockResizingAtom);
+  return (
+    <PanelResizeHandle
+      id="thread-secondary-panel-dock-handle"
+      disabled={collapsed}
+      onDragging={onDragging}
+      hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
+      className={cn(
+        "relative h-px shrink-0 transition-colors before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']",
+        // While collapsed the dock is zero-height and the collapsed bar carries
+        // its own seam, so the handle stays transparent and non-interactive.
+        collapsed
+          ? "cursor-default bg-transparent"
+          : cn(
+              "cursor-row-resize",
+              isResizing
+                ? "bg-accent-foreground/50"
+                : "bg-border-seam hover:bg-accent-foreground/35",
+            ),
+      )}
+      aria-label="Resize terminal dock"
+    />
+  );
+}
+
+function TerminalDockCollapsedBar({ onExpand }: { onExpand: () => void }) {
+  return (
+    <div
+      className={cn(
+        SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+        "border-t border-border-seam",
+      )}
+    >
+      <div className={cn(CHROME_ROW_CLASS, "min-w-0 justify-between gap-2 px-4")}>
+        <button
+          type="button"
+          onClick={onExpand}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Icon name="Terminal" className="size-3.5" aria-hidden />
+          <span>Terminal</span>
+        </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0"
+          onClick={onExpand}
+          aria-label="Expand terminal dock"
+        >
+          <Icon name="ChevronUp" className="size-3.5" />
+        </Button>
+      </div>
+    </div>
   );
 }

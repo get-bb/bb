@@ -85,7 +85,7 @@ Thread terminals:
   Use thread terminals for long-running commands that should stay alive for the
   user, such as dev servers, watch tasks, REPLs, and database consoles. Terminals
   are real PTY sessions scoped to the thread's environment, and they appear in the
-  bb UI as terminal tabs.
+  bb UI in the thread's terminal dock (as drawer tabs on mobile).
 
   bb thread terminal start <id> --command "pnpm dev"
     --title <title>                        Display title

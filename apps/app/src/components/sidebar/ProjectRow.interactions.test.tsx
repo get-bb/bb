@@ -199,9 +199,12 @@ describe("ProjectRow interactions", () => {
       projectId: "proj_test",
       target: { kind: "project" },
     });
+    // Starting no longer pins the run onto the compose page; the thread's
+    // terminal dock discovers the session from the published run-command state.
     expect(
-      mockProjectRunCommandMutations.start.mutate.mock.calls[0]?.[1],
-    ).toEqual(expect.objectContaining({ onSuccess: expect.any(Function) }));
+      mockProjectRunCommandMutations.start.mutate.mock.calls[0],
+    ).toHaveLength(1);
+    expect(mockSetActiveRunTerminal).not.toHaveBeenCalled();
 
     cleanup();
     renderProjectRow(
@@ -275,13 +278,51 @@ describe("ProjectRow interactions", () => {
       }),
     );
 
-    expect(mockProjectRunCommandMutations.start.mutate).toHaveBeenCalledWith(
+    expect(mockProjectRunCommandMutations.start.mutate).toHaveBeenCalledWith({
+      projectId: "proj_test",
+      target: { kind: "environment", environmentId: "env_worktree" },
+    });
+  });
+
+  it("opens a worktree run terminal in its thread instead of pinning compose", () => {
+    renderProjectRow(
+      vi.fn(),
       {
-        projectId: "proj_test",
-        target: { kind: "environment", environmentId: "env_worktree" },
+        status: "ready",
+        threads: [
+          makeThread({
+            environmentId: "env_worktree",
+            environmentBranchName: "feature/run",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
       },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
+      false,
+      new Set(),
+      makeProject({
+        runCommand: "pnpm dev",
+        runCommandStates: [
+          {
+            target: { kind: "environment", environmentId: "env_worktree" },
+            status: "running",
+            terminalSessionId: "term_run",
+            terminalTarget: {
+              kind: "environment",
+              environmentId: "env_worktree",
+            },
+            updatedAt: 1,
+          },
+        ],
+      }),
     );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open worktree run terminal" }),
+    );
+
+    // The thread's bottom terminal dock surfaces the run, so opening navigates
+    // to the thread rather than pinning the session onto the compose page.
+    expect(mockSetActiveRunTerminal).not.toHaveBeenCalled();
   });
 
   it("does not toggle collapse when the project row is clicked", () => {

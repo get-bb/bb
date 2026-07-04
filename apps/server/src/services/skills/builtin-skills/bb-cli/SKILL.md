@@ -126,7 +126,7 @@ For review or fix pipelines, get the environment ID from
   similar processes.
 - Prefer a thread terminal over a one-off foreground command for dev servers.
   The terminal is a real PTY scoped to the thread's environment and appears in
-  the bb UI as a terminal tab.
+  the bb UI's thread terminal dock (a drawer tab on mobile).
 - Start a server with
   `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
 - Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`

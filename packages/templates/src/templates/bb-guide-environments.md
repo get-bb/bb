@@ -18,9 +18,10 @@ Making your repo work with bb:
 
   Configure a project run command from Project Settings > Worktree Lifecycle
   too. The sidebar run button starts that command in a terminal from the project
-  checkout, and worktree rows start the same command from that worktree. While
-  the terminal is starting or running, the button becomes a stop button and the
-  sidebar shows the active run state.
+  checkout, and worktree rows start the same command from that worktree. On
+  desktop the run appears as a pinned Run tab in the thread's bottom terminal
+  dock. While the terminal is starting or running, the button becomes a stop
+  button and the sidebar shows the active run state.
 
   Scripts are freeform POSIX shell snippets. bb runs configured scripts as
   `env bash -lc <script>` with cwd set to the worktree. POSIX shell lifecycle
