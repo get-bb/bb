@@ -21,11 +21,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import {
-  isActiveTerminalSessionStatus,
-  PERSONAL_PROJECT_ID,
-  type ThreadListEntry,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type {
   ProjectResponse,
   ProjectRunCommandTarget,
@@ -97,7 +93,12 @@ import {
 import {
   getProjectComposeRoutePath,
   getProjectSettingsRoutePath,
+  getThreadRoutePath,
 } from "@/lib/route-paths";
+import {
+  getRunCommandStateForTarget,
+  isRunCommandStateActive,
+} from "@/lib/project-run-command";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -637,6 +638,7 @@ interface EnvironmentThreadGroupHeaderActionsProps {
   projectRunCommandConfigured: boolean;
   runCommandState?: ProjectRunCommandTargetState;
   runCommandTarget: ProjectRunCommandTarget;
+  runTerminalThreadId: string;
   onArchiveThreads?: () => void;
   onCreateNewThread?: () => void;
   onRenameEnvironment?: () => void;
@@ -684,29 +686,12 @@ interface ProjectRunCommandTerminalButtonProps {
   ariaLabelBase: string;
   projectId: string;
   state?: ProjectRunCommandTargetState;
-}
-
-function runCommandTargetKey(target: ProjectRunCommandTarget): string {
-  switch (target.kind) {
-    case "project":
-      return "project";
-    case "environment":
-      return `environment:${target.environmentId}`;
-  }
-}
-
-function getRunCommandStateForTarget(
-  states: readonly ProjectRunCommandTargetState[],
-  target: ProjectRunCommandTarget,
-): ProjectRunCommandTargetState | undefined {
-  const key = runCommandTargetKey(target);
-  return states.find((state) => runCommandTargetKey(state.target) === key);
-}
-
-function isRunCommandStateActive(
-  state: ProjectRunCommandTargetState | undefined,
-): boolean {
-  return state?.status ? isActiveTerminalSessionStatus(state.status) : false;
+  /**
+   * When set, "Open run terminal" navigates to this thread, whose bottom
+   * terminal dock surfaces the run as a pinned Run tab. Without it (project-level
+   * rows with no thread), it falls back to the compose page.
+   */
+  threadId?: string;
 }
 
 function isWorktreeThread(
@@ -728,9 +713,6 @@ function ProjectRunCommandButton({
 }: ProjectRunCommandButtonProps) {
   const startRunCommand = useStartProjectRunCommand();
   const stopRunCommand = useStopProjectRunCommand();
-  const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
-    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-  );
   const isActive = isRunCommandStateActive(state);
   const isPending = startRunCommand.isPending || stopRunCommand.isPending;
   const isDisconnected = state?.status === "disconnected";
@@ -760,31 +742,13 @@ function ProjectRunCommandButton({
       if (isActive) {
         stopRunCommand.mutate(request);
       } else {
-        startRunCommand.mutate(request, {
-          onSuccess: (response) => {
-            const nextState = getRunCommandStateForTarget(
-              response.states,
-              target,
-            );
-            if (nextState?.terminalSessionId) {
-              setActiveRunTerminal(
-                nextState.terminalSessionId,
-                nextState.terminalTarget,
-              );
-            }
-          },
-        });
+        // The run session surfaces in the thread's bottom terminal dock (via the
+        // published run-command state), so starting it no longer pins it onto the
+        // compose page.
+        startRunCommand.mutate(request);
       }
     },
-    [
-      disabled,
-      isActive,
-      projectId,
-      setActiveRunTerminal,
-      startRunCommand,
-      stopRunCommand,
-      target,
-    ],
+    [disabled, isActive, projectId, startRunCommand, stopRunCommand, target],
   );
 
   return (
@@ -827,6 +791,7 @@ function ProjectRunCommandTerminalButton({
   ariaLabelBase,
   projectId,
   state,
+  threadId,
 }: ProjectRunCommandTerminalButtonProps) {
   const navigate = useNavigate();
   const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
@@ -843,6 +808,12 @@ function ProjectRunCommandTerminalButton({
       if (!terminalSessionId) {
         return;
       }
+      if (threadId !== undefined) {
+        // The thread's terminal dock discovers the run session itself, so open
+        // the thread rather than pinning it onto the compose page.
+        navigate(getThreadRoutePath({ projectId, threadId }));
+        return;
+      }
       setActiveRunTerminal(terminalSessionId, state?.terminalTarget ?? null);
       navigate(getProjectComposeRoutePath(projectId));
     },
@@ -852,6 +823,7 @@ function ProjectRunCommandTerminalButton({
       setActiveRunTerminal,
       state?.terminalTarget,
       terminalSessionId,
+      threadId,
     ],
   );
 
@@ -1294,6 +1266,7 @@ function EnvironmentThreadGroupHeaderActions({
   projectRunCommandConfigured,
   runCommandState,
   runCommandTarget,
+  runTerminalThreadId,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
@@ -1315,6 +1288,7 @@ function EnvironmentThreadGroupHeaderActions({
             ariaLabelBase="worktree"
             projectId={projectId}
             state={runCommandState}
+            threadId={runTerminalThreadId}
           />
           <ProjectRunCommandButton
             ariaLabelBase="worktree"
@@ -1497,6 +1471,7 @@ function EnvironmentThreadGroupHeader({
             projectRunCommandConfigured={projectRunCommandConfigured}
             runCommandState={runCommandState}
             runCommandTarget={{ kind: "environment", environmentId }}
+            runTerminalThreadId={representativeThread.id}
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
             onRenameEnvironment={onRenameEnvironment}
@@ -1977,6 +1952,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
               ariaLabelBase="worktree"
               projectId={projectId}
               state={runCommandState}
+              threadId={node.thread.id}
             />
             <ProjectRunCommandButton
               ariaLabelBase="worktree"

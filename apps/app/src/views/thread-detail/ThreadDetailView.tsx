@@ -201,6 +201,7 @@ import {
 } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
+import { ThreadTerminalDock } from "./ThreadTerminalDock";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -473,6 +474,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  // On the desktop page surface, terminals live in the right panel's bottom
+  // dock (their own split) instead of as top tabs. The compact drawer keeps them
+  // as top tabs, so terminal state forks on this single flag.
+  const showTerminalDock =
+    !renderSecondaryPanelAsDrawer && props.surface === "page";
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(threadId);
   const setActiveFixedTerminal =
     useSetFixedRightTerminalActiveTerminal(threadId);
@@ -591,7 +597,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     environmentId: thread?.environmentId,
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
-    terminalSessions: terminalsListQuery.data?.sessions,
+    // Empty (not undefined) on desktop so the prune effect drops terminal tabs
+    // from the top strip; they live in the bottom dock instead.
+    terminalSessions: showTerminalDock
+      ? EMPTY_TERMINAL_SESSIONS
+      : terminalsListQuery.data?.sessions,
     terminalTarget: threadTerminalTarget,
   });
   const pluginPanelActions = usePluginPanelActions({
@@ -738,23 +748,30 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
+  // Terminals only feed the top strip on the compact drawer; on the desktop page
+  // surface they render in the bottom dock, so keep them out of the top strip.
+  const topStripTerminalSessions = showTerminalDock
+    ? EMPTY_TERMINAL_SESSIONS
+    : terminalSessions;
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
       buildTerminalSyncedSecondaryFileTabs({
         orderedTabs: orderedSecondaryFileTabs,
         retainedTerminalId,
-        terminalSessions,
+        terminalSessions: topStripTerminalSessions,
         terminalTarget: threadTerminalTarget,
       }),
     [
       orderedSecondaryFileTabs,
       retainedTerminalId,
-      terminalSessions,
+      topStripTerminalSessions,
       threadTerminalTarget,
     ],
   );
   useEffect(() => {
-    if (terminalsListQuery.data === undefined) {
+    // The dock owns terminal tabs on desktop; the top strip's fixed-panel state
+    // is kept terminal-free by the file-tabs prune effect.
+    if (showTerminalDock || terminalsListQuery.data === undefined) {
       return;
     }
     updateFixedPanelTabsState((state) =>
@@ -767,6 +784,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     );
   }, [
     retainedTerminalId,
+    showTerminalDock,
     terminalSessions,
     threadTerminalTarget,
     terminalsListQuery.data,
@@ -905,6 +923,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     thread?.environmentId !== undefined &&
     environment?.status === "ready" &&
     connectedHostIds.has(environment.hostId);
+  // Worktree threads run their command against their environment; other threads
+  // run it project-wide. Matches the sidebar's isWorktreeThread resolution.
+  const isWorktreeEnvironment =
+    environment !== undefined &&
+    (environment.isWorktree ||
+      environment.workspaceProvisionType === "managed-worktree");
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: projectId ?? "",
     environmentId: thread?.environmentId ?? "",
@@ -2153,7 +2177,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onSelect={handleSelectFileSearchResult}
       onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
-      onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
+      onStartTerminal={
+        !showTerminalDock && canCreateTerminal ? handleStartTerminal : undefined
+      }
       pluginActions={pluginPanelActions}
     />
   ) : activeWorkspaceFilePath ? (
@@ -2210,6 +2236,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onSetThreadId={setSideChatThreadId}
     />
   );
+  const terminalDock = showTerminalDock ? (
+    <ThreadTerminalDock
+      threadId={thread.id}
+      projectId={projectId ?? null}
+      environmentId={thread.environmentId ?? null}
+      isWorktreeEnvironment={isWorktreeEnvironment}
+      isEnvironmentResolved={environment !== undefined}
+      canCreateTerminal={canCreateTerminal}
+      onOpenLink={handleOpenTimelineLink}
+      onSelectionAddToChat={handleSelectionAddToChat}
+    />
+  ) : undefined;
 
   return (
    <PromptAnnotationComposerProvider
@@ -2281,6 +2319,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           onPanelFocus: handleSecondaryPanelFocus,
           onPanelChange: handleSecondaryPanelChange,
           showGitDiffTab: canUseGitUi,
+          terminalDock,
+          showTerminalDock,
         }}
         timeline={{
           activeThinking,

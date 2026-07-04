@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import type {
+  ProjectRunCommandTargetState,
+  SidebarBootstrapResponse,
+} from "@bb/server-contract";
 import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
 import {
@@ -73,4 +76,49 @@ export function useProjectDisplayName(
     return data.personalProject.name;
   }
   return data.projects.find((project) => project.id === projectId)?.name;
+}
+
+const EMPTY_RUN_COMMAND_STATES: readonly ProjectRunCommandTargetState[] = [];
+
+export interface ProjectRunCommandInfo {
+  /** The configured run command string, or null when none is configured. */
+  runCommand: string | null;
+  states: readonly ProjectRunCommandTargetState[];
+}
+
+const EMPTY_PROJECT_RUN_COMMAND_INFO: ProjectRunCommandInfo = {
+  runCommand: null,
+  states: EMPTY_RUN_COMMAND_STATES,
+};
+
+/**
+ * Read a project's configured run command + live run-command states from the
+ * shared sidebar-navigation cache (the same realtime-owned source that powers
+ * the sidebar's Run controls). Used by the thread terminal dock to surface the
+ * project run command as a pinned Run tab without any extra fetch or
+ * subscription.
+ */
+export function useProjectRunCommand(
+  projectId: string | null | undefined,
+): ProjectRunCommandInfo {
+  const { data } = useQuery<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    enabled: Boolean(projectId),
+  });
+  if (!data || !projectId) {
+    return EMPTY_PROJECT_RUN_COMMAND_INFO;
+  }
+  const project =
+    projectId === PERSONAL_PROJECT_ID
+      ? data.personalProject
+      : data.projects.find((candidate) => candidate.id === projectId);
+  if (!project) {
+    return EMPTY_PROJECT_RUN_COMMAND_INFO;
+  }
+  return {
+    runCommand: project.runCommand ?? null,
+    states: project.runCommandStates,
+  };
 }

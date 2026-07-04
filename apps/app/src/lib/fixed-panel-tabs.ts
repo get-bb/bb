@@ -24,6 +24,14 @@ import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
 const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
 export const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 
+// The desktop terminal dock is a second, independent fixed-panel-tabs store per
+// thread so its active terminal is tracked separately from the right panel's
+// active content tab (diff/file/info), letting the diff and a terminal show at
+// once. It rides the same storage/prune/idle-expiry as every other id.
+export function getThreadTerminalDockStateId(threadId: string): string {
+  return `thread-dock:${threadId}`;
+}
+
 type FixedPanelTabsThreadId = string | null | undefined;
 
 export type FixedPanelTabsStateUpdater = (
@@ -322,6 +330,29 @@ export function useOpenFixedSecondaryPanel(
   return useCallback(() => {
     updateState(openFixedSecondaryPanelState);
   }, [updateState]);
+}
+
+// Sets only the open flag, without ensuring a secondary tab exists. The terminal
+// dock uses this to gate its controller's list query / retention on dock
+// visibility (open when expanded, closed when collapsed); it renders terminal
+// tabs, not the thread-info tab that useOpenFixedSecondaryPanel would inject.
+export function useSetFixedSecondaryPanelOpen(
+  threadId: string | null | undefined,
+): (open: boolean) => void {
+  const updateState = useUpdateFixedPanelTabsState(threadId);
+  return useCallback(
+    (open: boolean) => {
+      updateState((current) =>
+        current.secondary.isOpen === open
+          ? current
+          : {
+              ...current,
+              secondary: { ...current.secondary, isOpen: open },
+            },
+      );
+    },
+    [updateState],
+  );
 }
 
 export function useActiveFixedRightTerminalId(

@@ -813,7 +813,14 @@ export function ThreadTerminalView({
   }, [preferredTheme, appThemeEpoch]);
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+    // xterm owns scrolling here, but its scroll viewport is a sibling of the
+    // touch target (the screen layer), so the drawer swipe-to-close gesture's
+    // ancestor-only scroll walk can't see it and would drag the sheet down while
+    // the terminal is being scrolled. Opt the whole terminal out of that gesture.
+    <div
+      data-no-drawer-swipe-close
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
+    >
       <div
         className="min-h-0 w-full flex-1 overflow-hidden p-2"
         onPointerDown={handleTerminalPointerDown}

@@ -372,6 +372,97 @@ describe("ResponsiveDrawerShell swipe-to-close-from-content", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
+  it("ignores drags that start on an interactive diff line number", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <pre data-interactive-line-numbers="">
+          <div data-testid="line-number" data-column-number="42">
+            42
+          </div>
+        </pre>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const lineNumber = screen.getByTestId("line-number");
+
+    fireEvent.touchStart(lineNumber, touch(100));
+    fireEvent.touchMove(lineNumber, touch(140));
+    fireEvent.touchMove(lineNumber, touch(500));
+    fireEvent.touchEnd(lineNumber, touch(500));
+
+    expect(content.style.transform).toBe("");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("still dismisses when a diff line number is not interactive", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <pre>
+          <div data-testid="line-number" data-column-number="42">
+            42
+          </div>
+        </pre>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const lineNumber = screen.getByTestId("line-number");
+
+    fireEvent.touchStart(lineNumber, touch(100));
+    fireEvent.touchMove(lineNumber, touch(140));
+    fireEvent.touchMove(lineNumber, touch(500));
+    fireEvent.touchEnd(lineNumber, touch(500));
+
+    expect(content.style.transform).toBe("translate3d(0, 400px, 0)");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("ignores drags that start inside a data-no-drawer-swipe-close region", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <div data-no-drawer-swipe-close>
+          <div data-testid="terminal-surface">terminal</div>
+        </div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const surface = screen.getByTestId("terminal-surface");
+
+    fireEvent.touchStart(surface, touch(100));
+    fireEvent.touchMove(surface, touch(140));
+    fireEvent.touchMove(surface, touch(500));
+    fireEvent.touchEnd(surface, touch(500));
+
+    expect(content.style.transform).toBe("");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
   it("stays inert without the swipeToCloseFromContent opt-in", () => {
     const onOpenChange = vi.fn();
 
