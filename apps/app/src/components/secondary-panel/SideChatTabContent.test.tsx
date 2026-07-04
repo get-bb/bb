@@ -311,9 +311,16 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThread: () => ({ mutateAsync: mocks.createThreadMutateAsync }),
-  useCreateThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
+  useCreateThreadQueuedMessage: () => ({
+    isPending: false,
+    mutateAsync: mocks.noopMutateAsync,
+  }),
   useDeleteThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
   useReorderThreadQueuedMessage: () => ({ mutateAsync: mocks.noopMutateAsync }),
+  useSendThreadQueuedMessage: () => ({
+    isPending: false,
+    mutateAsync: mocks.noopMutateAsync,
+  }),
   useSetThreadQueuedMessageGroupBoundary: () => ({
     mutateAsync: mocks.noopMutateAsync,
   }),
@@ -321,10 +328,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     isPending: false,
     mutate: mocks.noopMutate,
     mutateAsync: mocks.sendThreadMessageMutateAsync,
-  }),
-  useSendThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.noopMutateAsync,
   }),
   useStopThread: () => ({
     isPending: false,
@@ -350,7 +353,6 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 
 afterEach(() => {
   cleanup();
-  window.localStorage.clear();
   mocks.commandSuggestionArgs.length = 0;
   mocks.promptMentionArgs.length = 0;
   mocks.threadTimelineRows.length = 0;

@@ -396,6 +396,7 @@ function buildOptimisticQueuedMessage({
 
   return {
     id: `optimistic-queued-${nanoid()}`,
+    clientRequestId: request.clientRequestId ?? null,
     content: request.input,
     model: request.model ?? defaultExecutionOptions?.model ?? "pending",
     reasoningLevel:

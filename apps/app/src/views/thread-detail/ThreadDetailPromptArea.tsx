@@ -553,9 +553,6 @@ export function ThreadDetailPromptArea({
       return;
     }
 
-    promptDraft.clearIfCurrentMatches(submittedDraft);
-    setAttachmentError(null);
-
     try {
       if (isQueuingMessage) {
         const request = buildCreateQueuedFollowUpRequest({
@@ -565,6 +562,8 @@ export function ThreadDetailPromptArea({
         });
         if (request) {
           await createQueuedMessage.mutateAsync(request);
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+          setAttachmentError(null);
         }
       } else {
         const request = buildAutoFollowUpRequest({
@@ -573,6 +572,8 @@ export function ThreadDetailPromptArea({
           execution: followUpExecutionSelection,
         });
         if (request) {
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+          setAttachmentError(null);
           await sendMessage.mutateAsync(request);
         }
       }
@@ -601,7 +602,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-
 
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {

@@ -5,7 +5,13 @@ import type {
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
@@ -54,7 +60,10 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     execution,
     stack,
   }: {
-    composer: { submitMode: { kind: string; reason?: string } } | null;
+    composer: {
+      onSubmit?: () => void;
+      submitMode: { kind: string; reason?: string };
+    } | null;
     execution: {
       footerAction?: {
         label: string;
@@ -67,6 +76,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
+      {composer ? (
+        <button type="button" onClick={composer.onSubmit}>
+          Submit follow up
+        </button>
+      ) : null}
       {execution.footerAction ? (
         <button type="button" onClick={execution.footerAction.onClick}>
           {execution.footerAction.label}
@@ -202,6 +216,10 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     isPending: false,
     mutateAsync: mocks.deleteQueuedMessageMutateAsync,
   }),
+  useSendThreadQueuedMessage: () => ({
+    isPending: false,
+    mutateAsync: mocks.sendQueuedMessageMutateAsync,
+  }),
   useReorderThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.reorderQueuedMessageMutateAsync,
@@ -209,10 +227,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useSetThreadQueuedMessageGroupBoundary: () => ({
     isPending: false,
     mutateAsync: mocks.setQueuedMessageGroupBoundaryMutateAsync,
-  }),
-  useSendThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.sendQueuedMessageMutateAsync,
   }),
   useStopThread: () => ({
     isPending: false,
@@ -328,6 +342,9 @@ function renderPromptArea({
 
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
+  mocks.promptDraft.attachments = [];
+  mocks.promptDraft.mentions = [];
+  mocks.promptDraft.text = "";
   mocks.queuedMessages = [];
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
@@ -414,5 +431,58 @@ describe("ThreadDetailPromptArea", () => {
         },
       },
     });
+  });
+
+  it("clears a queued follow-up draft only after the server accepts it", async () => {
+    let resolveQueue:
+      | ((queuedMessage: ThreadQueuedMessage) => void)
+      | undefined;
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "readonly",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Queue this after the active turn.";
+    mocks.createQueuedMessageMutateAsync.mockImplementation(
+      () =>
+        new Promise<ThreadQueuedMessage>((resolve) => {
+          resolveQueue = resolve;
+        }),
+    );
+
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        status: "active",
+      }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit follow up" }));
+
+    expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        input: [
+          {
+            mentions: [],
+            text: "Queue this after the active turn.",
+            type: "text",
+          },
+        ],
+      }),
+    );
+    expect(mocks.promptDraft.clearIfCurrentMatches).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveQueue?.(makeQueuedMessage());
+    });
+
+    expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Queue this after the active turn.",
+      }),
+    );
   });
 });

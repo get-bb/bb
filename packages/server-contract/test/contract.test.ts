@@ -123,8 +123,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Queued and follow-up messages omit senderThreadId unless the request originates from another thread.",
+      "Queued message idempotency keys are optional; queued and follow-up messages omit senderThreadId unless the request originates from another thread.",
     fields: [
+      "createQueuedMessageRequestSchema.clientRequestId",
       "createQueuedMessageRequestSchema.senderThreadId",
       "sendMessageRequestSchema.senderThreadId",
     ],
@@ -1107,9 +1108,11 @@ describe("server-contract canonical schemas", () => {
 
     expect(
       createQueuedMessageRequestSchema.parse({
+        clientRequestId: "creq_queue_contract",
         input: [{ type: "text", text: "Queue this with inherited defaults" }],
       }),
     ).toMatchObject({
+      clientRequestId: "creq_queue_contract",
       input: [{ type: "text", text: "Queue this with inherited defaults" }],
     });
 

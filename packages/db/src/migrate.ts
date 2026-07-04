@@ -1164,6 +1164,38 @@ function applyQueuedMessageGroupingSchema(db: DbConnection): void {
     .run();
 }
 
+function applyQueuedMessageClientRequestIdSchema(db: DbConnection): void {
+  if (!tableExists(db, "queued_thread_messages")) {
+    return;
+  }
+
+  if (!columnExists(db, "queued_thread_messages", "client_request_id")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE queued_thread_messages ADD COLUMN client_request_id text",
+      )
+      .run();
+  }
+
+  if (
+    !indexExists(
+      db,
+      "queued_thread_messages",
+      "queued_thread_messages_thread_client_request_idx",
+    )
+  ) {
+    db.$client
+      .prepare(
+        [
+          "CREATE UNIQUE INDEX queued_thread_messages_thread_client_request_idx",
+          "ON queued_thread_messages (thread_id, client_request_id)",
+          "WHERE client_request_id IS NOT NULL",
+        ].join(" "),
+      )
+      .run();
+  }
+}
+
 function applyThreadFoldersSchema(db: DbConnection): void {
   if (!tableExists(db, "thread_folders")) {
     db.$client
@@ -1399,6 +1431,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     drizzleMigrate(db, { migrationsFolder });
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
+    applyQueuedMessageClientRequestIdSchema(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

@@ -229,6 +229,7 @@ async function createQueuedMessageForThread(
   });
   const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
     threadId: thread.id,
+    clientRequestId: payload.clientRequestId,
     content: payload.input,
     senderThreadId,
     model: execution.model,
