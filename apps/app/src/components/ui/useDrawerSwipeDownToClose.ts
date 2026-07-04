@@ -95,6 +95,38 @@ function shouldIgnoreSwipeDownTarget(target: EventTarget | null): boolean {
   );
 }
 
+// The diff panel renders inside the Pierre diff's shadow DOM, where the
+// line-number gutter starts a line-range selection (to attach a comment) on a
+// downward drag. That selection and this sheet-dismiss swipe both begin from the
+// same touch, and once the swipe engages it preventDefaults touchmove, which
+// cancels the pointer stream the gutter selection relies on. So a drag that
+// starts on an interactive line number is a line selection, not a request to
+// close the sheet. Shadow-DOM retargeting collapses `event.target` to the host,
+// so the gutter is only visible on the composed path: Pierre marks the number
+// cell with `data-column-number` and its `pre` with `data-interactive-line-
+// numbers` (present only while line-number interaction/selection is enabled),
+// and a drag hijacks the gutter only when both are on the path.
+function touchStartsOnInteractiveLineNumber(
+  event: ReactTouchEvent<HTMLElement>,
+): boolean {
+  let onLineNumberCell = false;
+  let lineNumbersInteractive = false;
+  for (const node of event.nativeEvent.composedPath()) {
+    if (!(node instanceof Element)) {
+      continue;
+    }
+    if (node.hasAttribute("data-column-number")) {
+      onLineNumberCell = true;
+    } else if (node.hasAttribute("data-interactive-line-numbers")) {
+      lineNumbersInteractive = true;
+    }
+    if (onLineNumberCell && lineNumbersInteractive) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getTouchByIdentifier(
   touches: TouchList,
   identifier: number,
@@ -239,7 +271,8 @@ export function useDrawerSwipeDownToClose({
         event.defaultPrevented ||
         event.touches.length !== 1 ||
         sessionRef.current !== null ||
-        shouldIgnoreSwipeDownTarget(event.target)
+        shouldIgnoreSwipeDownTarget(event.target) ||
+        touchStartsOnInteractiveLineNumber(event)
       ) {
         return;
       }
