@@ -761,12 +761,17 @@ export function buildRootComposeTerminalSessions({
   globalTerminalSessions,
   terminalTarget,
 }: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
+  // The project run command is surfaced in a thread's terminal pane (a pinned Run
+  // tab), not on the compose/home page, so exclude its session here.
   if (terminalTarget?.kind === "environment") {
-    return environmentTerminalSessions;
+    return environmentTerminalSessions?.filter(
+      (session) => session.purpose !== "project_run_command",
+    );
   }
   if (terminalTarget?.kind === "host_path") {
     return globalTerminalSessions?.filter(
       (session) =>
+        session.purpose !== "project_run_command" &&
         session.threadId === null &&
         session.environmentId === null &&
         session.hostId === terminalTarget.hostId &&

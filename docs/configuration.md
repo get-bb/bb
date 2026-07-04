@@ -104,11 +104,15 @@ contract.
 
 Project Settings also includes a freeform **Run command** for the project. Use
 it for the command that starts the repo, such as `pnpm dev` or a project-local
-script. The sidebar run button starts it in a terminal from the project checkout;
-worktree rows start the same command from that worktree. While the terminal is
-starting or running, the button becomes a stop button and the sidebar shows an
-active run indicator for the project. On desktop, the run surfaces as a pinned
-**Run** tab in the thread's bottom terminal dock rather than on the home page.
+script. The project-row run button runs it in the **main checkout**; each
+worktree's run button (and a worktree thread's Run tab) runs it in **that
+worktree**. Because worktrees are separate checkouts, these are independent runs
+with independent state, so the main-checkout run and any worktree runs can be
+active at once; the project row shows an indicator whenever any of them is
+running. While a run is starting or running, its button becomes a stop button.
+The run surfaces as a pinned **Run** tab in the thread's terminal pane (the
+bottom dock on desktop, the drawer's terminal strip on mobile) rather than on the
+home page.
 
 The run command is stored with the project, not in `~/.bb/config.json`, and is
 blank by default.

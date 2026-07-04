@@ -202,6 +202,8 @@ import {
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import { ThreadTerminalDock } from "./ThreadTerminalDock";
+import { RunCommandTerminalBody } from "./RunCommandTerminalBody";
+import { useThreadRunCommandTerminal } from "./useThreadRunCommandTerminal";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -223,6 +225,9 @@ const PARENT_THREAD_SELECTOR_FILTERS = {
   excludeSideChats: true,
 } satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+// Synthetic id for the derived, non-persisted pinned Run tab in the mobile
+// drawer strip (never written to fixed-panel-tabs state).
+const RUN_COMMAND_TAB_ID = "run-command-tab";
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
 const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY =
   "bb.pullRequest.mergeMethod";
@@ -929,6 +934,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     environment !== undefined &&
     (environment.isWorktree ||
       environment.workspaceProvisionType === "managed-worktree");
+  // Desktop surfaces the run in the dock's pinned Run tab; the compact drawer
+  // pins it into the same terminal tab strip where terminals are created. This
+  // view is not remounted per thread, so reset the selection on thread switch.
+  const [isRunTabActive, setIsRunTabActive] = useState(false);
+  useEffect(() => {
+    setIsRunTabActive(false);
+  }, [threadId]);
+  const runCommandTerminal = useThreadRunCommandTerminal({
+    projectId: projectId ?? null,
+    environmentId: thread?.environmentId ?? null,
+    isWorktreeEnvironment,
+    isEnvironmentResolved: environment !== undefined,
+    runTerminalEnabled: !showTerminalDock && isRunTabActive,
+  });
+  const showMobileRunTab = !showTerminalDock && runCommandTerminal.showRunTab;
+  const runTabActive = showMobileRunTab && isRunTabActive;
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: projectId ?? "",
     environmentId: thread?.environmentId ?? "",
@@ -1406,7 +1427,39 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         }
       },
     );
-    return tabs.length > 0 ? tabs : undefined;
+    if (!showMobileRunTab) {
+      return tabs.length > 0 ? tabs : undefined;
+    }
+    // Selecting the derived Run tab shows the run terminal; selecting any other
+    // tab clears it. Only one tab reads as active at a time.
+    const decoratedTabs = tabs.map((tab) => ({
+      ...tab,
+      isActive: runTabActive ? false : tab.isActive,
+      onSelect: () => {
+        setIsRunTabActive(false);
+        tab.onSelect();
+      },
+    }));
+    const runTab: SecondaryPanelFileTab = {
+      id: RUN_COMMAND_TAB_ID,
+      filename: "Run",
+      isActive: runTabActive,
+      isPinned: true,
+      leadingVisual: (
+        <Icon
+          name="Play"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
+      ),
+      statusLabel: runCommandTerminal.runActive ? null : "stopped",
+      onSelect: () => {
+        setIsRunTabActive(true);
+        openCompactDrawer();
+      },
+      onClose: () => {},
+    };
+    return [runTab, ...decoratedTabs];
   }, [
     activateSideChatTab,
     activeFixedSecondaryTabId,
@@ -1416,6 +1469,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
+    openCompactDrawer,
+    runCommandTerminal.runActive,
+    runTabActive,
+    showMobileRunTab,
     syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
@@ -2161,7 +2218,15 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeTabId: activeFixedSecondaryTabId,
     tabs: syncedOrderedSecondaryFileTabs,
   });
-  const fileTabContent = activeTerminalId ? (
+  const fileTabContent = runTabActive ? (
+    <RunCommandTerminalBody
+      runCommandTerminal={runCommandTerminal}
+      isPanelOpen={isSecondaryPanelOpen}
+      onStartRunCommand={runCommandTerminal.onToggleRunCommand}
+      onOpenLink={handleOpenTimelineLink}
+      onSelectionAddToChat={handleSelectionAddToChat}
+    />
+  ) : activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
       onOpenLink={handleOpenTimelineLink}
@@ -2219,12 +2284,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   ) : activePluginPanelTab ? (
     <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
   ) : undefined;
-  const isBrowserTabActive = activeBrowserTab !== null;
+  // The pinned Run tab (when active) owns the content region, so the mounted
+  // browser/side-chat decks yield to it.
+  const isBrowserTabActive = activeBrowserTab !== null && !runTabActive;
   // Side-chat tabs, like browser tabs, keep a live conversation surface mounted
   // across tab switches so streaming + composer state survive deactivation; the
   // deck self-collapses when no side-chat tab is active, and suppresses the
   // normal file-content slot when one is.
-  const isSideChatTabActive = activeSideChatTabId !== null;
+  const isSideChatTabActive = activeSideChatTabId !== null && !runTabActive;
   const sideChatDeck = (
     <SideChatTabDeck
       sideChatTabs={sideChatTabs}
@@ -2308,6 +2375,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           isBrowserTabActive,
           sideChatDeck,
           isSideChatTabActive,
+          isTerminalContentActive: runTabActive,
           isOpen: isSecondaryPanelOpen,
           onClose: closeSecondaryPanel,
           onCollapse: closeSecondaryPanel,

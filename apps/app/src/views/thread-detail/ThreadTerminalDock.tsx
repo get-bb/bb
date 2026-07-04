@@ -1,10 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import type {
-  ProjectRunCommandTarget,
-  ProjectRunCommandTargetState,
-  TerminalSession,
-} from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { TabPill } from "@/components/ui/tab-pill";
@@ -17,25 +12,13 @@ import {
   getThreadTerminalDockStateId,
   useSetFixedSecondaryPanelOpen,
 } from "@/lib/fixed-panel-tabs";
-import {
-  getRunCommandStateForTarget,
-  isRunCommandStateActive,
-} from "@/lib/project-run-command";
-import { useProjectRunCommand } from "@/hooks/queries/sidebar-navigation-query";
-import {
-  useStartProjectRunCommand,
-  useStopProjectRunCommand,
-} from "@/hooks/mutations/project-mutations";
-import {
-  useEnvironmentTerminals,
-  useTerminals,
-} from "@/hooks/queries/thread-terminal-queries";
 import { ThreadTerminalContent } from "@/components/thread/terminal/ThreadTerminalContent";
-import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import {
   terminalStatusLabel,
   useThreadTerminalController,
 } from "@/components/thread/terminal/useThreadTerminalController";
+import { RunCommandTerminalBody } from "./RunCommandTerminalBody";
+import { useThreadRunCommandTerminal } from "./useThreadRunCommandTerminal";
 
 export interface ThreadTerminalDockProps {
   threadId: string;
@@ -54,42 +37,6 @@ export interface ThreadTerminalDockProps {
 }
 
 type DockView = "run" | "terminal";
-
-// Loads the threadless run-command session (env- or host-scoped) so the pinned
-// Run tab can render its live terminal, mirroring how the compose page resolves
-// a session by target + id.
-function useRunCommandSession(
-  runState: ProjectRunCommandTargetState | undefined,
-  enabled: boolean,
-): TerminalSession | null {
-  const terminalTarget = runState?.terminalTarget ?? null;
-  const isEnv = terminalTarget?.kind === "environment";
-  const isHost = terminalTarget?.kind === "host_path";
-  const environmentTerminalsQuery = useEnvironmentTerminals(
-    isEnv ? terminalTarget.environmentId : "",
-    { enabled: enabled && isEnv },
-  );
-  const hostTerminalsQuery = useTerminals(
-    isHost
-      ? {
-          kind: "host_path",
-          hostId: terminalTarget.hostId,
-          ...(terminalTarget.cwd === null ? {} : { cwd: terminalTarget.cwd }),
-        }
-      : null,
-    { enabled: enabled && isHost },
-  );
-  const sessions = isEnv
-    ? environmentTerminalsQuery.data?.sessions
-    : isHost
-      ? hostTerminalsQuery.data?.sessions
-      : undefined;
-  const sessionId = runState?.terminalSessionId ?? null;
-  if (sessionId === null || sessions === undefined) {
-    return null;
-  }
-  return sessions.find((session) => session.id === sessionId) ?? null;
-}
 
 /**
  * The desktop terminal dock: a terminal-only recomposition of the right panel's
@@ -126,25 +73,15 @@ export function ThreadTerminalDock({
     target: { kind: "thread", threadId },
   });
 
-  const { runCommand, states } = useProjectRunCommand(projectId);
-  const runConfigured = (runCommand?.trim().length ?? 0) > 0;
-  const runTarget = useMemo<ProjectRunCommandTarget | null>(() => {
-    // A thread with an environment whose worktree-ness is not yet known must not
-    // fall back to project scope; wait until it resolves to avoid a wrong-scope
-    // Run tab that diverges from the sidebar.
-    if (environmentId !== null && !isEnvironmentResolved) {
-      return null;
-    }
-    if (environmentId !== null && isWorktreeEnvironment) {
-      return { kind: "environment", environmentId };
-    }
-    return projectId !== null ? { kind: "project" } : null;
-  }, [environmentId, isEnvironmentResolved, isWorktreeEnvironment, projectId]);
-  const runState = runTarget
-    ? getRunCommandStateForTarget(states, runTarget)
-    : undefined;
-  const showRunTab = runConfigured && runTarget !== null;
-  const runActive = isRunCommandStateActive(runState);
+  const runCommandTerminal = useThreadRunCommandTerminal({
+    projectId,
+    environmentId,
+    isWorktreeEnvironment,
+    isEnvironmentResolved,
+    runTerminalEnabled: !collapsed,
+  });
+  const { showRunTab, runConfigured, runActive, isRunCommandPending } =
+    runCommandTerminal;
 
   const [selectedView, setSelectedView] = useState<DockView>("run");
   // Keep an already-surfaced terminal in view: while the Run tab is unavailable
@@ -156,36 +93,14 @@ export function ThreadTerminalDock({
     }
   }, [showRunTab, controller.activeTerminalId]);
   const activeView: DockView = showRunTab ? selectedView : "terminal";
-  const runSession = useRunCommandSession(
-    runState,
-    activeView === "run" && showRunTab,
-  );
-
-  const startRunCommand = useStartProjectRunCommand();
-  const stopRunCommand = useStopProjectRunCommand();
-  const isRunCommandPending =
-    startRunCommand.isPending || stopRunCommand.isPending;
 
   const handleToggleRunCommand = useCallback(() => {
-    if (projectId === null || runTarget === null || isRunCommandPending) {
-      return;
+    // Starting surfaces the Run view; stopping leaves the current view in place.
+    if (!runCommandTerminal.runActive) {
+      setSelectedView("run");
     }
-    const request = { projectId, target: runTarget };
-    if (runActive) {
-      stopRunCommand.mutate(request);
-      return;
-    }
-    startRunCommand.mutate(request, {
-      onSuccess: () => setSelectedView("run"),
-    });
-  }, [
-    isRunCommandPending,
-    projectId,
-    runActive,
-    runTarget,
-    startRunCommand,
-    stopRunCommand,
-  ]);
+    runCommandTerminal.onToggleRunCommand();
+  }, [runCommandTerminal]);
 
   const handleCreateTerminal = useCallback(() => {
     setSelectedView("terminal");
@@ -312,39 +227,13 @@ export function ThreadTerminalDock({
       </div>
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
         {activeView === "run" && showRunTab ? (
-          runSession ? (
-            <ThreadTerminalView
-              session={runSession}
-              isPanelOpen={!collapsed}
-              onOpenLink={onOpenLink}
-              onSelectionAddToChat={onSelectionAddToChat}
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground">
-              {runActive ? (
-                <p>Connecting to run command…</p>
-              ) : (
-                <>
-                  <p>The run command is not running.</p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!runConfigured || isRunCommandPending}
-                    onClick={handleToggleRunCommand}
-                  >
-                    <Icon
-                      name={isRunCommandPending ? "Spinner" : "Play"}
-                      className={cn(
-                        "size-3.5",
-                        isRunCommandPending && "animate-spin",
-                      )}
-                    />
-                    Start run command
-                  </Button>
-                </>
-              )}
-            </div>
-          )
+          <RunCommandTerminalBody
+            runCommandTerminal={runCommandTerminal}
+            isPanelOpen={!collapsed}
+            onStartRunCommand={handleToggleRunCommand}
+            onOpenLink={onOpenLink}
+            onSelectionAddToChat={onSelectionAddToChat}
+          />
         ) : (
           <ThreadTerminalContent
             controller={controller}

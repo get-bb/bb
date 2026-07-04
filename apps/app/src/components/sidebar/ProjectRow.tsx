@@ -87,11 +87,6 @@ import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
-  ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-  useSetFixedRightTerminalActiveTerminal,
-} from "@/lib/fixed-panel-tabs";
-import {
-  getProjectComposeRoutePath,
   getProjectSettingsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
@@ -639,6 +634,7 @@ interface EnvironmentThreadGroupHeaderActionsProps {
   runCommandState?: ProjectRunCommandTargetState;
   runCommandTarget: ProjectRunCommandTarget;
   runTerminalThreadId: string;
+  runLabel: string;
   onArchiveThreads?: () => void;
   onCreateNewThread?: () => void;
   onRenameEnvironment?: () => void;
@@ -687,11 +683,11 @@ interface ProjectRunCommandTerminalButtonProps {
   projectId: string;
   state?: ProjectRunCommandTargetState;
   /**
-   * When set, "Open run terminal" navigates to this thread, whose bottom
-   * terminal dock surfaces the run as a pinned Run tab. Without it (project-level
-   * rows with no thread), it falls back to the compose page.
+   * The thread whose terminal pane surfaces the run as a pinned Run tab; "Open
+   * run terminal" navigates there. Callers with no eligible thread must not
+   * render this button (the run is only viewable in a thread pane).
    */
-  threadId?: string;
+  threadId: string;
 }
 
 function isWorktreeThread(
@@ -794,9 +790,6 @@ function ProjectRunCommandTerminalButton({
   threadId,
 }: ProjectRunCommandTerminalButtonProps) {
   const navigate = useNavigate();
-  const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
-    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-  );
   const terminalSessionId = isRunCommandStateActive(state)
     ? (state?.terminalSessionId ?? null)
     : null;
@@ -808,23 +801,10 @@ function ProjectRunCommandTerminalButton({
       if (!terminalSessionId) {
         return;
       }
-      if (threadId !== undefined) {
-        // The thread's terminal dock discovers the run session itself, so open
-        // the thread rather than pinning it onto the compose page.
-        navigate(getThreadRoutePath({ projectId, threadId }));
-        return;
-      }
-      setActiveRunTerminal(terminalSessionId, state?.terminalTarget ?? null);
-      navigate(getProjectComposeRoutePath(projectId));
+      // The thread's terminal pane surfaces the run as a pinned Run tab.
+      navigate(getThreadRoutePath({ projectId, threadId }));
     },
-    [
-      navigate,
-      projectId,
-      setActiveRunTerminal,
-      state?.terminalTarget,
-      terminalSessionId,
-      threadId,
-    ],
+    [navigate, projectId, terminalSessionId, threadId],
   );
 
   if (!terminalSessionId) {
@@ -1267,6 +1247,7 @@ function EnvironmentThreadGroupHeaderActions({
   runCommandState,
   runCommandTarget,
   runTerminalThreadId,
+  runLabel,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
@@ -1285,13 +1266,13 @@ function EnvironmentThreadGroupHeaderActions({
       {projectRunCommandConfigured ? (
         <>
           <ProjectRunCommandTerminalButton
-            ariaLabelBase="worktree"
+            ariaLabelBase={runLabel}
             projectId={projectId}
             state={runCommandState}
             threadId={runTerminalThreadId}
           />
           <ProjectRunCommandButton
-            ariaLabelBase="worktree"
+            ariaLabelBase={runLabel}
             projectId={projectId}
             runCommandConfigured={projectRunCommandConfigured}
             state={runCommandState}
@@ -1472,6 +1453,11 @@ function EnvironmentThreadGroupHeader({
             runCommandState={runCommandState}
             runCommandTarget={{ kind: "environment", environmentId }}
             runTerminalThreadId={representativeThread.id}
+            runLabel={
+              representativeThread.environmentBranchName ??
+              representativeThread.environmentName ??
+              "worktree"
+            }
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
             onRenameEnvironment={onRenameEnvironment}
@@ -1949,13 +1935,13 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
         showRunCommandButton ? (
           <>
             <ProjectRunCommandTerminalButton
-              ariaLabelBase="worktree"
+              ariaLabelBase={node.thread.environmentBranchName ?? "worktree"}
               projectId={projectId}
               state={runCommandState}
               threadId={node.thread.id}
             />
             <ProjectRunCommandButton
-              ariaLabelBase="worktree"
+              ariaLabelBase={node.thread.environmentBranchName ?? "worktree"}
               projectId={projectId}
               runCommandConfigured={projectRunCommandConfigured}
               state={runCommandState}
@@ -2449,12 +2435,23 @@ function ProjectRowComponent({
     (project.runCommand?.trim().length ?? 0) > 0;
   const projectRunCommandTarget = { kind: "project" } as const;
   const runCommandStates = project.runCommandStates ?? [];
+  // The project-scoped run surfaces in a non-worktree thread's terminal pane;
+  // worktree threads resolve to their own environment run instead.
+  const projectRunTerminalThreadId =
+    threadListState.status === "ready"
+      ? threadListState.threads.find((thread) => !isWorktreeThread(thread))?.id
+      : undefined;
   const projectRunCommandState = getRunCommandStateForTarget(
     runCommandStates,
     projectRunCommandTarget,
   );
-  const showProjectRunCommandActions =
-    isActionsOpen || isRunCommandStateActive(projectRunCommandState);
+  // The project row runs the main checkout, but a run can also be active in any
+  // worktree. Surface an indicator (and keep the run controls visible) whenever
+  // any of the project's runs is active, so a worktree run isn't invisible here.
+  const hasAnyActiveRun = runCommandStates.some((state) =>
+    isRunCommandStateActive(state),
+  );
+  const showProjectRunCommandActions = isActionsOpen || hasAnyActiveRun;
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -2500,6 +2497,13 @@ function ProjectRowComponent({
               <span className="min-w-0 truncate" title={project.name}>
                 {project.name}
               </span>
+              {hasAnyActiveRun ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-emerald-600"
+                  title="A run command is active"
+                  aria-label="A run command is active"
+                />
+              ) : null}
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
@@ -2542,13 +2546,16 @@ function ProjectRowComponent({
             >
               {projectRunCommandConfigured ? (
                 <>
-                  <ProjectRunCommandTerminalButton
-                    ariaLabelBase={project.name}
-                    projectId={project.id}
-                    state={projectRunCommandState}
-                  />
+                  {projectRunTerminalThreadId !== undefined ? (
+                    <ProjectRunCommandTerminalButton
+                      ariaLabelBase="main checkout"
+                      projectId={project.id}
+                      state={projectRunCommandState}
+                      threadId={projectRunTerminalThreadId}
+                    />
+                  ) : null}
                   <ProjectRunCommandButton
-                    ariaLabelBase={project.name}
+                    ariaLabelBase="main checkout"
                     projectId={project.id}
                     runCommandConfigured={projectRunCommandConfigured}
                     state={projectRunCommandState}

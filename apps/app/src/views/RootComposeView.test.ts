@@ -696,6 +696,50 @@ describe("buildRootComposeTerminalSessions", () => {
       }),
     ).toEqual([matching]);
   });
+
+  it("excludes the project run-command session from the compose page (host-path)", () => {
+    const shell = makeTerminalSession({
+      id: "term_shell",
+      hostId: "host_1",
+      initialCwd: "/repo",
+    });
+    const runCommand = makeTerminalSession({
+      id: "term_run",
+      hostId: "host_1",
+      initialCwd: "/repo",
+      purpose: "project_run_command",
+      runCommandProjectId: "proj_1",
+    });
+
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: undefined,
+        globalTerminalSessions: [shell, runCommand],
+        terminalTarget: { kind: "host_path", hostId: "host_1", cwd: "/repo" },
+      }),
+    ).toEqual([shell]);
+  });
+
+  it("excludes the project run-command session from the compose page (environment)", () => {
+    const shell = makeTerminalSession({
+      id: "term_shell",
+      environmentId: "env_1",
+    });
+    const runCommand = makeTerminalSession({
+      id: "term_run",
+      environmentId: "env_1",
+      purpose: "project_run_command",
+      runCommandProjectId: "proj_1",
+    });
+
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: [shell, runCommand],
+        globalTerminalSessions: undefined,
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+      }),
+    ).toEqual([shell]);
+  });
 });
 
 describe("resolveRootComposePanelThreadId", () => {
