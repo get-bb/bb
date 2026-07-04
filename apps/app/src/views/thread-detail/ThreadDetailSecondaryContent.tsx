@@ -142,6 +142,7 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.isBrowserTabActive === next.isBrowserTabActive &&
   previous.sideChatDeck === next.sideChatDeck &&
   previous.isSideChatTabActive === next.isSideChatTabActive &&
+  previous.isTerminalContentActive === next.isTerminalContentActive &&
   previous.isOpen === next.isOpen &&
   previous.showGitDiffTab === next.showGitDiffTab &&
   previous.terminalDock === next.terminalDock &&

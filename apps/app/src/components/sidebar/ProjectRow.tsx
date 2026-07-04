@@ -87,11 +87,6 @@ import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
-  ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-  useSetFixedRightTerminalActiveTerminal,
-} from "@/lib/fixed-panel-tabs";
-import {
-  getProjectComposeRoutePath,
   getProjectSettingsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
@@ -687,11 +682,11 @@ interface ProjectRunCommandTerminalButtonProps {
   projectId: string;
   state?: ProjectRunCommandTargetState;
   /**
-   * When set, "Open run terminal" navigates to this thread, whose bottom
-   * terminal dock surfaces the run as a pinned Run tab. Without it (project-level
-   * rows with no thread), it falls back to the compose page.
+   * The thread whose terminal pane surfaces the run as a pinned Run tab; "Open
+   * run terminal" navigates there. Callers with no eligible thread must not
+   * render this button (the run is only viewable in a thread pane).
    */
-  threadId?: string;
+  threadId: string;
 }
 
 function isWorktreeThread(
@@ -794,9 +789,6 @@ function ProjectRunCommandTerminalButton({
   threadId,
 }: ProjectRunCommandTerminalButtonProps) {
   const navigate = useNavigate();
-  const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
-    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-  );
   const terminalSessionId = isRunCommandStateActive(state)
     ? (state?.terminalSessionId ?? null)
     : null;
@@ -808,23 +800,10 @@ function ProjectRunCommandTerminalButton({
       if (!terminalSessionId) {
         return;
       }
-      if (threadId !== undefined) {
-        // The thread's terminal dock discovers the run session itself, so open
-        // the thread rather than pinning it onto the compose page.
-        navigate(getThreadRoutePath({ projectId, threadId }));
-        return;
-      }
-      setActiveRunTerminal(terminalSessionId, state?.terminalTarget ?? null);
-      navigate(getProjectComposeRoutePath(projectId));
+      // The thread's terminal pane surfaces the run as a pinned Run tab.
+      navigate(getThreadRoutePath({ projectId, threadId }));
     },
-    [
-      navigate,
-      projectId,
-      setActiveRunTerminal,
-      state?.terminalTarget,
-      terminalSessionId,
-      threadId,
-    ],
+    [navigate, projectId, terminalSessionId, threadId],
   );
 
   if (!terminalSessionId) {
@@ -2449,6 +2428,12 @@ function ProjectRowComponent({
     (project.runCommand?.trim().length ?? 0) > 0;
   const projectRunCommandTarget = { kind: "project" } as const;
   const runCommandStates = project.runCommandStates ?? [];
+  // The project-scoped run surfaces in a non-worktree thread's terminal pane;
+  // worktree threads resolve to their own environment run instead.
+  const projectRunTerminalThreadId =
+    threadListState.status === "ready"
+      ? threadListState.threads.find((thread) => !isWorktreeThread(thread))?.id
+      : undefined;
   const projectRunCommandState = getRunCommandStateForTarget(
     runCommandStates,
     projectRunCommandTarget,
@@ -2542,11 +2527,14 @@ function ProjectRowComponent({
             >
               {projectRunCommandConfigured ? (
                 <>
-                  <ProjectRunCommandTerminalButton
-                    ariaLabelBase={project.name}
-                    projectId={project.id}
-                    state={projectRunCommandState}
-                  />
+                  {projectRunTerminalThreadId !== undefined ? (
+                    <ProjectRunCommandTerminalButton
+                      ariaLabelBase={project.name}
+                      projectId={project.id}
+                      state={projectRunCommandState}
+                      threadId={projectRunTerminalThreadId}
+                    />
+                  ) : null}
                   <ProjectRunCommandButton
                     ariaLabelBase={project.name}
                     projectId={project.id}

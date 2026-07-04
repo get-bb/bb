@@ -209,7 +209,7 @@ describe("ProjectRow interactions", () => {
     cleanup();
     renderProjectRow(
       vi.fn(),
-      { status: "ready", threads: [] },
+      { status: "ready", threads: [makeThread({ id: "thr_root" })] },
       false,
       new Set(),
       makeProject({
@@ -230,17 +230,15 @@ describe("ProjectRow interactions", () => {
       }),
     );
 
+    // With a non-worktree thread present, Open navigates to that thread's
+    // terminal pane instead of pinning the run onto the compose page.
     fireEvent.click(
       screen.getByRole("button", {
         name: "Open Test project run terminal",
       }),
     );
 
-    expect(mockSetActiveRunTerminal).toHaveBeenCalledWith("term_run", {
-      kind: "host_path",
-      hostId: "host_test",
-      cwd: "/repo",
-    });
+    expect(mockSetActiveRunTerminal).not.toHaveBeenCalled();
 
     fireEvent.click(
       screen.getByRole("button", {

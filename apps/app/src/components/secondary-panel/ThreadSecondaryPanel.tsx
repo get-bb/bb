@@ -159,6 +159,13 @@ export interface ThreadSecondaryPanelProps {
    * the content region and the normal content slot is suppressed.
    */
   isSideChatTabActive?: boolean;
+  /**
+   * Whether the active file tab renders a terminal (full-height, no scroll
+   * padding). Derived from the active tab kind for real terminal tabs; set
+   * explicitly for the derived, non-persisted pinned Run tab in the mobile
+   * drawer, whose content is passed through `fileTabContent`.
+   */
+  isTerminalContentActive?: boolean;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
   showGitDiffTab?: boolean;
@@ -254,6 +261,7 @@ export function ThreadSecondaryPanel({
   isBrowserTabActive = false,
   sideChatDeck,
   isSideChatTabActive = false,
+  isTerminalContentActive = false,
   isOpen,
   showConversationCollapseControl = true,
   showGitDiffTab = true,
@@ -279,7 +287,8 @@ export function ThreadSecondaryPanel({
   const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
   const hasActiveFileTab = activeFileTab !== undefined;
   const isTerminalTabActive =
-    activeTab?.kind === "terminal" && hasActiveFileTab;
+    (activeTab?.kind === "terminal" || isTerminalContentActive) &&
+    hasActiveFileTab;
   const togglePanelIconName = renderAsDrawer ? "X" : "PanelRight";
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
