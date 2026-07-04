@@ -113,7 +113,7 @@ async function writePlugin(
 
 function pluginMentionInput(args: {
   text: string;
-  mentions: Array<{ label: string; itemId: string; pluginId?: string }>;
+  mentions: Array<{ label: string; itemId?: string; pluginId?: string }>;
 }): PromptInput[] {
   return [
     {
@@ -126,8 +126,8 @@ function pluginMentionInput(args: {
         resource: {
           kind: "plugin" as const,
           pluginId: mention.pluginId ?? "mentions",
-          itemId: mention.itemId,
           label: mention.label,
+          ...(mention.itemId === undefined ? {} : { itemId: mention.itemId }),
         },
       })),
     },
@@ -358,6 +358,46 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(queued.command.input[0]).toMatchObject({
       type: "text",
       text: "@Fix login bug then @Fix login bug then @Ship mention providers",
+    });
+  });
+
+  it("does not resolve installed plugin bundle mentions without provider item ids", async () => {
+    const { environment, thread } = seedColdIdleThreadFixture(harness, 4);
+
+    await sendThreadMessage(harness.deps, {
+      environment,
+      payload: {
+        input: pluginMentionInput({
+          text: "@mentions summarize the thread",
+          mentions: [{ label: "mentions" }],
+        }),
+        mode: "start",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread,
+      trigger: "user",
+    });
+
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "thread.start" &&
+        candidate.command.threadId === thread.id,
+    );
+    if (queued.command.type !== "thread.start") {
+      throw new Error("Expected a thread.start command");
+    }
+    expect(
+      queued.command.input.some(
+        (item) => item.type === "text" && item.visibility === "agent-only",
+      ),
+    ).toBe(false);
+    expect(queued.command.input[0]).toMatchObject({
+      type: "text",
+      text: "@mentions summarize the thread",
     });
   });
 

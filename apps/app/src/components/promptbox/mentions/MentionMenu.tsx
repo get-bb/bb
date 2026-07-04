@@ -100,17 +100,34 @@ type PluginMentionSectionKind = `plugin:${string}`;
 type MentionSectionKind =
   | "threads"
   | "projects"
+  | "plugins"
   | PathMentionSectionKind
   | PluginMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
+type PluginMentionSuggestion = Extract<
+  PromptMentionSuggestion,
+  { kind: "plugin" }
+>;
+type PluginProviderMentionSuggestion = PluginMentionSuggestion & {
+  itemId: string;
+  providerId: string;
+  providerLabel: string;
+};
 type SecondaryContextKind = "path" | "project";
 
 const MENTION_SECTION_ORDER: readonly MentionSectionKind[] = [
   "threads",
   "projects",
+  "plugins",
   "workspace",
   "thread-storage",
 ];
+
+function isPluginProviderMentionSuggestion(
+  item: PluginMentionSuggestion,
+): item is PluginProviderMentionSuggestion {
+  return item.itemId !== undefined;
+}
 
 /** Built-in sections first, then plugin provider sections in row order. */
 function getMentionSectionOrder(
@@ -119,6 +136,7 @@ function getMentionSectionOrder(
   const pluginKinds: PluginMentionSectionKind[] = [];
   for (const item of suggestions) {
     if (item.kind !== "plugin") continue;
+    if (!isPluginProviderMentionSuggestion(item)) continue;
     const kind = getPluginSectionKind(item);
     if (!pluginKinds.includes(kind)) {
       pluginKinds.push(kind);
@@ -128,7 +146,7 @@ function getMentionSectionOrder(
 }
 
 function getPluginSectionKind(
-  item: Extract<PromptMentionSuggestion, { kind: "plugin" }>,
+  item: PluginProviderMentionSuggestion,
 ): PluginMentionSectionKind {
   // Provider ids exclude ":" (enforced at registration), so this composite
   // is unambiguous.
@@ -142,6 +160,7 @@ function getPluginSectionLabels(
   const labels = new Map<PluginMentionSectionKind, string>();
   for (const item of suggestions) {
     if (item.kind !== "plugin") continue;
+    if (!isPluginProviderMentionSuggestion(item)) continue;
     const kind = getPluginSectionKind(item);
     if (!labels.has(kind)) {
       labels.set(kind, item.providerLabel);
@@ -160,7 +179,9 @@ function getMentionSectionKind(
     return "projects";
   }
   if (item.kind === "plugin") {
-    return getPluginSectionKind(item);
+    return isPluginProviderMentionSuggestion(item)
+      ? getPluginSectionKind(item)
+      : "plugins";
   }
   return getPathSectionKind(item);
 }
@@ -180,6 +201,9 @@ function getMentionSectionLabel(
   }
   if (kind === "projects") {
     return "Projects";
+  }
+  if (kind === "plugins") {
+    return "Plugins";
   }
   if (kind === "workspace" || kind === "thread-storage") {
     return getPathSectionLabel(kind);
@@ -211,7 +235,9 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
   }
 
   if (item.kind === "plugin") {
-    return `${item.providerLabel}: ${item.title}`;
+    return isPluginProviderMentionSuggestion(item)
+      ? `${item.providerLabel}: ${item.title}`
+      : `Plugin: ${item.title}`;
   }
 
   return `${getPathSectionLabel(getPathSectionKind(item))}: ${item.path}`;
@@ -222,7 +248,9 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
     return `${item.kind}-${item.source}-${item.entryKind}-${item.path}-${index}`;
   }
   if (item.kind === "plugin") {
-    return `${item.kind}-${item.pluginId}-${item.itemId}-${index}`;
+    return isPluginProviderMentionSuggestion(item)
+      ? `${item.kind}-${item.pluginId}-${item.itemId}-${index}`
+      : `${item.kind}-${item.pluginId}-${index}`;
   }
   return `${item.kind}-${item.path}-${index}`;
 }

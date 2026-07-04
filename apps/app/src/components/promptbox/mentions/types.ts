@@ -42,6 +42,21 @@ export type PromptMentionSuggestion =
     }
   | {
       /**
+       * One installed plugin bundle row. Picking one inserts an `@plugin`
+       * mention for the plugin itself; unlike provider-result rows, it has no
+       * `itemId` and does not resolve extra context at send time.
+       */
+      kind: "plugin";
+      pluginId: string;
+      title: string;
+      subtitle: string | null;
+      replacement: string;
+      itemId?: never;
+      providerId?: never;
+      providerLabel?: never;
+    }
+  | {
+      /**
        * One plugin mention-provider row (plugin design §4.9), from
        * GET /plugins/mentions/search. Items group under `providerLabel` in
        * the menu; picking one inserts a pill whose resource carries

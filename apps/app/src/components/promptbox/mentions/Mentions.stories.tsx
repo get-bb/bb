@@ -124,6 +124,23 @@ const mixedSuggestions: PromptMentionSuggestion[] = [
   ...pathSuggestions.slice(0, 4),
 ];
 
+const installedPluginSuggestions: PromptMentionSuggestion[] = [
+  {
+    kind: "plugin",
+    pluginId: "codex",
+    title: "codex",
+    subtitle: "v0.1.0",
+    replacement: "codex",
+  },
+  {
+    kind: "plugin",
+    pluginId: "github",
+    title: "github",
+    subtitle: "v3fdeeb49",
+    replacement: "github",
+  },
+];
+
 const commandSuggestions: ProviderCommandSuggestion[] = [
   {
     kind: "command",
@@ -231,6 +248,7 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
 
 const mixedWithPluginSuggestions: PromptMentionSuggestion[] = [
   ...threadSuggestions.slice(0, 1),
+  ...installedPluginSuggestions,
   ...pathSuggestions.slice(0, 2),
   ...pluginMentionSuggestions,
 ];

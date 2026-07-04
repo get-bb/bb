@@ -209,11 +209,16 @@ export const promptMentionResourceSchema = z.union([
     kind: z.literal("plugin"),
     pluginId: z.string(),
     /**
-     * Opaque item reference minted by the server's mention search
-     * (`<providerId>:<provider item id>`); resolved back through the same
-     * plugin's mention provider at send time (plugin design §4.9).
+     * Present only for plugin mention-provider items. Installed-plugin
+     * mentions such as `@codex` identify the plugin bundle itself and do not
+     * resolve extra context at send time.
+     *
+     * Provider-item values are opaque references minted by the server's
+     * mention search (`<providerId>:<provider item id>`); they resolve back
+     * through the same plugin's mention provider at send time (plugin design
+     * §4.9).
      */
-    itemId: z.string(),
+    itemId: z.string().optional(),
     label: z.string(),
   }),
 ]);

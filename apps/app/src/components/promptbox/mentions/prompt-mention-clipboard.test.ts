@@ -22,4 +22,14 @@ describe("serializedTextForPromptMentionResource", () => {
       }),
     ).toBe("@thread:thr_abc");
   });
+
+  it("serializes a plugin mention as an @plugin token", () => {
+    expect(
+      serializedTextForPromptMentionResource({
+        kind: "plugin",
+        pluginId: "codex",
+        label: "codex",
+      }),
+    ).toBe("@codex");
+  });
 });

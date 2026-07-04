@@ -73,7 +73,7 @@ export interface PromptTextMention {
       }
     | {
         kind: "plugin";
-        itemId: string;
+        itemId?: string;
         label: string;
         pluginId: string;
       };

@@ -57,7 +57,20 @@ describe("prompt mention command triggers", () => {
     ).toBe(false);
   });
 
-  it("accepts plugin mention resources and requires all fields", () => {
+  it("accepts installed plugin mention resources without provider item context", () => {
+    const resource = {
+      kind: "plugin",
+      pluginId: "codex",
+      label: "codex",
+    };
+    const parsed = promptMentionResourceSchema.safeParse(resource);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toEqual(resource);
+    }
+  });
+
+  it("accepts plugin provider mention resources with item context", () => {
     const resource = {
       kind: "plugin",
       pluginId: "linear",
@@ -69,13 +82,6 @@ describe("prompt mention command triggers", () => {
     if (parsed.success) {
       expect(parsed.data).toEqual(resource);
     }
-    expect(
-      promptMentionResourceSchema.safeParse({
-        kind: "plugin",
-        pluginId: "linear",
-        label: "Fix login bug",
-      }).success,
-    ).toBe(false);
   });
 
   it("rejects legacy dollar command mention resources", () => {

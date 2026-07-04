@@ -1,6 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
+import {
+  buildInstalledPluginMentionSuggestions,
+  buildPluginMentionSuggestions,
+} from "./pluginMentionSuggestions";
+import type { PluginListItem } from "./queries/plugin-settings-queries";
 import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-queries";
+
+const PLUGINS: PluginListItem[] = [
+  {
+    id: "codex",
+    version: "0.1.0",
+    enabled: true,
+    status: "running",
+    statusDetail: null,
+    logoUrl: "/api/v1/plugins/codex/assets/logo",
+    logoDarkUrl: null,
+  },
+  {
+    id: "linear",
+    version: "1.2.3",
+    enabled: true,
+    status: "running",
+    statusDetail: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+  },
+  {
+    id: "disabled",
+    version: "1.0.0",
+    enabled: false,
+    status: "stopped",
+    statusDetail: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+  },
+  {
+    id: "broken",
+    version: "1.0.0",
+    enabled: true,
+    status: "error",
+    statusDetail: "boom",
+    logoUrl: null,
+    logoDarkUrl: null,
+  },
+];
 
 const GROUPS: PluginMentionSearchGroup[] = [
   {
@@ -38,6 +81,41 @@ const GROUPS: PluginMentionSearchGroup[] = [
 ];
 
 describe("buildPluginMentionSuggestions", () => {
+  it("builds @ mention suggestions for running installed plugins", () => {
+    expect(
+      buildInstalledPluginMentionSuggestions({
+        plugins: PLUGINS,
+        query: "co",
+        limit: 8,
+      }),
+    ).toEqual([
+      {
+        kind: "plugin",
+        pluginId: "codex",
+        title: "codex",
+        subtitle: "v0.1.0",
+        replacement: "codex",
+      },
+    ]);
+  });
+
+  it("does not suggest disabled or errored plugins", () => {
+    expect(
+      buildInstalledPluginMentionSuggestions({
+        plugins: PLUGINS,
+        query: "broken",
+        limit: 8,
+      }),
+    ).toEqual([]);
+    expect(
+      buildInstalledPluginMentionSuggestions({
+        plugins: PLUGINS,
+        query: "disabled",
+        limit: 8,
+      }),
+    ).toEqual([]);
+  });
+
   it("flattens groups into plugin suggestions carrying the provider label", () => {
     expect(buildPluginMentionSuggestions(GROUPS)).toEqual([
       {

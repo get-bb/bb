@@ -516,12 +516,18 @@ export function promptMentionResourceFromSuggestion(
   }
 
   if (suggestion.kind === "plugin") {
-    return {
-      kind: "plugin",
-      pluginId: suggestion.pluginId,
-      itemId: suggestion.itemId,
-      label: suggestion.title.trim() || suggestion.itemId,
-    };
+    return suggestion.itemId === undefined
+      ? {
+          kind: "plugin",
+          pluginId: suggestion.pluginId,
+          label: suggestion.title.trim() || suggestion.pluginId,
+        }
+      : {
+          kind: "plugin",
+          pluginId: suggestion.pluginId,
+          itemId: suggestion.itemId,
+          label: suggestion.title.trim() || suggestion.itemId,
+        };
   }
 
   return {

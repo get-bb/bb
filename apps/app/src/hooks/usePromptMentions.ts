@@ -3,7 +3,10 @@ import type { Dispatch, SetStateAction } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { useDebounceValue } from "usehooks-ts";
 import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
-import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
+import {
+  buildInstalledPluginMentionSuggestions,
+  buildPluginMentionSuggestions,
+} from "./pluginMentionSuggestions";
 import {
   buildProjectMentionSuggestions,
   type ProjectMentionCandidate,
@@ -12,6 +15,7 @@ import {
   usePluginContributions,
   usePluginMentionSearch,
 } from "./queries/plugin-contribution-queries";
+import { usePluginList } from "./queries/plugin-settings-queries";
 import { useSidebarNavigation } from "./queries/sidebar-navigation-query";
 import { useThreadMentionCandidates } from "./queries/thread-queries";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
@@ -40,6 +44,7 @@ interface BuildPromptMentionSuggestionsArgs {
   pathSuggestions: readonly PromptMentionSuggestion[];
   threadSuggestions: readonly PromptMentionSuggestion[];
   projectSuggestions: readonly PromptMentionSuggestion[];
+  installedPluginSuggestions: readonly PromptMentionSuggestion[];
   pluginSuggestions: readonly PromptMentionSuggestion[];
   trimmedQuery: string;
 }
@@ -48,19 +53,21 @@ function buildPromptMentionSuggestions(
   args: BuildPromptMentionSuggestionsArgs,
 ): PromptMentionSuggestion[] {
   // A query containing "/" reads as a file path, so paths lead; otherwise the
-  // named entities (threads then projects) lead and paths trail. Plugin
-  // provider rows always trail the built-in sources (they render in their
-  // own labeled sections at the bottom of the menu).
+  // named entities (threads, projects, installed plugins) lead and paths
+  // trail. Plugin provider rows always trail the built-in sources (they render
+  // in their own labeled sections at the bottom of the menu).
   return args.trimmedQuery.includes("/")
     ? [
         ...args.pathSuggestions,
         ...args.threadSuggestions,
         ...args.projectSuggestions,
+        ...args.installedPluginSuggestions,
         ...args.pluginSuggestions,
       ]
     : [
         ...args.threadSuggestions,
         ...args.projectSuggestions,
+        ...args.installedPluginSuggestions,
         ...args.pathSuggestions,
         ...args.pluginSuggestions,
       ];
@@ -120,6 +127,7 @@ export function usePromptMentions(
   // Plugin mention providers (plugin design §4.9): searched server-side on
   // the debounced query, only when at least one provider is registered.
   const pluginContributions = usePluginContributions();
+  const pluginList = usePluginList();
   const hasMentionProviders =
     (pluginContributions.data?.mentionProviders.length ?? 0) > 0;
   const [debouncedQuery] = useDebounceValue(
@@ -181,6 +189,15 @@ export function usePromptMentions(
         : [],
     [hasMentionProviders, pluginSearch.data],
   );
+  const installedPluginSuggestions = useMemo(
+    () =>
+      buildInstalledPluginMentionSuggestions({
+        plugins: pluginList.data ?? [],
+        query: trimmedQuery,
+        limit: PROMPT_MENTION_SOURCE_LIMIT,
+      }),
+    [pluginList.data, trimmedQuery],
+  );
   const suggestions = useMemo(
     () =>
       hasQuery
@@ -188,6 +205,7 @@ export function usePromptMentions(
             pathSuggestions,
             threadSuggestions,
             projectSuggestions,
+            installedPluginSuggestions,
             pluginSuggestions,
             trimmedQuery,
           })
@@ -197,6 +215,7 @@ export function usePromptMentions(
       pathSuggestions,
       threadSuggestions,
       projectSuggestions,
+      installedPluginSuggestions,
       pluginSuggestions,
       trimmedQuery,
     ],
@@ -213,6 +232,7 @@ export function usePromptMentions(
       pathSearch.isLoading ||
       threadsQuery.isLoading ||
       threadsQuery.isFetching ||
+      pluginList.isLoading ||
       // Plugin mention search failures fall back to "no plugin results"
       // (the built-in sources still render), so only its loading state
       // participates here.

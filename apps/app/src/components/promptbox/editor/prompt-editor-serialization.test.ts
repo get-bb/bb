@@ -498,6 +498,42 @@ describe("prompt editor serialization", () => {
     });
   });
 
+  it("builds an installed plugin mention resource without provider item context", () => {
+    expect(
+      promptMentionResourceFromSuggestion({
+        kind: "plugin",
+        pluginId: "codex",
+        title: "codex",
+        subtitle: "v0.1.0",
+        replacement: "codex",
+      }),
+    ).toEqual({
+      kind: "plugin",
+      pluginId: "codex",
+      label: "codex",
+    });
+  });
+
+  it("builds a plugin provider mention resource with its provider item id", () => {
+    expect(
+      promptMentionResourceFromSuggestion({
+        kind: "plugin",
+        pluginId: "linear",
+        providerId: "issues",
+        itemId: "issues:ISS-42",
+        providerLabel: "Linear issues",
+        title: "Fix login bug",
+        subtitle: "In progress",
+        replacement: "Fix login bug",
+      }),
+    ).toEqual({
+      kind: "plugin",
+      pluginId: "linear",
+      itemId: "issues:ISS-42",
+      label: "Fix login bug",
+    });
+  });
+
   it("round-trips a project mention through the editor document", () => {
     const value: PromptEditorValue = {
       text: "look at @project:proj_abc please",
