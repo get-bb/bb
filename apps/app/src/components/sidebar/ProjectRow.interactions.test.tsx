@@ -186,7 +186,7 @@ describe("ProjectRow interactions", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Start Test project run command",
+        name: "Start main checkout run command",
       }),
     );
 
@@ -234,7 +234,7 @@ describe("ProjectRow interactions", () => {
     // terminal pane instead of pinning the run onto the compose page.
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open Test project run terminal",
+        name: "Open main checkout run terminal",
       }),
     );
 
@@ -242,7 +242,7 @@ describe("ProjectRow interactions", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Stop Test project run command",
+        name: "Stop main checkout run command",
       }),
     );
 
@@ -272,7 +272,7 @@ describe("ProjectRow interactions", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Start worktree run command",
+        name: "Start feature/run run command",
       }),
     );
 
@@ -315,12 +315,54 @@ describe("ProjectRow interactions", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Open worktree run terminal" }),
+      screen.getByRole("button", { name: "Open feature/run run terminal" }),
     );
 
     // The thread's bottom terminal dock surfaces the run, so opening navigates
     // to the thread rather than pinning the session onto the compose page.
     expect(mockSetActiveRunTerminal).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a project-row run indicator when only a worktree run is active", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            environmentId: "env_worktree",
+            environmentBranchName: "feature/run",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      makeProject({
+        runCommand: "pnpm dev",
+        runCommandStates: [
+          {
+            target: { kind: "environment", environmentId: "env_worktree" },
+            status: "running",
+            terminalSessionId: "term_run",
+            terminalTarget: {
+              kind: "environment",
+              environmentId: "env_worktree",
+            },
+            updatedAt: 1,
+          },
+        ],
+      }),
+    );
+
+    // The main-checkout run is not active, but a worktree run is, so the project
+    // row still shows an active-run indicator.
+    expect(screen.getByTitle("A run command is active")).toBeTruthy();
+    // The main-checkout button still reads as not-running (it controls a
+    // different scope).
+    expect(
+      screen.getByRole("button", { name: "Start main checkout run command" }),
+    ).toBeTruthy();
   });
 
   it("does not toggle collapse when the project row is clicked", () => {

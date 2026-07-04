@@ -634,6 +634,7 @@ interface EnvironmentThreadGroupHeaderActionsProps {
   runCommandState?: ProjectRunCommandTargetState;
   runCommandTarget: ProjectRunCommandTarget;
   runTerminalThreadId: string;
+  runLabel: string;
   onArchiveThreads?: () => void;
   onCreateNewThread?: () => void;
   onRenameEnvironment?: () => void;
@@ -1246,6 +1247,7 @@ function EnvironmentThreadGroupHeaderActions({
   runCommandState,
   runCommandTarget,
   runTerminalThreadId,
+  runLabel,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
@@ -1264,13 +1266,13 @@ function EnvironmentThreadGroupHeaderActions({
       {projectRunCommandConfigured ? (
         <>
           <ProjectRunCommandTerminalButton
-            ariaLabelBase="worktree"
+            ariaLabelBase={runLabel}
             projectId={projectId}
             state={runCommandState}
             threadId={runTerminalThreadId}
           />
           <ProjectRunCommandButton
-            ariaLabelBase="worktree"
+            ariaLabelBase={runLabel}
             projectId={projectId}
             runCommandConfigured={projectRunCommandConfigured}
             state={runCommandState}
@@ -1451,6 +1453,11 @@ function EnvironmentThreadGroupHeader({
             runCommandState={runCommandState}
             runCommandTarget={{ kind: "environment", environmentId }}
             runTerminalThreadId={representativeThread.id}
+            runLabel={
+              representativeThread.environmentBranchName ??
+              representativeThread.environmentName ??
+              "worktree"
+            }
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
             onRenameEnvironment={onRenameEnvironment}
@@ -1928,13 +1935,13 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
         showRunCommandButton ? (
           <>
             <ProjectRunCommandTerminalButton
-              ariaLabelBase="worktree"
+              ariaLabelBase={node.thread.environmentBranchName ?? "worktree"}
               projectId={projectId}
               state={runCommandState}
               threadId={node.thread.id}
             />
             <ProjectRunCommandButton
-              ariaLabelBase="worktree"
+              ariaLabelBase={node.thread.environmentBranchName ?? "worktree"}
               projectId={projectId}
               runCommandConfigured={projectRunCommandConfigured}
               state={runCommandState}
@@ -2438,8 +2445,13 @@ function ProjectRowComponent({
     runCommandStates,
     projectRunCommandTarget,
   );
-  const showProjectRunCommandActions =
-    isActionsOpen || isRunCommandStateActive(projectRunCommandState);
+  // The project row runs the main checkout, but a run can also be active in any
+  // worktree. Surface an indicator (and keep the run controls visible) whenever
+  // any of the project's runs is active, so a worktree run isn't invisible here.
+  const hasAnyActiveRun = runCommandStates.some((state) =>
+    isRunCommandStateActive(state),
+  );
+  const showProjectRunCommandActions = isActionsOpen || hasAnyActiveRun;
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -2485,6 +2497,13 @@ function ProjectRowComponent({
               <span className="min-w-0 truncate" title={project.name}>
                 {project.name}
               </span>
+              {hasAnyActiveRun ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-emerald-600"
+                  title="A run command is active"
+                  aria-label="A run command is active"
+                />
+              ) : null}
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
@@ -2529,14 +2548,14 @@ function ProjectRowComponent({
                 <>
                   {projectRunTerminalThreadId !== undefined ? (
                     <ProjectRunCommandTerminalButton
-                      ariaLabelBase={project.name}
+                      ariaLabelBase="main checkout"
                       projectId={project.id}
                       state={projectRunCommandState}
                       threadId={projectRunTerminalThreadId}
                     />
                   ) : null}
                   <ProjectRunCommandButton
-                    ariaLabelBase={project.name}
+                    ariaLabelBase="main checkout"
                     projectId={project.id}
                     runCommandConfigured={projectRunCommandConfigured}
                     state={projectRunCommandState}
