@@ -483,48 +483,56 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
   });
 
-  it("replaces a tab in place for Open with switches", () => {
+  it("honors per-open viewer overrides in both directions", () => {
     registerNotesOpener();
+    setDefaultOpener();
     const { result } = renderHook(() =>
       useThreadFileTabs({
-        threadId: "opener-switch",
+        threadId: "opener-override",
         environmentId: "env_1",
         storageFiles: undefined,
         terminalSessions: undefined,
       }),
     );
 
-    // Open built-in (no default set), then switch to the opener tab.
+    // "builtin" override skips the opener default entirely.
     act(() =>
-      result.current.openTab({
-        kind: "workspace-file-preview",
-        tab: {
-          lineRange: null,
-          path: "notes/todo.md",
-          source: { kind: "working-tree" },
-          statusLabel: null,
+      result.current.openTab(
+        {
+          kind: "workspace-file-preview",
+          tab: {
+            lineRange: null,
+            path: "notes/todo.md",
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
         },
-      }),
+        { viewer: "builtin" },
+      ),
     );
-    const builtinTabId = result.current.orderedSecondaryFileTabs[0]?.id;
-    expect(builtinTabId).toBeDefined();
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
 
+    // A forced opener applies even with no default preference set.
+    window.localStorage.removeItem("bb.fileOpenerByExtension");
     act(() =>
-      result.current.replaceSecondaryPanelTab({
-        fromTabId: builtinTabId ?? "",
-        toTab: {
-          kind: "plugin-panel",
-          id: "fixed:plugin-panel:x:none",
-          pluginId: "notes",
-          actionId: "file-opener:editor",
-          title: "todo.md",
-          paramsJson: "{}",
+      result.current.openTab(
+        {
+          kind: "workspace-file-preview",
+          tab: {
+            lineRange: null,
+            path: "notes/other.md",
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
         },
-      }),
+        { viewer: { pluginId: "notes", openerId: "editor" } },
+      ),
     );
-    expect(result.current.orderedSecondaryFileTabs).toHaveLength(1);
-    expect(result.current.activePluginPanelTab?.actionId).toBe(
-      "file-opener:editor",
-    );
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "other.md",
+    });
   });
 });

@@ -74,6 +74,61 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
   });
 
+  it("shows an Open with menu on local file links when routing provides items", () => {
+    const openBuiltin = vi.fn();
+    const openWithPlugin = vi.fn();
+    render(
+      <MarkdownPreview
+        content="See [notes](/workspace/notes/todo.md)."
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            onOpenLink: vi.fn(() => true),
+            getOpenWithItems: (link) =>
+              link.path.endsWith(".md")
+                ? [
+                    {
+                      id: "builtin",
+                      label: "Open with built-in preview",
+                      onSelect: openBuiltin,
+                    },
+                    {
+                      id: "notes:editor",
+                      label: "Open with Notes editor",
+                      onSelect: openWithPlugin,
+                    },
+                  ]
+                : null,
+          },
+        }}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: /notes/ });
+    fireEvent.contextMenu(link);
+    fireEvent.click(screen.getByText("Open with Notes editor"));
+    expect(openWithPlugin).toHaveBeenCalledTimes(1);
+    expect(openBuiltin).not.toHaveBeenCalled();
+  });
+
+  it("renders plain anchors when the routing offers no viewer items", () => {
+    render(
+      <MarkdownPreview
+        content="See [app](/workspace/src/app.ts)."
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            onOpenLink: vi.fn(() => true),
+            getOpenWithItems: () => null,
+          },
+        }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /app/ });
+    fireEvent.contextMenu(link);
+    expect(screen.queryByText(/Open with/)).toBeNull();
+  });
+
   it("leaves inline-code Markdown paths as code without local file routing", () => {
     render(<MarkdownPreview content="Read `README.md`." />);
 

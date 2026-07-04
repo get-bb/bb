@@ -12,10 +12,10 @@ navPanel-`subPath` frontend surfaces.
   `bb.sdk.files` with `expectedSha256` compare-and-swap — a save that
   races an agent editing the same file surfaces a reload/overwrite banner
   instead of clobbering.
-- **File opener**: registers as an opener for `md`/`mdx`/`markdown`, so
-  right-clicking a markdown file tab offers "Open with Notes editor" (and
-  "Always open .md with…"). Links clicked in rendered markdown then land
-  in the editor instead of the read-only preview.
+- **File opener**: registers as an opener for `md`/`mdx`/`markdown`. Set
+  it as the default under Settings → "File openers" and markdown links
+  land in the editor instead of the read-only preview; right-click any
+  file link for a one-off "Open with…" choice in either direction.
 - **Chat integration**: "Add to chat" quotes the current selection (or the
   whole note) into the composer draft via `useComposer().addQuote`;
   "@-mention" inserts a pill that resolves the note's content at send time

@@ -108,6 +108,7 @@ import {
   type ThreadSecondaryPanelHostFileOpenHandler,
   type ThreadSecondaryPanelStorageFileOpenHandler,
   type ThreadSecondaryPanelWorkspaceFileOpenHandler,
+  type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
@@ -127,7 +128,8 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
-import { useOpenWithTabMenu } from "@/components/plugin/useOpenWithTabMenu";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@/components/ui/icon.js";
 import {
   getBbDesktopInfo,
@@ -354,6 +356,7 @@ function PopoutThreadHeader({
 
 interface BuildMarkdownPreviewLinkRoutingArgs {
   baseDir: string | undefined;
+  getOpenWithItems?: MarkdownLocalFileLinkRouting["getOpenWithItems"];
   onOpenLink: ThreadTimelineLinkHandler;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
   rootPath: string | null | undefined;
@@ -387,6 +390,7 @@ function buildHostConnectionNotice(
 
 function buildMarkdownPreviewLinkRouting({
   baseDir,
+  getOpenWithItems,
   onOpenLink,
   onOpenLocalFileLink,
   rootPath,
@@ -403,6 +407,7 @@ function buildMarkdownPreviewLinkRouting({
       rootPath,
     },
     onOpenLink: onOpenLocalFileLink,
+    ...(getOpenWithItems !== undefined ? { getOpenWithItems } : {}),
   };
   if (baseDir !== undefined) {
     localFileRouting.relativeLinks = {
@@ -574,7 +579,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openSideChat,
     openExistingSideChatTab,
     orderedSecondaryFileTabs,
-    replaceSecondaryPanelTab,
     reorderFileTab,
     selectFileSearchResult,
     setSideChatThreadId,
@@ -591,9 +595,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openPluginPanel,
     threadId,
   });
-  const buildTabMenuItems = useOpenWithTabMenu({
-    replaceTab: replaceSecondaryPanelTab,
-  });
+  const { fileOpeners: pluginFileOpeners } = usePluginSlots();
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -634,17 +636,20 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const openPersistedWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
-      (file) => openTab({ kind: "workspace-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "workspace-file-preview", tab: file }, options),
       [openTab],
     );
   const openPersistedStorageFile =
     useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
-      (file) => openTab({ kind: "thread-storage-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "thread-storage-file-preview", tab: file }, options),
       [openTab],
     );
   const openPersistedHostFile =
     useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
-      (file) => openTab({ kind: "host-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "host-file-preview", tab: file }, options),
       [openTab],
     );
   const openBrowserTab = useCallback(
@@ -1300,7 +1305,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
-              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1311,7 +1315,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
-              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1323,7 +1326,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isPinned: tab.isPinned,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
-              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1368,7 +1370,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
                 />
               ),
               statusLabel: null,
-              menuItems: buildTabMenuItems(tab),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -1380,7 +1381,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activateSideChatTab,
     activeFixedSecondaryTabId,
     activeSideChatTabId,
-    buildTabMenuItems,
     closeTab,
     closeSideChatTab,
     handleActivateFileTab,
@@ -1675,7 +1675,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [thread, updateThread],
   );
   const handleTimelineLocalFileLinkResolution = useCallback(
-    (resolution: ThreadLocalFileLinkResolution) => {
+    (
+      resolution: ThreadLocalFileLinkResolution,
+      options?: ThreadSecondaryPanelFileOpenOptions,
+    ) => {
       if (resolution.kind === "app-route") {
         return false;
       }
@@ -1687,33 +1690,45 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       }
 
       if (resolution.kind === "open-workspace-path") {
-        openWorkspaceFile({
-          lineRange: resolution.request.lineRange,
-          path: resolution.request.relativePath,
-          source: { kind: "working-tree" },
-          statusLabel: null,
-        });
+        openWorkspaceFile(
+          {
+            lineRange: resolution.request.lineRange,
+            path: resolution.request.relativePath,
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
+          options,
+        );
         return true;
       }
 
       if (resolution.kind === "open-thread-storage-path") {
-        openStorageFile({
-          lineRange: resolution.request.lineRange,
-          path: resolution.request.relativePath,
-        });
+        openStorageFile(
+          {
+            lineRange: resolution.request.lineRange,
+            path: resolution.request.relativePath,
+          },
+          options,
+        );
         return true;
       }
 
-      openHostFile({
-        lineRange: resolution.request.lineRange,
-        path: resolution.request.path,
-      });
+      openHostFile(
+        {
+          lineRange: resolution.request.lineRange,
+          path: resolution.request.path,
+        },
+        options,
+      );
       return true;
     },
     [openHostFile, openStorageFile, openWorkspaceFile],
   );
   const handleOpenTimelineLocalFileLink = useCallback(
-    (link: ThreadTimelineLocalFileLink) => {
+    (
+      link: ThreadTimelineLocalFileLink,
+      options?: ThreadSecondaryPanelFileOpenOptions,
+    ) => {
       const resolution = resolveThreadLocalFileLink({
         hostFileLinksAvailable:
           thread?.environmentId !== null && thread?.environmentId !== undefined,
@@ -1726,7 +1741,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         resolution.kind !== "open-host-path" ||
         threadStorageRootPath !== null
       ) {
-        return handleTimelineLocalFileLinkResolution(resolution);
+        return handleTimelineLocalFileLinkResolution(resolution, options);
       }
 
       void refetchThreadStorageFiles()
@@ -1746,7 +1761,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             threadStorageRootPath: resolvedThreadStorageRootPath,
             workspaceRootPath: workspacePreviewRootPath,
           });
-          handleTimelineLocalFileLinkResolution(resolvedResolution);
+          handleTimelineLocalFileLinkResolution(resolvedResolution, options);
         })
         .catch((error: Error) => {
           appToast.error("Failed to open file locally", {
@@ -1873,15 +1888,49 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadStorageRootPath,
     workspaceRootPath: workspacePreviewRootPath,
   });
+  // Right-click "Open with" on local file links: per-open viewer choice
+  // between the built-in preview and any plugin opener matching the file's
+  // extension. Only rendered when at least one opener matches.
+  const getLocalFileOpenWithItems = useCallback(
+    (link: ThreadTimelineLocalFileLink) => {
+      const extension = getFileExtension(link.path);
+      if (extension === null) return null;
+      const matching = pluginFileOpeners.filter((opener) =>
+        opener.extensions.includes(extension),
+      );
+      if (matching.length === 0) return null;
+      return [
+        {
+          id: "builtin",
+          label: "Open with built-in preview",
+          onSelect: () => {
+            handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
+          },
+        },
+        ...matching.map((opener) => ({
+          id: `${opener.pluginId}:${opener.id}`,
+          label: `Open with ${opener.title}`,
+          onSelect: () => {
+            handleOpenTimelineLocalFileLink(link, {
+              viewer: { pluginId: opener.pluginId, openerId: opener.id },
+            });
+          },
+        })),
+      ];
+    },
+    [handleOpenTimelineLocalFileLink, pluginFileOpeners],
+  );
   const workspaceMarkdownLinkRouting = useMemo(
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: workspaceFileLinkBaseDir,
+        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: workspacePreviewRootPath,
       }),
     [
+      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       workspaceFileLinkBaseDir,
@@ -1892,11 +1941,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: hostFileLinkBaseDir,
+        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: hostFileLinkRootPath,
       }),
     [
+      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       hostFileLinkBaseDir,
@@ -1907,11 +1958,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: storageFileLinkBaseDir,
+        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: threadStorageRootPath,
       }),
     [
+      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       storageFileLinkBaseDir,

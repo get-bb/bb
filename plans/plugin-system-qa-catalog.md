@@ -923,10 +923,11 @@ docs pins, cli `notes-example-bundle.test.ts`.
 - [ ] **CAS save race live**: open a note in the notes editor, edit the file
       on disk (or via an agent), save in the editor → conflict banner with
       Reload/Overwrite; Reload shows the disk content.
-- [ ] **Open with menu live**: open a `.md` workspace file → right-click the
-      tab → "Open with Notes editor" swaps the tab in place; "Always open
-      .md with Notes editor" then makes markdown links open in the editor;
-      "Open with built-in preview" switches back.
+- [ ] **Open with live**: Settings → File openers shows a `.md` row once the
+      notes plugin is installed; picking "Notes editor" makes markdown links
+      open in the editor. Right-clicking a markdown link offers one-off
+      "Open with built-in preview" / "Open with Notes editor" that override
+      the default for that open only.
 - [ ] **Opener fallback live**: set the .md default to the notes opener,
       disable the plugin → opening a markdown file lands on the built-in
       preview (no dead tab); the persisted opener tab shows the placeholder.

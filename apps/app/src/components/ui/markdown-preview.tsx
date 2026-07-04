@@ -10,6 +10,12 @@ import {
   type SetStateAction,
 } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type {
   Components,
   ExtraProps,
@@ -473,6 +479,10 @@ function MarkdownAnchor({
         })
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
+  const openWithItems =
+    localFileLink !== null && localFileRouting?.getOpenWithItems
+      ? localFileRouting.getOpenWithItems(localFileLink)
+      : null;
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
@@ -498,7 +508,7 @@ function MarkdownAnchor({
     }
   };
 
-  return (
+  const anchor = (
     <RouteAnchor
       {...anchorProps}
       href={anchorHref}
@@ -518,6 +528,23 @@ function MarkdownAnchor({
         />
       ) : null}
     </RouteAnchor>
+  );
+  if (openWithItems === null || openWithItems.length === 0) {
+    return anchor;
+  }
+  // Local file links with viewer choices get a right-click "Open with" menu
+  // (per-open override of the extension's default opener).
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{anchor}</ContextMenuTrigger>
+      <ContextMenuContent>
+        {openWithItems.map((item) => (
+          <ContextMenuItem key={item.id} onSelect={item.onSelect}>
+            {item.label}
+          </ContextMenuItem>
+        ))}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

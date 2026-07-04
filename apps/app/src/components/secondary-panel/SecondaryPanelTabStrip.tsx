@@ -11,13 +11,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  ContextMenu,
-  ContextMenuCheckboxItem,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
   closestCenter,
   DndContext,
   DragOverlay,
@@ -545,7 +538,7 @@ function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
     tab.statusLabel === null
       ? tab.filename
       : `${tab.filename} (${tab.statusLabel})`;
-  const pill = (
+  return (
     <TabPill
       label={tab.filename}
       leadingVisual={tab.leadingVisual}
@@ -564,32 +557,5 @@ function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
             }
       }
     />
-  );
-  if (tab.menuItems === undefined || tab.menuItems.length === 0) {
-    return pill;
-  }
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div className="contents">{pill}</div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        {tab.menuItems.map((item) =>
-          item.checked === undefined ? (
-            <ContextMenuItem key={item.id} onSelect={item.onSelect}>
-              {item.label}
-            </ContextMenuItem>
-          ) : (
-            <ContextMenuCheckboxItem
-              key={item.id}
-              checked={item.checked}
-              onSelect={item.onSelect}
-            >
-              {item.label}
-            </ContextMenuCheckboxItem>
-          ),
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
   );
 }

@@ -5,6 +5,7 @@ import type {
   WorkspaceFileTabState,
 } from "@/lib/file-preview";
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
+import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 
 type ThreadSecondaryPanelThreadId = string | undefined;
 type ThreadDetailSurface = "page" | "popout";
@@ -14,14 +15,21 @@ export type ThreadSecondaryPanelOpenHandler = (
 ) => void;
 export type ThreadSecondaryPanelDiffFileOpenHandler = (path: string) => void;
 export type ThreadSecondaryPanelCommitDiffOpenHandler = (sha: string) => void;
+export interface ThreadSecondaryPanelFileOpenOptions {
+  /** Per-open viewer choice (link context menu); absent = extension default. */
+  viewer?: FileTabViewerOverride;
+}
 export type ThreadSecondaryPanelWorkspaceFileOpenHandler = (
   file: WorkspaceFileTabState,
+  options?: ThreadSecondaryPanelFileOpenOptions,
 ) => void;
 export type ThreadSecondaryPanelStorageFileOpenHandler = (
   file: ThreadStorageFileTabState,
+  options?: ThreadSecondaryPanelFileOpenOptions,
 ) => void;
 export type ThreadSecondaryPanelHostFileOpenHandler = (
   file: HostFileTabState,
+  options?: ThreadSecondaryPanelFileOpenOptions,
 ) => void;
 
 export interface UseThreadSecondaryPanelVisibilityArgs {
@@ -159,11 +167,12 @@ export function useThreadSecondaryPanelVisibility({
 
   const openWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
-      (file) => {
+      (file, options) => {
         if (surface === "popout") {
           return;
         }
-        openPersistedWorkspaceFile(file);
+        if (options !== undefined) openPersistedWorkspaceFile(file, options);
+        else openPersistedWorkspaceFile(file);
         openCompactDrawer();
       },
       [openCompactDrawer, openPersistedWorkspaceFile, surface],
@@ -171,22 +180,24 @@ export function useThreadSecondaryPanelVisibility({
 
   const openStorageFile =
     useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
-      (file) => {
+      (file, options) => {
         if (surface === "popout") {
           return;
         }
-        openPersistedStorageFile(file);
+        if (options !== undefined) openPersistedStorageFile(file, options);
+        else openPersistedStorageFile(file);
         openCompactDrawer();
       },
       [openCompactDrawer, openPersistedStorageFile, surface],
     );
 
   const openHostFile = useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
-    (file) => {
+    (file, options) => {
       if (surface === "popout") {
         return;
       }
-      openPersistedHostFile(file);
+      if (options !== undefined) openPersistedHostFile(file, options);
+      else openPersistedHostFile(file);
       openCompactDrawer();
     },
     [openCompactDrawer, openPersistedHostFile, surface],

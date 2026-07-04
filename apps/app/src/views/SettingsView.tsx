@@ -37,6 +37,7 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import {
   useUpdateAppearance,
   useUpdateExperiments,
@@ -1020,6 +1021,8 @@ export function SettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
+
+        <FileOpenersSettingsSection />
 
         <ExperimentsSettingsSection
           claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}

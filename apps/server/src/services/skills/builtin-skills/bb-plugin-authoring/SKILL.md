@@ -443,11 +443,12 @@ Slot props contracts (versioned, additive-only):
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `fileOpener` → `{ path: string, source }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Users pick it (and can set it as the default per extension) from a file
-  tab's right-click "Open with" menu; matching files opened in the right
-  panel then render your component in a plugin tab instead of the built-in
-  preview — this includes links clicked in rendered markdown, the file
-  picker, and `bb thread open`. `source` is
+  Users set the per-extension default under Settings → "File openers", and
+  right-clicking a file link in rendered markdown offers a one-off
+  "Open with …" choice; matching files opened in the right panel then
+  render your component in a plugin tab instead of the built-in preview —
+  this includes links clicked in rendered markdown, the file picker, and
+  `bb thread open`. `source` is
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
   projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).

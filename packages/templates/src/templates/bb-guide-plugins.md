@@ -70,8 +70,9 @@ arrives as the component's subPath prop for panel-internal deep links),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
-footer), and fileOpener (register as a per-extension file viewer/editor
-users can set as the default via a file tab's "Open with" menu). Hooks:
+footer), and fileOpener (register as a per-extension file viewer/editor;
+users pick defaults under Settings → File openers and can right-click a
+file link for a one-off choice). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate, and useComposer (quote selections / insert mention pills
 into the chat composer draft). Components are vendored shadcn source the plugin owns (the

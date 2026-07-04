@@ -559,7 +559,7 @@ V1 slot set with **versioned per-slot props contracts** (additive-only within a 
 | `navPanel` | `{}` (own route) | `AppRoutes` + `AppSidebar.tsx` (route + sidebar entry + nav state) |
 | `threadPanelAction` | action: `run({ threadId, openPanel })`; opened tab: `{ threadId, params }` | `NewTabFileSearch.tsx` Actions list; tabs are `plugin-panel` file-strip tabs (`fixed-panel-tabs-state.ts`) *(reworked 2026-07-03: replaced the fixed `threadPanelTab` toggle — actions run code and open closable, param-carrying tabs with the plugin logo as tab icon)* |
 | `composerAccessory` | `{ projectId, threadId: string \| null }` | `PromptBoxInternal.tsx` (`footerStart` slot prop already exists) |
-| `fileOpener` *(added 2026-07-04)* | `{ path, source: { kind: workspace\|host\|thread-storage, threadId, environmentId, projectId } }` | `useThreadFileTabs.openTab` diversion → `plugin-panel` tabs (`file-opener:<id>` action ids); "Open with" context menu on file tab pills; per-extension default in localStorage (`file-opener-preference.ts`). Live content only — never git-ref snapshots |
+| `fileOpener` *(added 2026-07-04)* | `{ path, source: { kind: workspace\|host\|thread-storage, threadId, environmentId, projectId } }` | `useThreadFileTabs.openTab` diversion → `plugin-panel` tabs (`file-opener:<id>` action ids); "Open with" context menu on rendered-markdown file links (per-open); Settings → File openers section for per-extension defaults in localStorage (`file-opener-preference.ts`). Live content only — never git-ref snapshots |
 | `settingsSection` | auto-generated from settings schema | `SettingsView.tsx` |
 
 Hooks from `@bb/plugin-sdk/app`: `useRpc<Rpc>()`, `useRealtime<Channels>()`,

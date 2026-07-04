@@ -75,6 +75,15 @@ export function parseFileOpenerParams(
   };
 }
 
+/**
+ * A per-open viewer choice (the link context menu): "builtin" pins the
+ * built-in preview; an opener ref forces that plugin opener. Absent =
+ * follow the per-extension default.
+ */
+export type FileTabViewerOverride =
+  | "builtin"
+  | { pluginId: string; openerId: string };
+
 export interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
   preference: FileOpenerPreferenceMap;
@@ -82,6 +91,7 @@ export interface CreateFileOpenerTabForRequestArgs {
   request: OpenSecondaryPanelTabRequest;
   resolvedEnvironmentId: string | null | undefined;
   threadId: string | null | undefined;
+  viewer?: FileTabViewerOverride;
 }
 
 /**
@@ -97,7 +107,9 @@ export function createFileOpenerTabForRequest({
   request,
   resolvedEnvironmentId,
   threadId,
+  viewer,
 }: CreateFileOpenerTabForRequestArgs): PluginPanelFixedPanelTab | null {
+  if (viewer === "builtin") return null;
   const file = fileForOpenRequest({
     projectId,
     request,
@@ -105,11 +117,18 @@ export function createFileOpenerTabForRequest({
     threadId,
   });
   if (file === null) return null;
-  const opener = resolvePreferredFileOpener({
-    openers: fileOpeners,
-    preference,
-    path: file.path,
-  });
+  const opener =
+    viewer !== undefined
+      ? (fileOpeners.find(
+          (candidate) =>
+            candidate.pluginId === viewer.pluginId &&
+            candidate.id === viewer.openerId,
+        ) ?? null)
+      : resolvePreferredFileOpener({
+          openers: fileOpeners,
+          preference,
+          path: file.path,
+        });
   if (opener === null) return null;
   return buildFileOpenerPanelTab(opener, file);
 }
