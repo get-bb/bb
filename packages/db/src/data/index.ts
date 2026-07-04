@@ -223,6 +223,20 @@ export {
 } from "./app-theme.js";
 
 export {
+  createSkillBundle,
+  deleteSkillBundle,
+  getSkillBundle,
+  listSkillBundles,
+  updateSkillBundle,
+} from "./skill-bundles.js";
+export type {
+  CreateSkillBundleInput,
+  SkillBundle,
+  SkillBundleStepData,
+  UpdateSkillBundleInput,
+} from "./skill-bundles.js";
+
+export {
   getThreadDynamicContextFileState,
   upsertThreadDynamicContextFileState,
   upsertThreadDynamicContextFileStateInTransaction,
@@ -451,6 +465,7 @@ export {
   claimNextQueuedThreadMessage,
   claimNextQueuedThreadMessageGroup,
   createQueuedThreadMessage,
+  createQueuedThreadMessageBatch,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteClaimedQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageInTransaction,
@@ -466,6 +481,7 @@ export {
 export type {
   ClaimedQueuedThreadMessageRow,
   ClaimedQueuedThreadMessageMutationArgs,
+  CreateQueuedThreadMessageBatchInput,
   CreateQueuedThreadMessageInput,
   DeleteClaimedQueuedThreadMessageArgs,
   DeleteClaimedQueuedThreadMessageBatchInTransactionArgs,

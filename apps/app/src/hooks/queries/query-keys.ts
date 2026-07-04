@@ -56,6 +56,7 @@ export const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
+export const SKILL_BUNDLES_QUERY_KEY = "skillBundles";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
@@ -424,6 +425,7 @@ export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
+export type SkillBundlesQueryKey = readonly [typeof SKILL_BUNDLES_QUERY_KEY];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 export type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
@@ -1032,6 +1034,10 @@ export function systemProvidersQueryKey(): SystemProvidersQueryKey {
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {
   return [SYSTEM_CONFIG_QUERY_KEY];
+}
+
+export function skillBundlesQueryKey(): SkillBundlesQueryKey {
+  return [SKILL_BUNDLES_QUERY_KEY];
 }
 
 export function systemVersionQueryKey(): SystemVersionQueryKey {

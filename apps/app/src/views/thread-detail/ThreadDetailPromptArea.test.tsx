@@ -18,6 +18,7 @@ import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-hand
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
+  createQueuedMessageBundleMutateAsync: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
@@ -208,6 +209,10 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCreateThreadQueuedMessageBundle: () => ({
+    isPending: false,
+    mutateAsync: mocks.createQueuedMessageBundleMutateAsync,
+  }),
   useCreateThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.createQueuedMessageMutateAsync,
@@ -245,6 +250,10 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectDisplayName: () => null,
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSkillBundles: () => ({ data: { bundles: [] } }),
 }));
 
 vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({

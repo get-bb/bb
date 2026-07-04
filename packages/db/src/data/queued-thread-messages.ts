@@ -36,6 +36,16 @@ export interface CreateQueuedThreadMessageInput {
   serviceTier: string;
 }
 
+export type CreateQueuedThreadMessageBatchInput = Omit<
+  CreateQueuedThreadMessageInput,
+  "clientRequestId" | "content"
+> & {
+  messages: Array<{
+    clientRequestId?: string | null;
+    content: PromptInput[];
+  }>;
+};
+
 export type QueuedThreadMessageRow = typeof queuedThreadMessages.$inferSelect;
 
 export interface ClaimedQueuedThreadMessageRow extends QueuedThreadMessageRow {
@@ -533,6 +543,77 @@ export function createQueuedThreadMessage(
     notifier.notifyThread(input.threadId, ["queue-changed"]);
   }
   return row;
+}
+
+export function createQueuedThreadMessageBatch(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: CreateQueuedThreadMessageBatchInput,
+): QueuedThreadMessageRow[] {
+  if (input.messages.length === 0) {
+    return [];
+  }
+
+  const now = Date.now();
+  const rows = db.transaction(
+    (tx) => {
+      const createdRows: QueuedThreadMessageRow[] = [];
+      let previousQueuedMessage = getLastQueuedThreadMessage(
+        tx,
+        input.threadId,
+      );
+
+      for (const message of input.messages) {
+        if (
+          message.clientRequestId !== undefined &&
+          message.clientRequestId !== null
+        ) {
+          const existing = getQueuedThreadMessageByClientRequestId(tx, {
+            clientRequestId: message.clientRequestId,
+            threadId: input.threadId,
+          });
+          if (existing) {
+            createdRows.push(existing);
+            previousQueuedMessage = existing;
+            continue;
+          }
+        }
+
+        const sortKey = previousQueuedMessage
+          ? createOrderKeyAfter({ previousKey: previousQueuedMessage.sortKey })
+          : createOrderKeyBetween({ previousKey: null, nextKey: null });
+        const row = tx
+          .insert(queuedThreadMessages)
+          .values({
+            id: createQueuedThreadMessageId(),
+            clientRequestId: message.clientRequestId ?? null,
+            threadId: input.threadId,
+            content: JSON.stringify(message.content),
+            senderThreadId: input.senderThreadId ?? null,
+            model: input.model,
+            reasoningLevel: input.reasoningLevel,
+            permissionMode: input.permissionMode,
+            serviceTier: input.serviceTier,
+            groupWithNext: false,
+            claimedAt: null,
+            claimToken: null,
+            sortKey,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+          .get();
+        createdRows.push(row);
+        previousQueuedMessage = row;
+      }
+
+      return createdRows;
+    },
+    { behavior: "immediate" },
+  );
+
+  notifier.notifyThread(input.threadId, ["queue-changed"]);
+  return rows;
 }
 
 export function getQueuedThreadMessage(db: DbConnection, id: string) {

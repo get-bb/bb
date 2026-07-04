@@ -9,6 +9,7 @@ import {
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessage,
   createQueuedThreadMessage,
+  createQueuedThreadMessageBatch,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteClaimedQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageInTransaction,
@@ -69,6 +70,37 @@ describe("queued thread messages", () => {
     expect(queuedMessage.model).toBe("gpt-5");
     expect(queuedMessage.serviceTier).toBe("default");
     expect(queuedMessage.groupWithNext).toBe(false);
+  });
+
+  it("creates queued message batches as separate ordered messages", () => {
+    const { db, thread } = setup();
+    const queuedMessages = createQueuedThreadMessageBatch(db, noopNotifier, {
+      threadId: thread.id,
+      messages: [
+        { content: textInput("/simplify") },
+        { content: textInput("/ensure-consistency") },
+        { content: textInput("/review") },
+      ],
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(queuedMessages).toHaveLength(3);
+    expect(queuedMessages.map((message) => message.content)).toEqual([
+      JSON.stringify(textInput("/simplify")),
+      JSON.stringify(textInput("/ensure-consistency")),
+      JSON.stringify(textInput("/review")),
+    ]);
+    expect(queuedMessages.map((message) => message.groupWithNext)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((message) => message.id),
+    ).toEqual(queuedMessages.map((message) => message.id));
   });
 
   it("returns the existing queued message for duplicate client request ids without changing order", () => {

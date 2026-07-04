@@ -1,5 +1,6 @@
 import {
   createQueuedThreadMessage,
+  createQueuedThreadMessageBatch,
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
@@ -18,6 +19,7 @@ import {
 import {
   publicApiRoutes,
   typedRoutes,
+  type CreateQueuedMessageBundleRequest,
   type CreateQueuedMessageRequest,
   type ThreadListResponse,
   type PublicApiSchema,
@@ -259,6 +261,93 @@ async function createQueuedMessageForThread(
   return toThreadQueuedMessage(queuedMessage);
 }
 
+interface CreateQueuedMessageBundleForThreadArgs {
+  payload: CreateQueuedMessageBundleRequest;
+  thread: Thread;
+}
+
+function bundleStepClientRequestId(
+  clientRequestId: string | undefined,
+  index: number,
+): string | undefined {
+  return clientRequestId === undefined
+    ? undefined
+    : `${clientRequestId}:step:${index}`;
+}
+
+async function createQueuedMessageBundleForThread(
+  deps: AppDeps,
+  args: CreateQueuedMessageBundleForThreadArgs,
+): Promise<ThreadQueuedMessage[]> {
+  const { payload, thread } = args;
+  const firstStep = payload.steps[0];
+  if (!firstStep) {
+    throw new ApiError(400, "invalid_request", "Bundle must include a step");
+  }
+  ensureThreadIsWritable(thread);
+  ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+
+  for (const input of payload.steps) {
+    await validatePromptAttachmentReferences({
+      dataDir: deps.config.dataDir,
+      input,
+      projectId: thread.projectId,
+    });
+  }
+
+  const execution = await buildExecutionOptions(
+    deps,
+    payload,
+    {
+      threadId: thread.id,
+    },
+    "client/turn/requested",
+  );
+  const queuedMessages = createQueuedThreadMessageBatch(deps.db, deps.hub, {
+    threadId: thread.id,
+    messages: payload.steps.map((content, index) => ({
+      clientRequestId: bundleStepClientRequestId(
+        payload.clientRequestId,
+        index,
+      ),
+      content,
+    })),
+    senderThreadId: null,
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    permissionMode: execution.permissionMode,
+    serviceTier: execution.serviceTier,
+  });
+
+  deps.telemetry.capture({
+    name: "user_message_sent",
+    properties: {
+      is_child_thread: thread.parentThreadId !== null,
+      message_source: "queued_message",
+      provider: thread.providerId,
+    },
+  });
+
+  if (
+    thread.status === "idle" &&
+    getLastProviderThreadId(deps, thread.id) !== null
+  ) {
+    const firstQueuedMessage = queuedMessages[0];
+    if (!firstQueuedMessage) {
+      throw new ApiError(
+        500,
+        "internal_error",
+        "Queued bundle was not created",
+      );
+    }
+    requestQueuedMessageAutoSendForThread(deps, {
+      queuedMessageId: firstQueuedMessage.id,
+      threadId: thread.id,
+    });
+  }
+  return queuedMessages.map(toThreadQueuedMessage);
+}
+
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -294,6 +383,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     return context.json(queuedMessage, 201);
+  });
+
+  post(routes.createQueuedMessageBundle, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const queuedMessages = await createQueuedMessageBundleForThread(deps, {
+      payload,
+      thread,
+    });
+    return context.json({ queuedMessages }, 201);
   });
 
   post(routes.sendQueuedMessage, async (context, payload) => {

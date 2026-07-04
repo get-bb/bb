@@ -68,6 +68,10 @@ export function createQueuedThreadMessageClaimToken(): string {
   return createId("qclaim");
 }
 
+export function createSkillBundleId(): string {
+  return createId("sbun");
+}
+
 export function createPendingInteractionId(): string {
   return createId("pint");
 }

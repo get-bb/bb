@@ -49,6 +49,8 @@ import type {
   ReorderQueuedMessageRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
+  SkillBundle,
+  SkillBundleListResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendMessageRequest,
   SystemConfigResponse,
@@ -79,6 +81,7 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
+  UpsertSkillBundleRequest,
   CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
@@ -91,6 +94,8 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
+  CreateQueuedMessageBundleRequest,
+  CreateQueuedMessageBundleResponse,
 } from "@bb/server-contract";
 import {
   providerCliInstallEventSchema,
@@ -1251,6 +1256,18 @@ export async function createThreadQueuedMessage(
   );
 }
 
+export async function createThreadQueuedMessageBundle(
+  id: string,
+  req: CreateQueuedMessageBundleRequest,
+): Promise<CreateQueuedMessageBundleResponse> {
+  return request<CreateQueuedMessageBundleResponse>(
+    apiClient.threads[":id"]["queued-message-bundles"].$post({
+      param: { id },
+      json: req,
+    }),
+  );
+}
+
 export async function listThreadQueuedMessages(
   id: string,
   signal?: AbortSignal,
@@ -1918,6 +1935,42 @@ export async function updateAppearance(
 ): Promise<AppTheme> {
   return request<AppTheme>(
     apiClient.settings.appearance.$put({ json: selection }),
+  );
+}
+
+export async function listSkillBundles(
+  signal?: AbortSignal,
+): Promise<SkillBundleListResponse> {
+  return request<SkillBundleListResponse>(
+    apiClient.settings["skill-bundles"].$get({}, requestOptions(signal)),
+  );
+}
+
+export async function createSkillBundle(
+  requestBody: UpsertSkillBundleRequest,
+): Promise<SkillBundle> {
+  return request<SkillBundle>(
+    apiClient.settings["skill-bundles"].$post({ json: requestBody }),
+  );
+}
+
+export async function updateSkillBundle(
+  id: string,
+  requestBody: UpsertSkillBundleRequest,
+): Promise<SkillBundle> {
+  return request<SkillBundle>(
+    apiClient.settings["skill-bundles"][":id"].$patch({
+      param: { id },
+      json: requestBody,
+    }),
+  );
+}
+
+export async function deleteSkillBundle(id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>(
+    apiClient.settings["skill-bundles"][":id"].$delete({
+      param: { id },
+    }),
   );
 }
 
