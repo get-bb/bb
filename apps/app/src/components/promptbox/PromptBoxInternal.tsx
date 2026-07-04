@@ -773,29 +773,91 @@ function promptActionCommandSerializedText(action: PromptBoxAction): string {
   return `${action.command.trigger}${action.command.name}`;
 }
 
+function promptActionFromCommandMentionNode(
+  node: ProseMirrorNode,
+  actions: readonly PromptBoxAction[],
+): PromptBoxAction | null {
+  if (node.type.name !== "mention") {
+    return null;
+  }
+  const attrs = parsePromptEditorMentionAttrs(node.attrs);
+  if (!attrs || attrs.resource.kind !== "command") {
+    return null;
+  }
+  const resource = attrs.resource;
+  return (
+    actions.find((action) => {
+      const command = action.command;
+      if (!command) {
+        return false;
+      }
+      return (
+        resource.trigger === command.trigger &&
+        resource.name === command.name &&
+        attrs.serializedText === promptActionCommandSerializedText(action)
+      );
+    }) ?? null
+  );
+}
+
 function isPromptActionCommandMention(
   node: ProseMirrorNode,
   actions: readonly PromptBoxAction[],
 ): boolean {
-  if (node.type.name !== "mention") {
-    return false;
+  return promptActionFromCommandMentionNode(node, actions) !== null;
+}
+
+function findPromptActionImmediatelyBeforeCursor({
+  editor,
+  actions,
+}: {
+  editor: Editor;
+  actions: readonly PromptBoxAction[];
+}): PromptBoxAction | null {
+  const textAction =
+    actions.find((action) =>
+      promptActionTextImmediatelyBeforeCursor(editor, action.text),
+    ) ?? null;
+  if (textAction !== null) {
+    return textAction;
   }
-  const attrs = parsePromptEditorMentionAttrs(node.attrs);
-  if (!attrs || attrs.resource.kind !== "command") {
-    return false;
+
+  const selection = editor.state.selection;
+  if (!selection.empty) {
+    return null;
   }
-  const resource = attrs.resource;
-  return actions.some((action) => {
-    const command = action.command;
-    if (!command) {
-      return false;
+
+  const { $from } = selection;
+  let searchOffset = $from.parentOffset;
+
+  while (searchOffset > 0) {
+    const previous = $from.parent.childBefore(searchOffset);
+    const node = previous.node;
+    if (!node) {
+      return null;
     }
-    return (
-      resource.trigger === command.trigger &&
-      resource.name === command.name &&
-      attrs.serializedText === promptActionCommandSerializedText(action)
-    );
-  });
+
+    const sizeBeforeSearchOffset = searchOffset - previous.offset;
+    if (node.isText) {
+      const textBeforeCursor = (node.text ?? "").slice(
+        0,
+        sizeBeforeSearchOffset,
+      );
+      if (/\S/u.test(textBeforeCursor)) {
+        return null;
+      }
+      searchOffset = previous.offset;
+      continue;
+    }
+
+    if (sizeBeforeSearchOffset !== node.nodeSize) {
+      return null;
+    }
+
+    return promptActionFromCommandMentionNode(node, actions);
+  }
+
+  return null;
 }
 
 function findPromptActionTextSuffix(
@@ -965,6 +1027,36 @@ function promptActionTriggers(
     ...triggers,
     { kind: "command", char: commandAction.trigger },
   ] satisfies TypeaheadTrigger[];
+}
+
+function getNextPromptActionCycleAction({
+  actions,
+  editor,
+}: {
+  actions: readonly PromptBoxAction[];
+  editor: Editor;
+}): PromptBoxAction | null {
+  const cycleActions = actions.filter(
+    (action) =>
+      action.text.length > 0 &&
+      !action.disabled &&
+      promptActionCommandFromAction(action) !== null,
+  );
+  if (cycleActions.length === 0) {
+    return null;
+  }
+
+  const currentAction = findPromptActionImmediatelyBeforeCursor({
+    actions: cycleActions,
+    editor,
+  });
+  const currentActionIndex =
+    currentAction === null ? -1 : cycleActions.indexOf(currentAction);
+  if (currentActionIndex === -1) {
+    return cycleActions[0] ?? null;
+  }
+
+  return cycleActions[(currentActionIndex + 1) % cycleActions.length] ?? null;
 }
 
 export function suppressPromptEditorAnchorActivation(event: Event): boolean {
@@ -2193,6 +2285,24 @@ export function PromptBoxInternal({
         (isPromptDraftEmpty(history.currentDraft) || hasSelectedHistoryEntry);
       const canNavigateTypeahead =
         showTypeaheadMenu && !hasArrowNavigationModifier && !canNavigateHistory;
+      const isPromptActionCycleKey =
+        event.key === "Tab" &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey;
+
+      if (isPromptActionCycleKey && currentEditor) {
+        const nextAction = getNextPromptActionCycleAction({
+          actions: promptActions ?? [],
+          editor: currentEditor,
+        });
+        if (nextAction) {
+          event.preventDefault();
+          applyPromptAction(nextAction);
+          return true;
+        }
+      }
 
       if (showTypeaheadMenu) {
         if (
@@ -2383,6 +2493,7 @@ export function PromptBoxInternal({
       activeTrigger,
       activeTriggerKind,
       applyHistoryDraft,
+      applyPromptAction,
       applyTrigger,
       canLoadMoreCommands,
       canSubmitWithEnterKey,
@@ -2395,6 +2506,7 @@ export function PromptBoxInternal({
       onCommandQueryChange,
       onMentionQueryChange,
       onModifierSubmit,
+      promptActions,
       resetHistorySession,
       selectedIndex,
       setPendingCommandSubmit,

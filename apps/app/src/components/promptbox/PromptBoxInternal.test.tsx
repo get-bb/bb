@@ -771,6 +771,54 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
+  it("cycles command prompt actions with Shift+Tab", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+
+    fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Tab",
+      shiftKey: true,
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    await waitForPromptFocus();
+
+    fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Tab",
+      shiftKey: true,
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    await waitForPromptFocus();
+
+    fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Tab",
+      shiftKey: true,
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    await waitForPromptFocus();
+
+    fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Tab",
+      shiftKey: true,
+    });
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/plan".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
   it("does not duplicate command text immediately before the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Start /goal ");
 
