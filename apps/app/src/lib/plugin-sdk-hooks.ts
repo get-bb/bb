@@ -4,11 +4,18 @@ import { useNavigate } from "react-router-dom";
 import type {
   BbContext,
   BbNavigate,
+  PluginComposerApi,
+  PluginComposerMention,
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { getThread } from "@/lib/api";
+import { requestComposerFocus } from "@/lib/composer-focus-requests";
+import {
+  usePromptDraftStorage,
+  type PromptDraftScope,
+} from "@/hooks/usePromptDraftStorage";
 import {
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
@@ -195,5 +202,93 @@ export function useBbNavigate(): BbNavigate {
   return useMemo(
     () => ({ toThread, toProject, toPluginPanel }),
     [toThread, toProject, toPluginPanel],
+  );
+}
+
+/**
+ * Programmatic composer-draft access (plugin design §5.2): the same shared
+ * localStorage-backed draft store the built-in "Add to chat" affordances
+ * write to. Thread context → that thread's draft; anywhere else → the
+ * new-thread draft. Focus requests ride the composer-focus bus, which the
+ * composer hosts (ThreadDetailView / RootComposeView) subscribe to by
+ * draft storage key.
+ */
+export function useComposer(): PluginComposerApi {
+  const pluginId = usePluginId();
+  const { projectId, threadId } = useRouteState();
+  const scope: PromptDraftScope = useMemo(
+    () =>
+      threadId !== undefined && projectId !== undefined
+        ? { kind: "thread", projectId, threadId }
+        : { kind: "new-thread" },
+    [projectId, threadId],
+  );
+  const draft = usePromptDraftStorage(scope);
+  const { addQuote: addDraftQuote, getCurrent, setDraft, storageKey } = draft;
+
+  const addQuote = useCallback(
+    (text: string) => {
+      addDraftQuote(text);
+      requestComposerFocus(storageKey);
+    },
+    [addDraftQuote, storageKey],
+  );
+
+  const insertMention = useCallback(
+    (mention: PluginComposerMention) => {
+      const provider = mention.provider.trim();
+      const label = mention.label.trim() || mention.id;
+      if (provider.length === 0 || provider.includes(":")) {
+        // Provider ids exclude ":" (enforced at registration) — a bad id
+        // would corrupt the composite itemId the server splits at send.
+        console.warn(
+          `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
+        );
+        return;
+      }
+      const current = getCurrent();
+      // Append at the END so existing mention offsets stay valid (the same
+      // invariant addQuote relies on).
+      const separator =
+        current.text.length === 0 || /\s$/u.test(current.text) ? "" : " ";
+      const start = current.text.length + separator.length;
+      const end = start + label.length;
+      setDraft({
+        ...current,
+        text: `${current.text}${separator}${label} `,
+        mentions: [
+          ...current.mentions,
+          {
+            start,
+            end,
+            resource: {
+              kind: "plugin",
+              pluginId,
+              itemId: `${provider}:${mention.id}`,
+              label,
+            },
+          },
+        ],
+      });
+      requestComposerFocus(storageKey);
+    },
+    [getCurrent, pluginId, setDraft, storageKey],
+  );
+
+  const focus = useCallback(() => {
+    requestComposerFocus(storageKey);
+  }, [storageKey]);
+
+  return useMemo(
+    () => ({
+      scope:
+        threadId !== undefined
+          ? { kind: "thread", threadId }
+          : { kind: "new-thread", projectId: projectId ?? null },
+      addQuote,
+      insertMention,
+      focus,
+    }),
+    [addQuote, focus, insertMention, projectId, threadId],
   );
 }

@@ -163,6 +163,47 @@ interface PluginSettingsState {
     values: Record<string, string | boolean> | undefined;
     isLoading: boolean;
 }
+/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
+type PluginComposerScope = {
+    kind: "thread";
+    threadId: string;
+} | {
+    kind: "new-thread";
+    projectId: string | null;
+};
+/** An @-mention pill bound to one of the calling plugin's mention providers. */
+interface PluginComposerMention {
+    /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
+    provider: string;
+    /** Item id your provider's `resolve` will receive at send time. */
+    id: string;
+    /** Pill text shown in the composer. */
+    label: string;
+}
+/**
+ * Programmatic access to the chat composer draft — the same shared draft the
+ * built-in "Add to chat" affordances (file preview, diff, terminal selections)
+ * write to. Inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread
+ * composer draft, which persists until the user sends or clears it.
+ */
+interface PluginComposerApi {
+    scope: PluginComposerScope;
+    /**
+     * Append text to the draft as a `> ` blockquote block and focus the
+     * composer. Blank text is a no-op. This is the "reference this selection
+     * in chat" primitive.
+     */
+    addQuote(text: string): void;
+    /**
+     * Insert an @-mention pill that resolves through this plugin's mention
+     * provider at send time — the durable way to reference an entity whose
+     * content should be fetched fresh when the message is sent.
+     */
+    insertMention(mention: PluginComposerMention): void;
+    /** Focus the composer caret at the end of the draft. */
+    focus(): void;
+}
 /** Current app selection, derived from the route. */
 interface BbContext {
     projectId: string | null;
@@ -194,6 +235,7 @@ interface PluginSdkApp {
     useSettings(): PluginSettingsState;
     useBbContext(): BbContext;
     useBbNavigate(): BbNavigate;
+    useComposer(): PluginComposerApi;
 }
 /**
  * Named runtime exports of `@bb/plugin-sdk/app`, in sorted order. Single
@@ -201,7 +243,7 @@ interface PluginSdkApp {
  * implementation-key test — adding a surface member without updating this
  * list fails the type assertion below.
  */
-declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useRealtime", "useRpc", "useSettings"];
+declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useComposer", "useRealtime", "useRpc", "useSettings"];
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
 declare const useRpc: () => PluginRpcClient;
@@ -211,4 +253,4 @@ declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginRpcClient, PluginSdkApp, PluginSettingsState, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
+export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginRpcClient, PluginSdkApp, PluginSettingsState, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };

@@ -72,7 +72,8 @@ threadPanelAction
 open closable panel tabs with JSON params), composerAccessory (prompt box
 footer). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate. Components are vendored shadcn source the plugin owns (the
+useBbNavigate, and useComposer (quote selections / insert mention pills
+into the chat composer draft). Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the

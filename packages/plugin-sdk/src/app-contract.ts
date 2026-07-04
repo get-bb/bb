@@ -189,6 +189,46 @@ export interface PluginSettingsState {
   isLoading: boolean;
 }
 
+/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
+export type PluginComposerScope =
+  | { kind: "thread"; threadId: string }
+  | { kind: "new-thread"; projectId: string | null };
+
+/** An @-mention pill bound to one of the calling plugin's mention providers. */
+export interface PluginComposerMention {
+  /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
+  provider: string;
+  /** Item id your provider's `resolve` will receive at send time. */
+  id: string;
+  /** Pill text shown in the composer. */
+  label: string;
+}
+
+/**
+ * Programmatic access to the chat composer draft — the same shared draft the
+ * built-in "Add to chat" affordances (file preview, diff, terminal selections)
+ * write to. Inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread
+ * composer draft, which persists until the user sends or clears it.
+ */
+export interface PluginComposerApi {
+  scope: PluginComposerScope;
+  /**
+   * Append text to the draft as a `> ` blockquote block and focus the
+   * composer. Blank text is a no-op. This is the "reference this selection
+   * in chat" primitive.
+   */
+  addQuote(text: string): void;
+  /**
+   * Insert an @-mention pill that resolves through this plugin's mention
+   * provider at send time — the durable way to reference an entity whose
+   * content should be fetched fresh when the message is sent.
+   */
+  insertMention(mention: PluginComposerMention): void;
+  /** Focus the composer caret at the end of the draft. */
+  focus(): void;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -233,6 +273,7 @@ export interface PluginSdkApp {
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
+  useComposer(): PluginComposerApi;
 }
 
 /**
@@ -245,6 +286,7 @@ export const PLUGIN_SDK_APP_EXPORT_NAMES = [
   "definePluginApp",
   "useBbContext",
   "useBbNavigate",
+  "useComposer",
   "useRealtime",
   "useRpc",
   "useSettings",

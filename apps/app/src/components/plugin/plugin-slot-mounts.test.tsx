@@ -2,7 +2,7 @@
 
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   PluginComposerAccessoryProps,
@@ -30,6 +30,9 @@ import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
+import { useComposer } from "@/lib/plugin-sdk-hooks";
+import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
   usePluginPanelActions,
@@ -140,6 +143,153 @@ describe("PluginComposerAccessories", () => {
     expect(
       screen.getByText(`accessory ${PERSONAL_PROJECT_ID} / thr_9`),
     ).toBeDefined();
+  });
+});
+
+
+function ThreadDraftViewer({ threadId }: { threadId: string }) {
+  const draft = usePromptDraftStorage({
+    kind: "thread",
+    projectId: PERSONAL_PROJECT_ID,
+    threadId,
+  });
+  return (
+    <div>
+      <div data-testid="draft-key">{draft.storageKey}</div>
+      <div data-testid="draft-text">{draft.text}</div>
+      <div data-testid="draft-mentions">{JSON.stringify(draft.mentions)}</div>
+    </div>
+  );
+}
+
+function NewThreadDraftViewer() {
+  const draft = usePromptDraftStorage({ kind: "new-thread" });
+  return (
+    <div>
+      <div data-testid="draft-key">{draft.storageKey}</div>
+      <div data-testid="draft-text">{draft.text}</div>
+      <div data-testid="draft-mentions">{JSON.stringify(draft.mentions)}</div>
+    </div>
+  );
+}
+
+describe("useComposer", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  function registerComposerProbe(label: string) {
+    function ComposerProbe() {
+      const composer = useComposer();
+      return (
+        <div>
+          <div>scope: {composer.scope.kind}</div>
+          <button type="button" onClick={() => composer.addQuote("picked text")}>
+            {label}-quote
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.insertMention({
+                provider: "notes",
+                id: "work/ideas.md",
+                label: "ideas.md",
+              })
+            }
+          >
+            {label}-mention
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.insertMention({ provider: "bad:colon", id: "x", label: "x" })
+            }
+          >
+            {label}-bad-mention
+          </button>
+        </div>
+      );
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerAccessories: [{ id: "probe", component: ComposerProbe }],
+      }),
+    );
+  }
+
+  it("writes quotes into the thread draft and fires the focus bus", () => {
+    registerComposerProbe("t");
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_comp1"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftViewer threadId="thr_comp1" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("scope: thread")).toBeDefined();
+
+    let focusRequests = 0;
+    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
+    const unsubscribe = subscribeComposerFocusRequests(storageKey, () => {
+      focusRequests += 1;
+    });
+    fireEvent.click(screen.getByText("t-quote"));
+    expect(screen.getByTestId("draft-text").textContent).toBe(
+      "> picked text\n",
+    );
+    expect(focusRequests).toBe(1);
+    unsubscribe();
+  });
+
+  it("appends mention pills with offsets into the new-thread draft", () => {
+    registerComposerProbe("n");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginComposerAccessories />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("scope: new-thread")).toBeDefined();
+
+    fireEvent.click(screen.getByText("n-mention"));
+    expect(screen.getByTestId("draft-text").textContent).toBe("ideas.md ");
+    const mentions = JSON.parse(
+      screen.getByTestId("draft-mentions").textContent ?? "[]",
+    ) as Array<{ start: number; end: number; resource: Record<string, unknown> }>;
+    expect(mentions).toEqual([
+      {
+        start: 0,
+        end: 8,
+        resource: {
+          kind: "plugin",
+          pluginId: "demo",
+          itemId: "notes:work/ideas.md",
+          label: "ideas.md",
+        },
+      },
+    ]);
+
+    // A second mention lands after the first with a preserved gap.
+    fireEvent.click(screen.getByText("n-mention"));
+    expect(screen.getByTestId("draft-text").textContent).toBe(
+      "ideas.md ideas.md ",
+    );
+  });
+
+  it("rejects provider ids containing ':' without touching the draft", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerComposerProbe("b");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginComposerAccessories />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("b-bad-mention"));
+    expect(screen.getByTestId("draft-text").textContent).toBe("");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("invalid provider id"),
+    );
   });
 });
 

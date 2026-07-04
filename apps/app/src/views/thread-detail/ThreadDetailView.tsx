@@ -49,6 +49,7 @@ import {
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -826,6 +827,15 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // sharing the localStorage draft) can focus its caret at the end, ready for
   // the reply under the quote.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
+  // Plugin useComposer() writes ride the focus bus (they can't reach this
+  // view's local nonce); same storage key = same draft the composer shows.
+  useEffect(
+    () =>
+      subscribeComposerFocusRequests(selectionPromptDraft.storageKey, () =>
+        setComposerFocusRequestNonce((nonce) => nonce + 1),
+      ),
+    [selectionPromptDraft.storageKey],
+  );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       addQuoteToComposer(text, attachments);

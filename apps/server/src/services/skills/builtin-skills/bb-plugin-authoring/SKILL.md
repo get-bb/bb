@@ -452,6 +452,16 @@ Hooks:
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?) }`.
+- `useComposer()` → programmatic access to the chat composer draft (the
+  same one the built-in "Add to chat" affordances write to):
+  `addQuote(text)` appends the text as a `> ` blockquote block and focuses
+  the composer — the "reference this selection in chat" primitive;
+  `insertMention({ provider, id, label })` inserts an @-mention pill bound
+  to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
+  fresh context at send time; `focus()` focuses the caret; `scope` reports
+  where writes land (`{ kind: "thread", threadId }` inside a thread
+  context, `{ kind: "new-thread", projectId }` from nav panels and
+  homepage sections — those seed the composer the user lands on next).
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports

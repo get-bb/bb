@@ -563,7 +563,10 @@ V1 slot set with **versioned per-slot props contracts** (additive-only within a 
 
 Hooks from `@bb/plugin-sdk/app`: `useRpc<Rpc>()`, `useRealtime<Channels>()`,
 `useSettings()` (secrets excluded), `useBbContext()` (current project/thread selection),
-and `useBbNavigate()` with **typed helpers** (`toThread(id)`, `toPluginPanel(path)`) — no
+and `useBbNavigate()` with **typed helpers** (`toThread(id)`, `toPluginPanel(path,
+{ subPath?, replace? })`) — plus `useComposer()` *(added 2026-07-04)* for programmatic
+composer-draft writes (addQuote / insertMention / focus, scope-resolved to the thread or
+new-thread draft) — no
 guessed URL schemes. *(A host-provided UI kit — 65 shadcn-shaped component re-exports —
 shipped with Phase 3 and was REMOVED by decision 2026-07-03: it froze every component's
 props into a pinned compatibility surface, so any app component evolution became a

@@ -3,6 +3,7 @@ import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
   useBbNavigate,
+  useComposer,
   useRealtime,
   useRpc,
   useSettings,
@@ -27,6 +28,7 @@ export const pluginSdkAppImplementation = {
   definePluginApp,
   useBbContext,
   useBbNavigate,
+  useComposer,
   useRealtime,
   useRpc,
   useSettings,
