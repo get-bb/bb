@@ -127,8 +127,11 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "fuzzyFileSearch/sessionCompleted": "unknown",
   "fuzzyFileSearch/sessionUpdated": "unknown",
   guardianWarning: "unknown",
-  "hook/completed": "unknown",
-  "hook/started": "unknown",
+  // Codex hook lifecycle is the user's local plumbing (~/.codex/hooks.json), not
+  // thread content; bb has no surface for it, so drop it instead of leaking raw
+  // events into the dev timeline.
+  "hook/completed": "noise",
+  "hook/started": "noise",
   "item/agentMessage/delta": "normalized",
   "item/autoApprovalReview/completed": "unknown",
   "item/autoApprovalReview/started": "unknown",

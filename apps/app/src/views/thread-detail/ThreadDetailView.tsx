@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { nanoid } from "nanoid";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
@@ -49,6 +50,10 @@ import {
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  PromptAnnotationComposerProvider,
+  type PromptAnnotationInput,
+} from "@/components/promptbox/prompt-annotation-context";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -832,6 +837,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
     [addQuoteToComposer],
+  );
+  const addAnnotationToComposer = selectionPromptDraft.addAnnotation;
+  const handleAddAnnotation = useCallback(
+    (annotation: PromptAnnotationInput) => {
+      addAnnotationToComposer({ id: nanoid(), ...annotation });
+      setComposerFocusRequestNonce((nonce) => nonce + 1);
+    },
+    [addAnnotationToComposer],
   );
   // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
   // as the side-chat source text), so the reply's visible anchor and the
@@ -2186,6 +2199,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
+   <PromptAnnotationComposerProvider
+    addAnnotation={handleAddAnnotation}
+    annotations={selectionPromptDraft.annotations ?? []}
+   >
     <UrlOpenRoutingProvider
       openInAppBrowser={
         canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
@@ -2323,5 +2340,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         />
       ) : null}
     </UrlOpenRoutingProvider>
+   </PromptAnnotationComposerProvider>
   );
 }

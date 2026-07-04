@@ -241,8 +241,36 @@ export const promptInputSchema = z.discriminatedUnion("type", [
     mimeType: z.string().optional(),
     ...promptInputVisibilityFields,
   }),
+  z.object({
+    type: z.literal("annotation"),
+    // A code/diff line range the user is commenting on. Carries its quoted
+    // source inline, so no server or runtime file access is needed to render it.
+    path: z.string(),
+    startLine: z.number().int().nonnegative(),
+    endLine: z.number().int().nonnegative(),
+    quotedText: z.string(),
+    comment: z.string(),
+    ...promptInputVisibilityFields,
+  }),
 ]);
 export type PromptInput = z.infer<typeof promptInputSchema>;
+
+export type AnnotationPromptInput = Extract<PromptInput, { type: "annotation" }>;
+
+/**
+ * The plain-text form of a line-range annotation the agent model receives.
+ * Providers that only accept text (Codex/Claude/ACP/pi) render annotations
+ * through this so the model sees a clean structured block, not a raw quote dump.
+ */
+export function renderAnnotationInputText(input: AnnotationPromptInput): string {
+  const range =
+    input.startLine === input.endLine
+      ? `line ${input.startLine}`
+      : `lines ${input.startLine}-${input.endLine}`;
+  const comment = input.comment.trim();
+  const commentBlock = comment.length > 0 ? `\n${comment}` : "";
+  return `Comment on ${input.path} (${range}):\n\`\`\`\n${input.quotedText}\n\`\`\`${commentBlock}`;
+}
 
 export interface PromptCommandSelector {
   trigger: PromptMentionCommandTrigger;

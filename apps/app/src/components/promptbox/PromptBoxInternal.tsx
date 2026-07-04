@@ -49,11 +49,13 @@ import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
+  type PromptDraftAnnotation,
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@/lib/prompt-draft";
 import { cn } from "@/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
+import { AnnotationPreview } from "./AnnotationPreview";
 import {
   PromptBoxActionsMenu,
   type PromptBoxAction,
@@ -247,6 +249,11 @@ export interface AttachmentsConfig {
   projectId?: string;
 }
 
+export interface AnnotationsConfig {
+  items?: PromptDraftAnnotation[];
+  onRemove?: (id: string) => void;
+}
+
 export interface PromptBoxZenModeConfig {
   layout?: ZenModeLayout;
   storageKey?: string | null;
@@ -314,6 +321,7 @@ export interface PromptBoxInternalProps {
    */
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
+  annotations?: AnnotationsConfig;
   promptActions?: readonly PromptBoxAction[];
   zenMode?: PromptBoxZenModeConfig;
   history?: HistoryConfig;
@@ -991,6 +999,7 @@ export function PromptBoxInternal({
   typeahead,
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
+  annotations: annotationConfig = {},
   promptActions,
   zenMode = {},
   history,
@@ -1028,6 +1037,8 @@ export function PromptBoxInternal({
     onRemove: onRemoveAttachment,
     projectId: attachmentProjectId,
   } = attachmentConfig;
+  const { items: annotations = [], onRemove: onRemoveAnnotation } =
+    annotationConfig;
   const {
     layout: zenModeLayout = "thread",
     storageKey: zenModeStorageKey,
@@ -2554,6 +2565,11 @@ export function PromptBoxInternal({
         expandedImageIndex={expandedImageIndex}
         onExpandedImageIndexChange={setExpandedImageIndex}
         onRemoveAttachment={onRemoveAttachment}
+      />
+
+      <AnnotationPreview
+        annotations={annotations}
+        onRemoveAnnotation={onRemoveAnnotation}
       />
 
       {attachmentError ? (

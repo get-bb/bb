@@ -16,7 +16,12 @@ import type {
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@/components/ui/button.js";
-import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
+import {
+  usePierreLineSelectionActions,
+  type PierreLineSelectionAnnotateArgs,
+} from "./PierreLineSelectionActions.js";
+import { PierrePromptAnnotationMarkers } from "./PierrePromptAnnotationMarkers.js";
+import { usePromptAnnotationComposer } from "@/components/promptbox/prompt-annotation-context.js";
 import {
   getWrappedImageIndex,
   ImageLightbox,
@@ -1119,6 +1124,7 @@ function GitDiffCardRawDiffBody({
   onSelectionAddToChat,
 }: GitDiffCardRawDiffBodyProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [annotationRenderRevision, setAnnotationRenderRevision] = useState(0);
   const displayStyle = getDiffPatchDisplayStyle(fileDiffOptions);
   const buildSelectionText = useCallback(
     (range: SelectedLineRange) =>
@@ -1134,12 +1140,37 @@ function GitDiffCardRawDiffBody({
     }) => buildDiffDomSelectionText({ containerElement, fileDiff }),
     [fileDiff],
   );
+  const annotationComposer = usePromptAnnotationComposer();
+  const addAnnotation = annotationComposer?.addAnnotation;
+  const filePath = normalizeGitDiffPath(fileDiff.name) ?? fileDiff.name;
+  const fileAnnotations = useMemo(
+    () =>
+      (annotationComposer?.annotations ?? []).filter(
+        (annotation) => annotation.path === filePath,
+      ),
+    [annotationComposer?.annotations, filePath],
+  );
+  const onSelectionAnnotate = useMemo(
+    () =>
+      addAnnotation === undefined
+        ? undefined
+        : ({ range, quotedText, comment }: PierreLineSelectionAnnotateArgs) =>
+            addAnnotation({
+              path: filePath,
+              startLine: Math.min(range.start, range.end),
+              endLine: Math.max(range.start, range.end),
+              quotedText,
+              comment,
+            }),
+    [addAnnotation, filePath],
+  );
   const lineSelectionActions = usePierreLineSelectionActions({
     buildFallbackSelectionText,
     buildSelectionText,
     containerRef,
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
+    onSelectionAnnotate,
   });
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
@@ -1155,6 +1186,9 @@ function GitDiffCardRawDiffBody({
       onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
       onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
+      onPostRender: () => {
+        setAnnotationRenderRevision((revision) => revision + 1);
+      },
     }),
     [
       fileDiffOptions,
@@ -1168,7 +1202,7 @@ function GitDiffCardRawDiffBody({
   return (
     <div
       ref={containerRef}
-      className="overflow-x-auto"
+      className="relative overflow-x-auto"
       onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
       onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
@@ -1180,6 +1214,11 @@ function GitDiffCardRawDiffBody({
           selectedLines={lineSelectionActions.selectedRange}
         />
       </div>
+      <PierrePromptAnnotationMarkers
+        annotations={fileAnnotations}
+        containerRef={containerRef}
+        renderRevision={annotationRenderRevision}
+      />
       {lineSelectionActions.menu}
     </div>
   );

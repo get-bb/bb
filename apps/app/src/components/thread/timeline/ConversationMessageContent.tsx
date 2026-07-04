@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
+  TimelineConversationAnnotation,
   TimelineConversationAttachments,
   TimelineRowBase,
   TimelineUserConversationRow,
@@ -25,6 +26,7 @@ import {
   buildAttachmentItems,
   type ConversationAttachmentItems,
 } from "./ConversationAttachments.js";
+import { ConversationAnnotations } from "./ConversationAnnotations.js";
 import {
   GeneratedConversationMessage,
   generatedConversationBodySlice,
@@ -54,6 +56,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  workspaceRootPath?: string;
 }
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
@@ -66,6 +69,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  annotations?: readonly TimelineConversationAnnotation[];
   onAddToChat?: (text: string) => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
@@ -137,7 +141,6 @@ export interface ConversationMessageContentAssistantProps
   /** Shows the hover-revealed copy/fork/side-chat action footer. */
   showActions: boolean;
   turnRequest: null;
-  workspaceRootPath?: string;
 }
 
 /**
@@ -154,6 +157,7 @@ export type ConversationMessageContentProps =
 interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  annotations: readonly TimelineConversationAnnotation[];
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
@@ -171,6 +175,7 @@ interface UserConversationMessageProps {
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
@@ -332,6 +337,7 @@ function buildAddToChatAttachments(
 function UserConversationMessage({
   addToChatAttachments,
   attachmentItems,
+  annotations,
   childOrigin,
   initiator,
   mentions,
@@ -349,6 +355,7 @@ function UserConversationMessage({
   systemMessageSubject,
   text,
   turnRequest,
+  workspaceRootPath,
 }: UserConversationMessageProps) {
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
@@ -448,6 +455,11 @@ function UserConversationMessage({
             imageItems={attachmentItems.imageItems}
             onOpenLocalFileLink={onOpenLocalFileLink}
             projectId={projectId}
+          />
+          <ConversationAnnotations
+            annotations={annotations}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            workspaceRootPath={workspaceRootPath}
           />
         </div>
         {messageText || addToChatAttachments.length > 0 ? (
@@ -575,6 +587,7 @@ export function ConversationMessageContent(
       <UserConversationMessage
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
+        annotations={props.annotations ?? []}
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
@@ -592,6 +605,7 @@ export function ConversationMessageContent(
         systemMessageSubject={props.systemMessageSubject}
         text={text}
         turnRequest={props.turnRequest}
+        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }

@@ -26,6 +26,7 @@ import {
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { renderAnnotationInputText } from "@bb/domain";
 import type { AvailableModel, PromptInput } from "@bb/domain";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
 import {
@@ -854,6 +855,9 @@ function buildPromptContentBlocks(
           uri: `file://${item.path}`,
           name: item.name ?? basename(item.path),
         });
+        break;
+      case "annotation":
+        blocks.push({ type: "text", text: renderAnnotationInputText(item) });
         break;
     }
   }

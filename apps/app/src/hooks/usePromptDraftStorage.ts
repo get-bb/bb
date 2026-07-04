@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type {
+  PromptDraftAnnotation,
   PromptDraftAttachment,
   PromptDraftState,
 } from "@/lib/prompt-draft";
@@ -309,6 +310,36 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
+  const addAnnotation = useCallback(
+    (annotation: PromptDraftAnnotation) => {
+      const currentDraft = readPromptDraft(storageKey);
+      writePromptDraft(storageKey, {
+        ...currentDraft,
+        annotations: [...(currentDraft.annotations ?? []), annotation],
+      });
+    },
+    [storageKey],
+  );
+
+  const removeAnnotation = useCallback(
+    (id: string) => {
+      const currentDraft = readPromptDraft(storageKey);
+      const currentAnnotations = currentDraft.annotations ?? [];
+      const nextAnnotations = currentAnnotations.filter(
+        (annotation) => annotation.id !== id,
+      );
+      if (nextAnnotations.length === currentAnnotations.length) {
+        return;
+      }
+
+      writePromptDraft(storageKey, {
+        ...currentDraft,
+        annotations: nextAnnotations,
+      });
+    },
+    [storageKey],
+  );
+
   const addQuote = useCallback(
     (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
       const currentDraft = readPromptDraft(storageKey);
@@ -371,25 +402,31 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       text: draft.text,
       mentions: draft.mentions,
       attachments: draft.attachments,
+      annotations: draft.annotations,
       setDraft: setDraftAndPersist,
       setTextAndMentions,
       setAttachments,
       addAttachment,
       removeAttachment,
+      addAnnotation,
+      removeAnnotation,
       addQuote,
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
     }),
     [
+      addAnnotation,
       addAttachment,
       addQuote,
       clear,
       clearIfCurrentMatches,
+      draft.annotations,
       draft.attachments,
       draft.mentions,
       draft.text,
       getCurrent,
+      removeAnnotation,
       removeAttachment,
       restoreIfEmpty,
       setAttachments,

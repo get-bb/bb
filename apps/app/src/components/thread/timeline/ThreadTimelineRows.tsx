@@ -858,6 +858,7 @@ function ConversationRow({
     return (
       <ConversationMessageContent
         attachments={row.attachments}
+        annotations={row.annotations}
         childOrigin={childOrigin}
         initiator={row.initiator}
         mentions={row.mentions}

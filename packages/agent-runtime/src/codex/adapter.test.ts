@@ -2473,6 +2473,25 @@ describe("codex provider adapter", () => {
     ).toEqual([]);
   });
 
+  it("translateEvent drops codex hook lifecycle notifications as noise", () => {
+    const adapter = createCodexProviderAdapter();
+
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "hook/started",
+        params: { threadId: "t1", turnId: "turn-1" },
+      }),
+    ).toEqual([]);
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "hook/completed",
+        params: { threadId: "t1", turnId: "turn-1" },
+      }),
+    ).toEqual([]);
+  });
+
   it("translateEvent item/mcpToolCall/progress maps to shared tool progress", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(

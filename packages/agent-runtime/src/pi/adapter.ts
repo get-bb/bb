@@ -11,13 +11,19 @@ import { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import { z } from "zod";
 import type {
+  PromptInput,
   ThreadEvent,
   ThreadEventContextWindowUsage,
   ThreadEventItem,
   ThreadEventTokenUsage,
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
-import { threadScope, toPositiveNumber, turnScope } from "@bb/domain";
+import {
+  renderAnnotationInputText,
+  threadScope,
+  toPositiveNumber,
+  turnScope,
+} from "@bb/domain";
 import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
 import { resolveBridgeProcessArgs } from "../shared/bridge-path.js";
 import { bashArgsSchema, textBlockSchema } from "../shared/tool-arg-schemas.js";
@@ -80,6 +86,17 @@ import type {
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
+
+// The pi bridge is an external process that only understands the core prompt
+// input variants, so lower line-range annotations to their plain-text form
+// before dispatch rather than teach the bridge a new type.
+function lowerPiPromptInput(input: PromptInput[]): PromptInput[] {
+  return input.map((chunk) =>
+    chunk.type === "annotation"
+      ? { type: "text", text: renderAnnotationInputText(chunk), mentions: [] }
+      : chunk,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Pi event and command types
@@ -1334,9 +1351,8 @@ export function createPiProviderAdapter(
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
-              input: flattenPromptInputGroups(
-                command.input,
-                command.inputGroups,
+              input: lowerPiPromptInput(
+                flattenPromptInputGroups(command.input, command.inputGroups),
               ),
               ...(command.options?.model
                 ? { model: command.options.model }
@@ -1350,9 +1366,8 @@ export function createPiProviderAdapter(
             params: {
               threadId: command.providerThreadId,
               expectedTurnId: command.expectedTurnId,
-              input: flattenPromptInputGroups(
-                command.input,
-                command.inputGroups,
+              input: lowerPiPromptInput(
+                flattenPromptInputGroups(command.input, command.inputGroups),
               ),
             },
           };

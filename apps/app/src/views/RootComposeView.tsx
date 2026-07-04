@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { nanoid } from "nanoid";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
@@ -95,6 +96,10 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  PromptAnnotationComposerProvider,
+  type PromptAnnotationInput,
+} from "@/components/promptbox/prompt-annotation-context";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -937,6 +942,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [promptDraft],
   );
+  const handleRootPanelAnnotate = useCallback(
+    (annotation: PromptAnnotationInput) => {
+      promptDraft.addAnnotation({ id: nanoid(), ...annotation });
+      setStartedComposing(true);
+      window.requestAnimationFrame(() => {
+        promptBoxRef.current?.focusEnd();
+      });
+    },
+    [promptDraft],
+  );
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
@@ -948,8 +963,14 @@ export function RootComposeView(props: RootComposeViewProps) {
         text: promptDraft.text,
         mentions: promptDraft.mentions,
         attachments: promptDraft.attachments,
+        annotations: promptDraft.annotations,
       }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+    [
+      promptDraft.annotations,
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
+    ],
   );
   const rootComposeZenModeStorageKey = useMemo(
     () =>
@@ -1620,6 +1641,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             text: promptDraft.text,
             mentions: promptDraft.mentions,
             attachments: promptDraft.attachments,
+            annotations: promptDraft.annotations,
           }
         : null;
     const submittedInput =
@@ -2974,6 +2996,13 @@ export function RootComposeView(props: RootComposeViewProps) {
       uploadPromptAttachment.isPending,
     ],
   );
+  const annotationsConfig = useMemo(
+    () => ({
+      items: promptDraft.annotations ?? [],
+      onRemove: promptDraft.removeAnnotation,
+    }),
+    [promptDraft.annotations, promptDraft.removeAnnotation],
+  );
   const executionConfig = useMemo(
     () => ({
       provider: {
@@ -3258,6 +3287,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       history={historyConfig}
       typeahead={typeaheadConfig}
       attachments={attachmentsConfig}
+      annotations={annotationsConfig}
       {...providerPromptActionProps}
       modeConfig={{
         environment: environmentConfig,
@@ -3294,7 +3324,10 @@ export function RootComposeView(props: RootComposeViewProps) {
   }
 
   return (
-    <>
+    <PromptAnnotationComposerProvider
+      addAnnotation={handleRootPanelAnnotate}
+      annotations={promptDraft.annotations ?? []}
+    >
       {providerCliInstallLogDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
@@ -3355,6 +3388,6 @@ export function RootComposeView(props: RootComposeViewProps) {
           </>
         )}
       </RootComposeSecondaryContent>
-    </>
+    </PromptAnnotationComposerProvider>
   );
 }
