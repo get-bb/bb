@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Button } from "@/components/ui/button.js";
 import { Textarea } from "@/components/ui/textarea.js";
-import { preventOverlayTriggerSelection } from "@/components/ui/overlay-trigger.js";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { useSoftKeyboardInset } from "@/components/ui/hooks/use-soft-keyboard-inset.js";
+import { createPortal } from "react-dom";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
 // Mirrors the shared PopoverContent tokens (components/ui/popover.tsx), sized
@@ -26,9 +26,73 @@ export interface SelectionAnnotationPopoverProps {
   portalContainer?: HTMLElement | null;
 }
 
+interface AnnotationCommentFormProps {
+  locationLabel: string;
+  comment: string;
+  onCommentChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  autoFocus: boolean;
+}
+
+function AnnotationCommentForm({
+  locationLabel,
+  comment,
+  onCommentChange,
+  onSubmit,
+  onCancel,
+  autoFocus,
+}: AnnotationCommentFormProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) {
+      textareaRef.current?.focus();
+    }
+  }, [autoFocus]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSubmit();
+    }
+  };
+
+  return (
+    <>
+      <p className="truncate text-xs font-medium text-muted-foreground">
+        {locationLabel}
+      </p>
+      <Textarea
+        ref={textareaRef}
+        value={comment}
+        onChange={(event) => onCommentChange(event.target.value)}
+        onKeyDown={handleKeyDown}
+        rows={2}
+        enterKeyHint="send"
+        placeholder="Add a comment…"
+        className="min-h-16 text-sm"
+      />
+      <div className="flex justify-end gap-1.5">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" onClick={onSubmit}>
+          Add to chat
+        </Button>
+      </div>
+    </>
+  );
+}
+
 /**
  * Inline comment box shown when a line range is selected. Confirming turns the
  * range + comment into a pending annotation chip in the composer.
+ *
+ * On touch it renders as a bottom sheet that tracks the soft keyboard as a
+ * single unit: anchoring a floating popover over the keyboard is fragile —
+ * autofocus opens the keyboard, which reflows the box out from under a finger
+ * tap. Desktop keeps the anchored popover.
  */
 export function SelectionAnnotationPopover({
   selection,
@@ -57,12 +121,31 @@ export function SelectionAnnotationPopover({
     onSubmit(comment.trim());
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      submit();
-    }
-  };
+  const form = (
+    <AnnotationCommentForm
+      locationLabel={locationLabel}
+      comment={comment}
+      onCommentChange={setComment}
+      onSubmit={submit}
+      onCancel={onDismiss}
+      autoFocus
+    />
+  );
+
+  if (isCoarsePointer) {
+    // Stable bottom sheet, lifted above the keyboard by its inset. Portaled into
+    // the drawer so it isn't aria-hidden; the drawer's bottom is the screen
+    // bottom, so `fixed` positioning here sits just above the keyboard.
+    const sheet = (
+      <div
+        className="fixed inset-x-0 z-50 flex flex-col gap-2 border-t border-border bg-popover p-3 text-popover-foreground shadow-md"
+        style={{ bottom: keyboardInset }}
+      >
+        {form}
+      </div>
+    );
+    return createPortal(sheet, portalContainer ?? document.body);
+  }
 
   const { anchorPoint, rect } = selection;
   const anchorLeft = anchorPoint?.x ?? rect.left + rect.width / 2;
@@ -84,55 +167,11 @@ export function SelectionAnnotationPopover({
           side={anchorSide}
           align="center"
           sideOffset={6}
-          collisionPadding={{
-            top: 8,
-            left: 8,
-            right: 8,
-            bottom: 8 + keyboardInset,
-          }}
+          collisionPadding={8}
           className={ANNOTATION_POPOVER_CONTENT_CLASS}
           onEscapeKeyDown={() => onDismiss()}
-          // On touch, autofocusing the textarea opens the soft keyboard, whose
-          // animation reflows this box out from under a finger tap (matching the
-          // drawer shell's coarse-pointer guard). Let the user tap to type.
-          onOpenAutoFocus={(event) => {
-            if (isCoarsePointer) {
-              event.preventDefault();
-            }
-          }}
         >
-          <p className="truncate text-xs font-medium text-muted-foreground">
-            {locationLabel}
-          </p>
-          <Textarea
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={2}
-            enterKeyHint="send"
-            placeholder="Add a comment…"
-            className="min-h-16 text-sm"
-          />
-          <div className="flex justify-end gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              // mousedown fires before the textarea blurs, so preventing its
-              // default keeps focus (and the keyboard) put — the box doesn't
-              // reflow and the click lands. Same pattern as TimelineSelectionMenu.
-              onMouseDown={preventOverlayTriggerSelection}
-              onClick={() => onDismiss()}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onMouseDown={preventOverlayTriggerSelection}
-              onClick={submit}
-            >
-              Add to chat
-            </Button>
-          </div>
+          {form}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
