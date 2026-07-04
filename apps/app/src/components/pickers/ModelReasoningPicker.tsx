@@ -583,7 +583,7 @@ export function ModelReasoningPicker({
               <>
                 {modelGroups
                   ? modelGroups.map((group) => (
-                      <Fragment key={group.providerLabel}>
+                      <Fragment key={group.providerKey}>
                         <MenuSectionLabel>
                           {group.providerLabel}
                         </MenuSectionLabel>

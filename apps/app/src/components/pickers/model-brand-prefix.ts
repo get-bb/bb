@@ -57,6 +57,7 @@ function providerDisplayLabel(provider: string): string {
 export interface ModelOptionGroup<
   TOption extends { value: string; label: string },
 > {
+  providerKey: string;
   providerLabel: string;
   options: readonly TOption[];
 }
@@ -92,6 +93,7 @@ export function groupModelOptionsByProvider<
     }
   }
   return [...buckets.entries()].map(([provider, groupedOptions]) => ({
+    providerKey: provider,
     providerLabel: providerDisplayLabel(provider),
     options: groupedOptions,
   }));

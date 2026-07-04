@@ -11,19 +11,25 @@
  * Protocol map (bb JSON-RPC -> omp RPC):
  *   initialize            -> (no omp call; ack)
  *   model/list            -> get_available_models
- *   thread/start          -> set_model? + (session boots with omp's cwd)
- *   thread/resume         -> (same as thread/start; omp resumes recent session)
- *   turn/start {input}    -> prompt {message}
- *   turn/steer {input}    -> steer {message}
- *   thread/stop           -> abort
+ *   thread/start          -> new_session + set_model? + set_thinking_level? + ...
+ *   thread/resume         -> switch_session + set_model? + set_thinking_level? + ...
+ *   turn/start {input}    -> switch_session? + prompt {message}
+ *   turn/steer {input}    -> switch_session? + steer {message}
+ *   thread/stop           -> switch_session? + abort
  *
  * omp events (agent_start, message_update, agent_end, ...) are forwarded to bb
  * as `sdk/message` notifications carrying the raw omp event.
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { z } from "zod";
+import {
+  resolveOmpBridgeSessionDir,
+  resolveOmpSessionFilePath,
+} from "./session-paths.js";
 
 // ---------------------------------------------------------------------------
 // bb <-> bridge JSON-RPC 2.0 framing
@@ -75,12 +81,28 @@ interface PendingOmpRequest {
   reject: (error: Error) => void;
 }
 
+interface OmpSpawnConfig {
+  cwd: string;
+  cliArgs: string[];
+  env: Record<string, string>;
+}
+
+interface ThreadSession {
+  threadId: string;
+  cwd: string;
+  sessionPath: string;
+  spawnConfig: OmpSpawnConfig;
+}
+
 const OMP_BINARY_ENV = "BB_OMP_BINARY";
+const DEFAULT_OMP_CLI_ARGS = ["--mode", "rpc", "--no-title"];
 let ompChild: ChildProcessWithoutNullStreams | null = null;
 let ompReady: Promise<void> | null = null;
 let ompCommandCounter = 0;
 const pendingOmpRequests = new Map<string, PendingOmpRequest>();
-let currentThreadId: string | undefined;
+const threadSessions = new Map<string, ThreadSession>();
+let activeThreadId: string | undefined;
+let currentSpawnConfig: OmpSpawnConfig | undefined;
 const stderrTail: string[] = [];
 const STDERR_TAIL_MAX_LINES = 40;
 
@@ -89,7 +111,7 @@ function resolveOmpBinary(): string {
 }
 
 function forwardOmpEvent(rawEvent: unknown): void {
-  const threadId = currentThreadId ?? "thr_omp";
+  const threadId = activeThreadId ?? "thr_omp";
   sendNotification("sdk/message", { threadId, message: rawEvent });
 }
 
@@ -183,10 +205,42 @@ function handleOmpLine(line: string): void {
   forwardOmpEvent(parsed);
 }
 
-function startOmp(cwd: string): Promise<void> {
-  if (ompChild && ompReady) {
-    return ompReady;
+function rejectPendingOmpRequests(error: Error): void {
+  const pending = [...pendingOmpRequests.values()];
+  pendingOmpRequests.clear();
+  for (const request of pending) {
+    request.reject(error);
   }
+}
+
+function resetOmpProcessState(): void {
+  ompChild = null;
+  ompReady = null;
+  activeThreadId = undefined;
+}
+
+async function waitForOmpExit(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
+}
+
+async function stopOmp(): Promise<void> {
+  const child = ompChild;
+  if (!child) {
+    resetOmpProcessState();
+    return;
+  }
+  resetOmpProcessState();
+  rejectPendingOmpRequests(new Error("omp process is restarting"));
+  child.kill();
+  await waitForOmpExit(child);
+}
+
+function startOmp(config: OmpSpawnConfig): Promise<void> {
   ompCommandCounter = 0;
   pendingOmpRequests.clear();
   stderrTail.length = 0;
@@ -195,10 +249,10 @@ function startOmp(cwd: string): Promise<void> {
     const binary = resolveOmpBinary();
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = spawn(binary, ["--mode", "rpc"], {
-        cwd,
+      child = spawn(binary, config.cliArgs, {
+        cwd: config.cwd,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
+        env: { ...process.env, ...config.env },
       });
     } catch (error) {
       reject(
@@ -211,21 +265,13 @@ function startOmp(cwd: string): Promise<void> {
     ompChild = child;
 
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      const exitThreadId = currentThreadId;
-      // Reset so the next ensureOmp respawns omp instead of reusing a dead
-      // child (and an already-resolved ready promise) for the rest of the session.
-      ompChild = null;
-      ompReady = null;
-      currentThreadId = undefined;
-      const pending = [...pendingOmpRequests.values()];
-      pendingOmpRequests.clear();
-      for (const request of pending) {
-        request.reject(
-          new Error(
-            `omp process exited${code !== null ? ` (code ${code})` : signal ? ` (${signal})` : ""}`,
-          ),
-        );
-      }
+      const exitThreadId = activeThreadId;
+      resetOmpProcessState();
+      rejectPendingOmpRequests(
+        new Error(
+          `omp process exited${code !== null ? ` (code ${code})` : signal ? ` (${signal})` : ""}`,
+        ),
+      );
       if (exitThreadId) {
         sendNotification("error", {
           threadId: exitThreadId,
@@ -311,12 +357,41 @@ function sendOmpCommand<T = unknown>(
   });
 }
 
-async function ensureOmp(cwd?: string): Promise<void> {
-  if (ompChild && ompReady) {
+function defaultSpawnConfig(cwd = process.cwd()): OmpSpawnConfig {
+  return {
+    cwd,
+    cliArgs: [...DEFAULT_OMP_CLI_ARGS],
+    env: {},
+  };
+}
+
+function spawnConfigKey(config: OmpSpawnConfig): string {
+  const envEntries = Object.entries(config.env).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return JSON.stringify({
+    cwd: config.cwd,
+    cliArgs: config.cliArgs,
+    env: envEntries,
+  });
+}
+
+async function ensureOmp(config?: OmpSpawnConfig): Promise<void> {
+  const resolved = config ?? currentSpawnConfig ?? defaultSpawnConfig();
+  if (
+    ompChild &&
+    ompReady &&
+    currentSpawnConfig &&
+    spawnConfigKey(currentSpawnConfig) === spawnConfigKey(resolved)
+  ) {
     await ompReady;
     return;
   }
-  await startOmp(cwd ?? process.cwd());
+  if (ompChild) {
+    await stopOmp();
+  }
+  currentSpawnConfig = resolved;
+  await startOmp(resolved);
 }
 
 // ---------------------------------------------------------------------------
@@ -361,21 +436,100 @@ function splitOmpModel(
   };
 }
 
-async function handleInitialize(id: string | number): Promise<void> {
-  sendResult(id, { ok: true });
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const paths = value.filter((entry): entry is string => typeof entry === "string");
+  return paths.length > 0 ? paths : undefined;
 }
 
-async function handleModelList(id: string | number): Promise<void> {
-  try {
-    await ensureOmp();
-    const data = await sendOmpCommand({ type: "get_available_models" });
-    // omp answers { models: [...] }; forward verbatim so the adapter's parser
-    // receives the shape it expects.
-    sendResult(id, data);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
+function readEnvVars(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
   }
+  const envVars: Record<string, string> = {};
+  for (const [key, envValue] of Object.entries(value)) {
+    if (typeof envValue === "string") {
+      envVars[key] = envValue;
+    }
+  }
+  return Object.keys(envVars).length > 0 ? envVars : undefined;
+}
+
+function mapOmpThinkingLevel(level: unknown): string | undefined {
+  if (typeof level !== "string") {
+    return undefined;
+  }
+  switch (level) {
+    case "none":
+      return "off";
+    case "low":
+      return "low";
+    case "medium":
+      return "medium";
+    case "high":
+      return "high";
+    case "xhigh":
+    case "ultracode":
+    case "max":
+      return "xhigh";
+    default:
+      return undefined;
+  }
+}
+
+function writeSkillsConfigFile(
+  threadId: string,
+  additionalSkillPaths: readonly string[],
+): string {
+  const sessionDir = resolveOmpBridgeSessionDir({ env: process.env });
+  mkdirSync(sessionDir, { recursive: true });
+  const configPath = join(
+    sessionDir,
+    `${threadId.replace(/[^A-Za-z0-9._-]/g, "_")}-skills.yml`,
+  );
+  const lines = ["skills:", "  customDirectories:"];
+  for (const skillPath of additionalSkillPaths) {
+    lines.push(`    - ${JSON.stringify(skillPath)}`);
+  }
+  writeFileSync(configPath, `${lines.join("\n")}\n`);
+  return configPath;
+}
+
+function buildOmpSpawnConfig(
+  params: Record<string, unknown>,
+  cwd: string,
+  threadId: string,
+): OmpSpawnConfig {
+  const cliArgs = [...DEFAULT_OMP_CLI_ARGS];
+  const model = typeof params.model === "string" ? params.model : undefined;
+  if (model) {
+    cliArgs.push("--model", model);
+  }
+  const thinkingLevel = mapOmpThinkingLevel(params.reasoningLevel);
+  if (thinkingLevel) {
+    cliArgs.push("--thinking", thinkingLevel);
+  }
+  if (typeof params.baseInstructions === "string") {
+    cliArgs.push("--system-prompt", params.baseInstructions);
+  }
+  if (typeof params.appendSystemPrompt === "string") {
+    cliArgs.push("--append-system-prompt", params.appendSystemPrompt);
+  }
+  const additionalSkillPaths = readStringArray(params.additionalSkillPaths);
+  if (additionalSkillPaths) {
+    cliArgs.push("--config", writeSkillsConfigFile(threadId, additionalSkillPaths));
+  }
+  const sessionDir = resolveOmpBridgeSessionDir({ env: process.env });
+  mkdirSync(sessionDir, { recursive: true });
+  cliArgs.push("--session-dir", sessionDir);
+
+  return {
+    cwd,
+    cliArgs,
+    env: readEnvVars(params.envVars) ?? {},
+  };
 }
 
 async function applySessionOptions(
@@ -396,20 +550,101 @@ async function applySessionOptions(
       }
     }
   }
+
+  const thinkingLevel = mapOmpThinkingLevel(params.reasoningLevel);
+  if (thinkingLevel) {
+    try {
+      await sendOmpCommand({
+        type: "set_thinking_level",
+        level: thinkingLevel,
+      });
+    } catch {
+      // Thinking-level selection failure is non-fatal.
+    }
+  }
+}
+
+function requireThreadSession(threadId: string): ThreadSession {
+  const session = threadSessions.get(threadId);
+  if (!session) {
+    throw new Error(`No active omp thread session for "${threadId}"`);
+  }
+  return session;
+}
+
+async function activateThreadSession(
+  threadId: string,
+  method: "thread/start" | "thread/resume" | "activate",
+): Promise<void> {
+  const session = requireThreadSession(threadId);
+  if (activeThreadId === threadId) {
+    return;
+  }
+
+  if (method === "thread/start" && !existsSync(session.sessionPath)) {
+    await sendOmpCommand({ type: "new_session" });
+    const state = await sendOmpCommand<{ sessionFile?: string }>({
+      type: "get_state",
+    });
+    if (typeof state?.sessionFile === "string" && state.sessionFile.length > 0) {
+      session.sessionPath = state.sessionFile;
+    }
+  } else {
+    await sendOmpCommand({
+      type: "switch_session",
+      sessionPath: session.sessionPath,
+    });
+  }
+
+  activeThreadId = threadId;
+}
+
+async function handleInitialize(id: string | number): Promise<void> {
+  sendResult(id, { ok: true });
+}
+
+async function handleModelList(id: string | number): Promise<void> {
+  try {
+    await ensureOmp();
+    const data = await sendOmpCommand({ type: "get_available_models" });
+    // omp answers { models: [...] }; forward verbatim so the adapter's parser
+    // receives the shape it expects.
+    sendResult(id, data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
+  }
 }
 
 async function handleThreadStart(
   id: string | number,
   params: Record<string, unknown>,
+  method: "thread/start" | "thread/resume",
 ): Promise<void> {
   const threadId =
     typeof params.threadId === "string" ? params.threadId : `omp-${Date.now()}`;
-  currentThreadId = threadId;
   const cwd = typeof params.cwd === "string" ? params.cwd : process.cwd();
+  const spawnConfig = buildOmpSpawnConfig(params, cwd, threadId);
+  const sessionPath = resolveOmpSessionFilePath({
+    env: process.env,
+    threadId,
+  });
+  mkdirSync(dirname(sessionPath), { recursive: true });
+  threadSessions.set(threadId, {
+    threadId,
+    cwd,
+    sessionPath,
+    spawnConfig,
+  });
   try {
-    await ensureOmp(cwd);
+    await ensureOmp(spawnConfig);
+    await activateThreadSession(threadId, method);
     await applySessionOptions(params);
   } catch (error) {
+    threadSessions.delete(threadId);
+    if (activeThreadId === threadId) {
+      activeThreadId = undefined;
+    }
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -425,9 +660,18 @@ async function handleTurnStart(
   id: string | number,
   params: Record<string, unknown>,
 ): Promise<void> {
+  const threadId =
+    typeof params.threadId === "string" ? params.threadId : undefined;
+  if (!threadId) {
+    sendError(id, -32602, "Missing threadId");
+    return;
+  }
   const message = flattenPromptInputToMessage(params.input);
   try {
-    await ensureOmp();
+    const session = requireThreadSession(threadId);
+    await ensureOmp(session.spawnConfig);
+    await activateThreadSession(threadId, "activate");
+    await applySessionOptions(params);
     // `prompt` is acked immediately by omp; turn completion arrives via the
     // agent_end event forwarded above. Resolve bb once the prompt is sent.
     void sendOmpCommand({ type: "prompt", message }).catch((error) => {
@@ -435,7 +679,7 @@ async function handleTurnStart(
       // the turn silently — surface it so the adapter can fail the turn.
       const detail = error instanceof Error ? error.message : String(error);
       sendNotification("error", {
-        threadId: currentThreadId ?? "",
+        threadId,
         message: `omp prompt failed: ${detail}`,
       });
     });
@@ -451,13 +695,21 @@ async function handleTurnSteer(
   id: string | number,
   params: Record<string, unknown>,
 ): Promise<void> {
+  const threadId =
+    typeof params.threadId === "string" ? params.threadId : undefined;
+  if (!threadId) {
+    sendError(id, -32602, "Missing threadId");
+    return;
+  }
   const message = flattenPromptInputToMessage(params.input);
   try {
-    await ensureOmp();
+    const session = requireThreadSession(threadId);
+    await ensureOmp(session.spawnConfig);
+    await activateThreadSession(threadId, "activate");
     void sendOmpCommand({ type: "steer", message }).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       sendNotification("error", {
-        threadId: currentThreadId ?? "",
+        threadId,
         message: `omp steer failed: ${detail}`,
       });
     });
@@ -473,8 +725,18 @@ async function handleThreadStop(
   id: string | number,
   params: Record<string, unknown>,
 ): Promise<void> {
+  const threadId =
+    typeof params.threadId === "string" ? params.threadId : undefined;
   try {
-    await ensureOmp();
+    if (threadId) {
+      const session = threadSessions.get(threadId);
+      if (session) {
+        await ensureOmp(session.spawnConfig);
+        await activateThreadSession(threadId, "activate");
+      }
+    } else {
+      await ensureOmp();
+    }
     void sendOmpCommand({ type: "abort" }).catch(() => {});
   } catch {
     // Best-effort abort; resolve regardless.
@@ -493,8 +755,10 @@ async function handleRequest(request: BbRequest): Promise<void> {
       await handleModelList(id);
       return;
     case "thread/start":
+      await handleThreadStart(id, params, "thread/start");
+      return;
     case "thread/resume":
-      await handleThreadStart(id, params);
+      await handleThreadStart(id, params, "thread/resume");
       return;
     case "turn/start":
       await handleTurnStart(id, params);
@@ -544,11 +808,7 @@ const stdinInterface = createInterface({
 });
 stdinInterface.on("line", handleLine);
 stdinInterface.on("close", () => {
-  const pending = [...pendingOmpRequests.values()];
-  pendingOmpRequests.clear();
-  for (const request of pending) {
-    request.reject(new Error("bb bridge stdin closed"));
-  }
+  rejectPendingOmpRequests(new Error("bb bridge stdin closed"));
   if (ompChild) {
     ompChild.kill();
   }
