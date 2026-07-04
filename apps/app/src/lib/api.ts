@@ -41,6 +41,8 @@ import type {
   CreateTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
+  ProjectRunCommandRequest,
+  ProjectRunCommandStateResponse,
   PromptHistoryResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
@@ -557,6 +559,42 @@ export async function updateProject(
 ): Promise<ProjectResponse> {
   return request<ProjectResponse>(
     apiClient.projects[":id"].$patch({ param: { id }, json: req }),
+  );
+}
+
+export async function getProjectRunCommandState(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectRunCommandStateResponse> {
+  return request<ProjectRunCommandStateResponse>(
+    apiClient.projects[":id"]["run-command"].$get(
+      { param: { id: projectId } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function startProjectRunCommand(
+  projectId: string,
+  req: ProjectRunCommandRequest,
+): Promise<ProjectRunCommandStateResponse> {
+  return request<ProjectRunCommandStateResponse>(
+    apiClient.projects[":id"]["run-command"].start.$post({
+      param: { id: projectId },
+      json: req,
+    }),
+  );
+}
+
+export async function stopProjectRunCommand(
+  projectId: string,
+  req: ProjectRunCommandRequest,
+): Promise<ProjectRunCommandStateResponse> {
+  return request<ProjectRunCommandStateResponse>(
+    apiClient.projects[":id"]["run-command"].stop.$post({
+      param: { id: projectId },
+      json: req,
+    }),
   );
 }
 

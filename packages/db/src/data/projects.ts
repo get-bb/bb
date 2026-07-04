@@ -22,6 +22,7 @@ export type CreateProjectSourceInput = CreateProjectLocalPathSourceInput;
 export interface CreateProjectInput {
   name: string;
   source: CreateProjectSourceInput;
+  runCommand?: string | null;
   worktreeInitScript?: string | null;
   worktreeTeardownScript?: string | null;
 }
@@ -141,6 +142,7 @@ export function createProject(
       .values({
         id: projectId,
         name: input.name,
+        runCommand: input.runCommand ?? null,
         worktreeInitScript: input.worktreeInitScript ?? null,
         worktreeTeardownScript: input.worktreeTeardownScript ?? null,
         sortKey,
@@ -221,6 +223,7 @@ export function listPublicProjects(db: DbConnection) {
 
 export interface UpdateProjectInput {
   name?: string;
+  runCommand?: string | null;
   worktreeInitScript?: string | null;
   worktreeTeardownScript?: string | null;
 }

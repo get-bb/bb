@@ -17,6 +17,7 @@ import {
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
   type SideChatFixedPanelTab,
+  type TerminalFixedPanelTabTarget,
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -59,6 +60,7 @@ interface UseThreadFileTabsParams {
   retainedTerminalId?: string | null;
   storageFiles: readonly ThreadStorageFileListItem[] | undefined;
   terminalSessions: readonly TerminalSession[] | undefined;
+  terminalTarget?: TerminalFixedPanelTabTarget | null;
 }
 
 interface ThreadStorageFileListItem {
@@ -247,6 +249,7 @@ export function useThreadFileTabs({
   retainedTerminalId = null,
   storageFiles,
   terminalSessions,
+  terminalTarget = null,
 }: UseThreadFileTabsParams) {
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
@@ -389,6 +392,7 @@ export function useThreadFileTabs({
           retainedTerminalId,
           tabs: state.secondary.tabs,
           terminalSessions,
+          terminalTarget,
         }),
       });
       return setSecondaryPanelTabsInState({
@@ -402,6 +406,7 @@ export function useThreadFileTabs({
     isThreadResolved,
     retainedTerminalId,
     terminalSessions,
+    terminalTarget,
     updateFixedPanelTabsState,
   ]);
 

@@ -79,6 +79,7 @@ function applyProjectOrderToSidebarNavigation(
         currentProject ?? {
           ...project,
           threads: [],
+          runCommandStates: [],
           defaultExecutionOptions: null,
         }
       );
@@ -111,6 +112,7 @@ function projectToSidebarProject(
   return {
     ...project,
     threads: [],
+    runCommandStates: [],
     defaultExecutionOptions: null,
   };
 }
@@ -140,6 +142,7 @@ function applyProjectToSidebarNavigation(
       personalProject: {
         ...currentNavigation.personalProject,
         ...project,
+        runCommandStates: currentNavigation.personalProject.runCommandStates,
       },
     };
   }

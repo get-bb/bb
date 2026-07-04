@@ -21,7 +21,10 @@ import {
   updateTerminalSessionTitleById,
   type TerminalSessionRow,
 } from "@bb/db";
-import type { TerminalSessionCloseReason } from "@bb/domain";
+import type {
+  TerminalSessionCloseReason,
+  TerminalSessionPurpose,
+} from "@bb/domain";
 import type {
   HostDaemonDaemonWsMessage,
   HostDaemonServerWsMessage,
@@ -55,12 +58,12 @@ import {
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
-const DEFAULT_TERMINAL_START: NonNullable<
-  CreateTerminalRequest["start"]
-> = {
+const DEFAULT_TERMINAL_START: NonNullable<CreateTerminalRequest["start"]> = {
   mode: "shell",
 };
 const HOST_HOME_INITIAL_CWD = "~";
+const DEFAULT_RUN_COMMAND_TERMINAL_COLS = 100;
+const DEFAULT_RUN_COMMAND_TERMINAL_ROWS = 30;
 
 type TerminalOpenedMessage = Extract<
   HostDaemonDaemonWsMessage,
@@ -198,10 +201,7 @@ type TerminalDaemonOpenTarget = Extract<
   HostDaemonServerWsMessage,
   { type: "terminal.open" }
 >["target"];
-type TerminalLaunchTarget = Exclude<
-  TerminalCreateTarget,
-  { kind: "thread" }
->;
+type TerminalLaunchTarget = Exclude<TerminalCreateTarget, { kind: "thread" }>;
 
 interface ResolvedTerminalLaunchTarget {
   daemonTarget: TerminalDaemonOpenTarget;
@@ -314,9 +314,17 @@ interface TerminalCreatePayload {
 
 interface CreateTerminalForTargetArgs {
   payload: TerminalCreatePayload;
+  purpose?: TerminalSessionPurpose;
+  runCommandProjectId?: string | null;
   target: TerminalLaunchTarget;
   threadId: string | null;
   title: string;
+}
+
+interface CreateProjectRunCommandTerminalArgs {
+  command: string;
+  projectId: string;
+  target: TerminalLaunchTarget;
 }
 
 interface RenameTerminalArgs {
@@ -461,6 +469,8 @@ export function toTerminalSession(row: TerminalSessionRow): TerminalSession {
     threadId: row.threadId,
     environmentId: row.environmentId,
     hostId: row.hostId,
+    purpose: row.purpose,
+    runCommandProjectId: row.runCommandProjectId,
     title: row.title,
     initialCwd: row.initialCwd,
     cols: row.cols,
@@ -537,6 +547,28 @@ export class TerminalSessionLifecycle {
     });
   }
 
+  async createProjectRunCommandTerminal(
+    args: CreateProjectRunCommandTerminalArgs,
+  ): Promise<TerminalSession> {
+    const payload: TerminalCreatePayload = {
+      cols: DEFAULT_RUN_COMMAND_TERMINAL_COLS,
+      rows: DEFAULT_RUN_COMMAND_TERMINAL_ROWS,
+      start: {
+        mode: "command",
+        command: args.command,
+      },
+      title: titleFromCommand(args.command),
+    };
+    return this.createTerminalForTarget({
+      payload,
+      purpose: "project_run_command",
+      runCommandProjectId: args.projectId,
+      target: args.target,
+      threadId: null,
+      title: initialTitleForTerminal(payload, 0),
+    });
+  }
+
   private countExistingSessionsForTarget(target: TerminalCreateTarget): number {
     switch (target.kind) {
       case "thread": {
@@ -586,6 +618,8 @@ export class TerminalSessionLifecycle {
       environmentId: launchTarget.environmentId,
       hostId: launchTarget.hostId,
       initialCwd: launchTarget.initialCwd,
+      purpose: args.purpose,
+      runCommandProjectId: args.runCommandProjectId,
       rows: args.payload.rows,
       status: "starting",
       threadId: args.threadId,
@@ -686,6 +720,7 @@ export class TerminalSessionLifecycle {
       );
     }
     this.notifyTerminalSessionChanged(runningSession);
+    this.notifyProjectRunCommandStateChanged(runningSession);
     return toTerminalSession(runningSession);
   }
 
@@ -761,7 +796,9 @@ export class TerminalSessionLifecycle {
     });
   }
 
-  private closeTerminalSession(args: CloseTerminalSessionArgs): TerminalSession {
+  private closeTerminalSession(
+    args: CloseTerminalSessionArgs,
+  ): TerminalSession {
     const current = args.current;
     if (current.status === "exited") {
       return toTerminalSession(current);
@@ -1160,6 +1197,7 @@ export class TerminalSessionLifecycle {
         });
         if (exited) {
           this.notifyTerminalSessionChanged(exited);
+          this.notifyProjectRunCommandStateChanged(exited);
           const session = toTerminalSession(exited);
           this.options.hub.sendTerminalClientMessage(exited.id, {
             type: "exited",
@@ -1286,6 +1324,7 @@ export class TerminalSessionLifecycle {
     args: NotifyExitedTerminalSessionArgs,
   ): void {
     this.notifyTerminalSessionChanged(args.session);
+    this.notifyProjectRunCommandStateChanged(args.session);
     this.options.hub.sendTerminalClientMessage(args.session.id, {
       type: "exited",
       session: toTerminalSession(args.session),
@@ -1756,6 +1795,16 @@ export class TerminalSessionLifecycle {
   ): void {
     if (session.threadId !== null) {
       this.options.hub.notifyThread(session.threadId, ["terminals-changed"]);
+    }
+  }
+
+  private notifyProjectRunCommandStateChanged(
+    session: Pick<TerminalSessionRow, "runCommandProjectId">,
+  ): void {
+    if (session.runCommandProjectId !== null) {
+      this.options.hub.notifyProject(session.runCommandProjectId, [
+        "project-updated",
+      ]);
     }
   }
 }

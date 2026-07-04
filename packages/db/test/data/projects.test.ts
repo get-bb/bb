@@ -10,6 +10,7 @@ import {
   listPublicProjects,
   markProjectDeleted,
   reorderProject,
+  updateProject,
 } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 
@@ -24,6 +25,26 @@ function setup() {
 }
 
 describe("projects", () => {
+  it("persists and clears project run commands", () => {
+    const { db, host } = setup();
+    const { project } = createProject(db, noopNotifier, {
+      name: "run-command-project",
+      runCommand: "pnpm dev",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/run-command-project",
+      },
+    });
+
+    expect(project.runCommand).toBe("pnpm dev");
+    expect(
+      updateProject(db, noopNotifier, project.id, {
+        runCommand: null,
+      })?.runCommand,
+    ).toBeNull();
+  });
+
   it("ensures the singleton personal project idempotently", () => {
     const { db } = setup();
 

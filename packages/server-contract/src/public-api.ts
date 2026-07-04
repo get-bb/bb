@@ -92,6 +92,8 @@ import type {
   ProjectListQuery,
   ProjectPathsQuery,
   ProjectResponse,
+  ProjectRunCommandRequest,
+  ProjectRunCommandStateResponse,
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
@@ -193,6 +195,7 @@ import {
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
+  projectRunCommandRequestSchema,
   promptHistoryQuerySchema,
   reorderPinnedThreadRequestSchema,
   reorderProjectRequestSchema,
@@ -294,6 +297,28 @@ export const publicApiRoutes = {
         projectDefaultExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<ProjectExecutionDefaults | null>(),
+    }),
+    runCommandState: defineRoute({
+      path: "/projects/:id/run-command",
+      method: "get",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectRunCommandStateResponse>(),
+    }),
+    startRunCommand: defineRoute({
+      path: "/projects/:id/run-command/start",
+      method: "post",
+      request: jsonRequest<PathProjectId, ProjectRunCommandRequest>(
+        projectRunCommandRequestSchema,
+      ),
+      response: jsonResponse<ProjectRunCommandStateResponse>(),
+    }),
+    stopRunCommand: defineRoute({
+      path: "/projects/:id/run-command/stop",
+      method: "post",
+      request: jsonRequest<PathProjectId, ProjectRunCommandRequest>(
+        projectRunCommandRequestSchema,
+      ),
+      response: jsonResponse<ProjectRunCommandStateResponse>(),
     }),
     promptHistory: defineRoute({
       path: "/projects/:id/prompt-history",

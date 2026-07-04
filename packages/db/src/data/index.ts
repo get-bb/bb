@@ -354,11 +354,13 @@ export type {
 
 export {
   createTerminalSession,
+  getActiveProjectRunCommandTerminalSession,
   getTerminalSession,
   getTerminalSessionForThread,
   getThreadlessTerminalSessionForEnvironment,
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
+  listVisibleProjectRunCommandTerminalSessions,
   listThreadlessTerminalSessionsByEnvironment,
   listVisibleTerminalSessions,
   listVisibleTerminalSessionsByThread,
@@ -382,9 +384,11 @@ export {
 } from "./terminal-sessions.js";
 export type {
   CreateTerminalSessionInput,
+  GetActiveProjectRunCommandTerminalSessionArgs,
   GetTerminalSessionArgs,
   GetTerminalSessionForThreadArgs,
   GetThreadlessTerminalSessionForEnvironmentArgs,
+  ListVisibleProjectRunCommandTerminalSessionsArgs,
   MarkDaemonTerminalSessionExitedArgs,
   MarkDaemonTerminalSessionsDisconnectedArgs,
   MarkEnvironmentTerminalSessionsExitedArgs,

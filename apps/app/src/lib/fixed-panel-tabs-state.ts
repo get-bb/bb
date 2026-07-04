@@ -117,10 +117,32 @@ const newTabFixedPanelTabSchema = z
     kind: z.literal("new-tab"),
   })
   .strict();
+const terminalFixedPanelTabTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("thread"),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("environment"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host_path"),
+      cwd: z.string().min(1).nullable(),
+      hostId: z.string().min(1),
+    })
+    .strict(),
+]);
 const terminalFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("terminal"),
+    target: terminalFixedPanelTabTargetSchema.nullable().default(null),
     terminalId: z.string().min(1),
   })
   .strict();
@@ -250,9 +272,14 @@ export interface NewTabFixedPanelTab {
   kind: "new-tab";
 }
 
+export type TerminalFixedPanelTabTarget = z.infer<
+  typeof terminalFixedPanelTabTargetSchema
+>;
+
 export interface TerminalFixedPanelTab {
   id: string;
   kind: "terminal";
+  target: TerminalFixedPanelTabTarget | null;
   terminalId: string;
 }
 
@@ -396,6 +423,7 @@ interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
 }
 
 interface CreateTerminalFixedPanelTabArgs {
+  target?: TerminalFixedPanelTabTarget | null;
   terminalId: string;
 }
 
@@ -656,6 +684,7 @@ export function createSideChatFixedPanelTab({
 }
 
 export function createTerminalFixedPanelTab({
+  target = null,
   terminalId,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
   return {
@@ -665,8 +694,33 @@ export function createTerminalFixedPanelTab({
       path: terminalId,
     }),
     kind: "terminal",
+    target,
     terminalId,
   };
+}
+
+export function areTerminalFixedPanelTabTargetsEqual(
+  a: TerminalFixedPanelTabTarget | null,
+  b: TerminalFixedPanelTabTarget | null,
+): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  switch (a.kind) {
+    case "thread":
+      return b.kind === "thread" && a.threadId === b.threadId;
+    case "environment":
+      return b.kind === "environment" && a.environmentId === b.environmentId;
+    case "host_path":
+      return (
+        b.kind === "host_path" &&
+        a.hostId === b.hostId &&
+        a.cwd === b.cwd
+      );
+  }
 }
 
 function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
@@ -1047,6 +1101,10 @@ export function areFixedPanelTabsEquivalent(
         a.threadId === b.threadId
       );
     case "terminal":
-      return b.kind === "terminal" && a.terminalId === b.terminalId;
+      return (
+        b.kind === "terminal" &&
+        a.terminalId === b.terminalId &&
+        areTerminalFixedPanelTabTargetsEqual(a.target, b.target)
+      );
   }
 }

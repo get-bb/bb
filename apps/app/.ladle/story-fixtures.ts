@@ -345,6 +345,7 @@ export function makeProject(
     id: PROJECT_IDS.bb,
     kind: "standard",
     name: PROJECT_NAMES.bb,
+    runCommand: null,
     worktreeInitScript: null,
     worktreeTeardownScript: null,
     sources: [],

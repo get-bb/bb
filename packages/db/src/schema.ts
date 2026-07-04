@@ -30,6 +30,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
+  TerminalSessionPurpose,
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
   ThreadSearchSourceKind,
@@ -111,6 +112,7 @@ export const projects = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<ProjectKind>().notNull().default("standard"),
     name: text("name").notNull(),
+    runCommand: text("run_command"),
     worktreeInitScript: text("worktree_init_script"),
     worktreeTeardownScript: text("worktree_teardown_script"),
     sortKey: text("sort_key").notNull().default("V"),
@@ -665,6 +667,14 @@ export const terminalSessions = sqliteTable(
     hostId: text("host_id")
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
+    purpose: text("purpose")
+      .$type<TerminalSessionPurpose>()
+      .notNull()
+      .default("manual"),
+    runCommandProjectId: text("run_command_project_id").references(
+      () => projects.id,
+      { onDelete: "cascade" },
+    ),
     daemonSessionId: text("daemon_session_id").references(
       () => hostDaemonSessions.id,
       { onDelete: "set null" },
@@ -687,6 +697,12 @@ export const terminalSessions = sqliteTable(
       table.updatedAt,
     ),
     index("terminal_sessions_environment_status_idx").on(
+      table.environmentId,
+      table.status,
+    ),
+    index("terminal_sessions_run_command_target_idx").on(
+      table.purpose,
+      table.runCommandProjectId,
       table.environmentId,
       table.status,
     ),

@@ -73,6 +73,7 @@ export interface ProjectsArea {
 function projectUpdateJson(args: ProjectUpdateArgs): UpdateProjectRequest {
   return {
     name: args.name,
+    runCommand: args.runCommand,
     worktreeInitScript: args.worktreeInitScript,
     worktreeTeardownScript: args.worktreeTeardownScript,
   };

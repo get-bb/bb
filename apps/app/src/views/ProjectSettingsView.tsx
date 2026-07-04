@@ -152,6 +152,7 @@ export function ProjectSettingsView() {
       const formData = new FormData(event.currentTarget);
       updateProject.mutate({
         id: projectId,
+        runCommand: readScriptFormValue(formData.get("runCommand")),
         worktreeInitScript: readScriptFormValue(
           formData.get("worktreeInitScript"),
         ),
@@ -227,6 +228,24 @@ export function ProjectSettingsView() {
               <div className="space-y-1.5">
                 <label
                   className="text-xs font-medium text-subtle-foreground"
+                  htmlFor="runCommand"
+                >
+                  Run command
+                </label>
+                <Textarea
+                  id="runCommand"
+                  name="runCommand"
+                  defaultValue={project.runCommand ?? ""}
+                  disabled={updateProject.isPending}
+                  placeholder="pnpm dev"
+                  rows={3}
+                  spellCheck={false}
+                  className="min-h-20 resize-y font-mono text-xs leading-5"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  className="text-xs font-medium text-subtle-foreground"
                   htmlFor="worktreeInitScript"
                 >
                   Init script
@@ -266,7 +285,7 @@ export function ProjectSettingsView() {
                   size="sm"
                   disabled={updateProject.isPending}
                 >
-                  {updateProject.isPending ? "Saving…" : "Save scripts"}
+                  {updateProject.isPending ? "Saving…" : "Save commands"}
                 </Button>
               </div>
             </form>

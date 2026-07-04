@@ -84,6 +84,8 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
+  trailingAction?: ReactNode;
+  trailingActionAlwaysVisible?: boolean;
   // Visible row text override. Defaults to the thread title.
   displayTitle?: string;
   // Accessible name + hover tooltip override. Defaults to the thread title.
@@ -291,6 +293,8 @@ function ThreadRowComponent({
   hasComposerDraft,
   onProjectSelect,
   options,
+  trailingAction,
+  trailingActionAlwaysVisible = false,
   displayTitle,
   accessibleTitle,
 }: ThreadRowProps) {
@@ -362,6 +366,7 @@ function ThreadRowComponent({
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
+  const showTrailingActions = isActionsOpen || trailingActionAlwaysVisible;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
       if (!options.consumeClickSuppression?.()) {
@@ -415,11 +420,15 @@ function ThreadRowComponent({
         <span
           className={cn(
             "relative shrink-0",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            trailingAction
+              ? "h-7 w-[84px] max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-[108px]"
+              : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
           )}
         >
           <span
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-open={
+              showTrailingActions ? "true" : undefined
+            }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               "absolute inset-0 flex items-center justify-center",
@@ -434,12 +443,16 @@ function ThreadRowComponent({
             />
           </span>
           <div
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-open={
+              showTrailingActions ? "true" : undefined
+            }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
-              "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+              "absolute inset-0 z-10 flex items-center justify-end gap-0.5",
+              !trailingActionAlwaysVisible && "max-md:pointer-coarse:hidden",
             )}
           >
+            {trailingAction}
             <ThreadActionsMenu
               thread={thread}
               triggerClassName={cn(

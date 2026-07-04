@@ -4,7 +4,9 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
+  getActiveProjectRunCommandTerminalSession,
   getThreadlessTerminalSessionForEnvironment,
+  listVisibleProjectRunCommandTerminalSessions,
   listThreadlessTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
   listVisibleTerminalSessionsByThread,
@@ -26,12 +28,14 @@ type TestDb = ReturnType<typeof createConnection>;
 type TestHost = ReturnType<typeof upsertHost>;
 type TestSession = ReturnType<typeof openSession>;
 type TestEnvironment = ReturnType<typeof createEnvironment>;
+type TestProject = ReturnType<typeof createProject>["project"];
 type TestThread = ReturnType<typeof createThread>;
 
 interface TerminalSessionFixture {
   db: TestDb;
   environment: TestEnvironment;
   host: TestHost;
+  project: TestProject;
   session: TestSession;
   thread: TestThread;
 }
@@ -85,6 +89,7 @@ function setup(): TerminalSessionFixture {
     db,
     environment,
     host,
+    project,
     session,
     thread,
   };
@@ -139,6 +144,89 @@ describe("terminal sessions", () => {
         terminalId: threadTerminal.id,
       }),
     ).toBeNull();
+  });
+
+  it("tracks active project run command terminals per project target", () => {
+    const fixture = setup();
+    const manualTerminal = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: null,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/project",
+      now: 1,
+      rows: 24,
+      status: "running",
+      threadId: null,
+      title: "Manual terminal",
+    });
+    const runningProjectRun = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: null,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/project",
+      now: 2,
+      purpose: "project_run_command",
+      rows: 24,
+      runCommandProjectId: fixture.project.id,
+      status: "running",
+      threadId: null,
+      title: "Run command",
+    });
+    const disconnectedProjectRun = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: null,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      now: 3,
+      purpose: "project_run_command",
+      rows: 24,
+      runCommandProjectId: fixture.project.id,
+      status: "disconnected",
+      threadId: null,
+      title: "Disconnected run command",
+    });
+    const exitedProjectRun = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: null,
+      environmentId: null,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/project",
+      now: 4,
+      purpose: "project_run_command",
+      rows: 24,
+      runCommandProjectId: fixture.project.id,
+      status: "exited",
+      threadId: null,
+      title: "Exited run command",
+    });
+
+    expect(
+      getActiveProjectRunCommandTerminalSession(fixture.db, {
+        projectId: fixture.project.id,
+        environmentId: null,
+      }),
+    ).toEqual(expect.objectContaining({ id: runningProjectRun.id }));
+    expect(
+      getActiveProjectRunCommandTerminalSession(fixture.db, {
+        projectId: fixture.project.id,
+        environmentId: fixture.environment.id,
+      }),
+    ).toBeNull();
+    expect(
+      listVisibleProjectRunCommandTerminalSessions(fixture.db, {
+        projectIds: [fixture.project.id],
+      }).map((session) => session.id),
+    ).toEqual([runningProjectRun.id, disconnectedProjectRun.id]);
+    expect(
+      listVisibleProjectRunCommandTerminalSessions(fixture.db, {
+        projectIds: [fixture.project.id],
+      }).map((session) => session.id),
+    ).not.toEqual(
+      expect.arrayContaining([manualTerminal.id, exitedProjectRun.id]),
+    );
   });
 
   it("marks a threadless terminal dirty on first user input only", () => {

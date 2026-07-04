@@ -1,10 +1,13 @@
 import type { TerminalSession } from "@bb/server-contract";
 import {
+  areTerminalFixedPanelTabTargetsEqual,
   createTerminalFixedPanelTab,
   type FixedPanelTabsState,
   type FixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
+  type TerminalFixedPanelTab,
+  type TerminalFixedPanelTabTarget,
 } from "@/lib/fixed-panel-tabs-state";
 import { shouldShowRetainedTerminalSession } from "@/lib/terminal-session-visibility";
 
@@ -12,6 +15,7 @@ interface BuildTerminalSyncedSecondaryFileTabsArgs {
   orderedTabs: readonly SecondaryFileFixedPanelTab[];
   retainedTerminalId: string | null;
   terminalSessions: readonly TerminalSession[];
+  terminalTarget?: TerminalFixedPanelTabTarget | null;
 }
 
 interface FindActiveTerminalIdInSecondaryFileTabsArgs {
@@ -23,6 +27,7 @@ interface SyncTerminalTabsInFixedPanelStateArgs {
   retainedTerminalId: string | null;
   state: FixedPanelTabsState;
   terminalSessions: readonly TerminalSession[];
+  terminalTarget?: TerminalFixedPanelTabTarget | null;
 }
 
 interface GetRetainedTerminalTabIdArgs {
@@ -34,6 +39,44 @@ interface PruneTerminalTabsForSessionsArgs {
   retainedTerminalId: string | null;
   tabs: readonly FixedPanelTab[];
   terminalSessions: readonly TerminalSession[];
+  terminalTarget?: TerminalFixedPanelTabTarget | null;
+}
+
+function targetForTerminalSession(
+  session: TerminalSession,
+): TerminalFixedPanelTabTarget {
+  if (session.threadId !== null) {
+    return {
+      kind: "thread",
+      threadId: session.threadId,
+    };
+  }
+  if (session.environmentId !== null) {
+    return {
+      kind: "environment",
+      environmentId: session.environmentId,
+    };
+  }
+  return {
+    kind: "host_path",
+    cwd: session.initialCwd,
+    hostId: session.hostId,
+  };
+}
+
+function terminalTabBelongsToLoadedTarget({
+  tab,
+  terminalTarget,
+}: {
+  tab: TerminalFixedPanelTab;
+  terminalTarget: TerminalFixedPanelTabTarget | null | undefined;
+}): boolean {
+  return (
+    tab.target === null ||
+    terminalTarget === null ||
+    terminalTarget === undefined ||
+    areTerminalFixedPanelTabTargetsEqual(tab.target, terminalTarget)
+  );
 }
 
 function getTerminalSessionTabIds({
@@ -65,13 +108,17 @@ export function pruneTerminalTabsForSessions({
   retainedTerminalId,
   tabs,
   terminalSessions,
+  terminalTarget,
 }: PruneTerminalTabsForSessionsArgs): readonly FixedPanelTab[] {
   const terminalSessionIds = getTerminalSessionTabIds({
     retainedTerminalId,
     terminalSessions,
   });
   const nextTabs = tabs.filter(
-    (tab) => tab.kind !== "terminal" || terminalSessionIds.has(tab.terminalId),
+    (tab) =>
+      tab.kind !== "terminal" ||
+      !terminalTabBelongsToLoadedTarget({ tab, terminalTarget }) ||
+      terminalSessionIds.has(tab.terminalId),
   );
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
@@ -80,16 +127,25 @@ export function buildTerminalSyncedSecondaryFileTabs({
   orderedTabs,
   retainedTerminalId,
   terminalSessions,
+  terminalTarget,
 }: BuildTerminalSyncedSecondaryFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
   const terminalSessionIds = getTerminalSessionTabIds({
     retainedTerminalId,
     terminalSessions,
   });
+  const terminalSessionsById = new Map(
+    terminalSessions.map((session) => [session.id, session]),
+  );
   const seenTerminalIds = new Set<string>();
   const syncedTabs: SecondaryFileFixedPanelTab[] = [];
 
   for (const tab of orderedTabs) {
     if (tab.kind !== "terminal") {
+      syncedTabs.push(tab);
+      continue;
+    }
+    if (!terminalTabBelongsToLoadedTarget({ tab, terminalTarget })) {
+      seenTerminalIds.add(tab.terminalId);
       syncedTabs.push(tab);
       continue;
     }
@@ -100,7 +156,14 @@ export function buildTerminalSyncedSecondaryFileTabs({
       continue;
     }
     seenTerminalIds.add(tab.terminalId);
-    syncedTabs.push(tab);
+    const session = terminalSessionsById.get(tab.terminalId);
+    const sessionTarget = session ? targetForTerminalSession(session) : null;
+    syncedTabs.push(
+      sessionTarget !== null &&
+        !areTerminalFixedPanelTabTargetsEqual(tab.target, sessionTarget)
+        ? { ...tab, target: sessionTarget }
+        : tab,
+    );
   }
 
   for (const session of terminalSessions) {
@@ -111,7 +174,12 @@ export function buildTerminalSyncedSecondaryFileTabs({
       continue;
     }
     seenTerminalIds.add(session.id);
-    syncedTabs.push(createTerminalFixedPanelTab({ terminalId: session.id }));
+    syncedTabs.push(
+      createTerminalFixedPanelTab({
+        terminalId: session.id,
+        target: targetForTerminalSession(session),
+      }),
+    );
   }
 
   return syncedTabs;
@@ -138,17 +206,30 @@ export function syncTerminalTabsInFixedPanelState({
   retainedTerminalId,
   state,
   terminalSessions,
+  terminalTarget,
 }: SyncTerminalTabsInFixedPanelStateArgs): FixedPanelTabsState {
   const terminalSessionIds = getTerminalSessionTabIds({
     retainedTerminalId,
     terminalSessions,
   });
+  const terminalSessionsById = new Map(
+    terminalSessions.map((session) => [session.id, session]),
+  );
   const seenTerminalIds = new Set<string>();
   const tabs: SecondaryFixedPanelTab[] = [];
   let changed = false;
 
   for (const tab of state.secondary.tabs) {
     if (tab.kind === "terminal") {
+      if (!terminalTabBelongsToLoadedTarget({ tab, terminalTarget })) {
+        if (!seenTerminalIds.has(tab.terminalId)) {
+          seenTerminalIds.add(tab.terminalId);
+          tabs.push(tab);
+        } else {
+          changed = true;
+        }
+        continue;
+      }
       if (
         !terminalSessionIds.has(tab.terminalId) ||
         seenTerminalIds.has(tab.terminalId)
@@ -157,6 +238,15 @@ export function syncTerminalTabsInFixedPanelState({
         continue;
       }
       seenTerminalIds.add(tab.terminalId);
+      const session = terminalSessionsById.get(tab.terminalId);
+      if (session) {
+        const sessionTarget = targetForTerminalSession(session);
+        if (!areTerminalFixedPanelTabTargetsEqual(tab.target, sessionTarget)) {
+          tabs.push({ ...tab, target: sessionTarget });
+          changed = true;
+          continue;
+        }
+      }
     }
     tabs.push(tab);
   }
@@ -169,7 +259,12 @@ export function syncTerminalTabsInFixedPanelState({
       continue;
     }
     seenTerminalIds.add(session.id);
-    tabs.push(createTerminalFixedPanelTab({ terminalId: session.id }));
+    tabs.push(
+      createTerminalFixedPanelTab({
+        terminalId: session.id,
+        target: targetForTerminalSession(session),
+      }),
+    );
     changed = true;
   }
 

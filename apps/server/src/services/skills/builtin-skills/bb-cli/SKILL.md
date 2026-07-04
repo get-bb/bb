@@ -19,11 +19,15 @@ message agents, or inspect projects, providers, and environments.
   `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` only for remote or non-default
   targets.
 
-## Worktree Lifecycle Scripts
+## Project Commands
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
   documents Project Settings init/teardown scripts for managed worktrees and the
   legacy `.bb-env-setup.sh` fallback used when the init script is blank.
+- Project Settings also has a freeform run command for starting the repo. The
+  sidebar run button starts it in a terminal for the project checkout or a
+  worktree row, turns into a stop button while active, and shows active run
+  state in the sidebar.
 
 ## Remote Client
 

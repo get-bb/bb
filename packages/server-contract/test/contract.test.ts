@@ -142,6 +142,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Project and project-source PATCH requests omit fields that should be left unchanged.",
     fields: [
       "updateProjectRequestSchema.name",
+      "updateProjectRequestSchema.runCommand",
+      "updateProjectRequestSchema.worktreeInitScript",
+      "updateProjectRequestSchema.worktreeTeardownScript",
       "updateProjectSourceRequestSchema.isDefault",
       "updateProjectSourceRequestSchema.path",
     ],
@@ -513,6 +516,8 @@ describe("public terminal contracts", () => {
         threadId: null,
         environmentId: "env_1",
         hostId: "host_1",
+        purpose: "manual",
+        runCommandProjectId: null,
         title: "Terminal 1",
         initialCwd: "/tmp/workspace",
         cols: 80,
@@ -970,6 +975,20 @@ describe("server-contract canonical schemas", () => {
       name: "Review workspace",
     });
 
+    expect(
+      contract.updateProjectRequestSchema.parse({
+        runCommand: "  pnpm dev  ",
+      }),
+    ).toEqual({
+      runCommand: "pnpm dev",
+    });
+    expect(
+      contract.updateProjectRequestSchema.parse({
+        runCommand: "  ",
+      }),
+    ).toEqual({
+      runCommand: null,
+    });
     expect(
       createProjectSourceRequestSchema.parse({
         hostId: "host_123",

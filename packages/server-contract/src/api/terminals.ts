@@ -4,6 +4,7 @@ import {
   terminalDataBase64Schema,
   terminalRowsSchema,
   terminalSessionCloseReasonSchema,
+  terminalSessionPurposeSchema,
   terminalSessionStatusSchema,
 } from "@bb/domain";
 
@@ -12,6 +13,8 @@ export const terminalSessionSchema = z.object({
   threadId: z.string().min(1).nullable(),
   environmentId: z.string().min(1).nullable(),
   hostId: z.string().min(1),
+  purpose: terminalSessionPurposeSchema,
+  runCommandProjectId: z.string().min(1).nullable(),
   title: z.string().min(1),
   initialCwd: z.string().min(1),
   cols: terminalColsSchema,

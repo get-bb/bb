@@ -58,6 +58,7 @@ const loadedSidebarNavigation = {
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
+    runCommandStates: [],
     threads: [
       makeThreadListEntry({
         id: "thr_story_personal",
@@ -96,6 +97,7 @@ const loadedSidebarNavigation = {
     {
       ...bbProject,
       defaultExecutionOptions: null,
+      runCommandStates: [],
       threads: [
         makeThreadListEntry({
           id: "thr_story_pinned",
@@ -186,6 +188,7 @@ const loadedSidebarNavigation = {
     {
       ...docsProject,
       defaultExecutionOptions: null,
+      runCommandStates: [],
       threads: [
         makeThreadListEntry({
           id: "thr_story_docs",

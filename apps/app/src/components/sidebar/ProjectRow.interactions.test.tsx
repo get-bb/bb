@@ -8,15 +8,32 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  ProjectRunCommandTargetState,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectRow, type ProjectThreadListState } from "./ProjectRow";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
   reset: vi.fn(),
 }));
+
+const mockProjectRunCommandMutations = vi.hoisted(() => ({
+  start: {
+    isPending: false,
+    mutate: vi.fn(),
+  },
+  stop: {
+    isPending: false,
+    mutate: vi.fn(),
+  },
+}));
+
+const mockSetActiveRunTerminal = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
@@ -41,9 +58,23 @@ vi.mock("@/hooks/useCreateThreadInWorktree", () => ({
   useCreateThreadInWorktree: () => vi.fn(),
 }));
 
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useStartProjectRunCommand: () => mockProjectRunCommandMutations.start,
+  useStopProjectRunCommand: () => mockProjectRunCommandMutations.stop,
+}));
+
 vi.mock("@/hooks/usePromptDraftStorage", () => ({
   usePromptDraftHasInput: () => false,
 }));
+
+vi.mock("@/lib/fixed-panel-tabs", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/fixed-panel-tabs")>();
+  return {
+    ...actual,
+    useSetFixedRightTerminalActiveTerminal: () => mockSetActiveRunTerminal,
+  };
+});
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
   useProjectActions: () => ({
@@ -53,16 +84,24 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   }),
 }));
 
-function makeProject(): ProjectResponse {
+function makeProject(
+  overrides: Partial<ProjectResponse> & {
+    runCommandStates?: ProjectRunCommandTargetState[];
+  } = {},
+): ProjectResponse & {
+  runCommandStates?: ProjectRunCommandTargetState[];
+} {
   return {
     id: "proj_test",
     kind: "standard",
     name: "Test project",
+    runCommand: null,
     worktreeInitScript: null,
     worktreeTeardownScript: null,
     sources: [],
     createdAt: 0,
     updatedAt: 0,
+    ...overrides,
   };
 }
 
@@ -105,23 +144,26 @@ function renderProjectRow(
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
+  project = makeProject(),
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
     <MemoryRouter>
-      <ProjectRow
-        project={makeProject()}
-        threadListState={threadListState}
-        isActive={isActive}
-        isCollapsed={false}
-        compareThreads={() => 0}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={collapsedEnvironmentIds}
-        isLocalPathInvalid={false}
-        onToggleProjectCollapsed={onToggleProjectCollapsed}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-      />
+      <TooltipProvider>
+        <ProjectRow
+          project={project}
+          threadListState={threadListState}
+          isActive={isActive}
+          isCollapsed={false}
+          compareThreads={() => 0}
+          collapsedThreadIds={new Set()}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          isLocalPathInvalid={false}
+          onToggleProjectCollapsed={onToggleProjectCollapsed}
+          onToggleThreadCollapsed={vi.fn()}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      </TooltipProvider>
     </MemoryRouter>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
@@ -131,6 +173,115 @@ describe("ProjectRow interactions", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("starts and stops configured project run commands", () => {
+    renderProjectRow(
+      vi.fn(),
+      { status: "ready", threads: [] },
+      false,
+      new Set(),
+      makeProject({ runCommand: "pnpm dev" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Start Test project run command",
+      }),
+    );
+
+    expect(mockProjectRunCommandMutations.start.mutate).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      mockProjectRunCommandMutations.start.mutate.mock.calls[0]?.[0],
+    ).toEqual({
+      projectId: "proj_test",
+      target: { kind: "project" },
+    });
+    expect(
+      mockProjectRunCommandMutations.start.mutate.mock.calls[0]?.[1],
+    ).toEqual(expect.objectContaining({ onSuccess: expect.any(Function) }));
+
+    cleanup();
+    renderProjectRow(
+      vi.fn(),
+      { status: "ready", threads: [] },
+      false,
+      new Set(),
+      makeProject({
+        runCommand: "pnpm dev",
+        runCommandStates: [
+          {
+            target: { kind: "project" },
+            status: "running",
+            terminalSessionId: "term_run",
+            terminalTarget: {
+              kind: "host_path",
+              hostId: "host_test",
+              cwd: "/repo",
+            },
+            updatedAt: 1,
+          },
+        ],
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open Test project run terminal",
+      }),
+    );
+
+    expect(mockSetActiveRunTerminal).toHaveBeenCalledWith("term_run", {
+      kind: "host_path",
+      hostId: "host_test",
+      cwd: "/repo",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Stop Test project run command",
+      }),
+    );
+
+    expect(mockProjectRunCommandMutations.stop.mutate).toHaveBeenCalledWith({
+      projectId: "proj_test",
+      target: { kind: "project" },
+    });
+  });
+
+  it("starts configured worktree run commands from ungrouped worktree thread rows", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            environmentId: "env_worktree",
+            environmentBranchName: "feature/run",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      makeProject({ runCommand: "pnpm dev" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Start worktree run command",
+      }),
+    );
+
+    expect(mockProjectRunCommandMutations.start.mutate).toHaveBeenCalledWith(
+      {
+        projectId: "proj_test",
+        target: { kind: "environment", environmentId: "env_worktree" },
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
   });
 
   it("does not toggle collapse when the project row is clicked", () => {

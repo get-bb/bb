@@ -21,8 +21,17 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
+import {
+  isActiveTerminalSessionStatus,
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
+import type {
+  ProjectResponse,
+  ProjectRunCommandTarget,
+  ProjectRunCommandTargetState,
+  ProjectWithThreadsResponse,
+} from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
@@ -30,9 +39,18 @@ import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
 } from "@/hooks/mutations/environment-mutations";
+import {
+  useStartProjectRunCommand,
+  useStopProjectRunCommand,
+} from "@/hooks/mutations/project-mutations";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useDialogState } from "@/hooks/useDialogState";
 import { Button } from "@/components/ui/button.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,7 +90,14 @@ import {
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import {
+  ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  useSetFixedRightTerminalActiveTerminal,
+} from "@/lib/fixed-panel-tabs";
+import {
+  getProjectComposeRoutePath,
+  getProjectSettingsRoutePath,
+} from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -129,8 +154,11 @@ export type ProjectThreadListState =
       status: "unavailable";
     };
 
+export type SidebarProjectRowProject = ProjectResponse &
+  Partial<Pick<ProjectWithThreadsResponse, "runCommandStates">>;
+
 export interface ProjectRowProps {
-  project: ProjectResponse;
+  project: SidebarProjectRowProject;
   threadListState: ProjectThreadListState;
   selectedThreadId?: string;
   isActive: boolean;
@@ -152,6 +180,8 @@ export interface ProjectRowProps {
 
 export interface ProjectThreadTreeProps {
   projectId: string;
+  projectRunCommandConfigured?: boolean;
+  runCommandStates?: readonly ProjectRunCommandTargetState[];
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
   folders?: readonly SidebarFolderDefinition[];
@@ -204,6 +234,8 @@ interface ProjectThreadTreeGroupProps {
 
 interface ThreadTreeNodeRowProps {
   projectId: string;
+  projectRunCommandConfigured?: boolean;
+  runCommandStates?: readonly ProjectRunCommandTargetState[];
   node: ProjectThreadNode;
   depthOffset: number;
   isEnvGrouped: boolean;
@@ -222,6 +254,8 @@ interface ThreadTreeNodeRowProps {
 
 interface ThreadTreeItemRowProps {
   projectId: string;
+  projectRunCommandConfigured?: boolean;
+  runCommandStates?: readonly ProjectRunCommandTargetState[];
   item: ProjectThreadItem;
   depthOffset: number;
   selectedThreadId?: string;
@@ -552,6 +586,8 @@ function useManualThreadTreeDnd({
 
 interface EnvironmentThreadGroupRowProps {
   projectId: string;
+  projectRunCommandConfigured: boolean;
+  runCommandState?: ProjectRunCommandTargetState;
   environmentThreadGroup: EnvironmentThreadGroup;
   depthOffset: number;
   selectedThreadId?: string;
@@ -579,6 +615,9 @@ interface GetThreadNodeStickyLevelArgs {
 
 interface EnvironmentThreadGroupHeaderProps {
   environmentId: string;
+  projectId: string;
+  projectRunCommandConfigured: boolean;
+  runCommandState?: ProjectRunCommandTargetState;
   representativeThread: ThreadListEntry;
   rowDepth: number;
   stickyLevel?: number;
@@ -594,6 +633,10 @@ interface EnvironmentThreadGroupHeaderProps {
 
 interface EnvironmentThreadGroupHeaderActionsProps {
   archiveThreadsPending: boolean;
+  projectId: string;
+  projectRunCommandConfigured: boolean;
+  runCommandState?: ProjectRunCommandTargetState;
+  runCommandTarget: ProjectRunCommandTarget;
   onArchiveThreads?: () => void;
   onCreateNewThread?: () => void;
   onRenameEnvironment?: () => void;
@@ -627,6 +670,220 @@ interface UseEnvironmentThreadGroupRenameActionResult {
   renameDialogTarget: EnvironmentRenameDialogTarget | null;
   renameEnvironmentErrorMessage: string | null;
   renameEnvironmentPending: boolean;
+}
+
+interface ProjectRunCommandButtonProps {
+  ariaLabelBase: string;
+  projectId: string;
+  runCommandConfigured: boolean;
+  state?: ProjectRunCommandTargetState;
+  target: ProjectRunCommandTarget;
+}
+
+interface ProjectRunCommandTerminalButtonProps {
+  ariaLabelBase: string;
+  projectId: string;
+  state?: ProjectRunCommandTargetState;
+}
+
+function runCommandTargetKey(target: ProjectRunCommandTarget): string {
+  switch (target.kind) {
+    case "project":
+      return "project";
+    case "environment":
+      return `environment:${target.environmentId}`;
+  }
+}
+
+function getRunCommandStateForTarget(
+  states: readonly ProjectRunCommandTargetState[],
+  target: ProjectRunCommandTarget,
+): ProjectRunCommandTargetState | undefined {
+  const key = runCommandTargetKey(target);
+  return states.find((state) => runCommandTargetKey(state.target) === key);
+}
+
+function isRunCommandStateActive(
+  state: ProjectRunCommandTargetState | undefined,
+): boolean {
+  return state?.status ? isActiveTerminalSessionStatus(state.status) : false;
+}
+
+function isWorktreeThread(
+  thread: ThreadListEntry,
+): thread is ThreadListEntry & { environmentId: string } {
+  return (
+    thread.environmentId !== null &&
+    (thread.environmentWorkspaceDisplayKind === "managed-worktree" ||
+      thread.environmentWorkspaceDisplayKind === "unmanaged-worktree")
+  );
+}
+
+function ProjectRunCommandButton({
+  ariaLabelBase,
+  projectId,
+  runCommandConfigured,
+  state,
+  target,
+}: ProjectRunCommandButtonProps) {
+  const startRunCommand = useStartProjectRunCommand();
+  const stopRunCommand = useStopProjectRunCommand();
+  const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const isActive = isRunCommandStateActive(state);
+  const isPending = startRunCommand.isPending || stopRunCommand.isPending;
+  const isDisconnected = state?.status === "disconnected";
+  const disabled = !runCommandConfigured || isPending;
+  const label = !runCommandConfigured
+    ? `${ariaLabelBase} run command is not configured`
+    : isPending
+      ? `${ariaLabelBase} run command is updating`
+      : isActive
+        ? `Stop ${ariaLabelBase} run command`
+        : isDisconnected
+          ? `Restart ${ariaLabelBase} run command`
+          : `Start ${ariaLabelBase} run command`;
+  const iconName: IconName = isPending
+    ? "Spinner"
+    : isActive
+      ? "Square"
+      : "Play";
+  const handleClick = useCallback<MouseEventHandler<HTMLButtonElement>>(
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (disabled) {
+        return;
+      }
+      const request = { projectId, target };
+      if (isActive) {
+        stopRunCommand.mutate(request);
+      } else {
+        startRunCommand.mutate(request, {
+          onSuccess: (response) => {
+            const nextState = getRunCommandStateForTarget(
+              response.states,
+              target,
+            );
+            if (nextState?.terminalSessionId) {
+              setActiveRunTerminal(
+                nextState.terminalSessionId,
+                nextState.terminalTarget,
+              );
+            }
+          },
+        });
+      }
+    },
+    [
+      disabled,
+      isActive,
+      projectId,
+      setActiveRunTerminal,
+      startRunCommand,
+      stopRunCommand,
+      target,
+    ],
+  );
+
+  return (
+    <Tooltip delayDuration={300} disableHoverableContent>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={label}
+          disabled={disabled}
+          onClick={handleClick}
+          className={cn(
+            "rounded-md p-0 hover:bg-transparent",
+            isActive
+              ? "text-emerald-600 hover:text-emerald-700"
+              : isDisconnected
+                ? "text-amber-600 hover:text-amber-700"
+                : "text-subtle-foreground hover:text-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name={iconName}
+            className={cn(
+              COARSE_POINTER_ICON_SIZE_CLASS,
+              isPending && "animate-spin",
+            )}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="px-2 py-1">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProjectRunCommandTerminalButton({
+  ariaLabelBase,
+  projectId,
+  state,
+}: ProjectRunCommandTerminalButtonProps) {
+  const navigate = useNavigate();
+  const setActiveRunTerminal = useSetFixedRightTerminalActiveTerminal(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const terminalSessionId = isRunCommandStateActive(state)
+    ? (state?.terminalSessionId ?? null)
+    : null;
+  const label = `Open ${ariaLabelBase} run terminal`;
+  const handleClick = useCallback<MouseEventHandler<HTMLButtonElement>>(
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!terminalSessionId) {
+        return;
+      }
+      setActiveRunTerminal(terminalSessionId, state?.terminalTarget ?? null);
+      navigate(getProjectComposeRoutePath(projectId));
+    },
+    [
+      navigate,
+      projectId,
+      setActiveRunTerminal,
+      state?.terminalTarget,
+      terminalSessionId,
+    ],
+  );
+
+  if (!terminalSessionId) {
+    return null;
+  }
+
+  return (
+    <Tooltip delayDuration={300} disableHoverableContent>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={label}
+          onClick={handleClick}
+          className={cn(
+            "rounded-md p-0 text-emerald-600 hover:bg-transparent hover:text-emerald-700",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name="Terminal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="px-2 py-1">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 interface FormatArchivedEnvironmentThreadsToastTitleArgs {
@@ -1033,76 +1290,105 @@ function useEnvironmentThreadGroupRenameAction({
 
 function EnvironmentThreadGroupHeaderActions({
   archiveThreadsPending,
+  projectId,
+  projectRunCommandConfigured,
+  runCommandState,
+  runCommandTarget,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
   onOpenChange,
 }: EnvironmentThreadGroupHeaderActionsProps) {
-  if (!onCreateNewThread && !onArchiveThreads && !onRenameEnvironment) {
+  const hasMenuActions =
+    Boolean(onCreateNewThread) ||
+    Boolean(onArchiveThreads) ||
+    Boolean(onRenameEnvironment);
+  if (!projectRunCommandConfigured && !hasMenuActions) {
     return null;
   }
 
   return (
     <span className="inline-flex shrink-0 items-center">
-      <DropdownMenu onOpenChange={onOpenChange}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Worktree actions"
-            className={cn(
-              "rounded-md p-0 text-muted-foreground",
-              "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-            )}
-          >
-            <Icon
-              name="MoreHorizontal"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {onCreateNewThread ? (
-            <DropdownMenuItem onSelect={onCreateNewThread}>
-              <Icon name="MessageSquarePlus" aria-hidden="true" />
-              New thread
-            </DropdownMenuItem>
-          ) : null}
-          {onRenameEnvironment ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                onRenameEnvironment();
-              }}
+      {projectRunCommandConfigured ? (
+        <>
+          <ProjectRunCommandTerminalButton
+            ariaLabelBase="worktree"
+            projectId={projectId}
+            state={runCommandState}
+          />
+          <ProjectRunCommandButton
+            ariaLabelBase="worktree"
+            projectId={projectId}
+            runCommandConfigured={projectRunCommandConfigured}
+            state={runCommandState}
+            target={runCommandTarget}
+          />
+        </>
+      ) : null}
+      {hasMenuActions ? (
+        <DropdownMenu onOpenChange={onOpenChange}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Worktree actions"
+              className={cn(
+                "rounded-md p-0 text-muted-foreground",
+                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+                SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              )}
             >
-              <Icon name="Edit" aria-hidden="true" />
-              Rename
-            </DropdownMenuItem>
-          ) : null}
-          {onArchiveThreads ? (
-            <DropdownMenuItem
-              disabled={archiveThreadsPending}
-              onSelect={(event) => {
-                if (archiveThreadsPending) {
-                  event.preventDefault();
-                  return;
-                }
-                onArchiveThreads();
-              }}
-            >
-              <Icon name="Archive" aria-hidden="true" />
-              Archive worktree
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+              <Icon
+                name="MoreHorizontal"
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onCreateNewThread ? (
+              <DropdownMenuItem onSelect={onCreateNewThread}>
+                <Icon name="MessageSquarePlus" aria-hidden="true" />
+                New thread
+              </DropdownMenuItem>
+            ) : null}
+            {onRenameEnvironment ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onRenameEnvironment();
+                }}
+              >
+                <Icon name="Edit" aria-hidden="true" />
+                Rename
+              </DropdownMenuItem>
+            ) : null}
+            {onArchiveThreads ? (
+              <DropdownMenuItem
+                disabled={archiveThreadsPending}
+                onSelect={(event) => {
+                  if (archiveThreadsPending) {
+                    event.preventDefault();
+                    return;
+                  }
+                  onArchiveThreads();
+                }}
+              >
+                <Icon name="Archive" aria-hidden="true" />
+                Archive worktree
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
     </span>
   );
 }
 
 function EnvironmentThreadGroupHeader({
   environmentId,
+  projectId,
+  projectRunCommandConfigured,
+  runCommandState,
   representativeThread,
   rowDepth,
   stickyLevel,
@@ -1120,6 +1406,8 @@ function EnvironmentThreadGroupHeader({
   const branchName = representativeThread.environmentBranchName;
   const displayName = environmentName || branchName || "Worktree";
   const iconName: IconName = "FolderGit";
+  const showRunCommandActions =
+    isActionsOpen || isRunCommandStateActive(runCommandState);
   // Collapsed: the header speaks for its hidden children through one status
   // glyph. Expanded: the children show their own glyphs, and the synthetic
   // header has no status of its own.
@@ -1177,7 +1465,9 @@ function EnvironmentThreadGroupHeader({
       >
         {showRollupGlyph ? (
           <span
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-open={
+              showRunCommandActions ? "true" : undefined
+            }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               "pointer-events-none absolute inset-0 flex items-center justify-center text-subtle-foreground",
@@ -1193,7 +1483,9 @@ function EnvironmentThreadGroupHeader({
           </span>
         ) : null}
         <div
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-open={
+            showRunCommandActions ? "true" : undefined
+          }
           className={cn(
             SIDEBAR_HOVER_ACTIONS_CLASS,
             "absolute inset-0 flex items-center justify-end",
@@ -1201,6 +1493,10 @@ function EnvironmentThreadGroupHeader({
         >
           <EnvironmentThreadGroupHeaderActions
             archiveThreadsPending={archiveThreadsPending}
+            projectId={projectId}
+            projectRunCommandConfigured={projectRunCommandConfigured}
+            runCommandState={runCommandState}
+            runCommandTarget={{ kind: "environment", environmentId }}
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
             onRenameEnvironment={onRenameEnvironment}
@@ -1233,6 +1529,8 @@ function EnvironmentThreadGroupHeader({
 
 const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   projectId,
+  projectRunCommandConfigured,
+  runCommandState,
   environmentThreadGroup,
   depthOffset,
   selectedThreadId,
@@ -1294,6 +1592,9 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
       <SidebarStickyGroup className="space-y-0.5">
         <EnvironmentThreadGroupHeader
           environmentId={environmentId}
+          projectId={projectId}
+          projectRunCommandConfigured={projectRunCommandConfigured}
+          runCommandState={runCommandState}
           representativeThread={representativeThread}
           rowDepth={rowDepth}
           stickyLevel={getThreadNodeStickyLevel({
@@ -1316,6 +1617,10 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
               <ThreadTreeNodeRow
                 key={node.thread.id}
                 projectId={projectId}
+                projectRunCommandConfigured={projectRunCommandConfigured}
+                runCommandStates={
+                  runCommandState === undefined ? [] : [runCommandState]
+                }
                 node={node}
                 depthOffset={depthOffset + 1}
                 isEnvGrouped
@@ -1344,6 +1649,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
 
 export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   projectId,
+  projectRunCommandConfigured = false,
+  runCommandStates = [],
   item,
   depthOffset,
   selectedThreadId,
@@ -1394,6 +1701,8 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
     return (
       <ThreadTreeNodeRow
         projectId={projectId}
+        projectRunCommandConfigured={projectRunCommandConfigured}
+        runCommandStates={runCommandStates}
         node={item.node}
         depthOffset={depthOffset}
         isEnvGrouped={false}
@@ -1415,6 +1724,11 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   return (
     <EnvironmentThreadGroupRow
       projectId={projectId}
+      projectRunCommandConfigured={projectRunCommandConfigured}
+      runCommandState={getRunCommandStateForTarget(runCommandStates, {
+        kind: "environment",
+        environmentId: item.group.environmentId,
+      })}
       environmentThreadGroup={item.group}
       depthOffset={depthOffset}
       selectedThreadId={selectedThreadId}
@@ -1571,6 +1885,8 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
 
 export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   projectId,
+  projectRunCommandConfigured = false,
+  runCommandStates = [],
   node,
   depthOffset,
   isEnvGrouped,
@@ -1628,6 +1944,19 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   const showChildren = !isCollapsed && hasChildren;
   const rowProjectId =
     variant === "section" ? node.thread.projectId : projectId;
+  const runCommandTarget =
+    !isEnvGrouped && isWorktreeThread(node.thread)
+      ? ({
+          kind: "environment",
+          environmentId: node.thread.environmentId,
+        } as const)
+      : null;
+  const runCommandState =
+    runCommandTarget === null
+      ? undefined
+      : getRunCommandStateForTarget(runCommandStates, runCommandTarget);
+  const showRunCommandButton =
+    projectRunCommandConfigured && runCommandTarget !== null;
   const hasComposerDraft = usePromptDraftHasInput({
     kind: "thread",
     projectId: rowProjectId,
@@ -1641,6 +1970,25 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       hasComposerDraft={hasComposerDraft}
       onProjectSelect={onProjectSelect}
       options={options}
+      trailingAction={
+        showRunCommandButton ? (
+          <>
+            <ProjectRunCommandTerminalButton
+              ariaLabelBase="worktree"
+              projectId={projectId}
+              state={runCommandState}
+            />
+            <ProjectRunCommandButton
+              ariaLabelBase="worktree"
+              projectId={projectId}
+              runCommandConfigured={projectRunCommandConfigured}
+              state={runCommandState}
+              target={runCommandTarget}
+            />
+          </>
+        ) : undefined
+      }
+      trailingActionAlwaysVisible={isRunCommandStateActive(runCommandState)}
     />
   );
 
@@ -1662,6 +2010,8 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
             <ThreadTreeItemRow
               key={getItemKey(item)}
               projectId={projectId}
+              projectRunCommandConfigured={projectRunCommandConfigured}
+              runCommandStates={runCommandStates}
               item={item}
               depthOffset={depthOffset}
               selectedThreadId={selectedThreadId}
@@ -1694,6 +2044,8 @@ interface ManualThreadTreeItemsProps {
   // Route every row to this project; omit to derive each row's project from its
   // own thread (the cross-project Folders view).
   projectId?: string;
+  projectRunCommandConfigured?: boolean;
+  runCommandStates?: readonly ProjectRunCommandTargetState[];
   depthOffset?: number;
   // Wrap the rows in a SortableContext for this parent. Omit when an outer
   // SortableList already provides the context (the split Folders/Threads view).
@@ -1718,6 +2070,8 @@ function ManualThreadTreeItems({
   manualSort,
   variant,
   projectId,
+  projectRunCommandConfigured,
+  runCommandStates,
   depthOffset = 0,
   sortableParentKey,
   selectedThreadId,
@@ -1735,6 +2089,8 @@ function ManualThreadTreeItems({
     <ManualSortableThreadTreeItemRow
       key={getItemKey(item)}
       projectId={projectId ?? getItemProjectId(item)}
+      projectRunCommandConfigured={projectRunCommandConfigured}
+      runCommandStates={runCommandStates}
       item={item}
       depthOffset={depthOffset}
       selectedThreadId={selectedThreadId}
@@ -1773,6 +2129,8 @@ function ManualThreadTreeItems({
 
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
+  projectRunCommandConfigured = false,
+  runCommandStates = [],
   threadListState,
   compareThreads,
   folders = EMPTY_FOLDERS,
@@ -1840,6 +2198,8 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       manualSort={null}
       variant={variant}
       projectId={projectId}
+      projectRunCommandConfigured={projectRunCommandConfigured}
+      runCommandStates={runCommandStates}
       sortableParentKey={projectId}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
@@ -2109,6 +2469,16 @@ function ProjectRowComponent({
   const handleCreateThread = useCallback(() => {
     onCreateProjectThread?.(project.id);
   }, [onCreateProjectThread, project.id]);
+  const projectRunCommandConfigured =
+    (project.runCommand?.trim().length ?? 0) > 0;
+  const projectRunCommandTarget = { kind: "project" } as const;
+  const runCommandStates = project.runCommandStates ?? [];
+  const projectRunCommandState = getRunCommandStateForTarget(
+    runCommandStates,
+    projectRunCommandTarget,
+  );
+  const showProjectRunCommandActions =
+    isActionsOpen || isRunCommandStateActive(projectRunCommandState);
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -2183,7 +2553,7 @@ function ProjectRowComponent({
             ) : null}
             <span
               data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
+                showProjectRunCommandActions ? "true" : undefined
               }
               data-sidebar-hover-actions-mobile={
                 SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -2194,6 +2564,22 @@ function ProjectRowComponent({
                 SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
               )}
             >
+              {projectRunCommandConfigured ? (
+                <>
+                  <ProjectRunCommandTerminalButton
+                    ariaLabelBase={project.name}
+                    projectId={project.id}
+                    state={projectRunCommandState}
+                  />
+                  <ProjectRunCommandButton
+                    ariaLabelBase={project.name}
+                    projectId={project.id}
+                    runCommandConfigured={projectRunCommandConfigured}
+                    state={projectRunCommandState}
+                    target={projectRunCommandTarget}
+                  />
+                </>
+              ) : null}
               <ProjectActionsMenu
                 project={project}
                 onOpenChange={setIsDropdownActionsOpen}
@@ -2229,6 +2615,8 @@ function ProjectRowComponent({
         {!isCollapsed ? (
           <ProjectThreadTree
             projectId={project.id}
+            projectRunCommandConfigured={projectRunCommandConfigured}
+            runCommandStates={runCommandStates}
             threadListState={threadListState}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
