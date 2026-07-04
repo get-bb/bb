@@ -5,7 +5,7 @@ import type {
   HTMLAttributes,
   ReactNode,
 } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "./hooks/use-pointer-coarse";
 import { ResponsiveDrawerShell } from "./responsive-overlay";
@@ -240,5 +240,156 @@ describe("ResponsiveDrawerShell", () => {
     } finally {
       outsideButton.remove();
     }
+  });
+});
+
+const SHEET_HEIGHT = 800;
+
+function stubSheetHeight() {
+  vi.spyOn(
+    screen.getByTestId("drawer-content"),
+    "getBoundingClientRect",
+  ).mockReturnValue({ height: SHEET_HEIGHT } as DOMRect);
+}
+
+function touch(clientY: number) {
+  return {
+    touches: [{ identifier: 1, clientX: 50, clientY }],
+    changedTouches: [{ identifier: 1, clientX: 50, clientY }],
+  };
+}
+
+describe("ResponsiveDrawerShell swipe-to-close-from-content", () => {
+  it("dismisses when the content is dragged down past the threshold", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <div data-testid="body">content</div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const body = screen.getByTestId("body");
+
+    fireEvent.touchStart(body, touch(100));
+    fireEvent.touchMove(body, touch(140));
+    fireEvent.touchMove(body, touch(500));
+    fireEvent.touchEnd(body, touch(500));
+
+    expect(content.style.transform).toBe("translate3d(0, 400px, 0)");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("snaps back without dismissing for a short drag", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <div data-testid="body">content</div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const body = screen.getByTestId("body");
+
+    fireEvent.touchStart(body, touch(100));
+    fireEvent.touchMove(body, touch(130));
+    fireEvent.touchEnd(body, touch(130));
+
+    expect(content.style.transform).toBe("translate3d(0, 0, 0)");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("does not engage when a scroll container is not at the top", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <div data-testid="scroller">content</div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const scroller = screen.getByTestId("scroller");
+    Object.defineProperty(scroller, "scrollTop", { value: 120, writable: true });
+    Object.defineProperty(scroller, "scrollHeight", { value: 900 });
+    Object.defineProperty(scroller, "clientHeight", { value: 400 });
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      overflowY: "auto",
+    } as CSSStyleDeclaration);
+
+    fireEvent.touchStart(scroller, touch(100));
+    fireEvent.touchMove(scroller, touch(140));
+    fireEvent.touchMove(scroller, touch(500));
+    fireEvent.touchEnd(scroller, touch(500));
+
+    expect(content.style.transform).toBe("");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("ignores drags that start on the Vaul handle", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        handleOnly
+        swipeToCloseFromContent
+      >
+        <div data-testid="handle" data-vaul-handle="">
+          grabber
+        </div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const handle = screen.getByTestId("handle");
+
+    fireEvent.touchStart(handle, touch(100));
+    fireEvent.touchMove(handle, touch(500));
+    fireEvent.touchEnd(handle, touch(500));
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("stays inert without the swipeToCloseFromContent opt-in", () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <ResponsiveDrawerShell open={true} onOpenChange={onOpenChange} handleOnly>
+        <div data-testid="body">content</div>
+      </ResponsiveDrawerShell>,
+    );
+
+    stubSheetHeight();
+    const content = screen.getByTestId("drawer-content");
+    const body = screen.getByTestId("body");
+
+    fireEvent.touchStart(body, touch(100));
+    fireEvent.touchMove(body, touch(500));
+    fireEvent.touchEnd(body, touch(500));
+
+    expect(content.style.transform).toBe("");
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

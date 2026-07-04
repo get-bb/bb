@@ -533,6 +533,10 @@ export function ThreadDetailSecondaryContent({
           // element and prevents the click from reaching rows inside the
           // shadow DOM. The drag handle bar still drags the drawer.
           handleOnly
+          // `handleOnly` blocks Vaul's content drag, so re-add the iOS-standard
+          // drag-down-from-top-to-dismiss gesture without the pointer capture
+          // that would break the diff tree's shadow-DOM clicks.
+          swipeToCloseFromContent
           // This drawer hosts nested picker drawers; Vaul's input repositioning
           // reacts to any focused input, including nested search fields.
           repositionInputs={false}
