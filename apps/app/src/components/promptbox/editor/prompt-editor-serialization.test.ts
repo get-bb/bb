@@ -522,6 +522,7 @@ describe("prompt editor serialization", () => {
         providerId: "issues",
         itemId: "issues:ISS-42",
         providerLabel: "Linear issues",
+        icon: null,
         title: "Fix login bug",
         subtitle: "In progress",
         replacement: "Fix login bug",

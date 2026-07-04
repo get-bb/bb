@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  expandPluginCommandMentionsForProviderInput,
   promptInputHasCommandMention,
   promptMentionCommandTriggerSchema,
   promptMentionCommandTriggerValues,
@@ -229,5 +230,57 @@ describe("prompt command input helpers", () => {
         pluginId: "linear",
       }),
     ).toBe(true);
+  });
+
+  it("expands plugin command mentions to explicit provider text", () => {
+    const input = [
+      {
+        type: "text" as const,
+        text: "/open @thread",
+        mentions: [
+          {
+            start: 0,
+            end: 5,
+            resource: {
+              kind: "command" as const,
+              trigger: "/" as const,
+              name: "open",
+              source: "plugin" as const,
+              origin: "user" as const,
+              label: "open",
+              argumentHint: null,
+              pluginId: "linear",
+            },
+          },
+          {
+            start: 6,
+            end: 13,
+            resource: {
+              kind: "thread" as const,
+              threadId: "thr_123",
+              label: "thread",
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(expandPluginCommandMentionsForProviderInput(input)).toEqual([
+      {
+        type: "text",
+        text: "bb plugin run linear @thread",
+        mentions: [
+          {
+            start: "bb plugin run linear ".length,
+            end: "bb plugin run linear @thread".length,
+            resource: {
+              kind: "thread",
+              threadId: "thr_123",
+              label: "thread",
+            },
+          },
+        ],
+      },
+    ]);
   });
 });

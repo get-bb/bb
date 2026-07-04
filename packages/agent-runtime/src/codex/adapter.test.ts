@@ -652,6 +652,52 @@ describe("codex provider adapter", () => {
     }
   });
 
+  it("buildCommand expands plugin command mentions before sending provider input", () => {
+    const adapter = createCodexProviderAdapter();
+    const turnCmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_222222228p",
+      threadId: "bb-thread-1",
+      providerThreadId: "codex-thread-1",
+      input: [
+        {
+          type: "text",
+          text: "/open ISS-42",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "open",
+                source: "plugin",
+                origin: "user",
+                label: "open",
+                argumentHint: null,
+                pluginId: "linear",
+              },
+            },
+          ],
+        },
+      ],
+      options: workspaceWriteAskProviderExecutionContext,
+    });
+
+    expect(turnCmd).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [
+          {
+            type: "text",
+            text: "bb plugin run linear ISS-42",
+            text_elements: [],
+          },
+        ],
+      },
+    });
+  });
+
   it("buildCommand combines additional workspace roots with captured linked worktree git roots", () => {
     const fixture = createLinkedWorktreeFixture();
     const additionalWorkspaceWriteRoots = [

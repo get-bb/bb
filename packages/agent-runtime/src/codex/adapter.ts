@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import {
+  expandPluginCommandMentionsForProviderInput,
   getThreadEventScopeTurnId,
   jsonValueSchema,
   requireThreadEventScopeTurnId,
@@ -683,22 +684,24 @@ function toCodexReasoningEffort(
 }
 
 function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
-  return input.map((chunk): CodexUserInput => {
-    switch (chunk.type) {
-      case "text":
-        return { type: "text", text: chunk.text, text_elements: [] };
-      case "image":
-        return { type: "image", url: chunk.url };
-      case "localImage":
-        return { type: "localImage", path: chunk.path };
-      case "localFile":
-        return {
-          type: "text",
-          text: `[Attached file: ${chunk.path}]`,
-          text_elements: [],
-        };
-    }
-  });
+  return expandPluginCommandMentionsForProviderInput(input).map(
+    (chunk): CodexUserInput => {
+      switch (chunk.type) {
+        case "text":
+          return { type: "text", text: chunk.text, text_elements: [] };
+        case "image":
+          return { type: "image", url: chunk.url };
+        case "localImage":
+          return { type: "localImage", path: chunk.path };
+        case "localFile":
+          return {
+            type: "text",
+            text: `[Attached file: ${chunk.path}]`,
+            text_elements: [],
+          };
+      }
+    },
+  );
 }
 
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;

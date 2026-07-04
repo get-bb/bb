@@ -102,6 +102,20 @@ function buildProjectMentionCandidates(
   ].map((project) => ({ id: project.id, name: project.name }));
 }
 
+export function shouldShowPluginProviderSuggestions(args: {
+  debouncedQuery: string;
+  hasMentionProviders: boolean;
+  isPlaceholderData: boolean;
+  trimmedQuery: string;
+}): boolean {
+  return (
+    args.hasMentionProviders &&
+    args.debouncedQuery.length > 0 &&
+    args.trimmedQuery === args.debouncedQuery &&
+    !args.isPlaceholderData
+  );
+}
+
 export function usePromptMentions(
   projectId: string | undefined,
   options: UsePromptMentionsOptions,
@@ -142,6 +156,13 @@ export function usePromptMentions(
     },
     { enabled: hasMentionProviders && debouncedQuery.length > 0 },
   );
+  const canShowPluginProviderSuggestions =
+    shouldShowPluginProviderSuggestions({
+      debouncedQuery,
+      hasMentionProviders,
+      isPlaceholderData: pluginSearch.isPlaceholderData === true,
+      trimmedQuery,
+    });
   const projectNamesById = useMemo(
     () => buildProjectNamesById(projectNamesQuery.data),
     [projectNamesQuery.data],
@@ -184,10 +205,10 @@ export function usePromptMentions(
   }, [projectCandidates, trimmedQuery]);
   const pluginSuggestions = useMemo(
     () =>
-      hasMentionProviders
+      canShowPluginProviderSuggestions
         ? buildPluginMentionSuggestions(pluginSearch.data ?? [])
         : [],
-    [hasMentionProviders, pluginSearch.data],
+    [canShowPluginProviderSuggestions, pluginSearch.data],
   );
   const installedPluginSuggestions = useMemo(
     () =>

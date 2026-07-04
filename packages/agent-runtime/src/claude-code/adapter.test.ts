@@ -790,6 +790,49 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand expands plugin command mentions before sending provider input", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_2222222295",
+      threadId: "bb-thread-1",
+      providerThreadId: "claude-session-1",
+      input: [
+        {
+          type: "text",
+          text: "/open ISS-42",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "open",
+                source: "plugin",
+                origin: "user",
+                label: "open",
+                argumentHint: null,
+                pluginId: "linear",
+              },
+            },
+          ],
+        },
+      ],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd?.params).toMatchObject({
+      input: [
+        {
+          type: "text",
+          text: "bb plugin run linear ISS-42",
+          mentions: [],
+        },
+      ],
+    });
+  });
+
   it("buildCommand turn/start preserves grouped input", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -876,7 +919,7 @@ describe("claude-code provider adapter", () => {
     });
   });
 
-  it("buildCommand leaves plugin commands named plan in native plan mode", () => {
+  it("buildCommand expands plugin commands named plan in native plan mode", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const turnCmd = adapter.buildCommandPlan({
       type: "turn/start",
@@ -915,23 +958,8 @@ describe("claude-code provider adapter", () => {
       input: [
         {
           type: "text",
-          text: "/plan inspect the failing test",
-          mentions: [
-            {
-              start: 0,
-              end: 5,
-              resource: {
-                kind: "command",
-                trigger: "/",
-                name: "plan",
-                source: "plugin",
-                origin: "user",
-                label: "plan",
-                argumentHint: null,
-                pluginId: "linear",
-              },
-            },
-          ],
+          text: "bb plugin run linear inspect the failing test",
+          mentions: [],
         },
       ],
     });

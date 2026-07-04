@@ -209,6 +209,22 @@ export interface PluginMentionSearchArgs {
   threadId: string | null;
 }
 
+export function pluginMentionSearchQueryKey(
+  args: PluginMentionSearchArgs,
+): QueryKey {
+  return [
+    "plugin-mention-search",
+    args.query,
+    args.projectId,
+    args.threadId,
+  ];
+}
+
+/** Prefix invalidated when plugin mention providers reload or disappear. */
+export function allPluginMentionSearchQueryKeyPrefix(): QueryKey {
+  return ["plugin-mention-search"];
+}
+
 async function fetchPluginMentionSearch(
   args: PluginMentionSearchArgs,
   signal: AbortSignal,
@@ -239,16 +255,10 @@ export function usePluginMentionSearch(
   options: { enabled: boolean },
 ) {
   return useQuery({
-    queryKey: [
-      "plugin-mention-search",
-      args.query,
-      args.projectId,
-      args.threadId,
-    ],
+    queryKey: pluginMentionSearchQueryKey(args),
     queryFn: ({ signal }) => fetchPluginMentionSearch(args, signal),
     enabled: options.enabled,
     staleTime: 15_000,
     placeholderData: (previous) => previous,
   });
 }
-

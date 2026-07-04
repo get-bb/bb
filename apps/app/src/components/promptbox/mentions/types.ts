@@ -69,6 +69,7 @@ export type PromptMentionSuggestion =
       providerId: string;
       itemId: string;
       providerLabel: string;
+      icon: string | null;
       title: string;
       subtitle: string | null;
       replacement: string;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import { providerCommandSectionRank } from "@bb/server-contract";
 import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
@@ -122,7 +123,15 @@ export function mergeCommandSuggestions(
     suggestions.push(suggestion);
   }
 
-  return suggestions;
+  return suggestions
+    .map((suggestion, index) => ({ index, suggestion }))
+    .sort(
+      (left, right) =>
+        providerCommandSectionRank(left.suggestion) -
+          providerCommandSectionRank(right.suggestion) ||
+        left.index - right.index,
+    )
+    .map(({ suggestion }) => suggestion);
 }
 
 /**

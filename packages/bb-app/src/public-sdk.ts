@@ -72,6 +72,16 @@ export interface PromptTextMention {
         trigger: "/";
       }
     | {
+        kind: "command";
+        argumentHint: string | null;
+        label: string;
+        name: string;
+        origin: "user";
+        pluginId: string;
+        source: "plugin";
+        trigger: "/";
+      }
+    | {
         kind: "plugin";
         itemId?: string;
         label: string;

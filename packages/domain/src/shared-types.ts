@@ -291,6 +291,10 @@ interface PromptCommandRemovalRange {
   end: number;
 }
 
+interface PromptCommandReplacementRange extends PromptCommandRemovalRange {
+  replacement: string;
+}
+
 function isSelectedPromptCommandMention(
   mention: PromptTextMention,
   selector: PromptCommandSelector,
@@ -418,6 +422,94 @@ export function removeCommandMentionsFromPromptInput(
     item.type === "text"
       ? removeCommandMentionsFromTextInput(item, selector)
       : item,
+  );
+}
+
+function isPluginCommandMention(mention: PromptTextMention): boolean {
+  return (
+    mention.resource.kind === "command" && mention.resource.source === "plugin"
+  );
+}
+
+function pluginCommandProviderText(mention: PromptTextMention): string {
+  const resource = mention.resource;
+  if (resource.kind !== "command" || resource.source !== "plugin") {
+    return "";
+  }
+  return `bb plugin run ${resource.pluginId}`;
+}
+
+function pluginCommandReplacementRanges(
+  input: TextPromptInput,
+): PromptCommandReplacementRange[] {
+  return input.mentions
+    .filter(isPluginCommandMention)
+    .map((mention) => ({
+      start: mention.start,
+      end: mention.end,
+      replacement: pluginCommandProviderText(mention),
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function replacementDeltaBefore(
+  ranges: readonly PromptCommandReplacementRange[],
+  position: number,
+): number {
+  let delta = 0;
+  for (const range of ranges) {
+    if (range.end <= position) {
+      delta += range.replacement.length - (range.end - range.start);
+    }
+  }
+  return delta;
+}
+
+function expandPluginCommandMentionsInTextInput(
+  input: TextPromptInput,
+): TextPromptInput {
+  const ranges = pluginCommandReplacementRanges(input);
+  if (ranges.length === 0) {
+    return input;
+  }
+
+  let text = "";
+  let cursor = 0;
+  for (const range of ranges) {
+    text += input.text.slice(cursor, range.start);
+    text += range.replacement;
+    cursor = range.end;
+  }
+  text += input.text.slice(cursor);
+
+  return {
+    ...input,
+    text,
+    mentions: input.mentions
+      .filter(
+        (mention) =>
+          !isPluginCommandMention(mention) &&
+          !isInsideRemovalRange(ranges, mention),
+      )
+      .map((mention) => {
+        const start =
+          mention.start + replacementDeltaBefore(ranges, mention.start);
+        const end = mention.end + replacementDeltaBefore(ranges, mention.end);
+        return { ...mention, start, end };
+      }),
+  };
+}
+
+/**
+ * Provider adapters receive plain text. Expand selected plugin slash-command
+ * pills to the explicit CLI form so same-named plugin commands remain
+ * distinguishable after mention metadata is stripped.
+ */
+export function expandPluginCommandMentionsForProviderInput(
+  input: readonly PromptInput[],
+): PromptInput[] {
+  return input.map((item) =>
+    item.type === "text" ? expandPluginCommandMentionsInTextInput(item) : item,
   );
 }
 

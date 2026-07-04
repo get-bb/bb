@@ -84,6 +84,7 @@ export function buildPluginMentionSuggestions(
         providerId: group.providerId,
         itemId: item.itemId,
         providerLabel: group.label,
+        icon: item.icon,
         title,
         subtitle: item.subtitle,
         replacement: title,

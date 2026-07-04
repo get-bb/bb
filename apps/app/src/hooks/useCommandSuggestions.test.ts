@@ -68,6 +68,50 @@ describe("promptActionCommandSuggestions", () => {
 });
 
 describe("mergeCommandSuggestions", () => {
+  it("returns commands in the shared visual section order after merging", () => {
+    expect(
+      mergeCommandSuggestions(
+        [
+          {
+            kind: "command",
+            name: "loop",
+            source: "command",
+            origin: "user",
+            description: null,
+            argumentHint: null,
+          },
+        ],
+        [
+          {
+            kind: "command",
+            name: "review",
+            source: "skill",
+            origin: "user",
+            description: "Review code changes",
+            argumentHint: null,
+          },
+          {
+            kind: "command",
+            name: "open",
+            source: "plugin",
+            origin: "user",
+            description: "Open Linear issue",
+            argumentHint: null,
+            pluginId: "linear",
+          },
+          {
+            kind: "command",
+            name: "frontend:component",
+            source: "command",
+            origin: "project",
+            description: "Create a component",
+            argumentHint: null,
+          },
+        ],
+      ).map((suggestion) => suggestion.name),
+    ).toEqual(["review", "open", "frontend:component", "loop"]);
+  });
+
   it("keeps same-named plugin commands from different plugins", () => {
     expect(
       mergeCommandSuggestions(

@@ -89,7 +89,10 @@ import {
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
 } from "../queries/query-keys";
-import { allPluginContributionsQueryKeyPrefix } from "../queries/plugin-contribution-queries";
+import {
+  allPluginContributionsQueryKeyPrefix,
+  allPluginMentionSearchQueryKeyPrefix,
+} from "../queries/plugin-contribution-queries";
 import {
   allPluginListQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
@@ -439,6 +442,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginContributionQueries,
       dirtyProjectCommandQueries,
       dirtyPluginManagementQueries,
+      dirtyPluginMentionSearchQueries,
       reconcilePluginFrontendBundles,
     ],
   },
@@ -908,6 +912,10 @@ function dirtyUiSourceStatusQueries(): QueryKey[] {
 
 function dirtyPluginContributionQueries(): QueryKey[] {
   return [allPluginContributionsQueryKeyPrefix()];
+}
+
+function dirtyPluginMentionSearchQueries(): QueryKey[] {
+  return [allPluginMentionSearchQueryKeyPrefix()];
 }
 
 function dirtyProjectCommandQueries(): QueryKey[] {

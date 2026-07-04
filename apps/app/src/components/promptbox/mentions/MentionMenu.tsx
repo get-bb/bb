@@ -109,6 +109,7 @@ type PluginMentionSuggestion = Extract<
   { kind: "plugin" }
 >;
 type PluginProviderMentionSuggestion = PluginMentionSuggestion & {
+  icon: string | null;
   itemId: string;
   providerId: string;
   providerLabel: string;
@@ -310,7 +311,7 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
     return (
       <PluginIcon
         pluginId={item.pluginId}
-        icon={null}
+        icon={isPluginProviderMentionSuggestion(item) ? item.icon : null}
         className={ROW_ICON_CLASS}
       />
     );

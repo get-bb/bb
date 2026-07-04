@@ -32,7 +32,10 @@ import {
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/plugin-contribution-queries";
+import {
+  pluginContributionsQueryKey,
+  pluginMentionSearchQueryKey,
+} from "./queries/plugin-contribution-queries";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -148,9 +151,14 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
-  it("invalidates plugin contribution and command caches on plugins-changed", () => {
+  it("invalidates plugin contribution, mention search, and command caches on plugins-changed", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const contributionsKey = pluginContributionsQueryKey(true);
+    const mentionSearchKey = pluginMentionSearchQueryKey({
+      query: "fix",
+      projectId: "project-1",
+      threadId: "thread-1",
+    });
     const commandsKey = projectCommandsQueryKey(
       "project-1",
       "codex",
@@ -170,6 +178,7 @@ describe("createRealtimeCacheEffects", () => {
       threadActions: [],
       mentionProviders: [],
     });
+    queryClient.setQueryData(mentionSearchKey, []);
     queryClient.setQueryData(commandsKey, { commands: [], truncated: false });
     queryClient.setQueryData(commandPagesKey, {
       pages: [{ commands: [], truncated: false }],
@@ -185,6 +194,9 @@ describe("createRealtimeCacheEffects", () => {
     // System changes flush immediately (no thread-style debounce), so
     // `bb plugin reload/enable/disable` reaches open composers right away.
     expect(queryClient.getQueryState(contributionsKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(mentionSearchKey)?.isInvalidated).toBe(
       true,
     );
     expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);

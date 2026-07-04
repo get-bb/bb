@@ -24,6 +24,7 @@ import type {
 import {
   claudeTaskToolNameSchema,
   claudeTaskToolOutputSchema,
+  expandPluginCommandMentionsForProviderInput,
   jsonValueSchema,
   removeCommandMentionsFromPromptInput,
   threadScope,
@@ -802,6 +803,15 @@ function stripClaudePlanCommandInput(
   });
 }
 
+function toClaudeCodeProviderInput(
+  input: readonly PromptInput[],
+  options: ProviderExecutionContext,
+): PromptInput[] {
+  return expandPluginCommandMentionsForProviderInput(
+    stripClaudePlanCommandInput(input, options),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Adapter factory
 // ---------------------------------------------------------------------------
@@ -1196,14 +1206,11 @@ export function createClaudeCodeProviderAdapter(
             params: {
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
-              input: stripClaudePlanCommandInput(
-                command.input,
-                command.options,
-              ),
+              input: toClaudeCodeProviderInput(command.input, command.options),
               ...(command.inputGroups !== undefined
                 ? {
                     inputGroups: command.inputGroups.map((inputGroup) =>
-                      stripClaudePlanCommandInput(inputGroup, command.options),
+                      toClaudeCodeProviderInput(inputGroup, command.options),
                     ),
                   }
                 : {}),
@@ -1220,14 +1227,11 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
               expectedTurnId: command.expectedTurnId,
-              input: stripClaudePlanCommandInput(
-                command.input,
-                command.options,
-              ),
+              input: toClaudeCodeProviderInput(command.input, command.options),
               ...(command.inputGroups !== undefined
                 ? {
                     inputGroups: command.inputGroups.map((inputGroup) =>
-                      stripClaudePlanCommandInput(inputGroup, command.options),
+                      toClaudeCodeProviderInput(inputGroup, command.options),
                     ),
                   }
                 : {}),
