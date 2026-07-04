@@ -11,7 +11,7 @@ export const threadIdentityResultSchema = z.object({
   threadId: z.string().nullable().optional(),
 });
 
-type ThreadIdentityResult = z.infer<typeof threadIdentityResultSchema>;
+export type ThreadIdentityResult = z.infer<typeof threadIdentityResultSchema>;
 
 interface ResolveThreadIdentityResultArgs {
   result: ThreadIdentityResult;

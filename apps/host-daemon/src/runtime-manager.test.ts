@@ -64,6 +64,10 @@ interface RuntimeManagerProviderMaintenanceInternals {
   providerMaintenanceRuntime: AgentRuntime | null;
 }
 
+interface RuntimeManagerEvictionInternals {
+  stopWatchingStatus: (entry: unknown) => Promise<void>;
+}
+
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
@@ -1198,6 +1202,39 @@ describe("RuntimeManager", () => {
       }),
     );
     expect(secondRuntime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("does not evict environment runtimes that become active during base shell env eviction", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime: vi.fn(() => runtime),
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    const managerInternals = manager as unknown as RuntimeManagerEvictionInternals;
+    const originalStopWatchingStatus =
+      managerInternals.stopWatchingStatus.bind(manager);
+    vi.spyOn(managerInternals, "stopWatchingStatus").mockImplementation(
+      async (entry) => {
+        runtime.setActiveTurn("thread-1", "turn-1");
+        await originalStopWatchingStatus(entry);
+      },
+    );
+
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeDefined();
+    expect(runtime.shutdown).not.toHaveBeenCalled();
   });
 
   it("reuses the existing runtime for subsequent requests", async () => {

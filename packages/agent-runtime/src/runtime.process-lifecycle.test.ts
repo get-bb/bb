@@ -456,6 +456,66 @@ rl.on("line", (line) => {
     // Should not hang
   });
 
+  it("reports pending thread starts as active runtime work", async () => {
+    const logPath = join(tmpDir, "pending-start.log");
+    const pendingStartScript = join(tmpDir, "pending-start-provider.cjs");
+    writeFileSync(
+      pendingStartScript,
+      `const fs = require("node:fs");
+      const readline = require("node:readline");
+      const logPath = process.argv[2];
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on("line", (line) => {
+        const msg = JSON.parse(line);
+        if (msg.method === "thread/start") {
+          fs.appendFileSync(logPath, "thread-start:" + msg.params.threadId + "\\n");
+          return;
+        }
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+      });`,
+    );
+
+    const adapter = {
+      ...createFakeAdapter(pendingStartScript),
+      process: {
+        command: "node",
+        args: [pendingStartScript, logPath],
+      },
+    } satisfies ProviderAdapter;
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => adapter,
+    });
+
+    const startPromise = runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+    const startErrorPromise = startPromise.then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    await waitForRuntimeState({
+      label: "pending thread/start is reported as active",
+      predicate: () => runtime.getActiveThreadIds().includes("t1"),
+    });
+
+    expect(runtime.getActiveThreadIds()).toEqual(["t1"]);
+    await runtime.shutdown();
+    expect(await startErrorPromise).toEqual(
+      expect.objectContaining({ message: "Runtime shutting down" }),
+    );
+  });
+
   it("treats shutdown process errors as expected without carrying state to replacement processes", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const manager = createProviderProcessManager({

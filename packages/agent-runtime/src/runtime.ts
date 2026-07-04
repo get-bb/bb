@@ -61,6 +61,7 @@ import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
 import {
   resolveThreadIdentityResult,
   threadIdentityResultSchema,
+  type ThreadIdentityResult,
 } from "./thread-identity.js";
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
@@ -225,6 +226,7 @@ function createAgentRuntimeInternal(
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const codexThreadsRequiringAccountRestart = new Set<string>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
+  const pendingThreadStartThreadIds = new Set<string>();
   const pendingTurnStartThreadIds = new Set<string>();
   const threadOperationCounts = new Map<string, number>();
   const turnState = new RuntimeTurnState();
@@ -416,6 +418,7 @@ function createAgentRuntimeInternal(
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
+    pendingThreadStartThreadIds.delete(threadId);
     pendingTurnStartThreadIds.delete(threadId);
     threadRuntimeConfigs.delete(threadId);
   }
@@ -501,6 +504,7 @@ function createAgentRuntimeInternal(
     if (
       threadIdentityRegistry.getProviderSession(threadId) === null ||
       turnState.getActiveTurnId(threadId) !== null ||
+      pendingThreadStartThreadIds.has(threadId) ||
       pendingTurnStartThreadIds.has(threadId)
     ) {
       return;
@@ -534,6 +538,7 @@ function createAgentRuntimeInternal(
   ): ReapIdleProviderSessionCandidate | null {
     if (
       threadHasInFlightOperation(args.threadId) ||
+      pendingThreadStartThreadIds.has(args.threadId) ||
       pendingTurnStartThreadIds.has(args.threadId) ||
       turnState.getActiveTurnId(args.threadId) !== null
     ) {
@@ -1084,11 +1089,17 @@ function createAgentRuntimeInternal(
             providerId,
           });
 
-          const result = await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: threadIdentityResultSchema,
-          });
+          pendingThreadStartThreadIds.add(threadId);
+          let result: ThreadIdentityResult;
+          try {
+            result = await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: threadIdentityResultSchema,
+            });
+          } finally {
+            pendingThreadStartThreadIds.delete(threadId);
+          }
           const providerThreadId = resolveThreadIdentityResult({
             result,
             threadId,
@@ -1235,11 +1246,17 @@ function createAgentRuntimeInternal(
           }
           const cmd = plan;
 
-          const result = await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: threadIdentityResultSchema,
-          });
+          pendingThreadStartThreadIds.add(threadId);
+          let result: ThreadIdentityResult;
+          try {
+            result = await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: threadIdentityResultSchema,
+            });
+          } finally {
+            pendingThreadStartThreadIds.delete(threadId);
+          }
           const resolvedId =
             resolveThreadIdentityResult({ result, threadId }) ??
             providerThreadId ??
@@ -1606,11 +1623,18 @@ function createAgentRuntimeInternal(
     },
 
     getActiveThreadIds() {
-      return turnState.getActiveThreadIds();
+      return [
+        ...new Set([
+          ...turnState.getActiveThreadIds(),
+          ...pendingThreadStartThreadIds,
+          ...pendingTurnStartThreadIds,
+        ]),
+      ];
     },
 
     async shutdown() {
       idleProviderSessionSinceMsByThreadId.clear();
+      pendingThreadStartThreadIds.clear();
       pendingTurnStartThreadIds.clear();
       threadOperationCounts.clear();
       turnState.clear();

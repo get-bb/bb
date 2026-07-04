@@ -545,13 +545,18 @@ export class RuntimeManager {
   }
 
   private async evictIdleRuntimeEntries(): Promise<void> {
-    const idleEntries = [...this.entries.values()].filter(
+    const candidateEntries = [...this.entries.values()].filter(
       (entry) => !this.entryHasActiveRuntimeWork(entry),
     );
+    const idleEntries: RuntimeEntry[] = [];
 
-    for (const entry of idleEntries) {
+    for (const entry of candidateEntries) {
       await this.stopWatchingStatus(entry);
+      if (this.entryHasActiveRuntimeWork(entry)) {
+        continue;
+      }
       this.entries.delete(entry.environmentId);
+      idleEntries.push(entry);
     }
 
     await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
