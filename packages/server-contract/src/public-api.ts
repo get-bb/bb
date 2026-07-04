@@ -1031,13 +1031,13 @@ export const publicApiRoutes = {
       response: jsonResponse<ThemeCatalogResponse>(),
     }),
     skillBundles: defineRoute({
-      path: "/settings/skill-bundles",
+      path: "/system/skill-bundles",
       method: "get",
       request: noRequest(),
       response: jsonResponse<SkillBundleListResponse>(),
     }),
     createSkillBundle: defineRoute({
-      path: "/settings/skill-bundles",
+      path: "/system/skill-bundles",
       method: "post",
       request: jsonRequest<EmptyInput, UpsertSkillBundleRequest>(
         upsertSkillBundleRequestSchema,
@@ -1045,7 +1045,7 @@ export const publicApiRoutes = {
       response: jsonResponse<SkillBundle>({ status: 201 }),
     }),
     updateSkillBundle: defineRoute({
-      path: "/settings/skill-bundles/:id",
+      path: "/system/skill-bundles/:id",
       method: "patch",
       request: jsonRequest<PathSkillBundleId, UpsertSkillBundleRequest>(
         upsertSkillBundleRequestSchema,
@@ -1053,7 +1053,7 @@ export const publicApiRoutes = {
       response: jsonResponse<SkillBundle>(),
     }),
     deleteSkillBundle: defineRoute({
-      path: "/settings/skill-bundles/:id",
+      path: "/system/skill-bundles/:id",
       method: "delete",
       request: noRequest<PathSkillBundleId>(),
       response: jsonResponse<{ ok: true }>(),

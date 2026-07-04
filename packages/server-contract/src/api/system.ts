@@ -139,7 +139,6 @@ export const skillBundleSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
-    description: z.string().nullable(),
     steps: z.array(skillBundleStepSchema).min(1),
     position: z.number().int().nonnegative(),
     createdAt: z.number().int().nonnegative(),
@@ -158,7 +157,6 @@ export type SkillBundleListResponse = z.infer<
 export const upsertSkillBundleRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
-    description: z.string().trim().max(240).nullable(),
     steps: z.array(skillBundleStepSchema).min(1),
   })
   .strict();
