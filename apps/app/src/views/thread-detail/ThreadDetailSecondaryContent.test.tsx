@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -173,6 +179,7 @@ interface QueuedAnimationFrames {
 interface RenderThreadDetailArgs {
   isCompactViewport: boolean;
   isSecondaryPanelOpen: boolean;
+  onOpenSecondaryPanel?: () => void;
   renderBrowserDeck: RenderBrowserDeck;
   threadId: string;
 }
@@ -264,6 +271,7 @@ function createBrowserDeckRenderer(order?: string[]): RenderBrowserDeck {
 
 function createProps({
   isSecondaryPanelOpen,
+  onOpenSecondaryPanel,
   renderBrowserDeck,
   threadId,
 }: Omit<
@@ -296,6 +304,7 @@ function createProps({
       workspaceStatus: undefined,
       workspaceStatusError: null,
     } as ThreadDetailSecondaryContentProps["metadata"],
+    onOpenSecondaryPanel: onOpenSecondaryPanel ?? noop,
     onToggleConversationCollapse: noop,
     secondaryPanel: {
       activeTab: null,
@@ -342,6 +351,7 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
       <ThreadDetailSecondaryContent
         {...createProps({
           isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+          onOpenSecondaryPanel: renderArgs.onOpenSecondaryPanel,
           renderBrowserDeck: renderArgs.renderBrowserDeck,
           threadId: renderArgs.threadId,
         })}
@@ -360,6 +370,7 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
           <ThreadDetailSecondaryContent
             {...createProps({
               isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
+              onOpenSecondaryPanel: renderArgs.onOpenSecondaryPanel,
               renderBrowserDeck: renderArgs.renderBrowserDeck,
               threadId: renderArgs.threadId,
             })}
@@ -625,5 +636,40 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       canShowNativeBrowserView: true,
     });
     expect(dispatchBrowserViewBoundsSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the compact right panel from a left swipe across the timeline", () => {
+    const onOpenSecondaryPanel = vi.fn();
+    const renderBrowserDeck = createBrowserDeckRenderer();
+
+    renderThreadDetail({
+      isCompactViewport: true,
+      isSecondaryPanelOpen: false,
+      onOpenSecondaryPanel,
+      renderBrowserDeck,
+      threadId: "thread-1",
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("thread-timeline-pane"), {
+      button: 0,
+      clientX: 900,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 760,
+      clientY: 104,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 760,
+      clientY: 104,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+
+    expect(onOpenSecondaryPanel).toHaveBeenCalledTimes(1);
   });
 });

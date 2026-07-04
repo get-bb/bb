@@ -21,6 +21,7 @@ import { useAtomValue } from "jotai";
 import { cn } from "@/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { useCompactSecondaryPanelSwipeOpen } from "@/components/secondary-panel/useCompactSecondaryPanelSwipeOpen";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -62,6 +63,7 @@ interface ThreadDetailSecondaryContentProps {
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
   surface: "page" | "popout";
+  onOpenSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
@@ -223,6 +225,7 @@ export function ThreadDetailSecondaryContent({
   isSecondaryPanelOpen,
   isConversationCollapsed,
   surface,
+  onOpenSecondaryPanel,
   onToggleConversationCollapse,
   metadata,
   secondaryPanel,
@@ -234,6 +237,11 @@ export function ThreadDetailSecondaryContent({
   });
   const stableTimeline = useStableThreadTimelinePaneProps({ value: timeline });
   const renderAsDrawer = useIsCompactViewport();
+  const compactSecondaryPanelSwipeOpenHandlers =
+    useCompactSecondaryPanelSwipeOpen({
+      enabled: renderAsDrawer && !isSecondaryPanelOpen,
+      onOpen: onOpenSecondaryPanel,
+    });
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
@@ -427,6 +435,7 @@ export function ThreadDetailSecondaryContent({
 
   return (
     <div
+      {...compactSecondaryPanelSwipeOpenHandlers}
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
         surface === "page" && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
