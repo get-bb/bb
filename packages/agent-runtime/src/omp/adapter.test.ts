@@ -83,6 +83,27 @@ describe("omp provider adapter", () => {
     });
   });
 
+  it("builds a thread/resume plan with bb and provider thread ids", () => {
+    const adapter = createOmpProviderAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/resume",
+      threadId: "bb-1",
+      providerThreadId: "/tmp/omp-session.jsonl",
+      cwd: "/tmp/workspace",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+    expect(plan).toEqual({
+      kind: "request",
+      method: "thread/resume",
+      params: {
+        threadId: "bb-1",
+        providerThreadId: "/tmp/omp-session.jsonl",
+        cwd: "/tmp/workspace",
+      },
+    });
+  });
+
   it("parses relayed omp model lists, dropping entries without an id", () => {
     const adapter = createOmpProviderAdapter();
     const result = adapter.parseModelListResult({

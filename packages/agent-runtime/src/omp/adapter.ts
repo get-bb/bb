@@ -427,7 +427,8 @@ export function createOmpProviderAdapter(
           kind: "request",
           method: "thread/resume",
           params: {
-            threadId: command.providerThreadId,
+            threadId: command.threadId,
+            providerThreadId: command.providerThreadId,
             ...buildThreadStartParams(command),
           },
         };
@@ -510,4 +511,3 @@ export function createOmpProviderAdapter(
 
   return adapter;
 }
-

@@ -22,7 +22,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { z } from "zod";
@@ -101,6 +101,7 @@ let ompReady: Promise<void> | null = null;
 let ompCommandCounter = 0;
 const pendingOmpRequests = new Map<string, PendingOmpRequest>();
 const threadSessions = new Map<string, ThreadSession>();
+let activeSessionKey: string | undefined;
 let activeThreadId: string | undefined;
 let currentSpawnConfig: OmpSpawnConfig | undefined;
 const stderrTail: string[] = [];
@@ -216,6 +217,7 @@ function rejectPendingOmpRequests(error: Error): void {
 function resetOmpProcessState(): void {
   ompChild = null;
   ompReady = null;
+  activeSessionKey = undefined;
   activeThreadId = undefined;
 }
 
@@ -564,30 +566,35 @@ async function applySessionOptions(
   }
 }
 
-function requireThreadSession(threadId: string): ThreadSession {
-  const session = threadSessions.get(threadId);
+function requireThreadSession(sessionKey: string): ThreadSession {
+  const session = threadSessions.get(sessionKey);
   if (!session) {
-    throw new Error(`No active omp thread session for "${threadId}"`);
+    throw new Error(`No active omp thread session for "${sessionKey}"`);
   }
   return session;
 }
 
+function rememberThreadSession(session: ThreadSession): void {
+  threadSessions.set(session.sessionPath, session);
+}
+
 async function activateThreadSession(
-  threadId: string,
+  sessionKey: string,
   method: "thread/start" | "thread/resume" | "activate",
 ): Promise<void> {
-  const session = requireThreadSession(threadId);
-  if (activeThreadId === threadId) {
+  const session = requireThreadSession(sessionKey);
+  if (activeSessionKey === sessionKey) {
     return;
   }
 
-  if (method === "thread/start" && !existsSync(session.sessionPath)) {
+  if (method === "thread/start") {
     await sendOmpCommand({ type: "new_session" });
     const state = await sendOmpCommand<{ sessionFile?: string }>({
       type: "get_state",
     });
     if (typeof state?.sessionFile === "string" && state.sessionFile.length > 0) {
       session.sessionPath = state.sessionFile;
+      rememberThreadSession(session);
     }
   } else {
     await sendOmpCommand({
@@ -596,7 +603,8 @@ async function activateThreadSession(
     });
   }
 
-  activeThreadId = threadId;
+  activeSessionKey = session.sessionPath;
+  activeThreadId = session.threadId;
 }
 
 async function handleInitialize(id: string | number): Promise<void> {
@@ -623,26 +631,35 @@ async function handleThreadStart(
 ): Promise<void> {
   const threadId =
     typeof params.threadId === "string" ? params.threadId : `omp-${Date.now()}`;
+  const providerThreadId =
+    typeof params.providerThreadId === "string"
+      ? params.providerThreadId
+      : undefined;
   const cwd = typeof params.cwd === "string" ? params.cwd : process.cwd();
   const spawnConfig = buildOmpSpawnConfig(params, cwd, threadId);
-  const sessionPath = resolveOmpSessionFilePath({
-    env: process.env,
-    threadId,
-  });
+  const sessionPath =
+    providerThreadId ??
+    resolveOmpSessionFilePath({
+      env: process.env,
+      threadId,
+    });
   mkdirSync(dirname(sessionPath), { recursive: true });
-  threadSessions.set(threadId, {
+  const session: ThreadSession = {
     threadId,
     cwd,
     sessionPath,
     spawnConfig,
-  });
+  };
+  threadSessions.set(providerThreadId ?? threadId, session);
   try {
     await ensureOmp(spawnConfig);
-    await activateThreadSession(threadId, method);
+    await activateThreadSession(providerThreadId ?? threadId, method);
     await applySessionOptions(params);
   } catch (error) {
-    threadSessions.delete(threadId);
+    threadSessions.delete(providerThreadId ?? threadId);
+    threadSessions.delete(session.sessionPath);
     if (activeThreadId === threadId) {
+      activeSessionKey = undefined;
       activeThreadId = undefined;
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -651,9 +668,9 @@ async function handleThreadStart(
   }
   sendNotification("thread/identity", {
     threadId,
-    providerThreadId: threadId,
+    providerThreadId: session.sessionPath,
   });
-  sendResult(id, { threadId });
+  sendResult(id, { providerThreadId: session.sessionPath });
 }
 
 async function handleTurnStart(
