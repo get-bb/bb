@@ -1269,6 +1269,39 @@ function repairBranchLocalQueuedGroupingBeforeThreadFolders(
   markMigrationApplied(db, threadFoldersMigration);
 }
 
+function repairBranchLocalSkillBundlesBeforeWorktreePortBase(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const worktreePortBaseMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0056_equal_sharon_ventura",
+  );
+  const skillBundlesMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0057_small_yellowjacket",
+  );
+  if (
+    appliedCreatedAts.has(worktreePortBaseMigration.createdAt) ||
+    !appliedCreatedAts.has(skillBundlesMigration.createdAt)
+  ) {
+    return;
+  }
+
+  if (!columnExists(db, "environments", "worktree_port_base")) {
+    applyMigrationStatements(db, worktreePortBaseMigration);
+    return;
+  }
+
+  markMigrationApplied(db, worktreePortBaseMigration);
+}
+
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
   if (!tableExists(db, "__drizzle_migrations")) {
     return;
@@ -1428,6 +1461,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     repairBranchLocalThreadSearchMigrations(db);
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
     repairBranchLocalQueuedGroupingBeforeThreadFolders(db, migrationsFolder);
+    repairBranchLocalSkillBundlesBeforeWorktreePortBase(db, migrationsFolder);
     drizzleMigrate(db, { migrationsFolder });
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
