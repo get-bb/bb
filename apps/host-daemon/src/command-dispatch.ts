@@ -30,6 +30,7 @@ import {
   readHostFileMetadata,
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
+import { writeHostFile } from "./command-handlers/file-write.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
 import { runScript } from "./command-handlers/run-script.js";
@@ -324,6 +325,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
+  "host.write_file": writeHostFile,
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,

@@ -231,6 +231,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     contentEncoding: "utf8",
     mimeType: "text/html",
     sizeBytes: 15,
+    sha256: "a".repeat(64),
   },
   "host.read_file_relative": {
     path: "assets/logo.png",
@@ -238,6 +239,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     contentEncoding: "base64",
     mimeType: "image/png",
     sizeBytes: 8,
+    sha256: "b".repeat(64),
+  },
+  "host.write_file": {
+    outcome: "written",
+    sha256: "c".repeat(64),
+    sizeBytes: 12,
   },
   "provider.list_models": {
     models: [
@@ -581,6 +588,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonOnlineRpcCommandSchema.expectedSha256":
+    "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
@@ -2209,6 +2218,7 @@ describe("host-daemon command schemas", () => {
         contentEncoding: "utf8",
         mimeType: "text/markdown",
         sizeBytes: 13,
+        sha256: "d".repeat(64),
       }),
     ).toMatchObject({
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
@@ -2223,6 +2233,7 @@ describe("host-daemon command schemas", () => {
         contentEncoding: "base64",
         mimeType: "image/png",
         sizeBytes: 8,
+        sha256: "f".repeat(64),
       }),
     ).toMatchObject({
       path: "assets/logo.png",
@@ -2789,6 +2800,7 @@ describe("host-daemon session schemas", () => {
           mimeType: "text/markdown",
           modifiedAtMs: 1234.5,
           sizeBytes: 13,
+          sha256: "e".repeat(64),
         },
       }),
     ).toEqual({
@@ -2803,6 +2815,7 @@ describe("host-daemon session schemas", () => {
         mimeType: "text/markdown",
         modifiedAtMs: 1234.5,
         sizeBytes: 13,
+        sha256: "e".repeat(64),
       },
     });
 
@@ -2819,6 +2832,7 @@ describe("host-daemon session schemas", () => {
           mimeType: "image/png",
           modifiedAtMs: 1234.5,
           sizeBytes: 8,
+          sha256: "f".repeat(64),
         },
       }),
     ).toEqual({
@@ -2833,6 +2847,7 @@ describe("host-daemon session schemas", () => {
         mimeType: "image/png",
         modifiedAtMs: 1234.5,
         sizeBytes: 8,
+        sha256: "f".repeat(64),
       },
     });
 

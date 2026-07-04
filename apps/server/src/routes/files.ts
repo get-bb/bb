@@ -9,13 +9,22 @@ import {
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostRetryableOnlineRpc,
+} from "../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
-import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
+import { requirePrimaryHostId } from "../services/hosts/primary-host.js";
+import {
+  requireNonDestroyedHostWithStatus,
+  requirePublicThreadEnvironment,
+} from "../services/lib/entity-lookup.js";
+
+const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 const HTML_PREVIEW_CONTENT_TYPE = "text/html; charset=utf-8";
@@ -114,7 +123,7 @@ async function serveRawFilesystemHtmlFile(
 }
 
 export function registerFileRoutes(app: Hono, deps: AppDeps): void {
-  const { get } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -122,4 +131,80 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   get(routes.rawFile, async (context, query) =>
     serveRawFilesystemHtmlFile(deps, context.req.param("id"), query.path),
   );
+
+  // Host file primitives (plugin design §4.1): read/write/list against a
+  // connected host. Omitted hostId resolves to the primary (local) host here,
+  // once, at the product boundary — daemon commands always get explicit values.
+  const fileRoutes = publicApiRoutes.files;
+
+  const resolveHostId = (hostId: string | undefined): string => {
+    const resolved = hostId ?? requirePrimaryHostId(deps);
+    requireNonDestroyedHostWithStatus(deps, resolved);
+    return resolved;
+  };
+
+  post(fileRoutes.read, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: payload.path,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.write, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.write_file",
+          path: payload.path,
+          content: payload.content,
+          contentEncoding: payload.contentEncoding ?? "utf8",
+          createParents: payload.createParents ?? false,
+          ...(payload.rootPath !== undefined
+            ? { rootPath: payload.rootPath }
+            : {}),
+          ...(payload.expectedSha256 !== undefined
+            ? { expectedSha256: payload.expectedSha256 }
+            : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  post(fileRoutes.list, async (context, payload) => {
+    const hostId = resolveHostId(payload.hostId);
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_files",
+          path: payload.path,
+          limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
+          ...(payload.query !== undefined ? { query: payload.query } : {}),
+        },
+      });
+      return context.json(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
 }

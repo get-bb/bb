@@ -128,6 +128,7 @@ describe("public project local host routes", () => {
         contentEncoding: "utf8",
         mimeType: "application/typescript",
         sizeBytes: 18,
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;

@@ -227,6 +227,13 @@ Two SDK-level additions plugins need (server-contract changes):
   `originPluginId`, rendered as a badge/filter in the thread list so plugin-spawned
   threads are distinguishable.
 
+*(Added 2026-07-04)* **`bb.sdk.files`** — host file primitives (`read`/`write`/`list`)
+backed by a new `host.write_file` daemon command (25 MB cap, optional `rootPath`
+containment, `expectedSha256` compare-and-swap returning a `conflict` outcome instead of
+an error; reads now include `sha256`). `hostId` optional → primary host, resolved at the
+server boundary. This is the sanctioned path for plugins that edit user files (e.g. the
+notes plugin) — it reaches remote hosts where in-process `node:fs` cannot.
+
 ### 4.2 `bb.settings`
 
 ```ts

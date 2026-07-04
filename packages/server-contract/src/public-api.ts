@@ -74,6 +74,12 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostFileListRequest,
+  HostFileListResponse,
+  HostFileReadRequest,
+  HostFileReadResponse,
+  HostFileWriteRequest,
+  HostFileWriteResponse,
   HostPickFolderRequest,
   HostPickFolderResponse,
   HostPathsExistRequest,
@@ -182,6 +188,9 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostFileListRequestSchema,
+  hostFileReadRequestSchema,
+  hostFileWriteRequestSchema,
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
@@ -378,6 +387,33 @@ export const publicApiRoutes = {
         projectAttachmentContentQuerySchema,
       ),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  files: {
+    read: defineRoute({
+      path: "/files/read",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileReadRequest>(
+        hostFileReadRequestSchema,
+      ),
+      response: jsonResponse<HostFileReadResponse>(),
+    }),
+    write: defineRoute({
+      path: "/files/write",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileWriteRequest>(
+        hostFileWriteRequestSchema,
+      ),
+      response: jsonResponse<HostFileWriteResponse>(),
+    }),
+    list: defineRoute({
+      path: "/files/list",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileListRequest>(
+        hostFileListRequestSchema,
+      ),
+      response: jsonResponse<HostFileListResponse>(),
     }),
   },
 

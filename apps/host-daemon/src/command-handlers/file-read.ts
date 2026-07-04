@@ -1,4 +1,5 @@
 import { isUtf8 } from "node:buffer";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
@@ -16,12 +17,17 @@ export const NON_IMAGE_FILE_SIZE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 type FileContentEncoding = "base64" | "utf8";
 
+export function sha256Hex(contents: Buffer): string {
+  return createHash("sha256").update(contents).digest("hex");
+}
+
 export interface ReadFileForTransportResult {
   content: string;
   contentEncoding: FileContentEncoding;
   mimeType?: string;
   modifiedAtMs?: number;
   path: string;
+  sha256: string;
   sizeBytes: number;
 }
 
@@ -274,6 +280,7 @@ export async function readFileFromGitRef(
       content: "",
       contentEncoding: "utf8",
       ...(mimeType ? { mimeType } : {}),
+      sha256: sha256Hex(Buffer.alloc(0)),
       sizeBytes: 0,
     };
   }
@@ -287,6 +294,7 @@ export async function readFileFromGitRef(
         : blob.contents.toString("base64"),
     contentEncoding,
     ...(mimeType ? { mimeType } : {}),
+    sha256: sha256Hex(blob.contents),
     sizeBytes: blob.sizeBytes,
   };
 }
@@ -327,6 +335,7 @@ export async function readFileForTransport(
     contentEncoding,
     ...(mimeType ? { mimeType } : {}),
     modifiedAtMs: stat.mtimeMs,
+    sha256: sha256Hex(fileContents),
     sizeBytes: stat.size,
   };
 }
@@ -373,6 +382,7 @@ export async function readRootRelativeFileForTransport(
     contentEncoding,
     ...(mimeType ? { mimeType } : {}),
     modifiedAtMs: stat.mtimeMs,
+    sha256: sha256Hex(fileContents),
     sizeBytes: stat.size,
   };
 }

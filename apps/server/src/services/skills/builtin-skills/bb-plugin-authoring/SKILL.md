@@ -165,6 +165,32 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+`bb.sdk.files` reads and writes files on a connected host (not just the
+server machine — this is the right primitive when the user's files may live
+on another host, and its `rootPath` confinement + compare-and-swap guard make
+it the right save path even locally):
+
+```ts
+const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
+// → { content, contentEncoding, sha256, sizeBytes, modifiedAtMs?, ... }
+
+const saved = await bb.sdk.files.write({
+  path: "/home/me/notes/todo.md",
+  rootPath: "/home/me/notes",     // optional: confine writes beneath this root
+  content: "# Todo\n",
+  expectedSha256: file.sha256,    // CAS guard; omit for unconditional, null for create-only
+});
+if (saved.outcome === "conflict") {
+  // File changed since the read (saved.currentSha256, null = deleted) —
+  // re-read and merge instead of clobbering.
+}
+```
+
+`hostId` is optional everywhere (defaults to the primary/local host).
+`bb.sdk.files.list({ path, query?, limit? })` is a recursive fuzzy file
+listing under a directory. Writes cap at 25 MB and return
+`{ outcome: "written", sha256, sizeBytes }`.
+
 ### bb.on — thread lifecycle events
 
 ```ts

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BB Plugin API Additions — Notes Plugin Spec</title>
+<style>
+  :root {
+    --canvas: #fdfdfc;
+    --ink: #1a1a18;
+    --muted: color-mix(in oklab, var(--ink) 55%, var(--canvas));
+    --line: color-mix(in oklab, var(--ink) 12%, var(--canvas));
+    --panel: color-mix(in oklab, var(--ink) 4%, var(--canvas));
+    --accent: #4c6ef5;
+    --new: #0b7a4b;
+    --exists: #6b5d00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #16161a;
+      --ink: #e8e8e4;
+      --accent: #8aa2ff;
+      --new: #52c98a;
+      --exists: #d4c24a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; max-width: 880px; padding: 48px 28px 96px;
+    background: var(--canvas); color: var(--ink);
+    font: 16px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 56px 0 8px; padding-top: 20px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 28px 0 6px; }
+  p, li { color: color-mix(in oklab, var(--ink) 88%, var(--canvas)); }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  code {
+    font: 13px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--panel); padding: 1px 5px; border-radius: 4px;
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .05em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    vertical-align: 3px; margin-left: 8px;
+  }
+  .badge.new    { color: var(--new);    border: 1px solid color-mix(in oklab, var(--new) 45%, var(--canvas)); }
+  .badge.exists { color: var(--exists); border: 1px solid color-mix(in oklab, var(--exists) 45%, var(--canvas)); }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .note {
+    border-left: 3px solid var(--accent); background: var(--panel);
+    padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14.5px;
+  }
+  .files { font-size: 13.5px; color: var(--muted); }
+  .files code { font-size: 12.5px; }
+  a { color: var(--accent); }
+  .toc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 20px; }
+  .toc ol { margin: 6px 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+
+<h1>BB Plugin API Additions</h1>
+<p class="sub">Spec for the platform surfaces needed by the Markdown notes plugin · draft · 2026-07-04</p>
+
+<p>Five additions, motivated by an Obsidian-style notes plugin (nav-panel tree + WYSIWYG
+markdown editor + open-links-in-editor + highlight-to-chat), but each is deliberately
+generic — a code editor, a CSV viewer, or a Jupyter plugin would use the same surfaces.
+The notes plugin itself needs <em>no other</em> platform changes: nav panel, thread-panel
+action, settings, rpc/realtime, and mention providers all exist today.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#composer">useComposer() — composer bridge for plugin frontends</a></li>
+  <li><a href="#opener">fileOpener slot — pluggable default file openers</a></li>
+  <li><a href="#files">bb.sdk.files — host-daemon file read/write</a></li>
+  <li><a href="#subrouting">navPanel sub-routing</a></li>
+  <li><a href="#composition">How the notes plugin composes these</a></li>
+</ol>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="composer">1. <code>useComposer()</code> <span class="badge new">new — small</span></h2>
+
+<p>Lets a plugin component push content into the chat composer draft: quote a selection,
+attach a file, or insert an @-mention pill. This is the "highlight text → reference in
+chat" affordance.</p>
+
+<pre><code>// @bb/plugin-sdk/app
+export interface PluginComposerApi {
+  /** Which draft writes land in (resolved from surrounding context). */
+  scope:
+    | { kind: "thread"; threadId: string }        // thread detail / side panel
+    | { kind: "new-thread"; projectId: string | null }; // compose view, nav panels
+
+  /** Append text as a `&gt; ` blockquote block and focus the composer. */
+  addQuote(text: string): void;
+
+  /** Attach a file reference (deduped by path). */
+  addAttachment(attachment: { path: string }): void;
+
+  /**
+   * Insert an @-mention pill bound to one of THIS plugin's mention
+   * providers. Resolves to context at send via the provider's resolve().
+   */
+  insertMention(mention: { provider: string; id: string; label: string }): void;
+
+  focus(): void;
+}
+
+export function useComposer(): PluginComposerApi;</code></pre>
+
+<h3>Semantics</h3>
+<ul>
+  <li><strong>Scope resolution:</strong> inside a thread context (thread panel tab, thread
+      detail) writes go to that thread's draft; anywhere else (nav panel, homepage
+      section) they go to the new-thread draft — so "reference in chat" from the notes
+      panel seeds the composer you land on next. Never null; always writable.</li>
+  <li><strong>Implementation is a thin wrapper</strong> over the existing shared draft
+      store: <code>usePromptDraftStorage</code> is already a module-level
+      localStorage-backed store, and its <code>addQuote</code>/<code>addAttachment</code>
+      are exactly what the built-in add-to-chat affordances (file preview line selection,
+      diff, terminal) already call. This API exposes the same funnel to plugins, plus the
+      focus nonce.</li>
+  <li><strong>insertMention</strong> appends the pill's replacement text and an
+      offset-based mention record (the existing <code>PromptTextMention</code> model,
+      mention kind <code>plugin</code> already exists). Provider must belong to the
+      calling plugin.</li>
+</ul>
+
+<p class="files">Touches: <code>packages/plugin-sdk/src/app-contract.ts</code>,
+<code>apps/app/src/lib/plugin-frontend.ts</code> (runtime hook impl over
+<code>usePromptDraftStorage</code> + <code>useBbContext</code>). No server changes.</p>
+
+<!-- ================================================================ -->
+<h2 id="opener">2. <code>fileOpener</code> slot <span class="badge new">new — medium</span></h2>
+
+<p>A plugin registers itself as an opener for file extensions; the user can make it the
+default. Every path that opens files — markdown link clicks, the file picker,
+<code>bb thread open</code> — then routes matching files to the plugin's component
+instead of the built-in read-only preview.</p>
+
+<pre><code>// @bb/plugin-sdk/app
+export interface PluginFileOpenerSource {
+  kind: "workspace" | "host" | "thread-storage";
+  threadId?: string;   // workspace / thread-storage
+  hostId?: string;     // host
+  root: string;        // containing root the path was resolved against
+}
+
+export interface PluginFileOpenerProps {
+  path: string;                    // root-relative file path
+  source: PluginFileOpenerSource;
+}
+
+export interface PluginFileOpenerRegistration {
+  id: string;
+  title: string;                        // shown in "Open with…"
+  extensions: readonly string[];        // ["md", "mdx"] — lowercase, no dot
+  component: ComponentType&lt;PluginFileOpenerProps&gt;;
+}
+
+app.slots.fileOpener(registration);</code></pre>
+
+<h3>Host behavior</h3>
+<ul>
+  <li><strong>One interception point.</strong> <code>useThreadFileTabs.openTab</code> is
+      the single funnel all file-opening flows already pass through (markdown local-file
+      links via <code>resolveThreadLocalFileLink</code>, the new-tab file search, the
+      <code>bb thread open</code> WS signal). When the request is a file-preview kind and
+      the extension's default opener is a plugin, the tab opens as the existing
+      <code>plugin-panel</code> tab kind instead — <code>paramsJson =
+      { path, source }</code>, plugin logo as the tab icon, same identity/dedupe
+      semantics shipped for <code>threadPanelAction</code>.</li>
+  <li><strong>Default-opener preference.</strong> A host-level map
+      <code>{ ext → openerId | "builtin" }</code> (default <code>"builtin"</code> for
+      everything). Surfaced two ways: an <em>Open&nbsp;with…</em> menu on file tabs
+      listing the built-in preview plus every matching registered opener, with
+      "Always open <code>.md</code> with…"; and a section in Settings.</li>
+  <li><strong>Graceful degrade.</strong> Opener plugin disabled/removed → fall back to the
+      built-in preview (never a dead tab). "Open with → Built-in preview" is always
+      available as a per-open override.</li>
+  <li><strong>Applies in both hosts of the secondary panel</strong> — thread detail and
+      the root compose view.</li>
+</ul>
+
+<div class="note">This is what makes "links in markdown open in my editor" fall out for
+free: link clicks already resolve to <code>openTab</code> requests, so they inherit the
+preference with zero link-handling changes.</div>
+
+<p class="files">Touches: <code>app-contract.ts</code>, <code>plugin-slots.ts</code>,
+<code>useThreadFileTabs.ts</code>, <code>fixed-panel-tabs-state.ts</code> (reuse
+plugin-panel tab), an <em>Open with…</em> menu, one new persisted app setting.</p>
+
+<!-- ================================================================ -->
+<h2 id="files">3. <code>bb.sdk.files</code> — host file read/write <span class="badge new">new — medium</span></h2>
+
+<p>A first-class host-daemon API for reading and writing files on a host, exposed through
+the SDK (and therefore to plugins, which reach it from their server code or via their own
+rpc from the frontend). Reads exist internally today
+(<code>hostReadFile</code>/<code>hostReadFileRelative</code>); writes are entirely new —
+nothing in the daemon writes workspace files today.</p>
+
+<h3>Daemon contract</h3>
+<pre><code>// packages/host-daemon-contract — new command
+host.writeFile {
+  path: string;                    // absolute host path
+  content: string;
+  encoding: "utf8" | "base64";
+  createParents?: boolean;         // default false
+  /**
+   * Optimistic concurrency:
+   *   omitted  → unconditional write
+   *   sha256   → write only if current content hashes to this (else conflict)
+   *   null     → write only if the file does NOT exist (create)
+   */
+  expectedSha256?: string | null;
+} → { sha256: string; bytes: number }</code></pre>
+
+<ul>
+  <li>Runs on the environment write lane (<code>envLane: "write"</code>) like other
+      workspace mutations, so writes serialize against git operations.</li>
+  <li>Size cap mirrors reads (25&nbsp;MB). Conflict → typed <code>file-conflict</code>
+      error carrying the current <code>sha256</code>.</li>
+  <li>Reads gain a <code>sha256</code> field in their response so an editor can do
+      read-modify-write safely.</li>
+</ul>
+
+<h3>SDK / plugin surface</h3>
+<pre><code>// bb.sdk.files (server assembles; daemon stays a raw primitive)
+bb.sdk.files.read({
+  hostId?: string;                 // default: the server's local host
+  path: string;
+  encoding?: "utf8" | "base64";
+}) → { content, encoding, sha256, size, mtimeMs }
+
+bb.sdk.files.write({
+  hostId?: string;
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";    // default utf8
+  expectedSha256?: string | null;
+  createParents?: boolean;
+}) → { sha256 }
+
+bb.sdk.files.list({ hostId?, path }) → { entries }   // wraps existing hostListFiles</code></pre>
+
+<h3>Why, given plugins already have <code>node:fs</code></h3>
+<ul>
+  <li><strong>Reach:</strong> <code>node:fs</code> sees only the server machine. This API
+      works against any connected host, including remote ones — the notes plugin's
+      "mount a directory" works no matter where the directory lives, and a future
+      workspace-file editor gets a write path into remote worktrees.</li>
+  <li><strong>Concurrency:</strong> the CAS write (<code>expectedSha256</code>) is what
+      makes a save button safe against agents editing the same file mid-session.</li>
+  <li><strong>Boundary hygiene:</strong> daemon owns the host-local primitive, server
+      exposes the product API — per the server/daemon rules. No new policy in the
+      daemon.</li>
+</ul>
+
+<div class="note"><strong>Security posture:</strong> unchanged. Plugins are already
+full-trust in-process code; this adds reach and safety rails, not permissions. If a
+sandbox ever lands, this API is the natural choke point to gate.</div>
+
+<p class="files">Touches: <code>packages/host-daemon-contract/src/commands.ts</code>,
+<code>apps/host-daemon/src/command-handlers/</code> (new <code>file-write.ts</code>),
+server route <code>/api/v1/hosts/:hostId/files</code>,
+<code>packages/sdk/src/areas/files.ts</code> (new area).</p>
+
+<!-- ================================================================ -->
+<h2 id="subrouting">4. navPanel sub-routing <span class="badge new">new — small · backlog #26</span></h2>
+
+<p>Nav panels currently own exactly one route segment
+(<code>/plugins/:pluginId/:panelPath</code>); the github example fakes inner navigation
+with <code>#hash</code> routing. Give panels a real splat.</p>
+
+<pre><code>// Route becomes /plugins/:pluginId/:panelPath/*
+export interface PluginNavPanelProps {
+  subPath: string;                 // "" at the panel root, e.g. "work/ideas.md"
+}
+
+// @bb/plugin-sdk/app — useBbNavigate() gains:
+navigate.toPluginPanel(path: string, options?: {
+  subPath?: string;
+  replace?: boolean;
+});</code></pre>
+
+<ul>
+  <li>Deep links work (<code>/plugins/notes/notes/work/ideas.md</code>), browser
+      back/forward navigate within the panel, and the notes tree can be plain
+      <code>&lt;a&gt;</code>-style navigation.</li>
+  <li>Migration: <code>subPath</code> is additive (<code>""</code> today), so existing
+      panels are unaffected; the github example migrates off hash routing as
+      validation.</li>
+</ul>
+
+<p class="files">Touches: <code>route-paths.ts</code>, <code>PluginPanelView.tsx</code>,
+<code>app-contract.ts</code> (<code>PluginNavPanelProps</code> + navigate).</p>
+
+<!-- ================================================================ -->
+<h2 id="composition">5. How the notes plugin composes these</h2>
+
+<table>
+  <tr><th>Feature</th><th>Surface</th><th>Status</th></tr>
+  <tr><td>Notes view in main nav (tree + editor)</td>
+      <td><code>navPanel</code> slot, <code>chrome: "none"</code></td>
+      <td><span class="badge exists">exists</span></td></tr>
+  <tr><td>Mounted directories</td>
+      <td><code>bb.settings.define</code> (+ KV for UI-driven mounts); files via
+          <code>bb.sdk.files</code></td>
+      <td><span class="badge exists">exists</span> + <a href="#files">§3</a></td></tr>
+  <tr><td>WYSIWYG editor</td>
+      <td>Bundled dep — recommend Milkdown "Crepe" (markdown-native ProseMirror)</td>
+      <td><span class="badge exists">exists</span></td></tr>
+  <tr><td>Load/save notes, live tree refresh</td>
+      <td><code>bb.rpc.register</code> + <code>bb.realtime.publish</code> from an fs
+          watcher; CAS saves via <code>expectedSha256</code></td>
+      <td><span class="badge exists">exists</span> + <a href="#files">§3</a></td></tr>
+  <tr><td>Markdown links open in the editor by default</td>
+      <td><code>fileOpener</code> slot + default-opener preference</td>
+      <td><a href="#opener">§2</a></td></tr>
+  <tr><td>Editor in the thread side panel</td>
+      <td><code>threadPanelAction</code> → <code>openPanel({ params: { path } })</code></td>
+      <td><span class="badge exists">exists</span></td></tr>
+  <tr><td>Highlight → reference in chat</td>
+      <td><code>useComposer().addQuote()</code> / <code>insertMention()</code></td>
+      <td><a href="#composer">§1</a></td></tr>
+  <tr><td>Type <code>@note:</code> in the composer</td>
+      <td><code>bb.ui.registerMentionProvider</code> (resolve-at-send)</td>
+      <td><span class="badge exists">exists</span></td></tr>
+  <tr><td>Deep-link a note</td>
+      <td>navPanel <code>subPath</code></td>
+      <td><a href="#subrouting">§4</a></td></tr>
+</table>
+
+<h3>Suggested build order</h3>
+<ol>
+  <li><strong>§3 <code>bb.sdk.files</code></strong> — unblocks the plugin's core
+      read/write loop and is the only server/daemon-boundary change.</li>
+  <li><strong>§4 sub-routing</strong> — small, and the notes tree wants it from day
+      one.</li>
+  <li><strong>Notes plugin v1</strong> — nav panel, Milkdown, settings, rpc/realtime,
+      thread-panel action, mention provider. Platform-change-free beyond §3/§4.</li>
+  <li><strong>§1 <code>useComposer()</code></strong> — adds highlight-to-chat.</li>
+  <li><strong>§2 <code>fileOpener</code></strong> — the one design-worthy piece; ship
+      last once the editor proves the component contract.</li>
+</ol>
+
+<h3>Open questions</h3>
+<ul>
+  <li>§2: should openers match on more than extension (glob? content sniff)? V1 says
+      extension-only.</li>
+  <li>§2: does the default-opener preference live per-project or app-wide? Proposal:
+      app-wide.</li>
+  <li>§3: expose <code>files.watch</code> (daemon-side watcher → realtime events) in V1,
+      or let plugins poll/watch server-locally? Proposal: defer; the notes plugin
+      watches server-locally.</li>
+  <li>§1: should <code>addAttachment</code> accept host paths that need staging through
+      the attachment-upload pipeline, or workspace-relative paths only?</li>
+</ul>
+
+</body>
+</html>

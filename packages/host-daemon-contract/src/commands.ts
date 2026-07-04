@@ -400,6 +400,32 @@ const hostFileMetadataCommandSchema = z
   })
   .strict();
 
+/**
+ * Write a file at an absolute host path. Mirrors `host.read_file`'s
+ * containment contract: when `rootPath` is provided, the daemon enforces that
+ * the resolved target stays under that declared absolute root (following
+ * symlinks on the nearest existing ancestor).
+ *
+ * `expectedSha256` is the optimistic-concurrency guard for read-modify-write
+ * callers (editors saving over files agents may also touch):
+ * - omitted → unconditional write
+ * - a hash  → write only when the current content hashes to it
+ * - null    → write only when the file does not exist yet (create)
+ * A failed guard is the `conflict` result, not an error, so the caller gets
+ * the current hash to re-read against.
+ */
+const hostWriteFileCommandSchema = z
+  .object({
+    type: z.literal("host.write_file"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+    content: z.string(),
+    contentEncoding: z.enum(["utf8", "base64"]),
+    createParents: z.boolean(),
+    expectedSha256: z.string().nullable().optional(),
+  })
+  .strict();
+
 const hostListFilesCommandSchema = z.object({
   type: z.literal("host.list_files"),
   path: z.string().min(1),
@@ -770,7 +796,28 @@ const fileReadResultSchema = z.object({
   mimeType: z.string().optional(),
   sizeBytes: z.number().int().nonnegative(),
   modifiedAtMs: z.number().nonnegative().optional(),
+  // Hash of the returned bytes, so editors can do compare-and-swap saves via
+  // `host.write_file`'s `expectedSha256`.
+  sha256: z.string(),
 });
+
+const fileWriteResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("written"),
+      sha256: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("conflict"),
+      // Hash of the content currently on disk; null when the file does not
+      // exist (the caller expected it to).
+      currentSha256: z.string().nullable(),
+    })
+    .strict(),
+]);
 
 const fileMetadataResultSchema = z.object({
   path: z.string(),
@@ -1273,6 +1320,15 @@ export const hostDaemonCommandRegistry = {
     resultSchema: fileReadResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.write_file": defineHostDaemonCommandDescriptor({
+    type: "host.write_file",
+    schema: hostWriteFileCommandSchema,
+    resultSchema: fileWriteResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),
