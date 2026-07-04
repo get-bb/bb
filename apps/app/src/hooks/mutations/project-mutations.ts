@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateProjectRequest,
+  ProjectRunCommandRequest,
   ProjectResponse,
   ReorderProjectRequest,
   UpdateProjectRequest,
@@ -49,6 +50,10 @@ interface ReorderProjectMutationRequest extends ReorderProjectRequest {
 interface UploadPromptAttachmentRequest {
   projectId: string;
   file: File;
+}
+
+interface ProjectRunCommandMutationRequest extends ProjectRunCommandRequest {
+  projectId: string;
 }
 
 export function useCreateProject() {
@@ -125,6 +130,43 @@ export function useDeleteProject() {
     mutationFn: (projectId: string) => api.deleteProject(projectId),
     onSuccess: (_data, projectId) => {
       applyProjectDeleteResult({ projectId, queryClient });
+    },
+  });
+}
+
+export function useStartProjectRunCommand() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to start run command.",
+      lifecycleOperation: "open_terminal",
+    },
+    mutationFn: ({ projectId, ...request }: ProjectRunCommandMutationRequest) =>
+      api.startProjectRunCommand(projectId, request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectUpdateQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+export function useStopProjectRunCommand() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to stop run command.",
+    },
+    mutationFn: ({ projectId, ...request }: ProjectRunCommandMutationRequest) =>
+      api.stopProjectRunCommand(projectId, request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectUpdateQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
     },
   });
 }

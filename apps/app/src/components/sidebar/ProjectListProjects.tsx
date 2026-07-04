@@ -4,7 +4,6 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { ProjectResponse } from "@bb/server-contract";
 import type { ConnectionAwareQueryStatus } from "@/hooks/queries/connection-aware-query-state";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import {
@@ -13,7 +12,11 @@ import {
   SidebarMenuSkeleton,
 } from "@/components/ui/sidebar.js";
 import { ProjectRow } from "./ProjectRow";
-import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow";
+import type {
+  ProjectRowProps,
+  ProjectThreadListState,
+  SidebarProjectRowProject,
+} from "./ProjectRow";
 import type { ThreadComparator } from "./projectThreadGroups";
 import { useSidebarSortable } from "./sortableMotion";
 import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
@@ -25,7 +28,7 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
  * both the live sidebar and stories drive it from the same prop shape.
  */
 export interface ProjectListRowModel {
-  project: ProjectResponse;
+  project: SidebarProjectRowProject;
   threadListState: ProjectThreadListState;
   isActive: boolean;
   isLocalPathInvalid: boolean;

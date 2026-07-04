@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   FILE_LIST_QUERY_MAX_LENGTH,
+  PROJECT_RUN_COMMAND_MAX_LENGTH,
   WORKTREE_LIFECYCLE_SCRIPT_MAX_LENGTH,
   getProjectPathValidationMessage,
   gitBranchNameSchema,
@@ -11,12 +12,14 @@ import {
   projectSourceSchema,
   promptHistoryEntrySchema,
   threadListEntrySchema,
+  terminalSessionStatusSchema,
 } from "@bb/domain";
 import {
   branchListQuerySchema,
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
 } from "./shared.js";
+import { terminalCreateTargetSchema } from "./terminals.js";
 
 const localProjectPathRequestSchema = z
   .string()
@@ -204,6 +207,13 @@ export interface ProjectAttachmentUploadForm {
 export const updateProjectRequestSchema = z
   .object({
     name: z.string().min(1),
+    runCommand: z
+      .preprocess(
+        (value) =>
+          typeof value === "string" && value.trim().length === 0 ? null : value,
+        z.string().trim().max(PROJECT_RUN_COMMAND_MAX_LENGTH).nullable(),
+      )
+      .optional(),
     worktreeInitScript: z
       .preprocess(
         (value) =>
@@ -227,11 +237,60 @@ export const updateProjectRequestSchema = z
   .refine(
     (value) =>
       value.name !== undefined ||
+      value.runCommand !== undefined ||
       value.worktreeInitScript !== undefined ||
       value.worktreeTeardownScript !== undefined,
     "At least one field must be provided",
   );
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
+
+export const projectRunCommandTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("project"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("environment"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+]);
+export type ProjectRunCommandTarget = z.infer<
+  typeof projectRunCommandTargetSchema
+>;
+
+export const projectRunCommandRequestSchema = z
+  .object({
+    target: projectRunCommandTargetSchema,
+  })
+  .strict();
+export type ProjectRunCommandRequest = z.infer<
+  typeof projectRunCommandRequestSchema
+>;
+
+export const projectRunCommandTargetStateSchema = z
+  .object({
+    target: projectRunCommandTargetSchema,
+    status: terminalSessionStatusSchema.nullable(),
+    terminalSessionId: z.string().min(1).nullable(),
+    terminalTarget: terminalCreateTargetSchema.nullable(),
+    updatedAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+export type ProjectRunCommandTargetState = z.infer<
+  typeof projectRunCommandTargetStateSchema
+>;
+
+export const projectRunCommandStateResponseSchema = z
+  .object({
+    states: z.array(projectRunCommandTargetStateSchema),
+  })
+  .strict();
+export type ProjectRunCommandStateResponse = z.infer<
+  typeof projectRunCommandStateResponseSchema
+>;
 
 export const updateProjectSourceRequestSchema = z
   .object({
@@ -343,6 +402,7 @@ export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 
 export const projectWithThreadsResponseSchema = projectResponseSchema.extend({
   threads: z.array(threadListEntrySchema),
+  runCommandStates: z.array(projectRunCommandTargetStateSchema),
   /**
    * Resolved provider/model/reasoning/permission/tier defaults for creating a
    * root thread in this project. Inlined so the new-thread composer can render

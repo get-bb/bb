@@ -24,6 +24,8 @@ function terminalSession(
     threadId: "thr_1",
     environmentId: "env_1",
     hostId: "host_1",
+    purpose: "manual",
+    runCommandProjectId: null,
     title: "Terminal",
     initialCwd: "/workspace",
     cols: 100,

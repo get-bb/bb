@@ -143,6 +143,7 @@ import {
   isDesktopBrowserAvailable,
 } from "@/lib/bb-desktop";
 import {
+  ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
   useRemoveFixedRightTerminalTab,
@@ -150,7 +151,10 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createNewTabFixedPanelTab,
+  type TerminalFixedPanelTabTarget,
+} from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   getFilePreviewLineRangeStart,
@@ -240,7 +244,6 @@ function resolveHostOpenContext(args: {
 // Fill the scroll area and center the no-projects welcome both axes.
 const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
-const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
@@ -772,6 +775,12 @@ export function buildRootComposeTerminalSessions({
     );
   }
   return undefined;
+}
+
+function isRootComposeTerminalTarget(
+  target: TerminalFixedPanelTabTarget | null,
+): target is RootComposeTerminalTarget {
+  return target?.kind === "environment" || target?.kind === "host_path";
 }
 
 function LegacyProjectComposeRedirect({
@@ -1937,6 +1946,31 @@ export function RootComposeView(props: RootComposeViewProps) {
         : rootPanelHostPathTerminalTarget,
     [rootPanelEnvironmentId, rootPanelHostPathTerminalTarget],
   );
+  const activeTerminalTabTarget =
+    activeFixedSecondaryTab?.kind === "terminal" &&
+    isRootComposeTerminalTarget(activeFixedSecondaryTab.target)
+      ? activeFixedSecondaryTab.target
+      : null;
+  const loadedTerminalTarget =
+    activeTerminalTabTarget ?? rootPanelTerminalTarget;
+  const loadedTerminalEnvironmentId =
+    loadedTerminalTarget?.kind === "environment"
+      ? loadedTerminalTarget.environmentId
+      : null;
+  const loadedTerminalEnvironmentQuery = useEnvironment(
+    loadedTerminalEnvironmentId,
+    {
+      enabled:
+        props.surface === "page" &&
+        loadedTerminalEnvironmentId !== null &&
+        loadedTerminalEnvironmentId !== rootPanelEnvironmentId,
+      staleTime: 5_000,
+    },
+  );
+  const loadedTerminalEnvironment =
+    loadedTerminalEnvironmentId === rootPanelEnvironmentId
+      ? rootPanelEnvironment
+      : loadedTerminalEnvironmentQuery.data;
   const {
     threadStorageFiles: rootThreadStorageFiles,
     threadStorageRootPath: rootThreadStorageRootPath,
@@ -1968,27 +2002,27 @@ export function RootComposeView(props: RootComposeViewProps) {
     ? rootThreadStorageRootPath
     : activeStorageThreadStorageRootPath;
   const environmentTerminalsListQuery = useEnvironmentTerminals(
-    rootPanelEnvironmentId ?? "",
+    loadedTerminalEnvironmentId ?? "",
     {
       enabled:
         props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "environment",
+        loadedTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
-    rootPanelTerminalTarget?.kind === "host_path"
+    loadedTerminalTarget?.kind === "host_path"
       ? {
-          kind: "host_path",
-          hostId: rootPanelTerminalTarget.hostId,
-          ...(rootPanelTerminalTarget.cwd === null
+          kind: loadedTerminalTarget.kind,
+          hostId: loadedTerminalTarget.hostId,
+          ...(loadedTerminalTarget.cwd === null
             ? {}
-            : { cwd: rootPanelTerminalTarget.cwd }),
+            : { cwd: loadedTerminalTarget.cwd }),
         }
       : null,
     {
       enabled:
         props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "host_path",
+        loadedTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
@@ -1996,12 +2030,12 @@ export function RootComposeView(props: RootComposeViewProps) {
       buildRootComposeTerminalSessions({
         environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
         globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
-        terminalTarget: rootPanelTerminalTarget,
+        terminalTarget: loadedTerminalTarget,
       }),
     [
       environmentTerminalsListQuery.data?.sessions,
       globalTerminalsListQuery.data?.sessions,
-      rootPanelTerminalTarget,
+      loadedTerminalTarget,
     ],
   );
   const terminalSessions =
@@ -2056,6 +2090,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     retainedTerminalId,
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
+    terminalTarget: loadedTerminalTarget,
   });
   const activeRootHostFileThreadId =
     activeHostFileThreadId ??
@@ -2077,8 +2112,14 @@ export function RootComposeView(props: RootComposeViewProps) {
             orderedTabs: orderedSecondaryFileTabs,
             retainedTerminalId,
             terminalSessions: loadedTerminalSessions,
+            terminalTarget: loadedTerminalTarget,
           }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs, retainedTerminalId],
+    [
+      loadedTerminalSessions,
+      loadedTerminalTarget,
+      orderedSecondaryFileTabs,
+      retainedTerminalId,
+    ],
   );
   useEffect(() => {
     if (!terminalsListLoaded) {
@@ -2089,9 +2130,11 @@ export function RootComposeView(props: RootComposeViewProps) {
         retainedTerminalId,
         state,
         terminalSessions,
+        terminalTarget: loadedTerminalTarget,
       }),
     );
   }, [
+    loadedTerminalTarget,
     retainedTerminalId,
     terminalSessions,
     terminalsListLoaded,
@@ -2102,6 +2145,12 @@ export function RootComposeView(props: RootComposeViewProps) {
     environmentHostId: rootPanelEnvironment?.hostId,
     terminalTarget: rootPanelTerminalTarget,
     environmentStatus: rootPanelEnvironment?.status,
+  });
+  const canCreateLoadedTerminal = canCreateRootComposeTerminal({
+    connectedHostIds,
+    environmentHostId: loadedTerminalEnvironment?.hostId,
+    terminalTarget: loadedTerminalTarget,
+    environmentStatus: loadedTerminalEnvironment?.status,
   });
   const openPersistedWorkspaceFile = useCallback(
     (file: WorkspaceFileTabState) => {
@@ -2419,20 +2468,24 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {
-      if (rootPanelTerminalTarget === null) {
-        removeFixedTerminalTab(terminalId);
-        return;
-      }
+      const terminalTab = fixedPanelTabsState.secondary.tabs.find(
+        (tab) => tab.kind === "terminal" && tab.terminalId === terminalId,
+      );
+      const terminalTarget =
+        terminalTab?.kind === "terminal" &&
+        isRootComposeTerminalTarget(terminalTab.target)
+          ? terminalTab.target
+          : loadedTerminalTarget;
       const options = {
         onSuccess: () => {
           removeFixedTerminalTab(terminalId);
         },
       };
-      if (rootPanelTerminalTarget.kind === "environment") {
+      if (terminalTarget?.kind === "environment") {
         closeEnvironmentTerminalMutation.mutate(
           {
             mode: "force",
-            environmentId: rootPanelTerminalTarget.environmentId,
+            environmentId: terminalTarget.environmentId,
             terminalId,
           },
           options,
@@ -2447,8 +2500,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     [
       closeEnvironmentTerminalMutation,
       closeHostPathTerminalMutation,
+      fixedPanelTabsState.secondary.tabs,
+      loadedTerminalTarget,
       removeFixedTerminalTab,
-      rootPanelTerminalTarget,
     ],
   );
   const handleCloseWindowRequest = useCallback(() => {
@@ -2848,13 +2902,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     tabs: syncedOrderedSecondaryFileTabs,
   });
   const fileTabContent: ReactNode =
-    activeTerminalId && rootPanelTerminalTarget ? (
+    activeTerminalId && loadedTerminalTarget ? (
       <ThreadTerminalPanel
-        canCreateTerminal={canCreateRootTerminal}
+        canCreateTerminal={canCreateLoadedTerminal}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
-        target={rootPanelTerminalTarget}
+        target={loadedTerminalTarget}
       />
     ) : isNewTabActive ? (
       <NewTabPage

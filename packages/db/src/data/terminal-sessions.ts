@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type {
   TerminalSessionCloseReason,
+  TerminalSessionPurpose,
   TerminalSessionStatus,
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -19,7 +20,9 @@ export interface CreateTerminalSessionInput {
   hostId: string;
   initialCwd: string;
   now?: number;
+  purpose?: TerminalSessionPurpose;
   rows: number;
+  runCommandProjectId?: string | null;
   status: TerminalSessionStatus;
   threadId: string | null;
   title: string;
@@ -147,6 +150,15 @@ export interface MarkDaemonTerminalSessionsDisconnectedArgs {
   now?: number;
 }
 
+export interface GetActiveProjectRunCommandTerminalSessionArgs {
+  environmentId: string | null;
+  projectId: string;
+}
+
+export interface ListVisibleProjectRunCommandTerminalSessionsArgs {
+  projectIds: readonly string[];
+}
+
 const DAEMON_OWNED_TERMINAL_STATUSES: TerminalSessionStatus[] = [
   "starting",
   "running",
@@ -168,6 +180,8 @@ export function createTerminalSession(
       threadId: input.threadId,
       environmentId: input.environmentId,
       hostId: input.hostId,
+      purpose: input.purpose ?? "manual",
+      runCommandProjectId: input.runCommandProjectId ?? null,
       daemonSessionId: input.daemonSessionId,
       title: input.title,
       initialCwd: input.initialCwd,
@@ -182,6 +196,55 @@ export function createTerminalSession(
     })
     .returning()
     .get();
+}
+
+export function getActiveProjectRunCommandTerminalSession(
+  db: TerminalSessionReadConnection,
+  args: GetActiveProjectRunCommandTerminalSessionArgs,
+): TerminalSessionRow | null {
+  const environmentFilter =
+    args.environmentId === null
+      ? isNull(terminalSessions.environmentId)
+      : eq(terminalSessions.environmentId, args.environmentId);
+
+  return (
+    db
+      .select()
+      .from(terminalSessions)
+      .where(
+        and(
+          eq(terminalSessions.purpose, "project_run_command"),
+          eq(terminalSessions.runCommandProjectId, args.projectId),
+          environmentFilter,
+          isNull(terminalSessions.threadId),
+          inArray(terminalSessions.status, DAEMON_OWNED_TERMINAL_STATUSES),
+        ),
+      )
+      .orderBy(desc(terminalSessions.createdAt), desc(terminalSessions.id))
+      .get() ?? null
+  );
+}
+
+export function listVisibleProjectRunCommandTerminalSessions(
+  db: TerminalSessionReadConnection,
+  args: ListVisibleProjectRunCommandTerminalSessionsArgs,
+): TerminalSessionRow[] {
+  if (args.projectIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select()
+    .from(terminalSessions)
+    .where(
+      and(
+        eq(terminalSessions.purpose, "project_run_command"),
+        inArray(terminalSessions.runCommandProjectId, [...args.projectIds]),
+        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
+      ),
+    )
+    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
+    .all();
 }
 
 export function listTerminalSessionsByThread(

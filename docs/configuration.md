@@ -100,6 +100,18 @@ blank, bb falls back to the legacy tracked `.bb-env-setup.sh` file at the repo
 root. See [Worktrees and lifecycle scripts](./worktrees.md) for the execution
 contract.
 
+## Project Run Commands
+
+Project Settings also includes a freeform **Run command** for the project. Use
+it for the command that starts the repo, such as `pnpm dev` or a project-local
+script. The sidebar run button starts it in a terminal from the project checkout;
+worktree rows start the same command from that worktree. While the terminal is
+starting or running, the button becomes a stop button and the sidebar shows an
+active run indicator for the project.
+
+The run command is stored with the project, not in `~/.bb/config.json`, and is
+blank by default.
+
 ## Client SSH Targets
 
 `~/.bb/client.json` is local to the machine showing the UI. The CLI resolves the

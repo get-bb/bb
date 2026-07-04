@@ -15,6 +15,8 @@ const BASE_TERMINAL_SESSION: TerminalSession = {
   threadId: THREAD_ID,
   environmentId: "env_terminal_story",
   hostId: "host_terminal_story",
+  purpose: "manual",
+  runCommandProjectId: null,
   title: "Terminal 1",
   initialCwd: "/Users/michael/project",
   cols: 100,

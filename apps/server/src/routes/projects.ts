@@ -2,11 +2,13 @@ import path from "node:path";
 import {
   countProjectSources,
   createProject,
+  getActiveProjectRunCommandTerminalSession,
   getPersonalProject,
   createProjectSource,
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  listVisibleProjectRunCommandTerminalSessions,
   listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
@@ -24,8 +26,12 @@ import {
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
+  type ProjectRunCommandStateResponse,
+  type ProjectRunCommandTarget,
+  type ProjectRunCommandTargetState,
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
+  type TerminalCreateTarget,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
@@ -42,7 +48,10 @@ import {
   requirePublicStandardProject,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
+import {
+  isActiveTerminalSessionStatus,
+  PROMPT_HISTORY_ENTRY_LIMIT,
+} from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
@@ -90,6 +99,7 @@ function toProjectResponseProjectFields(
     id: project.id,
     kind: project.kind,
     name: project.name,
+    runCommand: project.runCommand,
     worktreeInitScript: project.worktreeInitScript,
     worktreeTeardownScript: project.worktreeTeardownScript,
     createdAt: project.createdAt,
@@ -131,6 +141,137 @@ function buildProjectResponses(
     ? [requirePublicStandardProject(deps.db, projectId)]
     : listPublicProjects(deps.db);
   return buildProjectResponsesFromRows(deps, projects);
+}
+
+function projectRunCommandTargetKey(target: ProjectRunCommandTarget): string {
+  switch (target.kind) {
+    case "project":
+      return "project";
+    case "environment":
+      return `environment:${target.environmentId}`;
+  }
+}
+
+function toProjectRunCommandTargetState(
+  args: {
+    target: ProjectRunCommandTarget;
+  } & (
+    | {
+        session: {
+          environmentId: string | null;
+          hostId: string;
+          id: string;
+          initialCwd: string;
+          status: ProjectRunCommandTargetState["status"];
+          updatedAt: number;
+        };
+      }
+    | { session: null }
+  ),
+): ProjectRunCommandTargetState {
+  if (args.session === null) {
+    return {
+      target: args.target,
+      status: null,
+      terminalSessionId: null,
+      terminalTarget: null,
+      updatedAt: null,
+    };
+  }
+  return {
+    target: args.target,
+    status: args.session.status,
+    terminalSessionId: args.session.id,
+    terminalTarget: terminalTargetForRunCommandSession(args.session),
+    updatedAt: args.session.updatedAt,
+  };
+}
+
+function terminalTargetForRunCommandSession(session: {
+  environmentId: string | null;
+  hostId: string;
+  initialCwd: string;
+}): TerminalCreateTarget {
+  if (session.environmentId !== null) {
+    return {
+      kind: "environment",
+      environmentId: session.environmentId,
+    };
+  }
+  return {
+    kind: "host_path",
+    hostId: session.hostId,
+    cwd: session.initialCwd,
+  };
+}
+
+function stateForRunCommandSession(
+  session: ReturnType<
+    typeof listVisibleProjectRunCommandTerminalSessions
+  >[number],
+): ProjectRunCommandTargetState {
+  return toProjectRunCommandTargetState({
+    target:
+      session.environmentId === null
+        ? { kind: "project" }
+        : { kind: "environment", environmentId: session.environmentId },
+    session,
+  });
+}
+
+function shouldReplaceRunCommandState(
+  current: ProjectRunCommandTargetState | undefined,
+  next: ProjectRunCommandTargetState,
+): boolean {
+  if (!current) {
+    return true;
+  }
+  if (next.status && isActiveTerminalSessionStatus(next.status)) {
+    return (
+      !current.status ||
+      !isActiveTerminalSessionStatus(current.status) ||
+      (next.updatedAt ?? 0) >= (current.updatedAt ?? 0)
+    );
+  }
+  if (current.status && isActiveTerminalSessionStatus(current.status)) {
+    return false;
+  }
+  return (next.updatedAt ?? 0) >= (current.updatedAt ?? 0);
+}
+
+function buildProjectRunCommandStatesByProjectId(
+  deps: AppDeps,
+  projectIds: readonly string[],
+): Map<string, ProjectRunCommandTargetState[]> {
+  const statesByProjectId = new Map<
+    string,
+    Map<string, ProjectRunCommandTargetState>
+  >();
+
+  for (const session of listVisibleProjectRunCommandTerminalSessions(deps.db, {
+    projectIds,
+  })) {
+    const projectId = session.runCommandProjectId;
+    if (projectId === null) {
+      continue;
+    }
+    const state = stateForRunCommandSession(session);
+    const key = projectRunCommandTargetKey(state.target);
+    let statesByTarget = statesByProjectId.get(projectId);
+    if (!statesByTarget) {
+      statesByTarget = new Map();
+      statesByProjectId.set(projectId, statesByTarget);
+    }
+    if (shouldReplaceRunCommandState(statesByTarget.get(key), state)) {
+      statesByTarget.set(key, state);
+    }
+  }
+
+  const result = new Map<string, ProjectRunCommandTargetState[]>();
+  for (const [projectId, statesByTarget] of statesByProjectId) {
+    result.set(projectId, Array.from(statesByTarget.values()));
+  }
+  return result;
 }
 
 function toProjectOrderResponse(
@@ -212,10 +353,15 @@ function buildProjectsWithThreadsResponseFromRows(
     deps.db,
     { projectIds },
   );
+  const runCommandStatesByProjectId = buildProjectRunCommandStatesByProjectId(
+    deps,
+    projectIds,
+  );
 
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
+    runCommandStates: runCommandStatesByProjectId.get(project.id) ?? [],
     defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
       storedDefaults: defaultsByProjectId.get(project.id) ?? null,
     }).executionDefaults,
@@ -335,6 +481,87 @@ function resolveProjectSourcePath(
   return { hostId: source.hostId, path: source.path };
 }
 
+function runCommandEnvironmentIdForTarget(
+  target: ProjectRunCommandTarget,
+): string | null {
+  switch (target.kind) {
+    case "project":
+      return null;
+    case "environment":
+      return target.environmentId;
+  }
+}
+
+function requireRunCommandForProject(
+  project: ReturnType<typeof requirePublicStandardProject>,
+): string {
+  const command = project.runCommand?.trim() ?? "";
+  if (command.length === 0) {
+    throw new ApiError(
+      409,
+      "project_run_command_unconfigured",
+      "Project run command is not configured",
+    );
+  }
+  return command;
+}
+
+function resolveProjectRunCommandLaunchTarget(
+  deps: Pick<AppDeps, "config" | "db" | "hub">,
+  args: { projectId: string; target: ProjectRunCommandTarget },
+) {
+  switch (args.target.kind) {
+    case "project": {
+      const sourcePath = resolveProjectSourcePath(deps, {
+        hostId: null,
+        projectId: args.projectId,
+      });
+      return {
+        environmentId: null,
+        target: {
+          kind: "host_path" as const,
+          hostId: sourcePath.hostId,
+          cwd: sourcePath.path,
+        },
+      };
+    }
+    case "environment":
+      resolveEnvironmentPath(deps, {
+        environmentId: args.target.environmentId,
+        projectId: args.projectId,
+      });
+      return {
+        environmentId: args.target.environmentId,
+        target: {
+          kind: "environment" as const,
+          environmentId: args.target.environmentId,
+        },
+      };
+  }
+}
+
+function buildProjectRunCommandStateResponse(
+  deps: AppDeps,
+  projectId: string,
+): ProjectRunCommandStateResponse {
+  return {
+    states:
+      buildProjectRunCommandStatesByProjectId(deps, [projectId]).get(
+        projectId,
+      ) ?? [],
+  };
+}
+
+function findActiveProjectRunCommandSession(
+  deps: Pick<AppDeps, "db">,
+  args: { projectId: string; target: ProjectRunCommandTarget },
+) {
+  return getActiveProjectRunCommandTerminalSession(deps.db, {
+    projectId: args.projectId,
+    environmentId: runCommandEnvironmentIdForTarget(args.target),
+  });
+}
+
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -377,6 +604,54 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       projectId,
     });
     return context.json(plan.defaultView);
+  });
+
+  get(routes.runCommandState, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    return context.json(buildProjectRunCommandStateResponse(deps, projectId));
+  });
+
+  post(routes.startRunCommand, async (context, payload) => {
+    const projectId = context.req.param("id");
+    const project = requirePublicStandardProject(deps.db, projectId);
+    const command = requireRunCommandForProject(project);
+    const launch = resolveProjectRunCommandLaunchTarget(deps, {
+      projectId,
+      target: payload.target,
+    });
+    const existing = getActiveProjectRunCommandTerminalSession(deps.db, {
+      projectId,
+      environmentId: launch.environmentId,
+    });
+    if (!existing) {
+      await deps.terminalSessions.createProjectRunCommandTerminal({
+        command,
+        projectId,
+        target: launch.target,
+      });
+    }
+    return context.json(buildProjectRunCommandStateResponse(deps, projectId));
+  });
+
+  post(routes.stopRunCommand, (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    resolveProjectRunCommandLaunchTarget(deps, {
+      projectId,
+      target: payload.target,
+    });
+    const existing = findActiveProjectRunCommandSession(deps, {
+      projectId,
+      target: payload.target,
+    });
+    if (existing) {
+      deps.terminalSessions.closeTerminal({
+        terminalId: existing.id,
+        payload: { mode: "force", reason: "user" },
+      });
+    }
+    return context.json(buildProjectRunCommandStateResponse(deps, projectId));
   });
 
   get(routes.promptHistory, (context, query) => {

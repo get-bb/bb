@@ -27,6 +27,8 @@ function terminalSession(
     threadId: "thr_1",
     environmentId: "env_1",
     hostId: "host_1",
+    purpose: "manual",
+    runCommandProjectId: null,
     title: "Terminal",
     initialCwd: "/workspace",
     cols: 100,
@@ -47,7 +49,10 @@ function tabIds(tabs: readonly TabIdentity[]): string[] {
 
 describe("terminalPanelTabs", () => {
   it("resolves a retained terminal id only from the open active terminal tab", () => {
-    const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
+    const terminalTab = createTerminalFixedPanelTab({
+      terminalId: "term_1",
+      target: { kind: "thread", threadId: "thr_1" },
+    });
     const fileTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env_1",
       tab: {
@@ -307,7 +312,10 @@ describe("terminalPanelTabs", () => {
   });
 
   it("keeps fixed panel state identity when terminal tabs already match", () => {
-    const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
+    const terminalTab = createTerminalFixedPanelTab({
+      terminalId: "term_1",
+      target: { kind: "thread", threadId: "thr_1" },
+    });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
         activeTabId: terminalTab.id,

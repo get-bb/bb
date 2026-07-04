@@ -553,6 +553,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId,
   });
   const terminalsListQuery = useThreadTerminals(threadId ?? "");
+  const threadTerminalTarget = useMemo(
+    () => (threadId ? ({ kind: "thread", threadId } as const) : null),
+    [threadId],
+  );
   const {
     activeBrowserTab,
     activeHostFileLineRange,
@@ -588,6 +592,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
+    terminalTarget: threadTerminalTarget,
   });
   const pluginPanelActions = usePluginPanelActions({
     openPluginPanel,
@@ -739,8 +744,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         orderedTabs: orderedSecondaryFileTabs,
         retainedTerminalId,
         terminalSessions,
+        terminalTarget: threadTerminalTarget,
       }),
-    [orderedSecondaryFileTabs, retainedTerminalId, terminalSessions],
+    [
+      orderedSecondaryFileTabs,
+      retainedTerminalId,
+      terminalSessions,
+      threadTerminalTarget,
+    ],
   );
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
@@ -751,11 +762,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         retainedTerminalId,
         state,
         terminalSessions,
+        terminalTarget: threadTerminalTarget,
       }),
     );
   }, [
     retainedTerminalId,
     terminalSessions,
+    threadTerminalTarget,
     terminalsListQuery.data,
     updateFixedPanelTabsState,
   ]);
