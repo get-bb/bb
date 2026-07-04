@@ -177,6 +177,7 @@ function createEnvironmentDestroyCommand(): EnvironmentDestroyCommand {
       workspacePath: "/tmp/env-router",
       workspaceProvisionType: "unmanaged",
     },
+    worktreeTeardownScript: null,
   };
 }
 

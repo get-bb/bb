@@ -39,6 +39,7 @@ interface ResolveWorkspaceForCommandArgs {
    * runtime is reused instead of conflicting; see EnsureEnvironmentArgs.
    */
   targetThreadId?: string;
+  worktreeTeardownScript?: string | null;
   workspaceContext: WorkspaceContext;
 }
 
@@ -140,6 +141,9 @@ export async function resolveWorkspaceForCommand(
           ? { targetThreadId: args.targetThreadId }
           : {}),
         workspaceContext: args.workspaceContext,
+        ...(args.worktreeTeardownScript !== undefined
+          ? { worktreeTeardownScript: args.worktreeTeardownScript }
+          : {}),
       },
       args.runtimeManager,
     );

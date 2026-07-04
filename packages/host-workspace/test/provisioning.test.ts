@@ -173,6 +173,99 @@ describe("workspace provisioning", () => {
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
 
+  it("runs configured worktree init scripts after creating worktrees", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup(
+      "echo legacy > legacy-marker.txt\n",
+    );
+    const parentDir = await makeTempDir("bb-worktree-init-parent-");
+    const targetPath = path.join(parentDir, "configured-init");
+    const markerPath = path.join(parentDir, "init-marker.txt");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "configured-init",
+      baseBranch: "main",
+      environmentId: "env-init",
+      worktreeInitScript: [
+        "set -euo pipefail",
+        `marker=${shellSingleQuote(markerPath)}`,
+        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_SOURCE_PATH" "$BB_WORKTREE_BRANCH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" > "$marker"',
+      ].join("\n"),
+      timeoutMs: 900000,
+    });
+
+    await expect(
+      fs.readFile(path.join(targetPath, "legacy-marker.txt"), "utf8"),
+    ).rejects.toThrow();
+    const realTargetPath = await fs.realpath(targetPath);
+    await expect(fs.readFile(markerPath, "utf8")).resolves.toBe(
+      [
+        realTargetPath,
+        targetPath,
+        sourceRepo,
+        "configured-init",
+        "env-init",
+        "init",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("runs configured worktree teardown scripts before removing worktrees", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const parentDir = await makeTempDir("bb-worktree-teardown-parent-");
+    const targetPath = path.join(parentDir, "teardown");
+    const markerPath = path.join(parentDir, "teardown-marker.txt");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "teardown",
+      baseBranch: "main",
+      timeoutMs: 900000,
+    });
+    const realTargetPath = await fs.realpath(targetPath);
+
+    await removeWorktree({
+      path: targetPath,
+      environmentId: "env-teardown",
+      worktreeTeardownScript: [
+        "set -euo pipefail",
+        `marker=${shellSingleQuote(markerPath)}`,
+        'printf "%s\\n" "$PWD" "$BB_WORKTREE_PATH" "$BB_ENVIRONMENT_ID" "$BB_WORKTREE_PHASE" > "$marker"',
+      ].join("\n"),
+      pruneEmptyParent: true,
+    });
+
+    await expect(fs.readFile(markerPath, "utf8")).resolves.toBe(
+      [realTargetPath, targetPath, "env-teardown", "teardown", ""].join("\n"),
+    );
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
+  it("leaves worktrees intact when configured teardown scripts fail", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const parentDir = await makeTempDir("bb-worktree-teardown-fail-parent-");
+    const targetPath = path.join(parentDir, "teardown-fail");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "teardown-fail",
+      baseBranch: "main",
+      timeoutMs: 900000,
+    });
+
+    await expect(
+      removeWorktree({
+        path: targetPath,
+        worktreeTeardownScript: "echo teardown failed >&2\nexit 7\n",
+      }),
+    ).rejects.toThrow(/Worktree teardown script failed/u);
+    await expect(fs.stat(targetPath)).resolves.toBeDefined();
+  });
+
   it("runs worktree setup scripts concurrently after creating worktrees", async () => {
     const coordinationDir = await makeTempDir("bb-worktree-setup-concurrency-");
     const markerDir = path.join(coordinationDir, "markers");

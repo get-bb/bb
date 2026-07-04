@@ -112,10 +112,18 @@ export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
 
 export function seedProjectWithSource(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: { hostId: string; name?: string; path?: string },
+  args: {
+    hostId: string;
+    name?: string;
+    path?: string;
+    worktreeInitScript?: string | null;
+    worktreeTeardownScript?: string | null;
+  },
 ) {
   const { project, source } = createProject(deps.db, deps.hub, {
     name: args.name ?? "Test Project",
+    worktreeInitScript: args.worktreeInitScript ?? null,
+    worktreeTeardownScript: args.worktreeTeardownScript ?? null,
     source: {
       type: "local_path",
       hostId: args.hostId,

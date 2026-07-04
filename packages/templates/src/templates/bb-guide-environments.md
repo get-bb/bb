@@ -12,37 +12,40 @@ Environments determine where threads run. Multiple threads can share an environm
 
 Making your repo work with bb:
 
-  Commit a .bb-env-setup.sh script at the repo root when new bb worktrees need
-  repo-specific setup. After bb creates a new managed worktree environment, it
-  looks for .bb-env-setup.sh inside that new workspace. If the file is absent,
-  provisioning continues with no error.
+  Configure worktree lifecycle scripts from Project Settings > Worktree
+  Lifecycle. The init script runs after bb creates a new managed worktree. The
+  teardown script runs before bb removes a managed worktree.
 
-  The script must be tracked by git. A fresh worktree only checks out tracked
-  files, so an untracked .bb-env-setup.sh in your source checkout will not be
-  present and will not run.
+  Scripts are freeform POSIX shell snippets. bb runs configured scripts as
+  `env bash -lc <script>` with cwd set to the worktree. POSIX shell lifecycle
+  scripts are not supported on native Windows.
 
-  BB runs the hook as `env bash .bb-env-setup.sh` with cwd set to the new
-  workspace. POSIX shell setup scripts are not supported on Windows. The hook
-  inherits the host daemon's sanitized environment: NODE_ENV and every BB_*
-  variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
-  or BB_SOURCE_PATH.
+  bb starts from the host daemon's sanitized environment, then injects
+  BB_WORKTREE_PATH, BB_WORKTREE_PHASE (`init` or `teardown`), BB_ENVIRONMENT_ID
+  when known, and for init scripts BB_WORKTREE_BRANCH and BB_SOURCE_PATH when
+  known.
 
-  The hook runs only for newly-created managed worktree environments. It does
-  not run for direct/project-checkout environments, personal scratch workspaces,
-  or reconnecting an existing managed worktree.
+  The init script runs only for newly-created managed worktree environments. It
+  does not run for direct/project-checkout environments, personal scratch
+  workspaces, or reconnecting an existing managed worktree. A non-zero exit,
+  timeout, signal, or cancellation fails provisioning and bb removes the new
+  worktree. Keep optional setup steps non-fatal inside the script if the
+  environment should still open.
 
-  A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
-  removes the new worktree. Keep optional setup steps non-fatal inside the
-  script if the environment should still open. Provisioning progress reports
-  "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
-  ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
+  The teardown script runs before removal. A non-zero exit, timeout, or signal
+  stops deletion and leaves the worktree on disk so cleanup can be retried after
+  the script or local state is fixed.
+
+  If the Project Settings init script is blank, bb falls back to a tracked
+  .bb-env-setup.sh file at the repo root. A fresh worktree only checks out
+  tracked files, so an untracked .bb-env-setup.sh in your source checkout will
+  not be present and will not run. The legacy hook runs as
+  `env bash .bb-env-setup.sh`.
 
   New worktrees do not contain gitignored files such as .env.local. To copy
-  them from the original checkout, locate the source root through git's common
-  directory:
+  them from the original checkout, use BB_SOURCE_PATH from an init script:
 
-    common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
-    source_root=$(dirname "$common_dir")
+    source_root=$BB_SOURCE_PATH
     workspace_root=$(pwd -P)
 
   A real setup script should then copy a fixed list of needed env files if they

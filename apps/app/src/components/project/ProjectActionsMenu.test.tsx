@@ -36,6 +36,8 @@ function makeProject(): ProjectResponse {
     id: "proj_test",
     kind: "standard",
     name: "Test project",
+    worktreeInitScript: null,
+    worktreeTeardownScript: null,
     sources: [],
     createdAt: 0,
     updatedAt: 0,

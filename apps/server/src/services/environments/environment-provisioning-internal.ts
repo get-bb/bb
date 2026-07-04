@@ -6,6 +6,7 @@ import {
   type DbQueryConnection,
   type DbTransaction,
   getEnvironment,
+  getProject,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
@@ -1085,6 +1086,7 @@ export async function dispatchManagedEnvironmentReprovision(
             args.projectId,
             args.environment.hostId,
           );
+          const project = getProject(deps.db, args.projectId);
           const targetPath =
             args.environment.path ??
             resolveManagedTargetPath({
@@ -1108,6 +1110,8 @@ export async function dispatchManagedEnvironmentReprovision(
             targetPath,
             workspaceProvisionType: provisionType,
             setupTimeoutMs: SETUP_TIMEOUT_MS,
+            worktreeInitScript: project?.worktreeInitScript ?? null,
+            worktreeTeardownScript: project?.worktreeTeardownScript ?? null,
           });
         })();
 

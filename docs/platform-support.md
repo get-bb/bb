@@ -114,11 +114,15 @@ Known failure modes remain the normal native-addon ones:
 The recovery path after a Node/runtime change is to reinstall the package or
 rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 
-## Setup Hook Policy
+## Worktree Lifecycle Script Policy
 
-- The supported setup hook is POSIX `.bb-env-setup.sh`.
+- The supported worktree lifecycle hooks are POSIX shell snippets configured in
+  Project Settings: init runs after managed worktree creation, teardown runs
+  before removal.
+- If the Project Settings init script is blank, bb still supports the legacy
+  tracked `.bb-env-setup.sh` file at the repo root.
 - The same shell-based hook contract is used across macOS, Linux, and WSL2.
-- No parallel `.bb-env-setup.ts` product-path mechanism is supported.
+- No parallel TypeScript lifecycle hook product path is supported.
 
 ## Line Ending Policy
 

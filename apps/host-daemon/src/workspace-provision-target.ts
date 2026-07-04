@@ -5,6 +5,7 @@ import type { ProvisionWorkspaceArgs } from "@bb/host-workspace";
 interface ReconnectProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
+  worktreeTeardownScript?: string | null;
   workspacePath: string;
   workspaceProvisionType: WorkspaceProvisionType;
 }
@@ -12,6 +13,7 @@ interface ReconnectProvisionArgs {
 interface WorkspaceContextProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
+  worktreeTeardownScript?: string | null;
   workspaceContext: WorkspaceContext;
 }
 
@@ -27,7 +29,9 @@ export function reconnectProvisionArgs(
     case "managed-worktree":
       return {
         workspaceProvisionType: "reconnect-managed-worktree",
+        environmentId: args.environmentId,
         path: args.workspacePath,
+        worktreeTeardownScript: args.worktreeTeardownScript ?? null,
       };
     case "personal":
       if (!args.personalWorkspaceRoot) {
@@ -51,6 +55,9 @@ export function reconnectProvisionArgsFromWorkspaceContext(
     environmentId: args.environmentId,
     ...(args.personalWorkspaceRoot !== undefined
       ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
+      : {}),
+    ...(args.worktreeTeardownScript !== undefined
+      ? { worktreeTeardownScript: args.worktreeTeardownScript }
       : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,

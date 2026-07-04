@@ -194,11 +194,14 @@ export function toProvisionWorkspaceOptions(
     case "managed-worktree": {
       return {
         workspaceProvisionType: command.workspaceProvisionType,
+        environmentId: command.environmentId,
         sourcePath: command.sourcePath,
         targetPath: command.targetPath,
         branchName: command.branchName,
         baseBranch: command.baseBranch,
         timeoutMs: command.setupTimeoutMs,
+        worktreeInitScript: command.worktreeInitScript,
+        worktreeTeardownScript: command.worktreeTeardownScript,
         onProgress,
       };
     }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   FILE_LIST_QUERY_MAX_LENGTH,
+  WORKTREE_LIFECYCLE_SCRIPT_MAX_LENGTH,
   getProjectPathValidationMessage,
   gitBranchNameSchema,
   normalizeProjectPathInput,
@@ -203,10 +204,31 @@ export interface ProjectAttachmentUploadForm {
 export const updateProjectRequestSchema = z
   .object({
     name: z.string().min(1),
+    worktreeInitScript: z
+      .preprocess(
+        (value) =>
+          typeof value === "string" && value.trim().length === 0
+            ? null
+            : value,
+        z.string().max(WORKTREE_LIFECYCLE_SCRIPT_MAX_LENGTH).nullable(),
+      )
+      .optional(),
+    worktreeTeardownScript: z
+      .preprocess(
+        (value) =>
+          typeof value === "string" && value.trim().length === 0
+            ? null
+            : value,
+        z.string().max(WORKTREE_LIFECYCLE_SCRIPT_MAX_LENGTH).nullable(),
+      )
+      .optional(),
   })
   .partial()
   .refine(
-    (value) => value.name !== undefined,
+    (value) =>
+      value.name !== undefined ||
+      value.worktreeInitScript !== undefined ||
+      value.worktreeTeardownScript !== undefined,
     "At least one field must be provided",
   );
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;

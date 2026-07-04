@@ -143,6 +143,52 @@ describe("environment reprovisioning", () => {
     });
   });
 
+  it("includes configured worktree lifecycle scripts during managed reprovision", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reprovision-lifecycle-scripts",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reprovision-lifecycle-scripts-project",
+        worktreeInitScript: "pnpm install",
+        worktreeTeardownScript: "docker compose down --remove-orphans",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/reprovision-lifecycle-scripts-target",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        branchName: "bb/lifecycle-scripts",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      await dispatchManagedEnvironmentReprovision(harness.deps, {
+        environment,
+        projectId: thread.projectId,
+        provisionEventSequence: 1,
+        provisioningId: "tpv-reprovision-lifecycle-scripts",
+        threadId: thread.id,
+      });
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      const managedCommand =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managedCommand.command.worktreeInitScript).toBe("pnpm install");
+      expect(managedCommand.command.worktreeTeardownScript).toBe(
+        "docker compose down --remove-orphans",
+      );
+    });
+  });
+
   it("uses the persisted base branch during managed reprovision", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

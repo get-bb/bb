@@ -106,6 +106,8 @@ function makeProject(args: MakeProjectArgs): ProjectWithThreadsResponse {
     id: args.id,
     kind: args.kind,
     name: args.name,
+    worktreeInitScript: null,
+    worktreeTeardownScript: null,
     sources: [],
     threads: [...args.threads],
     defaultExecutionOptions: null,

@@ -51,6 +51,10 @@ interface ProvisionBase {
   signal?: AbortSignal;
 }
 
+export interface DestroyWorkspaceArgs {
+  worktreeTeardownScript?: string | null;
+}
+
 export type UnmanagedCheckoutOpts =
   | {
       /**
@@ -78,6 +82,7 @@ export interface UnmanagedWorkspaceOpts extends ProvisionBase {
 }
 
 export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
+  environmentId?: string;
   /** Source repo path */
   sourcePath: string;
   /** Target path for worktree/clone creation */
@@ -91,6 +96,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  worktreeInitScript?: string | null;
+  worktreeTeardownScript?: string | null;
 }
 
 export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
@@ -99,8 +106,10 @@ export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
 
 export interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   workspaceProvisionType: "reconnect-managed-worktree";
+  environmentId?: string;
   /** Existing worktree path to reconnect */
   path: string;
+  worktreeTeardownScript?: string | null;
 }
 
 export interface PersonalWorkspaceOpts extends ProvisionBase {
@@ -164,7 +173,7 @@ export interface HostWorkspace {
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
   // Lifecycle
-  destroy(): Promise<void>;
+  destroy(args?: DestroyWorkspaceArgs): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,14 +204,14 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   readonly isWorktree: boolean;
 
   private readonly ws: Workspace;
-  private readonly destroyFn: () => Promise<void>;
+  private readonly destroyFn: (args?: DestroyWorkspaceArgs) => Promise<void>;
 
   constructor(opts: {
     path: string;
     managed: boolean;
     isGitRepo: boolean;
     isWorktree: boolean;
-    destroyFn: () => Promise<void>;
+    destroyFn: (args?: DestroyWorkspaceArgs) => Promise<void>;
   }) {
     this.path = opts.path;
     this.managed = opts.managed;
@@ -294,8 +303,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.squashMergeInto(options);
   }
 
-  destroy(): Promise<void> {
-    return this.destroyFn();
+  destroy(args?: DestroyWorkspaceArgs): Promise<void> {
+    return this.destroyFn(args);
   }
 }
 
@@ -684,9 +693,11 @@ async function provisionWorktree(
     branchName: opts.branchName,
     baseBranch: opts.baseBranch,
     timeoutMs: opts.timeoutMs,
+    environmentId: opts.environmentId,
     onProgress: opts.onProgress,
     pruneEmptyParent: true,
     signal: opts.signal,
+    worktreeInitScript: opts.worktreeInitScript,
   });
 
   return new ProvisionedHostWorkspace({
@@ -694,8 +705,15 @@ async function provisionWorktree(
     managed: true,
     isGitRepo: true,
     isWorktree: true,
-    destroyFn: () =>
-      removeWorktree({ path: wsPath, force: true, pruneEmptyParent: true }),
+    destroyFn: (args) =>
+      removeWorktree({
+        path: wsPath,
+        environmentId: opts.environmentId,
+        force: true,
+        pruneEmptyParent: true,
+        worktreeTeardownScript:
+          args?.worktreeTeardownScript ?? opts.worktreeTeardownScript,
+      }),
   });
 }
 
@@ -726,7 +744,7 @@ async function provisionPersonalWorkspace(
 
 async function reconnectManaged(
   wsPath: string,
-  destroyFn: () => Promise<void>,
+  destroyFn: (args?: DestroyWorkspaceArgs) => Promise<void>,
   signal: AbortSignal | undefined,
 ): Promise<HostWorkspace> {
   throwIfProvisionAborted(signal);
@@ -754,8 +772,15 @@ async function reconnectManagedWorktree(
 ): Promise<HostWorkspace> {
   return reconnectManaged(
     opts.path,
-    () =>
-      removeWorktree({ path: opts.path, force: true, pruneEmptyParent: true }),
+    (args) =>
+      removeWorktree({
+        path: opts.path,
+        environmentId: opts.environmentId,
+        force: true,
+        pruneEmptyParent: true,
+        worktreeTeardownScript:
+          args?.worktreeTeardownScript ?? opts.worktreeTeardownScript,
+      }),
     opts.signal,
   );
 }

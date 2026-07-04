@@ -248,6 +248,7 @@ const commandHandlers: CommandHandlerMap = {
       environmentId: command.environmentId,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
+      worktreeTeardownScript: command.worktreeTeardownScript,
     });
     if (!resolution.ok) {
       // Treat already-missing workspaces as successful destroy (idempotent retry).
@@ -263,7 +264,9 @@ const commandHandlers: CommandHandlerMap = {
       environmentId: command.environmentId,
       reason: "environment-destroyed",
     });
-    await options.runtimeManager.destroyEnvironment(command.environmentId);
+    await options.runtimeManager.destroyEnvironment(command.environmentId, {
+      worktreeTeardownScript: command.worktreeTeardownScript,
+    });
     return {};
   },
   "workspace.commit": async (command, options) => {

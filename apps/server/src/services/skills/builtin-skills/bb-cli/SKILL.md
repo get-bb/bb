@@ -19,10 +19,11 @@ message agents, or inspect projects, providers, and environments.
   `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` only for remote or non-default
   targets.
 
-## Environment Setup Script
+## Worktree Lifecycle Scripts
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
-  documents the repo-level `.bb-env-setup.sh` setup hook.
+  documents Project Settings init/teardown scripts for managed worktrees and the
+  legacy `.bb-env-setup.sh` fallback used when the init script is blank.
 
 ## Remote Client
 

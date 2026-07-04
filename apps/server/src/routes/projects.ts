@@ -90,6 +90,8 @@ function toProjectResponseProjectFields(
     id: project.id,
     kind: project.kind,
     name: project.name,
+    worktreeInitScript: project.worktreeInitScript,
+    worktreeTeardownScript: project.worktreeTeardownScript,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };

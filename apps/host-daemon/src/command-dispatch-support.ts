@@ -221,6 +221,7 @@ export async function requireWorkspaceEnvironment(
      */
     targetThreadId?: string;
     workspaceContext: WorkspaceContext;
+    worktreeTeardownScript?: string | null;
   },
   runtimeManager: RuntimeManager,
 ): Promise<RuntimeEntry> {
@@ -248,5 +249,8 @@ export async function requireWorkspaceEnvironment(
       : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
+    ...(args.worktreeTeardownScript !== undefined
+      ? { worktreeTeardownScript: args.worktreeTeardownScript }
+      : {}),
   });
 }

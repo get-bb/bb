@@ -18,6 +18,51 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("environment cleanup", () => {
+  it("includes configured worktree teardown scripts in destroy commands", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-destroy-lifecycle-scripts",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/destroy-lifecycle-scripts-project",
+        worktreeTeardownScript: "docker compose down --remove-orphans",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        path: "/tmp/destroy-lifecycle-scripts",
+        projectId: project.id,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      requestEnvironmentCleanup(harness.deps, {
+        environmentId: environment.id,
+      });
+      await runEnvironmentCleanupAdvance(harness.deps, {
+        environmentId: environment.id,
+      });
+      const destroyCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.destroy" &&
+          command.environmentId === environment.id,
+      );
+      if (destroyCommand.command.type !== "environment.destroy") {
+        throw new Error("Expected environment.destroy command");
+      }
+      expect(destroyCommand.command.worktreeTeardownScript).toBe(
+        "docker compose down --remove-orphans",
+      );
+
+      await reportQueuedCommandSuccess(harness, destroyCommand, {});
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "destroyed",
+      });
+    });
+  });
+
   it("does not reprovision a destroying environment and finishes the destroy", async () => {
     // Decision B*: nothing reprovisions a dying environment, so a destroy runs
     // to completion. The ENVIRONMENT_LIFECYCLE table has no provision cell from

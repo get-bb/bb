@@ -1,6 +1,7 @@
 import {
   createEnvironment,
   getEnvironment,
+  getProject,
   getThread,
   type CreateEnvironmentInput,
   type DbNotifier,
@@ -227,6 +228,8 @@ interface ManagedEnvironmentPlanArgs {
   sourcePath: string;
   baseBranch: BaseBranchSpec;
   thread: Thread;
+  worktreeInitScript: string | null;
+  worktreeTeardownScript: string | null;
   workspaceProvisionType: "managed-worktree";
 }
 
@@ -843,6 +846,8 @@ function buildManagedEnvironmentPlan(
         }),
         workspaceProvisionType: args.workspaceProvisionType,
         setupTimeoutMs: SETUP_TIMEOUT_MS,
+        worktreeInitScript: args.worktreeInitScript,
+        worktreeTeardownScript: args.worktreeTeardownScript,
       });
 
       return buildDirectEnvironmentProvisionRequest({
@@ -898,12 +903,15 @@ async function resolveEnvironmentCreationPlan(
       const hostSession = await ensureHostSessionReadyForWork(deps, {
         hostId: args.intent.hostId,
       });
+      const project = getProject(deps.db, args.thread.projectId);
       return buildManagedEnvironmentPlan({
         dataDir: hostSession.dataDir,
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
         baseBranch: args.intent.baseBranch,
         thread: args.thread,
+        worktreeInitScript: project?.worktreeInitScript ?? null,
+        worktreeTeardownScript: project?.worktreeTeardownScript ?? null,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });
     }

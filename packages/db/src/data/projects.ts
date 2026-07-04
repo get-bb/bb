@@ -22,6 +22,8 @@ export type CreateProjectSourceInput = CreateProjectLocalPathSourceInput;
 export interface CreateProjectInput {
   name: string;
   source: CreateProjectSourceInput;
+  worktreeInitScript?: string | null;
+  worktreeTeardownScript?: string | null;
 }
 
 export type ProjectRow = typeof projects.$inferSelect;
@@ -139,6 +141,8 @@ export function createProject(
       .values({
         id: projectId,
         name: input.name,
+        worktreeInitScript: input.worktreeInitScript ?? null,
+        worktreeTeardownScript: input.worktreeTeardownScript ?? null,
         sortKey,
         createdAt: now,
         updatedAt: now,
@@ -217,6 +221,8 @@ export function listPublicProjects(db: DbConnection) {
 
 export interface UpdateProjectInput {
   name?: string;
+  worktreeInitScript?: string | null;
+  worktreeTeardownScript?: string | null;
 }
 
 export interface MarkProjectDeletedArgs {
