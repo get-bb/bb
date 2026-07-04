@@ -88,6 +88,18 @@ bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
 the default local packaged server at `http://127.0.0.1:38886`; set it for remote
 or non-default servers.
 
+## Project Worktree Lifecycle Scripts
+
+Project Settings includes a **Worktree Lifecycle** section for per-project
+managed worktree scripts. The init script runs after bb creates a managed
+worktree. The teardown script runs before bb removes one.
+
+These scripts are stored with the project, not in `~/.bb/config.json`. They are
+freeform POSIX shell snippets run with the worktree as cwd. If the init script is
+blank, bb falls back to the legacy tracked `.bb-env-setup.sh` file at the repo
+root. See [Worktrees and lifecycle scripts](./worktrees.md) for the execution
+contract.
+
 ## Client SSH Targets
 
 `~/.bb/client.json` is local to the machine showing the UI. The CLI resolves the

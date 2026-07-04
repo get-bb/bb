@@ -166,6 +166,7 @@ export interface EnsureEnvironmentArgs {
   targetThreadId?: string;
   workspacePath?: string;
   workspaceProvisionType?: WorkspaceProvisionType;
+  worktreeTeardownScript?: string | null;
   provision?: ProvisionWorkspaceArgs;
 }
 
@@ -749,7 +750,10 @@ export class RuntimeManager {
     });
   }
 
-  async destroyEnvironment(environmentId: string): Promise<void> {
+  async destroyEnvironment(
+    environmentId: string,
+    args?: { worktreeTeardownScript?: string | null },
+  ): Promise<void> {
     const existing = this.entries.get(environmentId);
     const pending = this.pendingEntries.get(environmentId);
     const entry = existing ?? (pending ? await pending : undefined);
@@ -761,7 +765,11 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
-    await entry.workspace.destroy();
+    await entry.workspace.destroy({
+      ...(args?.worktreeTeardownScript !== undefined
+        ? { worktreeTeardownScript: args.worktreeTeardownScript }
+        : {}),
+    });
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
@@ -943,6 +951,9 @@ export class RuntimeManager {
             environmentId: args.environmentId,
             ...(args.personalWorkspaceRoot !== undefined
               ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
+              : {}),
+            ...(args.worktreeTeardownScript !== undefined
+              ? { worktreeTeardownScript: args.worktreeTeardownScript }
               : {}),
             workspacePath: args.workspacePath,
             workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",

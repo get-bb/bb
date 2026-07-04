@@ -10,6 +10,8 @@ export const projectSchema = z.object({
   id: z.string(),
   kind: projectKindSchema,
   name: z.string(),
+  worktreeInitScript: z.string().nullable(),
+  worktreeTeardownScript: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

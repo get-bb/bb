@@ -603,6 +603,10 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
   baseBranch: gitBranchNameSchema.nullable(),
   /** Maximum time in ms to wait for the setup script */
   setupTimeoutMs: z.number().int().positive(),
+  /** Optional project-configured shell snippet run after worktree creation. */
+  worktreeInitScript: z.string().nullable(),
+  /** Optional project-configured shell snippet run before worktree removal. */
+  worktreeTeardownScript: z.string().nullable(),
 });
 
 const managedWorktreeEnvironmentProvisionCommandSchema =
@@ -663,6 +667,8 @@ export type EnvironmentProvisionCancelCommand = z.infer<
 const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("environment.destroy"),
+    /** Optional project-configured shell snippet run before managed worktree removal. */
+    worktreeTeardownScript: z.string().nullable(),
   })
   .strict();
 

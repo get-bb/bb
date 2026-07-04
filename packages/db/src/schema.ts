@@ -111,6 +111,8 @@ export const projects = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<ProjectKind>().notNull().default("standard"),
     name: text("name").notNull(),
+    worktreeInitScript: text("worktree_init_script"),
+    worktreeTeardownScript: text("worktree_teardown_script"),
     sortKey: text("sort_key").notNull().default("V"),
     deletedAt: integer("deleted_at"),
     createdAt: integer("created_at").notNull(),

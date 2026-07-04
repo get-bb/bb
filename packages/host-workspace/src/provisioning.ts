@@ -36,6 +36,7 @@ type EmitStepArgs = {
 };
 
 export interface CreateWorkspaceArgs {
+  environmentId?: string;
   /** Local repo path for worktrees */
   sourcePath: string;
   targetPath: string;
@@ -49,6 +50,7 @@ export interface CreateWorkspaceArgs {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  worktreeInitScript?: string | null;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
@@ -56,15 +58,28 @@ export interface CreateWorkspaceArgs {
 
 export interface RunSetupScriptArgs {
   workspacePath: string;
+  environmentId?: string;
+  branchName?: string;
+  script?: string | null;
+  sourcePath?: string;
   timeoutMs: number;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
 
+export interface RunTeardownScriptArgs {
+  workspacePath: string;
+  environmentId?: string;
+  script: string | null;
+  timeoutMs: number;
+}
+
 export interface RemoveWorktreeArgs {
   path: string;
+  environmentId?: string;
   force?: boolean;
   pruneEmptyParent?: boolean;
+  worktreeTeardownScript?: string | null;
 }
 
 interface SetupScriptCommand {
@@ -73,9 +88,41 @@ interface SetupScriptCommand {
   text: string;
 }
 
+type LifecycleScriptPhase = "init" | "teardown";
+
+interface LifecycleScriptLabels {
+  cancelledText: string;
+  completedText: string;
+  errorPrefix: string;
+  failedText: string;
+  outputKeyPrefix: string;
+  scriptDescription: string;
+  startedKey: string;
+  startedText: string;
+}
+
+interface RunLifecycleScriptArgs {
+  branchName?: string;
+  environmentId?: string;
+  labels: LifecycleScriptLabels;
+  phase: LifecycleScriptPhase;
+  script: SetupScriptCommand;
+  sourcePath?: string;
+  signal?: AbortSignal;
+  timeoutMs: number;
+  workspacePath: string;
+  onProgress?: ProgressCallback;
+}
+
 interface BuildSetupScriptCommandArgs {
   platform: NodeJS.Platform;
   scriptPath: string;
+}
+
+interface BuildInlineScriptCommandArgs {
+  platform: NodeJS.Platform;
+  script: string;
+  scriptDescription: string;
 }
 
 interface KillSetupScriptProcessArgs {
@@ -84,6 +131,7 @@ interface KillSetupScriptProcessArgs {
 }
 
 const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
+const TEARDOWN_SCRIPT_TIMEOUT_MS = 15 * 60 * 1000;
 
 function emitProgress(
   onProgress: ProgressCallback | undefined,
@@ -201,6 +249,23 @@ export function buildSetupScriptCommand(
   };
 }
 
+export function buildInlineScriptCommand(
+  args: BuildInlineScriptCommandArgs,
+): SetupScriptCommand {
+  if (args.platform === "win32") {
+    throw new WorkspaceError(
+      "setup_script_failed",
+      `POSIX shell lifecycle scripts are not supported on Windows: ${args.scriptDescription}`,
+    );
+  }
+
+  return {
+    command: "env",
+    args: ["bash", "-lc", args.script],
+    text: `env bash -lc ${args.scriptDescription}`,
+  };
+}
+
 function shouldRunSetupScriptInProcessGroup(): boolean {
   return process.platform !== "win32";
 }
@@ -224,6 +289,23 @@ function createProvisionCancelledError(cause?: unknown): WorkspaceError {
     "Workspace provisioning was cancelled",
     { cause },
   );
+}
+
+function buildLifecycleScriptEnv(args: {
+  branchName?: string;
+  environmentId?: string;
+  phase: LifecycleScriptPhase;
+  sourcePath?: string;
+  workspacePath: string;
+}): NodeJS.ProcessEnv {
+  return {
+    ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+    BB_WORKTREE_PATH: args.workspacePath,
+    BB_WORKTREE_PHASE: args.phase,
+    ...(args.branchName ? { BB_WORKTREE_BRANCH: args.branchName } : {}),
+    ...(args.environmentId ? { BB_ENVIRONMENT_ID: args.environmentId } : {}),
+    ...(args.sourcePath ? { BB_SOURCE_PATH: args.sourcePath } : {}),
+  };
 }
 
 function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
@@ -387,6 +469,10 @@ export async function createWorktree(
     });
     await runSetupScript({
       workspacePath: args.targetPath,
+      branchName: args.branchName,
+      environmentId: args.environmentId,
+      script: args.worktreeInitScript,
+      sourcePath: args.sourcePath,
       timeoutMs: args.timeoutMs,
       onProgress: args.onProgress,
       signal: args.signal,
@@ -416,6 +502,37 @@ export async function runSetupScript(
   args: RunSetupScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
   throwIfProvisionAborted(args.signal);
+  const inlineScript =
+    args.script && args.script.trim().length > 0 ? args.script : null;
+  if (inlineScript) {
+    const command = buildInlineScriptCommand({
+      platform: process.platform,
+      script: inlineScript,
+      scriptDescription: "worktree init script",
+    });
+    return runLifecycleScript({
+      branchName: args.branchName,
+      environmentId: args.environmentId,
+      labels: {
+        cancelledText: "Worktree init script cancelled",
+        completedText: "Worktree init script finished",
+        errorPrefix: "Worktree init script",
+        failedText: "Worktree init script failed",
+        outputKeyPrefix: "worktree-init",
+        scriptDescription: "worktree init script",
+        startedKey: "worktree-init-started",
+        startedText: "Running worktree init script",
+      },
+      phase: "init",
+      script: command,
+      sourcePath: args.sourcePath,
+      signal: args.signal,
+      timeoutMs: args.timeoutMs,
+      workspacePath: args.workspacePath,
+      onProgress: args.onProgress,
+    });
+  }
+
   const scriptPath = await resolveSetupScriptPath(args.workspacePath);
   if (!scriptPath) {
     return { ran: false };
@@ -426,22 +543,54 @@ export async function runSetupScript(
     platform: process.platform,
     scriptPath,
   });
+  return runLifecycleScript({
+    branchName: args.branchName,
+    environmentId: args.environmentId,
+    labels: {
+      cancelledText: ".bb-env-setup.sh cancelled",
+      completedText: ".bb-env-setup.sh finished",
+      errorPrefix: "Setup script",
+      failedText: ".bb-env-setup.sh failed",
+      outputKeyPrefix: "setup",
+      scriptDescription: scriptPath,
+      startedKey: "setup-started",
+      startedText: "Running .bb-env-setup.sh",
+    },
+    phase: "init",
+    script: command,
+    sourcePath: args.sourcePath,
+    signal: args.signal,
+    timeoutMs: args.timeoutMs,
+    workspacePath: args.workspacePath,
+    onProgress: args.onProgress,
+  });
+}
+
+async function runLifecycleScript(
+  args: RunLifecycleScriptArgs,
+): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
-    key: "setup-started",
-    text: "Running .bb-env-setup.sh",
+    key: args.labels.startedKey,
+    text: args.labels.startedText,
     status: "started",
     startedAt,
   });
 
   const { timeoutMs } = args;
   const child = spawnPortableOutputProcess({
-    command: command.command,
-    args: command.args,
+    command: args.script.command,
+    args: args.script.args,
     cwd: args.workspacePath,
     detached: shouldRunSetupScriptInProcessGroup(),
-    env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+    env: buildLifecycleScriptEnv({
+      branchName: args.branchName,
+      environmentId: args.environmentId,
+      phase: args.phase,
+      sourcePath: args.sourcePath,
+      workspacePath: args.workspacePath,
+    }),
   });
 
   const outputChunks: string[] = [];
@@ -454,7 +603,11 @@ export async function runSetupScript(
   const emitSetupOutputLines = (lines: string[]): void => {
     for (const line of lines) {
       outputIndex += 1;
-      emitOutput(args.onProgress, `setup-output-${outputIndex}`, line);
+      emitOutput(
+        args.onProgress,
+        `${args.labels.outputKeyPrefix}-output-${outputIndex}`,
+        line,
+      );
     }
   };
 
@@ -510,8 +663,8 @@ export async function runSetupScript(
     if (abortRequested || args.signal?.aborted) {
       emitStep({
         onProgress: args.onProgress,
-        key: "setup-cancelled",
-        text: ".bb-env-setup.sh cancelled",
+        key: `${args.labels.outputKeyPrefix}-cancelled`,
+        text: args.labels.cancelledText,
         status: "failed",
         startedAt,
         metadata: { durationMs },
@@ -522,52 +675,52 @@ export async function runSetupScript(
     if (timedOut) {
       emitStep({
         onProgress: args.onProgress,
-        key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        key: `${args.labels.outputKeyPrefix}-failed`,
+        text: args.labels.failedText,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script timed out after ${timeoutMs}ms: ${scriptPath}`,
+        `${args.labels.errorPrefix} timed out after ${timeoutMs}ms: ${args.labels.scriptDescription}`,
       );
     }
 
     if (result.signal) {
       emitStep({
         onProgress: args.onProgress,
-        key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        key: `${args.labels.outputKeyPrefix}-failed`,
+        text: args.labels.failedText,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script exited via signal ${result.signal}: ${scriptPath}`,
+        `${args.labels.errorPrefix} exited via signal ${result.signal}: ${args.labels.scriptDescription}`,
       );
     }
 
     if ((result.exitCode ?? 0) !== 0) {
       emitStep({
         onProgress: args.onProgress,
-        key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        key: `${args.labels.outputKeyPrefix}-failed`,
+        text: args.labels.failedText,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script failed with exit code ${result.exitCode}: ${scriptPath}`,
+        `${args.labels.errorPrefix} failed with exit code ${result.exitCode}: ${args.labels.scriptDescription}`,
       );
     }
 
     emitStep({
       onProgress: args.onProgress,
-      key: "setup-completed",
-      text: ".bb-env-setup.sh finished",
+      key: `${args.labels.outputKeyPrefix}-completed`,
+      text: args.labels.completedText,
       status: "completed",
       startedAt,
       metadata: { durationMs },
@@ -582,6 +735,38 @@ export async function runSetupScript(
   }
 }
 
+export async function runTeardownScript(
+  args: RunTeardownScriptArgs,
+): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
+  const inlineScript =
+    args.script && args.script.trim().length > 0 ? args.script : null;
+  if (!inlineScript) {
+    return { ran: false };
+  }
+  const command = buildInlineScriptCommand({
+    platform: process.platform,
+    script: inlineScript,
+    scriptDescription: "worktree teardown script",
+  });
+  return runLifecycleScript({
+    environmentId: args.environmentId,
+    labels: {
+      cancelledText: "Worktree teardown script cancelled",
+      completedText: "Worktree teardown script finished",
+      errorPrefix: "Worktree teardown script",
+      failedText: "Worktree teardown script failed",
+      outputKeyPrefix: "worktree-teardown",
+      scriptDescription: "worktree teardown script",
+      startedKey: "worktree-teardown-started",
+      startedText: "Running worktree teardown script",
+    },
+    phase: "teardown",
+    script: command,
+    timeoutMs: args.timeoutMs,
+    workspacePath: args.workspacePath,
+  });
+}
+
 export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   const force = args.force !== false;
   const workspacePath = path.resolve(args.path);
@@ -592,6 +777,13 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     }
     return;
   }
+
+  await runTeardownScript({
+    workspacePath,
+    environmentId: args.environmentId,
+    script: args.worktreeTeardownScript ?? null,
+    timeoutMs: TEARDOWN_SCRIPT_TIMEOUT_MS,
+  });
 
   const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {
     cwd: workspacePath,

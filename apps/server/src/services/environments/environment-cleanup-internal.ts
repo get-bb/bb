@@ -3,6 +3,7 @@ import { threadScope } from "@bb/domain";
 import {
   countLiveThreadsInEnvironment,
   getEnvironment,
+  getProject,
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
   type DbNotifier,
@@ -37,6 +38,7 @@ interface EnvironmentDestroyTarget {
   hostId: string;
   id: string;
   path: string;
+  projectId: string;
   workspaceProvisionType: WorkspaceProvisionType;
 }
 
@@ -261,11 +263,13 @@ function dispatchEnvironmentDestroy(
   environment: EnvironmentDestroyTarget,
   execution: HostDaemonCommandExecutionRecord,
 ) {
+  const project = getProject(deps.db, environment.projectId);
   startLiveHostCommand(deps, {
     command: {
       type: "environment.destroy",
       environmentId: environment.id,
       workspaceContext: workspaceContextFromPath(environment),
+      worktreeTeardownScript: project?.worktreeTeardownScript ?? null,
     },
     execution,
     hostId: environment.hostId,
@@ -431,6 +435,7 @@ async function advanceEnvironmentCleanup(
       hostId: claimedEnvironment.hostId,
       id: claimedEnvironment.id,
       path: claimedEnvironment.path,
+      projectId: claimedEnvironment.projectId,
       workspaceProvisionType: claimedEnvironment.workspaceProvisionType,
     },
     execution,

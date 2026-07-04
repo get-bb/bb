@@ -110,6 +110,8 @@ export type EnvironmentProvisionCommandArgs =
       branchName: string;
       baseBranch: BaseBranchSpec;
       setupTimeoutMs: number;
+      worktreeInitScript: string | null;
+      worktreeTeardownScript: string | null;
     }
   | {
       workspaceProvisionType: "personal";
@@ -143,6 +145,8 @@ export function buildEnvironmentProvisionCommand(
         branchName: args.branchName,
         baseBranch: baseBranchSpecToStoredName(args.baseBranch),
         setupTimeoutMs: args.setupTimeoutMs,
+        worktreeInitScript: args.worktreeInitScript,
+        worktreeTeardownScript: args.worktreeTeardownScript,
       };
     case "personal":
       return {

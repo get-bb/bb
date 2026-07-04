@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
@@ -7,6 +7,7 @@ import {
 } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { Textarea } from "@/components/ui/textarea.js";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {
   ProjectSourceDeleteDialog,
@@ -20,6 +21,7 @@ import { ProjectSourceRow } from "@/views/project-settings/ProjectSourceRow";
 import {
   useAddLocalProjectSource,
   useDeleteLocalProjectSource,
+  useUpdateProject,
   useUpdateLocalProjectSource,
 } from "@/hooks/mutations/project-mutations";
 import {
@@ -32,6 +34,10 @@ import {
 } from "@/hooks/useLocalPathPicker";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+
+function readScriptFormValue(value: FormDataEntryValue | null): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
 
 export function ProjectSettingsView() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -47,6 +53,7 @@ export function ProjectSettingsView() {
 
   const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();
+  const updateProject = useUpdateProject();
   const updateLocalSource = useUpdateLocalProjectSource();
 
   const project = projects?.find((p) => p.id === projectId);
@@ -135,6 +142,27 @@ export function ProjectSettingsView() {
     </div>
   ) : null;
 
+  const lifecycleFormKey = project
+    ? `${project.id}:${project.updatedAt}`
+    : "project-lifecycle-loading";
+  const saveLifecycleScripts = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!projectId) return;
+      const formData = new FormData(event.currentTarget);
+      updateProject.mutate({
+        id: projectId,
+        worktreeInitScript: readScriptFormValue(
+          formData.get("worktreeInitScript"),
+        ),
+        worktreeTeardownScript: readScriptFormValue(
+          formData.get("worktreeTeardownScript"),
+        ),
+      });
+    },
+    [projectId, updateProject],
+  );
+
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -180,6 +208,68 @@ export function ProjectSettingsView() {
               </SettingsRowList>
               {addSourceButtons}
             </div>
+          )}
+        </SettingsSection>
+        <SettingsSection
+          title="Worktree Lifecycle"
+          description="Shell snippets for managed worktree setup and cleanup."
+        >
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : !project ? (
+            <p className="text-sm text-muted-foreground">Project not found.</p>
+          ) : (
+            <form
+              key={lifecycleFormKey}
+              className="space-y-4"
+              onSubmit={saveLifecycleScripts}
+            >
+              <div className="space-y-1.5">
+                <label
+                  className="text-xs font-medium text-subtle-foreground"
+                  htmlFor="worktreeInitScript"
+                >
+                  Init script
+                </label>
+                <Textarea
+                  id="worktreeInitScript"
+                  name="worktreeInitScript"
+                  defaultValue={project.worktreeInitScript ?? ""}
+                  disabled={updateProject.isPending}
+                  placeholder="pnpm install"
+                  rows={8}
+                  spellCheck={false}
+                  className="min-h-36 resize-y font-mono text-xs leading-5"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  className="text-xs font-medium text-subtle-foreground"
+                  htmlFor="worktreeTeardownScript"
+                >
+                  Teardown script
+                </label>
+                <Textarea
+                  id="worktreeTeardownScript"
+                  name="worktreeTeardownScript"
+                  defaultValue={project.worktreeTeardownScript ?? ""}
+                  disabled={updateProject.isPending}
+                  placeholder="docker compose down --volumes --remove-orphans"
+                  rows={8}
+                  spellCheck={false}
+                  className="min-h-36 resize-y font-mono text-xs leading-5"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={updateProject.isPending}
+                >
+                  {updateProject.isPending ? "Saving…" : "Save scripts"}
+                </Button>
+              </div>
+            </form>
           )}
         </SettingsSection>
       </div>
