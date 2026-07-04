@@ -12,6 +12,8 @@ import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { cn } from "@/lib/utils";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import {
   openUrlInExternalBrowser,
@@ -24,6 +26,94 @@ import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+
+// On-screen key bar for touch devices: a soft keyboard has no Esc/Tab/Ctrl/arrow
+// keys, so each entry sends the raw PTY bytes a hardware key would, fed through
+// xterm's `input()` so it takes the same path as typed input.
+const TERMINAL_TOUCH_KEYS: ReadonlyArray<{
+  label: string;
+  bytes: string;
+  aria: string;
+  wide?: boolean;
+}> = [
+  { label: "Esc", bytes: "\x1b", aria: "Escape", wide: true },
+  { label: "Tab", bytes: "\t", aria: "Tab", wide: true },
+  { label: "^C", bytes: "\x03", aria: "Control C (interrupt)", wide: true },
+  { label: "^D", bytes: "\x04", aria: "Control D (end of file)", wide: true },
+  { label: "^Z", bytes: "\x1a", aria: "Control Z (suspend)", wide: true },
+  { label: "^L", bytes: "\x0c", aria: "Control L (clear)", wide: true },
+  { label: "^R", bytes: "\x12", aria: "Control R (search history)", wide: true },
+  { label: "↑", bytes: "\x1b[A", aria: "Up arrow" },
+  { label: "↓", bytes: "\x1b[B", aria: "Down arrow" },
+  { label: "←", bytes: "\x1b[D", aria: "Left arrow" },
+  { label: "→", bytes: "\x1b[C", aria: "Right arrow" },
+  { label: "|", bytes: "|", aria: "Pipe" },
+  { label: "~", bytes: "~", aria: "Tilde" },
+  { label: "/", bytes: "/", aria: "Slash" },
+];
+
+// Height (px) the soft keyboard overlaps the layout viewport. iOS/Android leave
+// the layout viewport full-height and shrink only the visual viewport, so a
+// bottom-anchored bar would sit behind the keyboard without this offset.
+function useSoftKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const viewport =
+      typeof window === "undefined" ? undefined : window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+    const update = () => {
+      const overlap = window.innerHeight - viewport.height - viewport.offsetTop;
+      setInset(overlap > 1 ? overlap : 0);
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
+  return inset;
+}
+
+interface TerminalTouchKeyBarProps {
+  onKey: (bytes: string) => void;
+}
+
+function TerminalTouchKeyBar({ onKey }: TerminalTouchKeyBarProps) {
+  const keyboardInset = useSoftKeyboardInset();
+  return (
+    <div
+      aria-label="Terminal keys"
+      className="no-scrollbar flex shrink-0 items-center gap-1 overflow-x-auto bg-background px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
+      style={
+        keyboardInset > 0
+          ? { paddingBottom: `${Math.round(keyboardInset) + 6}px` }
+          : undefined
+      }
+    >
+      {TERMINAL_TOUCH_KEYS.map((key) => (
+        <button
+          key={key.aria}
+          type="button"
+          aria-label={key.aria}
+          // preventDefault on pointerdown keeps xterm's hidden textarea focused,
+          // so the soft keyboard stays up while the byte is written to the PTY.
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => onKey(key.bytes)}
+          className={cn(
+            "flex h-9 shrink-0 items-center justify-center rounded-md border border-border bg-transparent px-2 font-mono text-xs text-muted-foreground active:bg-state-hover active:text-foreground",
+            key.wide ? "min-w-11" : "min-w-9",
+          )}
+        >
+          {key.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 type TerminalFitScheduler = () => void;
 
@@ -389,6 +479,7 @@ export function ThreadTerminalView({
   // The xterm canvas bakes its palette, so re-apply the theme on app-palette
   // changes too, not just light/dark toggles.
   const appThemeEpoch = useAppThemeEpoch();
+  const isCoarsePointer = usePointerCoarse();
   const openUrlByPreference = useOpenUrlByPreference();
   const handleOpenLinkByPreference =
     useCallback<MarkdownPreviewLinkHandler>(
@@ -428,6 +519,17 @@ export function ThreadTerminalView({
   const clearTerminalSelection = useCallback(() => {
     terminalRef.current?.clearSelection();
     setActiveSelection(null);
+  }, []);
+
+  // Route touch-key bytes through xterm's input path so the existing onData
+  // handler forwards them to the PTY socket (and gates on session status).
+  const sendTerminalInput = useCallback((bytes: string) => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    terminal.input(bytes);
+    terminal.focus();
   }, []);
 
   const handleSelectionAddToChat = useCallback(
@@ -711,25 +813,28 @@ export function ThreadTerminalView({
   }, [preferredTheme, appThemeEpoch]);
 
   return (
-    <div
-      className="h-full min-h-0 w-full overflow-hidden bg-background p-2"
-      onPointerDown={handleTerminalPointerDown}
-      onPointerUp={handleTerminalPointerRelease}
-      onPointerCancel={handleTerminalPointerCancel}
-    >
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
       <div
-        ref={containerRef}
-        className="h-full min-h-0 w-full overflow-hidden"
-      />
-      <TimelineSelectionMenu
-        selection={activeSelection}
-        onAddToChat={
-          onSelectionAddToChat === undefined
-            ? undefined
-            : handleSelectionAddToChat
-        }
-        onDismiss={clearTerminalSelection}
-      />
+        className="min-h-0 w-full flex-1 overflow-hidden p-2"
+        onPointerDown={handleTerminalPointerDown}
+        onPointerUp={handleTerminalPointerRelease}
+        onPointerCancel={handleTerminalPointerCancel}
+      >
+        <div
+          ref={containerRef}
+          className="h-full min-h-0 w-full overflow-hidden"
+        />
+        <TimelineSelectionMenu
+          selection={activeSelection}
+          onAddToChat={
+            onSelectionAddToChat === undefined
+              ? undefined
+              : handleSelectionAddToChat
+          }
+          onDismiss={clearTerminalSelection}
+        />
+      </div>
+      {isCoarsePointer ? <TerminalTouchKeyBar onKey={sendTerminalInput} /> : null}
     </div>
   );
 }
