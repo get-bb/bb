@@ -323,6 +323,10 @@ export interface PromptBoxInternalProps {
   attachments?: AttachmentsConfig;
   annotations?: AnnotationsConfig;
   promptActions?: readonly PromptBoxAction[];
+  /** Hide send/attachment/footer controls when embedding this as an editor. */
+  hideFooter?: boolean;
+  /** Hide the zen-mode toggle when embedding this as a compact editor. */
+  hideZenModeToggle?: boolean;
   zenMode?: PromptBoxZenModeConfig;
   history?: HistoryConfig;
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
@@ -534,7 +538,9 @@ function plainTextHasQuoteLine(text: string): boolean {
     .some((line) => line === ">" || line.startsWith("> "));
 }
 
-function trimTrailingPromptNewlines(value: PromptEditorValue): PromptEditorValue {
+function trimTrailingPromptNewlines(
+  value: PromptEditorValue,
+): PromptEditorValue {
   const text = value.text.replace(/\n+$/u, "");
   if (text.length === value.text.length) {
     return value;
@@ -1093,6 +1099,8 @@ export function PromptBoxInternal({
   attachments: attachmentConfig = {},
   annotations: annotationConfig = {},
   promptActions,
+  hideFooter = false,
+  hideZenModeToggle = false,
   zenMode = {},
   history,
   voice,
@@ -1436,11 +1444,7 @@ export function PromptBoxInternal({
             const currentEditor = editorRef.current;
             const pastedContent =
               promptEditorContentFromValue(pastedValue).content ?? [];
-            currentEditor
-              ?.chain()
-              .focus()
-              .insertContent(pastedContent)
-              .run();
+            currentEditor?.chain().focus().insertContent(pastedContent).run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
@@ -1741,8 +1745,7 @@ export function PromptBoxInternal({
     !commandLoading &&
     !commandError &&
     commandSuggestions.length === 0;
-  const showTypeaheadMenu =
-    activeTrigger !== null && !isCommandTriggerLiteral;
+  const showTypeaheadMenu = activeTrigger !== null && !isCommandTriggerLiteral;
 
   const typeaheadMenuState: TypeaheadMenuState =
     activeTriggerKind === "command"
@@ -2566,27 +2569,29 @@ export function PromptBoxInternal({
       <div
         className={cn("relative", isZenMode && "min-h-0 flex flex-1 flex-col")}
       >
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onMouseDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={toggleZenMode}
-          aria-label={isZenMode ? "Exit zen mode" : "Enter zen mode"}
-          aria-pressed={isZenMode}
-          // Neutralise the ghost variant's `aria-pressed:bg-state-active`
-          // styling — the icon swap (Maximize2 ↔ Minimize2) is the only
-          // state cue we want for zen mode.
-          className="absolute right-2 top-2 z-20 size-auto h-6 px-1.5 text-subtle-foreground hover:text-muted-foreground aria-pressed:bg-transparent aria-pressed:text-subtle-foreground aria-pressed:hover:bg-transparent aria-pressed:hover:text-muted-foreground"
-        >
-          {isZenMode ? (
-            <Icon name="Minimize2" className="size-3" />
-          ) : (
-            <Icon name="Maximize2" className="size-3" />
-          )}
-        </Button>
+        {hideZenModeToggle ? null : (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onMouseDown={(event) => {
+              event.preventDefault();
+            }}
+            onClick={toggleZenMode}
+            aria-label={isZenMode ? "Exit zen mode" : "Enter zen mode"}
+            aria-pressed={isZenMode}
+            // Neutralise the ghost variant's `aria-pressed:bg-state-active`
+            // styling — the icon swap (Maximize2 ↔ Minimize2) is the only
+            // state cue we want for zen mode.
+            className="absolute right-2 top-2 z-20 size-auto h-6 px-1.5 text-subtle-foreground hover:text-muted-foreground aria-pressed:bg-transparent aria-pressed:text-subtle-foreground aria-pressed:hover:bg-transparent aria-pressed:hover:text-muted-foreground"
+          >
+            {isZenMode ? (
+              <Icon name="Minimize2" className="size-3" />
+            ) : (
+              <Icon name="Maximize2" className="size-3" />
+            )}
+          </Button>
+        )}
         <div
           ref={editorScrollContainerRef}
           data-promptbox-editor-scroll=""
@@ -2690,138 +2695,143 @@ export function PromptBoxInternal({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
-        <div
-          className="flex min-w-0 flex-1 flex-row items-center gap-1"
-          aria-live="polite"
-        >
-          <PromptBoxActionsMenu
-            actions={promptActions}
-            onAction={applyPromptAction}
-          />
-          {footerStart}
-          <PluginComposerAccessories />
-        </div>
-        <div className="flex shrink-0 flex-row items-center gap-1">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label="Attach files"
-            disabled={!onAttachFiles || isAttaching}
-            onClick={() => attachmentInputRef.current?.click()}
-            className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+      {hideFooter ? null : (
+        <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
+          <div
+            className="flex min-w-0 flex-1 flex-row items-center gap-1"
+            aria-live="polite"
           >
-            {isAttaching ? (
-              <Icon name="Spinner" className="size-4 animate-spin" />
-            ) : (
-              <Icon name="Paperclip" className="size-4" />
-            )}
-          </Button>
-          {voice && !showVoiceActionGroup ? (
+            <PromptBoxActionsMenu
+              actions={promptActions}
+              onAction={applyPromptAction}
+            />
+            {footerStart}
+            <PluginComposerAccessories />
+          </div>
+          <div className="flex shrink-0 flex-row items-center gap-1">
             <Button
               type="button"
               size="icon"
               variant="ghost"
-              aria-label={
-                !voice.isSupported
-                  ? "Voice input is not supported in this browser"
-                  : "Start voice input"
-              }
-              disabled={!canStartVoiceInput}
-              onClick={voice.start}
+              aria-label="Attach files"
+              disabled={!onAttachFiles || isAttaching}
+              onClick={() => attachmentInputRef.current?.click()}
               className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
             >
-              <Icon name="Mic" className="size-4" />
-            </Button>
-          ) : null}
-          {showStop ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              aria-label="Stop run"
-              onClick={onStop}
-              className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
-            >
-              <Icon
-                name="Square"
-                className="size-3.5 fill-current [&_*]:stroke-0"
-              />
-            </Button>
-          ) : voice && isVoiceRecording ? (
-            <div className="relative inline-flex">
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Stop and transcribe recording"
-                onClick={voice.stop}
-                className={cn(
-                  "rounded-r-none",
-                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                )}
-              >
-                <Icon name="AudioLines" className="size-4 animate-pulse" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Cancel recording"
-                onClick={voice.cancel}
-                className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
-              >
-                <Icon name="X" className="size-3.5" />
-              </Button>
-            </div>
-          ) : voice && isVoiceProcessing ? (
-            <div className="relative inline-flex">
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Transcribing voice input"
-                disabled
-                className={cn(
-                  "rounded-r-none",
-                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                )}
-              >
-                <Icon name="AudioLines" className="size-4" />
+              {isAttaching ? (
                 <Icon name="Spinner" className="size-4 animate-spin" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Cancel transcription"
-                onClick={voice.cancel}
-                className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
-              >
-                <Icon name="X" className="size-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="submit"
-              size="sm"
-              variant="default"
-              aria-label={effectiveSubmitTitle}
-              disabled={!canSubmit}
-              className={cn("ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS)}
-            >
-              {isSubmitting ? (
-                <Icon name="Spinner" className="size-4 animate-spin" />
-              ) : isZenMode ? (
-                <Icon name="ArrowUp" className="size-4" />
               ) : (
-                <Icon name="CornerDownLeft" className="size-4" />
+                <Icon name="Paperclip" className="size-4" />
               )}
             </Button>
-          )}
+            {voice && !showVoiceActionGroup ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={
+                  !voice.isSupported
+                    ? "Voice input is not supported in this browser"
+                    : "Start voice input"
+                }
+                disabled={!canStartVoiceInput}
+                onClick={voice.start}
+                className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+              >
+                <Icon name="Mic" className="size-4" />
+              </Button>
+            ) : null}
+            {showStop ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                aria-label="Stop run"
+                onClick={onStop}
+                className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+              >
+                <Icon
+                  name="Square"
+                  className="size-3.5 fill-current [&_*]:stroke-0"
+                />
+              </Button>
+            ) : voice && isVoiceRecording ? (
+              <div className="relative inline-flex">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  aria-label="Stop and transcribe recording"
+                  onClick={voice.stop}
+                  className={cn(
+                    "rounded-r-none",
+                    COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                  )}
+                >
+                  <Icon name="AudioLines" className="size-4 animate-pulse" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  aria-label="Cancel recording"
+                  onClick={voice.cancel}
+                  className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
+                >
+                  <Icon name="X" className="size-3.5" />
+                </Button>
+              </div>
+            ) : voice && isVoiceProcessing ? (
+              <div className="relative inline-flex">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  aria-label="Transcribing voice input"
+                  disabled
+                  className={cn(
+                    "rounded-r-none",
+                    COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                  )}
+                >
+                  <Icon name="AudioLines" className="size-4" />
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  aria-label="Cancel transcription"
+                  onClick={voice.cancel}
+                  className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
+                >
+                  <Icon name="X" className="size-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                aria-label={effectiveSubmitTitle}
+                disabled={!canSubmit}
+                className={cn(
+                  "ml-1",
+                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                )}
+              >
+                {isSubmitting ? (
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                ) : isZenMode ? (
+                  <Icon name="ArrowUp" className="size-4" />
+                ) : (
+                  <Icon name="CornerDownLeft" className="size-4" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </form>
   );
 }

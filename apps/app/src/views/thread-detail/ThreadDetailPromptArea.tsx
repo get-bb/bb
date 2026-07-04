@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover.js";
+import { Input } from "@/components/ui/input.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
@@ -16,6 +16,7 @@ import type {
   EnvironmentStatus,
   PendingInteraction,
   PromptInput,
+  PromptTextMention,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -71,6 +72,11 @@ import {
   useSetThreadQueuedMessageGroupBoundary,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
+import {
+  useCreateSkillBundle,
+  useDeleteSkillBundle,
+  useUpdateSkillBundle,
+} from "@/hooks/mutations/settings-mutations";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
@@ -90,6 +96,10 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
+import {
+  PromptBoxInternal,
+  type TypeaheadConfig,
+} from "@/components/promptbox/PromptBoxInternal";
 import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { queuedInputToDraft } from "./threadQueuedMessages";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
@@ -108,87 +118,372 @@ import {
 const ignorePromptBannerFileClick = () => {};
 
 const LEADING_SLASH_COMMAND_PATTERN = /^\/([A-Za-z0-9:_-]+)/;
+let nextSkillChainStepDraftId = 0;
 
-function skillBundleStepToPromptInput(text: string): PromptInput[] {
+type TextPromptInput = Extract<PromptInput, { type: "text" }>;
+
+interface SkillChainStepDraft {
+  id: string;
+  text: string;
+  mentions: readonly PromptTextMention[];
+}
+
+interface SkillChainDraft {
+  id: string | null;
+  name: string;
+  steps: SkillChainStepDraft[];
+}
+
+function skillBundleStepTextToPromptInput(text: string): TextPromptInput {
   const match = LEADING_SLASH_COMMAND_PATTERN.exec(text);
   if (!match) {
-    return [{ type: "text", text, mentions: [] }];
+    return { type: "text", text, mentions: [] };
   }
   const commandText = match[0];
   const commandName = match[1] ?? commandText.slice(1);
-  return [
-    {
-      type: "text",
-      text,
-      mentions: [
-        {
-          start: 0,
-          end: commandText.length,
-          resource: {
-            kind: "command",
-            trigger: "/",
-            name: commandName,
-            source: "skill",
-            origin: "user",
-            label: commandName,
-            argumentHint: null,
-          },
+  return {
+    type: "text",
+    text,
+    mentions: [
+      {
+        start: 0,
+        end: commandText.length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: commandName,
+          source: "skill",
+          origin: "user",
+          label: commandName,
+          argumentHint: null,
         },
-      ],
-    },
-  ];
+      },
+    ],
+  };
 }
 
-interface SkillBundleActionsMenuProps {
-  bundles: readonly SkillBundle[];
-  disabled: boolean;
-  onRunBundle: (bundle: SkillBundle) => void;
+function skillBundleStepToPromptInput(text: string): PromptInput[] {
+  return [skillBundleStepTextToPromptInput(text)];
 }
 
-function SkillBundleActionsMenu({
-  bundles,
-  disabled,
-  onRunBundle,
-}: SkillBundleActionsMenuProps) {
-  if (bundles.length === 0) {
+function createSkillChainStepDraft(text = ""): SkillChainStepDraft {
+  const input = skillBundleStepTextToPromptInput(text);
+  nextSkillChainStepDraftId += 1;
+  return {
+    id: `step_${nextSkillChainStepDraftId}`,
+    text: input.text,
+    mentions: input.mentions,
+  };
+}
+
+function emptySkillChainDraft(): SkillChainDraft {
+  return {
+    id: null,
+    name: "",
+    steps: [createSkillChainStepDraft()],
+  };
+}
+
+function skillChainDraftFromBundle(bundle: SkillBundle): SkillChainDraft {
+  return {
+    id: bundle.id,
+    name: bundle.name,
+    steps:
+      bundle.steps.length > 0
+        ? bundle.steps.map((step) => createSkillChainStepDraft(step.text))
+        : [createSkillChainStepDraft()],
+  };
+}
+
+function normalizeSkillChainDraft(draft: SkillChainDraft) {
+  const name = draft.name.trim();
+  const steps = draft.steps
+    .map((step) => ({ text: step.text.trim() }))
+    .filter((step) => step.text.length > 0);
+  if (name.length === 0 || steps.length === 0) {
     return null;
   }
+  return { name, steps };
+}
+
+function skillChainDraftToInputGroups(draft: SkillChainDraft): PromptInput[][] {
+  return draft.steps
+    .map((step) => ({
+      text: step.text.trim(),
+      mentions: step.mentions.filter(
+        (mention) => mention.end <= step.text.length,
+      ),
+    }))
+    .filter((step) => step.text.length > 0)
+    .map((step) => [
+      { type: "text", text: step.text, mentions: step.mentions },
+    ]);
+}
+
+interface ChainedSkillsPopoverProps {
+  bundles: readonly SkillBundle[];
+  disabled: boolean;
+  isQueueing: boolean;
+  onRunBundle: (bundle: SkillBundle) => Promise<void>;
+  onRunDraft: (draft: SkillChainDraft) => Promise<void>;
+  typeahead: TypeaheadConfig;
+}
+
+function ChainedSkillsPopover({
+  bundles,
+  disabled,
+  isQueueing,
+  onRunBundle,
+  onRunDraft,
+  typeahead,
+}: ChainedSkillsPopoverProps) {
+  const createSkillBundle = useCreateSkillBundle();
+  const updateSkillBundle = useUpdateSkillBundle();
+  const deleteSkillBundle = useDeleteSkillBundle();
+  const [draft, setDraft] = useState<SkillChainDraft>(() =>
+    emptySkillChainDraft(),
+  );
+  const normalizedDraft = useMemo(
+    () => normalizeSkillChainDraft(draft),
+    [draft],
+  );
+  const isSaving =
+    createSkillBundle.isPending ||
+    updateSkillBundle.isPending ||
+    deleteSkillBundle.isPending;
+  const isBusy = isSaving || isQueueing;
+
+  const updateStep = useCallback(
+    (stepId: string, text: string, mentions: readonly PromptTextMention[]) => {
+      setDraft((current) => ({
+        ...current,
+        steps: current.steps.map((step) =>
+          step.id === stepId ? { ...step, text, mentions } : step,
+        ),
+      }));
+    },
+    [],
+  );
+  const removeStep = useCallback((stepId: string) => {
+    setDraft((current) => {
+      const steps = current.steps.filter((step) => step.id !== stepId);
+      return {
+        ...current,
+        steps: steps.length > 0 ? steps : [createSkillChainStepDraft()],
+      };
+    });
+  }, []);
+  const saveDraft = useCallback(async () => {
+    if (!normalizedDraft) {
+      return;
+    }
+    if (draft.id) {
+      const updated = await updateSkillBundle.mutateAsync({
+        id: draft.id,
+        ...normalizedDraft,
+      });
+      setDraft(skillChainDraftFromBundle(updated));
+      return;
+    }
+    const created = await createSkillBundle.mutateAsync(normalizedDraft);
+    setDraft(skillChainDraftFromBundle(created));
+  }, [createSkillBundle, draft.id, normalizedDraft, updateSkillBundle]);
+  const queueDraft = useCallback(async () => {
+    if (skillChainDraftToInputGroups(draft).length === 0) {
+      return;
+    }
+    await onRunDraft(draft);
+  }, [draft, onRunDraft]);
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           type="button"
           size="icon"
           variant="ghost"
-          disabled={disabled}
-          aria-label="Skill bundles"
+          aria-label="Chained skills"
         >
           <Icon name="ListTodo" className="size-4" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
-        side="bottom"
-        sideOffset={4}
-        className="w-56"
-        mobileTitle="Skill bundles"
+        side="top"
+        sideOffset={8}
+        className="w-[min(42rem,calc(100vw-2rem))] space-y-3 p-3"
+        mobileTitle="Chained skills"
+        mobileClassName="max-h-[85dvh]"
       >
-        {bundles.map((bundle) => (
-          <DropdownMenuItem
-            key={bundle.id}
-            onSelect={() => onRunBundle(bundle)}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Chained skills</div>
+            <div className="text-xs text-muted-foreground">
+              {bundles.length} saved
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isBusy}
+            onClick={() => setDraft(emptySkillChainDraft())}
           >
-            <Icon
-              name="ListTodo"
-              className="size-4 text-muted-foreground"
-              aria-hidden
-            />
-            <span className="min-w-0 truncate">{bundle.name}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <Icon name="Plus" className="size-4" />
+            New
+          </Button>
+        </div>
+
+        {bundles.length > 0 ? (
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {bundles.map((bundle) => (
+              <div
+                key={bundle.id}
+                className="flex shrink-0 overflow-hidden rounded-md border border-border"
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={draft.id === bundle.id ? "secondary" : "ghost"}
+                  className="rounded-r-none border-0"
+                  disabled={isBusy}
+                  onClick={() => setDraft(skillChainDraftFromBundle(bundle))}
+                >
+                  {bundle.name}
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 rounded-l-none border-l border-border"
+                  disabled={disabled || isBusy}
+                  onClick={() => void onRunBundle(bundle)}
+                  aria-label={`Queue ${bundle.name}`}
+                >
+                  <Icon name="Play" className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <Input
+            value={draft.name}
+            placeholder="Chain name"
+            disabled={isBusy}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, name: event.target.value }))
+            }
+          />
+          <div className="max-h-[50dvh] space-y-2 overflow-y-auto pr-1">
+            {draft.steps.map((step, index) => (
+              <div key={step.id} className="flex items-start gap-2">
+                <div className="mt-2 w-5 shrink-0 text-right text-xs text-muted-foreground">
+                  {index + 1}
+                </div>
+                <PromptBoxInternal
+                  value={step.text}
+                  mentionRanges={step.mentions}
+                  onChange={(text, mentions) =>
+                    updateStep(step.id, text, mentions)
+                  }
+                  onSubmit={() => {
+                    setDraft((current) => ({
+                      ...current,
+                      steps: [...current.steps, createSkillChainStepDraft()],
+                    }));
+                  }}
+                  placeholder={`Step ${index + 1}`}
+                  className="shadow-none"
+                  minHeight={44}
+                  typeahead={typeahead}
+                  mentionMenuPlacement="bottom"
+                  hideFooter
+                  hideZenModeToggle
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="mt-1 shrink-0"
+                  disabled={isBusy || draft.steps.length === 1}
+                  onClick={() => removeStep(step.id)}
+                  aria-label={`Remove step ${index + 1}`}
+                >
+                  <Icon name="X" className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isBusy}
+            onClick={() =>
+              setDraft((current) => ({
+                ...current,
+                steps: [...current.steps, createSkillChainStepDraft()],
+              }))
+            }
+          >
+            <Icon name="Plus" className="size-4" />
+            Step
+          </Button>
+          <div className="flex items-center gap-2">
+            {draft.id ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isBusy}
+                onClick={() => {
+                  const bundleId = draft.id;
+                  if (!bundleId) {
+                    return;
+                  }
+                  deleteSkillBundle.mutate(bundleId, {
+                    onSuccess: () => setDraft(emptySkillChainDraft()),
+                  });
+                }}
+              >
+                <Icon name="Trash2" className="size-4" />
+                Delete
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isBusy || normalizedDraft === null}
+              onClick={() => void saveDraft()}
+            >
+              {draft.id ? "Save" : "Create"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                disabled ||
+                isBusy ||
+                skillChainDraftToInputGroups(draft).length === 0
+              }
+              onClick={() => void queueDraft()}
+            >
+              <Icon
+                name={isQueueing ? "Spinner" : "Play"}
+                className={isQueueing ? "size-4 animate-spin" : "size-4"}
+              />
+              Queue
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -703,12 +998,8 @@ export function ThreadDetailPromptArea({
     runtimeDisplayStatus,
   ]);
 
-  const handleRunSkillBundle = useCallback(
-    async (bundle: SkillBundle) => {
-      const steps = bundle.steps
-        .map((step) => step.text.trim())
-        .filter((text) => text.length > 0)
-        .map(skillBundleStepToPromptInput);
+  const queueSkillChainSteps = useCallback(
+    async (steps: PromptInput[][]) => {
       if (steps.length === 0) {
         return;
       }
@@ -742,6 +1033,24 @@ export function ThreadDetailPromptArea({
       }
     },
     [createQueuedMessageBundle, followUpExecutionSelection, thread.id],
+  );
+
+  const handleRunSkillBundle = useCallback(
+    async (bundle: SkillBundle) => {
+      const steps = bundle.steps
+        .map((step) => step.text.trim())
+        .filter((text) => text.length > 0)
+        .map(skillBundleStepToPromptInput);
+      await queueSkillChainSteps(steps);
+    },
+    [queueSkillChainSteps],
+  );
+
+  const handleRunSkillChainDraft = useCallback(
+    async (draft: SkillChainDraft) => {
+      await queueSkillChainSteps(skillChainDraftToInputGroups(draft));
+    },
+    [queueSkillChainSteps],
   );
 
   const sendQueuedMessageById = useCallback(
@@ -1147,31 +1456,6 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const skillBundleActions = useMemo(
-    () => (
-      <SkillBundleActionsMenu
-        bundles={skillBundlesData?.bundles ?? []}
-        disabled={
-          !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
-          runtimeDisplayStatus === "provisioning" ||
-          runtimeDisplayStatus === "starting" ||
-          runtimeDisplayStatus === "waiting-for-host" ||
-          isFollowUpSubmitting ||
-          isQueueMutationPending
-        }
-        onRunBundle={handleRunSkillBundle}
-      />
-    ),
-    [
-      handleRunSkillBundle,
-      isFollowUpSubmitting,
-      isQueueMutationPending,
-      runtimeDisplayStatus,
-      skillBundlesData?.bundles,
-      submitMode.kind,
-    ],
-  );
-
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
@@ -1205,6 +1489,35 @@ export function ThreadDetailPromptArea({
       commandSuggestions.loadMore,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
+    ],
+  );
+
+  const skillBundleActions = useMemo(
+    () => (
+      <ChainedSkillsPopover
+        bundles={skillBundlesData?.bundles ?? []}
+        disabled={
+          !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+          runtimeDisplayStatus === "provisioning" ||
+          runtimeDisplayStatus === "starting" ||
+          runtimeDisplayStatus === "waiting-for-host" ||
+          isFollowUpSubmitting
+        }
+        isQueueing={isQueueMutationPending}
+        onRunBundle={handleRunSkillBundle}
+        onRunDraft={handleRunSkillChainDraft}
+        typeahead={typeaheadConfig}
+      />
+    ),
+    [
+      handleRunSkillBundle,
+      handleRunSkillChainDraft,
+      isFollowUpSubmitting,
+      isQueueMutationPending,
+      runtimeDisplayStatus,
+      skillBundlesData?.bundles,
+      submitMode.kind,
+      typeaheadConfig,
     ],
   );
 
