@@ -22,6 +22,7 @@ import {
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import { attachTerminalTouchScroll } from "./terminalTouchScroll";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -595,6 +596,7 @@ export function ThreadTerminalView({
     let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
+    let detachTouchScroll: (() => void) | null = null;
 
     async function mountTerminal(containerElement: HTMLDivElement): Promise<void> {
       const [
@@ -632,6 +634,7 @@ export function ThreadTerminalView({
         }),
       );
       terminal.open(containerElement);
+      detachTouchScroll = attachTerminalTouchScroll(containerElement);
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
         session: sessionRef.current,
@@ -777,6 +780,7 @@ export function ThreadTerminalView({
       }
       resizeObserver?.disconnect();
       selectionChangeDisposable?.dispose();
+      detachTouchScroll?.();
       socket?.close();
       terminal?.dispose();
       terminalRef.current = null;
