@@ -1,0 +1,29 @@
+{
+  "name": "bb-plugin-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@milkdown/crepe": "^7.5.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.4.0"
+  }
+}

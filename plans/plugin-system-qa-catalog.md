@@ -908,3 +908,35 @@ authoring-docs pins (`threadPanelAction: ["threadId", "params"]`).
 - [ ] **Old persisted state**: pre-rework localStorage with a plugin-panel
       fixed tab fails schema parse → that thread's panel state resets
       cleanly (fresh default panel, no error).
+
+## Files API + composer bridge + sub-routing + fileOpener + notes hero (2026-07-04)
+
+Four platform surfaces (PR: bb.sdk.files / useComposer / navPanel subPath /
+fileOpener) plus the notes hero plugin. Automated: daemon `file-write.test.ts`
+(CAS matrix, symlink containment), server `host-file-routes.test.ts`
+(defaults, ENOENT remap), app `plugin-slot-mounts.test.tsx` (useComposer
+quote/mention/focus bus, subPath splat, opener content + degrade),
+`useThreadFileTabs.test.ts` (opener diversion, ref-snapshot skip,
+missing-opener fallback, in-place switch), collector validation, authoring
+docs pins, cli `notes-example-bundle.test.ts`.
+
+- [ ] **CAS save race live**: open a note in the notes editor, edit the file
+      on disk (or via an agent), save in the editor → conflict banner with
+      Reload/Overwrite; Reload shows the disk content.
+- [ ] **Open with menu live**: open a `.md` workspace file → right-click the
+      tab → "Open with Notes editor" swaps the tab in place; "Always open
+      .md with Notes editor" then makes markdown links open in the editor;
+      "Open with built-in preview" switches back.
+- [ ] **Opener fallback live**: set the .md default to the notes opener,
+      disable the plugin → opening a markdown file lands on the built-in
+      preview (no dead tab); the persisted opener tab shows the placeholder.
+- [ ] **subPath deep link**: /plugins/notes/notes/0/<note>.md loads with that
+      note selected; browser back walks note-to-note history.
+- [ ] **Composer bridge live**: "Add to chat" from the notes nav panel seeds
+      the home composer draft (blockquote + focus); in a thread panel tab it
+      lands in that thread's draft; "@-mention" inserts a pill that resolves
+      the note at send (visible in the agent's context).
+- [ ] **Crepe theming**: notes editor follows light/dark and a custom
+      palette (Nord) — no stranded white editor chrome.
+- [ ] **Watcher refresh**: agent writes a new .md into a mounted directory →
+      the tree updates without a manual refresh.

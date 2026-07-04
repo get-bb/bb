@@ -567,6 +567,13 @@ Reference examples in `examples/plugins/` (a bb checkout):
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
+- `notes` — full-surface markdown notes (Obsidian-style): mounted
+  directories via a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe
+  WYSIWYG bundled per-plugin (its theme CSS served from a `bb.http` route),
+  navPanel with `chrome: "none"` + subPath deep links, threadPanelAction,
+  a markdown `fileOpener`, `useComposer()` quote/mention buttons, an fs
+  watcher publishing realtime tree refreshes, and a `@Notes` mention
+  provider resolving note content at send.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

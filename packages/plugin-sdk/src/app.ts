@@ -34,3 +34,4 @@ export const useRealtime = runtime.useRealtime;
 export const useSettings = runtime.useSettings;
 export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;
+export const useComposer = runtime.useComposer;

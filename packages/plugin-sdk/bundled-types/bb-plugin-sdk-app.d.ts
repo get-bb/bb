@@ -287,6 +287,7 @@ declare const useRealtime: (channel: string, handler: (payload: unknown) => void
 declare const useSettings: () => PluginSettingsState;
 declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
+declare const useComposer: () => PluginComposerApi;
 
-export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useRealtime, useRpc, useSettings };
+export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
 export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginRpcClient, PluginSdkApp, PluginSettingsState, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
