@@ -12,12 +12,9 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import type { SkillBundle } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
-import { Input } from "@/components/ui/input.js";
 import { Switch } from "@/components/ui/switch.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   DropdownMenu,
@@ -43,14 +40,8 @@ import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSec
 import {
   useUpdateAppearance,
   useUpdateExperiments,
-  useCreateSkillBundle,
-  useDeleteSkillBundle,
-  useUpdateSkillBundle,
 } from "@/hooks/mutations/settings-mutations";
-import {
-  useSkillBundles,
-  useSystemConfig,
-} from "@/hooks/queries/system-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
@@ -947,210 +938,6 @@ export function ExperimentsSettingsSection({
   );
 }
 
-interface SkillBundleDraft {
-  id: string | null;
-  name: string;
-  steps: string[];
-}
-
-const EMPTY_SKILL_BUNDLE_DRAFT: SkillBundleDraft = {
-  id: null,
-  name: "",
-  steps: [""],
-};
-
-function skillBundleDraftFromBundle(bundle: SkillBundle): SkillBundleDraft {
-  return {
-    id: bundle.id,
-    name: bundle.name,
-    steps: bundle.steps.map((step) => step.text),
-  };
-}
-
-function normalizeSkillBundleDraft(draft: SkillBundleDraft) {
-  const name = draft.name.trim();
-  const steps = draft.steps
-    .map((text) => text.trim())
-    .filter((text) => text.length > 0)
-    .map((text) => ({ text }));
-  if (name.length === 0 || steps.length === 0) {
-    return null;
-  }
-  return {
-    name,
-    steps,
-  };
-}
-
-export function SkillBundlesSettingsSection() {
-  const skillBundlesQuery = useSkillBundles();
-  const createSkillBundle = useCreateSkillBundle();
-  const updateSkillBundle = useUpdateSkillBundle();
-  const deleteSkillBundle = useDeleteSkillBundle();
-  const [draft, setDraft] = useState<SkillBundleDraft>(
-    EMPTY_SKILL_BUNDLE_DRAFT,
-  );
-  const normalizedDraft = useMemo(
-    () => normalizeSkillBundleDraft(draft),
-    [draft],
-  );
-  const isSaving =
-    createSkillBundle.isPending ||
-    updateSkillBundle.isPending ||
-    deleteSkillBundle.isPending;
-
-  const updateStep = (index: number, value: string) => {
-    setDraft((current) => ({
-      ...current,
-      steps: current.steps.map((step, stepIndex) =>
-        stepIndex === index ? value : step,
-      ),
-    }));
-  };
-  const removeStep = (index: number) => {
-    setDraft((current) => {
-      const steps = current.steps.filter((_, stepIndex) => stepIndex !== index);
-      return { ...current, steps: steps.length > 0 ? steps : [""] };
-    });
-  };
-  const saveDraft = () => {
-    if (!normalizedDraft) {
-      return;
-    }
-    if (draft.id) {
-      updateSkillBundle.mutate(
-        { id: draft.id, ...normalizedDraft },
-        { onSuccess: () => setDraft(EMPTY_SKILL_BUNDLE_DRAFT) },
-      );
-      return;
-    }
-    createSkillBundle.mutate(normalizedDraft, {
-      onSuccess: () => setDraft(EMPTY_SKILL_BUNDLE_DRAFT),
-    });
-  };
-
-  return (
-    <SettingsSection title="Chained skills">
-      <div className="space-y-3">
-        <div className="space-y-2">
-          {(skillBundlesQuery.data?.bundles ?? []).map((bundle) => (
-            <div
-              key={bundle.id}
-              className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-b-0"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">
-                  {bundle.name}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {bundle.steps.map((step) => step.text).join(" -> ")}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={isSaving}
-                  onClick={() => setDraft(skillBundleDraftFromBundle(bundle))}
-                  aria-label={`Edit ${bundle.name}`}
-                >
-                  <Icon name="Edit" className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={isSaving}
-                  onClick={() => deleteSkillBundle.mutate(bundle.id)}
-                  aria-label={`Delete ${bundle.name}`}
-                >
-                  <Icon name="Trash2" className="size-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
-          {skillBundlesQuery.data?.bundles.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No chains yet.</div>
-          ) : null}
-        </div>
-
-        <div className="space-y-2">
-          <Input
-            value={draft.name}
-            placeholder="Chain name"
-            disabled={isSaving}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <div className="space-y-2">
-            {draft.steps.map((step, index) => (
-              <div key={index} className="flex items-start gap-2">
-                <Textarea
-                  value={step}
-                  placeholder={`Step ${index + 1}`}
-                  disabled={isSaving}
-                  className="min-h-16"
-                  onChange={(event) => updateStep(index, event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={isSaving || draft.steps.length === 1}
-                  onClick={() => removeStep(index)}
-                  aria-label={`Remove step ${index + 1}`}
-                >
-                  <Icon name="X" className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isSaving}
-              onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  steps: [...current.steps, ""],
-                }))
-              }
-            >
-              <Icon name="Plus" className="size-4" />
-              Step
-            </Button>
-            <div className="flex items-center gap-2">
-              {draft.id ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={isSaving}
-                  onClick={() => setDraft(EMPTY_SKILL_BUNDLE_DRAFT)}
-                >
-                  Cancel
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                disabled={isSaving || normalizedDraft === null}
-                onClick={saveDraft}
-              >
-                {draft.id ? "Save chain" : "Create chain"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </SettingsSection>
-  );
-}
-
 export function SettingsView() {
   const navigate = useNavigate();
   const themePreference = useThemePreference();
@@ -1229,8 +1016,6 @@ export function SettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
-
-        <SkillBundlesSettingsSection />
 
         <ExperimentsSettingsSection
           claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
