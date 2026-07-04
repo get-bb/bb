@@ -1942,7 +1942,7 @@ export async function listSkillBundles(
   signal?: AbortSignal,
 ): Promise<SkillBundleListResponse> {
   return request<SkillBundleListResponse>(
-    apiClient.settings["skill-bundles"].$get({}, requestOptions(signal)),
+    apiClient.system["skill-bundles"].$get({}, requestOptions(signal)),
   );
 }
 
@@ -1950,7 +1950,7 @@ export async function createSkillBundle(
   requestBody: UpsertSkillBundleRequest,
 ): Promise<SkillBundle> {
   return request<SkillBundle>(
-    apiClient.settings["skill-bundles"].$post({ json: requestBody }),
+    apiClient.system["skill-bundles"].$post({ json: requestBody }),
   );
 }
 
@@ -1959,7 +1959,7 @@ export async function updateSkillBundle(
   requestBody: UpsertSkillBundleRequest,
 ): Promise<SkillBundle> {
   return request<SkillBundle>(
-    apiClient.settings["skill-bundles"][":id"].$patch({
+    apiClient.system["skill-bundles"][":id"].$patch({
       param: { id },
       json: requestBody,
     }),
@@ -1968,7 +1968,7 @@ export async function updateSkillBundle(
 
 export async function deleteSkillBundle(id: string): Promise<{ ok: true }> {
   return request<{ ok: true }>(
-    apiClient.settings["skill-bundles"][":id"].$delete({
+    apiClient.system["skill-bundles"][":id"].$delete({
       param: { id },
     }),
   );

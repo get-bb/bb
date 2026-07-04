@@ -950,14 +950,12 @@ export function ExperimentsSettingsSection({
 interface SkillBundleDraft {
   id: string | null;
   name: string;
-  description: string;
   steps: string[];
 }
 
 const EMPTY_SKILL_BUNDLE_DRAFT: SkillBundleDraft = {
   id: null,
   name: "",
-  description: "",
   steps: [""],
 };
 
@@ -965,14 +963,12 @@ function skillBundleDraftFromBundle(bundle: SkillBundle): SkillBundleDraft {
   return {
     id: bundle.id,
     name: bundle.name,
-    description: bundle.description ?? "",
     steps: bundle.steps.map((step) => step.text),
   };
 }
 
 function normalizeSkillBundleDraft(draft: SkillBundleDraft) {
   const name = draft.name.trim();
-  const description = draft.description.trim();
   const steps = draft.steps
     .map((text) => text.trim())
     .filter((text) => text.length > 0)
@@ -982,7 +978,6 @@ function normalizeSkillBundleDraft(draft: SkillBundleDraft) {
   }
   return {
     name,
-    description: description.length > 0 ? description : null,
     steps,
   };
 }
@@ -1035,82 +1030,58 @@ export function SkillBundlesSettingsSection() {
   };
 
   return (
-    <SettingsSection
-      title="Skill bundles"
-      description="Save ordered prompt sequences that can be queued from a thread."
-    >
-      <div className="space-y-4">
+    <SettingsSection title="Chained skills">
+      <div className="space-y-3">
         <div className="space-y-2">
           {(skillBundlesQuery.data?.bundles ?? []).map((bundle) => (
             <div
               key={bundle.id}
-              className="rounded-md border border-border bg-card p-3"
+              className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-b-0"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {bundle.name}
-                  </div>
-                  {bundle.description ? (
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      {bundle.description}
-                    </div>
-                  ) : null}
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {bundle.steps.length} step
-                    {bundle.steps.length === 1 ? "" : "s"}
-                  </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">
+                  {bundle.name}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={isSaving}
-                    onClick={() => setDraft(skillBundleDraftFromBundle(bundle))}
-                    aria-label={`Edit ${bundle.name}`}
-                  >
-                    <Icon name="Edit" className="size-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={isSaving}
-                    onClick={() => deleteSkillBundle.mutate(bundle.id)}
-                    aria-label={`Delete ${bundle.name}`}
-                  >
-                    <Icon name="Trash2" className="size-4" />
-                  </Button>
+                <div className="truncate text-xs text-muted-foreground">
+                  {bundle.steps.map((step) => step.text).join(" -> ")}
                 </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSaving}
+                  onClick={() => setDraft(skillBundleDraftFromBundle(bundle))}
+                  aria-label={`Edit ${bundle.name}`}
+                >
+                  <Icon name="Edit" className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSaving}
+                  onClick={() => deleteSkillBundle.mutate(bundle.id)}
+                  aria-label={`Delete ${bundle.name}`}
+                >
+                  <Icon name="Trash2" className="size-4" />
+                </Button>
               </div>
             </div>
           ))}
           {skillBundlesQuery.data?.bundles.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-              No skill bundles configured.
-            </div>
+            <div className="text-sm text-muted-foreground">No chains yet.</div>
           ) : null}
         </div>
 
-        <div className="space-y-3 rounded-md border border-border p-3">
+        <div className="space-y-2">
           <Input
             value={draft.name}
-            placeholder="Bundle name"
+            placeholder="Chain name"
             disabled={isSaving}
             onChange={(event) =>
               setDraft((current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <Input
-            value={draft.description}
-            placeholder="Description"
-            disabled={isSaving}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                description: event.target.value,
-              }))
             }
           />
           <div className="space-y-2">
@@ -1120,7 +1091,7 @@ export function SkillBundlesSettingsSection() {
                   value={step}
                   placeholder={`Step ${index + 1}`}
                   disabled={isSaving}
-                  className="min-h-20"
+                  className="min-h-16"
                   onChange={(event) => updateStep(index, event.target.value)}
                 />
                 <Button
@@ -1170,7 +1141,7 @@ export function SkillBundlesSettingsSection() {
                 disabled={isSaving || normalizedDraft === null}
                 onClick={saveDraft}
               >
-                {draft.id ? "Save bundle" : "Create bundle"}
+                {draft.id ? "Save chain" : "Create chain"}
               </Button>
             </div>
           </div>

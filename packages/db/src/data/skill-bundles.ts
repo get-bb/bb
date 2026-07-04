@@ -10,7 +10,6 @@ export interface SkillBundleStepData {
 export interface SkillBundle {
   id: string;
   name: string;
-  description: string | null;
   steps: SkillBundleStepData[];
   position: number;
   createdAt: number;
@@ -19,13 +18,11 @@ export interface SkillBundle {
 
 export interface CreateSkillBundleInput {
   name: string;
-  description: string | null;
   steps: SkillBundleStepData[];
 }
 
 export interface UpdateSkillBundleInput {
   name: string;
-  description: string | null;
   steps: SkillBundleStepData[];
 }
 
@@ -53,7 +50,6 @@ function toSkillBundle(row: SkillBundleRow): SkillBundle {
   return {
     id: row.id,
     name: row.name,
-    description: row.description,
     steps: parseSteps(row),
     position: row.position,
     createdAt: row.createdAt,
@@ -99,7 +95,6 @@ export function createSkillBundle(
     .values({
       id: createSkillBundleId(),
       name: input.name,
-      description: input.description,
       steps: JSON.stringify(input.steps),
       position: nextSkillBundlePosition(db),
       createdAt: now,
@@ -120,7 +115,6 @@ export function updateSkillBundle(
       .update(skillBundles)
       .set({
         name: input.name,
-        description: input.description,
         steps: JSON.stringify(input.steps),
         updatedAt: Date.now(),
       })

@@ -21,12 +21,10 @@ describe("skill bundles", () => {
 
     const first = createSkillBundle(db, {
       name: "Cleanup",
-      description: null,
       steps: [{ text: "/simplify" }, { text: "/review" }],
     });
     const second = createSkillBundle(db, {
       name: "Consistency",
-      description: "Run consistency checks",
       steps: [{ text: "/ensure-consistency" }],
     });
 
@@ -43,20 +41,17 @@ describe("skill bundles", () => {
     const db = setup();
     const created = createSkillBundle(db, {
       name: "Draft",
-      description: null,
       steps: [{ text: "/simplify" }],
     });
 
     const updated = updateSkillBundle(db, created.id, {
       name: "Review",
-      description: "Review sequence",
       steps: [{ text: "/review" }, { text: "Summarize the findings." }],
     });
 
     expect(updated).toMatchObject({
       id: created.id,
       name: "Review",
-      description: "Review sequence",
       steps: [{ text: "/review" }, { text: "Summarize the findings." }],
     });
     expect(getSkillBundle(db, created.id)?.name).toBe("Review");
