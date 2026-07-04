@@ -76,7 +76,9 @@ function requireRelativeNotePath(value: unknown): string {
 async function loadCrepeCss(): Promise<string> {
   const require = createRequire(import.meta.url);
   const entry = require.resolve("@milkdown/crepe/theme/common/style.css");
-  const dir = path.dirname(entry);
+  // Bare-specifier imports (e.g. @milkdown/kit/...) are Crepe's own deps —
+  // resolve them from Crepe's package context, not the plugin's.
+  const crepeRequire = createRequire(entry);
   const seen = new Set<string>();
   const inline = async (file: string): Promise<string> => {
     if (seen.has(file)) return "";
@@ -84,14 +86,21 @@ async function loadCrepeCss(): Promise<string> {
     const source = await readFile(file, "utf8");
     const parts = await Promise.all(
       source.split("\n").map(async (line) => {
-        const match = /^@import\s+['"]\.\/(.+\.css)['"];/.exec(line.trim());
+        const match = /^@import\s+['"](.+\.css)['"];/.exec(line.trim());
         if (!match?.[1]) return line;
-        return inline(path.join(path.dirname(file), match[1]));
+        const specifier = match[1];
+        // Relative imports resolve against the importing file; bare
+        // specifiers (e.g. @milkdown/kit/prose/view/style/prosemirror.css)
+        // resolve through node — both end up inlined.
+        const resolved = specifier.startsWith(".")
+          ? path.join(path.dirname(file), specifier)
+          : crepeRequire.resolve(specifier);
+        return inline(resolved);
       }),
     );
     return parts.join("\n");
   };
-  return inline(path.join(dir, "style.css"));
+  return inline(entry);
 }
 
 export default async function plugin(bb: BbPluginApi) {
