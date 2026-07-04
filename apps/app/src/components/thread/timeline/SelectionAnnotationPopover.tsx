@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { Button } from "@/components/ui/button.js";
+import { Textarea } from "@/components/ui/textarea.js";
+import { preventOverlayTriggerSelection } from "@/components/ui/overlay-trigger.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { useSoftKeyboardInset } from "@/components/ui/hooks/use-soft-keyboard-inset.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
+// Mirrors the shared PopoverContent tokens (components/ui/popover.tsx), sized
+// for a compact comment box that fits a phone viewport.
 const ANNOTATION_POPOVER_CONTENT_CLASS =
-  "z-50 flex w-[min(20rem,calc(100vw-1rem))] flex-col gap-2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0";
+  "z-50 flex w-80 max-w-[calc(100vw-1rem)] flex-col gap-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
 
 export interface SelectionAnnotationPopoverProps {
   selection: MessageProseSelection | null;
@@ -15,17 +21,14 @@ export interface SelectionAnnotationPopoverProps {
    * Portal target. On touch the diff renders inside a vaul modal drawer that
    * `aria-hidden`s everything outside its subtree, so a popover portaled to
    * `<body>` renders but is hidden and non-interactive. Passing the drawer
-   * element keeps the popover inside it; the drawer's transform is `none` once
-   * settled, so viewport-anchored positioning stays correct.
+   * element keeps the popover inside it.
    */
   portalContainer?: HTMLElement | null;
 }
 
 /**
  * Inline comment box shown when a line range is selected. Confirming turns the
- * range + comment into a pending annotation chip in the composer. Anchored via a
- * virtual viewport rect (a real anchor can be distorted by transformed diff
- * ancestors) and lifted above the soft keyboard through collision padding.
+ * range + comment into a pending annotation chip in the composer.
  */
 export function SelectionAnnotationPopover({
   selection,
@@ -36,6 +39,7 @@ export function SelectionAnnotationPopover({
 }: SelectionAnnotationPopoverProps) {
   const open = selection !== null;
   const [comment, setComment] = useState("");
+  const isCoarsePointer = usePointerCoarse();
   const keyboardInset = useSoftKeyboardInset();
   const virtualAnchorRef = useRef({
     getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
@@ -46,11 +50,6 @@ export function SelectionAnnotationPopover({
       setComment("");
     }
   }, [open]);
-
-  // Intentionally no scroll-to-dismiss: unlike the transient add-to-chat menu,
-  // this is a text box the user types into (and may scroll while doing so). On
-  // touch the drag-select's settle-scroll fires right after open, so dismissing
-  // on scroll made the box flash and vanish. Escape / click-outside still close.
 
   if (!selection) return null;
 
@@ -93,43 +92,46 @@ export function SelectionAnnotationPopover({
           }}
           className={ANNOTATION_POPOVER_CONTENT_CLASS}
           onEscapeKeyDown={() => onDismiss()}
+          // On touch, autofocusing the textarea opens the soft keyboard, whose
+          // animation reflows this box out from under a finger tap (matching the
+          // drawer shell's coarse-pointer guard). Let the user tap to type.
+          onOpenAutoFocus={(event) => {
+            if (isCoarsePointer) {
+              event.preventDefault();
+            }
+          }}
         >
           <p className="truncate text-xs font-medium text-muted-foreground">
             {locationLabel}
           </p>
-          <textarea
+          <Textarea
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={2}
             enterKeyHint="send"
             placeholder="Add a comment…"
-            className="w-full resize-none rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="min-h-16 text-sm"
           />
           <div className="flex justify-end gap-1.5">
-            <button
-              type="button"
-              // Fire on pointerdown + preventDefault: on touch, a plain tap would
-              // first blur the textarea, close the keyboard, and reflow the box
-              // out from under the finger, so the click never lands.
-              onPointerDown={(event) => {
-                event.preventDefault();
-                onDismiss();
-              }}
-              className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-surface-recessed max-md:pointer-coarse:py-1.5"
+            <Button
+              variant="ghost"
+              size="sm"
+              // mousedown fires before the textarea blurs, so preventing its
+              // default keeps focus (and the keyboard) put — the box doesn't
+              // reflow and the click lands. Same pattern as TimelineSelectionMenu.
+              onMouseDown={preventOverlayTriggerSelection}
+              onClick={() => onDismiss()}
             >
               Cancel
-            </button>
-            <button
-              type="button"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                submit();
-              }}
-              className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 max-md:pointer-coarse:py-1.5"
+            </Button>
+            <Button
+              size="sm"
+              onMouseDown={preventOverlayTriggerSelection}
+              onClick={submit}
             >
               Add to chat
-            </button>
+            </Button>
           </div>
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>

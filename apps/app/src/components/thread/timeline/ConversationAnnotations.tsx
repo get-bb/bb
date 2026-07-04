@@ -24,14 +24,14 @@ export function ConversationAnnotations({
   }
 
   return (
-    <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
+    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
       {annotations.map((annotation, index) => {
         const comment = annotation.comment.trim();
         const location = annotationLocationLabel(annotation);
         return (
           <span
             key={`${annotation.path}-${annotation.startLine}-${index}`}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface-raised px-2 py-0.5 text-xs text-muted-foreground"
+            className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"
             title={comment.length > 0 ? `${location} — ${comment}` : location}
           >
             <Icon name="MessageSquare" className="size-3 shrink-0" />

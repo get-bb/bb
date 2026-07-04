@@ -27,19 +27,16 @@ export function AnnotationPreview({
     <div className="mx-3 mb-1 mt-1 flex flex-wrap gap-1.5">
       {annotations.map((annotation) => {
         const comment = annotation.comment.trim();
+        const location = annotationLocationLabel(annotation);
         return (
           <span
             key={annotation.id}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface-recessed py-0.5 pl-2 pr-1 text-xs text-muted-foreground"
-            title={
-              comment.length > 0
-                ? `${annotationLocationLabel(annotation)} — ${comment}`
-                : annotationLocationLabel(annotation)
-            }
+            className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"
+            title={comment.length > 0 ? `${location} — ${comment}` : location}
           >
             <Icon name="MessageSquare" className="size-3 shrink-0" />
             <span className="shrink-0 font-medium text-foreground">
-              {annotationLocationLabel(annotation)}
+              {location}
             </span>
             {comment.length > 0 ? (
               <span className="truncate">{comment}</span>
@@ -48,8 +45,8 @@ export function AnnotationPreview({
               <button
                 type="button"
                 onClick={() => onRemoveAnnotation(annotation.id)}
-                className="shrink-0 rounded p-0.5 hover:bg-state-hover max-md:pointer-coarse:p-1.5"
-                aria-label={`Remove comment on ${annotationLocationLabel(annotation)}`}
+                className="rounded p-0.5 hover:bg-state-hover"
+                title={`Remove comment on ${location}`}
               >
                 <Icon name="X" className="size-3" />
               </button>
