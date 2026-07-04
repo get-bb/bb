@@ -49,8 +49,11 @@ function mountTerminal(metrics: ViewportMetrics = {}) {
     value: clientHeight,
   });
 
-  detach = attachTerminalTouchScroll(container);
-  return { screen, viewport };
+  const wheelDeltas: number[] = [];
+  detach = attachTerminalTouchScroll(container, {
+    dispatchWheel: (deltaY) => wheelDeltas.push(deltaY),
+  });
+  return { screen, viewport, wheelDeltas };
 }
 
 function touchEvent(type: string, clientY: number | null): Event {
@@ -70,81 +73,80 @@ function multiTouchEvent(type: string, clientYs: number[]): Event {
 }
 
 describe("attachTerminalTouchScroll", () => {
-  it("scrolls the viewport as the finger drags, in the natural direction", () => {
-    const { screen, viewport } = mountTerminal({ scrollTop: 500 });
+  it("dispatches wheel deltas as the finger drags, in the natural direction", () => {
+    const { screen, wheelDeltas } = mountTerminal({ scrollTop: 500 });
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
-    // Drag down 30px reveals earlier scrollback: scrollTop decreases.
+    // Drag down reveals earlier scrollback: negative wheel delta.
     const moveDown = touchEvent("touchmove", 130);
     screen.dispatchEvent(moveDown);
-    expect(viewport.scrollTop).toBe(470);
+    expect(wheelDeltas).toEqual([-75]);
     expect(moveDown.defaultPrevented).toBe(true);
 
-    // Drag back up 10px scrolls toward the bottom again.
+    // Drag back up scrolls toward the bottom again.
     const moveUp = touchEvent("touchmove", 120);
     screen.dispatchEvent(moveUp);
-    expect(viewport.scrollTop).toBe(480);
+    expect(wheelDeltas).toEqual([-75, 25]);
     expect(moveUp.defaultPrevented).toBe(true);
   });
 
   it("leaves taps alone: a sub-threshold drag does not scroll or preventDefault", () => {
-    const { screen, viewport } = mountTerminal({ scrollTop: 500 });
+    const { screen, wheelDeltas } = mountTerminal({ scrollTop: 500 });
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
     const tinyMove = touchEvent("touchmove", 102);
     screen.dispatchEvent(tinyMove);
 
-    expect(viewport.scrollTop).toBe(500);
+    expect(wheelDeltas).toEqual([]);
     expect(tinyMove.defaultPrevented).toBe(false);
   });
 
-  it("does not engage when there is nothing to scroll", () => {
-    const { screen, viewport } = mountTerminal({
-      scrollTop: 0,
-      scrollHeight: 200,
+  it("dispatches wheel events even when DOM viewport overflow is unavailable", () => {
+    const { screen, wheelDeltas } = mountTerminal({
       clientHeight: 200,
+      scrollHeight: 200,
     });
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
-    const move = touchEvent("touchmove", 160);
+    const move = touchEvent("touchmove", 130);
     screen.dispatchEvent(move);
 
-    expect(viewport.scrollTop).toBe(0);
-    expect(move.defaultPrevented).toBe(false);
+    expect(wheelDeltas).toEqual([-75]);
+    expect(move.defaultPrevented).toBe(true);
   });
 
   it("ignores multi-touch gestures", () => {
-    const { screen, viewport } = mountTerminal({ scrollTop: 500 });
+    const { screen, wheelDeltas } = mountTerminal({ scrollTop: 500 });
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
     const pinch = multiTouchEvent("touchmove", [130, 260]);
     screen.dispatchEvent(pinch);
 
-    expect(viewport.scrollTop).toBe(500);
+    expect(wheelDeltas).toEqual([]);
     expect(pinch.defaultPrevented).toBe(false);
   });
 
   it("stops scrolling after the gesture ends", () => {
-    const { screen, viewport } = mountTerminal({ scrollTop: 500 });
+    const { screen, wheelDeltas } = mountTerminal({ scrollTop: 500 });
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
     screen.dispatchEvent(touchEvent("touchmove", 130));
-    expect(viewport.scrollTop).toBe(470);
+    expect(wheelDeltas).toEqual([-75]);
 
     screen.dispatchEvent(touchEvent("touchend", null));
     const strayMove = touchEvent("touchmove", 300);
     screen.dispatchEvent(strayMove);
-    expect(viewport.scrollTop).toBe(470);
+    expect(wheelDeltas).toEqual([-75]);
   });
 
   it("detaches its listeners", () => {
-    const { screen, viewport } = mountTerminal({ scrollTop: 500 });
+    const { screen, wheelDeltas } = mountTerminal({ scrollTop: 500 });
 
     detach?.();
     detach = null;
 
     screen.dispatchEvent(touchEvent("touchstart", 100));
     screen.dispatchEvent(touchEvent("touchmove", 130));
-    expect(viewport.scrollTop).toBe(500);
+    expect(wheelDeltas).toEqual([]);
   });
 });

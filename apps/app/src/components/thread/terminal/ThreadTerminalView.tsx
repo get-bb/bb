@@ -80,11 +80,11 @@ function useSoftKeyboardInset(): number {
 }
 
 interface TerminalTouchKeyBarProps {
+  keyboardInset: number;
   onKey: (bytes: string) => void;
 }
 
-function TerminalTouchKeyBar({ onKey }: TerminalTouchKeyBarProps) {
-  const keyboardInset = useSoftKeyboardInset();
+function TerminalTouchKeyBar({ keyboardInset, onKey }: TerminalTouchKeyBarProps) {
   return (
     <div
       aria-label="Terminal keys"
@@ -459,6 +459,7 @@ export function ThreadTerminalView({
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const keyboardInset = useSoftKeyboardInset();
   const terminalRef = useRef<XTermTerminal | null>(null);
   const pointerIsDownRef = useRef(false);
   const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
@@ -634,7 +635,19 @@ export function ThreadTerminalView({
         }),
       );
       terminal.open(containerElement);
-      detachTouchScroll = attachTerminalTouchScroll(containerElement);
+      detachTouchScroll = attachTerminalTouchScroll(containerElement, {
+        dispatchWheel: (deltaY) => {
+          const target = terminal?.element ?? containerElement;
+          target.dispatchEvent(
+            new WheelEvent("wheel", {
+              bubbles: true,
+              cancelable: true,
+              deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+              deltaY,
+            }),
+          );
+        },
+      });
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
         session: sessionRef.current,
@@ -724,6 +737,7 @@ export function ThreadTerminalView({
         if (activeSocket.readyState !== WebSocket.OPEN) {
           return;
         }
+        activeTerminal.scrollToBottom();
         onUserInputRef.current?.();
         activeSocket.send(
           JSON.stringify({
@@ -797,6 +811,13 @@ export function ThreadTerminalView({
   }, [isPanelOpen]);
 
   useEffect(() => {
+    if (!isPanelOpen) {
+      return;
+    }
+    scheduleFitRef.current?.();
+  }, [isPanelOpen, keyboardInset]);
+
+  useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) {
       return;
@@ -845,7 +866,12 @@ export function ThreadTerminalView({
           onDismiss={clearTerminalSelection}
         />
       </div>
-      {isCoarsePointer ? <TerminalTouchKeyBar onKey={sendTerminalInput} /> : null}
+      {isCoarsePointer ? (
+        <TerminalTouchKeyBar
+          keyboardInset={keyboardInset}
+          onKey={sendTerminalInput}
+        />
+      ) : null}
     </div>
   );
 }
