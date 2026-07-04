@@ -8,6 +8,14 @@ function resolveBrowserHostDevWebSocketBaseUrl(port: number): string {
 }
 
 function resolveDevWebSocketBaseUrl(): string | undefined {
+  // When the dev app is reached through an HTTPS frontend such as Tailscale
+  // Serve, the server port is still plain HTTP. A direct
+  // `wss://<browser-host>:<server-port>` connection fails TLS negotiation, so
+  // use the same-origin `/ws` Vite proxy instead.
+  if (window.location.protocol === "https:") {
+    return undefined;
+  }
+
   if (typeof __BB_DEV_WS_BROWSER_HOST_PORT__ === "number") {
     return resolveBrowserHostDevWebSocketBaseUrl(
       __BB_DEV_WS_BROWSER_HOST_PORT__,
