@@ -370,6 +370,7 @@ export const DiffFileCard = memo(function DiffFileCard({
         <GitDiffCardHeader
           model={headerModel}
           previousPath={entry.previousPath}
+          origin={entry.origin}
           filePathRoot={filePathRoot}
           onOpenFileInEditor={onOpenFileInEditor}
           onOpenFilePreview={onOpenFilePreview}
