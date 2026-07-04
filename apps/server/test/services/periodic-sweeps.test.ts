@@ -1,12 +1,32 @@
 import { eq } from "drizzle-orm";
-import { CLOSED_SESSION_ROW_RETENTION_MS, hostDaemonSessions } from "@bb/db";
+import {
+  CLOSED_SESSION_ROW_RETENTION_MS,
+  getQueuedThreadMessage,
+  getThread,
+  hostDaemonSessions,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import { turnScope } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   type PeriodicSweepJob,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
+  runStartupRecoverySweep,
 } from "../../src/services/system/periodic-sweeps.js";
-import { seedHostSession } from "../helpers/seed.js";
+import {
+  createTestDaemonEventEnvelope,
+  internalAuthHeaders,
+  waitForQueuedCommand,
+  waitForQueuedCommandAfter,
+} from "../helpers/commands.js";
+import { textInput } from "../helpers/prompt-input.js";
+import {
+  seedHostSession,
+  seedQueuedMessage,
+  seedThreadFixture,
+  seedThreadRuntimeState,
+} from "../helpers/seed.js";
 import { testLogger, withTestHarness } from "../helpers/test-app.js";
 
 type ReleaseCallback = () => void;
@@ -19,6 +39,155 @@ function releaseRunningJob(release: ReleaseCallback | null): void {
 }
 
 describe("runPeriodicSweeps", () => {
+  it("startup recovery auto-sends the oldest queued message on idle provider threads", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-startup-queued-message-recovery",
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("First startup queued message"),
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Second startup queued message"),
+      });
+
+      await runStartupRecoverySweep(harness.deps);
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(queued.command).toMatchObject({
+        environmentId: environment.id,
+        input: [{ type: "text", text: "First startup queued message" }],
+        resumeContext: {
+          providerThreadId: "provider-startup-queued-message-recovery",
+        },
+      });
+      expect(
+        getQueuedThreadMessage(harness.db, firstQueuedMessage.id),
+      ).toBeNull();
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([secondQueuedMessage.id]);
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  it("continues stacked persisted queued messages in order after the browser is gone", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, session, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      const providerThreadId = "provider-stacked-queued-message-recovery";
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+      });
+      const queuedMessages = [
+        seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("First persisted queued message"),
+        }),
+        seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("Second persisted queued message"),
+        }),
+        seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("Third persisted queued message"),
+        }),
+      ];
+
+      await runStartupRecoverySweep(harness.deps);
+
+      let afterCursor = 0;
+      for (const [index, queuedMessage] of queuedMessages.entries()) {
+        const expectedText = [
+          "First persisted queued message",
+          "Second persisted queued message",
+          "Third persisted queued message",
+        ][index];
+        if (!expectedText) {
+          throw new Error(`Missing expected text for queued message ${index}`);
+        }
+
+        const queued =
+          index === 0
+            ? await waitForQueuedCommand(
+                harness,
+                ({ command }) =>
+                  command.type === "turn.submit" &&
+                  command.threadId === thread.id,
+              )
+            : await waitForQueuedCommandAfter(
+                harness,
+                afterCursor,
+                ({ command }) =>
+                  command.type === "turn.submit" &&
+                  command.threadId === thread.id,
+              );
+        afterCursor = queued.row.cursor;
+        expect(queued.command).toMatchObject({
+          environmentId: environment.id,
+          input: [{ type: "text", text: expectedText }],
+          resumeContext: { providerThreadId },
+        });
+        expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual(queuedMessages.slice(index + 1).map((row) => row.id));
+
+        const turnId = `turn-stacked-queued-message-${index + 1}`;
+        const completionResponse = await harness.app.request(
+          "/internal/session/events",
+          {
+            method: "POST",
+            headers: internalAuthHeaders(harness),
+            body: JSON.stringify({
+              sessionId: session.id,
+              events: [
+                createTestDaemonEventEnvelope({
+                  event: {
+                    type: "turn/started",
+                    threadId: thread.id,
+                    providerThreadId,
+                    scope: turnScope(turnId),
+                  },
+                }),
+                createTestDaemonEventEnvelope({
+                  event: {
+                    type: "turn/completed",
+                    threadId: thread.id,
+                    providerThreadId,
+                    scope: turnScope(turnId),
+                    status: "completed",
+                  },
+                }),
+              ],
+            }),
+          },
+        );
+        expect(
+          completionResponse.status,
+          await completionResponse.clone().text(),
+        ).toBe(200);
+      }
+
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
   it("continues later sweep jobs after an earlier job fails", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);

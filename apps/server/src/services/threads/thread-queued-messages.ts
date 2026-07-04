@@ -8,6 +8,7 @@ import { z } from "zod";
 import { ApiError } from "../../errors.js";
 
 interface StoredQueuedThreadMessageRow {
+  clientRequestId?: string | null;
   content: string;
   createdAt: number;
   id: string;
@@ -51,6 +52,7 @@ export function toThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return threadQueuedMessageSchema.parse({
     id: row.id,
+    clientRequestId: row.clientRequestId ?? null,
     content: parseStoredQueuedThreadMessageContent(row),
     model: row.model,
     reasoningLevel: row.reasoningLevel,

@@ -27,6 +27,7 @@ import {
 
 export interface CreateQueuedThreadMessageInput {
   threadId: string;
+  clientRequestId?: string | null;
   content: PromptInput[];
   senderThreadId?: string | null;
   model: string;
@@ -272,6 +273,24 @@ function getLastQueuedThreadMessage(
   );
 }
 
+function getQueuedThreadMessageByClientRequestId(
+  db: DbQueryConnection,
+  args: { clientRequestId: string; threadId: string },
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, args.threadId),
+          eq(queuedThreadMessages.clientRequestId, args.clientRequestId),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
 function getPreviousUnclaimedQueuedThreadMessage(
   db: DbQueryConnection,
   queuedMessage: QueuedThreadMessageRow,
@@ -465,16 +484,32 @@ export function createQueuedThreadMessage(
 ) {
   const now = Date.now();
   const id = createQueuedThreadMessageId();
+  let created = false;
   const row = db.transaction(
     (tx) => {
+      if (
+        input.clientRequestId !== undefined &&
+        input.clientRequestId !== null
+      ) {
+        const existing = getQueuedThreadMessageByClientRequestId(tx, {
+          clientRequestId: input.clientRequestId,
+          threadId: input.threadId,
+        });
+        if (existing) {
+          return existing;
+        }
+      }
+
       const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
       const sortKey = lastQueuedMessage
         ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
         : createOrderKeyBetween({ previousKey: null, nextKey: null });
+      created = true;
       return tx
         .insert(queuedThreadMessages)
         .values({
           id,
+          clientRequestId: input.clientRequestId ?? null,
           threadId: input.threadId,
           content: JSON.stringify(input.content),
           senderThreadId: input.senderThreadId ?? null,
@@ -494,7 +529,9 @@ export function createQueuedThreadMessage(
     },
     { behavior: "immediate" },
   );
-  notifier.notifyThread(input.threadId, ["queue-changed"]);
+  if (created) {
+    notifier.notifyThread(input.threadId, ["queue-changed"]);
+  }
   return row;
 }
 

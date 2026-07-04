@@ -40,11 +40,11 @@ import {
   type StopThreadTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
 
-interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
+export interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
 }
 
-interface SendThreadQueuedMessageMutationRequest {
+export interface SendThreadQueuedMessageMutationRequest {
   id: string;
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
@@ -187,6 +187,7 @@ export function useCreateThreadQueuedMessage() {
     },
     mutationFn: ({
       id,
+      clientRequestId,
       input,
       model,
       serviceTier,
@@ -196,6 +197,7 @@ export function useCreateThreadQueuedMessage() {
       executionInputSources,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       api.createThreadQueuedMessage(id, {
+        ...(clientRequestId !== undefined ? { clientRequestId } : {}),
         input,
         model,
         serviceTier,

@@ -2026,6 +2026,69 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("returns the existing queued message for duplicate create client request ids", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const route = `/api/v1/threads/${thread.id}/queued-messages`;
+      const firstResponse = await harness.app.request(route, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          clientRequestId: "creq_public_queue_retry",
+          input: [{ type: "text", text: "Queued once" }],
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        }),
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstQueuedMessage = queuedMessageIdResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+
+      const retryResponse = await harness.app.request(route, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          clientRequestId: "creq_public_queue_retry",
+          input: [{ type: "text", text: "Queued retry ignored" }],
+          model: "gpt-5",
+          permissionMode: "readonly",
+          reasoningLevel: "high",
+          serviceTier: "default",
+        }),
+      });
+      expect(retryResponse.status).toBe(201);
+      await expect(readJson(retryResponse)).resolves.toMatchObject({
+        id: firstQueuedMessage.id,
+        content: [{ type: "text", text: "Queued once", mentions: [] }],
+        permissionMode: "full",
+        reasoningLevel: "medium",
+      });
+
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => ({
+          clientRequestId: row.clientRequestId,
+          content: row.content,
+          id: row.id,
+        })),
+      ).toEqual([
+        {
+          clientRequestId: "creq_public_queue_retry",
+          content: JSON.stringify([
+            { type: "text", text: "Queued once", mentions: [] },
+          ]),
+          id: firstQueuedMessage.id,
+        },
+      ]);
+    });
+  });
+
   it("queues public send requests with sender context while the target thread is active", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();

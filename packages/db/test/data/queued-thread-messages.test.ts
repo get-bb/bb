@@ -54,6 +54,7 @@ describe("queued thread messages", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
+      clientRequestId: "creq_queue_create",
       content: defaultInput,
       model: "gpt-5",
       reasoningLevel: "medium",
@@ -62,11 +63,84 @@ describe("queued thread messages", () => {
     });
 
     expect(queuedMessage.id).toMatch(/^qmsg_/);
+    expect(queuedMessage.clientRequestId).toBe("creq_queue_create");
     expect(queuedMessage.threadId).toBe(thread.id);
     expect(queuedMessage.content).toBe(JSON.stringify(defaultInput));
     expect(queuedMessage.model).toBe("gpt-5");
     expect(queuedMessage.serviceTier).toBe("default");
     expect(queuedMessage.groupWithNext).toBe(false);
+  });
+
+  it("returns the existing queued message for duplicate client request ids without changing order", () => {
+    const { db, thread } = setup();
+    const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      clientRequestId: "creq_queue_retry_first",
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      clientRequestId: "creq_queue_retry_second",
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    const retry = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      clientRequestId: "creq_queue_retry_first",
+      content: textInput("retry content is ignored"),
+      model: "gpt-5",
+      reasoningLevel: "high",
+      permissionMode: "readonly",
+      serviceTier: "flex",
+    });
+
+    expect(retry).toEqual(firstQueuedMessage);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([firstQueuedMessage.id, secondQueuedMessage.id]);
+  });
+
+  it("scopes duplicate client request ids to a thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      clientRequestId: "creq_queue_thread_scoped",
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    const otherQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: otherThread.id,
+      clientRequestId: "creq_queue_thread_scoped",
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(otherQueuedMessage.id).not.toBe(firstQueuedMessage.id);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([firstQueuedMessage.id]);
+    expect(
+      listQueuedThreadMessages(db, otherThread.id).map((row) => row.id),
+    ).toEqual([otherQueuedMessage.id]);
   });
 
   it("gets a queued message by ID", () => {

@@ -74,8 +74,8 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import {
-  useCreateThreadQueuedMessage,
   useCreateThread,
+  useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
@@ -462,9 +462,8 @@ export function SideChatTabContent({
   // opened from the new-tab page (those fork from the thread tip).
   const triggerMessageText = tab.sourceMessageText.trim();
   const hasTriggerMessage = triggerMessageText.length > 0;
-  const triggerMessageIsSingleFence = isSingleFencedCodeBlock(
-    triggerMessageText,
-  );
+  const triggerMessageIsSingleFence =
+    isSingleFencedCodeBlock(triggerMessageText);
 
   const sourceEnvironmentReady =
     sourceThread.environmentId === null || sourceEnvironment !== null;
@@ -652,7 +651,6 @@ export function SideChatTabContent({
     ],
   );
 
-
   // A side chat hands results back to the main thread per agent message (the
   // "send to main thread" action under each reply) via the cross-thread
   // `senderThreadId` transport. Keep the action visible and guard the handler
@@ -767,10 +765,15 @@ export function SideChatTabContent({
         }),
       );
     }
-    promptDraft.clearIfCurrentMatches(submittedDraft);
-    setAttachmentError(null);
     setIsSideChatTurnSubmitting(true);
     void sendOrQueueSideChatInput(submittedInput)
+      .then(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+        setAttachmentError(null);
+      })
       .catch((error) => {
         if (!isMountedRef.current) {
           return;

@@ -11,6 +11,7 @@ import {
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
   useSetThreadQueuedMessageGroupBoundary,
+  useSendThreadQueuedMessage,
   useSendThreadMessage,
 } from "./thread-runtime-mutations";
 
@@ -21,6 +22,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     createThreadQueuedMessage: vi.fn(),
     deleteThreadQueuedMessage: vi.fn(),
     setThreadQueuedMessageGroupBoundary: vi.fn(),
+    sendThreadQueuedMessage: vi.fn(),
     sendThreadMessage: vi.fn(),
   };
 });
@@ -57,6 +59,10 @@ const executionInputSources = {
 
 beforeEach(() => {
   vi.mocked(api.sendThreadMessage).mockResolvedValue(undefined);
+  vi.mocked(api.sendThreadQueuedMessage).mockResolvedValue({
+    ok: true,
+    queuedMessage: makeQueuedMessage(),
+  });
   vi.mocked(api.createThreadQueuedMessage).mockResolvedValue(
     makeQueuedMessage(),
   );
@@ -100,6 +106,7 @@ describe("thread runtime mutations", () => {
     await act(async () => {
       await result.current.mutateAsync({
         id: "thread-1",
+        clientRequestId: "creq_queue_test",
         input: [{ type: "text", text: "Queue this", mentions: [] }],
         senderThreadId: "thread-source",
         executionInputSources,
@@ -109,6 +116,7 @@ describe("thread runtime mutations", () => {
     expect(api.createThreadQueuedMessage).toHaveBeenCalledWith(
       "thread-1",
       expect.objectContaining({
+        clientRequestId: "creq_queue_test",
         executionInputSources,
         senderThreadId: "thread-source",
       }),
@@ -152,6 +160,46 @@ describe("thread runtime mutations", () => {
         >(threadQueuedMessagesQueryKey("thread-1"))
         ?.map((queuedMessage) => queuedMessage.id),
     ).toEqual(["qmsg-2"]);
+  });
+
+  it("restores an optimistically sent queued message when the server says it is already gone", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      makeQueuedMessage({ id: "qmsg-1" }),
+      makeQueuedMessage({ id: "qmsg-2" }),
+    ]);
+    vi.mocked(api.sendThreadQueuedMessage).mockRejectedValue(
+      new api.HttpError({
+        status: 404,
+        code: "invalid_request",
+        message: "Queued message not found",
+        body: {
+          code: "invalid_request",
+          message: "Queued message not found",
+        },
+      }),
+    );
+    const { result } = renderHook(() => useSendThreadQueuedMessage(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          id: "thread-1",
+          mode: "auto",
+          queuedMessageId: "qmsg-1",
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    expect(
+      queryClient
+        .getQueryData<
+          ThreadQueuedMessage[]
+        >(threadQueuedMessagesQueryKey("thread-1"))
+        ?.map((queuedMessage) => queuedMessage.id),
+    ).toEqual(["qmsg-1", "qmsg-2"]);
   });
 
   it("sets the queued-message group boundary through the API", async () => {

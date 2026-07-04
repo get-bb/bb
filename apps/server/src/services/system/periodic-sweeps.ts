@@ -608,10 +608,13 @@ export async function runStartupRecoverySweep(
 ): Promise<void> {
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
+  await runQueuedMessageAutoSendSweep(deps);
   await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());
 }
 
-export async function runPeriodicSweeps(deps: PeriodicSweepDeps): Promise<void> {
+export async function runPeriodicSweeps(
+  deps: PeriodicSweepDeps,
+): Promise<void> {
   const now = Date.now();
   await runPeriodicSweepJobs(deps, PERIODIC_SWEEP_JOBS, now);
 }

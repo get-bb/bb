@@ -582,6 +582,7 @@ export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {
     id: text("id").primaryKey(),
+    clientRequestId: text("client_request_id"),
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
@@ -611,6 +612,9 @@ export const queuedThreadMessages = sqliteTable(
       table.sortKey,
       table.id,
     ),
+    uniqueIndex("queued_thread_messages_thread_client_request_idx")
+      .on(table.threadId, table.clientRequestId)
+      .where(sql`${table.clientRequestId} IS NOT NULL`),
   ],
 );
 
