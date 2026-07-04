@@ -85,6 +85,11 @@ export const experimentsSchema = z.object({
     .max(ELECTRON_ACCELERATOR_MAX_LENGTH)
     .refine(isValidElectronAccelerator),
   /**
+   * Firstmate: enables the native Firstmate liaison surface and Firstmate
+   * orchestration skill. Off by default while the integration is experimental.
+   */
+  firstmate: z.boolean(),
+  /**
    * Plugins: enables the plugin system (loader, `bb plugin` commands, plugin
    * API routes). Off by default — when off no plugin code is loaded and the
    * plugin endpoints return a structured "disabled" error.
@@ -101,6 +106,7 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
+  firstmate: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
   plugins: false,

@@ -2,16 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AppThemeSelection, Experiments } from "@bb/domain";
 import type { UpsertSkillBundleRequest } from "@bb/server-contract";
 import * as api from "@/lib/api";
+import { invalidateSkillBundles } from "../cache-owners/skill-bundles-cache-owner";
 import { invalidateSystemConfig } from "../cache-owners/system-cache-effects";
-import { skillBundlesQueryKey } from "../queries/query-keys";
-
-function invalidateSkillBundles({
-  queryClient,
-}: {
-  queryClient: ReturnType<typeof useQueryClient>;
-}): void {
-  queryClient.invalidateQueries({ queryKey: skillBundlesQueryKey() });
-}
 
 /**
  * Replace the user's opt-in experiments (full object). The server broadcasts

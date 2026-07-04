@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -421,10 +428,42 @@ describe("injected skill source discovery", () => {
 
     const builtinNames = sources.map((source) => source.name);
     expect(builtinNames).toContain("bb-cli");
+    const firstmateSource = sources.find((source) => source.name === "firstmate");
+    expect(firstmateSource).toBeDefined();
+    if (firstmateSource) {
+      await expect(
+        readFile(
+          path.join(firstmateSource.sourceRootPath, "references/upstream/AGENTS.md"),
+          "utf8",
+        ),
+      ).resolves.toContain("You are the first mate.");
+      await expect(
+        readFile(
+          path.join(firstmateSource.sourceRootPath, "references/upstream/bin/fm-brief.sh"),
+          "utf8",
+        ),
+      ).resolves.toContain("You are a crewmate: an autonomous worker agent managed by firstmate.");
+    }
     for (const source of sources) {
       expect(source.sourceType).toBe("builtin");
       expect(source.description.trim().length).toBeGreaterThan(0);
     }
+    expect(warnings).toEqual([]);
+  });
+
+  it("can suppress experiment-gated built-in skills", async () => {
+    const dataDir = await makeTempDir();
+    const builtinSkillsRootPath = resolveBuiltinSkillsRootPath();
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+      disabledBuiltinSkillNames: ["firstmate"],
+    });
+
+    expect(sources.map((source) => source.name)).toContain("bb-cli");
+    expect(sources.map((source) => source.name)).not.toContain("firstmate");
     expect(warnings).toEqual([]);
   });
 });

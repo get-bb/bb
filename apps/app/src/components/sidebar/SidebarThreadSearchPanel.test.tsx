@@ -393,6 +393,21 @@ describe("ProjectListActionButtons", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("renders the Firstmate action when provided", () => {
+    const onOpenFirstmate = vi.fn();
+
+    render(
+      <ProjectListActionButtons
+        onNewChat={vi.fn()}
+        onOpenFirstmate={onOpenFirstmate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Firstmate" }));
+
+    expect(onOpenFirstmate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("AppSidebar thread search keyboard routing", () => {

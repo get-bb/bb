@@ -407,6 +407,13 @@
       "when": 1783196869180,
       "tag": "0057_small_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1783199000000,
+      "tag": "0058_firstmate_experiment",
+      "breakpoints": true
     }
   ]
 }

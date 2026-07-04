@@ -180,6 +180,7 @@ interface ProjectListProps {
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
   onOpenAutomations?: () => void;
+  onOpenFirstmate?: () => void;
   isAutomationsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
@@ -1190,6 +1191,7 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 export function ProjectListActionButtons({
   onNewChat,
   onOpenAutomations,
+  onOpenFirstmate,
   isAutomationsActive = false,
   threadSearch,
 }: ProjectListActionButtonsProps) {
@@ -1286,6 +1288,18 @@ export function ProjectListActionButtons({
         >
           <Icon name="Clock" />
           <span className="min-w-0 flex-1 truncate text-left">Automations</span>
+        </Button>
+      ) : null}
+      {onOpenFirstmate ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={PROJECT_LIST_ACTION_BUTTON_CLASS}
+          onClick={onOpenFirstmate}
+        >
+          <Icon name="UserRound" />
+          <span className="min-w-0 flex-1 truncate text-left">Firstmate</span>
         </Button>
       ) : null}
     </div>

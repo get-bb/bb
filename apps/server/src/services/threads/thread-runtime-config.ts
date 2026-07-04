@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getProject } from "@bb/db";
+import { getExperiments, getProject } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -45,6 +45,7 @@ const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
 );
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
+const FIRSTMATE_SKILL_NAME = "firstmate";
 
 export interface ThreadRuntimeCommandEnvironment {
   hostId: string;
@@ -165,6 +166,7 @@ export async function resolveThreadRuntimeCommandConfig(
   if (!getProject(deps.db, args.thread.projectId)) {
     throw new ApiError(404, "project_not_found", "Project not found");
   }
+  const experiments = getExperiments(deps.db);
 
   const { workspaceProvisionType } = args.environment;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
@@ -178,6 +180,9 @@ export async function resolveThreadRuntimeCommandConfig(
     ],
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
+    disabledBuiltinSkillNames: experiments.firstmate
+      ? []
+      : [FIRSTMATE_SKILL_NAME],
     // Skills roots of running plugins — resolved live each turn, so a
     // reloaded plugin's skills apply on the next turn without a restart.
     pluginSkillsRootPaths: getPluginSkillsRootPaths(),

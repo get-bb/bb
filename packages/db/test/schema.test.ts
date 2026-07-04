@@ -131,6 +131,8 @@ describe("db rebuild schema", () => {
         "created_at",
         "updated_at",
         "last_user_input_at",
+        "purpose",
+        "run_command_project_id",
       ]);
     } finally {
       closeConnection(db);

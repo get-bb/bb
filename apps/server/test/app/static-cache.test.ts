@@ -156,6 +156,7 @@ describe("production static cache headers", () => {
     const harness = await createTestAppHarness();
     setExperiments(harness.db, {
       claudeCodeMockCliTraffic: false,
+      firstmate: false,
       popoutChat: false,
       popoutChatHotkey: "Alt+Space",
       plugins: false,

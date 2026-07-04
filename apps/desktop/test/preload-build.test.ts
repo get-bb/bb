@@ -122,8 +122,10 @@ async function startDesktopSmokeServer(
           dataDir: args.dataDir,
           experiments: {
             claudeCodeMockCliTraffic: false,
+            firstmate: false,
             popoutChat: false,
             popoutChatHotkey: "Alt+Space",
+            plugins: false,
             uiForking: false,
           },
           featureFlags: {

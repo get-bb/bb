@@ -216,15 +216,22 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  dropQueuedMessageClientRequestIdSchema(db);
+  dropEnvironmentWorktreePortBaseColumn(db);
+  dropWorktreeLifecycleProjectColumns(db);
+  dropTerminalSessionRunCommandSchema(db);
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its ui_forking column (added by 0048) and plugins column
-  // (added by 0049) are, so the forward re-migrate can re-add them.
+  // rewound — but columns added later are, so the forward re-migrate can
+  // re-add them.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN ui_forking")
     .run();
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
+    .run();
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN firstmate")
     .run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client
@@ -409,7 +416,73 @@ function dropPost0023Tables(db: DbConnection): void {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
 
+  dropQueuedMessageClientRequestIdSchema(db);
+  dropEnvironmentWorktreePortBaseColumn(db);
+  dropWorktreeLifecycleProjectColumns(db);
+  dropTerminalSessionRunCommandSchema(db);
   dropThreadFolderSchema(db);
+}
+
+function dropQueuedMessageClientRequestIdSchema(db: DbConnection): void {
+  db.$client.exec(
+    "DROP INDEX IF EXISTS queued_thread_messages_thread_client_request_idx;",
+  );
+  const queuedMessageColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all()
+    .map((row) => row.name);
+  if (queuedMessageColumns.includes("client_request_id")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE queued_thread_messages DROP COLUMN client_request_id",
+      )
+      .run();
+  }
+}
+
+function dropEnvironmentWorktreePortBaseColumn(db: DbConnection): void {
+  const environmentColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all()
+    .map((row) => row.name);
+  if (environmentColumns.includes("worktree_port_base")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN worktree_port_base")
+      .run();
+  }
+}
+
+function dropWorktreeLifecycleProjectColumns(db: DbConnection): void {
+  const projectColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(projects)")
+    .all()
+    .map((row) => row.name);
+  for (const column of [
+    "worktree_init_script",
+    "worktree_teardown_script",
+    "run_command",
+  ]) {
+    if (projectColumns.includes(column)) {
+      db.$client.prepare(`ALTER TABLE projects DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
+function dropTerminalSessionRunCommandSchema(db: DbConnection): void {
+  db.$client.exec(
+    "DROP INDEX IF EXISTS terminal_sessions_run_command_target_idx;",
+  );
+  const terminalSessionColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(terminal_sessions)")
+    .all()
+    .map((row) => row.name);
+  for (const column of ["purpose", "run_command_project_id"]) {
+    if (terminalSessionColumns.includes(column)) {
+      db.$client
+        .prepare(`ALTER TABLE terminal_sessions DROP COLUMN ${column}`)
+        .run();
+    }
+  }
 }
 
 /**

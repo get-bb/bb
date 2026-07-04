@@ -16,8 +16,11 @@ describe("experimentsSchema", () => {
     expect(() =>
       experimentsSchema.parse({
         claudeCodeMockCliTraffic: false,
+        firstmate: false,
         popoutChat: true,
         popoutChatHotkey: "A",
+        plugins: false,
+        uiForking: false,
       }),
     ).toThrow();
   });
