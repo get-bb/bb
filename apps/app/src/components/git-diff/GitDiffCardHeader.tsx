@@ -33,6 +33,12 @@ export interface GitDiffCardHeaderProps {
   model: GitDiffCardHeaderModel;
   /** Rename/copy source path; null when not a rename or copy. */
   previousPath: string | null;
+  /**
+   * Working-tree provenance. Only the diff sidepane knows this; passing it
+   * switches the header into its dense treatment (dimmed directory, always-shown
+   * filename, and a far-right porcelain status glyph).
+   */
+  origin?: "tracked" | "untracked";
   filePathRoot?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -143,9 +149,101 @@ function resolveRenameInfo(
   return null;
 }
 
+/**
+ * Split a path into its directory and basename, keeping the separator on the
+ * basename (`apps/foo` + `/bar.ts`) so the filename always shows its leading
+ * slash even when the directory is truncated away.
+ */
+function splitDirBasename(path: string): {
+  directory: string;
+  basename: string;
+} {
+  const separator = path.lastIndexOf("/");
+  if (separator < 0) {
+    return { directory: "", basename: path };
+  }
+  return {
+    directory: path.slice(0, separator),
+    basename: path.slice(separator),
+  };
+}
+
+type PorcelainMark = "plus" | "minus" | "dot";
+
+interface PorcelainStatus {
+  mark: PorcelainMark;
+  label: string;
+  className: string;
+}
+
+/** Boxed git-porcelain status glyph + color for a working-tree diff entry. */
+function resolvePorcelainStatus(
+  changeKind: GitDiffFileChangeKind,
+  origin: "tracked" | "untracked",
+): PorcelainStatus {
+  if (origin === "untracked") {
+    return {
+      mark: "plus",
+      label: "Untracked",
+      className: "text-muted-foreground",
+    };
+  }
+  switch (changeKind) {
+    case "added":
+      return { mark: "plus", label: "Added", className: "text-diff-added" };
+    case "deleted":
+      return {
+        mark: "minus",
+        label: "Deleted",
+        className: "text-diff-removed",
+      };
+    case "renamed":
+      return { mark: "dot", label: "Renamed", className: "text-warning-text" };
+    case "copied":
+      return { mark: "dot", label: "Copied", className: "text-warning-text" };
+    case "type_changed":
+      return {
+        mark: "dot",
+        label: "Type changed",
+        className: "text-warning-text",
+      };
+    case "modified":
+      return { mark: "dot", label: "Modified", className: "text-warning-text" };
+  }
+}
+
+/**
+ * A rounded-square status glyph with an inner plus (added), minus (deleted), or
+ * dot (modified). Rendered inline so the box matches the reference exactly
+ * rather than depending on the icon set's square variants.
+ */
+function PorcelainStatusGlyph({ mark, label, className }: PorcelainStatus) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("size-4 shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      role="img"
+      aria-label={label}
+    >
+      <title>{label}</title>
+      <rect x="2.75" y="2.75" width="10.5" height="10.5" rx="3" />
+      {mark !== "dot" ? <line x1="5.5" y1="8" x2="10.5" y2="8" /> : null}
+      {mark === "plus" ? <line x1="8" y1="5.5" x2="8" y2="10.5" /> : null}
+      {mark === "dot" ? (
+        <circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none" />
+      ) : null}
+    </svg>
+  );
+}
+
 export function GitDiffCardHeader({
   model,
   previousPath,
+  origin,
   filePathRoot,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -171,6 +269,13 @@ export function GitDiffCardHeader({
   const canOpenFile = Boolean(openablePath);
   const supportsCollapse =
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
+  const isDense = origin !== undefined;
+  const porcelainStatus = isDense
+    ? resolvePorcelainStatus(model.changeKind, origin)
+    : null;
+  const denseDisplayPath = renameInfo ? renameInfo.to : model.path;
+  const { directory: denseDirectory, basename: denseBasename } =
+    splitDirBasename(denseDisplayPath);
 
   return (
     <div className="flex w-full min-w-0 items-center justify-between gap-2">
@@ -230,16 +335,29 @@ export function GitDiffCardHeader({
               className="size-3 shrink-0 text-subtle-foreground"
             />
           ) : null}
-          <FilePathLink
-            path={openablePath ?? model.path}
-            displayName={renameInfo ? renameInfo.to : model.label}
-            onClick={
-              canOpenFile && openablePath && onOpenFilePreview
-                ? () => onOpenFilePreview(openablePath)
-                : undefined
-            }
-            className="font-mono font-medium text-foreground"
-          />
+          {isDense ? (
+            <DenseFilePath
+              directory={denseDirectory}
+              basename={denseBasename}
+              title={openablePath ?? denseDisplayPath}
+              onClick={
+                canOpenFile && openablePath && onOpenFilePreview
+                  ? () => onOpenFilePreview(openablePath)
+                  : undefined
+              }
+            />
+          ) : (
+            <FilePathLink
+              path={openablePath ?? model.path}
+              displayName={renameInfo ? renameInfo.to : model.label}
+              onClick={
+                canOpenFile && openablePath && onOpenFilePreview
+                  ? () => onOpenFilePreview(openablePath)
+                  : undefined
+              }
+              className="font-mono font-medium text-foreground"
+            />
+          )}
           {copyablePath ? (
             <CopyButton
               text={copyablePath}
@@ -265,8 +383,60 @@ export function GitDiffCardHeader({
             className="text-xs"
           />
         )}
+        {porcelainStatus ? <PorcelainStatusGlyph {...porcelainStatus} /> : null}
       </span>
     </div>
+  );
+}
+
+interface DenseFilePathProps {
+  directory: string;
+  basename: string;
+  title: string;
+  onClick?: () => void;
+}
+
+/**
+ * Dense sidepane path: the directory dims and truncates from the start while the
+ * basename stays fully opaque and never truncates, so the filename is always the
+ * legible focus.
+ */
+function DenseFilePath({
+  directory,
+  basename,
+  title,
+  onClick,
+}: DenseFilePathProps) {
+  const segments = (
+    <span className="flex min-w-0 items-baseline font-mono text-xs leading-5">
+      {directory ? (
+        <TruncateStart className="min-w-0 font-medium text-subtle-foreground">
+          {directory}
+        </TruncateStart>
+      ) : null}
+      <span className="shrink-0 whitespace-nowrap font-medium text-foreground">
+        {basename}
+      </span>
+    </span>
+  );
+
+  if (!onClick) {
+    return (
+      <span className="flex min-w-0" title={title}>
+        {segments}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex min-w-0 cursor-pointer text-left underline-offset-2 hover:underline"
+      title={title}
+      onClick={onClick}
+    >
+      {segments}
+    </button>
   );
 }
 
