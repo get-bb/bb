@@ -109,14 +109,23 @@ export function SelectionAnnotationPopover({
           <div className="flex justify-end gap-1.5">
             <button
               type="button"
-              onClick={() => onDismiss()}
+              // Fire on pointerdown + preventDefault: on touch, a plain tap would
+              // first blur the textarea, close the keyboard, and reflow the box
+              // out from under the finger, so the click never lands.
+              onPointerDown={(event) => {
+                event.preventDefault();
+                onDismiss();
+              }}
               className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-surface-recessed max-md:pointer-coarse:py-1.5"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={submit}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                submit();
+              }}
               className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 max-md:pointer-coarse:py-1.5"
             >
               Add to chat
