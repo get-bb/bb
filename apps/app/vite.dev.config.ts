@@ -17,6 +17,9 @@ export default defineConfig({
   server: {
     host: viteDevConfig.appHost,
     port: viteDevConfig.appPort,
+    // Allow reaching the dev server over Tailscale (e.g. phones) for mobile
+    // testing; localhost/127.0.0.1 stay allowed regardless.
+    allowedHosts: [".ts.net"],
     proxy: {
       "/api": {
         target: viteDevConfig.serverHttpOrigin,
