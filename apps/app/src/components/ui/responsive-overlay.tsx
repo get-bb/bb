@@ -11,6 +11,7 @@ import {
 } from "./overlay-trigger.js";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
+import { useDrawerSwipeDownToClose } from "./useDrawerSwipeDownToClose.js";
 
 // ---------------------------------------------------------------------------
 // Shared context value for responsive overlays (dropdown menus, popovers)
@@ -233,6 +234,13 @@ interface ResponsiveDrawerShellProps {
    */
   handleOnly?: boolean;
   /**
+   * Re-adds the iOS-standard "drag down anywhere once scrolled to the top to
+   * dismiss" gesture that `handleOnly` removes, translating the sheet without
+   * the pointer capture that would break web-component shadow-DOM clicks. Only
+   * meaningful alongside `handleOnly`.
+   */
+  swipeToCloseFromContent?: boolean;
+  /**
    * Whether Vaul should mutate drawer height/bottom around focused inputs when
    * the visual viewport changes. Defaults off for nested drawers because the
    * parent drawer cannot distinguish a nested drawer's focused input.
@@ -249,6 +257,7 @@ export function ResponsiveDrawerShell({
   srLabel,
   contentClassName,
   handleOnly,
+  swipeToCloseFromContent = false,
   repositionInputs,
   onContentAnimationEnd,
   children,
@@ -297,6 +306,11 @@ export function ResponsiveDrawerShell({
     },
     [],
   );
+  const swipeDownHandlers = useDrawerSwipeDownToClose({
+    enabled: swipeToCloseFromContent && open,
+    sheetRef: drawerContentRef,
+    onClose: React.useCallback(() => handleOpenChange(false), [handleOpenChange]),
+  });
   const previousOpenRef = React.useRef(open);
 
   React.useLayoutEffect(() => {
@@ -320,6 +334,7 @@ export function ResponsiveDrawerShell({
         onAnimationEnd={handleContentAnimationEnd}
         onOpenAutoFocus={handleOpenAutoFocus}
         onPointerDownOutside={handlePointerDownOutside}
+        {...swipeDownHandlers}
       >
         <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
           {srLabel !== undefined ? (
