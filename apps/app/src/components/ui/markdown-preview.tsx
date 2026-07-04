@@ -1,6 +1,7 @@
 import {
   memo,
   useLayoutEffect,
+  useContext,
   useMemo,
   useRef,
   useState,
@@ -47,9 +48,10 @@ import {
   type MarkdownAbsoluteLocalFileLinkRouting,
   type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
-import type {
-  MarkdownLinkRouting,
-  MarkdownLocalFileLinkRouting,
+import {
+  MarkdownLocalFileOpenWithContext,
+  type MarkdownLinkRouting,
+  type MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import {
   buildThreadMentionComponent,
@@ -479,9 +481,10 @@ function MarkdownAnchor({
         })
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
+  const getOpenWithItems = useContext(MarkdownLocalFileOpenWithContext);
   const openWithItems =
-    localFileLink !== null && localFileRouting?.getOpenWithItems
-      ? localFileRouting.getOpenWithItems(localFileLink)
+    localFileLink !== null && getOpenWithItems !== null
+      ? getOpenWithItems(localFileLink)
       : null;
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {

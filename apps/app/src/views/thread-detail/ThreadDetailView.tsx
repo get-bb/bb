@@ -181,9 +181,10 @@ import {
   resolveThreadLocalFileLink,
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
-import type {
-  MarkdownLinkRouting,
-  MarkdownLocalFileLinkRouting,
+import {
+  MarkdownLocalFileOpenWithContext,
+  type MarkdownLinkRouting,
+  type MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
   useFixedPanelTabsState,
@@ -356,7 +357,6 @@ function PopoutThreadHeader({
 
 interface BuildMarkdownPreviewLinkRoutingArgs {
   baseDir: string | undefined;
-  getOpenWithItems?: MarkdownLocalFileLinkRouting["getOpenWithItems"];
   onOpenLink: ThreadTimelineLinkHandler;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
   rootPath: string | null | undefined;
@@ -390,7 +390,6 @@ function buildHostConnectionNotice(
 
 function buildMarkdownPreviewLinkRouting({
   baseDir,
-  getOpenWithItems,
   onOpenLink,
   onOpenLocalFileLink,
   rootPath,
@@ -407,7 +406,6 @@ function buildMarkdownPreviewLinkRouting({
       rootPath,
     },
     onOpenLink: onOpenLocalFileLink,
-    ...(getOpenWithItems !== undefined ? { getOpenWithItems } : {}),
   };
   if (baseDir !== undefined) {
     localFileRouting.relativeLinks = {
@@ -1924,13 +1922,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: workspaceFileLinkBaseDir,
-        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: workspacePreviewRootPath,
       }),
     [
-      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       workspaceFileLinkBaseDir,
@@ -1941,13 +1937,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: hostFileLinkBaseDir,
-        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: hostFileLinkRootPath,
       }),
     [
-      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       hostFileLinkBaseDir,
@@ -1958,13 +1952,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () =>
       buildMarkdownPreviewLinkRouting({
         baseDir: storageFileLinkBaseDir,
-        getOpenWithItems: getLocalFileOpenWithItems,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         rootPath: threadStorageRootPath,
       }),
     [
-      getLocalFileOpenWithItems,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       storageFileLinkBaseDir,
@@ -2259,6 +2251,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
+    <MarkdownLocalFileOpenWithContext.Provider
+      value={getLocalFileOpenWithItems}
+    >
     <UrlOpenRoutingProvider
       openInAppBrowser={
         canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
@@ -2396,5 +2391,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         />
       ) : null}
     </UrlOpenRoutingProvider>
+    </MarkdownLocalFileOpenWithContext.Provider>
   );
 }
