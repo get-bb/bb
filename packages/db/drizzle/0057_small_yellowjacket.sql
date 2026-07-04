@@ -1,4 +1,4 @@
-CREATE TABLE `skill_bundles` (
+CREATE TABLE IF NOT EXISTS `skill_bundles` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`description` text,
@@ -8,4 +8,4 @@ CREATE TABLE `skill_bundles` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `skill_bundles_position_idx` ON `skill_bundles` (`position`);
+CREATE INDEX IF NOT EXISTS `skill_bundles_position_idx` ON `skill_bundles` (`position`);

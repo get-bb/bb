@@ -272,6 +272,8 @@ const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
 const threadFoldersMigrationWhen = 1782252763916;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
+const worktreePortBaseMigrationWhen = 1783195203768;
+const skillBundlesMigrationWhen = 1783196869180;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -1298,6 +1300,55 @@ describe("migrate", () => {
             `,
           )
           .get(threadFoldersMigrationWhen),
+      ).toEqual({ count: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("repairs branch-local skill bundle history that skipped worktree port base", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(worktreePortBaseMigrationWhen);
+      db.$client
+        .prepare("ALTER TABLE environments DROP COLUMN worktree_port_base")
+        .run();
+
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(skillBundlesMigrationWhen),
+      ).toEqual({ count: 1 });
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+          .all()
+          .map((row) => row.name),
+      ).toContain("worktree_port_base");
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(worktreePortBaseMigrationWhen),
       ).toEqual({ count: 1 });
     } finally {
       closeConnection(db);
