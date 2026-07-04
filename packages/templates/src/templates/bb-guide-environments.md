@@ -31,7 +31,8 @@ Making your repo work with bb:
   bb starts from the host daemon's sanitized environment, then injects
   BB_WORKTREE_PATH, BB_WORKTREE_PHASE (`init` or `teardown`), BB_ENVIRONMENT_ID
   when known, and for init scripts BB_WORKTREE_BRANCH and BB_SOURCE_PATH when
-  known.
+  known. Managed worktrees also receive BB_PORT, the first port in a stable
+  10-port range assigned to that worktree, plus BB_PORT_1 through BB_PORT_9.
 
   The init script runs only for newly-created managed worktree environments. It
   does not run for direct/project-checkout environments, personal scratch
@@ -39,6 +40,10 @@ Making your repo work with bb:
   timeout, signal, or cancellation fails provisioning and bb removes the new
   worktree. Keep optional setup steps non-fatal inside the script if the
   environment should still open.
+
+  Project run commands launched from a managed worktree receive the same
+  BB_PORT range, so commands such as `pnpm dev --port "$BB_PORT"` can run in
+  parallel across multiple worktrees without sharing one fixed local port.
 
   The teardown script runs before removal. A non-zero exit, timeout, or signal
   stops deletion and leaves the worktree on disk so cleanup can be retried after

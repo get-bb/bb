@@ -7,6 +7,7 @@ import type {
   EnvironmentStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
+import { WORKTREE_PORT_BLOCK_SIZE } from "@bb/domain";
 import { evaluateEnvironmentLifecycleEvent } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -16,6 +17,9 @@ import { createEnvironmentId } from "../ids.js";
 type EnvironmentReadConnection = DbConnection | DbTransaction;
 type EnvironmentWriteConnection = DbConnection | DbTransaction;
 type EnvironmentRow = typeof environments.$inferSelect;
+
+const WORKTREE_PORT_RANGE_START = 42_000;
+const WORKTREE_PORT_RANGE_END = 60_999;
 
 export interface CreateEnvironmentInput {
   name?: string | null;
@@ -30,7 +34,35 @@ export interface CreateEnvironmentInput {
   baseBranch?: string | null;
   defaultBranch?: string | null;
   mergeBaseBranch?: string | null;
+  worktreePortBase?: number | null;
   status?: EnvironmentStatus;
+}
+
+function allocateWorktreePortBase(db: EnvironmentReadConnection): number {
+  const assigned = new Set(
+    db
+      .select({ worktreePortBase: environments.worktreePortBase })
+      .from(environments)
+      .where(ne(environments.status, "destroyed"))
+      .all()
+      .flatMap((environment) =>
+        environment.worktreePortBase === null
+          ? []
+          : [environment.worktreePortBase],
+      ),
+  );
+
+  for (
+    let port = WORKTREE_PORT_RANGE_START;
+    port + WORKTREE_PORT_BLOCK_SIZE - 1 <= WORKTREE_PORT_RANGE_END;
+    port += WORKTREE_PORT_BLOCK_SIZE
+  ) {
+    if (!assigned.has(port)) {
+      return port;
+    }
+  }
+
+  throw new Error("No worktree port ranges are available");
 }
 
 export function createEnvironment(
@@ -55,6 +87,11 @@ export function createEnvironment(
       baseBranch: input.baseBranch ?? null,
       defaultBranch: input.defaultBranch ?? null,
       mergeBaseBranch: input.mergeBaseBranch ?? null,
+      worktreePortBase:
+        input.worktreePortBase ??
+        (input.workspaceProvisionType === "managed-worktree"
+          ? allocateWorktreePortBase(db)
+          : null),
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",
       createdAt: now,

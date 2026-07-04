@@ -249,6 +249,7 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
       worktreeTeardownScript: command.worktreeTeardownScript,
+      worktreePortBase: command.worktreePortBase,
     });
     if (!resolution.ok) {
       // Treat already-missing workspaces as successful destroy (idempotent retry).
@@ -266,6 +267,7 @@ const commandHandlers: CommandHandlerMap = {
     });
     await options.runtimeManager.destroyEnvironment(command.environmentId, {
       worktreeTeardownScript: command.worktreeTeardownScript,
+      worktreePortBase: command.worktreePortBase,
     });
     return {};
   },

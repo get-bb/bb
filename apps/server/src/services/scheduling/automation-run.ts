@@ -6,6 +6,7 @@ import {
   type AutomationRow,
   type AutomationRunRow,
 } from "@bb/db";
+import { buildWorktreePortEnv } from "@bb/domain";
 import type { AutomationExecution, EnvironmentArgs } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -324,6 +325,7 @@ export async function executeScriptRun(
         cwd: readyEnvironment.path,
         env: {
           ...(args.execution.env ?? {}),
+          ...buildWorktreePortEnv(readyEnvironment.worktreePortBase),
           // Inject the bb environment so a script can call back into `bb`
           // without manual exports (the daemon also inherits PATH for `bb`).
           BB_SERVER_URL: `http://127.0.0.1:${deps.config.serverPort}`,

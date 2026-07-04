@@ -6,6 +6,7 @@ interface ReconnectProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
   workspacePath: string;
   workspaceProvisionType: WorkspaceProvisionType;
 }
@@ -14,6 +15,7 @@ interface WorkspaceContextProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
   workspaceContext: WorkspaceContext;
 }
 
@@ -32,6 +34,7 @@ export function reconnectProvisionArgs(
         environmentId: args.environmentId,
         path: args.workspacePath,
         worktreeTeardownScript: args.worktreeTeardownScript ?? null,
+        worktreePortBase: args.worktreePortBase ?? null,
       };
     case "personal":
       if (!args.personalWorkspaceRoot) {
@@ -58,6 +61,9 @@ export function reconnectProvisionArgsFromWorkspaceContext(
       : {}),
     ...(args.worktreeTeardownScript !== undefined
       ? { worktreeTeardownScript: args.worktreeTeardownScript }
+      : {}),
+    ...(args.worktreePortBase !== undefined
+      ? { worktreePortBase: args.worktreePortBase }
       : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,

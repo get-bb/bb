@@ -82,6 +82,7 @@ export const environmentSchema = z.object({
   baseBranch: z.string().nullable(),
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
+  worktreePortBase: z.number().int().nullable(),
   status: environmentStatusSchema,
   createdAt: z.number(),
   updatedAt: z.number(),

@@ -607,6 +607,8 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
   worktreeInitScript: z.string().nullable(),
   /** Optional project-configured shell snippet run before worktree removal. */
   worktreeTeardownScript: z.string().nullable(),
+  /** First port in the environment-specific worktree port range. */
+  worktreePortBase: z.number().int().positive().nullable(),
 });
 
 const managedWorktreeEnvironmentProvisionCommandSchema =
@@ -669,6 +671,8 @@ const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
     type: z.literal("environment.destroy"),
     /** Optional project-configured shell snippet run before managed worktree removal. */
     worktreeTeardownScript: z.string().nullable(),
+    /** First port in the environment-specific worktree port range. */
+    worktreePortBase: z.number().int().positive().nullable(),
   })
   .strict();
 

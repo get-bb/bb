@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  buildWorktreePortEnv,
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   createTerminalOutputLineReader,
   readTerminalOutputLines,
@@ -51,6 +52,7 @@ export interface CreateWorkspaceArgs {
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   worktreeInitScript?: string | null;
+  worktreePortBase?: number | null;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
@@ -63,6 +65,7 @@ export interface RunSetupScriptArgs {
   script?: string | null;
   sourcePath?: string;
   timeoutMs: number;
+  worktreePortBase?: number | null;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
@@ -72,6 +75,7 @@ export interface RunTeardownScriptArgs {
   environmentId?: string;
   script: string | null;
   timeoutMs: number;
+  worktreePortBase?: number | null;
 }
 
 export interface RemoveWorktreeArgs {
@@ -80,6 +84,7 @@ export interface RemoveWorktreeArgs {
   force?: boolean;
   pruneEmptyParent?: boolean;
   worktreeTeardownScript?: string | null;
+  worktreePortBase?: number | null;
 }
 
 interface SetupScriptCommand {
@@ -110,6 +115,7 @@ interface RunLifecycleScriptArgs {
   sourcePath?: string;
   signal?: AbortSignal;
   timeoutMs: number;
+  worktreePortBase?: number | null;
   workspacePath: string;
   onProgress?: ProgressCallback;
 }
@@ -296,10 +302,12 @@ function buildLifecycleScriptEnv(args: {
   environmentId?: string;
   phase: LifecycleScriptPhase;
   sourcePath?: string;
+  worktreePortBase?: number | null;
   workspacePath: string;
 }): NodeJS.ProcessEnv {
   return {
     ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+    ...buildWorktreePortEnv(args.worktreePortBase),
     BB_WORKTREE_PATH: args.workspacePath,
     BB_WORKTREE_PHASE: args.phase,
     ...(args.branchName ? { BB_WORKTREE_BRANCH: args.branchName } : {}),
@@ -474,6 +482,7 @@ export async function createWorktree(
       script: args.worktreeInitScript,
       sourcePath: args.sourcePath,
       timeoutMs: args.timeoutMs,
+      worktreePortBase: args.worktreePortBase,
       onProgress: args.onProgress,
       signal: args.signal,
     });
@@ -528,6 +537,7 @@ export async function runSetupScript(
       sourcePath: args.sourcePath,
       signal: args.signal,
       timeoutMs: args.timeoutMs,
+      worktreePortBase: args.worktreePortBase,
       workspacePath: args.workspacePath,
       onProgress: args.onProgress,
     });
@@ -561,6 +571,7 @@ export async function runSetupScript(
     sourcePath: args.sourcePath,
     signal: args.signal,
     timeoutMs: args.timeoutMs,
+    worktreePortBase: args.worktreePortBase,
     workspacePath: args.workspacePath,
     onProgress: args.onProgress,
   });
@@ -589,6 +600,7 @@ async function runLifecycleScript(
       environmentId: args.environmentId,
       phase: args.phase,
       sourcePath: args.sourcePath,
+      worktreePortBase: args.worktreePortBase,
       workspacePath: args.workspacePath,
     }),
   });
@@ -763,6 +775,7 @@ export async function runTeardownScript(
     phase: "teardown",
     script: command,
     timeoutMs: args.timeoutMs,
+    worktreePortBase: args.worktreePortBase,
     workspacePath: args.workspacePath,
   });
 }
@@ -783,6 +796,7 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     environmentId: args.environmentId,
     script: args.worktreeTeardownScript ?? null,
     timeoutMs: TEARDOWN_SCRIPT_TIMEOUT_MS,
+    worktreePortBase: args.worktreePortBase,
   });
 
   const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {

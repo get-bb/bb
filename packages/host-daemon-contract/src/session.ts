@@ -391,6 +391,7 @@ const hostDaemonTerminalOpenMessageSchema = z
     target: hostDaemonTerminalOpenTargetSchema,
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
+    env: z.record(z.string(), z.string()).optional(),
     start: z
       .discriminatedUnion("mode", [
         z

@@ -110,6 +110,11 @@ worktree**. Because worktrees are separate checkouts, these are independent runs
 with independent state, so the main-checkout run and any worktree runs can be
 active at once; the project row shows an indicator whenever any of them is
 running. While a run is starting or running, its button becomes a stop button.
+
+Managed worktree run commands receive `BB_PORT`, the first port in a stable
+10-port range assigned to that worktree, plus `BB_PORT_1` through `BB_PORT_9`.
+Use these variables to avoid local port conflicts between parallel worktrees,
+for example `pnpm dev --port "$BB_PORT"`.
 The run surfaces as a pinned **Run** tab in the thread's terminal pane (the
 bottom dock on desktop, the drawer's terminal strip on mobile) rather than on the
 home page.

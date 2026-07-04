@@ -911,6 +911,9 @@ describe("host-daemon command schemas", () => {
         branchName: "bb/env-123",
         baseBranch: null,
         setupTimeoutMs: 900000,
+        worktreeInitScript: null,
+        worktreeTeardownScript: null,
+        worktreePortBase: 42000,
       }),
     ).toMatchObject({
       type: "environment.provision",

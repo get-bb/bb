@@ -1112,6 +1112,7 @@ export async function dispatchManagedEnvironmentReprovision(
             setupTimeoutMs: SETUP_TIMEOUT_MS,
             worktreeInitScript: project?.worktreeInitScript ?? null,
             worktreeTeardownScript: project?.worktreeTeardownScript ?? null,
+            worktreePortBase: args.environment.worktreePortBase,
           });
         })();
 

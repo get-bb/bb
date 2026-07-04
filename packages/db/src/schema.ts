@@ -295,6 +295,7 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
+    worktreePortBase: integer("worktree_port_base"),
     destroyAttemptId: text("destroy_attempt_id"),
     workspaceProvisionType: text("workspace_provision_type")
       .$type<WorkspaceProvisionType>()

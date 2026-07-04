@@ -178,6 +178,7 @@ function createEnvironmentDestroyCommand(): EnvironmentDestroyCommand {
       workspaceProvisionType: "unmanaged",
     },
     worktreeTeardownScript: null,
+    worktreePortBase: null,
   };
 }
 

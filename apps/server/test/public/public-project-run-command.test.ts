@@ -7,6 +7,7 @@ import { projectRunCommandStateResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
+  seedEnvironment,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -170,6 +171,76 @@ describe("public project run command routes", () => {
         terminalId: openMessage.terminalId,
         reason: "user",
       });
+    });
+  });
+
+  it("passes worktree port env to environment run commands", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "project-run-command-env-host",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-run-command-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-run-command-env",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        worktreePortBase: 43300,
+      });
+      const socket = createFakeDaemonSocket();
+      harness.hub.registerDaemon(session.id, host.id, socket);
+
+      const updateResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runCommand: "pnpm dev --port $BB_PORT" }),
+        },
+      );
+      expect(updateResponse.status).toBe(200);
+
+      const startResponsePromise = Promise.resolve(
+        harness.app.request(
+          `/api/v1/projects/${project.id}/run-command/start`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              target: { kind: "environment", environmentId: environment.id },
+            }),
+          },
+        ),
+      );
+      const openMessage = await waitForDaemonMessage(socket, 0);
+      if (openMessage.type !== "terminal.open") {
+        throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+      }
+      expect(openMessage).toMatchObject({
+        env: {
+          BB_PORT: "43300",
+          BB_PORT_1: "43301",
+          BB_PORT_9: "43309",
+        },
+        start: { mode: "command", command: "pnpm dev --port $BB_PORT" },
+        target: {
+          kind: "workspace",
+          environmentId: environment.id,
+        },
+      });
+
+      acknowledgeTerminalOpen(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        openMessage,
+      });
+      const startResponse = await startResponsePromise;
+      expect(startResponse.status).toBe(200);
     });
   });
 });

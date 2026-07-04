@@ -100,6 +100,7 @@ describe("managed environment cleanup recovery sweep", () => {
               workspaceProvisionType: "managed-worktree",
             },
             worktreeTeardownScript: null,
+            worktreePortBase: null,
           },
           deps: {
             ...harness.deps,
@@ -177,6 +178,7 @@ describe("managed environment cleanup recovery sweep", () => {
               workspaceProvisionType: "managed-worktree",
             },
             worktreeTeardownScript: null,
+            worktreePortBase: null,
           },
           deps: {
             ...harness.deps,
