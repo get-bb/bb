@@ -608,6 +608,37 @@ describe("PromptBoxInternal zen mode layout", () => {
   });
 });
 
+describe("PromptBoxInternal voice input", () => {
+  it("does not disable the mic button when support preflight reports false", () => {
+    const start = vi.fn();
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "idle",
+            isSupported: false,
+            start,
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    const micButton = screen.getByRole("button", {
+      name: "Start voice input",
+    });
+    if (!(micButton instanceof HTMLButtonElement)) {
+      throw new Error("Mic button did not render as a button");
+    }
+
+    expect(micButton.disabled).toBe(false);
+    fireEvent.click(micButton);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("PromptBoxInternal prompt actions", () => {
   it("preserves blockquote structure when pasting copied blockquote html", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");

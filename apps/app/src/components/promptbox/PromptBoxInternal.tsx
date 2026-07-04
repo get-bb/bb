@@ -2044,8 +2044,7 @@ export function PromptBoxInternal({
     !submitDisabled &&
     !isVoiceBusy;
   const showStop = Boolean(isRunning && onStop && !canSubmit && !isVoiceBusy);
-  const canStartVoiceInput =
-    voice !== undefined && voice.isSupported && !isSubmitting;
+  const canStartVoiceInput = voice !== undefined && !isSubmitting;
   const effectiveSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
@@ -2611,11 +2610,7 @@ export function PromptBoxInternal({
               type="button"
               size="icon"
               variant="ghost"
-              aria-label={
-                !voice.isSupported
-                  ? "Voice input is not supported in this browser"
-                  : "Start voice input"
-              }
+              aria-label="Start voice input"
               disabled={!canStartVoiceInput}
               onClick={voice.start}
               className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
