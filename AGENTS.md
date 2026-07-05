@@ -2,12 +2,6 @@
 
 ## Simplicity First
 
-- Solve the requested problem with the smallest correct change.
-- Prefer deleting code, fields, branches, and surfaces over adding new ones.
-- Keep code local until reuse is proven by real callers. A little duplication is better than a shared abstraction that bends callers together.
-- Do not do broad cleanup, opportunistic refactors, or architecture rewrites unless they are required for the current change to be correct.
-- Do not turn a local bug fix into a descriptor system, registry, lifecycle table, coordinator, queue, cache framework, package split, compatibility adapter, migration/backfill framework, or generalized pipeline.
-- If adjacent debt is real but not required, mention it as follow-up instead of fixing it.
 - When renaming a domain concept, search project-wide for stale names in variables, files, query keys, constants, tests, and docs. TypeScript only catches type references.
 
 ## Types And Contracts
@@ -29,10 +23,7 @@
 
 ## CLI, Guide, And Skill
 
-- When you add or change a `bb` CLI command, flag, or a user-facing configuration knob (env var, `.bb/` workspace file, settings field), update its discoverable surfaces in the same change.
-- Update the in-CLI guide templates under `packages/templates/src/templates/bb-guide-*.md`, then regenerate with `node packages/templates/scripts/generate-templates.mjs` (the `@bb/templates` typecheck/test tasks also run it).
-- Update the bb-cli skill at `apps/server/src/services/skills/builtin-skills/bb-cli/SKILL.md`. Configuration knobs also belong in `docs/configuration.md`.
-- Match the existing chapter/section style; keep entries concise and accurate against the implementation.
+- When you add or change a `bb` CLI command, flag, or a user-facing configuration knob (env var, `.bb/` workspace file, settings field), update its discoverable surfaces in the same change. See [docs/cli-guide-and-skill.md](docs/cli-guide-and-skill.md) for which surfaces to update.
 
 ## Data Access
 
@@ -42,62 +33,21 @@
 
 ## UI
 
-- Use existing shared primitives when they already fit. Do not create a new shared primitive from a single use.
-- Avoid adding a second rendering path for the same concept. Remove an old path only when the current change directly replaces it.
 - Prefer sanctioned typography tokens over arbitrary `text-[Npx]` classes.
 - Derive theme color tokens from the `--canvas`/`--ink` anchors (`color-mix(in oklch, var(--ink) N%, var(--canvas))`) or from another derived token — never hand-set an `oklch(L 0 0)` literal. Achromatic literals don't follow custom palettes (Nord, Dracula, …), which re-anchor only `--canvas`/`--ink`, so a hardcoded token strands a neutral-gray element in an otherwise tinted UI. Mix opaque steps `in oklch`; mix translucent steps (a `transparent` pole) `in oklab` so the hue survives. `apps/app/src/components/ui/theme.css` is the source of truth and `theme.test.ts` guards it.
 
 ## Build And Typecheck
 
-- Always use Turbo: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
+- Always use Turbo when building and typechecking: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
 - Typecheck with `pnpm exec turbo run typecheck --filter=@bb/<pkg>`.
 - Do not run package scripts directly, such as `pnpm --filter @bb/foo test`, or raw `npx tsc --noEmit` unless you are deliberately bypassing repo orchestration for investigation.
 
 ## Testing
 
-- Match validation to risk. Docs-only and fixture-text changes usually do not need behavior tests.
-- Test real behavior and outcomes: resulting state, return values, persisted data, response bodies, and visible UI state.
-- Mock only true external boundaries such as third-party network calls, timers, and provider APIs. Do not mock the module under test or its private methods.
-- Bug fixes should usually include a regression test that would have failed before the fix. If a test is not practical, state why.
+- Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
 - Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
 
 ## Debugging And QA
 
 - Do not assume. Inspect logs, query the database, call server APIs, or use the CLI to observe real state.
-- Prefer server API, CLI, direct SQL queries, and log files over browser debugging except for browser-specific issues.
-- `pnpm dev` prints the active frontend URL, server API URL, host daemon port, data dir, and logs dir. Do not assume fixed dev ports.
-- The packaged app defaults to server/frontend `:38886`, host daemon `:38887`, data dir `~/.bb/`, and logs under `~/.bb/logs/`.
-- Entity IDs in URLs (`proj_*`, `thr_*`) are primary keys. Query them directly against the active data dir: `sqlite3 <data>/bb.db "SELECT * FROM threads WHERE id = 'thr_xxx';"`.
-- API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
-- Use `curl` against the server API to isolate frontend issues from server behavior.
-- Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
-
-### Local Dev QA Launcher
-
-Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
-
-- `scripts/bb-dev-app status` prints the active branch, dev URLs, data dir, and logs.
-- `scripts/bb-dev-app current` restarts the dev server on the current branch.
-- `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.
-- `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches the dev server.
-- `scripts/bb-dev-app stop` stops the launcher-managed dev server and desktop.
-- `scripts/bb-dev-app logs dev` and `scripts/bb-dev-app logs desktop` follow logs.
-
-By default the launcher starts only the dev server (web frontend, server, host daemon) and prints the URL without opening a browser. Pass `--open` to open the browser after startup. Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
-
-Branch switches intentionally keep dirty work in this checkout; git will stop if a local file would be overwritten. Set `BB_DEV_APP_STASH_DIRTY=1` for a one-off launch that stashes first.
-
-For CLI QA against the dev instance, run `eval "$(scripts/bb-dev-app env)"` first. This sets `BB_SERVER_URL`, `BB_HOST_DAEMON_PORT`, and `BB_PROJECT_ID=proj_personal` so `pnpm bb:dev ...` does not accidentally target the packaged app.
-
-Smoke-test agents with:
-
-```bash
-eval "$(scripts/bb-dev-app env)"
-pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode readonly --title "Smoke test" --prompt "Reply only with ok." --json
-```
-
-## Planning Workflow
-
-- When asked to make a plan, create or update a Markdown file under `plans/`.
-- Plans must include concrete exit criteria and validation instructions.
-- Delete plan files once completed or superseded.
+- See [docs/debugging-and-qa.md](docs/debugging-and-qa.md) for dev ports/data dirs, entity-ID lookups, and the `scripts/bb-dev-app` local dev QA launcher.
