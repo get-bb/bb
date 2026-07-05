@@ -1,13 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "@bb/landing#build": {
+    "@bb/web#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/landing/package.json",
-        "$TURBO_ROOT$/apps/landing/src/**",
-        "$TURBO_ROOT$/apps/landing/tsconfig.json",
-        "$TURBO_ROOT$/apps/landing/vite.config.ts",
+        "$TURBO_ROOT$/apps/web/package.json",
+        "$TURBO_ROOT$/apps/web/src/**",
+        "$TURBO_ROOT$/apps/web/tsconfig.json",
+        "$TURBO_ROOT$/apps/web/vite.config.ts",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",

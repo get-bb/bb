@@ -6,6 +6,10 @@
    `in oklch` (polar) — mixing a chromatic accent toward white in oklch
    interpolates the hue through pink; oklab keeps the hue put. */
 
+/* Inter Variable @font-face rules (this sheet loads standalone on the
+   marketing route — the old landing app pulled these in via a JS import). */
+@import "@fontsource-variable/inter";
+
 /* Metric-adjusted fallback (Arial sized to Inter) shown until Inter loads, so
    text — the large hero title especially — doesn't reflow/snap when the web
    font swaps in mid-animation. */

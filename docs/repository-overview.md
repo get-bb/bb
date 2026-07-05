@@ -10,7 +10,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`apps/server`](../apps/server)                                    | HTTP API, WebSocket notifications, state management, and server-owned product policy.               |
 | [`apps/host-daemon`](../apps/host-daemon)                          | Host-local runtime that provisions workspaces and runs provider processes.                          |
 | [`apps/cli`](../apps/cli)                                          | Scriptable `bb` CLI for users and agents.                                                           |
-| [`apps/landing`](../apps/landing)                                  | Static marketing landing page (TanStack Start, prerendered).                                        |
+| [`apps/web`](../apps/web)                                          | getbb.app site: marketing page + bb connect auth/dashboard (TanStack Start on Cloudflare Workers).  |
 | [`packages/sdk`](../packages/sdk)                                  | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                       |
 | [`packages/agent-runtime`](../packages/agent-runtime)              | Provider runtime adapters and bridges for Codex, Claude Code, Pi, and ACP agents.                   |
 | [`packages/config`](../packages/config)                            | Config parsing, defaults, managed package config schema, and environment variable definitions.      |

@@ -1,9 +1,11 @@
+// First-party HTTP endpoints for the marketing page, ported from the old
+// standalone landing worker (apps/landing/src/worker.ts). Routing now lives in
+// TanStack server routes (routes/download.macos.tsx, routes/api.subscribe.tsx);
+// this module keeps the framework-free request/response logic testable.
 import {
   DOWNLOAD_MACOS_FALLBACK_URL,
   DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL,
-  DOWNLOAD_MACOS_REDIRECT_PATH,
   DOWNLOAD_MACOS_VERSION_FEED_URL,
-  SUBSCRIBE_PATH,
 } from "./site";
 import type { CtaPlacement } from "./site";
 
@@ -20,29 +22,12 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type DownloadPlacement = CtaPlacement | "direct";
 
-type LandingWorkerEnv = {
-  ASSETS: AssetFetcher;
+export type MarketingEnv = {
   LANDING_POSTHOG_KEY?: string;
   // Set in production via wrangler secret / vars; unset on forks and local dev,
   // where /api/subscribe reports that signup is not configured.
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
-};
-
-type AssetFetcher = {
-  fetch: (request: Request) => Promise<Response>;
-};
-
-type WorkerExecutionContext = {
-  waitUntil: (promise: Promise<void>) => void;
-};
-
-type LandingWorker = {
-  fetch: (
-    request: Request,
-    env: LandingWorkerEnv,
-    context: WorkerExecutionContext,
-  ) => Promise<Response>;
 };
 
 type DownloadEventProperties = {
@@ -72,29 +57,22 @@ type TrackDownloadClickArgs = {
   requestUrl: URL;
 };
 
-const worker: LandingWorker = {
-  async fetch(request, env, context) {
-    const requestUrl = new URL(request.url);
-    if (isDownloadMacosRequest(requestUrl)) {
-      context.waitUntil(
-        trackDownloadClick({
-          postHogKey: env.LANDING_POSTHOG_KEY,
-          request,
-          requestUrl,
-        }),
-      );
-      return redirectToMacosDownload();
-    }
-
-    if (requestUrl.pathname === SUBSCRIBE_PATH) {
-      return handleSubscribe(request, env);
-    }
-
-    return env.ASSETS.fetch(request);
-  },
-};
-
-export default worker;
+export async function handleDownloadMacos(
+  request: Request,
+  env: MarketingEnv,
+  waitUntil: (promise: Promise<void>) => void,
+): Promise<Response> {
+  const requestUrl = new URL(request.url);
+  waitUntil(
+    trackDownloadClick({
+      postHogKey: env.LANDING_POSTHOG_KEY,
+      request,
+      requestUrl,
+    }),
+  );
+  const location = await resolveMacosDownloadUrl();
+  return redirectResponse(location);
+}
 
 function jsonResponse(body: object, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -105,9 +83,9 @@ function jsonResponse(body: object, status: number): Response {
 
 // Adds the submitted email to the bb marketing audience in Resend. Same-origin
 // only (the form lives on this site), so no CORS handling is needed.
-async function handleSubscribe(
+export async function handleSubscribe(
   request: Request,
-  env: LandingWorkerEnv,
+  env: MarketingEnv,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed." }, 405);
@@ -174,18 +152,6 @@ async function isAlreadySubscribed(response: Response): Promise<boolean> {
   }
   const body = await response.text();
   return /already/i.test(body);
-}
-
-function isDownloadMacosRequest(requestUrl: URL): boolean {
-  return (
-    requestUrl.pathname === DOWNLOAD_MACOS_REDIRECT_PATH ||
-    requestUrl.pathname === `${DOWNLOAD_MACOS_REDIRECT_PATH}/`
-  );
-}
-
-async function redirectToMacosDownload(): Promise<Response> {
-  const location = await resolveMacosDownloadUrl();
-  return redirectResponse(location);
 }
 
 function redirectResponse(location: string): Response {

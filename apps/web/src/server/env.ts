@@ -13,6 +13,14 @@ export interface Env {
    * invite-only. Unset or empty means nobody can sign in (fail closed).
    */
   CONNECT_ALLOWED_GITHUB_USERS?: string;
+  /**
+   * Marketing-page endpoints (see src/landing/endpoints.ts). Unset on forks
+   * and local dev: /api/subscribe reports signup as not configured, and the
+   * download redirect skips server-side click tracking.
+   */
+  LANDING_POSTHOG_KEY?: string;
+  RESEND_API_KEY?: string;
+  RESEND_AUDIENCE_ID?: string;
 }
 
 export function getEnv(): Env {
