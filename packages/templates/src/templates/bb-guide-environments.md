@@ -62,3 +62,12 @@ Making your repo work with bb:
 
   bb environment squash-merge <id>        Squash-merge into a target branch
     --merge-base-branch <branch>          Target branch (required)
+
+Hosts:
+
+  Every environment lives on a host (a machine running the bb host daemon).
+
+  bb host list                            List hosts with connection status and last-seen time
+
+  Pass a host id to `bb thread spawn --host <id>` to run a thread on a
+  specific connected machine; omit it to use the local primary host.
