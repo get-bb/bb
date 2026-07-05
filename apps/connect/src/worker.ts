@@ -91,7 +91,11 @@ export default {
     if (url.pathname === "/__tunnel") {
       const auth = request.headers.get("authorization") ?? "";
       const credential = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-      const srv = resolved.server;
+      // Re-resolve fresh (bypass the isolate cache): a warm isolate would
+      // otherwise honor a just-revoked credential for up to the cache TTL,
+      // letting a leaked credential re-establish a tunnel after disconnect.
+      const freshResolved = await resolveHandle(handle, db, { fresh: true });
+      const srv = freshResolved?.server;
       if (!srv || srv.revokedAt != null || srv.credentialHash == null) {
         return text("bb connect: server not paired\n", 403);
       }

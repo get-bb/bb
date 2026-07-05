@@ -212,6 +212,15 @@ export async function redeemMachineCode(
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now()) return { error: "expired", status: 410 };
 
+  // Re-check the cap here, not just at code creation: createMachineCode's
+  // count is a TOCTOU (N codes each minted while under the limit could all
+  // redeem past it). Checked before consuming so a rejected redeem leaves the
+  // code usable.
+  const machines = await db.select().from(machine).where(eq(machine.userId, row.userId)).all();
+  if (machines.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_SERVER) {
+    return { error: "machine-limit", status: 409 };
+  }
+
   const consumed = await db
     .update(connectCode)
     .set({ consumedAt: new Date() })

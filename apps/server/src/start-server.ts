@@ -121,11 +121,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const db = initDb(serverConfig.databasePath, { logger });
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const terminalSessions = new TerminalSessionLifecycle({
-    db,
-    hub,
-    logger,
-  });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -189,6 +184,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_DEV_APP_PORT !== undefined) {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
+  // Constructed after runtimeConfig: host_path terminals gate their target
+  // host through the Multi-machine experiment, which needs config.dataDir to
+  // resolve the primary host.
+  const terminalSessions = new TerminalSessionLifecycle({
+    config: runtimeConfig,
+    db,
+    hub,
+    logger,
+  });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
     hub,

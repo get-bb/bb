@@ -96,13 +96,6 @@ export async function createTestAppHarness(
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const terminalSessions = new TerminalSessionLifecycle({
-    attachTimeoutMs: 50,
-    db,
-    hub,
-    logger: testLogger,
-    openTimeoutMs: 50,
-  });
   const lifecycleDedupers = createLifecycleDedupers();
   const machineAuth = await createMachineAuthService({
     dataDir,
@@ -146,6 +139,14 @@ export async function createTestAppHarness(
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
+  const terminalSessions = new TerminalSessionLifecycle({
+    attachTimeoutMs: 50,
+    config,
+    db,
+    hub,
+    logger: testLogger,
+    openTimeoutMs: 50,
+  });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
     hub,

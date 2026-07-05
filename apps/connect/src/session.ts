@@ -38,14 +38,22 @@ export interface ResolvedHandle {
 /**
  * Resolve a handle to its owner + server in a single JOINed query, cached
  * per-isolate. `null` means the handle doesn't exist.
+ *
+ * Pass `{ fresh: true }` to bypass the read cache for credential-sensitive
+ * paths (tunnel (re)connect): the ~15s cache TTL would otherwise let a
+ * just-revoked credential re-establish a tunnel from a warm isolate. The
+ * fresh read still refreshes the cache for subsequent visitor lookups.
  */
 export async function resolveHandle(
   handle: string,
   db: ReturnType<typeof drizzle>,
+  options?: { fresh?: boolean },
 ): Promise<ResolvedHandle | null> {
   const now = Date.now();
-  const cached = cacheGet(handleCache, handle, now);
-  if (cached !== undefined) return cached;
+  if (!options?.fresh) {
+    const cached = cacheGet(handleCache, handle, now);
+    if (cached !== undefined) return cached;
+  }
 
   const row = await db
     .select({
@@ -92,7 +100,12 @@ export async function verifySessionCookie(
   const providedSig = decoded.slice(dot + 1);
 
   const now = Date.now();
-  const cached = cacheGet(sessionCache, token, now);
+  // Cache on the full `token.sig` value, not the token alone: keying on the
+  // token would return a cached userId before the signature is checked, so a
+  // valid `token` with a forged signature would authenticate (and a forged
+  // one would negative-poison the real token). The full-cookie key makes the
+  // cache reflect exactly what passed verification.
+  const cached = cacheGet(sessionCache, decoded, now);
   if (cached !== undefined) return cached;
 
   const key = await crypto.subtle.importKey(
@@ -105,7 +118,7 @@ export async function verifySessionCookie(
   const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token));
   const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
   if (!constantTimeEqual(providedSig, expectedSig)) {
-    sessionCache.set(token, { value: null, expires: now + SESSION_TTL_MS });
+    sessionCache.set(decoded, { value: null, expires: now + SESSION_TTL_MS });
     return null;
   }
 
@@ -115,7 +128,7 @@ export async function verifySessionCookie(
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
     .get();
   const userId = row?.userId ?? null;
-  sessionCache.set(token, { value: userId, expires: now + SESSION_TTL_MS });
+  sessionCache.set(decoded, { value: userId, expires: now + SESSION_TTL_MS });
   return userId;
 }
 
