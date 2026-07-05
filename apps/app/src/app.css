@@ -16,7 +16,11 @@
   html.bb-app-shell-root,
   body.bb-app-shell {
     overflow: hidden;
-    overscroll-behavior: none;
+    /*
+     * Suppress vertical rubber-banding without blocking the native horizontal
+     * two-finger back/forward gesture.
+     */
+    overscroll-behavior-y: none;
   }
 
   html.bb-app-shell-root[data-bb-popout-route],
