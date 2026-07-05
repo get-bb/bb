@@ -58,6 +58,8 @@ message agents, or inspect projects, providers, and environments.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Pass `--host <host-id>` to run the thread on a specific connected machine
   (list ids with `bb host list`); omit it to use the local primary host.
+  Non-primary hosts require the "Multi-machine" experiment (Settings →
+  Experiments) — when off, the server rejects with `multi_machine_disabled`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or

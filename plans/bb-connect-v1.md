@@ -132,6 +132,12 @@ verified e2e. Three daemons connected to one dev server simultaneously.
   (add `x-bb-connect-machine` in `apps/host-daemon` server-client/enroll/WS + a
   `bb connect machine` launcher subcommand) to replace the proxy harness; and a
   host-picker in the `apps/app` UI (the API + CLI already carry hostId).
+- **Experiment gate (2026-07-05):** multi-host execution is gated behind the
+  "Multi-machine" experiment (Settings → Experiments; `multiMachine` in
+  `experimentsSchema`). Non-primary host targeting is rejected with
+  `multi_machine_disabled` while off. All bb connect in-product surfaces
+  (Connect settings pane, Machines pane, daemon endpoints) must check the same
+  experiment as they land.
 
 ## Status (2026-07-04, evening) — SPEED OPTIMIZED + real-account testable
 

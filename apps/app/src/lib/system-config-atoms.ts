@@ -11,6 +11,7 @@ import { wsManager } from "./ws";
 const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     claudeCodeMockCliTraffic: false,
+    multiMachine: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
     plugins: false,

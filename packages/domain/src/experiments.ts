@@ -73,6 +73,13 @@ export const experimentsSchema = z.object({
    */
   claudeCodeMockCliTraffic: z.boolean(),
   /**
+   * Multi-machine: run threads on hosts other than the local primary
+   * (`bb thread spawn --host`) and the bb connect remote-access surfaces.
+   * Off by default — when off, execution requests targeting a non-primary
+   * host are rejected.
+   */
+  multiMachine: z.boolean(),
+  /**
    * Popout chat: enables the desktop-only compact always-on-top chat window.
    */
   popoutChat: z.boolean(),
@@ -101,6 +108,7 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
+  multiMachine: false,
   popoutChat: false,
   popoutChatHotkey: "Alt+Space",
   plugins: false,

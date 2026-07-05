@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -29,6 +31,8 @@ describe("public project local host routes", () => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
       const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      // Targeting a non-primary host requires the multi-machine experiment.
+      setExperiments(harness.db, { ...defaultExperiments, multiMachine: true });
 
       const projectResponse = await harness.app.request("/api/v1/projects", {
         method: "POST",

@@ -71,3 +71,5 @@ Hosts:
 
   Pass a host id to `bb thread spawn --host <id>` to run a thread on a
   specific connected machine; omit it to use the local primary host.
+  Targeting a non-primary host requires the "Multi-machine" experiment
+  (Settings → Experiments); when it is off such requests are rejected.

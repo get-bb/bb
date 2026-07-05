@@ -225,6 +225,15 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
+## Multi-Machine
+
+Running threads on hosts other than the local primary (`bb thread spawn
+--host <id>`; ids from `bb host list`) is gated behind the "Multi-machine"
+experiment (Settings → Experiments, off by default). While the experiment is
+off, execution requests that target a non-primary host are rejected with
+`multi_machine_disabled`. The bb connect remote-access surfaces are gated by
+the same experiment as they land.
+
 ## Plugins
 
 Plugins are gated behind the "Plugins" experiment (Settings → Experiments, off

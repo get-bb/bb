@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { listPublicHosts, type DbConnection } from "@bb/db";
+import { getExperiments, listPublicHosts, type DbConnection } from "@bb/db";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -32,6 +32,14 @@ function primaryHostUnavailableError(): ApiError {
     502,
     "host_unavailable",
     "Local host daemon is not initialized",
+  );
+}
+
+function multiMachineDisabledError(): ApiError {
+  return new ApiError(
+    403,
+    "multi_machine_disabled",
+    'Targeting another host is disabled — enable the "Multi-machine" experiment in Settings → Experiments.',
   );
 }
 
@@ -96,6 +104,10 @@ export function requirePrimaryHostId(deps: PrimaryHostDeps): string {
  * preserved. Liveness is enforced downstream at dispatch (`callHostOnlineRpc` →
  * `ensureHostSessionReadyForWork`), so validation here does not require a live
  * session (matching the previous primary-only assertion).
+ *
+ * Targeting a host other than the primary requires the "Multi-machine"
+ * experiment; the primary host is always usable so single-host setups are
+ * unaffected by the toggle.
  */
 export function assertUsableHostId(
   deps: PrimaryHostDeps,
@@ -109,6 +121,12 @@ export function assertUsableHostId(
   );
   if (!isPublicHost) {
     throw unsupportedHostError();
+  }
+  if (
+    args.hostId !== resolvePrimaryHostId(deps) &&
+    !getExperiments(deps.db).multiMachine
+  ) {
+    throw multiMachineDisabledError();
   }
 }
 
