@@ -8,6 +8,11 @@ export interface Env {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
+  /**
+   * Comma-separated GitHub usernames allowed to sign in while bb connect is
+   * invite-only. Unset or empty means nobody can sign in (fail closed).
+   */
+  CONNECT_ALLOWED_GITHUB_USERS?: string;
 }
 
 export function getEnv(): Env {

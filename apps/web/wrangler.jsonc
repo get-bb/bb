@@ -16,7 +16,8 @@
   "observability": { "enabled": true },
   "vars": {
     "BASE_DOMAIN": "vibecodethis.site",
-    "APP_URL": "https://vibecodethis.site"
+    "APP_URL": "https://vibecodethis.site",
+    "CONNECT_ALLOWED_GITHUB_USERS": "sawyerhood"
   },
   "d1_databases": [
     {

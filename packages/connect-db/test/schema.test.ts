@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -8,6 +9,8 @@ import {
   CONNECT_CODE_TTL_MS,
   connectCode,
   handleFromHost,
+  isGithubUserAllowed,
+  parseAllowedGithubUsers,
   profile,
   schema,
   server,
@@ -15,7 +18,7 @@ import {
   validateHandle,
 } from "../src/index.js";
 
-const MIGRATION = fileURLToPath(new URL("../migrations/0000_init.sql", import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url));
 
 let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle>;
@@ -23,7 +26,10 @@ let db: ReturnType<typeof drizzle>;
 beforeEach(() => {
   sqlite = new Database(":memory:");
   sqlite.pragma("foreign_keys = ON");
-  sqlite.exec(readFileSync(MIGRATION, "utf8"));
+  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
+    if (!file.endsWith(".sql")) continue;
+    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+  }
   db = drizzle(sqlite, { schema });
 });
 
@@ -62,6 +68,16 @@ describe("migration matches the drizzle schema", () => {
 
     const p = db.select().from(profile).where(eq(profile.handle, "sawyer")).get();
     expect(p?.userId).toBe("u1");
+  });
+
+  it("stores the github login on user (nullable for pre-migration rows)", () => {
+    seedUser("u1");
+    expect(db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin).toBeNull();
+
+    db.update(user).set({ githubLogin: "sawyerhood" }).where(eq(user.id, "u1")).run();
+    expect(db.select().from(user).where(eq(user.id, "u1")).get()?.githubLogin).toBe(
+      "sawyerhood",
+    );
   });
 });
 
@@ -155,6 +171,23 @@ describe("validateHandle", () => {
     expect(validateHandle("api")).toBe("reserved");
     expect(validateHandle("www")).toBe("reserved");
     expect(validateHandle("admin")).toBe("reserved");
+  });
+});
+
+describe("github signup allowlist", () => {
+  it("parses a comma-separated var case-insensitively, ignoring blanks", () => {
+    const allowed = parseAllowedGithubUsers(" SawyerHood, other-user, ,");
+    expect(isGithubUserAllowed(allowed, "sawyerhood")).toBe(true);
+    expect(isGithubUserAllowed(allowed, "SAWYERHOOD")).toBe(true);
+    expect(isGithubUserAllowed(allowed, "other-user")).toBe(true);
+    expect(isGithubUserAllowed(allowed, "stranger")).toBe(false);
+  });
+
+  it("fails closed: unset/empty var and null login are not allowed", () => {
+    expect(isGithubUserAllowed(parseAllowedGithubUsers(undefined), "sawyerhood")).toBe(false);
+    expect(isGithubUserAllowed(parseAllowedGithubUsers(""), "sawyerhood")).toBe(false);
+    expect(isGithubUserAllowed(parseAllowedGithubUsers("sawyerhood"), null)).toBe(false);
+    expect(isGithubUserAllowed(parseAllowedGithubUsers("sawyerhood"), undefined)).toBe(false);
   });
 });
 

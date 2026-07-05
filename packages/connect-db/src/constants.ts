@@ -76,6 +76,29 @@ export const SERVER_OFFLINE_AFTER_MS = 90 * 1000;
 /** Token prefixes (mirrors bb's host-key convention; distinct namespaces). */
 export const CLOUD_PAT_PREFIX = "bbc_";
 
+/**
+ * Signup/sign-in allowlist while bb connect is invite-only. Parsed from the
+ * `CONNECT_ALLOWED_GITHUB_USERS` worker var: comma-separated GitHub usernames,
+ * case-insensitive. Unset or empty means nobody can sign in (fail closed).
+ */
+export function parseAllowedGithubUsers(
+  value: string | undefined,
+): ReadonlySet<string> {
+  return new Set(
+    (value ?? "")
+      .split(",")
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => name.length > 0),
+  );
+}
+
+export function isGithubUserAllowed(
+  allowed: ReadonlySet<string>,
+  login: string | null | undefined,
+): boolean {
+  return login != null && allowed.has(login.toLowerCase());
+}
+
 export type HandleValidationError =
   | "too-short"
   | "too-long"
