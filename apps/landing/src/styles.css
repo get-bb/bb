@@ -2446,7 +2446,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
      card's drop shadow fades into the left gutter instead of being shaved off
      at the card's own edge. overflow-y stays visible so the bottom shadow and
      the scroll-in entrance still show. */
-  .mockup-wrap {
+  .mockup-wrap:not(.mockup-wrap-automation) {
     margin-left: -28px;
     margin-right: -28px;
     padding-left: 28px;
@@ -2459,7 +2459,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
      (`--mock-visible-width`) fills the available width. Both vars are defined
      only here, so the mock is unscaled above this breakpoint; the fallback
      scale covers the pre-hydration/no-JS paint. */
-  .mock {
+  .mockup-wrap:not(.mockup-wrap-automation) .mock {
     --mock-desktop-width: 980px;
     --mock-visible-width: 560px;
     width: var(--mock-desktop-width);
