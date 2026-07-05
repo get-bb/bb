@@ -216,13 +216,6 @@ async function startIntegrationServer(
   const db = initDb(":memory:");
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const terminalSessions = new TerminalSessionLifecycle({
-    attachTimeoutMs: 50,
-    db,
-    hub,
-    logger: testLogger,
-    openTimeoutMs: 50,
-  });
   const config: ServerRuntimeConfig = {
     appSurface: "web",
     appVersion: "0.0.0-dev",
@@ -242,6 +235,14 @@ async function startIntegrationServer(
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
   };
+  const terminalSessions = new TerminalSessionLifecycle({
+    attachTimeoutMs: 50,
+    config,
+    db,
+    hub,
+    logger: testLogger,
+    openTimeoutMs: 50,
+  });
   const machineAuth = await createMachineAuthService({
     dataDir: serverDataDir,
     db,
