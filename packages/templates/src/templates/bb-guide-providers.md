@@ -7,7 +7,7 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
-Providers are agent backends (e.g., codex, claude-code, omp). Each supports different models. The omp provider drives the user-installed `omp` CLI; install and authenticate it via omp itself.
+Providers are agent backends (e.g., codex, claude-code, pi). Each supports different models.
 
   bb provider list                        List available providers
   bb provider models [providerId]         List models for a provider
@@ -17,7 +17,8 @@ When provider and model are omitted from bb thread spawn, the project's remember
 defaults apply.
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, opencode on PATH appears as provider acp-opencode.
+host. For example, opencode or omp on PATH appears as provider acp-opencode or
+acp-omp.
 
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON

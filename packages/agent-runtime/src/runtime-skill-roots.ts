@@ -2,7 +2,6 @@ import path from "node:path";
 import type {
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
-  AgentRuntimeOmpSkillRoot,
   AgentRuntimePiSkillRoot,
   AgentRuntimeSkillRoot,
 } from "./types.js";
@@ -51,8 +50,6 @@ function normalizeSkillRoot(
       return normalizeCodexSkillRoot(skillRoot);
     case "pi":
       return normalizePiSkillRoot(skillRoot);
-    case "omp":
-      return normalizeOmpSkillRoot(skillRoot);
     default:
       return assertKnownSkillRootProvider(skillRoot);
   }
@@ -95,23 +92,6 @@ function normalizeCodexSkillRoot(
 function normalizePiSkillRoot(
   skillRoot: AgentRuntimePiSkillRoot,
 ): AgentRuntimePiSkillRoot {
-  assertAbsoluteSkillRootPath({
-    id: skillRoot.id,
-    path: skillRoot.skillDirectoryRootPath,
-    pathField: "skillDirectoryRootPath",
-    providerId: skillRoot.providerId,
-  });
-
-  return {
-    id: skillRoot.id,
-    providerId: skillRoot.providerId,
-    skillDirectoryRootPath: skillRoot.skillDirectoryRootPath,
-  };
-}
-
-function normalizeOmpSkillRoot(
-  skillRoot: AgentRuntimeOmpSkillRoot,
-): AgentRuntimeOmpSkillRoot {
   assertAbsoluteSkillRootPath({
     id: skillRoot.id,
     path: skillRoot.skillDirectoryRootPath,

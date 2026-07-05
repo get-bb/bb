@@ -5,7 +5,6 @@ describe("providerHasCommandSurface", () => {
   it("derives command typeahead support from provider-declared skills actions", () => {
     expect(providerHasCommandSurface("codex")).toBe(true);
     expect(providerHasCommandSurface("claude-code")).toBe(true);
-    expect(providerHasCommandSurface("omp")).toBe(false);
     expect(providerHasCommandSurface("unknown-provider")).toBe(false);
   });
 });

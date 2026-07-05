@@ -32,6 +32,7 @@ const KNOWN_ACP_BRAND_ICONS: Record<
   ComponentType<{ className?: string }>
 > = {
   opencode: OpencodeIcon,
+  omp: OmpIcon,
 };
 
 /**
@@ -71,11 +72,6 @@ export function getProviderIconInfo(
     case "pi":
       return {
         icon: PiIcon,
-        ariaLabel: providerInfo.displayName,
-      };
-    case "omp":
-      return {
-        icon: OmpIcon,
         ariaLabel: providerInfo.displayName,
       };
     case "acp-cursor":

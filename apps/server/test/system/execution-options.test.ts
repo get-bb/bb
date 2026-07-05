@@ -64,8 +64,8 @@ describe("appendCustomModels", () => {
     ).toEqual(["low", "medium", "high", "xhigh", "ultracode", "max"]);
   });
 
-  it("caps codex, pi, and omp custom models at xhigh (no max)", () => {
-    for (const providerId of ["codex", "pi", "omp"] as const) {
+  it("caps codex and pi custom models at xhigh (no max)", () => {
+    for (const providerId of ["codex", "pi"] as const) {
       const { models } = appendCustomModels({
         customModels: [{ providerId, model: "custom-model" }],
         models: [],
@@ -485,6 +485,11 @@ describe("resolveSystemExecutionOptions", () => {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
+            if (request.command.type === "known_acp_agents.status") {
+              // acp-omp is a known agent that is not overridden by custom
+              // config here, so the server probes host install status for it.
+              return { ok: true, result: { agents: [] } };
+            }
             if (request.command.type === "provider.list_models") {
               return {
                 ok: true,
@@ -507,8 +512,8 @@ describe("resolveSystemExecutionOptions", () => {
         expect(opencodeProviders[0].displayName).toBe("Custom opencode");
         expect(
           responder.requests.map((request) => request.command.type),
-        ).toEqual(["provider.list_models"]);
-        expect(responder.requests[0].command).toEqual({
+        ).toEqual(["known_acp_agents.status", "provider.list_models"]);
+        expect(responder.requests[1].command).toEqual({
           type: "provider.list_models",
           providerId: "acp-opencode",
           acpLaunchSpec: {

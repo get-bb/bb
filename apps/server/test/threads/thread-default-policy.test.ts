@@ -71,7 +71,6 @@ describe("resolveWorkflowsEnabledPolicy", () => {
     expect(resolveWorkflowsEnabledPolicy("claude-code")).toBe(true);
     expect(resolveWorkflowsEnabledPolicy("codex")).toBe(false);
     expect(resolveWorkflowsEnabledPolicy("pi")).toBe(false);
-    expect(resolveWorkflowsEnabledPolicy("omp")).toBe(false);
     expect(resolveWorkflowsEnabledPolicy("acp-my-agent")).toBe(false);
   });
 });
@@ -105,21 +104,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
       }),
     ).toEqual({
       providerId: "pi",
-      executionDefaults: null,
-    });
-  });
-
-  it("discards stored defaults when the resolved provider is omp", () => {
-    expect(
-      resolveCreateThreadExecutionDefaults({
-        requestedProviderId: "omp",
-        storedDefaults: makeDefaults({
-          providerId: "codex",
-          model: "gpt-5.5",
-        }),
-      }),
-    ).toEqual({
-      providerId: "omp",
       executionDefaults: null,
     });
   });
@@ -278,17 +262,6 @@ describe("resolveThreadDefaultPermissionMode", () => {
     ).toBe("full");
   });
 
-  it("uses full for OMP threads", () => {
-    expect(
-      resolveThreadDefaultPermissionMode({
-        thread: makeThread({
-          parentThreadId: "thr-parent-1",
-          providerId: "omp",
-        }),
-      }),
-    ).toBe("full");
-  });
-
   it("uses full for Codex threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
@@ -372,20 +345,6 @@ describe("resolveThreadExecutionPermissionMode", () => {
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "pi",
-        }),
-      }),
-    ).toBe("full");
-  });
-
-  it("reconciles inherited parent permission to omp's full-only supported modes", () => {
-    expect(
-      resolveThreadExecutionPermissionMode({
-        parentThread: makeParentThread(),
-        parentThreadExecutionPermissionMode: "workspace-write",
-        projectExecutionPermissionMode: "readonly",
-        thread: makeThread({
-          parentThreadId: "thr-parent-1",
-          providerId: "omp",
         }),
       }),
     ).toBe("full");

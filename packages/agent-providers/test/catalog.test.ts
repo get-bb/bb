@@ -74,20 +74,6 @@ describe("agent provider catalog", () => {
         available: true,
       },
       {
-        id: "omp",
-        displayName: "oh-my-pi",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: false,
-          supportsFork: false,
-          supportedPermissionModes: ["full"],
-        },
-        composerActions: [],
-        available: true,
-      },
-      {
         id: "acp-cursor",
         displayName: "Cursor",
         capabilities: {
@@ -163,12 +149,6 @@ describe("agent provider catalog", () => {
       reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
     });
     expect(getBuiltInAgentProviderServerCapabilities("pi")).toEqual({
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      backsHostDaemonAiServices: false,
-      reasoningLevels: ["low", "medium", "high", "xhigh"],
-    });
-    expect(getBuiltInAgentProviderServerCapabilities("omp")).toEqual({
       supportsWorkflows: false,
       supportsExecutionOverride: false,
       backsHostDaemonAiServices: false,

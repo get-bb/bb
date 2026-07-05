@@ -63,7 +63,7 @@ export interface ModelOptionGroup<
 }
 
 /**
- * Groups model options by their `provider/` prefix so providers like omp (whose
+ * Groups model options by their `provider/` prefix so ACP agents like omp (whose
  * catalog spans cursor / openai-codex / xai-oauth / zai) can surface a header
  * per provider in the model dropdown. Returns null when options carry fewer
  * than two distinct provider prefixes, so single-provider catalogs (codex,

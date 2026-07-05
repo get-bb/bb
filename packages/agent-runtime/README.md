@@ -1,6 +1,6 @@
 # @bb/agent-runtime
 
-Manages agent provider processes (codex, claude-code, pi, omp) and exposes a clean session interface. Handles process spawning, stdio framing, JSON-RPC dispatch, event translation, tool call routing, crash detection, and shutdown.
+Manages agent provider processes (codex, claude-code, pi) and exposes a clean session interface. Handles process spawning, stdio framing, JSON-RPC dispatch, event translation, tool call routing, crash detection, and shutdown.
 
 Consumers say "start a thread, run a turn, give me events" — they never touch processes, adapters, or wire formats.
 
@@ -10,7 +10,7 @@ Consumers say "start a thread, run a turn, give me events" — they never touch 
 import { createAgentRuntime, listAvailableProviders } from "@bb/agent-runtime";
 
 // Discovery
-const providers = listAvailableProviders();   // [{ id: "codex", ... }, { id: "claude-code", ... }, { id: "pi", ... }, { id: "omp", ... }]
+const providers = listAvailableProviders();   // [{ id: "codex", ... }, { id: "claude-code", ... }, { id: "pi", ... }]
 
 // Runtime — supports multiple providers and threads simultaneously
 const runtime = createAgentRuntime({
@@ -188,5 +188,4 @@ mapping, unhandled-event envelopes, command-output normalization) live in
 - `@bb/templates` — markdown templates for provider instructions
 - `@anthropic-ai/claude-agent-sdk` — Claude Code
 - `@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent` — Pi
-- `omp` CLI (user-installed) — OMP provider; shells out to the omp CLI over its RPC mode, no bundled SDK or npm dependency
 - `zod` — schema validation at provider boundaries

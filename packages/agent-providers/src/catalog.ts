@@ -10,7 +10,6 @@ const AGENT_PROVIDER_ID_VALUES = [
   "codex",
   "claude-code",
   "pi",
-  "omp",
   "acp-cursor",
 ] as const;
 export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_ID_VALUES);
@@ -175,29 +174,6 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   reasoningLevels: ["low", "medium", "high", "xhigh"],
 };
 
-// omp (on-my-pi) is a divergent fork of vanilla pi with its own auth store,
-// runtime (Bun + native bindings), and protocol. BB drives the user-installed
-// `omp` CLI over its RPC mode via a thin framing bridge, so omp owns auth and
-// model selection entirely. Capabilities start at parity with pi; fork is
-// disabled until omp session-file fork semantics are verified.
-const OMP_CAPABILITIES: ProviderCapabilities = {
-  supportsArchive: false,
-  supportsRename: false,
-  supportsServiceTier: false,
-  supportsUserQuestion: false,
-  supportsFork: false,
-  supportedPermissionModes: ["full"],
-};
-
-const OMP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
-
-const OMP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
-  supportsWorkflows: false,
-  supportsExecutionOverride: false,
-  backsHostDaemonAiServices: false,
-  reasoningLevels: ["low", "medium", "high", "xhigh"],
-};
-
 // ACP agents manage reasoning effort internally; "medium" is the single
 // synthetic level so execution-option resolution has a valid value to carry.
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
@@ -256,16 +232,6 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       id: "pi",
     },
     serverCapabilities: PI_SERVER_CAPABILITIES,
-  },
-  {
-    info: {
-      available: true,
-      capabilities: OMP_CAPABILITIES,
-      composerActions: OMP_COMPOSER_ACTIONS,
-      displayName: "oh-my-pi",
-      id: "omp",
-    },
-    serverCapabilities: OMP_SERVER_CAPABILITIES,
   },
   {
     info: {
