@@ -8,7 +8,8 @@
     "build": "vite build",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",
