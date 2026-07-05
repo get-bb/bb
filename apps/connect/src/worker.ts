@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { handleFromHost } from "@bb/connect-db";
+import { RESERVED_HANDLES, handleFromHost } from "@bb/connect-db";
 import { TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
@@ -74,6 +74,12 @@ export default {
     const host = request.headers.get("host") ?? url.host;
     const handle = handleFromHost(host, env.BASE_DOMAIN);
     if (!handle) return text("bb connect: unknown host\n", 404);
+    // Reserved labels (www, api, …) are never handles. The wildcard route can
+    // receive them if a more specific binding is missing — send them home
+    // rather than answering with a confusing "no server" page.
+    if (RESERVED_HANDLES.has(handle)) {
+      return Response.redirect(`https://${env.BASE_DOMAIN}${url.pathname}${url.search}`, 301);
+    }
 
     const db = drizzle(env.DB);
     const resolved = await resolveHandle(handle, db);

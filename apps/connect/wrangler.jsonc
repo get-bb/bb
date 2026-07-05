@@ -5,8 +5,11 @@
 // then proxies through the per-handle TunnelDO. Staging serves per-handle custom
 // domains attached on demand (e.g. sawyer.vibecodethis.site).
 //
+// Deploy prod:    pnpm --filter @bb/connect exec wrangler deploy
 // Deploy staging: pnpm --filter @bb/connect exec wrangler deploy --env staging
-// Secret (staging): wrangler secret put BETTER_AUTH_SECRET --env staging
+// Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
+//         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
+//         session cookie's HMAC with it)
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-connect",
@@ -19,6 +22,18 @@
   "durable_objects": {
     "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
   },
+  // Production: every *.getbb.app subdomain hits the gate via the wildcard
+  // zone route (backed by a proxied `*` DNS record). The apex + www are
+  // custom domains on bb-web and take precedence over this route.
+  "vars": { "BASE_DOMAIN": "getbb.app" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bb-connect-prod",
+      "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b"
+    }
+  ],
+  "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
   "env": {
     "staging": {
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],

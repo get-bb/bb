@@ -86,6 +86,29 @@ Cloudflare specifics:
   `app`, `admin`, `connect`, `download`, `docs`, `status`, `staging`,
   `mail`, `cdn`, `bb`, …) maintained in `packages/connect-db`.
 
+## Status (2026-07-05) — PROD STAGED, AWAITING APEX CUTOVER
+
+Everything for the getbb.app production launch is deployed except the final
+apex flip. Invite-only via `CONNECT_ALLOWED_GITHUB_USERS=sawyerhood`.
+
+- **Marketing fold-in done:** `apps/landing` deleted; `apps/web` serves the
+  marketing page at `/`, dashboard at `/dashboard`, plus the ported
+  `/download/macos` + `/api/subscribe` endpoints. CI workflow renamed
+  `deploy-landing.yml` → `deploy-web.yml` (builds with
+  `CLOUDFLARE_ENV=production`).
+- **Prod infra live:** D1 `bb-connect-prod` (migrated 0000–0002); gate worker
+  `bb-connect` serving `*.getbb.app/*` via the wildcard zone route (wildcard
+  DNS record added by Sawyer); reserved-handle subdomains (www, api, …) 301 to
+  the apex; `bb-web` deployed with all 5 secrets, previewable at
+  `bb-web.sawyer-7bb.workers.dev`. Both workers share BETTER_AUTH_SECRET.
+  Secret stashes on Sawyer's machine: `~/.bb/bb-connect-github-oauth-prod.env`,
+  `~/.bb/bb-connect-resend-prod.env`, `~/.bb/bb-connect-prod-secrets.env`.
+- **Remaining for launch:** flip `getbb.app` + `www.getbb.app` custom domains
+  from `bb-landing` → `bb-web` (approval pending), verify, then delete the
+  `bb-landing` worker. Config gotcha: `env.production.routes` MUST stay `[]` —
+  routes inherit from the top level and a prod deploy once stole
+  vibecodethis.site from staging (fixed by redeploying staging).
+
 ## Status (2026-07-04, night) — M4 CONNECTION LAYER DONE (both paths verified)
 
 Goal 2 (M4 multi-machine): both connection models the user specified are built and
