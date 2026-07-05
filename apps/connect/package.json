@@ -1,0 +1,28 @@
+{
+  "name": "@bb/connect",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "spike:origin": "tsx scripts/spike-origin.mts",
+    "spike:client": "tsx scripts/spike-client.mts"
+  },
+  "dependencies": {
+    "@bb/connect-db": "workspace:*",
+    "@bb/tunnel-contract": "workspace:*",
+    "drizzle-orm": "^0.38.0"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@cloudflare/workers-types": "^4.20260610.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.100.0",
+    "ws": "^8.18.0"
+  }
+}

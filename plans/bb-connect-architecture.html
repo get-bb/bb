@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bb connect — Thin Cloud, Untouched Core — Architecture Plan</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --ink: #1a1c1e;
+    --muted: #5c6370;
+    --line: #e4e2dd;
+    --card: #f6f5f2;
+    --accent: #2f6fed;
+    --accent-soft: #e8effd;
+    --good: #1a7f4b;
+    --good-soft: #e6f4ec;
+    --warn: #b45309;
+    --warn-soft: #fdf0e0;
+    --bad: #b3261e;
+    --bad-soft: #fbeae9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 28px 120px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); font-size: 17px; margin: 0 0 40px; }
+  h2 {
+    font-size: 24px; letter-spacing: -0.01em; margin: 64px 0 16px;
+    padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 18px; margin: 32px 0 8px; }
+  h4 { font-size: 15px; margin: 24px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  p, li { max-width: 74ch; }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .tldr {
+    background: var(--accent-soft); border: 1px solid #c9daf8; border-radius: 10px;
+    padding: 20px 24px; margin: 0 0 8px;
+  }
+  .tldr p { margin: 8px 0; }
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--card);
+    padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 20px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+  .pill {
+    display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; border-radius: 99px; padding: 2px 10px; vertical-align: middle;
+  }
+  .pill.have { background: var(--good-soft); color: var(--good); }
+  .pill.gap { background: var(--bad-soft); color: var(--bad); }
+  .pill.partial { background: var(--warn-soft); color: var(--warn); }
+  figure { margin: 28px 0; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; text-align: center; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  svg .mono { font-family: var(--mono); }
+  .phase {
+    border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; margin: 20px 0;
+    background: #fff;
+  }
+  .phase h3 { margin-top: 0; }
+  .phase .meta { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .exit { background: var(--good-soft); border-radius: 8px; padding: 10px 16px; margin-top: 14px; font-size: 14.5px; }
+  .exit strong { color: var(--good); }
+  .file { font-family: var(--mono); font-size: 0.86em; }
+  .toc { columns: 2; gap: 32px; font-size: 15px; margin: 24px 0 0; padding-left: 20px; }
+  .toc li { margin: 3px 0; }
+  .flow { counter-reset: step; list-style: none; padding-left: 0; }
+  .flow li { counter-increment: step; position: relative; padding-left: 44px; margin: 14px 0; }
+  .flow li::before {
+    content: counter(step); position: absolute; left: 0; top: 1px;
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center;
+  }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>bb connect</h1>
+<p class="subtitle">Make <strong>your own bb server</strong> reachable from anywhere via a new, separate <strong>bb cloud</strong> service (auth + tunneling at getbb.app) — with <strong>zero auth code in the core app</strong> and a one-line script to connect every machine you own. <span style="color:var(--muted)">July 4, 2026 · v2 — auth moved out of core · companion to <a href="hosted-bb-architecture.html">hosted-bb-architecture.html</a></span></p>
+
+<div class="tldr">
+  <p><strong>TL;DR.</strong> The cloud piece is a <em>new web service</em>, not a change to bb: <strong>bb cloud</strong> owns accounts, login, the machine registry, and a relay fleet. Your bb server gains one sidecar-shaped component — a <strong>tunnel client</strong> — that dials out to the relay and injects authenticated remote traffic into the server <em>over loopback</em>. Because bb's server already trusts loopback, the core server, its routes, and the SPA are <strong>completely unchanged</strong>:</p>
+  <ul style="margin:8px 0">
+    <li><code>sawyer.getbb.app</code> = your whole bb origin (SPA, <code>/api/v1</code>, <code>/ws</code>, terminals) relayed through the tunnel. Login happens at getbb.app; the relay only forwards traffic from sessions that own your tunnel.</li>
+    <li>Other machines: <code>curl getbb.app/connect | sh</code> installs a daemon that joins your server through the same URL — the existing <code>host-daemon join</code> flow; daemon auth (host keys) already lives in core and keeps working through the relay untouched.</li>
+    <li>Defense-in-depth without core changes: the tunnel client pins your account ID at connect time and rejects any relayed request not tagged with it — so a relay routing bug can't expose your server.</li>
+  </ul>
+  <p><strong>Net:</strong> one new deployable (bb cloud), one new client component (the tunnel client), no schema changes, no auth middleware, no frontend changes. bb stays local-first and fully functional with the cloud absent.</p>
+</div>
+
+<ol class="toc">
+  <li><a href="#split">Why auth doesn't belong in the core app</a></li>
+  <li><a href="#model">The model</a></li>
+  <li><a href="#flows">How the key flows work</a></li>
+  <li><a href="#thin-cloud">What lives where (the privacy story)</a></li>
+  <li><a href="#reuse">What bb already has</a></li>
+  <li><a href="#compare">vs. the hosted-control-plane plan</a></li>
+  <li><a href="#phases">Phased plan</a></li>
+  <li><a href="#risks">Risks &amp; open questions</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="split"><span class="num">1</span>Why auth doesn't belong in the core app</h2>
+
+<p>bb's security model today is <em>network-perimeter trust</em>: the server trusts whoever can reach it (loopback, or your tailnet). The obvious way to go remote is to replace that with in-app user auth — accounts, sessions, middleware on every route. But there's a cheaper move that keeps the model intact: <strong>don't widen the perimeter; extend it through exactly one authenticated party.</strong></p>
+
+<ol class="flow">
+  <li><strong>The server never listens on the internet.</strong> The only remote ingress is the outbound tunnel that the tunnel client itself dialed. No open port, no new attack surface on the box.</li>
+  <li><strong>bb cloud authenticates everything before it enters the tunnel.</strong> Accounts, sessions, tokens — all owned by the new service. It forwards a request down your tunnel only after verifying the caller's account owns that tunnel, tagging each request with the account ID over the authenticated tunnel channel.</li>
+  <li><strong>The tunnel client verifies, then injects over loopback.</strong> It pinned your account ID at connect time; a mismatch is dropped. What it forwards to <code>127.0.0.1:38886</code> is, from the server's perspective, ordinary trusted local traffic. Core server: zero changes.</li>
+  <li><strong>Daemons were never the problem.</strong> <code>/internal/*</code> already self-authenticates with per-machine host keys (<span class="file">apps/server/src/services/machine-auth.ts</span>) — the one place bb already has real auth, and it stays exactly where it is. The relay just passes it through.</li>
+</ol>
+
+<h3>Is that as safe as auth in the server? Honestly weighed:</h3>
+<table>
+  <tr><th>Threat</th><th>Auth in core (better-auth users + sessions)</th><th>Auth in bb cloud + tunnel-client pinning</th></tr>
+  <tr><td>Random internet scanning / direct hits</td><td>Blocked by auth middleware</td><td>Blocked harder — no listening port at all</td></tr>
+  <tr><td>Relay routing bug (wrong user's traffic down your tunnel)</td><td>Blocked by server-side session check</td><td>Blocked by account pinning in the tunnel client</td></tr>
+  <tr><td>Stolen getbb.app session cookie</td><td>Full access (server session was bootstrapped from the same login)</td><td>Full access — <strong>identical exposure</strong></td></tr>
+  <tr><td>Full relay compromise (attacker runs the relay)</td><td>Not stopped — the relay holds the assertion signing keys either way</td><td>Not stopped — same. Only E2E encryption (roadmap, Q2) stops this, and it's available in both designs</td></tr>
+  <tr><td>Someone on your LAN hits <code>:38886</code> directly</td><td>Blocked if auth enforced locally (but that breaks local-first UX)</td><td>Same as bb today — loopback/tailnet perimeter, unchanged</td></tr>
+</table>
+
+<p>The security delta is ~zero; the code delta is enormous. In-core auth means schema changes, session plumbing through every typed route, WS upgrade auth, an auth mode flag, a login UI in the product, and keeping local-first UX working around all of it. Cloud-owned auth means the core app doesn't know the cloud exists.</p>
+
+<div class="callout warn">
+<strong>The one real cost:</strong> bb has no per-user identity <em>inside</em> the app, so future sharing/teammate features can't attribute actions or scope permissions per person. The escape hatch is cheap and deferrable: the tunnel client can forward a verified <code>X-BB-Identity</code> header, and the server starts <em>reading</em> it only when such a feature exists. Don't build it now (accepted-but-ignored fields are forbidden anyway) — just know the door is open.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="model"><span class="num">2</span>The model</h2>
+
+<ul>
+  <li><strong>bb cloud (new web service, getbb.app):</strong> accounts + login, handle → tunnel registry, connect-code issuance, and the relay data plane for <code>*.getbb.app</code>. A separate deployable with its own small DB. It has no bb product logic — it can't render a thread; it only routes.</li>
+  <li><strong>Tunnel client (new, ships with bb):</strong> a component of the <code>bb-app</code> launcher (or sidecar process) on the server machine. Dials out, holds a multiplexed WS, verifies account pinning, proxies to loopback. The core server doesn't know it exists.</li>
+  <li><strong>Your server:</strong> today's bb server + <code>bb.db</code>, byte-for-byte unchanged.</li>
+  <li><strong>Your other machines:</strong> daemon-only installs joining via the tunnel URL.</li>
+</ul>
+
+<figure>
+<svg viewBox="0 0 840 520" width="100%" role="img" aria-label="bb connect v2 architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5c6370"/>
+    </marker>
+    <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a7f4b"/>
+    </marker>
+  </defs>
+  <!-- Cloud -->
+  <rect x="280" y="16" width="280" height="212" rx="12" fill="#eef2fb" stroke="#c9daf8"/>
+  <text x="420" y="42" font-size="13" font-weight="700" fill="#2f6fed" text-anchor="middle">BB CLOUD (new service) — getbb.app</text>
+  <rect x="300" y="56" width="240" height="42" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="420" y="74" font-size="13.5" font-weight="600" text-anchor="middle">Auth: accounts · sessions · tokens</text>
+  <text x="420" y="91" font-size="11.5" fill="#5c6370" text-anchor="middle">ALL identity lives here</text>
+  <rect x="300" y="108" width="240" height="42" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="420" y="126" font-size="13.5" font-weight="600" text-anchor="middle">Relay fleet  (*.getbb.app)</text>
+  <text x="420" y="143" font-size="11.5" fill="#5c6370" text-anchor="middle">tags each request with account id</text>
+  <rect x="300" y="160" width="240" height="52" rx="8" fill="#fff" stroke="#c9daf8" stroke-dasharray="4 3"/>
+  <text x="420" y="181" font-size="12.5" text-anchor="middle" fill="#5c6370">registry + routing DB only —</text>
+  <text x="420" y="198" font-size="12.5" text-anchor="middle" fill="#5c6370">no threads, no code, no bb.db</text>
+  <!-- Clients -->
+  <rect x="20" y="30" width="180" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="110" y="56" font-size="14" font-weight="600" text-anchor="middle">Browser anywhere</text>
+  <text x="110" y="76" font-size="11.5" fill="#5c6370" text-anchor="middle">login → sawyer.getbb.app</text>
+  <rect x="20" y="112" width="180" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="110" y="138" font-size="14" font-weight="600" text-anchor="middle">Mobile app (later)</text>
+  <text x="110" y="158" font-size="11.5" fill="#5c6370" text-anchor="middle">same URL, same API</text>
+  <line x1="200" y1="62" x2="300" y2="112" stroke="#2f6fed" stroke-width="1.7" marker-end="url(#arrB)"/>
+  <line x1="200" y1="144" x2="300" y2="132" stroke="#2f6fed" stroke-width="1.7" marker-end="url(#arrB)"/>
+  <!-- Server machine -->
+  <rect x="250" y="286" width="340" height="216" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="266" y="312" font-size="13" font-weight="700" fill="#5c6370">YOUR PRIMARY MACHINE ("the server")</text>
+  <rect x="268" y="326" width="304" height="56" rx="8" fill="#fff" stroke="#1a7f4b"/>
+  <text x="420" y="349" font-size="13.5" font-weight="600" text-anchor="middle">NEW: tunnel client (launcher/sidecar)</text>
+  <text x="420" y="368" font-size="11.5" fill="#5c6370" text-anchor="middle">dials out · pins account id · proxies to loopback</text>
+  <rect x="268" y="396" width="304" height="90" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="420" y="421" font-size="14.5" font-weight="600" text-anchor="middle">bb server + bb.db — UNCHANGED</text>
+  <text x="420" y="441" font-size="11.5" fill="#5c6370" text-anchor="middle" class="mono">SPA · /api/v1 · /ws · /internal/ws</text>
+  <text x="420" y="461" font-size="11.5" fill="#5c6370" text-anchor="middle">still trusts loopback; no auth middleware,</text>
+  <text x="420" y="477" font-size="11.5" fill="#5c6370" text-anchor="middle">no schema change, no login UI</text>
+  <line x1="420" y1="382" x2="420" y2="396" stroke="#5c6370" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="492" y="393" font-size="10.5" fill="#5c6370">127.0.0.1:38886</text>
+  <!-- tunnel arrow -->
+  <line x1="420" y1="326" x2="420" y2="228" stroke="#1a7f4b" stroke-width="2.4" marker-end="url(#arrG)"/>
+  <rect x="428" y="248" width="180" height="40" rx="6" fill="#e6f4ec"/>
+  <text x="518" y="264" font-size="11.5" fill="#1a7f4b" text-anchor="middle" font-weight="600">outbound tunnel</text>
+  <text x="518" y="280" font-size="11" fill="#1a7f4b" text-anchor="middle">whole origin: HTTP + WS</text>
+  <!-- Other machines -->
+  <rect x="630" y="286" width="192" height="216" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="646" y="312" font-size="13" font-weight="700" fill="#5c6370">OTHER MACHINES</text>
+  <rect x="646" y="328" width="160" height="70" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="726" y="352" font-size="13.5" font-weight="600" text-anchor="middle">bb daemon</text>
+  <text x="726" y="370" font-size="11" fill="#5c6370" text-anchor="middle" class="mono">curl getbb.app/connect | sh</text>
+  <text x="726" y="386" font-size="11" fill="#5c6370" text-anchor="middle">host-key auth (existing)</text>
+  <rect x="646" y="412" width="160" height="70" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="726" y="436" font-size="13.5" font-weight="600" text-anchor="middle">bb daemon</text>
+  <text x="726" y="454" font-size="11" fill="#5c6370" text-anchor="middle">cloud dev box, mac mini, …</text>
+  <!-- daemon arrows -->
+  <line x1="646" y1="346" x2="548" y2="158" stroke="#1a7f4b" stroke-width="1.6" marker-end="url(#arrG)"/>
+  <text x="640" y="230" font-size="11" fill="#1a7f4b" transform="rotate(62 640 230)">via sawyer.getbb.app</text>
+  <line x1="646" y1="438" x2="558" y2="164" stroke="#1a7f4b" stroke-width="1.6" marker-end="url(#arrG)"/>
+</svg>
+<figcaption>v2: all identity in bb cloud; the tunnel client is the only trust bridge; the core server is untouched.</figcaption>
+</figure>
+
+<div class="callout good">
+<strong>The core trick (unchanged from v1):</strong> tunnel the <em>entire origin</em>. <code>sawyer.getbb.app</code> relays the SPA, <code>/api/v1</code>, <code>/ws</code>, terminal upgrades, and <code>/internal/*</code> alike. bb's same-origin frontend works unmodified, the UI version always matches your server, and daemons need nothing but <code>BB_SERVER_URL=https://sawyer.getbb.app</code>. <strong>New in v2:</strong> because the tunnel client injects over loopback, even the server's loopback-gated surfaces (like enroll-key issuance, <span class="file">apps/server/src/internal/hosts.ts:20</span>) keep working for the owner with zero changes — the perimeter model is preserved end to end.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="flows"><span class="num">3</span>How the key flows work</h2>
+
+<h3>Flow A — Connecting your server (once)</h3>
+<ol class="flow">
+  <li><strong>Sign up at getbb.app</strong> (bb cloud account: email or OAuth). Pick a handle → <code>sawyer.getbb.app</code>.</li>
+  <li>On the machine running bb: <code>bb connect</code>. Opens the browser to getbb.app; you approve "Connect this server to sawyer.getbb.app" → bb cloud mints a one-time, short-TTL <strong>connect code</strong>.</li>
+  <li>The tunnel client exchanges the code for a durable <strong>tunnel credential</strong> and pins the <strong>account ID</strong>; both stored under <span class="file">~/.bb/</span> (same pattern as the daemon's <span class="file">auth.json</span>). It dials the relay and holds a multiplexed WS — reconnect/backoff/heartbeat discipline copied from <span class="file">apps/host-daemon/src/server-connection.ts</span>.</li>
+  <li>getbb.app shows your server: <em>online · last seen · version</em>. Note the whole exchange touched only bb cloud and the tunnel client — the bb server process was never modified, restarted, or reconfigured.</li>
+</ol>
+
+<h3>Flow B — Opening bb from anywhere</h3>
+<ol class="flow">
+  <li>Visit getbb.app on any device, log in (bb cloud session), click your server — or go straight to <code>sawyer.getbb.app</code>; unauthenticated visitors get bb cloud's login page, never your server.</li>
+  <li>The relay verifies the session's account owns this tunnel, then forwards the request down it, tagged with the account ID on the authenticated tunnel channel.</li>
+  <li>The tunnel client checks the tag against its pinned account and proxies to <code>127.0.0.1:38886</code>. The server sees a loopback request — trusted, as always.</li>
+  <li>Everything else is transparent: SPA loads from your server, <code>/ws</code> streams thread events, terminals attach. Server offline → getbb.app renders "last seen 2h ago" instead of a broken page. CLI/SDK from remote machines authenticate to the relay with a bb-cloud personal access token (<code>bbc_…</code>), which the relay validates and strips before forwarding.</li>
+</ol>
+
+<h3>Flow C — Connecting your other machines</h3>
+<ol class="flow">
+  <li>In the bb UI (reached via the tunnel): "Add a machine" → one-liner: <code>curl -fsSL https://getbb.app/connect | sh -s -- --code XXXX-XXXX</code>. The join code comes from bb's own enroll-key flow — which the owner can mint because their traffic arrives over loopback via the tunnel client.</li>
+  <li>The script installs the daemon and runs the <strong>existing</strong> flow: <code>host-daemon join --join-code … --server-url https://sawyer.getbb.app</code> (<span class="file">packages/bb-app/src/launcher.ts</span> already resolves this). The daemon enrolls, gets its host key, and holds its reconnecting WS to <code>/internal/ws</code> — all through the relay, all with auth that already exists in core.</li>
+  <li>The machine appears as a Host; environments target it; threads, terminals, file browsing reach it via server → tunnel → relay → daemon. Later: direct LAN fast path with relay fallback.</li>
+  <li>Installed as launchd/systemd service; heartbeat-driven update nudges.</li>
+</ol>
+
+<h3>The bb cloud service itself</h3>
+<ul>
+  <li><strong>Auth plane:</strong> accounts, sessions, PATs, handles, connect codes, machine registry. This is where better-auth (or similar) lives now — in the new service, not in bb.</li>
+  <li><strong>Data plane:</strong> terminates TLS for <code>*.getbb.app</code> (wildcard cert), maps subdomain → live tunnel, forwards HTTP/WS as multiplexed frames tagged with the authenticated account. Streams, never stores; no payload logging.</li>
+  <li><strong>Multi-node:</strong> sticky-route by subdomain at the LB to start; Redis route table + cross-node forwarding only when scale demands.</li>
+  <li><strong>Where it lives:</strong> new app in the monorepo (<span class="file">apps/cloud</span>) so the tunnel protocol contract can be a shared package (<span class="file">packages/tunnel-contract</span>) typed end-to-end with the tunnel client — same pattern as <span class="file">packages/host-daemon-contract</span>. Deployed independently; the core server has no dependency on it.</li>
+  <li><strong>Build vs buy:</strong> we very likely don't build the data plane for v1 — see the next section.</li>
+</ul>
+
+<h3 id="buildvsbuy">Build vs buy: build the protocol, host it on Workers + Durable Objects</h3>
+
+<p>Since bb-over-Tailscale is already validated in daily use, whole-origin remote access (WS, terminals, SPA) isn't in question — only the relay path is. Options considered, honestly:</p>
+
+<table>
+  <tr><th>Option</th><th>Verdict</th></tr>
+  <tr>
+    <td><strong>Ship <code>cloudflared</code></strong> (Cloudflare Tunnel per user)</td>
+    <td><strong>No — off-label.</strong> Cloudflare Tunnel is a Zero Trust product for connecting <em>an organization's own</em> infrastructure to its CF account. Embedding one tunnel per end-user of a consumer product under our account is not its intended shape, and the platform says so: <a href="https://developers.cloudflare.com/cloudflare-one/account-limits/">~1,000 tunnels per account</a>. Plus we'd ship and lifecycle a ~50&nbsp;MB third-party Go binary on every user's machine.</td>
+  </tr>
+  <tr>
+    <td><strong>ngrok for platforms</strong> (<code>@ngrok/ngrok</code> embedded SDK)</td>
+    <td>This <em>is</em> the commercial product intended for exactly this use case — tunnels embedded in your SaaS, JS-native, no sidecar binary. But <a href="https://ngrok.com/pricing">pricing</a> kills it for consumer fan-out: ~$15/mo per additional active endpoint (endpoint-hours; an always-on bb server is active nearly every hour) + $0.10/GB + $1/100k requests ⇒ up to ~$15/user-server/month in COGS, vs. pennies on Durable Objects. Also puts a vendor on the data path permanently.</td>
+  </tr>
+  <tr>
+    <td><strong>Self-host an OSS tunnel server</strong> (<a href="https://github.com/andydunstall/piko">Piko</a> — multi-tenant, production-focused; frp, pgrok, zrok, Pangolin)</td>
+    <td>Piko is genuinely designed for this (multi-tenant reverse tunnels, subdomain routing, node cluster, k8s-friendly). But it only replaces the relay <em>host</em> — the part Durable Objects makes nearly free — while leaving every cost we'd pay anyway: its upstream agent is a Go binary (same objection as cloudflared) with only a Go SDK, so a no-sidecar install means writing a TS client for <em>their</em> protocol ≈ the effort of writing ours; the auth gate is still ours to build in front; and we take on fleet ops (StatefulSet/VMs, LB, wildcard TLS, upgrades, DDoS on our own IPs). End-to-end WebSocket proxying is also unverified in their docs — a must-test for bb. Right role: the BYO-relay / Cloudflare-exit fallback, not v1.</td>
+  </tr>
+  <tr>
+    <td><strong>Build our own on Workers + Durable Objects</strong></td>
+    <td><strong>Yes — recommended.</strong> Own the (small) protocol; rent the (hard) infrastructure. Details below.</td>
+  </tr>
+</table>
+
+<h4>The Durable Object tunnel design</h4>
+
+<p>One <strong>Durable Object per tunnel</strong>, keyed by handle (<code>sawyer</code>). Two kinds of parties connect <em>inbound</em> to it, which is exactly the shape DOs are built for:</p>
+
+<ol class="flow">
+  <li><strong>Tunnel client (pure TypeScript, no sidecar):</strong> the launcher opens a WebSocket to its DO and holds it — using <code>partysocket</code>, the same reconnecting-WS library bb's frontend already uses. Auth: the durable tunnel credential from <code>bb connect</code>. No <code>cloudflared</code>, no Go binary, no third-party release cadence.</li>
+  <li><strong>Visitors:</strong> a request to <code>sawyer.getbb.app</code> hits the Worker (auth gate: bb cloud session or <code>bbc_…</code> PAT → account owns handle → attach account tag), which routes it to the DO. The DO frames the request down the tunnel WS; the tunnel client verifies the pinned account tag, proxies to <code>127.0.0.1:38886</code>, and streams response frames back. Browser WebSockets (<code>/ws</code>, terminals) are carried the same way — WS-over-WS with stream IDs.</li>
+  <li><strong>The protocol is ours</strong> (<span class="file">packages/tunnel-contract</span>): stream open/close, HTTP head, body chunks, WS frames, backpressure credits, account tag, heartbeat. Because we own the frames, the account-pinning check rides natively, and relay-blind E2E encryption (Q2) has a place to live later — neither was possible on rented data planes.</li>
+</ol>
+
+<p>Why this is the right hosting substrate rather than a Node fleet:</p>
+<ul>
+  <li><strong>Zero fleet ops:</strong> no VMs, no TLS management, no load balancer; wildcard <code>*.getbb.app</code> routing and global anycast come with the platform. The auth plane (accounts, registry, connect codes) is Workers + D1/KV alongside it — bb cloud v1 is nearly infrastructure-free.</li>
+  <li><strong>Idle tunnels cost ~nothing:</strong> the <a href="https://developers.cloudflare.com/durable-objects/best-practices/websockets/">WebSocket Hibernation API</a> evicts an idle DO from memory while keeping both sockets open — <a href="https://developers.cloudflare.com/durable-objects/platform/pricing/">duration charges stop while hibernating</a>, and auto-response ping/pong handles keepalives without waking it. A thousand connected-but-quiet bb servers ≈ free.</li>
+  <li><strong>No tenant ceiling:</strong> millions of DOs is normal usage; the per-user DO is a natural shard. Contrast the 1,000-tunnel cap.</li>
+  <li><strong>Testable and portable:</strong> plain TS end to end, runs locally under workerd/miniflare in vitest; and since the protocol is the asset, the host is swappable — the same frames could later run on a Node relay fleet (or self-hosted for BYO-relay users) without touching the tunnel client or guard semantics.</li>
+</ul>
+
+<div class="callout warn">
+<strong>Honest engineering scope:</strong> the real work is the multiplexing protocol — request framing, body chunking (WS messages cap at <a href="https://developers.cloudflare.com/workers/platform/limits/">32&nbsp;MiB</a>, so chunk ~1&nbsp;MiB with credit-based backpressure), WS-over-WS piping, and reconnect-with-resume semantics. Sized in code, the data plane is small: <span class="file">tunnel-contract</span> frames ~300–500 LoC, the tunnel DO ~600–1,000, the Worker gate ~200–400, the TS tunnel client ~500–800 — roughly <strong>2,000–2,700 LoC of product code</strong>, with tests doubling it and the auth plane (accounts, registry, connect codes) adding ~1–2k more. Call it a few focused weeks, and backpressure is where the bugs will live. Known per-tenant ceilings: a DO is single-threaded, so one user's tunnel has bounded throughput — ample for bb's JSON + terminal text; large file downloads will be merely okay. Vendor coupling remains (Cloudflare hosts the DOs) but is thin and swappable, unlike owning neither protocol nor host.</div>
+
+<!-- ============================================================ -->
+<h2 id="thin-cloud"><span class="num">4</span>What lives where — the privacy story</h2>
+
+<table>
+  <tr><th>Data</th><th>bb cloud</th><th>Your server</th><th>Other machines</th></tr>
+  <tr><td>Account (email, login, sessions)</td><td>✅ yes — and <em>only</em> here</td><td>❌ none (no user table used)</td><td>—</td></tr>
+  <tr><td>Machine registry (names, online/offline, versions)</td><td>✅ yes</td><td>✅ hosts table (existing)</td><td>—</td></tr>
+  <tr><td>Threads, events, messages</td><td>❌ never stored</td><td>✅ <code>bb.db</code></td><td>—</td></tr>
+  <tr><td>Code, repos, workspaces</td><td>❌ never stored</td><td>✅ local disk</td><td>✅ local disk</td></tr>
+  <tr><td>Terminal streams, file contents</td><td>⚠️ <em>transits</em> the relay (TLS-terminated), not stored</td><td>✅</td><td>✅</td></tr>
+  <tr><td>Provider API keys / agent credentials</td><td>❌ never</td><td>per setup</td><td>✅ stay on the machine</td></tr>
+</table>
+
+<p>The ⚠️ is the honest caveat: in v1 the relay terminates TLS and is in the trusted computing base — same trust level as ngrok or Cloudflare Tunnel, far less than a hosted control plane that <em>stores</em> everything. Roadmap: E2E-encrypted tunnel payloads (relay-blind), which this split uniquely enables since the SPA and the keys both come from your server, not the relay (Q2).</p>
+
+<!-- ============================================================ -->
+<h2 id="reuse"><span class="num">5</span>What bb already has</h2>
+
+<table>
+  <tr><th>Needed for bb connect</th><th>Status</th><th>Where</th></tr>
+  <tr><td>Outbound dial-and-hold pattern (reconnect, backoff, heartbeat)</td><td><span class="pill have">have</span></td><td>Daemon↔server: <span class="file">apps/host-daemon/src/server-connection.ts</span>. The tunnel client is the same shape, one level up.</td></tr>
+  <tr><td>One-time code → durable machine credential</td><td><span class="pill have">have</span></td><td><span class="file">apps/server/src/internal/hosts.ts</span> + <span class="file">services/machine-auth.ts</span>. Reuse the pattern in bb cloud for server↔relay credentials.</td></tr>
+  <tr><td>Daemon joins a remote server by URL + code</td><td><span class="pill have">have</span></td><td><code>host-daemon join --join-code --server-url</code> in <span class="file">packages/bb-app/src/launcher.ts</span>; <code>BB_SERVER_URL</code> in <span class="file">packages/config</span>.</td></tr>
+  <tr><td>Daemon authentication that survives the relay</td><td><span class="pill have">have</span></td><td>Host keys on <code>/internal/*</code> — bb's one real auth system, already in core, needs nothing.</td></tr>
+  <tr><td>Same-origin SPA + WS served by the server</td><td><span class="pill have">have</span></td><td>The design depends on it — no frontend changes, no version skew.</td></tr>
+  <tr><td>Loopback-trust perimeter</td><td><span class="pill have">have</span></td><td>Normally the thing to replace — here it's the integration point. Tunnel client injects at <code>127.0.0.1</code>; even loopback-gated routes work for the owner remotely.</td></tr>
+  <tr><td>Host as first-class entity, host-scoped RPC, online/offline</td><td><span class="pill have">have</span></td><td><span class="file">apps/server/src/services/hosts/online-rpc.ts</span>, <code>hostType</code> in <code>@bb/domain</code>.</td></tr>
+  <tr><td>bb cloud service (auth plane + relay) + tunnel client</td><td><span class="pill gap">gap</span></td><td>The new build. All of it lives outside the core app.</td></tr>
+  <tr><td>Multi-host product UX (host picker, queued-until-online, capability toggles)</td><td><span class="pill partial">partial</span></td><td>Data model ready; UX assumes one local host. The only core-app work in this plan.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="compare"><span class="num">6</span>vs. the hosted-control-plane plan</h2>
+
+<table>
+  <tr><th></th><th>bb connect v2 (this plan)</th><th>Hosted control plane (<a href="hosted-bb-architecture.html">other plan</a>)</th></tr>
+  <tr><td>Changes to the core bb app</td><td><strong>≈ none</strong> (multi-host UX only)</td><td>Extensive: auth middleware, tenancy, Postgres, CORS, base-URL</td></tr>
+  <tr><td>Where user auth lives</td><td>New bb cloud service only</td><td>Inside the bb server</td></tr>
+  <tr><td>Cloud stores your threads/code</td><td><strong>No</strong> — accounts + routing only</td><td>Yes — multi-tenant DB</td></tr>
+  <tr><td>Multi-tenancy work</td><td>None — every server is single-tenant SQLite</td><td>The bulk of the work</td></tr>
+  <tr><td>Requires a machine that's on</td><td><strong>Yes</strong> — server offline ⇒ unreachable (phone included)</td><td>No — cloud always up; only hosts go offline</td></tr>
+  <tr><td>New infra to run</td><td>bb cloud: small auth service + relay (bandwidth-bound, no product logic)</td><td>Full product backend + DB + scale-out</td></tr>
+  <tr><td>Latency</td><td>Double-hop through relay for everything remote</td><td>Single hop to cloud; daemon hop beyond</td></tr>
+  <tr><td>Future sharing / per-user attribution in-app</td><td>Deferred — needs identity header plumb-through later</td><td>Native from day one</td></tr>
+  <tr><td>Mobile story</td><td>Same API via subdomain; needs client-core extraction</td><td>Same; needs client-core extraction</td></tr>
+</table>
+
+<div class="callout">
+<strong>These plans compose.</strong> If bb connect ships first, "hosted" can later mean <em>bb cloud also runs your server in a VM behind the same relay</em> — no architectural change. And if in-app identity is ever needed (teams), the tunnel client's verified identity header is the migration path, added when a real feature demands it rather than up front.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="phases"><span class="num">7</span>Phased plan</h2>
+
+<p>Note what's <em>gone</em> relative to v1: the entire "add user auth to the server" phase. The critical path is now one new service and one new client component.</p>
+
+<div class="phase">
+  <h3>Phase 0 — Spike: minimal Durable Object tunnel <span class="pill have" style="margin-left:8px">~a week</span></h3>
+  <p class="meta">No core bb changes. Whole-origin remote access is already validated by daily bb-over-Tailscale use — this spike tests our protocol shape on the DO substrate.</p>
+  <ul>
+    <li>Prototype the skinny version: one DO, one hardcoded handle, no accounts. A ~300-line tunnel-client script on a laptop connects out; a Worker routes <code>spike.getbb.app</code> to the DO; frames carry HTTP + one WS stream, naive chunking, no backpressure yet.</li>
+    <li>Drive a stock bb server through it from a phone on cellular: SPA load, live thread stream over <code>/ws</code>, terminal attach and <em>feel</em>, idle-then-resume after 10 minutes (hibernation + auto-response pings), and a <code>host-daemon join</code> from a second machine through the public URL. <em>(Throwaway server — the spike has no real auth.)</em></li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> a written go/no-go note: observed latency, terminal feel, WS idle/hibernation behavior, upgrade handling, and where framing got awkward. If the DO path disappoints, fall back to self-hosting Piko/frp fronted by our auth proxy, same phase structure.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 1 — bb cloud v1: the DO tunnel + auth plane <span class="pill gap" style="margin-left:8px">medium-large · the new build, all ours, zero fleet ops</span></h3>
+  <p class="meta">Touches: new <span class="file">apps/cloud</span> (Worker gate + tunnel DO + auth plane), new <span class="file">packages/tunnel-contract</span> (frame types shared by DO and tunnel client), <code>bb connect</code> + tunnel client in <span class="file">packages/bb-app</span> launcher. Core server: untouched.</p>
+  <ul>
+    <li><strong>Protocol first:</strong> harden the spike's framing in <span class="file">packages/tunnel-contract</span> — stream open/close, HTTP head, ~1&nbsp;MiB body chunks with credit-based backpressure, WS-over-WS frames, account tag, heartbeat, reconnect-with-resume. Typed end-to-end, unit-tested against workerd/miniflare locally.</li>
+    <li><strong>Auth plane:</strong> accounts (email/OAuth), sessions, PATs (<code>bbc_…</code>), handles, machine registry, one-time connect codes — Workers + D1/KV. All identity lives here, not in bb.</li>
+    <li><strong>Data plane:</strong> Worker gate on <code>*.getbb.app/*</code> (session/PAT → account owns handle → tag → route to the handle's DO); tunnel DO with hibernation + auto-response pings; per-account rate limits at the Worker.</li>
+    <li><strong>Tunnel client (pure TS, in the launcher):</strong> <code>bb connect</code> — browser approval → connect code → durable credential + pinned account → hold the DO WebSocket (partysocket discipline), verify account tags, proxy streams to <code>127.0.0.1:38886</code>. Status in <code>bb status</code> and the UI footer. No sidecar binaries.</li>
+    <li><strong>Lifecycle:</strong> "disconnect this server" from getbb.app revokes the credential and drops the tunnel; offline servers get a "last seen…" page served by the Worker; credential rotation from day one.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> from a phone on cellular, log into getbb.app, reach <code>you.getbb.app</code>, watch a live thread, attach a terminal — server on a laptop behind NAT, core bb at an unmodified commit from main. Auth matrix test in CI: no session, wrong account, revoked credential, expired code — rejected at the Worker; mistagged frames — rejected at the tunnel client. Protocol tests: chunked large response, backpressure under a slow reader, tunnel-drop mid-stream recovers cleanly after reconnect. <strong>Validate:</strong> real-network manual run + workerd-based integration suite in <span class="file">apps/cloud</span>.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 2 — <code>bb connect</code> for other machines + multi-host UX <span class="pill partial" style="margin-left:8px">medium · mostly existing plumbing</span></h3>
+  <p class="meta">Touches: install script (bb cloud serves it), launchd/systemd service wrapper, multi-host UX in <span class="file">apps/app</span> — the one core-app workstream</p>
+  <ul>
+    <li>"Add a machine" in the bb UI mints a join code via the existing enroll-key route (owner's traffic arrives over loopback through the tunnel — no route changes); <code>curl getbb.app/connect | sh</code> installs the daemon and runs the existing join flow against <code>https://you.getbb.app</code>.</li>
+    <li>Service install + heartbeat-driven update nudges.</li>
+    <li>Multi-host product UX: host picker on environments, online/offline surfaced, thread starts queued until the target host reconnects, per-host capability toggles (remote terminals / directory browsing), idempotent + retried daemon→server reporting so a dropped tunnel never loses events.</li>
+    <li>Optional, can slip: LAN-direct fast path with relay fallback.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> three-machine test — server at home, work laptop + cloud VM connected via the script — all visible as hosts; a thread runs on each from a phone; killing a daemon mid-thread yields recovered-or-cleanly-failed, never wedged. <strong>Validate:</strong> real multi-machine run + integration test with two daemons against one server through a local relay.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 3 — Mobile <span class="pill partial" style="margin-left:8px">medium · parallelizable after Phase 1</span></h3>
+  <p class="meta">Touches: new <span class="file">packages/client-core</span>, new mobile app</p>
+  <ul>
+    <li>Extract <span class="file">apps/app/src/lib/{api,ws,query-client}</span> into <code>@bb/client-core</code> with a platform shim; web adopts it lazily (nothing forces the refactor first).</li>
+    <li>Mobile v1 (Expo): bb cloud login → pick server → thread list, live thread view, permission-prompt approvals, push notifications for "agent needs you." Push fits this architecture cleanly: the tunnel client (which sees connection-level events) or the server posts a content-free ping to a bb cloud notification endpoint; thread content never rides the push payload.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> TestFlight build views a live thread and answers a permission prompt over cellular against a home server; push arrives when a thread blocks. <strong>Validate:</strong> manual TestFlight session; client-core adoption keeps web e2e green.</div>
+</div>
+
+<h4>Later / out of scope for v1</h4>
+<ul>
+  <li>Alternative hosting for the same protocol — a Node relay fleet or a self-hostable relay binary (BYO relay) — if Cloudflare costs/limits ever demand an exit; the frames, tunnel client, and Worker checks all carry over.</li>
+  <li>E2E-encrypted tunnel payloads (relay-blind) — Q2; straightforward to slot in later since the frames are ours.</li>
+  <li>Hosted bb servers ("we run your always-on machine") behind the same relay.</li>
+  <li>Identity plumb-through (<code>X-BB-Identity</code>) when a sharing/teams feature actually needs it.</li>
+  <li>Custom domains; WebRTC/LAN direct paths.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="risks"><span class="num">8</span>Risks &amp; open questions</h2>
+
+<table>
+  <tr>
+    <th></th><th>Question / risk</th><th>Notes &amp; leaning</th>
+  </tr>
+  <tr>
+    <td><strong>Q1</strong></td>
+    <td>bb cloud is the <em>single</em> auth layer — a relay auth bug is game over for exposed servers.</td>
+    <td>Accepted consciously (see §1 threat table: in-core auth wouldn't materially change this). Mitigations: account pinning at the tunnel client (covers routing bugs — the likeliest failure class), small and boring auth surface, adversarial auth-matrix tests in CI, connect-code TTLs, instant revocation, audit log of connects. Consider optional step-up (re-auth/PIN enforced at the relay) for terminal attach.</td>
+  </tr>
+  <tr>
+    <td><strong>Q2</strong></td>
+    <td>Relay terminates TLS ⇒ can observe traffic in flight (not at rest).</td>
+    <td>v1 trust ≈ ngrok/Cloudflare Tunnel; publish the no-persistence policy. Roadmap: E2E payload encryption where browser and server share a key the relay never sees — decide how much this matters <em>before</em> building the custom relay, since it shapes the framing protocol.</td>
+  </tr>
+  <tr>
+    <td><strong>Q3</strong></td>
+    <td>The server must be on for bb to exist remotely.</td>
+    <td>Inherent; be loud in UX ("last seen 2h ago"). Recommend an always-on box as "the server"; hosted-server tier later without architecture change.</td>
+  </tr>
+  <tr>
+    <td><strong>Q4</strong></td>
+    <td>No in-app identity: every relayed user (today: just you) is "the local user."</td>
+    <td>Fine for a personal tool; blocks sharing features. The identity-header escape hatch is designed but deliberately unbuilt (no accepted-but-ignored fields). Revisit when teams become a real feature.</td>
+  </tr>
+  <tr>
+    <td><strong>Q5</strong></td>
+    <td>Tunnel client placement: inside the launcher process or a sidecar?</td>
+    <td>Leaning launcher-integrated (one process tree, it already supervises server+daemon and knows the server port), with the proxy logic in a package so a standalone sidecar stays possible for non-launcher deployments.</td>
+  </tr>
+  <tr>
+    <td><strong>Q6</strong></td>
+    <td>DO-path engineering risks: backpressure correctness, per-tenant throughput (a DO is single-threaded), 32&nbsp;MiB frame cap, hibernation behavior under real traffic.</td>
+    <td>Backpressure is where the bugs will live — make it a first-class part of the protocol tests, not an afterthought. Per-tenant throughput is ample for bb's JSON + terminal text; large file downloads are merely okay (acceptable, documented). Chunking handles the frame cap. Hibernation + auto-response pings must be confirmed in the Phase 0 spike; idle cost rounds to zero when it works. Traffic is text-dominated and bursty, so egress economics are mild.</td>
+  </tr>
+  <tr>
+    <td><strong>Q7</strong></td>
+    <td>One server per account, or many?</td>
+    <td>Start with one (one subdomain, one <code>bb.db</code>, zero picker UX) but make the registry schema N-capable from day one (<code>home.sawyer.getbb.app</code>) — cheap now, painful to retrofit.</td>
+  </tr>
+</table>
+
+<h3>Suggested first moves</h3>
+<ol>
+  <li>Phase 0 spike — the skinny DO tunnel (one DO, hardcoded handle, no auth) driving a stock bb server from a phone. ~A week, answers the remaining scary questions: terminal feel, hibernation/idle behavior, where the framing gets awkward.</li>
+  <li>Sketch <span class="file">packages/tunnel-contract</span> frame types (stream open/close, HTTP head, body chunk + credit, WS frame, account tag, heartbeat) — the spike should consume this file from day one so the protocol is real, not throwaway.</li>
+  <li>Write the Q2 ADR (relay trust level / E2E ambition) — owning the frames makes E2E genuinely reachable, so decide whether v1 framing should reserve room for it (e.g. opaque encrypted payload mode).</li>
+</ol>
+
+<p style="margin-top:48px;color:var(--muted);font-size:13.5px">v2 change log: user auth moved out of the core server into the new bb cloud service; tunnel client injects over loopback preserving bb's perimeter model; old Phase 1 (in-server better-auth users) deleted; threat comparison added in §1. Companion: <a href="hosted-bb-architecture.html">hosted-bb-architecture.html</a>. Sources: bb repo (<span class="file">apps/server</span>, <span class="file">apps/host-daemon</span>, <span class="file">packages/bb-app</span>, <span class="file">packages/config</span>) and multica repo patterns.</p>
+
+</main>
+</body>
+</html>

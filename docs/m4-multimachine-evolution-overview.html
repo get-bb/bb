@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bb connect + M4 — Architecture Evolution Overview</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --ink: #1a1c1e;
+    --muted: #5c6370;
+    --faint: #8a909a;
+    --line: #e4e2dd;
+    --card: #f6f5f2;
+    --accent: #2f6fed;
+    --accent-soft: #e8effd;
+    --good: #1a7f4b;
+    --good-soft: #e6f4ec;
+    --warn: #b45309;
+    --warn-soft: #fdf0e0;
+    --bad: #b3261e;
+    --bad-soft: #fbeae9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 48px 28px 120px; }
+  h1 { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); font-size: 17px; margin: 0 0 8px; }
+  .meta { color: var(--faint); font-size: 13px; margin: 0 0 36px; }
+  h2 {
+    font-size: 23px; letter-spacing: -0.01em; margin: 60px 0 14px;
+    padding-top: 22px; border-top: 1px solid var(--line);
+  }
+  h2 .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft);
+    color: var(--accent); font-size: 15px; font-variant-numeric: tabular-nums; margin-right: 12px;
+    vertical-align: 2px;
+  }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  p, li { max-width: 76ch; }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--card);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 13px 15px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  td.file { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .tldr { background: var(--accent-soft); border: 1px solid #c9daf8; border-radius: 12px; padding: 20px 24px; margin: 0 0 8px; }
+  .tldr p { margin: 8px 0; }
+  .callout { border-left: 3px solid var(--accent); background: var(--card); padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 20px 0; font-size: 15px; }
+  .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; border-radius: 99px; padding: 2px 9px; vertical-align: middle; }
+  .pill.done { background: var(--good-soft); color: var(--good); }
+  .pill.partial { background: var(--warn-soft); color: var(--warn); }
+  .pill.todo { background: var(--bad-soft); color: var(--bad); }
+  figure { margin: 26px 0; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; text-align: center; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  svg .mono { font-family: var(--mono); }
+  .toc { columns: 2; gap: 30px; font-size: 15px; margin: 20px 0 0; padding-left: 20px; }
+  .toc li { margin: 3px 0; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 14.5px; margin: 12px 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .flow { counter-reset: step; list-style: none; padding-left: 0; }
+  .flow > li { counter-increment: step; position: relative; padding-left: 42px; margin: 14px 0; }
+  .flow > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 27px; height: 27px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center;
+  }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>bb connect + M4: Architecture Evolution</h1>
+<p class="subtitle">How bb went from a single-machine app to a remotely-reachable, multi-machine system — the tunnel, the auth model, and multi-host execution.</p>
+<p class="meta">Internal engineering overview · staging on <code>vibecodethis.site</code> · generated 2026-07-04</p>
+
+<div class="tldr">
+  <p><strong>The arc.</strong> bb started as a server + daemon bound to one machine, reachable only over localhost or Tailscale. This thread built <strong>bb connect</strong>: a thin Cloudflare cloud (accounts + a Durable-Object tunnel) that makes <em>your own</em> bb server reachable at <code>&lt;handle&gt;.getbb.app</code> from any browser, with your data never leaving your machine. Then it made that fast (edge caching, ~150ms→~25ms on warm asset requests), added a machine-credential pairing model so <em>other</em> machines can join as execution hosts, and finally removed the server-side single-host restriction so agent tasks can actually <strong>run on a chosen non-primary host</strong>.</p>
+  <p><strong>Proven vs. remaining.</strong> Verified end-to-end on staging: browser access through the tunnel, edge caching, real GitHub login, two daemons connected simultaneously (trusted-network and through-the-tunnel), and a real <code>thread.start</code> executing on a second host. Remaining is product polish, not capability: a host-picker in the app UI and folding the tunnel machine-credential wiring into the daemon (a proxy harness stands in for it today).</p>
+</div>
+
+<ol class="toc">
+  <li><a href="#start">1. Where bb started</a></li>
+  <li><a href="#tunnel">2. bb connect: the tunnel</a></li>
+  <li><a href="#speed">3. Tunnel speed / edge caching</a></li>
+  <li><a href="#cookie">4. Better-auth cookie fix</a></li>
+  <li><a href="#machine">5. Machine credentials &amp; pairing</a></li>
+  <li><a href="#internal">6. /internal forwarding &amp; auth model</a></li>
+  <li><a href="#trusted">7. Trusted-network daemon path</a></li>
+  <li><a href="#primary">8. Multi-host execution routing</a></li>
+  <li><a href="#files">9. Changed files</a></li>
+  <li><a href="#validation">10. Validation evidence</a></li>
+  <li><a href="#remaining">11. What remains</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="start"><span class="num">1</span>Where bb started</h2>
+
+<p>bb ships as a single-machine bundle. A launcher (or the Electron shell) spawns two processes on your machine: a <strong>server</strong> (owns the SQLite <code>bb.db</code>, the REST API, the client WebSocket, and serves the SPA) and a <strong>host daemon</strong> (runs provider CLIs, provisions workspaces, executes agent work). The daemon dials <em>out</em> to the server; the server serves the UI same-origin.</p>
+
+<p>The security model was <em>network perimeter</em>: the server trusts whoever can reach it — localhost, or your Tailscale tailnet. There was no user auth on the API, and no way for a plain browser far from your machine to reach it. Two structural facts mattered for everything that followed:</p>
+<ul>
+  <li>The daemon already connects over a real, token-enrolled, reconnecting network protocol — it was never hard-wired to loopback.</li>
+  <li><code>host</code> is a first-class entity and the data model already binds environments to a <code>hostId</code>; the codebase just funneled all execution to a single "primary" host.</li>
+</ul>
+
+<figure>
+<svg viewBox="0 0 640 200" width="100%" role="img" aria-label="Original single-machine architecture">
+  <rect x="20" y="24" width="600" height="152" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="36" y="48" font-size="12" font-weight="700" fill="#5c6370">ONE MACHINE — reachable only via localhost / Tailscale</text>
+  <rect x="60" y="66" width="150" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="135" y="92" font-size="13" font-weight="600" text-anchor="middle">Browser</text>
+  <text x="135" y="110" font-size="11" fill="#5c6370" text-anchor="middle">same-origin</text>
+  <rect x="270" y="66" width="150" height="60" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="345" y="88" font-size="13" font-weight="600" text-anchor="middle">Server + bb.db</text>
+  <text x="345" y="106" font-size="11" fill="#5c6370" text-anchor="middle">API · /ws · SPA</text>
+  <rect x="470" y="66" width="130" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="535" y="88" font-size="13" font-weight="600" text-anchor="middle">Host daemon</text>
+  <text x="535" y="106" font-size="11" fill="#5c6370" text-anchor="middle">runs agents</text>
+  <line x1="210" y1="96" x2="270" y2="96" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#a1)"/>
+  <line x1="470" y1="96" x2="420" y2="96" stroke="#1a7f4b" stroke-width="1.6" marker-end="url(#a2)"/>
+  <text x="535" y="150" font-size="10.5" fill="#1a7f4b" text-anchor="middle">daemon dials out ✓</text>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/></marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f4b"/></marker>
+  </defs>
+</svg>
+<figcaption>Before: everything on one machine; the network is the only access boundary.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="tunnel"><span class="num">2</span>bb connect: the tunnel <span class="pill done">shipped to staging</span></h2>
+
+<p>The goal: reach your own bb from any browser, anywhere, <em>without</em> moving your data to the cloud and without Tailscale. The design keeps the cloud <strong>thin</strong> — it only does accounts + routing, never stores threads or code. Your server dials out and holds a tunnel; a Cloudflare Worker gate authenticates visitors and relays the whole origin down that tunnel.</p>
+
+<p>The tunnel is built on <strong>Cloudflare Durable Objects</strong>: one DO per handle. The tunnel client (your machine) holds an outbound WebSocket to its DO; browser requests hit a Worker that authenticates and forwards them into the same DO, which frames them down the tunnel. Requests and WebSockets are multiplexed over the one socket with stream ids.</p>
+
+<figure>
+<svg viewBox="0 0 760 320" width="100%" role="img" aria-label="bb connect tunnel architecture">
+  <defs>
+    <marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/></marker>
+    <marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f4b"/></marker>
+    <marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5c6370"/></marker>
+  </defs>
+  <!-- cloud -->
+  <rect x="230" y="16" width="520" height="150" rx="12" fill="#eef2fb" stroke="#c9daf8"/>
+  <text x="246" y="40" font-size="12" font-weight="700" fill="#2f6fed">CLOUDFLARE (bb connect) — accounts + routing only, no thread/code storage</text>
+  <rect x="250" y="54" width="150" height="96" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="325" y="78" font-size="13" font-weight="600" text-anchor="middle">Gate Worker</text>
+  <text x="325" y="96" font-size="10.5" fill="#5c6370" text-anchor="middle">auth · route by handle</text>
+  <text x="325" y="112" font-size="10.5" fill="#5c6370" text-anchor="middle">edge cache</text>
+  <text x="325" y="128" font-size="10.5" fill="#5c6370" text-anchor="middle">bb-web (better-auth)</text>
+  <rect x="430" y="54" width="150" height="96" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="505" y="82" font-size="13" font-weight="600" text-anchor="middle">Tunnel DO</text>
+  <text x="505" y="100" font-size="10.5" fill="#5c6370" text-anchor="middle">one per handle</text>
+  <text x="505" y="116" font-size="10.5" fill="#5c6370" text-anchor="middle">HTTP+WS multiplex</text>
+  <rect x="608" y="54" width="122" height="60" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="669" y="80" font-size="12.5" font-weight="600" text-anchor="middle">D1</text>
+  <text x="669" y="98" font-size="10.5" fill="#5c6370" text-anchor="middle">accounts/handles</text>
+  <line x1="400" y1="102" x2="430" y2="102" stroke="#5c6370" stroke-width="1.4" marker-end="url(#b3)"/>
+  <line x1="400" y1="84" x2="608" y2="84" stroke="#5c6370" stroke-width="1.2" marker-end="url(#b3)" opacity="0.5"/>
+  <!-- clients -->
+  <rect x="16" y="40" width="170" height="54" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="101" y="63" font-size="13" font-weight="600" text-anchor="middle">Browser anywhere</text>
+  <text x="101" y="80" font-size="10.5" fill="#5c6370" text-anchor="middle">handle.getbb.app</text>
+  <line x1="186" y1="67" x2="250" y2="90" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#b1)"/>
+  <!-- your machine -->
+  <rect x="230" y="212" width="330" height="92" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="246" y="236" font-size="12" font-weight="700" fill="#5c6370">YOUR MACHINE</text>
+  <rect x="246" y="248" width="150" height="44" rx="8" fill="#fff" stroke="#1a7f4b"/>
+  <text x="321" y="268" font-size="12.5" font-weight="600" text-anchor="middle">tunnel client</text>
+  <text x="321" y="284" font-size="10" fill="#5c6370" text-anchor="middle">holds outbound WS</text>
+  <rect x="410" y="248" width="134" height="44" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="477" y="268" font-size="12.5" font-weight="600" text-anchor="middle">bb server</text>
+  <text x="477" y="284" font-size="10" fill="#5c6370" text-anchor="middle">unchanged</text>
+  <line x1="396" y1="270" x2="410" y2="270" stroke="#5c6370" stroke-width="1.4" marker-end="url(#b3)"/>
+  <line x1="360" y1="248" x2="470" y2="150" stroke="#1a7f4b" stroke-width="2" marker-end="url(#b2)"/>
+  <text x="374" y="205" font-size="10.5" fill="#1a7f4b" transform="rotate(-42 374 205)">outbound tunnel</text>
+</svg>
+<figcaption>bb connect: the cloud routes; your machine holds the data and dials out. The bb server is unchanged and served through the tunnel.</figcaption>
+</figure>
+
+<p>Why a Durable Object rather than a rented tunnel (ngrok / Cloudflare Tunnel / Piko)? Owning the protocol keeps the (thin) auth plane ours while renting the (hard) global infrastructure; DO WebSocket <em>hibernation</em> makes idle tunnels essentially free; and there is no per-tunnel account ceiling. The tradeoff — a single-threaded DO per handle — is fine for bb's text-and-terminal traffic and is largely sidestepped by the caching below.</p>
+
+<!-- ============================================================ -->
+<h2 id="speed"><span class="num">3</span>Tunnel speed: caching reverse proxy <span class="pill done">done + measured</span></h2>
+
+<p>The first working tunnel felt slow. Measured breakdown: a direct request to the local server was ~2ms; the same request through the tunnel was ~120–150ms. Two causes, both fixed.</p>
+
+<h3>Cause A — the gate did 3 sequential DB lookups per request</h3>
+<p>Every request (including each static asset) resolved the handle (2 queries) and verified the session (1 query) — three sequential edge→D1 round-trips before touching the tunnel. Fixes: collapse the handle+server resolution into one JOIN, and cache handle + session results per-isolate (short TTL) so a page's burst of requests mostly skips D1.</p>
+
+<h3>Cause B — everything traversed the tunnel, even cacheable assets</h3>
+<p>The gate became a proper <strong>caching reverse proxy</strong> (<code>apps/connect/src/cache.ts</code>). After owner-auth, cacheable <code>GET</code> responses are stored in Cloudflare's per-colo edge cache, keyed <em>per handle</em>, and served on repeat without touching the tunnel. Critically, it respects the <em>origin's</em> <code>Cache-Control</code>:</p>
+<ul>
+  <li>A production bb build serves immutable, content-hashed assets (<code>max-age=31536000, immutable</code>) → cached at the edge <strong>and</strong> in the browser.</li>
+  <li>bb's dynamic API responses carry no long cache directive → <strong>never cached</strong> (verified). No private data lands in the edge cache.</li>
+  <li>The dev server (Vite) works too: its module responses aren't long-cacheable → proxied fresh; its immutable dependency pre-bundles do get cached.</li>
+</ul>
+
+<div class="callout good">
+<strong>Measured result.</strong> On a warm keep-alive connection, repeat asset requests dropped from <strong>~150ms → ~25ms</strong> (edge cache hit, no tunnel). Serving a bundled production build instead of Vite dev cut a page from hundreds of module requests to ~55; DOM-ready through the tunnel landed around ~200ms. WebSocket upgrades (bb's <code>/ws</code>, terminals) are never cached — they proxy directly.
+</div>
+
+<p class="legend" style="margin-top:14px">
+  <span><span class="swatch" style="background:#b3261e"></span> before: ~150ms tunnel round-trip</span>
+  <span><span class="swatch" style="background:#1a7f4b"></span> after (warm): ~25ms edge hit</span>
+</p>
+<figure>
+<svg viewBox="0 0 640 96" width="100%" role="img" aria-label="Latency before and after caching">
+  <text x="8" y="30" font-size="12" fill="#5c6370">tunnel</text>
+  <rect x="70" y="18" width="500" height="18" rx="4" fill="#b3261e"/>
+  <text x="576" y="31" font-size="11" fill="#b3261e">~150ms</text>
+  <text x="8" y="70" font-size="12" fill="#5c6370">edge hit</text>
+  <rect x="70" y="58" width="84" height="18" rx="4" fill="#1a7f4b"/>
+  <text x="162" y="71" font-size="11" fill="#1a7f4b">~25ms</text>
+</svg>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="cookie"><span class="num">4</span>The better-auth cookie decoding fix <span class="pill done">bug fixed</span></h2>
+
+<p>Real GitHub logins were silently rejected with 401 at the gate, even though the login itself succeeded. Root cause: <strong>better-auth URL-encodes its session cookie value</strong>. The cookie is <code>&lt;token&gt;.&lt;base64-hmac-signature&gt;</code>, and the base64 signature's <code>+</code> <code>/</code> <code>=</code> arrive as <code>%2B</code> <code>%2F</code> <code>%3D</code>. The gate was comparing that URL-encoded value against a freshly-computed <em>raw</em> base64 signature — so it never matched. (My earlier curl tests passed only because curl sent the signature un-encoded.)</p>
+
+<div class="callout">
+Fix: the gate now <code>decodeURIComponent()</code>s the cookie value before splitting and verifying the HMAC (<code>apps/connect/src/session.ts</code>). Verified with a real browser-shaped, URL-encoded cookie → 200.
+</div>
+
+<p>Two smaller better-auth gotchas surfaced in the dashboard's sign-out and were fixed the same way: sign-out requires <code>Content-Type: application/json</code> (else 415) <em>and</em> a JSON body (an empty body 500s), plus the <code>Origin</code> header the browser supplies for its CSRF check.</p>
+
+<!-- ============================================================ -->
+<h2 id="machine"><span class="num">5</span>Machine credentials &amp; the "Add a machine" flow <span class="pill done">built + verified at the gate</span></h2>
+
+<p>Connecting <em>your server</em> is one pairing. Connecting an <em>additional machine</em> (as an execution host) is a second, distinct pairing — and it must not become an open door on the internet. The design: a per-machine <strong>machine credential</strong> that authorizes a daemon's traffic to traverse the gate.</p>
+
+<ol class="flow">
+  <li><strong>Owner clicks "Add a machine"</strong> in the dashboard → bb-web mints a one-time <code>machine-pair</code> code (short TTL).</li>
+  <li><strong>The new machine redeems the code</strong> at <code>/api/connect/redeem-machine</code> → gets a durable machine credential (<code>bbcm_…</code>), stored hashed in D1 (plaintext lives only on the machine).</li>
+  <li><strong>The daemon presents the credential</strong> on an <code>x-bb-connect-machine</code> header for its traffic to the server through the tunnel.</li>
+</ol>
+
+<p>New <code>machine</code> table (migration <code>0001_machine.sql</code>) in <code>packages/connect-db</code>, distinct from the <code>server</code> row: the server is the bb server behind the tunnel; a machine is a daemon on another computer reaching it. The gate authenticates the credential; the credential only grants the right to <em>traverse the tunnel to /internal</em> — the bb server still performs its own host-key auth underneath.</p>
+
+<!-- ============================================================ -->
+<h2 id="internal"><span class="num">6</span>/internal forwarding &amp; the defense-in-depth auth model <span class="pill done">verified</span></h2>
+
+<p>For a remote daemon to enroll and hold its session <em>through the tunnel</em>, the gate must forward bb's daemon protocol paths (<code>/internal/hosts/enroll-key</code>, <code>/internal/hosts/enroll</code>, <code>/internal/session/*</code>, <code>/internal/ws</code>). But these can't be forwarded blindly: the tunnel makes traffic appear to arrive at the server over <em>loopback</em>, which would let a random internet client mint enroll keys (the server's enroll-key issuance is loopback-gated). So the gate authenticates <code>/internal/*</code> itself, then strips the credential and forwards.</p>
+
+<figure>
+<svg viewBox="0 0 720 250" width="100%" role="img" aria-label="Two-layer auth for daemon traffic">
+  <defs><marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5c6370"/></marker></defs>
+  <rect x="14" y="90" width="150" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="89" y="114" font-size="12.5" font-weight="600" text-anchor="middle">Daemon</text>
+  <text x="89" y="131" font-size="9.5" fill="#5c6370" text-anchor="middle">bbcm_ + host key</text>
+  <rect x="230" y="70" width="200" height="104" rx="10" fill="#eef2fb" stroke="#c9daf8"/>
+  <text x="330" y="92" font-size="12" font-weight="700" fill="#2f6fed" text-anchor="middle">Gate — layer 1</text>
+  <text x="330" y="112" font-size="10.5" fill="#5c6370" text-anchor="middle">verify machine credential</text>
+  <text x="330" y="128" font-size="10.5" fill="#5c6370" text-anchor="middle">(x-bb-connect-machine)</text>
+  <text x="330" y="148" font-size="10.5" fill="#5c6370" text-anchor="middle">strip header, forward</text>
+  <rect x="500" y="70" width="206" height="104" rx="10" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="603" y="92" font-size="12" font-weight="700" fill="#5c6370" text-anchor="middle">bb server — layer 2</text>
+  <text x="603" y="112" font-size="10.5" fill="#5c6370" text-anchor="middle">host-key auth on /internal</text>
+  <text x="603" y="128" font-size="10.5" fill="#5c6370" text-anchor="middle">(bbdh_ / bbde_)</text>
+  <text x="603" y="148" font-size="10.5" fill="#5c6370" text-anchor="middle">unchanged</text>
+  <line x1="164" y1="122" x2="230" y2="122" stroke="#5c6370" stroke-width="1.5" marker-end="url(#c1)"/>
+  <line x1="430" y1="122" x2="500" y2="122" stroke="#5c6370" stroke-width="1.5" marker-end="url(#c1)"/>
+  <text x="640" y="210" font-size="11" fill="#1a7f4b" text-anchor="middle">defense in depth: both layers must pass</text>
+</svg>
+<figcaption>Daemon traffic is authenticated at the gate (machine credential) and again at the server (host key). Neither alone is enough.</figcaption>
+</figure>
+
+<div class="callout good">
+<strong>Gate behavior verified with curl against staging:</strong> no credential → <code>403</code>; valid credential → the request reaches the server and gets the server's own <code>401</code> (proving it forwarded); bogus credential → <code>403</code>; and an enroll key was successfully minted <em>through the tunnel</em> only when a valid machine credential was present — closing the loopback-trust hole.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="trusted"><span class="num">7</span>The direct / trusted-network daemon path <span class="pill done">verified</span></h2>
+
+<p>Not every multi-machine setup needs the tunnel. When your machines share a trusted network (LAN or Tailscale), a second daemon can point straight at the server's private address — no gate, no machine credential — because the network <em>is</em> the boundary. bb already supported this: the server binds all interfaces and the daemon takes an arbitrary <code>BB_SERVER_URL</code>. This path needed no new code; it just needed the single-host execution restriction lifted (§8).</p>
+
+<div class="callout good">
+<strong>Verified:</strong> a second daemon (<code>test-host-2</code>) with a fresh data dir enrolled and connected over loopback and appeared alongside the primary in <code>GET /api/v1/hosts</code>, both <code>connected</code> at once. A third daemon (<code>tunnel-host-3</code>) connected simultaneously <em>through the tunnel</em> — proving both connection models coexist.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="primary"><span class="num">8</span>Multi-host execution routing — the last blocker <span class="pill done">implemented + verified</span></h2>
+
+<p>Daemons could <em>connect</em>, but tasks still couldn't <em>run</em> on them: the server funneled all execution through a single "primary" host and rejected any other with <code>400 unsupported_host</code> ("Only the local host daemon is supported").</p>
+
+<p>The investigation found this was the <em>only</em> blocker. The request schema, environment rows, and every dispatch layer (<code>callHostOnlineRpc → hub.requestHostOnlineRpc</code>, keyed by <code>hostId</code>) were already host-aware. A single validation gate, <code>assertPrimaryHostId</code>, was the choke point — used in two distinct roles:</p>
+
+<div class="kv">
+  <dt><strong>Validate</strong> a supplied host</dt><dd>"this hostId came from the user / a stored environment — is it allowed?" → should accept any connected host.</dd>
+  <dt><strong>Resolve</strong> a default host</dt><dd>"no host chosen — which one?" → should keep defaulting to the local primary.</dd>
+</div>
+
+<p>The fix (smallest correct change): add <code>assertUsableHostId</code> — accept any non-destroyed <em>public</em> host (404 for unknown/destroyed, 400 for non-public) — and use it at the ~10 <em>validate-a-supplied-hostId</em> sites. The <em>resolve-a-default</em> helpers (<code>resolvePrimaryHostId</code> / <code>requireConnectedPrimaryHostId</code>) are untouched, so single-host behavior is unchanged. Liveness is enforced downstream at dispatch, exactly as before. A duplicate gate on the batch thread-create path (<code>assertProjectDataPrimaryHostId</code>) was removed in favor of the existing project-membership check. The CLI gained <code>--host &lt;id&gt;</code> on <code>thread spawn</code>; the API already carried <code>hostId</code>.</p>
+
+<figure>
+<svg viewBox="0 0 720 250" width="100%" role="img" aria-label="Execution routing before and after">
+  <defs><marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f4b"/></marker>
+  <marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b3261e"/></marker></defs>
+  <text x="14" y="26" font-size="12" font-weight="700" fill="#5c6370">BEFORE</text>
+  <rect x="14" y="36" width="120" height="44" rx="8" fill="#fff" stroke="#e4e2dd"/><text x="74" y="62" font-size="12" text-anchor="middle">thread w/ hostId</text>
+  <rect x="180" y="36" width="150" height="44" rx="8" fill="#fbeae9" stroke="#b3261e"/><text x="255" y="56" font-size="11.5" text-anchor="middle" font-weight="600">assertPrimaryHostId</text><text x="255" y="72" font-size="10" text-anchor="middle" fill="#b3261e">reject if ≠ primary</text>
+  <line x1="134" y1="58" x2="180" y2="58" stroke="#b3261e" stroke-width="1.5" marker-end="url(#d2)"/>
+  <text x="360" y="62" font-size="12" fill="#b3261e">→ 400 unsupported_host</text>
+
+  <text x="14" y="140" font-size="12" font-weight="700" fill="#5c6370">AFTER</text>
+  <rect x="14" y="150" width="120" height="44" rx="8" fill="#fff" stroke="#e4e2dd"/><text x="74" y="176" font-size="12" text-anchor="middle">thread w/ hostId</text>
+  <rect x="180" y="150" width="150" height="44" rx="8" fill="#e6f4ec" stroke="#1a7f4b"/><text x="255" y="170" font-size="11.5" text-anchor="middle" font-weight="600">assertUsableHostId</text><text x="255" y="186" font-size="10" text-anchor="middle" fill="#1a7f4b">any connected host</text>
+  <rect x="380" y="150" width="150" height="44" rx="8" fill="#fff" stroke="#c9daf8"/><text x="455" y="170" font-size="11.5" text-anchor="middle" font-weight="600">callHostOnlineRpc</text><text x="455" y="186" font-size="10" text-anchor="middle" fill="#5c6370">route by hostId</text>
+  <rect x="580" y="150" width="126" height="44" rx="8" fill="#f6f5f2" stroke="#e4e2dd"/><text x="643" y="170" font-size="11.5" text-anchor="middle" font-weight="600">host-2 daemon</text><text x="643" y="186" font-size="10" text-anchor="middle" fill="#1a7f4b">thread.start ok</text>
+  <line x1="134" y1="172" x2="180" y2="172" stroke="#1a7f4b" stroke-width="1.5" marker-end="url(#d1)"/>
+  <line x1="330" y1="172" x2="380" y2="172" stroke="#1a7f4b" stroke-width="1.5" marker-end="url(#d1)"/>
+  <line x1="530" y1="172" x2="580" y2="172" stroke="#1a7f4b" stroke-width="1.5" marker-end="url(#d1)"/>
+  <text x="14" y="228" font-size="11.5" fill="#5c6370">No host chosen? <tspan font-weight="600">resolvePrimaryHostId</tspan> still returns the local primary — single-host unchanged.</text>
+</svg>
+<figcaption>The dispatch layer already routed by hostId. Relaxing one validation gate is all it took.</figcaption>
+</figure>
+
+<div class="callout good">
+<strong>Proven live, not just connected.</strong> With a real second daemon enrolled, <code>bb thread spawn --project proj_personal --host &lt;host2&gt;</code> created a thread whose <em>environment row bound to the second host</em>, and the host-2 daemon executed it: <code class="mono">Online host RPC … commandType: thread.start … ok:true</code>. Regressions held: spawning <em>without</em> <code>--host</code> added an environment on the <em>primary</em> host; an unknown <code>--host</code> was rejected.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="files"><span class="num">9</span>Changed files</h2>
+
+<p>The whole bb-connect stack (tunnel, caching, auth, machine credentials) is <strong>additive</strong> — new apps and packages, with <em>zero changes to <code>apps/server</code> or <code>apps/host-daemon</code></em>. The execution-routing work (§8) is the only intentional core change, kept surgical.</p>
+
+<h3>bb connect stack (new, additive)</h3>
+<table>
+  <tr><th>Path</th><th>Why</th></tr>
+  <tr><td class="file">packages/tunnel-contract</td><td>Binary wire-frame codec (HTTP + WebSocket streams) shared by the DO and tunnel client.</td></tr>
+  <tr><td class="file">packages/connect-db</td><td>D1 schema: better-auth tables + accounts/servers/connect_codes + the new <code>machine</code> table; constants (handle rules, limits).</td></tr>
+  <tr><td class="file">apps/connect</td><td>Gate Worker + Tunnel Durable Object. Contains <code>cache.ts</code> (edge caching), <code>session.ts</code> (cookie decode + machine-credential verify), the <code>/internal</code> forwarding branch, and the tunnel-client + machine-proxy harness scripts.</td></tr>
+  <tr><td class="file">apps/web</td><td>getbb.app dashboard — TanStack Start on Workers, reusing bb's shadcn components. better-auth + GitHub OAuth, handle claim, "Generate connect command", "Add a machine", disconnect.</td></tr>
+</table>
+
+<h3>Multi-host execution routing (§8 — core change)</h3>
+<table>
+  <tr><th>Path</th><th>Why</th></tr>
+  <tr><td class="file">…/services/hosts/primary-host.ts</td><td>Added <code>assertUsableHostId</code> (accept any connected public host); deleted the now-unused <code>assertPrimaryHostId</code>; default resolution unchanged.</td></tr>
+  <tr><td class="file">…/services/threads/thread-request-eligibility.ts</td><td>Validate-sites use <code>assertUsableHostId</code>; removed the duplicate project-data primary gate (project-membership check already validates the host).</td></tr>
+  <tr><td class="file">…/services/system/host-lookup.ts</td><td>Supplied/environment hostId validated with <code>assertUsableHostId</code>; default still resolves to primary.</td></tr>
+  <tr><td class="file">…/routes/projects.ts</td><td>Project-source host validation (create/update/source paths) uses <code>assertUsableHostId</code>.</td></tr>
+  <tr><td class="file">apps/cli/…/thread/spawn.ts</td><td>New <code>--host &lt;id&gt;</code> flag to target a specific connected host; defaults to the local primary.</td></tr>
+  <tr><td class="file">…/hosts/primary-host.test.ts</td><td><em>New</em> regression tests: accepts a non-primary host, rejects unknown (404), default stays primary.</td></tr>
+  <tr><td class="file">test/public/public-projects-local-host.test.ts<br>test/public/public-threads.defaults.test.ts</td><td>Updated: the two tests that encoded the old single-host limitation now assert multi-host behavior (secondary-host source + thread succeed).</td></tr>
+  <tr><td class="file">bb-guide-threads.md · bb-cli SKILL.md · templates.generated.ts</td><td>Documented the new <code>--host</code> flag (guide regenerated per repo rules).</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="validation"><span class="num">10</span>Validation evidence</h2>
+
+<h3>Automated</h3>
+<pre><code>turbo run test --filter=@bb/server --force
+  → 123 files, 1010 tests, all passing
+    (incl. new primary-host.test.ts + 2 updated public tests)
+
+turbo run typecheck --filter=@bb/server --filter=@bb/cli --filter=@bb/templates
+  → clean
+
+turbo run typecheck test --filter=@bb/connect --filter=@bb/connect-db
+  --filter=@bb/web --filter=@bb/tunnel-contract   → all green</code></pre>
+
+<h3>Live on staging (vibecodethis.site)</h3>
+<table>
+  <tr><th>Check</th><th>Result</th></tr>
+  <tr><td>Real bb app loads through the tunnel in a browser</td><td><span class="pill done">verified</span> full app renders, over the public internet</td></tr>
+  <tr><td>Edge-cache warm-connection asset latency</td><td><span class="pill done">measured</span> ~150ms → ~25ms; API responses never cached</td></tr>
+  <tr><td>Real GitHub OAuth login + cookie-decode fix</td><td><span class="pill done">verified</span> correct URL, session accepted after fix</td></tr>
+  <tr><td>Gate machine-credential auth on /internal</td><td><span class="pill done">verified</span> 403 / server-401 / 403 for none / valid / bogus</td></tr>
+  <tr><td>Two daemons connected (trusted-network + tunnel)</td><td><span class="pill done">verified</span> both <code>connected</code> in <code>/api/v1/hosts</code></td></tr>
+  <tr><td><strong>Agent task started ON a non-primary host</strong></td><td><span class="pill done">verified</span> env bound to host-2; daemon <code>thread.start ok:true</code></td></tr>
+  <tr><td>Default (no <code>--host</code>) still routes to primary</td><td><span class="pill done">verified</span> environment created on primary host</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="remaining"><span class="num">11</span>What remains — honest status</h2>
+
+<div class="callout warn">
+The following are <strong>product polish, not capability gaps</strong> — the requested multi-machine execution works today via the API and CLI.
+</div>
+
+<ul>
+  <li><span class="pill todo">follow-up</span> <strong>Daemon-side credential wiring.</strong> The bb-connect tunnel path was proven with a small header-injecting <em>proxy harness</em> (<code>/tmp/machine-proxy.mjs</code>) standing in for real daemon code that sends <code>x-bb-connect-machine</code>. Folding this into <code>apps/host-daemon</code> (server-client / enroll / WS) plus a <code>bb connect machine</code> launcher subcommand is the productization step. <em>The trusted-network path needs none of this and is fully real today.</em></li>
+  <li><span class="pill todo">follow-up</span> <strong>Host picker in the app UI.</strong> The wire (API) and CLI (<code>--host</code>) carry <code>hostId</code>, but <code>apps/app</code> currently passes only one host to its environment picker. Feeding it the full host list is the UI change; no server work needed.</li>
+  <li><span class="pill partial">by design</span> <strong>The staging demo depends on local processes.</strong> The dev bb server, the bundled-build preview server, and the tunnel client run on this machine; if any stops, <code>sawyerhood.vibecodethis.site</code> shows offline. The wildcard-DNS + prod-domain cutover to real <code>getbb.app</code> is deferred (documented in <code>plans/bb-connect-v1.md</code>).</li>
+  <li><span class="pill partial">deferred</span> <strong>Tunnel backpressure.</strong> Credit-based flow control in the wire protocol is stubbed; lower priority now that assets bypass the tunnel via the edge cache.</li>
+</ul>
+
+<h3>Honesty notes</h3>
+<ul>
+  <li>Sessions used in some staging tests were <em>forged</em> against the real better-auth secret (HMAC-signed) to exercise gated paths without a browser GitHub login — the auth mechanism itself (OAuth URL generation, cookie signing/verification) is real and separately verified.</li>
+  <li>The tunnel latency floor (~120ms cold, first fetch) is inherent to the cloud round-trip; only cached/warm paths reach ~25ms. This is a relay, not peer-to-peer — it will never match Tailscale's ~1ms direct path (that would require a WebRTC/LAN direct path, explicitly out of scope).</li>
+</ul>
+
+<p style="margin-top:44px;color:var(--faint);font-size:13px">Companion planning docs in this branch: <code>plans/bb-connect-v1.md</code> (implementation plan + running status), <code>plans/bb-connect-architecture.html</code> (design rationale &amp; alternatives weighed), <code>plans/hosted-bb-architecture.html</code> (the multi-tenant variant that was considered and rejected).</p>
+
+</main>
+</body>
+</html>

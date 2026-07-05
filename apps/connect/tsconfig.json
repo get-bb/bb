@@ -1,0 +1,14 @@
+{
+  "extends": [
+    "@bb/tsconfig/base.json",
+    "@bb/tsconfig/typecheck-overrides.json"
+  ],
+  "compilerOptions": {
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["@cloudflare/workers-types"],
+    "lib": ["ES2022"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bb → Hosted Frontend + Installable Daemon — Architecture Plan</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --ink: #1a1c1e;
+    --muted: #5c6370;
+    --line: #e4e2dd;
+    --card: #f6f5f2;
+    --accent: #2f6fed;
+    --accent-soft: #e8effd;
+    --good: #1a7f4b;
+    --good-soft: #e6f4ec;
+    --warn: #b45309;
+    --warn-soft: #fdf0e0;
+    --bad: #b3261e;
+    --bad-soft: #fbeae9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 28px 120px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); font-size: 17px; margin: 0 0 40px; }
+  h2 {
+    font-size: 24px; letter-spacing: -0.01em; margin: 64px 0 16px;
+    padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 18px; margin: 32px 0 8px; }
+  h4 { font-size: 15px; margin: 24px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  p, li { max-width: 74ch; }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .tldr {
+    background: var(--accent-soft); border: 1px solid #c9daf8; border-radius: 10px;
+    padding: 20px 24px; margin: 0 0 8px;
+  }
+  .tldr p { margin: 8px 0; }
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--card);
+    padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 20px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+  .pill {
+    display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; border-radius: 99px; padding: 2px 10px; vertical-align: middle;
+  }
+  .pill.have { background: var(--good-soft); color: var(--good); }
+  .pill.gap { background: var(--bad-soft); color: var(--bad); }
+  .pill.partial { background: var(--warn-soft); color: var(--warn); }
+  figure { margin: 28px 0; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; text-align: center; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  svg .mono { font-family: var(--mono); }
+  .phase {
+    border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; margin: 20px 0;
+    background: #fff;
+  }
+  .phase h3 { margin-top: 0; }
+  .phase .meta { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .exit { background: var(--good-soft); border-radius: 8px; padding: 10px 16px; margin-top: 14px; font-size: 14.5px; }
+  .exit strong { color: var(--good); }
+  .file { font-family: var(--mono); font-size: 0.86em; }
+  .toc { columns: 2; gap: 32px; font-size: 15px; margin: 24px 0 0; padding-left: 20px; }
+  .toc li { margin: 3px 0; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>bb → Hosted Frontend + Installable Daemon</h1>
+<p class="subtitle">A plan for evolving bb toward the <a href="https://github.com/multica-ai/multica">multica</a> topology: the app lives at <strong>getbb.app</strong>, users install only a daemon on their machines, and mobile becomes just another client of the same backend. <span style="color:var(--muted)">July 4, 2026 · sources: bb repo + multica repo (cloned &amp; read)</span></p>
+
+<div class="tldr">
+  <p><strong>TL;DR.</strong> bb is closer to this than it looks. The daemon already <em>dials out</em> to the server over a token-enrolled reconnecting WebSocket, <code>host</code> is a first-class entity in the data model, and a <code>host-daemon join --join-code --server-url</code> flow already exists in the launcher. Four things stand between today and getbb.app:</p>
+  <ol style="margin:8px 0">
+    <li>The frontend hardcodes same-origin for API + WS (<span class="file">apps/app/src/lib/ws.ts:53</span>).</li>
+    <li><code>/api/v1</code> has <strong>no user auth</strong> — the security boundary is the network (localhost/Tailscale).</li>
+    <li>Daemon enrollment trusts loopback (<span class="file">apps/server/src/internal/hosts.ts:20</span>) instead of an account-authenticated pairing flow.</li>
+    <li>The server + SQLite <code>bb.db</code> assume single-tenant, on the user's machine.</li>
+  </ol>
+  <p>The plan closes these in order, each phase shippable on its own: <strong>(0)</strong> decouple frontend origin → <strong>(1)</strong> user accounts + API auth → <strong>(2)</strong> internet daemon pairing → <strong>(3)</strong> multi-tenant hosted control plane → <strong>(4)</strong> shared client core + mobile. bb stays local-first throughout: hosted is a deployment configuration of the same code, mirroring multica's cloud/self-host parity in reverse.</p>
+</div>
+
+<ol class="toc">
+  <li><a href="#multica">How multica works</a></li>
+  <li><a href="#bb-today">bb today</a></li>
+  <li><a href="#mapping">Concept mapping</a></li>
+  <li><a href="#target">Target architecture</a></li>
+  <li><a href="#decisions">Where bb should differ</a></li>
+  <li><a href="#phases">Phased plan</a></li>
+  <li><a href="#risks">Risks &amp; open questions</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="multica"><span class="num">1</span>How multica works</h2>
+
+<p>Multica is a hosted agent-orchestration product with the exact topology we want: a cloud backend + web app, a mobile app, and a single installable binary (<code>multica</code>) that is both the CLI and a daemon. Everything below is read from the source (Go backend at <span class="file">server/</span>, clients under <span class="file">apps/</span> and <span class="file">packages/</span>), not just the README.</p>
+
+<figure>
+<svg viewBox="0 0 820 420" width="100%" role="img" aria-label="Multica architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5c6370"/>
+    </marker>
+    <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/>
+    </marker>
+  </defs>
+  <!-- Cloud region -->
+  <rect x="250" y="16" width="556" height="238" rx="12" fill="#eef2fb" stroke="#c9daf8"/>
+  <text x="266" y="42" font-size="13" font-weight="700" fill="#2f6fed">MULTICA CLOUD (or self-hosted docker-compose)</text>
+  <!-- web -->
+  <rect x="270" y="58" width="150" height="66" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="345" y="86" font-size="14" font-weight="600" text-anchor="middle">Web app</text>
+  <text x="345" y="106" font-size="11.5" fill="#5c6370" text-anchor="middle">Next.js · apps/web</text>
+  <!-- backend -->
+  <rect x="450" y="58" width="170" height="180" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="535" y="84" font-size="14" font-weight="600" text-anchor="middle">Go backend</text>
+  <text x="535" y="103" font-size="11.5" fill="#5c6370" text-anchor="middle">server/cmd/server</text>
+  <rect x="464" y="116" width="142" height="30" rx="5" fill="#e8effd"/>
+  <text x="535" y="136" font-size="11.5" text-anchor="middle" class="mono">/ws  realtime hub</text>
+  <rect x="464" y="152" width="142" height="30" rx="5" fill="#e8effd"/>
+  <text x="535" y="172" font-size="11.5" text-anchor="middle" class="mono">/api/daemon/* + ws</text>
+  <rect x="464" y="188" width="142" height="30" rx="5" fill="#e8effd"/>
+  <text x="535" y="208" font-size="11.5" text-anchor="middle" class="mono">/api/*  REST</text>
+  <!-- db -->
+  <rect x="650" y="58" width="136" height="66" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="718" y="86" font-size="14" font-weight="600" text-anchor="middle">Postgres</text>
+  <text x="718" y="106" font-size="11.5" fill="#5c6370" text-anchor="middle">source of truth</text>
+  <rect x="650" y="140" width="136" height="60" rx="8" fill="#fff" stroke="#c9daf8" stroke-dasharray="4 3"/>
+  <text x="718" y="165" font-size="13" font-weight="600" text-anchor="middle">Redis relay</text>
+  <text x="718" y="184" font-size="11" fill="#5c6370" text-anchor="middle">multi-node fan-out (optional)</text>
+  <line x1="620" y1="91" x2="650" y2="91" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="620" y1="170" x2="650" y2="170" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="420" y1="91" x2="450" y2="91" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <!-- clients -->
+  <rect x="16" y="30" width="180" height="70" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="106" y="58" font-size="14" font-weight="600" text-anchor="middle">Browser</text>
+  <text x="106" y="78" font-size="11.5" fill="#5c6370" text-anchor="middle">packages/core client</text>
+  <rect x="16" y="116" width="180" height="70" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="106" y="144" font-size="14" font-weight="600" text-anchor="middle">Mobile (Expo)</text>
+  <text x="106" y="164" font-size="11.5" fill="#5c6370" text-anchor="middle">same packages/core</text>
+  <line x1="196" y1="65" x2="450" y2="128" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <line x1="196" y1="151" x2="450" y2="165" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <!-- laptop region -->
+  <rect x="16" y="280" width="500" height="122" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="32" y="306" font-size="13" font-weight="700" fill="#5c6370">USER'S MACHINE — outbound connections only</text>
+  <rect x="32" y="320" width="200" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="132" y="346" font-size="14" font-weight="600" text-anchor="middle">multica daemon</text>
+  <text x="132" y="366" font-size="11.5" fill="#5c6370" text-anchor="middle">= the CLI binary, Go</text>
+  <rect x="256" y="320" width="240" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="376" y="346" font-size="13" font-weight="600" text-anchor="middle">agent CLIs + workspaces</text>
+  <text x="376" y="366" font-size="11.5" fill="#5c6370" text-anchor="middle">claude · codex · … · git clones</text>
+  <line x1="232" y1="352" x2="256" y2="352" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <!-- daemon to backend arrows -->
+  <line x1="180" y1="320" x2="480" y2="185" stroke="#1a7f4b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <text x="268" y="242" font-size="11.5" fill="#1a7f4b" transform="rotate(-24 268 242)">HTTP poll: claim / heartbeat / post output  (source of truth)</text>
+  <line x1="230" y1="332" x2="500" y2="215" stroke="#1a7f4b" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+  <text x="356" y="292" font-size="11.5" fill="#1a7f4b" transform="rotate(-24 356 292)">WS wakeup (optimization only)</text>
+</svg>
+<figcaption>Multica: everything hosted except the daemon; the daemon only ever dials out.</figcaption>
+</figure>
+
+<h3>The six mechanics that matter</h3>
+
+<h4>1 · Outbound-only daemon, HTTP control plane, WS as a hint</h4>
+<p>The single most important design decision in the codebase. The daemon's correctness never depends on a live socket: it <strong>polls</strong> <code>POST /api/daemon/runtimes/{id}/tasks/claim</code> every ~3s and heartbeats every ~15s over plain authenticated HTTP (<span class="file">server/internal/daemon/client.go</span>). A WebSocket to <code>/api/daemon/ws</code> (<span class="file">server/internal/daemon/wakeup.go</span>) exists only to push <code>daemon:task_available</code> hints ("claim now instead of waiting for the next poll") and to carry heartbeats while connected. If the WS drops, polling silently carries the load. Streaming task output is likewise <strong>batched HTTP POSTs</strong> (<code>POST /tasks/{id}/messages</code> with sequence numbers), and terminal calls (<code>complete</code>/<code>fail</code>) are retried with backoff and idempotent server-side. NAT, flaky wifi, laptop sleep — none of it can corrupt state.</p>
+
+<h4>2 · Two separate WebSocket hubs</h4>
+<p>Daemon-facing (<span class="file">server/internal/daemonws/hub.go</span>, header-token auth) and browser/mobile-facing (<span class="file">server/internal/realtime/hub.go</span>, scoped fan-out to <code>workspace|user|task|chat</code>). A Redis relay lets any backend node push to any connected client, and it's optional — self-host runs single-node without it.</p>
+
+<h4>3 · Pairing = browser login mints a long-lived token</h4>
+<p><code>multica login</code> starts a localhost HTTP listener, opens <code>&lt;app&gt;/login?cli_callback=…&amp;cli_state=…</code> in the browser; after the user signs in, the web app redirects back to localhost with a short-lived JWT, which the CLI exchanges for a <strong>90-day personal access token</strong> (<code>mul_…</code>) via <code>POST /api/tokens</code> (<span class="file">server/cmd/multica/cmd_auth.go</span>). The daemon uses that PAT as a Bearer token on every request. A second token prefix (<code>mcn_…</code>) with an out-of-process verifier authenticates <em>cloud-hosted</em> runtimes — same protocol, different fleet.</p>
+
+<h4>4 · Runtimes and enqueue-time routing</h4>
+<p>Each daemon registers one <strong>runtime</strong> per (detected agent CLI × watched workspace). Routing is decided at <strong>enqueue time</strong>: an agent persona is bound to a <code>runtime_id</code>, and tasks inherit that binding (<span class="file">server/internal/service/task.go</span>). There is no live scheduler — if the machine is offline, the task just sits <code>queued</code> until its daemon reconnects and claims it. Stale-dispatch reclaim and an orphan-recovery endpoint handle daemon crashes.</p>
+
+<h4>5 · No filesystem tunneling — access is task-scoped</h4>
+<p>The hosted UI never browses the user's disk. Code access is mediated by tasks: the daemon clones/worktrees registered repos locally, or runs in a <code>local_directory</code> pinned to a specific daemon. What flows back up is the task's message/tool-output stream, not filesystem RPC. This keeps the daemon strictly outbound-only.</p>
+
+<h4>6 · One codebase for cloud and self-host; one client core for all UIs</h4>
+<p>Cloud-only behavior is gated on env-var presence, not forks — self-host is <code>docker-compose</code> with Postgres + backend + web. On the client side, web, mobile, and desktop all consume <span class="file">packages/core</span> (REST client, WS realtime layer, platform shim), which is why the iOS app was cheap to add.</p>
+
+<!-- ============================================================ -->
+<h2 id="bb-today"><span class="num">2</span>bb today</h2>
+
+<p>bb ships as a single-machine bundle: the <code>bb-app</code> launcher (or the Electron shell wrapping it) spawns a <strong>server</strong> (<code>:38886</code> — SQLite <code>bb.db</code>, REST <code>/api/v1</code>, client WS <code>/ws</code>, daemon WS <code>/internal/ws</code>, serves the built SPA) and a <strong>host daemon</strong> (<code>:38887</code> local API — runs provider CLIs, provisions workspaces). Other devices can browse to it over Tailscale, but they're control surfaces only.</p>
+
+<figure>
+<svg viewBox="0 0 820 300" width="100%" role="img" aria-label="bb current architecture diagram">
+  <rect x="16" y="16" width="788" height="268" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="32" y="42" font-size="13" font-weight="700" fill="#5c6370">ONE MACHINE — bb-app launcher / Electron shell supervises everything</text>
+  <!-- server -->
+  <rect x="300" y="60" width="220" height="200" rx="10" fill="#fff" stroke="#c9daf8"/>
+  <text x="410" y="86" font-size="15" font-weight="600" text-anchor="middle">Server  :38886</text>
+  <text x="410" y="104" font-size="11.5" fill="#5c6370" text-anchor="middle">apps/server · owns bb.db (SQLite)</text>
+  <rect x="316" y="116" width="188" height="28" rx="5" fill="#e8effd"/><text x="410" y="135" font-size="11.5" text-anchor="middle" class="mono">/api/v1 + /ws  (no auth)</text>
+  <rect x="316" y="150" width="188" height="28" rx="5" fill="#e8effd"/><text x="410" y="169" font-size="11.5" text-anchor="middle" class="mono">/internal/ws  daemon RPC</text>
+  <rect x="316" y="184" width="188" height="28" rx="5" fill="#e8effd"/><text x="410" y="203" font-size="11.5" text-anchor="middle" class="mono">serves SPA (same origin)</text>
+  <rect x="316" y="218" width="188" height="28" rx="5" fill="#fdf0e0"/><text x="410" y="237" font-size="11.5" text-anchor="middle" class="mono">enroll-key: loopback only</text>
+  <!-- daemon -->
+  <rect x="580" y="60" width="208" height="140" rx="10" fill="#fff" stroke="#e4e2dd"/>
+  <text x="684" y="86" font-size="15" font-weight="600" text-anchor="middle">Host daemon  :38887</text>
+  <text x="684" y="104" font-size="11.5" fill="#5c6370" text-anchor="middle">apps/host-daemon</text>
+  <text x="684" y="130" font-size="11.5" fill="#5c6370" text-anchor="middle">provider CLIs · workspaces</text>
+  <text x="684" y="148" font-size="11.5" fill="#5c6370" text-anchor="middle">terminals · editor-open</text>
+  <text x="684" y="166" font-size="11.5" fill="#5c6370" text-anchor="middle">host key in ~/.bb/auth.json</text>
+  <line x1="580" y1="164" x2="504" y2="164" stroke="#1a7f4b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <text x="542" y="156" font-size="11" fill="#1a7f4b" text-anchor="middle">dials out ✓</text>
+  <!-- clients -->
+  <rect x="36" y="60" width="200" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="136" y="86" font-size="14" font-weight="600" text-anchor="middle">Browser (SPA)</text>
+  <text x="136" y="105" font-size="11.5" fill="#5c6370" text-anchor="middle">window.location = server</text>
+  <rect x="36" y="140" width="200" height="64" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="136" y="166" font-size="14" font-weight="600" text-anchor="middle">CLI / SDK</text>
+  <text x="136" y="185" font-size="11.5" fill="#5c6370" text-anchor="middle">BB_SERVER_URL ✓ configurable</text>
+  <line x1="236" y1="92" x2="300" y2="120" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <line x1="236" y1="172" x2="300" y2="150" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <rect x="36" y="220" width="200" height="44" rx="8" fill="#fff" stroke="#e4e2dd" stroke-dasharray="4 3"/>
+  <text x="136" y="247" font-size="12.5" fill="#5c6370" text-anchor="middle">other devices via Tailscale</text>
+</svg>
+<figcaption>bb today: everything on one machine; the network (localhost / tailnet ACLs) is the auth boundary.</figcaption>
+</figure>
+
+<h3>What already exists vs. what's missing</h3>
+<table>
+  <tr><th>Capability</th><th>Status</th><th>Detail</th></tr>
+  <tr>
+    <td>Daemon dials out to server</td>
+    <td><span class="pill have">have</span></td>
+    <td>Enroll → host key → session → reconnecting WS at <code>/internal/ws</code>. Daemon side <span class="file">apps/host-daemon/src/server-connection.ts</span>, server side <span class="file">apps/server/src/ws/daemon-protocol.ts</span>. Works over any network already.</td>
+  </tr>
+  <tr>
+    <td>Machine auth for daemons</td>
+    <td><span class="pill have">have</span></td>
+    <td>better-auth API keys ("host keys"), issue/verify/rotate in <span class="file">apps/server/src/services/machine-auth.ts</span>; persisted to <span class="file">~/.bb/auth.json</span>.</td>
+  </tr>
+  <tr>
+    <td>Remote-join plumbing</td>
+    <td><span class="pill have">have</span></td>
+    <td><code>host-daemon join --join-code --server-url</code> already in the launcher (<span class="file">packages/bb-app/src/launcher.ts</span>); env vars <code>BB_SERVER_URL</code>, <code>BB_HOST_ENROLL_KEY</code>, <code>BB_EXTERNAL_URL</code> exist in <span class="file">packages/config</span>.</td>
+  </tr>
+  <tr>
+    <td>Host as a first-class entity</td>
+    <td><span class="pill have">have</span></td>
+    <td>Environments bind workspaces to a Host; host-scoped server RPC in <span class="file">apps/server/src/services/hosts/online-rpc.ts</span>; <code>hostType</code> enum in <code>@bb/domain</code>. Docs say the boundary was kept "for future expansion" — this is that future.</td>
+  </tr>
+  <tr>
+    <td>Configurable API base (CLI/SDK)</td>
+    <td><span class="pill have">have</span></td>
+    <td><code>BB_SERVER_URL</code> / <code>baseUrl</code> in <span class="file">packages/sdk/src/node.ts</span>.</td>
+  </tr>
+  <tr>
+    <td>Configurable API base (frontend)</td>
+    <td><span class="pill gap">gap</span></td>
+    <td>SPA assumes same origin: relative <code>/api/v1</code> fetches in <span class="file">apps/app/src/lib/api.ts</span>, WS from <code>window.location.host</code> in <span class="file">apps/app/src/lib/ws.ts:53</span>.</td>
+  </tr>
+  <tr>
+    <td>User accounts &amp; API auth</td>
+    <td><span class="pill gap">gap</span></td>
+    <td>Zero auth on <code>/api/v1</code> (<span class="file">apps/server/src/server.ts:324</span> is a logger + dev gate). better-auth is installed but has exactly one synthetic user for machine keys. Perimeter = network.</td>
+  </tr>
+  <tr>
+    <td>Internet-safe daemon enrollment</td>
+    <td><span class="pill partial">partial</span></td>
+    <td>Enrollment protocol is sound, but enroll-key issuance is loopback-gated (<span class="file">apps/server/src/internal/hosts.ts:20</span>) — fine locally, unusable for "install daemon, point at getbb.app".</td>
+  </tr>
+  <tr>
+    <td>Multi-tenant storage</td>
+    <td><span class="pill gap">gap</span></td>
+    <td>One SQLite <code>bb.db</code> per server, no org/user scoping on rows, server assumed stateless-over-one-DB.</td>
+  </tr>
+  <tr>
+    <td>Offline-host task queueing</td>
+    <td><span class="pill partial">partial</span></td>
+    <td>Hosts have online/offline states and RPC fails cleanly, but the product assumes the (single, local) host is up; there's no "queue thread start until host reconnects" semantics.</td>
+  </tr>
+  <tr>
+    <td>Shared client core for mobile</td>
+    <td><span class="pill gap">gap</span></td>
+    <td>API + WS client logic lives inside <span class="file">apps/app/src/lib/</span>, not a reusable package.</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="mapping"><span class="num">3</span>Concept mapping: multica ⇄ bb</h2>
+
+<table>
+  <tr><th>Multica</th><th>bb equivalent</th><th>Notes</th></tr>
+  <tr><td>Workspace (membership, roles)</td><td>Project (+ future Org)</td><td>bb needs the membership/roles layer; projects are the natural scope.</td></tr>
+  <tr><td>Runtime (agent CLI × workspace on a machine)</td><td>Host (+ its detected providers)</td><td>bb's Host is coarser and better: one enrollment per machine, providers discovered on it. Keep bb's shape.</td></tr>
+  <tr><td>Daemon (<code>multica daemon</code>)</td><td>Host daemon (<code>bb-app host-daemon</code>)</td><td>Nearly identical role. bb's is heavier (terminals, editor integration, interactive requests) — a feature, not a bug.</td></tr>
+  <tr><td>Issue / Task (queued unit of agent work)</td><td>Thread (+ its runtime session)</td><td>Key difference: multica tasks are batch jobs; bb threads are <em>interactive sessions</em>. See §5.</td></tr>
+  <tr><td>PAT <code>mul_…</code> (user token)</td><td><em>missing</em> → new user tokens via better-auth</td><td>bb already has the API-key infra; add real users on top.</td></tr>
+  <tr><td>Runtime PAT usage by daemon</td><td>Host key (<code>~/.bb/auth.json</code>)</td><td>bb's is better scoped already: a per-machine credential, not the user's own token.</td></tr>
+  <tr><td><code>multica login</code> browser-callback flow</td><td><em>missing</em> → <code>bb host join</code> pairing flow</td><td>bb has join codes; add the browser-approval step that mints them.</td></tr>
+  <tr><td><code>/ws</code> realtime hub + Redis relay</td><td><code>/ws</code> client hub (<span class="file">ws/hub.ts</span>, watch-interests)</td><td>bb's interest-scoped hub maps cleanly; relay needed only at multi-node scale (Phase 3).</td></tr>
+  <tr><td><code>packages/core</code> shared client</td><td><em>missing</em> → extract <code>@bb/client-core</code></td><td>Prerequisite for mobile.</td></tr>
+  <tr><td>Self-host compose (backend+web+PG)</td><td>Today's local bundle</td><td>Inverted: multica is cloud-first with self-host parity; bb is local-first adding cloud parity. Same one-codebase rule.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="target"><span class="num">4</span>Target architecture</h2>
+
+<figure>
+<svg viewBox="0 0 820 470" width="100%" role="img" aria-label="Target bb architecture diagram">
+  <!-- Cloud -->
+  <rect x="230" y="16" width="576" height="250" rx="12" fill="#eef2fb" stroke="#c9daf8"/>
+  <text x="246" y="42" font-size="13" font-weight="700" fill="#2f6fed">GETBB.APP (hosted) — same code as local bundle, different config</text>
+  <rect x="250" y="58" width="150" height="66" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="325" y="84" font-size="14" font-weight="600" text-anchor="middle">Web app</text>
+  <text x="325" y="104" font-size="11.5" fill="#5c6370" text-anchor="middle">apps/app, static CDN</text>
+  <rect x="430" y="58" width="190" height="192" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="525" y="84" font-size="14" font-weight="600" text-anchor="middle">bb server (cloud)</text>
+  <text x="525" y="102" font-size="11.5" fill="#5c6370" text-anchor="middle">apps/server, multi-tenant</text>
+  <rect x="444" y="112" width="162" height="28" rx="5" fill="#e8effd"/><text x="525" y="131" font-size="11.5" text-anchor="middle" class="mono">/api/v1 + /ws  (authed)</text>
+  <rect x="444" y="146" width="162" height="28" rx="5" fill="#e8effd"/><text x="525" y="165" font-size="11.5" text-anchor="middle" class="mono">/internal/ws  host RPC</text>
+  <rect x="444" y="180" width="162" height="28" rx="5" fill="#e8effd"/><text x="525" y="199" font-size="11.5" text-anchor="middle" class="mono">pairing / join codes</text>
+  <rect x="444" y="214" width="162" height="28" rx="5" fill="#e8effd"/><text x="525" y="233" font-size="11.5" text-anchor="middle" class="mono">orgs · users · sessions</text>
+  <rect x="650" y="58" width="136" height="66" rx="8" fill="#fff" stroke="#c9daf8"/>
+  <text x="718" y="84" font-size="14" font-weight="600" text-anchor="middle">Postgres</text>
+  <text x="718" y="104" font-size="11.5" fill="#5c6370" text-anchor="middle">(or per-org SQLite)</text>
+  <rect x="650" y="140" width="136" height="56" rx="8" fill="#fff" stroke="#c9daf8" stroke-dasharray="4 3"/>
+  <text x="718" y="164" font-size="13" font-weight="600" text-anchor="middle">WS relay</text>
+  <text x="718" y="182" font-size="11" fill="#5c6370" text-anchor="middle">multi-node only</text>
+  <line x1="620" y1="91" x2="650" y2="91" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="400" y1="91" x2="430" y2="91" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <!-- clients -->
+  <rect x="16" y="30" width="164" height="62" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="98" y="56" font-size="14" font-weight="600" text-anchor="middle">Browser</text>
+  <text x="98" y="75" font-size="11.5" fill="#5c6370" text-anchor="middle">@bb/client-core</text>
+  <rect x="16" y="106" width="164" height="62" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="98" y="132" font-size="14" font-weight="600" text-anchor="middle">Mobile app</text>
+  <text x="98" y="151" font-size="11.5" fill="#5c6370" text-anchor="middle">@bb/client-core</text>
+  <rect x="16" y="182" width="164" height="62" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="98" y="208" font-size="14" font-weight="600" text-anchor="middle">CLI / SDK / Desktop</text>
+  <text x="98" y="227" font-size="11.5" fill="#5c6370" text-anchor="middle">BB_SERVER_URL</text>
+  <line x1="180" y1="61" x2="430" y2="122" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <line x1="180" y1="137" x2="430" y2="145" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <line x1="180" y1="213" x2="430" y2="170" stroke="#2f6fed" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <!-- machines -->
+  <rect x="16" y="300" width="380" height="152" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="32" y="326" font-size="13" font-weight="700" fill="#5c6370">YOUR LAPTOP</text>
+  <rect x="32" y="340" width="160" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="112" y="364" font-size="13.5" font-weight="600" text-anchor="middle">bb daemon</text>
+  <text x="112" y="382" font-size="11" fill="#5c6370" text-anchor="middle">brew install bb</text>
+  <rect x="208" y="340" width="172" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="294" y="364" font-size="12.5" font-weight="600" text-anchor="middle">providers · repos</text>
+  <text x="294" y="382" font-size="11" fill="#5c6370" text-anchor="middle">terminals · workspaces</text>
+  <line x1="192" y1="370" x2="208" y2="370" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <rect x="420" y="300" width="386" height="152" rx="12" fill="#f6f5f2" stroke="#e4e2dd"/>
+  <text x="436" y="326" font-size="13" font-weight="700" fill="#5c6370">YOUR DESKTOP / HOME SERVER / CLOUD BOX</text>
+  <rect x="436" y="340" width="160" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="516" y="364" font-size="13.5" font-weight="600" text-anchor="middle">bb daemon</text>
+  <text x="516" y="382" font-size="11" fill="#5c6370" text-anchor="middle">host #2, always-on</text>
+  <rect x="612" y="340" width="178" height="60" rx="8" fill="#fff" stroke="#e4e2dd"/>
+  <text x="701" y="364" font-size="12.5" font-weight="600" text-anchor="middle">providers · repos</text>
+  <text x="701" y="382" font-size="11" fill="#5c6370" text-anchor="middle">long-running threads</text>
+  <line x1="596" y1="370" x2="612" y2="370" stroke="#5c6370" stroke-width="1.4" marker-end="url(#arr)"/>
+  <!-- daemon arrows -->
+  <line x1="140" y1="340" x2="490" y2="212" stroke="#1a7f4b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <text x="250" y="290" font-size="11.5" fill="#1a7f4b" transform="rotate(-20 250 290)">outbound WS + HTTP, host-key auth</text>
+  <line x1="540" y1="340" x2="548" y2="254" stroke="#1a7f4b" stroke-width="1.8" marker-end="url(#arr)"/>
+</svg>
+<figcaption>Target: getbb.app hosts app + control plane; N daemons per user dial in; mobile is just another client.</figcaption>
+</figure>
+
+<p>The shape is multica's, but bb keeps its own protocol strengths (see §5). Three deployment profiles, one codebase:</p>
+<table>
+  <tr><th>Profile</th><th>What runs where</th><th>Auth</th></tr>
+  <tr><td><strong>Local</strong> (today, unchanged)</td><td>Launcher/desktop spawns server + daemon on one machine; SPA served same-origin</td><td>Auto-provisioned single user; loopback enrollment kept</td></tr>
+  <tr><td><strong>Self-hosted</strong></td><td>User runs the server anywhere (home server, VPS, tailnet); daemons on any machines join it; app either served by that server or getbb.app pointed at it</td><td>Real accounts, required</td></tr>
+  <tr><td><strong>Hosted</strong></td><td>Anthropic-run… er, <em>bb-run</em> multi-tenant server + CDN frontend at getbb.app; users install only daemons</td><td>Real accounts + orgs, required</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="decisions"><span class="num">5</span>Where bb should follow multica — and where it shouldn't</h2>
+
+<h3>Adopt from multica</h3>
+<ul>
+  <li><strong>Outbound-only daemon with resilience-first semantics.</strong> bb already dials out; adopt the rest of the discipline: idempotent, retried result delivery; <code>last_seen_at</code> staleness sweeper; orphan recovery on daemon restart; and <em>queued-until-host-online</em> semantics for thread starts targeting an offline host.</li>
+  <li><strong>Browser-callback pairing.</strong> <code>bb host join getbb.app</code> → localhost listener → browser approval → short-lived join code → existing enroll flow. This replaces the loopback gate with an account-authenticated step and reuses everything downstream of it.</li>
+  <li><strong>Two-hub separation.</strong> bb already has it (<code>/ws</code> client hub vs <code>/internal/ws</code> daemon hub) — preserve it through the auth work; don't merge.</li>
+  <li><strong>Enqueue-time host binding.</strong> bb's environments already pin work to a host. Lean into that instead of building a scheduler: an offline host means the thread start waits, visibly.</li>
+  <li><strong>One codebase, env-gated deployment.</strong> <code>BB_AUTH_MODE=local|required</code>, hosted features gated on config presence. No cloud fork.</li>
+  <li><strong>Shared client core.</strong> Extract <span class="file">apps/app/src/lib/{api,ws,query-client}</span> into <code>@bb/client-core</code> with a platform shim, exactly like <span class="file">packages/core</span> in multica.</li>
+</ul>
+
+<h3>Deliberately keep bb's approach</h3>
+<ul>
+  <li><strong>Persistent duplex RPC to the daemon, not polling.</strong> Multica polls because its unit of work is a batch task. bb is <em>interactive</em>: terminals, permission prompts mid-run, live file browsing, editor-open. Those need a live server→daemon command channel, which bb already has (<span class="file">online-rpc.ts</span>). Keep the WS as the primary channel; borrow multica's insight by making every <em>state-changing</em> daemon→server report (events, tool calls, thread completion) an idempotent, retryable delivery so a dropped socket never loses data — the socket is for liveness and interactivity, the durable writes are the source of truth.</li>
+  <li><strong>Host as the unit of enrollment</strong> (vs. multica's runtime-per-CLI-per-workspace). One machine, one credential, providers discovered on it. Simpler and already built.</li>
+  <li><strong>Richer host capabilities.</strong> Filesystem browsing and terminals through the daemon are core bb value. Multica avoided them; bb should keep them — they're safe because the channel is authenticated per-host and scoped per-user, but they raise the stakes on getting authz right (Phase 1) and deserve per-host permission toggles ("this host allows remote terminals: yes/no").</li>
+</ul>
+
+<div class="callout">
+<strong>The one genuinely new subsystem is multi-tenancy, not networking.</strong> The wire protocols barely change. The work concentrates in identity (users, orgs, sessions), row-level scoping of every query, and the storage decision (§7-Q1).
+</div>
+
+<!-- ============================================================ -->
+<h2 id="phases"><span class="num">6</span>Phased plan</h2>
+
+<p>Each phase is independently shippable and useful. Phases 0–2 don't require hosting anything — they make bb <em>hostable</em>, and immediately improve today's Tailscale multi-device story. Phase 3 is where getbb.app goes live.</p>
+
+<div class="phase">
+  <h3>Phase 0 — Break the same-origin assumption <span class="pill have" style="margin-left:8px">small</span></h3>
+  <p class="meta">Touches: <span class="file">apps/app/src/lib/api.ts</span>, <span class="file">apps/app/src/lib/ws.ts</span>, server CORS config</p>
+  <ul>
+    <li>Introduce a single resolved <code>serverBaseUrl</code> in the app (runtime config: same-origin by default, overridable via a bootstrap config / <code>VITE_BB_SERVER_URL</code>), used by all fetches and the WS URL (<span class="file">ws.ts:53</span> currently derives from <code>window.location.host</code>).</li>
+    <li>CORS: extend the existing local-app-origins allowlist to include a configured hosted-app origin; cookies → <code>SameSite=None; Secure</code> when cross-origin (or prefer bearer tokens from day one, see Phase 1).</li>
+    <li>Add a minimal "connect to server" screen shown when no base URL is known — the seed of the getbb.app entry experience.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> the built SPA served from a different origin (e.g. <code>npx serve dist</code> on another port) fully drives a bb server — threads stream live over WS, terminals work. <strong>Validate:</strong> build app, serve statically on port X, point it at a dev server on port Y, run a thread end-to-end.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 1 — User accounts &amp; auth on <code>/api/v1</code> <span class="pill partial" style="margin-left:8px">medium</span></h3>
+  <p class="meta">Touches: <span class="file">apps/server/src/server.ts</span> middleware, better-auth config, <span class="file">packages/db</span> schema, CLI/SDK token plumbing</p>
+  <ul>
+    <li>Extend the already-installed better-auth from machine-keys-only to real users: email/OAuth sign-in, browser sessions, and user-scoped API tokens (<code>bbu_…</code> prefix) for CLI/SDK — mirroring multica's <code>mul_…</code> PATs. The <code>user</code>/<code>apikey</code> tables already exist in <span class="file">packages/db/src/schema.ts</span>.</li>
+    <li><code>BB_AUTH_MODE=local</code> (default): the server auto-provisions one local user and auto-authenticates loopback requests — <strong>zero UX change for today's users</strong>. <code>BB_AUTH_MODE=required</code>: every <code>/api/v1</code> and <code>/ws</code> connection must present a session or token.</li>
+    <li>Scope authz at the project level first (owner-only), leaving org/membership for Phase 3. Every route handler gets the authenticated principal; add it to the typed route context in <code>@bb/server-contract</code>.</li>
+    <li>CLI: <code>bb login &lt;server-url&gt;</code> browser-callback flow (localhost listener → app login page → short-lived code → mint PAT), token stored per-server in client config.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> with <code>BB_AUTH_MODE=required</code>, every unauthenticated <code>/api/v1</code> request and <code>/ws</code> upgrade is rejected (add an integration test sweeping the route table); with <code>local</code>, existing flows (desktop app, <code>pnpm bb:dev</code>, plugins) pass untouched. <strong>Validate:</strong> full integration-test suite + a manual <code>bb login</code> against a dev server from a second machine.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 2 — Internet daemon pairing &amp; multi-host <span class="pill partial" style="margin-left:8px">medium</span></h3>
+  <p class="meta">Touches: <span class="file">apps/server/src/internal/hosts.ts</span>, <span class="file">packages/bb-app/src/launcher.ts</span> join flow, host UX in the app</p>
+  <ul>
+    <li>Replace the loopback gate on enroll-key issuance with an authenticated route: a signed-in user requests a join code (from the web UI: "Add a machine" → shows <code>bb host join getbb.app --code XXXX</code>; or CLI-initiated with browser approval). Short-lived, one-time, bound to the user — semantics the enroll token already has (<span class="file">internal/hosts.ts:36</span>).</li>
+    <li>Hosts become user-owned rows; the daemon's host key inherits that ownership. Keep the loopback path only for <code>BB_AUTH_MODE=local</code> self-enrollment by the launcher.</li>
+    <li>Product surfaces for N hosts: host picker on environment creation, host online/offline in the UI, queued-until-online thread starts, per-host capability toggles (remote terminals, directory browsing).</li>
+    <li>Ship the daemon as a lightweight install: <code>brew install bb</code> / <code>npx bb-app host-daemon join …</code> — the launcher already resolves a <code>join</code> command; make it a first-class documented path with a login-item/launchd service.</li>
+    <li>Harden the daemon reporting path per §5: idempotent event/result posting with retry, orphaned-thread recovery on daemon restart, server-side <code>last_seen_at</code> sweeper.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> a daemon on machine B joins a server on machine A over the public internet (no tailnet), appears as an online host, and a thread runs on B driven from the web UI on A — including terminal attach and a mid-run permission prompt. Kill the daemon mid-thread; on restart the thread is recovered or cleanly failed, never wedged. <strong>Validate:</strong> two physical machines or a cloud VM + laptop; scripted in integration tests with two daemon processes against one server.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 3 — Hosted control plane at getbb.app <span class="pill gap" style="margin-left:8px">large</span></h3>
+  <p class="meta">Touches: storage layer, tenancy model, ops/deploy; decision Q1 below gates this</p>
+  <ul>
+    <li><strong>Tenancy:</strong> orgs + memberships (better-auth has an organization plugin); every project/thread/host/environment row gains an org scope; row-level checks in the data layer, not per-handler.</li>
+    <li><strong>Storage:</strong> resolve Q1 — port drizzle schema to Postgres for a shared multi-tenant DB, or run per-org SQLite (Turso/LiteFS-style). Postgres is the boring, multica-proven default; per-org SQLite preserves bb's "your data is one file" story and trivializes export/self-host migration.</li>
+    <li><strong>Scale-out:</strong> WS fan-out relay (Redis pub/sub) so any server node reaches any client/daemon socket — optional exactly as in multica; single-node runs without it. Sticky routing for daemon sockets is a simpler interim.</li>
+    <li><strong>Frontend:</strong> deploy <span class="file">apps/app</span> to a CDN at getbb.app with the Phase-0 base-URL config baked to the hosted API; the "connect to server" screen also accepts self-hosted URLs, so one deployed frontend serves both hosted and BYO-server users.</li>
+    <li><strong>Ops:</strong> rate limits, join-code abuse protection, audit log for host enrollment, secrets hygiene (provider API keys never leave the daemon machine — already true, keep it true), data export/delete.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> two unrelated accounts on one hosted deployment each pair a real machine, run threads, and can enumerate nothing of each other's (verified by an adversarial integration test hitting every route cross-tenant). A self-hosted server user can point getbb.app's frontend at their own server. <strong>Validate:</strong> staging deployment + cross-tenant probe suite + load test on the daemon hub.</div>
+</div>
+
+<div class="phase">
+  <h3>Phase 4 — Shared client core &amp; mobile <span class="pill partial" style="margin-left:8px">medium, parallelizable after Phase 0</span></h3>
+  <p class="meta">Touches: new <span class="file">packages/client-core</span>, <span class="file">apps/app</span> refactor, new <span class="file">apps/mobile</span></p>
+  <ul>
+    <li>Extract <span class="file">apps/app/src/lib/{api,ws,query-client}</span> + domain hooks into <code>@bb/client-core</code> with a platform shim (fetch/WS/storage injection) — multica's <span class="file">packages/core</span> pattern. <code>@bb/server-contract</code> already gives it types.</li>
+    <li>Mobile app (Expo/React Native) consuming <code>@bb/client-core</code>: thread list, live thread view, permission-prompt approvals, push notifications for "agent needs you" — the killer mobile use case. No terminal/editor features in v1.</li>
+    <li>Desktop shell gradually becomes a thin wrapper over the same core, keeping only host-integration (spawn runtime, editor-open) native.</li>
+  </ul>
+  <div class="exit"><strong>Exit criteria:</strong> the web app builds on <code>@bb/client-core</code> with no behavior change (existing e2e suite passes), and a TestFlight build can view a live-streaming thread and answer a permission prompt against a hosted or self-hosted server. <strong>Validate:</strong> e2e suite + manual TestFlight session against staging.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="risks"><span class="num">7</span>Risks &amp; open questions</h2>
+
+<table>
+  <tr><th></th><th>Question / risk</th><th>Notes &amp; leaning</th></tr>
+  <tr>
+    <td><strong>Q1</strong></td>
+    <td>Storage for the hosted control plane: shared Postgres vs. per-org SQLite?</td>
+    <td>Gates Phase 3 only. Postgres = proven (multica), simple ops, but a schema port + loses "your data is a file." Per-org SQLite = beautiful export/self-host story and keeps <code>createConnection(":memory:")</code> tests honest, but novel ops. <em>Leaning: prototype the drizzle→Postgres port early to price it; decide on evidence.</em></td>
+  </tr>
+  <tr>
+    <td><strong>Q2</strong></td>
+    <td>Data residency: thread content (code snippets, diffs, terminal output) lands in the hosted DB.</td>
+    <td>Real adoption blocker for some users. Mitigations: self-host parity as a first-class path (this plan keeps it free), org-level retention controls, e2e encryption as a future exploration. Be explicit in marketing.</td>
+  </tr>
+  <tr>
+    <td><strong>Q3</strong></td>
+    <td>Interactive latency through the cloud: terminal keystrokes and file browsing now hop laptop → cloud → laptop.</td>
+    <td>Fine for the common case (phone → cloud → desktop at home). Worst case (browser and daemon on the same LAN, relayed via cloud) could later get a direct-connection upgrade (WebRTC/local discovery) — explicitly out of scope for v1.</td>
+  </tr>
+  <tr>
+    <td><strong>Q4</strong></td>
+    <td>Remote terminals + file browsing = high-value target once internet-facing.</td>
+    <td>Per-host capability toggles (Phase 2), short join-code TTLs, host-key rotation (already supported by machine-auth), audit log, and rate limiting (Phase 3). Consider requiring re-auth for terminal attach on hosted.</td>
+  </tr>
+  <tr>
+    <td><strong>Q5</strong></td>
+    <td>Offline story: local-first users must never need the cloud.</td>
+    <td>Non-negotiable: <code>BB_AUTH_MODE=local</code> keeps today's fully-offline single-machine bundle working forever. Hosted is additive.</td>
+  </tr>
+  <tr>
+    <td><strong>Q6</strong></td>
+    <td>Daemon distribution &amp; updates.</td>
+    <td><code>bb-app</code> is already on npm and self-supervising; add brew + a <code>bb host-daemon update</code> path and a heartbeat-driven "update available" nudge (multica pushes CLI self-update actions through heartbeat acks — copy that).</td>
+  </tr>
+  <tr>
+    <td><strong>Q7</strong></td>
+    <td>Plugin system interaction: plugins currently trust a local single-user server.</td>
+    <td>Plugins run server-side; on hosted they become tenant-scoped code execution — likely restrict to first-party plugins on hosted initially, keep full plugins for local/self-host.</td>
+  </tr>
+</table>
+
+<h3>Suggested first moves</h3>
+<ol>
+  <li>Phase 0 in one PR — it's small, immediately improves the Tailscale story, and de-risks everything after.</li>
+  <li>Spike the drizzle→Postgres port (Q1) in a branch to get a real cost estimate before committing Phase 3's design.</li>
+  <li>Write the Phase 1 auth-mode design as a short ADR — the <code>local</code>-mode auto-auth is the one place a wrong choice would degrade today's UX.</li>
+</ol>
+
+<p style="margin-top:48px;color:var(--muted);font-size:13.5px">Sources: bb repo (<span class="file">docs/system-overview.md</span>, <span class="file">docs/multiple-devices.md</span>, <span class="file">apps/server</span>, <span class="file">apps/host-daemon</span>, <span class="file">packages/bb-app</span>, <span class="file">packages/config</span>) and multica repo at <span class="file">github.com/multica-ai/multica</span> (<span class="file">server/internal/daemon</span>, <span class="file">server/internal/daemonws</span>, <span class="file">server/internal/realtime</span>, <span class="file">server/internal/service/task.go</span>, <span class="file">server/cmd/multica/cmd_auth.go</span>, <span class="file">packages/core</span>, <span class="file">CLI_AND_DAEMON.md</span>, <span class="file">SELF_HOSTING.md</span>).</p>
+
+</main>
+</body>
+</html>

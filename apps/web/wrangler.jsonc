@@ -1,0 +1,38 @@
+// bb connect — auth + dashboard (getbb.app-equivalent), TanStack Start on Workers.
+//
+// Flat config targeting the staging domain vibecodethis.site (the @cloudflare/vite-plugin
+// flow deploys the top-level config, not wrangler `--env` sub-environments). A prod
+// deploy (getbb.app) becomes its own config at M5 cutover.
+//
+// Deploy: pnpm --filter @bb/web build && pnpm --filter @bb/web exec wrangler deploy
+// Secrets: wrangler secret put GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET/BETTER_AUTH_SECRET
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bb-web-staging",
+  "compatibility_date": "2026-06-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "BASE_DOMAIN": "vibecodethis.site",
+    "APP_URL": "https://vibecodethis.site"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bb-connect-staging",
+      "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TUNNEL_DO",
+        "class_name": "TunnelDO",
+        "script_name": "bb-connect-staging"
+      }
+    ]
+  },
+  "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }]
+}

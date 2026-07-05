@@ -1,0 +1,829 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@source "../..";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  /* Cadence (thread design refresh): a recede tier between muted and subtle for
+   * settled/closed-turn machinery, and a text-only destructive that clears AA in
+   * dark mode (the --destructive fill is below the 4.5:1 text floor there). */
+  --color-readback-foreground: var(--readback-foreground);
+  --color-timeline-accent: var(--timeline-accent);
+  --color-file-accent: var(--file-accent);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-state-hover: var(--state-hover);
+  --color-state-active: var(--state-active);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
+  --color-attention: var(--attention);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-success: var(--success);
+  --color-diff-added: var(--diff-added);
+  /* GitHub's merged-PR purple — the one chromatic exception in the PR state
+   * dots, matching the universal merged-PR color language. */
+  --color-pr-merged: var(--pr-merged);
+  --color-diff-removed: var(--diff-removed);
+  --color-border: var(--border);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-seam: var(--border-seam);
+  --color-border-seam-vertical: var(--border-seam-vertical);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface-recessed: var(--surface-recessed);
+  --color-surface-recessed-solid: var(--surface-recessed-solid);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-scrim: var(--surface-scrim);
+  --color-surface-destructive: var(--surface-destructive);
+  --color-surface-destructive-border: var(--surface-destructive-border);
+  --color-surface-selected: var(--surface-selected);
+  --color-surface-selected-border: var(--surface-selected-border);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-lift: var(--shadow-lift);
+}
+
+/*
+ * Typography scale overrides.
+ *
+ * Desktop gets tighter copy (~13px text-sm, ~15px text-base) for denser UI.
+ * On narrow touch viewports (<768px with a coarse pointer) we bump xs/sm/base
+ * back up so dense copy lands at a legible size. The 767px breakpoint matches
+ * Tailwind's md:, where the sidebar switches to a drawer and the rest of the
+ * app's responsive sizing fires. Keeping these in sync avoids an
+ * intermediate state where icons have grown but text hasn't.
+ *
+ * Overriding the --text-* tokens (rather than the .text-* classes) ensures
+ * responsive variants like md:text-sm resolve to the same value and don't
+ * collide with base classes in the cascade.
+ */
+@theme {
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.375rem;
+  /* Cadence chrome size (unread divider, count chips, ids) — 10px. Chrome only;
+   * never paired with a tier below --subtle-foreground or it fails AA at 10px. */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
+}
+
+@media (max-width: 767px) and (pointer: coarse) {
+  :root {
+    --text-2xs: 0.6875rem;
+    --text-2xs--line-height: 0.9375rem;
+    --text-xs: 0.875rem;
+    --text-xs--line-height: 1.25rem;
+    --text-sm: 0.9375rem;
+    --text-sm--line-height: 1.375rem;
+    --text-base: 1rem;
+    --text-base--line-height: 1.5rem;
+  }
+}
+
+@layer components {
+  [data-sidebar-sticky-stack] {
+    /*
+     * SidebarContent owns scrolling. This stack owns sticky padding, row
+     * sizing, gaps, and derived offsets for its descendant sticky tiers.
+     */
+    --bb-sidebar-sticky-stack-padding: 0.5rem;
+    --bb-sidebar-sticky-stack-padding-top: var(
+      --bb-sidebar-sticky-stack-padding
+    );
+    --bb-sidebar-sticky-label-height: 1.5rem;
+    --bb-sidebar-sticky-label-gap: 0.25rem;
+    --bb-sidebar-sticky-row-height: var(--bb-sidebar-row-height);
+    --bb-sidebar-sticky-row-gap: 0.25rem;
+    --bb-sidebar-sticky-child-row-gap: 0.125rem;
+    --bb-sidebar-sticky-label-top: var(--bb-sidebar-sticky-stack-padding-top);
+    --bb-sidebar-sticky-project-top: calc(
+      var(--bb-sidebar-sticky-label-top) +
+        var(--bb-sidebar-sticky-label-height) +
+        var(--bb-sidebar-sticky-label-gap)
+    );
+    /* The first pinned parent level (a parent thread or worktree
+       group header) sits directly below the project row. Deeper levels stack
+       from this base via --bb-sidebar-sticky-parent-level (set inline per row),
+       capped in JS so a deep chain can't pin more ancestors than the viewport
+       affords. The section variant (no project row) overrides the base below. */
+    --bb-sidebar-sticky-parent-base-top: calc(
+      var(--bb-sidebar-sticky-project-top) +
+        var(--bb-sidebar-sticky-row-height) + var(--bb-sidebar-sticky-row-gap)
+    );
+    --bb-sidebar-sticky-parent-stride: calc(
+      var(--bb-sidebar-sticky-row-height) +
+        var(--bb-sidebar-sticky-child-row-gap)
+    );
+    --bb-sidebar-sticky-parent-base-z: 40;
+
+    padding: var(--bb-sidebar-sticky-stack-padding-top)
+      var(--bb-sidebar-sticky-stack-padding)
+      var(--bb-sidebar-sticky-stack-padding);
+  }
+
+  [data-sidebar-sticky-stack][data-sidebar-sticky-density="compact-actions"] {
+    --bb-sidebar-sticky-stack-padding-top: 0.5rem;
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier] {
+    position: sticky;
+    top: var(--bb-sidebar-sticky-tier-top);
+    height: var(--bb-sidebar-sticky-tier-height);
+    min-height: var(--bb-sidebar-sticky-tier-height);
+    z-index: var(--bb-sidebar-sticky-tier-z-index);
+    isolation: isolate;
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before,
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: var(--sidebar);
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before {
+    bottom: 100%;
+    height: var(--bb-sidebar-sticky-tier-shield-top-height, 0);
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::after {
+    top: 100%;
+    height: var(--bb-sidebar-sticky-tier-shield-bottom-height, 0);
+  }
+
+  .bb-sidebar-hover-actions {
+    pointer-events: none;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0ms;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-hover-actions,
+  .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"] {
+    pointer-events: auto;
+    opacity: 1;
+  }
+
+  .bb-sidebar-hover-actions-fade {
+    opacity: 1;
+    transition-property: opacity;
+    transition-duration: 0ms;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-hover-actions-fade,
+  .bb-sidebar-hover-actions-fade[data-sidebar-hover-actions-open="true"] {
+    opacity: 0;
+  }
+
+  @media (max-width: 767px) and (pointer: coarse) {
+    .bb-sidebar-hover-actions-row:hover:not(:has(:focus-visible))
+      .bb-sidebar-hover-actions:not(
+        [data-sidebar-hover-actions-open="true"]
+      ):not([data-sidebar-hover-actions-mobile="always"]) {
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .bb-sidebar-hover-actions-row:hover:not(:has(:focus-visible))
+      .bb-sidebar-hover-actions-fade:not(
+        [data-sidebar-hover-actions-open="true"]
+      ) {
+      opacity: 1;
+    }
+
+    .bb-sidebar-hover-actions[data-sidebar-hover-actions-mobile="always"] {
+      pointer-events: auto;
+      opacity: 1;
+    }
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier="label"] {
+    --bb-sidebar-sticky-tier-top: var(--bb-sidebar-sticky-label-top);
+    --bb-sidebar-sticky-tier-height: var(--bb-sidebar-sticky-label-height);
+    --bb-sidebar-sticky-tier-z-index: 60;
+    --bb-sidebar-sticky-tier-shield-top-height: var(
+      --bb-sidebar-sticky-stack-padding
+    );
+    --bb-sidebar-sticky-tier-shield-bottom-height: var(
+      --bb-sidebar-sticky-label-gap
+    );
+
+    margin-bottom: var(--bb-sidebar-sticky-label-gap);
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier="project"] {
+    --bb-sidebar-sticky-tier-top: var(--bb-sidebar-sticky-project-top);
+    --bb-sidebar-sticky-tier-height: var(--bb-sidebar-sticky-row-height);
+    --bb-sidebar-sticky-tier-z-index: 50;
+    --bb-sidebar-sticky-tier-shield-bottom-height: var(
+      --bb-sidebar-sticky-row-gap
+    );
+  }
+
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-tier="parent"] {
+    /* Depth-driven: each level pins one row-stride below the previous, so a
+       chain of nested parents stacks without per-level CSS. The level is set
+       inline per row (see SidebarStickyTier); JS caps how many levels get the
+       tier at all. */
+    --bb-sidebar-sticky-tier-top: calc(
+      var(--bb-sidebar-sticky-parent-base-top) +
+        var(--bb-sidebar-sticky-parent-level, 0) *
+        var(--bb-sidebar-sticky-parent-stride)
+    );
+    --bb-sidebar-sticky-tier-height: var(--bb-sidebar-sticky-row-height);
+    /* Shallower ancestors win the overlap, so z-index descends with depth. */
+    --bb-sidebar-sticky-tier-z-index: calc(
+      var(--bb-sidebar-sticky-parent-base-z) -
+        var(--bb-sidebar-sticky-parent-level, 0)
+    );
+    /* Parent rows and worktree group headers butt against their first child
+       with the compact child gap; the wider project row gap would clip it. */
+    --bb-sidebar-sticky-tier-shield-bottom-height: var(
+      --bb-sidebar-sticky-child-row-gap
+    );
+  }
+
+  [data-sidebar-sticky-stack]
+    [data-sidebar-sticky-project-item]
+    > :not([hidden])
+    ~ :not([hidden]) {
+    margin-top: var(--bb-sidebar-sticky-row-gap);
+  }
+
+  /* Section-variant trees (Pinned, projectless Threads) have no project tier:
+     the hierarchy is label -> parents. Drop the parent base up one level so the
+     first parent pins directly under the section label instead of reserving an
+     empty project-row slot. One base override covers every depth. */
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-section] {
+    --bb-sidebar-sticky-parent-base-top: var(--bb-sidebar-sticky-project-top);
+  }
+
+  @media (max-width: 767px) and (pointer: coarse) {
+    [data-sidebar-sticky-stack] {
+      --bb-sidebar-sticky-row-height: var(--bb-sidebar-row-height-coarse);
+    }
+  }
+}
+
+:root,
+.light {
+  color-scheme: light;
+  /* Anchors. The neutral ramp below is derived from these two by mixing ink
+   * into the canvas, so changing the canvas moves every surface coherently. */
+  --canvas: oklch(1 0 0);
+  --ink: oklch(0.3211 0 0);
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  /* Card and popover are flush with the canvas — elevation is conveyed by
+   * border + shadow, not a surface tint, so floating menus, raised cards, and
+   * the page all share one surface value (guarded in theme.test.ts). The
+   * neutral lift ramp below (var(--ink) N% over the canvas, N rising as a
+   * surface recedes) still applies to the fills, lines, and input. */
+  --card: var(--canvas);
+  --card-foreground: var(--ink);
+  --popover: var(--canvas);
+  --popover-foreground: var(--ink);
+  --primary: oklch(0.4891 0 0);
+  --primary-foreground: oklch(1 0 0);
+  /* Subtle fill. secondary and accent share one low-emphasis step a touch more
+   * prominent than the card; they stay separate tokens for their distinct
+   * component slots (secondary surfaces vs. highlight/hover), not for a look. */
+  --secondary: color-mix(in oklch, var(--ink) 8%, var(--canvas));
+  --secondary-foreground: var(--ink);
+  --accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
+  --accent-foreground: var(--ink);
+  --muted: color-mix(in oklch, var(--ink) 11%, var(--canvas));
+  /* Secondary text tiers. Sit at ~7.4:1 and ~5.9:1 on the white background
+   * while keeping muted darker than subtle so the hierarchy survives. */
+  --muted-foreground: oklch(0.44 0 0);
+  --subtle-foreground: oklch(0.5 0 0);
+  /* Recede tier between muted (7.77:1) and subtle (6.00:1); ~6.83:1 on white. */
+  --readback-foreground: oklch(0.47 0 0);
+  /* Soft "paper blue" timeline accent — the one tint in the otherwise
+   * achromatic timeline. ~5.0:1 on white. */
+  --timeline-accent: oklch(0.55 0.1 250);
+  --file-accent: var(--timeline-accent);
+  /* Interactive-state fills: translucent ink so the same hover/active step
+   * reads consistently on canvas, cards, and recessed surfaces alike. Over the
+   * canvas these match an opaque ink-over-canvas mix exactly; on elevated
+   * surfaces they composite for real, visible contrast. */
+  --state-hover: color-mix(in oklab, var(--ink) 5.9%, transparent);
+  --state-active: color-mix(in oklab, var(--ink) 11.8%, transparent);
+  --destructive: oklch(0.45 0.19 25.8625);
+  --destructive-foreground: oklch(1 0 0);
+  /* Text-only destructive. Light is identical to --destructive (8.04:1); the
+   * split exists so dark mode can clear the 4.5:1 text floor (the --destructive
+   * fill is ~3.56:1 there) while keeping its 3:1 UI duties. */
+  --destructive-text: oklch(0.45 0.19 25.8625);
+  --attention: oklch(0.74 0.15 80);
+  --warning: oklch(0.7 0.16 50);
+  --warning-text: oklch(0.55 0.14 50);
+  --success: oklch(0.7 0.15 155);
+  --diff-added: oklch(0.4 0.13 163);
+  --pr-merged: oklch(0.53 0.2 295);
+  --diff-removed: oklch(0.4 0.17 28);
+  --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
+  /* App-shell horizontal seam: top nav and browser/panel top bars. It stays on
+   * the neutral ink/canvas ramp but closer to canvas than vertical separators. */
+  --border-seam: color-mix(in oklch, var(--ink) 10.5%, var(--canvas));
+  /* App-shell vertical seam: sidebar/content and resizable panel separators.
+   * Stronger than horizontal seams, softer than the default content border. */
+  --border-seam-vertical: color-mix(in oklch, var(--ink) 11.5%, var(--canvas));
+  --input: color-mix(in oklch, var(--ink) 29.5%, var(--canvas));
+  /* Focus ring shares the primary accent — kept as one value so they can't
+   * drift apart. */
+  --ring: var(--primary);
+  /* Inset panel tints on the ink ramp: recessed a clear sunken step, raised a
+   * faint lift, both translucent so they read on card or page alike. */
+  --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
+     queued-list scroll fades) that must not double the translucent tint. */
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
+  --surface-destructive: color-mix(
+    in oklab,
+    var(--destructive) 6%,
+    transparent
+  );
+  --surface-destructive-border: color-mix(
+    in oklab,
+    var(--destructive) 25%,
+    transparent
+  );
+  --surface-selected: color-mix(in oklab, var(--primary) 16%, transparent);
+  --surface-selected-border: color-mix(
+    in oklab,
+    var(--primary) 35%,
+    transparent
+  );
+  /* Prompt mention pills (light): a near-flat chip with a quiet top-down surface
+   * step, soft border, and light shadow. Every face/line derives from the
+   * --canvas/--ink anchors (label and icon are the ink itself) so a custom
+   * palette tints the pill along with the rest of the UI instead of stranding a
+   * neutral-gray chip — the shadow stays a faint neutral drop. */
+  --pill-surface: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--ink) 4.4%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 4.7%, var(--canvas))
+  );
+  --pill-surface-border: var(--border);
+  --pill-foreground: var(--ink);
+  --pill-icon: var(--ink);
+  --pill-shadow: 0 1px 1px 0 oklch(0.2 0 0 / 0.02);
+  --pill-surface-selected: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--ink) 11.8%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 13%, var(--canvas))
+  );
+  --pill-surface-selected-border: color-mix(
+    in oklch,
+    var(--ink) 19.2%,
+    var(--canvas)
+  );
+  --sidebar: color-mix(in oklch, var(--ink) 2.2%, var(--canvas));
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  /* Search-match highlight: a manilla-folder tint over the canvas. Chromatic on
+     purpose (the neutral ramp can't make beige) and mixed with the canvas so it
+     tracks custom palettes instead of stranding a fixed swatch. Mix in oklab, not
+     oklch: in the polar space the achromatic canvas drags the manilla hue toward
+     0° and the result comes out salmon — oklab carries the hue through. */
+  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 76%);
+  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 60%);
+  --sidebar-ring: var(--primary);
+  --font-sans: "Inter Variable", Inter, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: "Fira Code", monospace;
+  --radius: 0.5rem;
+  --bb-sidebar-row-height: 1.75rem;
+  --bb-sidebar-row-height-coarse: 2.5rem;
+  --shadow-x: 0px;
+  --shadow-y: 2px;
+  --shadow-blur: 0px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.15;
+  --shadow-color: hsl(0 0% 20% / 0.1);
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px hsl(0 0% 20% / 0.15);
+  --shadow:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px hsl(0 0% 20% / 0.15);
+  --shadow-md:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 2px 4px -1px hsl(0 0% 20% / 0.15);
+  /* Soft upward-cast lift for bottom-anchored surfaces (the composer), so the
+   * shadow reads on the content above rather than below the screen edge. */
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 20% / 0.07);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 4px 6px -1px hsl(0 0% 20% / 0.15);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 8px 10px -1px hsl(0 0% 20% / 0.15);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 20% / 0.38);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+  --icon-stroke-width: 1.75;
+  /* ANSI 16-color palette (light mode) tuned for readable terminal output. */
+  --ansi-0: #000000;
+  --ansi-1: #a11616;
+  --ansi-2: #13704a;
+  --ansi-3: #7f6a00;
+  --ansi-4: #1f5ca6;
+  --ansi-5: #8a2f8a;
+  --ansi-6: #0b6f88;
+  --ansi-7: #3d3d3d;
+  --ansi-8: #3a3a3a;
+  --ansi-9: #d32f2f;
+  --ansi-10: #197c52;
+  --ansi-11: #a35f00;
+  --ansi-12: #2666b0;
+  --ansi-13: #9b349b;
+  --ansi-14: #0f7798;
+  --ansi-15: #1f1f1f;
+  /* Text colors applied when ANSI colors are used as backgrounds. */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #ffffff;
+  --ansi-bg-fg-3: #ffffff;
+  --ansi-bg-fg-4: #ffffff;
+  --ansi-bg-fg-5: #ffffff;
+  --ansi-bg-fg-6: #ffffff;
+  --ansi-bg-fg-7: #ffffff;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #ffffff;
+  --ansi-bg-fg-10: #ffffff;
+  --ansi-bg-fg-11: #ffffff;
+  --ansi-bg-fg-12: #ffffff;
+  --ansi-bg-fg-13: #ffffff;
+  --ansi-bg-fg-14: #ffffff;
+  --ansi-bg-fg-15: #ffffff;
+  /* Diff renderer bridge — feed @pierre/diffs from the app theme tokens so the
+   * diff panel and file preview follow the active palette (built-in or custom
+   * CLI stylesheet) instead of the library's fixed black/white + green/red.
+   * The library reads these as var() inputs; line numbers, context tints,
+   * separators, and the +/- row fills all derive from bg/fg internally, so
+   * bridging these four is enough. The diff container sets `color-scheme` from
+   * its `themeType`, so the light branch (these `*-light` inputs) is selected
+   * whenever the app is in light mode. */
+  --diffs-light-bg: var(--background);
+  --diffs-light: var(--foreground);
+  --diffs-light-addition-color: var(--diff-added);
+  --diffs-light-deletion-color: var(--diff-removed);
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: oklch(0.195 0 0);
+  /* Softened from a brighter near-white so dark-mode foreground text reads a
+   * touch less intense; the whole achromatic ramp is anchored here, so chrome
+   * follows by an imperceptible amount. */
+  --ink: oklch(0.81 0 0);
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  /* Card and popover stay flush with the canvas here too — elevation comes from
+   * border + shadow. The lift ramp below uses larger steps than light so the
+   * neutral surfaces still read against the darker canvas. */
+  --card: var(--canvas);
+  --card-foreground: var(--ink);
+  --popover: var(--canvas);
+  --popover-foreground: var(--ink);
+  --primary: oklch(0.7058 0 0);
+  --primary-foreground: oklch(0.2178 0 0);
+  /* Subtle fill: secondary and accent share one step; muted is a distinct step
+   * more prominent (in light too), so the ramp reads the same in both themes. */
+  --secondary: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+  --secondary-foreground: var(--ink);
+  --accent: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+  --accent-foreground: var(--ink);
+  --muted: color-mix(in oklch, var(--ink) 16%, var(--canvas));
+  --muted-foreground: oklch(0.78 0 0);
+  --subtle-foreground: oklch(0.68 0 0);
+  /* Recede tier between muted (9.14:1) and subtle (6.35:1); ~7.24:1 on canvas. */
+  --readback-foreground: oklch(0.715 0 0);
+  /* Soft "paper blue" timeline accent, lifted for the dark canvas (~6:1). */
+  --timeline-accent: oklch(0.72 0.09 250);
+  --file-accent: var(--timeline-accent);
+  /* Interactive-state fills: translucent ink so the same hover/active step
+   * reads consistently on canvas, cards, and recessed surfaces alike. */
+  --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
+  --state-active: color-mix(in oklab, var(--ink) 22.5%, transparent);
+  --destructive: oklch(0.56 0.19 22.1703);
+  --destructive-foreground: oklch(1 0 0);
+  /* Lighter/less-saturated than the fill so error TEXT clears AA (~4.8:1) on the
+   * dark canvas; the --destructive fill stays for icons/buttons/ring (3:1 UI). */
+  --destructive-text: oklch(0.65 0.16 22);
+  --attention: oklch(0.8 0.15 80);
+  --warning: oklch(0.75 0.16 50);
+  --warning-text: oklch(0.75 0.16 50);
+  --success: oklch(0.74 0.15 155);
+  --diff-added: oklch(0.77 0.17 163);
+  --diff-removed: oklch(0.72 0.19 22);
+  --pr-merged: oklch(0.68 0.18 295);
+  --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
+  /* App-shell horizontal seam (dark): close to the dark background so top bars
+   * stay quieter than vertical panel separators. */
+  --border-seam: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+  /* App-shell vertical seam (dark): stronger than the horizontal seam, softer
+   * than the default content border. */
+  --border-seam-vertical: color-mix(in oklch, var(--ink) 13%, var(--canvas));
+  --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
+  --ring: var(--primary);
+  /* Same model as light; ink is light here, so these lift the dark canvas. */
+  --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
+     queued-list scroll fades) that must not double the translucent tint. */
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
+  --surface-destructive: color-mix(
+    in oklab,
+    var(--destructive) 8%,
+    transparent
+  );
+  --surface-destructive-border: color-mix(
+    in oklab,
+    var(--destructive) 30%,
+    transparent
+  );
+  --surface-selected: color-mix(in oklab, var(--primary) 12%, transparent);
+  --surface-selected-border: color-mix(
+    in oklab,
+    var(--primary) 35%,
+    transparent
+  );
+  /* Prompt mention pills (dark): a raised graphite chip a few steps lighter than
+   * the canvas with a light label and icon glyph. Mirrors the light block:
+   * every face/line derives from the --canvas/--ink anchors (label and icon are
+   * the ink itself) so a custom palette tints the pill instead of stranding a
+   * neutral-gray chip — the shadow stays a faint neutral drop. */
+  --pill-surface: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--ink) 13%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 11.9%, var(--canvas))
+  );
+  --pill-surface-border: var(--border);
+  --pill-foreground: var(--ink);
+  --pill-icon: var(--ink);
+  --pill-shadow: 0 1px 1px 0 oklch(0 0 0 / 0.08);
+  --pill-surface-selected: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--ink) 20.7%, var(--canvas)),
+    color-mix(in oklch, var(--ink) 18.7%, var(--canvas))
+  );
+  --pill-surface-selected-border: color-mix(
+    in oklch,
+    var(--ink) 25.2%,
+    var(--canvas)
+  );
+  --sidebar: color-mix(in oklch, var(--ink) 4.3%, var(--canvas));
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: color-mix(in oklch, var(--ink) 18.1%, var(--canvas));
+  /* Search-match highlight: see the light block (oklab mix, same hue caveat).
+     Mixed with the (dark) canvas so the manilla reads as a muted tan. */
+  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 80%);
+  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 67%);
+  --sidebar-ring: var(--primary);
+  --font-sans: "Inter Variable", Inter, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: "Fira Code", monospace;
+  --radius: 0.5rem;
+  /* Dark shadows are pure black at higher alpha — a 20%-gray shadow is
+   * invisible on the dark canvas, so floating surfaces (popovers, dropdowns)
+   * stop separating from the card beneath them. */
+  --shadow-x: 0px;
+  --shadow-y: 2px;
+  --shadow-blur: 0px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.4;
+  --shadow-color: hsl(0 0% 0% / 0.4);
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.2);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.2);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
+  --shadow:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
+  --shadow-md:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 2px 4px -1px hsl(0 0% 0% / 0.5);
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 0% / 0.26);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 4px 6px -1px hsl(0 0% 0% / 0.5);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.35), 0px 8px 10px -1px hsl(0 0% 0% / 0.55);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.6);
+  /* ANSI 16-color palette (dark mode) tuned for readable terminal output. */
+  --ansi-0: #858585;
+  --ansi-1: #d85e5e;
+  --ansi-2: #0dbc79;
+  --ansi-3: #e5e510;
+  --ansi-4: #3c88dc;
+  --ansi-5: #c85ac8;
+  --ansi-6: #11a8cd;
+  --ansi-7: #e5e5e5;
+  --ansi-8: #9a9a9a;
+  --ansi-9: #ff6f6f;
+  --ansi-10: #23d18b;
+  --ansi-11: #f5f543;
+  --ansi-12: #5aaaf2;
+  --ansi-13: #d670d6;
+  --ansi-14: #29b8db;
+  --ansi-15: #ffffff;
+  /* Text colors applied when ANSI colors are used as backgrounds. */
+  --ansi-bg-fg-0: #000000;
+  --ansi-bg-fg-1: #000000;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #000000;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+  /* Diff renderer bridge (dark branch). See the light block for rationale; the
+   * diff container selects these `*-dark` inputs whenever the app is in dark
+   * mode. Each input re-resolves `var(--…)` against the dark token values in
+   * this block, and against any palette that overrides those tokens. */
+  --diffs-dark-bg: var(--background);
+  --diffs-dark: var(--foreground);
+  --diffs-dark-addition-color: var(--diff-added);
+  --diffs-dark-deletion-color: var(--diff-removed);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  button,
+  a,
+  [role="button"],
+  input,
+  textarea,
+  select,
+  label {
+    touch-action: manipulation;
+  }
+
+  .lucide {
+    stroke-width: var(--icon-stroke-width);
+  }
+}
+
+body.sidebar-resizing [data-sidebar="gap"],
+body.sidebar-resizing [data-sidebar="panel"] {
+  transition-duration: 0ms !important;
+}
+
+@layer utilities {
+  .animate-shine {
+    display: inline-block;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--foreground) 50%, transparent) 0%,
+      var(--foreground) 50%,
+      color-mix(in srgb, var(--foreground) 50%, transparent) 100%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shine 2s linear infinite;
+  }
+
+  /*
+   * Icon counterpart to `.animate-shine`: `background-clip: text` only shimmers
+   * glyphs, so for an SVG icon we sweep the same bright band as a mask instead
+   * (the icon dims to ~45% at the edges with a full-opacity band moving across),
+   * matching the "Thinking..." text shimmer.
+   */
+  .animate-shine-icon {
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.15) 0%,
+      rgba(0, 0, 0, 1) 50%,
+      rgba(0, 0, 0, 0.15) 100%
+    );
+    mask-image: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.15) 0%,
+      rgba(0, 0, 0, 1) 50%,
+      rgba(0, 0, 0, 0.15) 100%
+    );
+    -webkit-mask-size: 200% 100%;
+    mask-size: 200% 100%;
+    animation: shine-mask 2s linear infinite;
+  }
+
+  /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent
+     applies the specular gloss filter, which derives the moving highlight from
+     this glyph's alpha — so the mark themes itself and carries no baked-in
+     reflection patches. */
+  .bb-mark-fill {
+    -webkit-mask: url(/bb-mark.svg) center / contain no-repeat;
+    mask: url(/bb-mark.svg) center / contain no-repeat;
+    background-color: var(--foreground);
+  }
+}
+
+@keyframes shine {
+  0% {
+    background-position: 200% 0%;
+  }
+  100% {
+    background-position: -200% 0%;
+  }
+}
+
+@keyframes shine-mask {
+  0% {
+    -webkit-mask-position: 200% 0%;
+    mask-position: 200% 0%;
+  }
+  100% {
+    -webkit-mask-position: -200% 0%;
+    mask-position: -200% 0%;
+  }
+}
+
+/*
+ * During an active panel-resize drag, suppress flex transitions on sibling
+ * panels so their size snaps to each pointer position instead of animating
+ * through 220ms of intermediate layouts per frame. Opacity/visibility
+ * transitions are preserved for open/close animations.
+ */
+[data-panel-group]:has([data-resize-handle-active]) [data-panel] {
+  transition-property: opacity;
+}
+
+.scroll-bottom-anchor-content * {
+  overflow-anchor: none;
+}
+
+.scroll-bottom-anchor-content .scroll-bottom-anchor {
+  height: 1px;
+  flex-shrink: 0;
+  overflow-anchor: auto;
+}
