@@ -24,7 +24,7 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
-  it("supports local project source updates and rejects secondary host sources", async () => {
+  it("supports local project source updates and allows secondary host sources", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
@@ -64,9 +64,13 @@ describe("public project local host routes", () => {
           }),
         },
       );
-      expect(createSourceResponse.status).toBe(400);
+      // Multi-host: a project may register a source on any known host, not just
+      // the primary. Connectivity is enforced later at dispatch, not here.
+      expect(createSourceResponse.status).toBe(201);
       await expect(readJson(createSourceResponse)).resolves.toMatchObject({
-        code: "unsupported_host",
+        hostId: secondaryHost.id,
+        path: "/tmp/project-sources-2",
+        type: "local_path",
       });
 
       const updateSourceResponse = await harness.app.request(
@@ -88,13 +92,16 @@ describe("public project local host routes", () => {
         path: "/tmp/project-sources-renamed",
       });
 
+      // With the secondary-host source added above the project now has two
+      // sources, so deleting one succeeds (the last-source guard no longer
+      // applies).
       const deleteSourceResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/sources/${defaultSourceId}`,
         {
           method: "DELETE",
         },
       );
-      expect(deleteSourceResponse.status).toBe(409);
+      expect(deleteSourceResponse.status).toBe(200);
     });
   });
 

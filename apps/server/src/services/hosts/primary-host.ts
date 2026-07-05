@@ -15,7 +15,7 @@ export interface ReadPrimaryHostIdArgs {
   dataDir: string;
 }
 
-export interface AssertPrimaryHostIdArgs {
+export interface AssertUsableHostIdArgs {
   hostId: string;
 }
 
@@ -23,7 +23,7 @@ function unsupportedHostError(): ApiError {
   return new ApiError(
     400,
     "unsupported_host",
-    "Only the local host daemon is supported",
+    "Host cannot run threads",
   );
 }
 
@@ -87,12 +87,27 @@ export function requirePrimaryHostId(deps: PrimaryHostDeps): string {
   return hostId;
 }
 
-export function assertPrimaryHostId(
+/**
+ * Validate that `hostId` is a real, non-destroyed public host that may be
+ * targeted for execution. Accepts ANY public host (not just the primary), while
+ * rejecting unknown/destroyed/non-public host ids. Default host resolution
+ * (`resolvePrimaryHostId`) is unchanged, so callers that don't take an explicit
+ * host keep defaulting to the local primary — single-host behavior is
+ * preserved. Liveness is enforced downstream at dispatch (`callHostOnlineRpc` →
+ * `ensureHostSessionReadyForWork`), so validation here does not require a live
+ * session (matching the previous primary-only assertion).
+ */
+export function assertUsableHostId(
   deps: PrimaryHostDeps,
-  args: AssertPrimaryHostIdArgs,
+  args: AssertUsableHostIdArgs,
 ): void {
-  const primaryHostId = requirePrimaryHostId(deps);
-  if (args.hostId !== primaryHostId) {
+  // 404 for unknown/destroyed hosts; a clearer signal than "unsupported".
+  requireNonDestroyedHostWithStatus(deps, args.hostId);
+  // 400 if the host exists but is not a public host users can target.
+  const isPublicHost = listPublicHosts(deps.db).some(
+    (host) => host.id === args.hostId,
+  );
+  if (!isPublicHost) {
     throw unsupportedHostError();
   }
 }

@@ -8,12 +8,9 @@ import {
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
+import { requireEnvironment } from "../lib/entity-lookup.js";
 import {
-  requireEnvironment,
-  requireNonDestroyedHostWithStatus,
-} from "../lib/entity-lookup.js";
-import {
-  assertPrimaryHostId,
+  assertUsableHostId,
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
 
@@ -89,20 +86,6 @@ function requireProjectDataPrimaryHostId(
   return data.primaryHostId;
 }
 
-function assertProjectDataPrimaryHostId(
-  data: StableThreadRequestProjectData,
-  hostId: string,
-): void {
-  const primaryHostId = requireProjectDataPrimaryHostId(data);
-  if (hostId !== primaryHostId) {
-    throw new ApiError(
-      400,
-      "unsupported_host",
-      "Only the local host daemon is supported",
-    );
-  }
-}
-
 function requireHostEnvironmentId(
   environment: HostThreadRequestEnvironment,
 ): string {
@@ -159,7 +142,8 @@ function resolveStableHostThreadRequestEnvironmentFromProjectData(
     assertPersonalWorkspaceProjectCompatibility(data.projectId);
     const hostId =
       environment.hostId ?? requireProjectDataPrimaryHostId(data);
-    assertProjectDataPrimaryHostId(data, hostId);
+    // Any host the project already has is accepted (multi-host); connectivity
+    // is enforced downstream at dispatch. Default (no hostId) stays primary.
     requireExistingProjectHost(data, hostId);
     return {
       hostId,
@@ -169,7 +153,6 @@ function resolveStableHostThreadRequestEnvironmentFromProjectData(
 
   const hostId = requireHostEnvironmentId(environment);
   requireExistingProjectHost(data, hostId);
-  assertProjectDataPrimaryHostId(data, hostId);
 
   if (
     environment.workspace.type === "unmanaged" &&
@@ -225,7 +208,9 @@ function resolveStableReuseThreadRequestEnvironmentFromProjectData(
     );
   }
   assertReuseWorkspaceProjectCompatibility(data.projectId, reusedEnvironment);
-  assertProjectDataPrimaryHostId(data, reusedEnvironment.hostId);
+  // The reused environment already belongs to this project (checked above), so
+  // its host is a valid target; no primary-only restriction. Connectivity is
+  // enforced downstream at dispatch.
 
   return {
     environment: reusedEnvironment,
@@ -268,8 +253,7 @@ function resolveHostThreadRequestEnvironment(
     assertPersonalWorkspaceProjectCompatibility(projectId);
     const hostId =
       environment.hostId ?? requireConnectedPrimaryHostId(deps);
-    assertPrimaryHostId(deps, { hostId });
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    assertUsableHostId(deps, { hostId });
     return {
       hostId,
       type: "personal",
@@ -277,8 +261,7 @@ function resolveHostThreadRequestEnvironment(
   }
 
   const hostId = requireHostEnvironmentId(environment);
-  requireNonDestroyedHostWithStatus(deps, hostId);
-  assertPrimaryHostId(deps, { hostId });
+  assertUsableHostId(deps, { hostId });
 
   if (
     environment.workspace.type === "unmanaged" &&
@@ -329,8 +312,7 @@ function resolveReuseThreadRequestEnvironment(
     );
   }
   assertReuseWorkspaceProjectCompatibility(projectId, reusedEnvironment);
-  requireNonDestroyedHostWithStatus(deps, reusedEnvironment.hostId);
-  assertPrimaryHostId(deps, { hostId: reusedEnvironment.hostId });
+  assertUsableHostId(deps, { hostId: reusedEnvironment.hostId });
   return {
     environment: reusedEnvironment,
     type: "reuse",
