@@ -29,7 +29,7 @@ import type {
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "@/src/rpc-types";
-import { Button } from "@/components/ui/button";
+import { Button } from "@bb/plugin-ui/button";
 import {
   Dialog,
   DialogContent,
@@ -37,18 +37,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@bb/plugin-ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Icon } from "@/components/ui/icon";
-import { EmptyStatePanel } from "@/components/ui/empty-state";
-import { Pill } from "@/components/ui/pill";
-import { cn } from "@/lib/utils";
+} from "@bb/plugin-ui/dropdown-menu";
+import { Icon } from "@bb/plugin-ui/icon";
+import { EmptyStatePanel } from "@bb/plugin-ui/empty-state";
+import { Pill } from "@bb/plugin-ui/pill";
+import { cn } from "@bb/plugin-ui/lib/utils";
 import {
   formatAutomationTrigger,
   formatScheduleRunTime,

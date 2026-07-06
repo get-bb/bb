@@ -106,7 +106,7 @@ import {
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils.js";
 
 const ICON_MAP = {
   AlertCircle: AlertCircleIcon,

@@ -2,8 +2,8 @@
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
-import { cn } from "@/lib/utils";
-import { usePortalScopeProps } from "@/lib/portal-scope";
+import { cn } from "../../lib/utils.js";
+import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import {
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
@@ -70,9 +70,7 @@ const DrawerContent = React.forwardRef<
       )}
       {...props}
     >
-      <DrawerPrimitive.Handle
-        className="mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/20"
-      />
+      <DrawerPrimitive.Handle className="mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/20" />
       {children}
     </DrawerPrimitive.Content>
   </DrawerPortal>

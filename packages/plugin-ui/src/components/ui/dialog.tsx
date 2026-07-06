@@ -3,8 +3,8 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Slot } from "@radix-ui/react-slot";
 
-import { cn } from "@/lib/utils";
-import { usePortalScopeProps } from "@/lib/portal-scope";
+import { cn } from "../../lib/utils.js";
+import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import {
   DrawerDescription as DrawerDescriptionPrimitive,
   DrawerTitle as DrawerTitlePrimitive,
@@ -21,7 +21,7 @@ import {
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "./icon.js";
 
 // ---------------------------------------------------------------------------
 // Context — separate instance from DropdownMenu / Popover.

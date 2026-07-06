@@ -42,10 +42,7 @@ function createMediaQueryRef(query: string): MediaQueryRef | null {
   return ref;
 }
 
-function subscribeMediaQuery(
-  query: string,
-  notify: () => void,
-): () => void {
+function subscribeMediaQuery(query: string, notify: () => void): () => void {
   return createMediaQueryRef(query)?.subscribe(notify) ?? (() => {});
 }
 

@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils.js";
 
 const OVERLAY_TRIGGER_CLASS_NAME = "select-none";
 

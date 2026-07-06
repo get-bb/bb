@@ -2,8 +2,8 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 
-import { cn } from "@/lib/utils";
-import { usePortalScopeProps } from "@/lib/portal-scope";
+import { cn } from "../../lib/utils.js";
+import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
 import {
   type ResponsiveOverlayContextValue,
@@ -24,7 +24,7 @@ import {
   useMenuItemHover,
 } from "./menu-item-hover.js";
 import { LIST_HOVER_TRANSITION } from "./motion.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "./icon.js";
 
 // Item state by variant: hover (focus) and the persistent last-hovered tile use
 // the same fill, so the highlight reads identically and simply persists on the

@@ -271,16 +271,17 @@ export function ResponsiveDrawerShell({
     },
     [onOpenChange, resetClosingKeyboardState],
   );
-  const handleContentAnimationEnd =
-    React.useCallback<React.AnimationEventHandler<HTMLDivElement>>(
-      (event) => {
-        if (event.currentTarget !== event.target) {
-          return;
-        }
-        onContentAnimationEnd?.(open);
-      },
-      [onContentAnimationEnd, open],
-    );
+  const handleContentAnimationEnd = React.useCallback<
+    React.AnimationEventHandler<HTMLDivElement>
+  >(
+    (event) => {
+      if (event.currentTarget !== event.target) {
+        return;
+      }
+      onContentAnimationEnd?.(open);
+    },
+    [onContentAnimationEnd, open],
+  );
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
       if (isPointerCoarse) {
