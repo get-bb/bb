@@ -410,6 +410,7 @@ export function createPluginApi(options: {
     "thread.created": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.deleted": [],
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();

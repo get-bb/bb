@@ -107,6 +107,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.created": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
+  "thread.deleted": ["thread"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };

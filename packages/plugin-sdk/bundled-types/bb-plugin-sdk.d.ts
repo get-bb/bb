@@ -425,8 +425,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            in_progress: "in_progress";
             completed: "completed";
+            in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -1893,6 +1893,7 @@ interface PluginStorage {
  * block or veto it. `thread` is the same public DTO GET /threads/:id serves.
  */
 interface PluginThreadEventPayloads {
+    /** Fired after a thread row is created. */
     "thread.created": {
         thread: ThreadResponse;
     };
@@ -1907,6 +1908,10 @@ interface PluginThreadEventPayloads {
     "thread.failed": {
         thread: ThreadResponse;
         error: string | null;
+    };
+    /** Fired after a thread is soft-deleted. */
+    "thread.deleted": {
+        thread: ThreadResponse;
     };
 }
 type PluginThreadEventName = keyof PluginThreadEventPayloads;

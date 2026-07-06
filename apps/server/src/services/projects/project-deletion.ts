@@ -9,7 +9,7 @@ import {
   threads,
   type DbQueryConnection,
 } from "@bb/db";
-import type { Environment, ThreadStatus } from "@bb/domain";
+import type { Environment, Thread, ThreadStatus } from "@bb/domain";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
@@ -25,6 +25,7 @@ import {
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../threads/thread-lifecycle.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
+import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 
 interface ProjectDeletionArgs {
   projectId: string;
@@ -66,26 +67,31 @@ function listProjectDeletionThreads(
 function tombstoneProjectThreadsForDeletion(
   deps: Pick<AppDeps, "db" | "hub">,
   args: ProjectDeletionArgs,
-): ProjectDeletionThread[] {
+): { deletedThreads: Thread[]; projectThreads: ProjectDeletionThread[] } {
   const notificationBuffer = new NotificationBuffer();
-  const projectThreads = deps.db.transaction(
+  const result = deps.db.transaction(
     (tx) => {
       markProjectDeleted(tx, notificationBuffer, {
         projectId: args.projectId,
       });
 
+      const deletedThreads: Thread[] = [];
       const threadsForDeletion = listProjectDeletionThreads(tx, args);
       for (const thread of threadsForDeletion) {
         if (thread.deletedAt === null) {
-          markThreadDeleted(tx, notificationBuffer, { threadId: thread.id });
+          const deletedThread = markThreadDeleted(tx, notificationBuffer, {
+            threadId: thread.id,
+          });
+          if (deletedThread) deletedThreads.push(deletedThread);
         }
       }
-      return threadsForDeletion;
+      return { deletedThreads, projectThreads: threadsForDeletion };
     },
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
-  return projectThreads;
+  for (const thread of result.deletedThreads) emitPluginThreadDeleted(thread);
+  return result;
 }
 
 function hasRemainingProjectThreads(
@@ -119,7 +125,7 @@ export function beginProjectDeletion(
   const environmentsById = new Map(
     projectEnvironments.map((environment) => [environment.id, environment]),
   );
-  const projectThreads = tombstoneProjectThreadsForDeletion(deps, args);
+  const { projectThreads } = tombstoneProjectThreadsForDeletion(deps, args);
   for (const thread of projectThreads) {
     const environment = thread.environmentId
       ? (environmentsById.get(thread.environmentId) ?? null)
@@ -174,7 +180,10 @@ export async function advanceProjectDeletion(
       : null;
 
     if (thread.deletedAt === null) {
-      markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
+      const deletedThread = markThreadDeleted(deps.db, deps.hub, {
+        threadId: thread.id,
+      });
+      if (deletedThread) emitPluginThreadDeleted(deletedThread);
     }
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (environment) {

@@ -24,6 +24,11 @@ export function emitPluginThreadCreated(thread: Thread): void {
   emitter?.emitThreadCreated(thread);
 }
 
+/** Called after a thread is soft-deleted. */
+export function emitPluginThreadDeleted(thread: Thread): void {
+  emitter?.emitThreadDeleted(thread);
+}
+
 /**
  * Called with every lifecycle-event outcome; forwards applied transitions
  * into `idle`/`error` as thread.idle / thread.failed. Those statuses have no

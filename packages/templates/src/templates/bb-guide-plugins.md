@@ -134,7 +134,7 @@ bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
 bb.storage.sqlite()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.on (observe thread.created/idle/failed);
+attributed to the plugin); bb.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); bb.rpc.register (the frontend data plane);
 bb.realtime.publish (ephemeral signals to open app pages);

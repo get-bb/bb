@@ -197,9 +197,10 @@ listing under a directory. Writes cap at 25 MB and return
 bb.on("thread.created", ({ thread }) => { ... });
 bb.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
 bb.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly three events. Observe-only: handlers run fire-and-forget after the
+Exactly four events. Observe-only: handlers run fire-and-forget after the
 transition and can never block or veto it. `thread` is the same DTO
 `GET /api/v1/threads/:id` serves. Errors are caught, logged, and counted in
 the plugin's handler stats (`bb plugin list`).
@@ -667,8 +668,8 @@ Reference examples in `examples/plugins/` (a bb checkout):
 - `storage.migrate` is append-only by statement index.
 - Settings saves do NOT auto-reload the plugin; `bb plugin reload <id>`.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly three
-  (`thread.created`, `thread.idle`, `thread.failed`).
+- Thread events are observe-only; there are exactly four
+  (`thread.created`, `thread.idle`, `thread.failed`, `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

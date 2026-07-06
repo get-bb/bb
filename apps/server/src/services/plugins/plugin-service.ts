@@ -297,6 +297,7 @@ export interface PluginThreadEventEmitter {
   emitThreadCreated(thread: Thread): void;
   emitThreadIdle(thread: Thread): void;
   emitThreadFailed(thread: Thread): void;
+  emitThreadDeleted(thread: Thread): void;
 }
 
 /**
@@ -1901,6 +1902,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         emitThreadEvent("thread.failed", () => ({
           thread: buildThreadDto(thread),
           error: getLastThreadErrorMessage(deps.db, thread.id),
+        }));
+      },
+      emitThreadDeleted(thread) {
+        emitThreadEvent("thread.deleted", () => ({
+          thread: buildThreadDto(thread),
         }));
       },
     },

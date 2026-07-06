@@ -132,6 +132,7 @@ export interface PluginStorage {
  * block or veto it. `thread` is the same public DTO GET /threads/:id serves.
  */
 export interface PluginThreadEventPayloads {
+  /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `idle`. `lastAssistantText` is
    * assembled the same way GET /threads/:id/output is. */
@@ -139,6 +140,8 @@ export interface PluginThreadEventPayloads {
   /** Fired when a thread transitions into `error`. `error` is the latest
    * system/error event message, when one exists. */
   "thread.failed": { thread: ThreadResponse; error: string | null };
+  /** Fired after a thread is soft-deleted. */
+  "thread.deleted": { thread: ThreadResponse };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;

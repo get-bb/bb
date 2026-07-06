@@ -52,6 +52,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -380,7 +381,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread,
     });
-    markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
+    const deletedThread = markThreadDeleted(deps.db, deps.hub, {
+      threadId: thread.id,
+    });
+    if (deletedThread) emitPluginThreadDeleted(deletedThread);
     // Automations that re-prompt this thread are disabled (never deleted) so the
     // schedule stays visible; notify each affected project so live views update.
     const disabledAutomations = disableAutomationsForDeletedThread(deps.db, {
