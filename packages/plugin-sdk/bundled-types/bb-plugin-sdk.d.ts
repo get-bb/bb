@@ -262,6 +262,16 @@ interface BbNavigate {
         subPath?: string;
         replace?: boolean;
     }): void;
+    /**
+     * Navigate to the root compose surface (the new-thread screen). Pass
+     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
+     * composer on arrival — the pairing behind "Create via chat" style entry
+     * points that drop the user into chat with a prefilled prompt.
+     */
+    toCompose(options?: {
+        initialPrompt?: string;
+        focusPrompt?: boolean;
+    }): void;
 }
 /**
  * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
@@ -422,8 +432,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            pending: "pending";
             completed: "completed";
+            pending: "pending";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;

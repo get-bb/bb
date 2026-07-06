@@ -19,6 +19,7 @@ import {
 import {
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
+  getRootComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -199,9 +200,22 @@ export function useBbNavigate(): BbNavigate {
     },
     [navigate, pluginId],
   );
+  const toCompose = useCallback(
+    (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
+      // RootComposeView reads `focusPrompt`/`initialPrompt` off the location
+      // state to seed and focus the composer (single-use, cleared after read).
+      void navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: options?.focusPrompt ?? false,
+          initialPrompt: options?.initialPrompt ?? "",
+        },
+      });
+    },
+    [navigate],
+  );
   return useMemo(
-    () => ({ toThread, toProject, toPluginPanel }),
-    [toThread, toProject, toPluginPanel],
+    () => ({ toThread, toProject, toPluginPanel, toCompose }),
+    [toThread, toProject, toPluginPanel, toCompose],
   );
 }
 
