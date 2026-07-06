@@ -1,7 +1,2 @@
-import { useMediaQuery } from "./use-media-query.js";
-
-export const POINTER_COARSE_QUERY = "(pointer: coarse)";
-
-export function usePointerCoarse(): boolean {
-  return useMediaQuery(POINTER_COARSE_QUERY);
-}
+/* Re-export shim: canonical source is @bb/shared-ui. */
+export * from "@bb/shared-ui/hooks/use-pointer-coarse";

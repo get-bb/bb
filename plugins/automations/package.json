@@ -21,7 +21,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@bb/plugin-ui": "workspace:*",
+    "@bb/shared-ui": "workspace:*",
     "@radix-ui/react-slot": "^1.2.4",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.14.0",

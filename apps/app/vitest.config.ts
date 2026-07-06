@@ -2,9 +2,10 @@ import path from "path";
 import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 export default defineWorkspaceTestConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [sharedUiEnvSeam(), react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

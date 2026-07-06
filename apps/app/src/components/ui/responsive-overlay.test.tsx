@@ -24,7 +24,10 @@ const drawerContentState = vi.hoisted(() => ({
   firePointerDownOutside: undefined as CapturedPointerDownOutside | undefined,
 }));
 
-vi.mock("./drawer.js", async () => {
+// ResponsiveDrawerShell now lives in @bb/shared-ui and imports its own
+// `./drawer.js`; mock that module (the same resolved file) so the shared-ui
+// import graph — not the app re-export shim — picks up the stub.
+vi.mock("@bb/shared-ui/drawer", async () => {
   const React = await import("react");
 
   const Drawer = ({ children }: { children: ReactNode }) =>

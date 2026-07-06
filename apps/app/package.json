@@ -26,6 +26,7 @@
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/plugin-sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/shared-ui": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "@dnd-kit/core": "^6.3.1",

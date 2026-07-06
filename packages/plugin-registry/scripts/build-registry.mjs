@@ -1,14 +1,17 @@
 // Builds the BB plugin component registry (plugin design §5.5): shadcn
-// registry-item JSONs generated from the app's own component source, so the
-// registry can never drift from the UI the app actually ships.
+// registry-item JSONs generated from the shared UI kit's component source, so
+// the registry can never drift from the UI the app and builtin plugins ship.
 //
 //   node packages/plugin-registry/scripts/build-registry.mjs [--check]
 //
 // Inputs:
-// - registry.json — the item list (uiItems), npm version pins, and the
-//   app-file → plugin-flavor override map.
-// - apps/app/src/components/ui/*.tsx — component source, verbatim.
-// - src/** here — plugin-flavored overrides (portal-scope, browser-dimming).
+// - registry.json — the item list (uiItems), npm version pins, and an
+//   (currently empty) override map for swapping a component-src file for a
+//   registry-only flavor.
+// - packages/shared-ui/src/components/ui/*.tsx — component source, verbatim.
+//   @bb/shared-ui is itself the plugin/registry flavor: its portal-scope and
+//   useBrowserDimmingModal leaves are already the no-op/plugin variants (the
+//   app injects its own flavors at build time), so no override is needed.
 //
 // Every file in an item's transitive @/-import closure becomes its own
 // registry item (named from its basename), referenced via
@@ -28,7 +31,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.join(scriptDir, "..");
 const repoRoot = path.join(packageRoot, "..", "..");
-const appSrc = path.join(repoRoot, "apps", "app", "src");
+const srcRoot = path.join(repoRoot, "packages", "shared-ui", "src");
 const outDir = path.join(packageRoot, "r");
 
 const config = JSON.parse(
@@ -37,11 +40,11 @@ const config = JSON.parse(
 const overrides = new Map(Object.entries(config.overrides ?? {}));
 const dependencyPins = config.dependencyPins ?? {};
 
-/** apps/app/src-relative path → absolute source path, honoring overrides. */
+/** shared-ui/src-relative path → absolute source path, honoring overrides. */
 function sourcePathFor(relPath) {
   const override = overrides.get(relPath);
   if (override) return path.join(packageRoot, override);
-  return path.join(appSrc, relPath);
+  return path.join(srcRoot, relPath);
 }
 
 /** Resolve an import specifier from `importerRel` to an app-src-relative path. */
@@ -64,12 +67,12 @@ function resolveLocal(specifier, importerRel) {
     `${base}/index.ts`,
     `${base}/index.tsx`,
   ]) {
-    if (existsSync(path.join(appSrc, candidate)) || overrides.has(candidate)) {
+    if (existsSync(path.join(srcRoot, candidate)) || overrides.has(candidate)) {
       return candidate;
     }
   }
   throw new Error(
-    `cannot resolve import "${specifier}" from ${importerRel} — registry items must stay within apps/app/src`,
+    `cannot resolve import "${specifier}" from ${importerRel} — registry items must stay within packages/shared-ui/src`,
   );
 }
 
@@ -129,7 +132,7 @@ const queue = [];
 for (const name of config.uiItems) {
   const relPath = `components/ui/${name}.tsx`;
   if (!existsSync(sourcePathFor(relPath))) {
-    throw new Error(`uiItem "${name}" has no source at apps/app/src/${relPath}`);
+    throw new Error(`uiItem "${name}" has no source at packages/shared-ui/src/${relPath}`);
   }
   queue.push(relPath);
 }

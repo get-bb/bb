@@ -4,11 +4,17 @@ import { defineConfig, type UserConfig } from "vite";
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
 export const sharedViteConfig = {
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
+  plugins: [
+    sharedUiEnvSeam(),
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+  ],
   // Keep app and Ladle dep optimization metadata from clobbering each other.
   cacheDir: "node_modules/.vite/app",
   build: {

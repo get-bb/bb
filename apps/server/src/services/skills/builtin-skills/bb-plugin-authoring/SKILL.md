@@ -483,8 +483,9 @@ UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
 only `definePluginApp` + the hooks):
 
-- Builtin plugins in this repo import shared UI from `@bb/plugin-ui`;
-  external and example plugins still vendor source through the registry.
+- Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
+  single source of truth the app also consumes and the registry generates
+  from); external and example plugins still vendor source through the registry.
 - `bb plugin new --app` pre-vendors button, card, input, dialog (plus their
   support files: `lib/utils`, `lib/portal-scope`, icon, responsive-overlay,
   drawer, hooks) into `components/ui/` etc., and writes a `components.json`

@@ -1,0 +1,18 @@
+{
+  "extends": [
+    "@bb/tsconfig/base.json",
+    "@bb/tsconfig/typecheck-overrides.json"
+  ],
+  "compilerOptions": {
+    "rootDir": ".",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // Consumed as raw source by bundlers (the app's Vite, the plugin build's
+    // esbuild) — never as published dist — so resolve like those bundlers do
+    // and like apps/app: extensionless relative imports, bundler resolution.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "react"]
+  },
+  "include": ["src"]
+}

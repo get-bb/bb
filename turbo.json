@@ -91,9 +91,9 @@
         "$TURBO_ROOT$/packages/sdk/package.json",
         "$TURBO_ROOT$/packages/sdk/src/**",
         "$TURBO_ROOT$/packages/sdk/tsconfig.json",
-        "$TURBO_ROOT$/packages/plugin-ui/package.json",
-        "$TURBO_ROOT$/packages/plugin-ui/src/**",
-        "$TURBO_ROOT$/packages/plugin-ui/tsconfig.json",
+        "$TURBO_ROOT$/packages/shared-ui/package.json",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
+        "$TURBO_ROOT$/packages/shared-ui/tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/plugins/automations/**",
         "!$TURBO_ROOT$/plugins/automations/dist/**",
@@ -248,7 +248,7 @@
     "typecheck": {},
     "bb-plugin-automations#typecheck": {
       "dependsOn": [
-        "@bb/plugin-ui#typecheck"
+        "@bb/shared-ui#typecheck"
       ]
     },
     "@bb/integration-tests#typecheck": {
@@ -371,17 +371,13 @@
     "@bb/plugin-registry#typecheck": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/src/components/**",
-        "$TURBO_ROOT$/apps/app/src/lib/**",
-        "$TURBO_ROOT$/apps/app/src/hooks/**"
+        "$TURBO_ROOT$/packages/shared-ui/src/**"
       ]
     },
     "@bb/plugin-registry#test": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/src/components/**",
-        "$TURBO_ROOT$/apps/app/src/lib/**",
-        "$TURBO_ROOT$/apps/app/src/hooks/**"
+        "$TURBO_ROOT$/packages/shared-ui/src/**"
       ]
     }
   }
