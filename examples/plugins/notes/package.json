@@ -13,11 +13,19 @@
   "keywords": [
     "bb-plugin"
   ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
   "devDependencies": {
     "@bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "typescript": "^5.7.0"
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
   },
   "dependencies": {
     "@milkdown/crepe": "^7.5.0",

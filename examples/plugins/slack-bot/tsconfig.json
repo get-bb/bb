@@ -4,30 +4,18 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "lib": [
-      "ES2022",
-      "DOM"
+      "ES2022"
     ],
     "noEmit": true,
     "skipLibCheck": true,
     "types": [
       "node"
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+    ]
   },
   "include": [
     "server.ts",
-    "app.tsx",
-    "app.test.tsx",
-    "vitest.config.ts",
-    "components",
-    "lib",
-    "hooks"
+    "server.test.ts",
+    "vitest.config.ts"
   ]
 }

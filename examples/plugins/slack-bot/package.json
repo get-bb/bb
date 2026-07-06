@@ -5,5 +5,14 @@
   "type": "module",
   "engines": { "bb": ">=0.0" },
   "bb": { "server": "./server.ts" },
-  "keywords": ["bb-plugin"]
+  "keywords": ["bb-plugin"],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  }
 }
