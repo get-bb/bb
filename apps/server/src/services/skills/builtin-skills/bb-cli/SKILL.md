@@ -155,10 +155,11 @@ For review or fix pipelines, get the environment ID from
 
 ## Automations
 
-- Use `bb automation ...` to manage scheduled tasks. When due, an automation
-  runs in one of two modes: `agent` (spawns a thread running a prompt — uses
-  tokens) or `script` (runs a stored command and captures stdout/exit — no
-  agent, no tokens).
+- Use `bb automation ...` to manage scheduled tasks. This command is provided
+  by the builtin `automations` plugin. When due, an automation runs in one of
+  two modes: `agent` (spawns a thread running a prompt — uses tokens) or
+  `script` (runs a stored command and captures stdout/exit — no agent, no
+  tokens).
 - Choosing a mode: pick `script` when the output is fully determined by code
   (watchdogs, threshold alerts, health checks, pollers with a fixed output) —
   write the check so it prints nothing when there's nothing to report, so quiet
@@ -167,10 +168,8 @@ For review or fix pipelines, get the environment ID from
 - For a "watch X and alert me when Y" request, prefer a script automation:
   author the check script (inline `--script` or a file via `--script-file`) so
   its stdout IS the alert, then create it — no model spend per tick.
-- Automations cannot create automations (runs are origin-gated); never schedule
-  one whose job is to make more. Host-script automations may be disabled by
-  server policy — fall back to an `agent` automation if script creation is
-  rejected.
+- Script automations may be disabled by the plugin setting; fall back to an
+  `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
 - Create a one-shot agent automation with
@@ -180,10 +179,10 @@ For review or fix pipelines, get the environment ID from
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
-- Script automations run with the bb environment injected — `BB_SERVER_URL`,
-  `BB_HOST_DAEMON_PORT`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_AUTOMATION_ID`,
-  `BB_AUTOMATION_RUN_ID` — and inherit the daemon's PATH, so `bb ...` and
-  `node ...` work with no manual exports.
+- Script automations run on the server with cwd set to the plugin data
+  directory. They have no environment/workspace. Injected variables are
+  `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID`, and
+  `BB_AUTOMATION_RUN_ID`.
 - A script run's status IS its exit code: exit 0 = succeeded; a non-zero exit is
   recorded as failed even if the script already produced a visible side effect
   (e.g. posted a message via `bb thread tell`). Make scripts exit 0 on success
@@ -199,7 +198,8 @@ For review or fix pipelines, get the environment ID from
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
-- Run `bb guide automations` for the full command reference.
+- Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
+  automations plugin should be installed and running.
 
 ## Theming
 

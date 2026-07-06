@@ -38,6 +38,5 @@ Run `bb guide <chapter>` for command details:
   agent-configuration  AGENTS.md and skills files that shape agents
   providers            Discovering providers and models
   projects             Project CRUD and sources
-  automations          Scheduled agent and script automations
   customization        Theming the palette and live-editing the app UI
   plugins              Installing plugins and their contributed bb commands

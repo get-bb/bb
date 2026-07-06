@@ -415,7 +415,7 @@ Slot props contracts (versioned, additive-only):
   routing).
   Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
   The host renders your plugin logo + `title` into the SHARED app header
-  (the same chrome as Settings/Automations) with your optional
+  (the same chrome as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component; the body below is yours,
   full-width. `headerContent` is plugin code inside host chrome and is
