@@ -65,6 +65,10 @@ export type NavigateCall =
       method: "toPluginPanel";
       path: string;
       options?: { subPath?: string; replace?: boolean };
+    }
+  | {
+      method: "toCompose";
+      options?: { initialPrompt?: string; focusPrompt?: boolean };
     };
 
 export interface ComposerLog {
@@ -458,6 +462,12 @@ export function renderSlot<Props extends object>(
         method: "toPluginPanel",
         path,
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
+      });
+    },
+    toCompose(composeOptions) {
+      navigateCalls.push({
+        method: "toCompose",
+        ...(composeOptions !== undefined ? { options: composeOptions } : {}),
       });
     },
   };

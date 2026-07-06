@@ -286,8 +286,8 @@ describe("thread events", () => {
   it("rejects unknown events at registration", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
-      bb.on("thread.deleted" as "thread.idle", () => {}),
-    ).toThrow('unknown event "thread.deleted"');
+      bb.on("thread.unknown" as "thread.idle", () => {}),
+    ).toThrow('unknown event "thread.unknown"');
   });
 });
 

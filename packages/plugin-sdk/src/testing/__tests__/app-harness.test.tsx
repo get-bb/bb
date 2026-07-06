@@ -49,6 +49,13 @@ function Panel({ subPath }: PluginNavPanelProps) {
         </button>
       ))}
       <button onClick={() => composer.addQuote("quoted!")}>Quote</button>
+      <button
+        onClick={() =>
+          navigate.toCompose({ initialPrompt: "draft", focusPrompt: true })
+        }
+      >
+        Compose
+      </button>
     </div>
   );
 }
@@ -130,6 +137,18 @@ describe("renderSlot", () => {
         method: "toPluginPanel",
         path: "panel",
         options: { subPath: "a.md" },
+      },
+    ]);
+    fireEvent.click(slot.getByText("Compose"));
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "toPluginPanel",
+        path: "panel",
+        options: { subPath: "a.md" },
+      },
+      {
+        method: "toCompose",
+        options: { initialPrompt: "draft", focusPrompt: true },
       },
     ]);
 

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
@@ -55,9 +58,9 @@ import {
  * closed, stale handles throw).
  *
  * Deliberately different from the real host:
- * - storage is in-memory: kv in a Map, `storage.sqlite()` one shared
- *   better-sqlite3 `:memory:` handle (same data across calls, like the
- *   host's shared file), secret settings alongside plain values (no files).
+ * - storage is process-local: kv in a Map, `storage.sqlite()` one shared
+ *   better-sqlite3 handle in a temp directory (same data across calls, like
+ *   the host's shared file), secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
  * - http auth modes are recorded but not enforced — signature checks and
@@ -105,7 +108,6 @@ const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
  * the same way they fail there. Update alongside the server lists.
  */
 const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  "automation",
   "environment",
   "guide",
   "help",
@@ -209,6 +211,7 @@ export interface FakePluginRegistrations {
   cli: FakeCliRecord | null;
   agentTools: FakeAgentToolRecord[];
   threadActions: FakeThreadActionRecord[];
+  threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
 }
 
@@ -558,7 +561,9 @@ export function createFakePluginHost(
     },
   };
 
-  // One shared :memory: handle: every sqlite() call sees the same data,
+  const storageRoot = mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-"));
+
+  // One shared temp-file handle: every sqlite() call sees the same data,
   // like the host's handles over one on-disk file.
   let sqliteHandle: Database.Database | undefined;
   const storage: PluginStorage = {
@@ -566,7 +571,7 @@ export function createFakePluginHost(
     sqlite() {
       assertLive();
       if (!sqliteHandle) {
-        sqliteHandle = new Database(":memory:");
+        sqliteHandle = new Database(join(storageRoot, "data.db"));
         sqliteHandle.pragma("busy_timeout = 5000");
       }
       return sqliteHandle;
@@ -1032,6 +1037,7 @@ export function createFakePluginHost(
     "thread.created": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.deleted": [],
   };
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
@@ -1090,6 +1096,14 @@ export function createFakePluginHost(
       },
       agentTools,
       threadActions,
+      get threadEventHandlers() {
+        return {
+          "thread.created": threadEventHandlers["thread.created"].length,
+          "thread.idle": threadEventHandlers["thread.idle"].length,
+          "thread.failed": threadEventHandlers["thread.failed"].length,
+          "thread.deleted": threadEventHandlers["thread.deleted"].length,
+        };
+      },
       mentionProviders,
     },
 
@@ -1283,6 +1297,7 @@ export function createFakePluginHost(
           emitLog("warn", `sqlite close failed: ${errorMessage(error)}`);
         }
       }
+      rmSync(storageRoot, { recursive: true, force: true });
       invalidated = true;
     },
   };
