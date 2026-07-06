@@ -12,14 +12,15 @@ background services, cron schedules, HTTP/RPC endpoints, thread lifecycle
 handlers, settings, storage — and `bb` CLI subcommands that agents and humans
 run like any other command. Plugins are full-trust code inside the server.
 
-Plugins are an experiment, off by default: enable "Plugins" under Settings →
-Experiments first. Until then `bb plugin` commands report that plugins are
-disabled. Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin
-SQLite file, secrets, logs).
+User-installed plugins are an experiment, off by default: enable "Plugins" under
+Settings → Experiments first. Builtin plugins (`builtin:<name>`) ship with bb and
+remain available even when the experiment is off. Plugin state lives under
+`<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
-  bb plugin install <src>        Install from a local path, git:<url>@<ref>,
-                                 or npm:<name>@<version> (npm: needs npm on
-                                 PATH; installs prompt — pass --yes to skip)
+  bb plugin install <src>        Install from a local path, builtin:<name>,
+                                 git:<url>@<ref>, or npm:<name>@<version>
+                                 (npm: needs npm on PATH; installs prompt —
+                                 pass --yes to skip)
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -30,7 +31,8 @@ SQLite file, secrets, logs).
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
                                  routes; --rotate generates a new token,
                                  invalidating the old one
-  bb plugin remove <id>          Uninstall (managed git:/npm: files deleted)
+  bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
+                                 builtin removals are remembered)
   bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
                                  --app adds a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
@@ -49,7 +51,7 @@ dist/ at install time (a build failure fails the install), and the server
 rebuilds them at load after a bb upgrade. npm packages must publish a
 prebuilt dist/ (app.js + app.meta.json) or the install is refused.
 
-The backend half is prebuilt too: when a git/npm install ships a
+The backend half is prebuilt too: when a builtin/git/npm install ships a
 dist/server.js built for the running SDK major, the server loads it instead
 of the TypeScript source — consumers never need npm or node_modules. Path
 installs always load server.ts from source, so `bb plugin dev`/reload see

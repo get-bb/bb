@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins } from "../schema.js";
 
@@ -8,12 +8,17 @@ export interface InstalledPluginRow {
   rootDir: string;
   version: string;
   enabled: boolean;
+  removedAt: number | null;
   installedAt: number;
   updatedAt: number;
 }
 
 export function listInstalledPlugins(db: DbConnection): InstalledPluginRow[] {
-  return db.select().from(installedPlugins).all();
+  return db
+    .select()
+    .from(installedPlugins)
+    .where(isNull(installedPlugins.removedAt))
+    .all();
 }
 
 export function getInstalledPlugin(
@@ -23,17 +28,24 @@ export function getInstalledPlugin(
   return db
     .select()
     .from(installedPlugins)
-    .where(eq(installedPlugins.id, id))
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .get();
+}
+
+export function getInstalledPluginRegistration(
+  db: DbConnection,
+  id: string,
+): InstalledPluginRow | undefined {
+  return db.select().from(installedPlugins).where(eq(installedPlugins.id, id)).get();
 }
 
 export function upsertInstalledPlugin(
   db: DbConnection,
-  plugin: Omit<InstalledPluginRow, "installedAt" | "updatedAt">,
+  plugin: Omit<InstalledPluginRow, "installedAt" | "updatedAt" | "removedAt">,
 ): InstalledPluginRow {
   const now = Date.now();
   db.insert(installedPlugins)
-    .values({ ...plugin, installedAt: now, updatedAt: now })
+    .values({ ...plugin, removedAt: null, installedAt: now, updatedAt: now })
     .onConflictDoUpdate({
       target: installedPlugins.id,
       set: {
@@ -41,6 +53,7 @@ export function upsertInstalledPlugin(
         rootDir: plugin.rootDir,
         version: plugin.version,
         enabled: plugin.enabled,
+        removedAt: null,
         updatedAt: now,
       },
     })
@@ -66,6 +79,19 @@ export function setInstalledPluginEnabled(
 export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   const result = db
     .delete(installedPlugins)
+    .where(eq(installedPlugins.id, id))
+    .run();
+  return result.changes > 0;
+}
+
+export function markInstalledPluginRemoved(
+  db: DbConnection,
+  id: string,
+): boolean {
+  const now = Date.now();
+  const result = db
+    .update(installedPlugins)
+    .set({ enabled: false, removedAt: now, updatedAt: now })
     .where(eq(installedPlugins.id, id))
     .run();
   return result.changes > 0;

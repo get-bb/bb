@@ -248,19 +248,21 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - A bb plugin is a TypeScript package running inside the bb server, extending
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
-- **Enable it first.** Plugins are an experiment, off by default: turn on
-  **"Plugins"** under Settings → Experiments. Until then, `bb plugin` commands
-  report that plugins are disabled.
+- **Enable user-installed plugins first.** Plugins are an experiment, off by
+  default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
+  (`builtin:<name>`) ship with bb and remain available even when the experiment
+  is off.
 - Commands:
-  - `bb plugin install <src>` — local path, `git:<url>@<ref>`, or
-    `npm:<name>@<version>` (npm on PATH required for `npm:`). Installs prompt
-    for confirmation (plugins are full-trust code); pass `--yes` to skip.
+  - `bb plugin install <src>` — local path, `builtin:<name>`,
+    `git:<url>@<ref>`, or `npm:<name>@<version>` (npm on PATH required for
+    `npm:`). Installs prompt for confirmation (plugins are full-trust code);
+    pass `--yes` to skip.
     Plugins that declare a frontend (`bb.app`) are built at install time for
     path/git sources; npm packages must publish a prebuilt `dist/`.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
-    `bb plugin remove <id>`.
+    `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

@@ -274,7 +274,9 @@ Plugin state lives under the data dir:
 
 `bb plugin install npm:<name>@<version>` requires `npm` on PATH (packages are
 installed with `--ignore-scripts`); `git:<url>@<ref>` requires `git`. Local
-path installs register the directory in place and never delete it. Plugins are
+path installs register the directory in place and never delete it. Builtin
+plugins use `builtin:<name>`, ship with bb, and remain available when the
+Plugins experiment is off unless removed. Plugins are
 full-trust code running inside the bb server process: they can read all local
 bb data, including other plugins' secrets.
 

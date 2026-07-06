@@ -166,13 +166,15 @@ export const systemExperiments = sqliteTable("system_experiments", {
 // memory served via GET /api/v1/plugins.
 export const installedPlugins = sqliteTable("plugins", {
   id: text("id").primaryKey(),
-  /** Install source spec: "path:<abs>" | "git:<spec>" | "npm:<spec>". */
+  /** Install source spec: "path:<abs>" | "git:<spec>" | "npm:<spec>" | "builtin:<name>". */
   source: text("source").notNull(),
   /** Absolute directory containing the plugin's package.json. */
   rootDir: text("root_dir").notNull(),
   /** package.json version recorded at install/update time. */
   version: text("version").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  /** Builtin remove tombstone; non-null rows are hidden and not auto-reconciled. */
+  removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

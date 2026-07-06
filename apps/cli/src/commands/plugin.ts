@@ -151,7 +151,9 @@ function printSettings(result: PluginSettingsResult): void {
     const meta = [
       descriptor.type,
       ...(descriptor.secret ? ["secret"] : []),
-      ...(descriptor.options ? [`options: ${descriptor.options.join("|")}`] : []),
+      ...(descriptor.options
+        ? [`options: ${descriptor.options.join("|")}`]
+        : []),
     ].join(", ");
     let display: string;
     if (descriptor.secret) {
@@ -233,19 +235,20 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a plugin from a local path, git:<url>@<ref>, or npm:<name>@<version>",
+      "Install a plugin from a local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version>",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
     .action(
       action(
-        async (
-          source: string,
-          opts: JsonOutputOptions & { yes?: boolean },
-        ) => {
+        async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
           let normalized: string;
           let summary: string;
-          if (source.startsWith("git:") || source.startsWith("npm:")) {
+          if (
+            source.startsWith("builtin:") ||
+            source.startsWith("git:") ||
+            source.startsWith("npm:")
+          ) {
             normalized = source;
             summary = `Installing ${source}`;
           } else {
@@ -315,7 +318,10 @@ export function registerPluginCommands(
     .description(
       "Scaffold a new plugin in ./bb-plugin-<name> (no server required)",
     )
-    .option("--app", "Also scaffold a frontend entry (app.tsx, built by `bb plugin build`)")
+    .option(
+      "--app",
+      "Also scaffold a frontend entry (app.tsx, built by `bb plugin build`)",
+    )
     .action(
       action(async (name: string, opts: { app?: boolean }) => {
         const packageName = name.startsWith("bb-plugin-")
@@ -574,7 +580,10 @@ export function registerPluginCommands(
             );
             process.exit(1);
           }
-          if (key === undefined || (actionName === "set" && value === undefined)) {
+          if (
+            key === undefined ||
+            (actionName === "set" && value === undefined)
+          ) {
             console.error(
               actionName === "set"
                 ? "Usage: bb plugin config <id> set <key> <value>"
@@ -671,37 +680,35 @@ export function registerPluginCommands(
     .option("-n, --lines <count>", "Number of lines to show", "100")
     .option("-f, --follow", "Poll for new lines every second (Ctrl+C to stop)")
     .action(
-      action(
-        async (id: string, opts: { lines: string; follow?: boolean }) => {
-          const requested = Number.parseInt(opts.lines, 10);
-          const tail =
-            Number.isFinite(requested) && requested > 0 ? requested : 100;
-          const fetchTail = async (count: number): Promise<string[]> => {
-            const result = await callPlugins<{
-              ok: boolean;
-              error?: string;
-              lines?: string[];
-            }>(getUrl(), `/${encodeURIComponent(id)}/logs?tail=${count}`, "GET");
-            if (!result.ok || !result.lines) exitWithError(result);
-            return result.lines;
-          };
-          let lines = await fetchTail(tail);
-          for (const line of lines) console.log(line);
-          if (!opts.follow) return;
-          for (;;) {
-            await sleep(1000);
-            const next = await fetchTail(1000);
-            // Print the suffix that extends what we already showed: find the
-            // last line printed so far and emit everything after it. When it
-            // is gone (rotation or a fresh file), print the whole tail.
-            const lastPrinted = lines.at(-1);
-            const startAfter =
-              lastPrinted === undefined ? -1 : next.lastIndexOf(lastPrinted);
-            for (const line of next.slice(startAfter + 1)) console.log(line);
-            lines = next;
-          }
-        },
-      ),
+      action(async (id: string, opts: { lines: string; follow?: boolean }) => {
+        const requested = Number.parseInt(opts.lines, 10);
+        const tail =
+          Number.isFinite(requested) && requested > 0 ? requested : 100;
+        const fetchTail = async (count: number): Promise<string[]> => {
+          const result = await callPlugins<{
+            ok: boolean;
+            error?: string;
+            lines?: string[];
+          }>(getUrl(), `/${encodeURIComponent(id)}/logs?tail=${count}`, "GET");
+          if (!result.ok || !result.lines) exitWithError(result);
+          return result.lines;
+        };
+        let lines = await fetchTail(tail);
+        for (const line of lines) console.log(line);
+        if (!opts.follow) return;
+        for (;;) {
+          await sleep(1000);
+          const next = await fetchTail(1000);
+          // Print the suffix that extends what we already showed: find the
+          // last line printed so far and emit everything after it. When it
+          // is gone (rotation or a fresh file), print the whole tail.
+          const lastPrinted = lines.at(-1);
+          const startAfter =
+            lastPrinted === undefined ? -1 : next.lastIndexOf(lastPrinted);
+          for (const line of next.slice(startAfter + 1)) console.log(line);
+          lines = next;
+        }
+      }),
     );
 
   plugin

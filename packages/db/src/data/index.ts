@@ -191,7 +191,9 @@ export { getExperiments, setExperiments } from "./experiments.js";
 export {
   deleteInstalledPlugin,
   getInstalledPlugin,
+  getInstalledPluginRegistration,
   listInstalledPlugins,
+  markInstalledPluginRemoved,
   setInstalledPluginEnabled,
   upsertInstalledPlugin,
   type InstalledPluginRow,

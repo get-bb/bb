@@ -379,6 +379,13 @@
       "when": 1783265400374,
       "tag": "0053_wise_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1783351082402,
+      "tag": "0054_same_karen_page",
+      "breakpoints": true
     }
   ]
 }
