@@ -15,6 +15,7 @@ import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
+import { registerConnectRoutes } from "./routes/connect.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadFolderRoutes } from "./routes/thread-folders.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
@@ -390,6 +391,7 @@ export function createApp(
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps);
+  registerConnectRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);

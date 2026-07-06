@@ -165,9 +165,12 @@ import type {
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
+  ConnectPairRequest,
+  ConnectStatusResponse,
 } from "./api-types.js";
 import {
   automationRunListQuerySchema,
+  connectPairRequestSchema,
   closeTerminalRequestSchema,
   createAutomationRequestSchema,
   runAutomationRequestSchema,
@@ -467,6 +470,29 @@ export const publicApiRoutes = {
         hostProviderCliInstallRequestSchema,
       ),
       response: textResponse<HostProviderCliInstallEvent>(),
+    }),
+  },
+
+  connect: {
+    pair: defineRoute({
+      path: "/connect/pair",
+      method: "post",
+      request: jsonRequest<EmptyInput, ConnectPairRequest>(
+        connectPairRequestSchema,
+      ),
+      response: jsonResponse<ConnectStatusResponse>(),
+    }),
+    status: defineRoute({
+      path: "/connect/status",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ConnectStatusResponse>(),
+    }),
+    disconnect: defineRoute({
+      path: "/connect/disconnect",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<ConnectStatusResponse>(),
     }),
   },
 

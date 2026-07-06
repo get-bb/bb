@@ -234,6 +234,23 @@ off, execution requests that target a non-primary host are rejected with
 `multi_machine_disabled`. The bb connect remote-access surfaces are gated by
 the same experiment as they land.
 
+## bb connect
+
+`bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
+server for browser access at `<handle>.getbb.app` (claim a handle and copy the
+command at https://getbb.app). Pairing is a thin call to the server's
+`POST /connect/pair` route: **the server** redeems the code, stores the durable
+credential under its data dir (`connect.json`), and holds the connect tunnel
+itself — dialing the gate, proxying relayed requests to its own loopback (which
+serves the SPA + `/api` + `/ws`), and reconnecting with capped backoff. The
+tunnel therefore lives as long as the bb server runs and re-establishes on
+restart; there is no foreground client. Pair from a machine without an installed
+bb via `npx -p bb-app@latest bb connect …`. `bb connect status` shows the
+server's connect state and `bb connect off` disconnects and clears the pairing.
+
+The tunnel client lives in `apps/server` (`services/connect/`); the CLI and app
+only drive the `/connect/*` routes.
+
 ## Plugins
 
 Plugins are gated behind the "Plugins" experiment (Settings → Experiments, off

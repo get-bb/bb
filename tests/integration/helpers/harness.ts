@@ -25,6 +25,7 @@ import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedu
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
+import { ConnectTunnelService } from "../../../apps/server/src/services/connect/tunnel-service.js";
 import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
@@ -271,10 +272,16 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const connectTunnel = new ConnectTunnelService({
+    dataDir: serverDataDir,
+    loopbackBaseUrl: `http://127.0.0.1:${config.serverPort}`,
+    logger: testLogger,
+  });
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
     config,
+    connectTunnel,
     db,
     hub,
     lifecycleDedupers,

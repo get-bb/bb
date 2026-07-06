@@ -28,6 +28,7 @@
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
+    "@bb/tunnel-contract": "workspace:*",
     "@better-auth/api-key": "^1.5.6",
     "@better-auth/drizzle-adapter": "^1.5.6",
     "@hono/node-server": "^1.19.11",
@@ -49,6 +50,7 @@
     "pino-roll": "^4.0.0",
     "semver": "^7.7.0",
     "tailwindcss": "^4.3.0",
+    "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

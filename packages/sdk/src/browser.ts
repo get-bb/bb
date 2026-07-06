@@ -41,6 +41,7 @@ export const bb = createBrowserBbSdk();
 export { createBbSdk, createHttpTransport };
 export type { BbSdk, BbSdkContext, BbSdkTransport };
 export type * from "./realtime.js";
+export type * from "./areas/connect.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";
 export type * from "./areas/projects.js";

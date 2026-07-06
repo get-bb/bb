@@ -17,7 +17,7 @@ and rejected; delete it when this plan starts landing.
 | Feature name | **bb connect**, consistently — folders, packages, UI copy, docs. |
 | Cloud data plane | Our own tunnel protocol on Cloudflare Workers + Durable Objects (WS hibernation). No cloudflared, no ngrok, no VM fleet. |
 | Auth | All identity in bb connect cloud. better-auth + GitHub OAuth. Core bb **server** gains zero auth code — the tunnel client injects at loopback, which bb already trusts. |
-| Tunnel client home | **Host daemon** (`apps/host-daemon`) — it is a host-local primitive, the daemon's local API (`:38887`) is what `apps/app` already calls for machine-local actions, and the daemon owns the `auth.json` credential pattern. The invariant is therefore: `apps/server` untouched (hard rule); `apps/host-daemon` gains the tunnel client + local-API endpoints. |
+| Tunnel client home | **`apps/server`** — the server is the always-on process, already serves the product surface the tunnel exposes (SPA + `/api` + `/ws`), and proxies relayed requests to its own loopback base URL. It holds the tunnel across its lifetime and reconnects on restart. `bb connect` is a thin CLI that pairs via server `/connect/*` routes and exits. (Superseded the earlier host-daemon choice; the server-untouched invariant is deleted.) |
 | Primary UX | **Button in the bb UI**, browser-callback flow (below). The `bb connect` CLI command ships too, as a thin wrapper over the same daemon API — needed for headless primary machines and agents. |
 | DB | Cloudflare D1 + drizzle (SQLite dialect — same idioms as `packages/db`). Not PlanetScale: second vendor + cross-network hop for a handful of small tables. |
 | Signup | **Open** (GitHub OAuth). Abuse controls are therefore v1 scope, not later. |
@@ -71,8 +71,11 @@ apps/app                 # grows: Connect settings pane (M3), Machines pane (M4)
                          #   host online/offline surfacing
 ```
 
-`apps/server`: **no changes, ever, in this plan** — assert in review on every
-PR; it is the central invariant.
+The tunnel client lives in **`apps/server`**: the server is the always-on
+process, it already serves the product surface the tunnel exposes (SPA + `/api`
++ `/ws`), and it can proxy relayed requests to its own loopback base URL. `bb
+connect` is a thin CLI that pairs (redeem + start) via server routes and exits;
+the server holds the tunnel across its own lifetime and reconnects on restart.
 
 Cloudflare specifics:
 - Both workers bind the same D1. Session cookie domain is the base domain
@@ -395,8 +398,10 @@ soak + final cross-tenant/auth-matrix CI run against prod config.
 
 ## Cross-cutting rules
 
-- **`apps/server` is never touched.** The daemon changes are scoped to the
-  tunnel client + its local-API endpoints — no provider/thread behavior.
+- **The tunnel client lives in `apps/server`** (`services/connect/`): a
+  long-lived service that holds the gate WebSocket and proxies to the server's
+  loopback base URL, plus `/connect/pair|status|disconnect` routes. Credential
+  persisted server-side under the data dir.
 - **Never mock D1/DB in tests** — miniflare-backed D1 or in-memory SQLite.
 - **No payload persistence or logging in the cloud** — the product promise.
 - Base domain, limits, TTLs, reserved handles: constants in

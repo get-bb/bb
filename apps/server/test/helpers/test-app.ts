@@ -8,6 +8,7 @@ import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
+import { ConnectTunnelService } from "../../src/services/connect/tunnel-service.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import {
   createAppVersionService,
@@ -170,10 +171,16 @@ export async function createTestAppHarness(
       config,
       logger: testLogger,
     });
+  const connectTunnel = new ConnectTunnelService({
+    dataDir,
+    loopbackBaseUrl: `http://127.0.0.1:${config.serverPort}`,
+    logger: testLogger,
+  });
   const deps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
     config,
+    connectTunnel,
     db,
     hub,
     lifecycleDedupers,

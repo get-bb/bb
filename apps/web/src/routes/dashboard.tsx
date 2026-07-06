@@ -171,10 +171,13 @@ function ServerCard({ state }: { state: ServerState }) {
   async function makeCommand() {
     const r = await createCodeFn();
     if ("code" in r) {
+      const mins = Math.round(r.expiresInMs / 60000);
       setCommand(
-        `bb connect --code ${r.code} --server ${r.serverUrl}\n\n# code expires in ${Math.round(
-          r.expiresInMs / 60000,
-        )} min`,
+        `# On the machine running your bb server:\n` +
+          `npx -p bb-app@latest bb connect --code ${r.code} --server ${r.serverUrl}\n\n` +
+          `# Already have bb installed? Drop the npx prefix:\n` +
+          `# bb connect --code ${r.code} --server ${r.serverUrl}\n\n` +
+          `# code expires in ${mins} min`,
       );
     }
   }

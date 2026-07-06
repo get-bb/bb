@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 
 import { registerStatusCommand } from "../commands/status.js";
+import { registerConnectCommands } from "../commands/connect.js";
 import { registerHostCommands } from "../commands/host.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
@@ -34,6 +35,7 @@ describe("CLI --json flag enforcement", () => {
     const getUrl = () => "http://localhost";
 
     registerStatusCommand(program, getUrl);
+    registerConnectCommands(program, getUrl);
     registerHostCommands(program, getUrl);
     registerProjectCommands(program, getUrl);
     registerProviderCommands(program, getUrl);

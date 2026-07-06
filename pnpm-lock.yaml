@@ -709,6 +709,9 @@ importers:
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-contract
       '@better-auth/api-key':
         specifier: ^1.5.6
         version: 1.5.6(jvewsiztlybvcdmolc7latrc7m)
@@ -772,6 +775,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -809,9 +815,6 @@ importers:
       vitest:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(typescript@5.9.3))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.2))
-      ws:
-        specifier: ^8.19.0
-        version: 8.19.0
 
   apps/web:
     dependencies:
@@ -13241,7 +13244,7 @@ snapshots:
       google-auth-library: 10.6.1
       p-retry: 4.6.2
       protobufjs: 7.5.4
-      ws: 8.20.1
+      ws: 8.21.0
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
     transitivePeerDependencies:
@@ -13265,7 +13268,7 @@ snapshots:
     dependencies:
       '@hono/node-server': 1.19.11(hono@4.11.9)
       hono: 4.11.9
-      ws: 8.20.1
+      ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -14135,7 +14138,7 @@ snapshots:
 
   '@mistralai/mistralai@2.2.1':
     dependencies:
-      ws: 8.20.1
+      ws: 8.21.0
       zod: 4.3.6
       zod-to-json-schema: 3.25.1(zod@4.3.6)
     transitivePeerDependencies:

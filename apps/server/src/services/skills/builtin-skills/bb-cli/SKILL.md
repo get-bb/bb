@@ -60,6 +60,12 @@ message agents, or inspect projects, providers, and environments.
   (list ids with `bb host list`); omit it to use the local primary host.
   Non-primary hosts require the "Multi-machine" experiment (Settings →
   Experiments) — when off, the server rejects with `multi_machine_disabled`.
+- `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
+  server for browser access at `<handle>.getbb.app` (get the code from
+  https://getbb.app). Pairing returns immediately — the server itself holds the
+  tunnel (credential stored in its data dir) and reconnects on restart, so
+  there is no foreground process. `bb connect status` / `bb connect off` report
+  and clear the pairing.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or

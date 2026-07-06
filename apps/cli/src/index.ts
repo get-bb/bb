@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { registerAutomationCommands } from "./commands/automation.js";
+import { registerConnectCommands } from "./commands/connect.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerHostCommands } from "./commands/host.js";
@@ -79,6 +80,7 @@ registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerHostCommands(program, getUrl);
+registerConnectCommands(program, getUrl);
 registerAutomationCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerUiCommands(program, getUrl);
