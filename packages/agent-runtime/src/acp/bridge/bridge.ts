@@ -358,7 +358,6 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
-const ACP_NATIVE_REASONING_DISCOVERY_MODEL_LIMIT = 50;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
 
@@ -567,22 +566,26 @@ async function discoverAcpNativeReasoningByModel(args: {
     return null;
   }
   const modelOption = args.modelOption;
-  if (modelOptions.length > ACP_NATIVE_REASONING_DISCOVERY_MODEL_LIMIT) {
-    return null;
-  }
 
+  // Each probe is one set_config_option round trip to the local agent, so
+  // work is bounded by the time budget rather than a model-count cutoff
+  // (omp's catalog alone is ~90 models). On timeout or a mid-probe error the
+  // partial map is kept: probed models surface their real reasoning levels
+  // and unprobed models fall back to the agent-managed default.
+  const supportByModel = new Map<string, AcpNativeReasoningSupport>();
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutReached = new Promise<null>((resolve) => {
+  const timeoutReached = new Promise<
+    ReadonlyMap<string, AcpNativeReasoningSupport>
+  >((resolve) => {
     timeout = setTimeout(() => {
       args.connection.kill();
-      resolve(null);
+      resolve(supportByModel);
     }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
   });
 
   try {
     return await Promise.race([
       (async () => {
-        const supportByModel = new Map<string, AcpNativeReasoningSupport>();
         for (const model of modelOptions) {
           const configState = await args.connection.request({
             method: "session/set_config_option",
@@ -605,7 +608,7 @@ async function discoverAcpNativeReasoningByModel(args: {
       timeoutReached,
     ]);
   } catch {
-    return null;
+    return supportByModel.size > 0 ? supportByModel : null;
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);

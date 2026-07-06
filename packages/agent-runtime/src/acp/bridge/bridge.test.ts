@@ -409,6 +409,37 @@ describe("acp bridge", () => {
     });
   });
 
+  it("probes per-model reasoning across large catalogs instead of falling back", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+          FAKE_ACP_MODEL_COUNT: "60",
+        },
+      },
+      primaryModels: [],
+    });
+
+    const result = (await waitForResponse(modelListId)).result as {
+      models: {
+        id: string;
+        supportedReasoningEfforts: { reasoningEffort: string }[];
+      }[];
+    };
+    expect(result.models).toHaveLength(60);
+    const lastGenerated = result.models.find(
+      (model) => model.id === "fake/gen-59",
+    );
+    expect(lastGenerated?.supportedReasoningEfforts).toEqual([
+      { reasoningEffort: "low", description: "low" },
+      { reasoningEffort: "medium", description: "medium" },
+      { reasoningEffort: "high", description: "high" },
+    ]);
+  });
+
   it("keeps ACP-native discovered models when per-model reasoning discovery errors", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
