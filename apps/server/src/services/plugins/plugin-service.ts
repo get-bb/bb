@@ -1142,6 +1142,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return deps.isEnabled() || isBuiltinSource(row.source);
   }
 
+  function shouldExposeLoadedPlugin(id: string): boolean {
+    return deps.isEnabled() || isBuiltinPluginId(id);
+  }
+
+  function exposedLoadedEntries(): Array<[string, LoadedPlugin]> {
+    return [...loaded.entries()].filter(([id]) => shouldExposeLoadedPlugin(id));
+  }
+
   /**
    * The backend entry to import for this load. Managed (git:/npm:) installs
    * prefer a fresh, SDK-major-compatible prebuilt `dist/server.js` (design
@@ -1775,7 +1783,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }> {
     const seen = new Set<string>(RESERVED_AGENT_TOOL_NAMES);
     const out: Array<{ pluginId: string; record: PluginAgentToolRecord }> = [];
-    for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+    for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
       a.localeCompare(b),
     )) {
       for (const record of plugin.handle.agentTools) {
@@ -1789,7 +1797,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function cliContributions(): PluginCliContribution[] {
     const contributions: PluginCliContribution[] = [];
-    for (const [id, plugin] of loaded) {
+    for (const [id, plugin] of exposedLoadedEntries()) {
       const registration = plugin.handle.cli.registration;
       if (!registration) continue;
       contributions.push({
@@ -2227,7 +2235,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listSkillsRootPaths() {
-      return [...loaded.entries()]
+      return exposedLoadedEntries()
         .sort(([a], [b]) => a.localeCompare(b))
         .flatMap(([, plugin]) => plugin.manifest.skillsRootPaths);
     },
@@ -2285,7 +2293,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listThreadActionContributions() {
       const contributions: PluginThreadActionContribution[] = [];
-      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         for (const record of plugin.handle.threadActions) {
@@ -2302,6 +2310,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getThreadAction(id, actionId) {
+      if (!shouldExposeLoadedPlugin(id)) return { outcome: "unknown-plugin" };
       return wireLookup(id, (plugin) =>
         plugin.handle.threadActions.find((record) => record.id === actionId),
       );
@@ -2327,7 +2336,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listMentionProviderContributions() {
       const contributions: PluginMentionProviderContribution[] = [];
-      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         for (const record of plugin.handle.mentionProviders) {
@@ -2342,11 +2351,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async searchMentions(args) {
-      if (loaded.size === 0) return [];
-      const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
-      const entries = [...loaded.entries()].sort(([a], [b]) =>
+      const entries = exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       );
+      if (entries.length === 0) return [];
+      const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
           tasks.push(

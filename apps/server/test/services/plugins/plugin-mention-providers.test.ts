@@ -295,10 +295,10 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const disabled = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=fix`,
     );
-    expect(disabled.status).toBe(422);
-    expect(await disabled.json()).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Plugins are disabled"),
+    expect(disabled.status).toBe(200);
+    expect(await disabled.json()).toEqual({
+      ok: true,
+      groups: [],
     });
   });
 

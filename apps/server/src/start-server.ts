@@ -119,7 +119,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
   });
-  const db = initDb(serverConfig.databasePath, { logger });
+  const db = initDb(serverConfig.databasePath, {
+    dataDir: serverConfig.BB_DATA_DIR,
+    logger,
+  });
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
@@ -163,7 +166,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const runtimeConfig: ServerRuntimeConfig = {
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
-    automationsAllowScriptRuns: serverConfig.BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     customAcpAgents: [],
     customModels: [],

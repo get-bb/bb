@@ -223,6 +223,8 @@ describe("server skeleton", () => {
 
       const logger = {
         debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
         warn: vi.fn(),
       };
       const db = initDb(dbPath, { logger });

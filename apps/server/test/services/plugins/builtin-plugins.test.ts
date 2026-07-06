@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
+import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
 
 const logger = testLogger as unknown as Logger;
@@ -173,5 +174,38 @@ describe("builtin plugin reconciliation", () => {
     await expect(service.install("builtin:missing")).rejects.toThrow(
       'unknown builtin plugin "missing"',
     );
+  });
+});
+
+describe("builtin plugin packaging", () => {
+  let workDir: string;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugin-copy-"));
+  });
+
+  afterEach(async () => {
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("copies only the runtime layout for packaged builtins", async () => {
+    const targetRoot = join(workDir, "builtin-plugins");
+
+    await copyBuiltinPlugins({ build: false, targetRoot });
+
+    const copiedRoot = join(targetRoot, "automations");
+    await expect(stat(join(copiedRoot, "package.json"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(copiedRoot, "dist", "server.js")),
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(join(copiedRoot, "dist", "app.js")),
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(join(copiedRoot, "dist", "app.css")),
+    ).resolves.toBeTruthy();
+    await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
+    await expect(stat(join(copiedRoot, "src"))).rejects.toThrow();
+    await expect(stat(join(copiedRoot, "node_modules"))).rejects.toThrow();
   });
 });
