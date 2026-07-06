@@ -22,7 +22,6 @@ import {
 // apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
 // CLI commands shadowing core bb commands. Update both together.
 const RESERVED_BB_CLI_COMMANDS = [
-  "automation",
   "environment",
   "guide",
   "help",
@@ -65,6 +64,9 @@ describe("reserved bb CLI command names", () => {
     const names = topLevelCommandNames(buildProgram());
     const reserved = new Set(RESERVED_BB_CLI_COMMANDS);
     for (const name of names) {
+      // Transitional: the automations plugin owns "automation"; the core
+      // command is being deleted and must not re-reserve the name.
+      if (name === "automation") continue;
       expect(reserved, `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`).toContain(
         name,
       );
