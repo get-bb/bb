@@ -173,4 +173,60 @@ describe("exportLegacyAutomationsForPluginImport", () => {
       },
     });
   });
+
+  it("exports a script automation whose script file is missing instead of aborting", async () => {
+    createLegacyTables(db);
+    db.$client
+      .prepare(
+        `INSERT INTO automations (
+           id, project_id, target_thread_id, name, enabled, trigger_type,
+           trigger_config, run_mode, execution, environment, auto_archive,
+           origin, created_by_thread_id, next_run_at, last_run_at, run_count,
+           last_run_status, last_run_thread_id, last_error, created_at,
+           updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "auto_gone",
+        "proj_1",
+        null,
+        "Dangling script",
+        1,
+        "schedule",
+        JSON.stringify({
+          triggerType: "schedule",
+          cron: "0 9 * * *",
+          timezone: "America/Los_Angeles",
+        }),
+        "script",
+        JSON.stringify({ mode: "script", scriptFile: "gone.sh" }),
+        JSON.stringify({ kind: "existing", environmentId: "env_1" }),
+        0,
+        "agent",
+        null,
+        123,
+        null,
+        0,
+        null,
+        null,
+        null,
+        10,
+        20,
+      );
+
+    exportLegacyAutomationsForPluginImport({
+      dataDir,
+      db,
+      logger: testLogger,
+    });
+
+    const payload = JSON.parse(
+      await readFile(
+        join(dataDir, "plugins", "automations", "import", "legacy-automations.json"),
+        "utf8",
+      ),
+    );
+    expect(payload.automations).toMatchObject([{ id: "auto_gone" }]);
+    expect(payload.scripts).toEqual({});
+  });
 });

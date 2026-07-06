@@ -105,6 +105,7 @@ function containedPath(rootPath: string, pathFromRoot: string): string {
 function readLegacyAutomationScripts(args: {
   automations: LegacyAutomationExportFile["automations"];
   dataDir: string;
+  logger: LegacyAutomationsExportLogger;
 }): LegacyAutomationExportFile["scripts"] {
   const scripts: LegacyAutomationExportFile["scripts"] = {};
   for (const automation of args.automations) {
@@ -114,9 +115,24 @@ function readLegacyAutomationScripts(args: {
     }
     const scriptDir = join(args.dataDir, "automation-scripts", automation.id);
     const scriptPath = containedPath(scriptDir, execution.scriptFile);
+    let content: string;
+    try {
+      content = readFileSync(scriptPath, "utf8");
+    } catch (err) {
+      // A dangling scriptFile reference must not brick startup: the kernel
+      // itself tolerated a missing stored script (the run failed at dispatch),
+      // so export the automation without its script and let it fail the same
+      // way post-import. Any other read error still aborts fail-closed.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      args.logger.error(
+        { err },
+        `Legacy automation ${automation.id} references missing script ${scriptPath}; exporting without script content`,
+      );
+      continue;
+    }
     scripts[automation.id] = {
       fileName: execution.scriptFile,
-      content: readFileSync(scriptPath, "utf8"),
+      content,
     };
   }
   return scripts;
@@ -241,6 +257,7 @@ export function exportLegacyAutomationsForPluginImport(args: {
       scripts: readLegacyAutomationScripts({
         automations,
         dataDir: args.dataDir,
+        logger: args.logger,
       }),
     });
 
