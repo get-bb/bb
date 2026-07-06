@@ -179,7 +179,6 @@ export const automationResponseSchema = z
     enabled: z.boolean(),
     trigger: automationTriggerSchema,
     execution: automationExecutionSchema,
-    autoArchive: z.boolean(),
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).nullable(),
     nextRunAt: z.number().nullable(),
@@ -233,7 +232,6 @@ export const createAutomationInputSchema = z
     enabled: z.boolean().default(true),
     trigger: automationTriggerSchema,
     execution: automationExecutionRequestSchema,
-    autoArchive: z.boolean().default(false),
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).optional(),
   })
@@ -250,15 +248,13 @@ export const updateAutomationInputSchema = z
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH).optional(),
     trigger: automationTriggerSchema.optional(),
     execution: automationExecutionRequestSchema.optional(),
-    autoArchive: z.boolean().optional(),
   })
   .strict()
   .refine(
     (value) =>
       value.name !== undefined ||
       value.trigger !== undefined ||
-      value.execution !== undefined ||
-      value.autoArchive !== undefined,
+      value.execution !== undefined,
     { message: "at least one field is required" },
   );
 export type UpdateAutomationInput = z.infer<typeof updateAutomationInputSchema>;

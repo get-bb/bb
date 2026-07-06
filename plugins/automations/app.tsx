@@ -54,6 +54,7 @@ import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 import {
   formatAutomationTrigger,
+  formatScheduleRunTime,
   formatScheduleStatusLabel,
   isCompletedOneShotAutomation,
 } from "@/lib/format-schedule";
@@ -123,6 +124,7 @@ function useOverview(): {
     entries: OverviewEntry[] | null;
     error: string | null;
   }>({ entries: null, error: null });
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetch = useCallback(() => {
     rpc.call("automations_overview").then(
@@ -137,10 +139,25 @@ function useOverview(): {
   useEffect(() => {
     refetch();
   }, [refetch]);
+  useEffect(
+    () => () => {
+      if (refetchTimerRef.current !== null) {
+        clearTimeout(refetchTimerRef.current);
+      }
+    },
+    [],
+  );
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimerRef.current !== null) return;
+    refetchTimerRef.current = setTimeout(() => {
+      refetchTimerRef.current = null;
+      refetch();
+    }, 75);
+  }, [refetch]);
   // Any create/update/pause/resume/run/delete or run-completion touches the
   // overview (rows show last-run status), so refetch on either kind.
   useRealtime("automations", (payload) => {
-    if (asSignal(payload) !== null) refetch();
+    if (asSignal(payload) !== null) scheduleRefetch();
   });
   return state;
 }
@@ -205,6 +222,7 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
   // Guard concurrent loadMore + refetch races: only the latest first-page
   // load is allowed to replace the list.
   const requestRef = useRef(0);
+  const loadMoreInFlightRef = useRef(false);
 
   const loadFirstPage = useCallback(() => {
     const requestId = ++requestRef.current;
@@ -235,29 +253,37 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
   }, [rpc, projectId, automationId]);
 
   const loadMore = useCallback(() => {
-    setState((prev) => {
-      if (prev.nextCursor === null || prev.loadingMore) return prev;
-      const cursor = prev.nextCursor;
-      rpc
-        .call("automations_runs", { projectId, automationId, cursor })
-        .then(
-          (result) => {
-            const page = result as AutomationRunListResponse;
-            setState((current) => ({
-              ...current,
-              runs: [...current.runs, ...page.runs],
-              nextCursor: page.nextCursor,
-              loadingMore: false,
-            }));
-          },
-          (error: unknown) => {
-            toast.error(errorText(error));
-            setState((current) => ({ ...current, loadingMore: false }));
-          },
-        );
-      return { ...prev, loadingMore: true };
+    if (
+      state.nextCursor === null ||
+      state.loadingMore ||
+      loadMoreInFlightRef.current
+    ) {
+      return;
+    }
+    const cursor = state.nextCursor;
+    const requestId = requestRef.current;
+    loadMoreInFlightRef.current = true;
+    setState((prev) => ({ ...prev, loadingMore: true }));
+    rpc.call("automations_runs", { projectId, automationId, cursor }).then(
+      (result) => {
+        if (requestRef.current !== requestId) return;
+        const page = result as AutomationRunListResponse;
+        setState((current) => ({
+          ...current,
+          runs: [...current.runs, ...page.runs],
+          nextCursor: page.nextCursor,
+          loadingMore: false,
+        }));
+      },
+      (error: unknown) => {
+        if (requestRef.current !== requestId) return;
+        toast.error(errorText(error));
+        setState((current) => ({ ...current, loadingMore: false }));
+      },
+    ).finally(() => {
+      loadMoreInFlightRef.current = false;
     });
-  }, [rpc, projectId, automationId]);
+  }, [rpc, projectId, automationId, state.nextCursor, state.loadingMore]);
 
   useEffect(() => {
     loadFirstPage();
@@ -304,15 +330,8 @@ function routeOf(automation: AutomationResponse): DetailRoute {
 // Formatting helpers (run history) — ported from the kernel detail view.
 // ---------------------------------------------------------------------------
 
-const RUN_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
 function formatRunTimestamp(timestamp: number): string {
-  return RUN_TIME_FORMATTER.format(new Date(timestamp));
+  return formatScheduleRunTime(timestamp);
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -320,15 +339,6 @@ function formatRunDuration(run: AutomationRunResponse): string | null {
   const seconds = (run.finishedAt - run.startedAt) / 1000;
   if (seconds < 0) return null;
   return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-}
-
-/** A succeeded script run that surfaced no output reads as "silent". */
-function isSilentRun(run: AutomationRunResponse): boolean {
-  return (
-    run.status === "succeeded" &&
-    run.runMode === "script" &&
-    (run.output === null || run.output.trim().length === 0)
-  );
 }
 
 interface RunStatusLabel {
@@ -345,9 +355,7 @@ function getRunStatusLabel(run: AutomationRunResponse): RunStatusLabel {
     case "skipped":
       return { label: "Skipped", tone: "muted" };
     case "succeeded":
-      return isSilentRun(run)
-        ? { label: "Succeeded · silent", tone: "muted" }
-        : { label: "Succeeded", tone: "ok" };
+      return { label: "Succeeded", tone: "ok" };
     default: {
       const _exhaustive: never = run.status;
       return _exhaustive;
@@ -746,10 +754,9 @@ function RunRow({
 }) {
   const status = getRunStatusLabel(run);
   const duration = formatRunDuration(run);
-  const silent = isSilentRun(run);
   const hasOutput =
     run.runMode === "script" &&
-    (run.output !== null || run.error !== null || silent);
+    (run.output !== null || run.error !== null);
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -795,24 +802,16 @@ function RunRow({
               name={expanded ? "ChevronDown" : "ChevronRight"}
               className="size-3.5"
             />
-            {run.error
-              ? "Error output"
-              : silent
-                ? "Silent — no output"
-                : "Output"}
+            {run.error ? "Error output" : "Output"}
           </button>
           {expanded ? (
             <pre
               className={cn(
                 "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
                 run.error ? "text-destructive" : "text-foreground",
-                silent && "italic text-subtle-foreground",
               )}
             >
-              {run.error ??
-                (silent
-                  ? "no output — silent gate, nothing surfaced"
-                  : (run.output ?? ""))}
+              {run.error ?? run.output ?? ""}
             </pre>
           ) : null}
         </div>

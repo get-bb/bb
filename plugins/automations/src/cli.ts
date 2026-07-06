@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import type { BbPluginApi, PluginCliContext, PluginCliResult } from "@bb/plugin-sdk";
+import { z } from "zod";
 import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
@@ -12,11 +13,22 @@ import type {
   ResolvedCreateAutomationInput,
   UpdateAutomationInput,
 } from "./rpc-types.js";
-import { AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS } from "./rpc-types.js";
+import {
+  AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  automationScriptInterpreterSchema,
+} from "./rpc-types.js";
 
-const SCRIPT_INTERPRETERS = ["bash", "sh", "node", "python3"] as const;
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
+const hostListSchema = z.array(
+  z
+    .object({
+      id: z.string().optional(),
+      status: z.string().optional(),
+      connected: z.boolean().optional(),
+    })
+    .passthrough(),
+);
 
 interface ParsedArgs {
   command: string;
@@ -129,9 +141,8 @@ function parseScriptInterpreter(
   value: string | undefined,
 ): AutomationScriptInterpreter | undefined {
   if (value === undefined) return undefined;
-  if ((SCRIPT_INTERPRETERS as readonly string[]).includes(value)) {
-    return value as AutomationScriptInterpreter;
-  }
+  const parsed = automationScriptInterpreterSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   throw new Error("Invalid --interpreter. Expected bash, sh, node, or python3.");
 }
 
@@ -163,11 +174,7 @@ function looksLikePath(value: string): boolean {
 }
 
 async function resolveConnectedHostId(bb: Pick<BbPluginApi, "sdk">): Promise<string> {
-  const hosts = (await bb.sdk.hosts.list()) as Array<{
-    id?: string;
-    status?: string;
-    connected?: boolean;
-  }>;
+  const hosts = hostListSchema.parse(await bb.sdk.hosts.list());
   const host = hosts.find((candidate) => candidate.connected === true) ?? hosts.find((candidate) => candidate.status === "connected") ?? hosts[0];
   if (!host?.id) throw new Error("No connected host is available.");
   return host.id;
@@ -271,9 +278,8 @@ function buildUpdateRequest(args: ParsedArgs): UpdateAutomationInput {
   if (flag(args, "cron") !== undefined || flag(args, "timezone") !== undefined || flag(args, "at") !== undefined || flag(args, "in") !== undefined) {
     request.trigger = buildTrigger(args);
   }
-  if (args.flags.has("auto-archive")) request.autoArchive = true;
-  if (request.name === undefined && request.trigger === undefined && request.autoArchive === undefined) {
-    throw new Error("No changes requested. Provide --name, --cron + --timezone, --at, --in, and/or --auto-archive.");
+  if (request.name === undefined && request.trigger === undefined) {
+    throw new Error("No changes requested. Provide --name, --cron + --timezone, --at, or --in.");
   }
   return request;
 }
@@ -350,7 +356,7 @@ function helpText(): string {
 bb automation list --project <id>
 bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>)
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>] [--auto-archive]
+bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
@@ -402,7 +408,6 @@ export function registerAutomationCli(args: {
             enabled: !boolFlag(parsed, "disabled"),
             trigger: buildTrigger(parsed),
             execution,
-            autoArchive: boolFlag(parsed, "auto-archive"),
             origin: ctx.threadId ? "agent" : "human",
             ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
           };

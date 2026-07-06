@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 import {
   claimAutomationScheduledRun,
   listDueAutomations,
@@ -16,6 +17,22 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 const DUE_AUTOMATION_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = 10_000;
 
+const hostListSchema = z.array(
+  z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
+);
+type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: {
+    hosts: { list(): Promise<unknown> };
+    threads: {
+      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
+      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      spawn(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
+      ): Promise<unknown>;
+    };
+  };
+};
+
 function buildScheduleRollback(
   db: Db,
   args: {
@@ -29,6 +46,7 @@ function buildScheduleRollback(
     restoreAutomationAfterFailedRun(db, {
       automationId: args.automation.id,
       runId: args.run.id,
+      triggerType: args.automation.triggerType,
       advancedNextRunAt: args.advancedNextRunAt,
       restoredNextRunAt: args.automation.nextRunAt ?? args.now,
       expectedRunCount: args.automation.runCount + 1,
@@ -39,13 +57,14 @@ function buildScheduleRollback(
 }
 
 async function processDueAutomation(
-  bb: Pick<BbPluginApi, "sdk" | "realtime" | "log">,
+  bb: SweepApi,
   db: Db,
   args: {
     pluginDataDir: string;
     automation: AutomationRow;
     now: number;
     allowScriptRuns: boolean;
+    agentHostsAvailable: boolean;
     serverUrl: string;
   },
 ): Promise<void> {
@@ -70,6 +89,10 @@ async function processDueAutomation(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    return;
+  }
+
+  if (execution.mode === "agent" && !args.agentHostsAvailable) {
     return;
   }
 
@@ -105,20 +128,44 @@ async function processDueAutomation(
       onFailure,
     });
   } else {
-    await executeScriptRun(bb, db, {
+    void executeScriptRun(bb, db, {
       pluginDataDir: args.pluginDataDir,
       automation: args.automation,
       run: claim.run,
       execution,
       onFailure,
-      now: args.now,
       serverUrl: args.serverUrl,
+    }).catch((error: unknown) => {
+      bb.log.error(
+        `Detached script automation ${args.automation.id} failed unexpectedly: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     });
   }
 }
 
+async function hasConnectedHost(
+  bb: Pick<BbPluginApi, "log"> & {
+    sdk: { hosts: { list(): Promise<unknown> } };
+  },
+): Promise<boolean> {
+  try {
+    return hostListSchema
+      .parse(await bb.sdk.hosts.list())
+      .some((host) => host.status === "connected");
+  } catch (error) {
+    bb.log.warn(
+      `Failed to list hosts for automation sweep: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return false;
+  }
+}
+
 export async function sweepDueAutomations(
-  bb: Pick<BbPluginApi, "sdk" | "realtime" | "log">,
+  bb: SweepApi,
   db: Db,
   args: {
     pluginDataDir: string;
@@ -129,6 +176,7 @@ export async function sweepDueAutomations(
 ): Promise<void> {
   const now = args.now ?? Date.now();
   const due = listDueAutomations(db, { now, limit: DUE_AUTOMATION_BATCH_SIZE });
+  const agentHostsAvailable = await hasConnectedHost(bb);
   for (const automation of due) {
     try {
       await processDueAutomation(bb, db, {
@@ -136,6 +184,7 @@ export async function sweepDueAutomations(
         automation,
         now,
         allowScriptRuns: args.allowScriptRuns,
+        agentHostsAvailable,
         serverUrl: args.serverUrl,
       });
     } catch (error) {

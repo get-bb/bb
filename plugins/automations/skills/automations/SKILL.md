@@ -75,7 +75,7 @@ Managing:
 ```bash
 bb plugin run automations list --project <id>
 bb plugin run automations show <automationId> --project <id>
-bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [--auto-archive]
+bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags]
 bb plugin run automations pause <automationId> --project <id>
 bb plugin run automations resume <automationId> --project <id>
 bb plugin run automations run <automationId> --project <id> [--idempotency-key <key>]

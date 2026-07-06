@@ -27,7 +27,6 @@ export interface AutomationRow {
   triggerConfig: string;
   runMode: AutomationRunMode;
   execution: string;
-  autoArchive: boolean;
   origin: AutomationOrigin;
   createdByThreadId: string | null;
   nextRunAt: number | null;
@@ -58,9 +57,8 @@ export interface AutomationRunRow {
 }
 
 interface RawAutomationRow
-  extends Omit<AutomationRow, "enabled" | "autoArchive"> {
+  extends Omit<AutomationRow, "enabled"> {
   enabled: 0 | 1;
-  autoArchive: 0 | 1;
 }
 
 function boolToInt(value: boolean): 0 | 1 {
@@ -71,7 +69,6 @@ function automationRow(raw: RawAutomationRow): AutomationRow {
   return {
     ...raw,
     enabled: raw.enabled === 1,
-    autoArchive: raw.autoArchive === 1,
   };
 }
 
@@ -102,6 +99,9 @@ export const migrations = [
      trigger_config TEXT NOT NULL,
      run_mode TEXT NOT NULL,
      execution TEXT NOT NULL,
+     -- Legacy compatibility only. The plugin accepts legacy exports carrying
+     -- autoArchive but no longer reads or writes this accepted-but-ignored
+     -- contract field.
      auto_archive INTEGER NOT NULL DEFAULT 0,
      origin TEXT NOT NULL,
      created_by_thread_id TEXT,
@@ -159,7 +159,6 @@ export interface CreateAutomationInput {
   trigger: AutomationTrigger;
   runMode: AutomationRunMode;
   execution: AutomationExecution;
-  autoArchive: boolean;
   origin: AutomationOrigin;
   createdByThreadId: string | null;
   nextRunAt: number | null;
@@ -169,7 +168,6 @@ export interface UpdateAutomationInput {
   name?: string;
   trigger?: AutomationTrigger;
   execution?: AutomationExecution;
-  autoArchive?: boolean;
   targetThreadId?: string | null;
   nextRunAt?: number | null;
 }
@@ -200,7 +198,6 @@ export function toAutomationResponse(row: AutomationRow): AutomationResponse {
     enabled: row.enabled,
     trigger,
     execution,
-    autoArchive: row.autoArchive,
     origin: row.origin,
     createdByThreadId: row.createdByThreadId,
     nextRunAt: row.nextRunAt,
@@ -240,12 +237,12 @@ export function createAutomation(db: Db, input: CreateAutomationInput): Automati
   db.prepare(
     `INSERT INTO automations (
        id, project_id, target_thread_id, name, enabled, trigger_type,
-       trigger_config, run_mode, execution, auto_archive, origin,
+       trigger_config, run_mode, execution, origin,
        created_by_thread_id, next_run_at, last_run_at, run_count,
        last_run_status, last_run_thread_id, last_error, created_at, updated_at
      ) VALUES (
        @id, @projectId, @targetThreadId, @name, @enabled, @triggerType,
-       @triggerConfig, @runMode, @execution, @autoArchive, @origin,
+       @triggerConfig, @runMode, @execution, @origin,
        @createdByThreadId, @nextRunAt, NULL, 0, NULL, NULL, NULL, @now, @now
      )`,
   ).run({
@@ -261,7 +258,6 @@ export function createAutomation(db: Db, input: CreateAutomationInput): Automati
     triggerConfig: serializeTrigger(input.trigger),
     runMode: input.runMode,
     execution: serializeExecution(input.execution),
-    autoArchive: boolToInt(input.autoArchive),
     origin: input.origin,
     createdByThreadId: input.createdByThreadId,
     nextRunAt: input.nextRunAt,
@@ -279,8 +275,7 @@ export function getAutomation(db: Db, id: string): AutomationRow | null {
         `SELECT
            id, project_id AS projectId, target_thread_id AS targetThreadId,
            name, enabled, trigger_type AS triggerType,
-           trigger_config AS triggerConfig, run_mode AS runMode, execution,
-           auto_archive AS autoArchive, origin,
+           trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
            created_by_thread_id AS createdByThreadId,
            next_run_at AS nextRunAt, last_run_at AS lastRunAt,
            run_count AS runCount, last_run_status AS lastRunStatus,
@@ -309,8 +304,7 @@ export function listAutomationsForProject(
       `SELECT
          id, project_id AS projectId, target_thread_id AS targetThreadId,
          name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution,
-         auto_archive AS autoArchive, origin,
+         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
          created_by_thread_id AS createdByThreadId,
          next_run_at AS nextRunAt, last_run_at AS lastRunAt,
          run_count AS runCount, last_run_status AS lastRunStatus,
@@ -330,8 +324,7 @@ export function listAllAutomations(db: Db): AutomationRow[] {
       `SELECT
          id, project_id AS projectId, target_thread_id AS targetThreadId,
          name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution,
-         auto_archive AS autoArchive, origin,
+         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
          created_by_thread_id AS createdByThreadId,
          next_run_at AS nextRunAt, last_run_at AS lastRunAt,
          run_count AS runCount, last_run_status AS lastRunStatus,
@@ -361,7 +354,6 @@ export function updateAutomation(
        trigger_config = @triggerConfig,
        run_mode = @runMode,
        execution = @execution,
-       auto_archive = @autoArchive,
        target_thread_id = @targetThreadId,
        next_run_at = @nextRunAt,
        updated_at = @now
@@ -374,7 +366,6 @@ export function updateAutomation(
     triggerConfig: serializeTrigger(nextTrigger),
     runMode: nextExecution.mode,
     execution: serializeExecution(nextExecution),
-    autoArchive: boolToInt(args.patch.autoArchive ?? existing.autoArchive),
     targetThreadId:
       args.patch.targetThreadId !== undefined
         ? args.patch.targetThreadId
@@ -445,8 +436,7 @@ export function listDueAutomations(
       `SELECT
          id, project_id AS projectId, target_thread_id AS targetThreadId,
          name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution,
-         auto_archive AS autoArchive, origin,
+         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
          created_by_thread_id AS createdByThreadId,
          next_run_at AS nextRunAt, last_run_at AS lastRunAt,
          run_count AS runCount, last_run_status AS lastRunStatus,
@@ -502,8 +492,7 @@ export function claimAutomationScheduledRun(
          RETURNING
            id, project_id AS projectId, target_thread_id AS targetThreadId,
            name, enabled, trigger_type AS triggerType,
-           trigger_config AS triggerConfig, run_mode AS runMode, execution,
-           auto_archive AS autoArchive, origin,
+           trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
            created_by_thread_id AS createdByThreadId,
            next_run_at AS nextRunAt, last_run_at AS lastRunAt,
            run_count AS runCount, last_run_status AS lastRunStatus,
@@ -550,6 +539,7 @@ export function restoreAutomationAfterFailedRun(
   args: {
     automationId: string;
     runId: string;
+    triggerType: "schedule" | "once";
     advancedNextRunAt: number | null;
     restoredNextRunAt: number;
     expectedRunCount: number;
@@ -558,29 +548,43 @@ export function restoreAutomationAfterFailedRun(
   },
 ): void {
   db.transaction(() => {
-    db.prepare(
-      `UPDATE automations SET
-         enabled = 1,
-         next_run_at = @restoredNextRunAt,
-         run_count = @restoredRunCount,
-         last_run_status = 'failed',
-         last_error = @error,
-         updated_at = @now
-       WHERE id = @automationId
-         AND run_count = @expectedRunCount
-         AND (
-           (@advancedNextRunAt IS NULL AND next_run_at IS NULL)
-           OR next_run_at = @advancedNextRunAt
-         )`,
-    ).run({
-      automationId: args.automationId,
-      restoredNextRunAt: args.restoredNextRunAt,
-      restoredRunCount: args.expectedRunCount - 1,
-      expectedRunCount: args.expectedRunCount,
-      advancedNextRunAt: args.advancedNextRunAt,
-      error: args.error,
-      now: args.now,
-    });
+    if (args.triggerType === "once") {
+      // A failed one-shot is terminal: the claim already disabled it and its
+      // runAt is in the past, so re-arming would retry every sweep forever
+      // (and re-enable automations deliberately disabled elsewhere).
+      db.prepare(
+        `UPDATE automations SET
+           last_run_status = 'failed',
+           last_error = @error,
+           updated_at = @now
+         WHERE id = @automationId`,
+      ).run({
+        automationId: args.automationId,
+        error: args.error,
+        now: args.now,
+      });
+    } else {
+      db.prepare(
+        `UPDATE automations SET
+           enabled = 1,
+           next_run_at = @restoredNextRunAt,
+           run_count = @restoredRunCount,
+           last_run_status = 'failed',
+           last_error = @error,
+           updated_at = @now
+         WHERE id = @automationId
+           AND run_count = @expectedRunCount
+           AND next_run_at = @advancedNextRunAt`,
+      ).run({
+        automationId: args.automationId,
+        restoredNextRunAt: args.restoredNextRunAt,
+        restoredRunCount: args.expectedRunCount - 1,
+        expectedRunCount: args.expectedRunCount,
+        advancedNextRunAt: args.advancedNextRunAt,
+        error: args.error,
+        now: args.now,
+      });
+    }
     db.prepare(
       `UPDATE automation_runs
        SET status = 'failed', error = @error, finished_at = @now
@@ -838,8 +842,7 @@ export function disableAutomationsForDeletedThread(
       `SELECT
          id, project_id AS projectId, target_thread_id AS targetThreadId,
          name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution,
-         auto_archive AS autoArchive, origin,
+         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
          created_by_thread_id AS createdByThreadId,
          next_run_at AS nextRunAt, last_run_at AS lastRunAt,
          run_count AS runCount, last_run_status AS lastRunStatus,

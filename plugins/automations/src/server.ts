@@ -27,10 +27,12 @@ export default async function plugin(bb: BbPluginApi) {
   const pluginDataDir = pluginDataDirFromDb(db);
   await ingestLegacyImport({ bb, db, pluginDataDir });
 
-  const getAllowScriptRuns = async (): Promise<boolean> => {
-    const values = await settings.get();
-    return values.allowScriptRuns;
-  };
+  let allowScriptRuns = (await settings.get()).allowScriptRuns;
+  settings.onChange((next) => {
+    allowScriptRuns = next.allowScriptRuns;
+  });
+
+  const getAllowScriptRuns = async (): Promise<boolean> => allowScriptRuns;
 
   const service = createAutomationService({
     bb,
@@ -67,7 +69,7 @@ export default async function plugin(bb: BbPluginApi) {
         try {
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
-            allowScriptRuns: await getAllowScriptRuns(),
+            allowScriptRuns,
             serverUrl: resolveServerUrl(),
           });
         } catch (error) {

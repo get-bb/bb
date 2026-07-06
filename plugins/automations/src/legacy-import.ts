@@ -49,6 +49,7 @@ const legacyAutomationRowSchema = z
     runMode: automationRunModeSchema,
     execution: z.string().min(1),
     environment: z.string().min(1),
+    // Accepted for legacy export compatibility; intentionally ignored.
     autoArchive: z.boolean(),
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).nullable(),
@@ -177,13 +178,13 @@ export async function ingestLegacyImport(args: {
         .prepare(
           `INSERT OR IGNORE INTO automations (
              id, project_id, target_thread_id, name, enabled, trigger_type,
-             trigger_config, run_mode, execution, auto_archive, origin,
+             trigger_config, run_mode, execution, origin,
              created_by_thread_id, next_run_at, last_run_at, run_count,
              last_run_status, last_run_thread_id, last_error, created_at,
              updated_at
            ) VALUES (
              @id, @projectId, @targetThreadId, @name, @enabled, @triggerType,
-             @triggerConfig, @runMode, @execution, @autoArchive, @origin,
+             @triggerConfig, @runMode, @execution, @origin,
              @createdByThreadId, @nextRunAt, @lastRunAt, @runCount,
              @lastRunStatus, @lastRunThreadId, @lastError, @createdAt,
              @updatedAt
@@ -192,7 +193,6 @@ export async function ingestLegacyImport(args: {
         .run({
           ...row,
           enabled: row.enabled ? 1 : 0,
-          autoArchive: row.autoArchive ? 1 : 0,
           execution: normalizeExecution(row),
         });
     }

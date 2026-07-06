@@ -9,6 +9,7 @@ import {
   createAutomation,
   createManualRun,
   getAutomation,
+  listAutomationsForProject,
   listAutomationRuns,
   migrations,
   restoreAutomationAfterFailedRun,
@@ -21,6 +22,8 @@ import {
   validateOnceDefinition,
 } from "./schedule-helpers.js";
 import { isWakeAgentSuppressed, mapScriptResultToRun } from "./script-runner.js";
+import { sweepDueAutomations } from "./sweep.js";
+import { createAutomationService } from "./service.js";
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
@@ -52,7 +55,31 @@ function createScheduledAutomation(
       permissionMode: "readonly",
       environment: { type: "project-default" },
     },
-    autoArchive: false,
+    origin: "human",
+    createdByThreadId: null,
+    nextRunAt,
+  });
+}
+
+function createOnceAutomation(db: Db, nextRunAt: number, id = "auto_once") {
+  return createAutomation(db, {
+    id,
+    projectId: "proj_test",
+    name: "Once",
+    enabled: true,
+    trigger: {
+      triggerType: "once",
+      runAt: nextRunAt,
+    },
+    runMode: "agent",
+    execution: {
+      mode: "agent",
+      prompt: "do it once",
+      providerId: "codex",
+      model: "gpt-5",
+      permissionMode: "readonly",
+      environment: { type: "project-default" },
+    },
     origin: "human",
     createdByThreadId: null,
     nextRunAt,
@@ -125,6 +152,7 @@ describe("automation data access", () => {
     restoreAutomationAfterFailedRun(db, {
       automationId: automation.id,
       runId: claim.run.id,
+      triggerType: "schedule",
       advancedNextRunAt: 2000,
       restoredNextRunAt: 1000,
       expectedRunCount: 1,
@@ -135,6 +163,83 @@ describe("automation data access", () => {
     expect(restored?.nextRunAt).toBe(1000);
     expect(restored?.runCount).toBe(0);
     expect(restored?.lastRunStatus).toBe("failed");
+  });
+
+  it("does not re-arm one-shot automations after dispatch failure", () => {
+    const db = createTestDb();
+    const automation = createOnceAutomation(db, 1000);
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: null,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+    restoreAutomationAfterFailedRun(db, {
+      automationId: automation.id,
+      runId: claim.run.id,
+      triggerType: "once",
+      advancedNextRunAt: null,
+      restoredNextRunAt: 1000,
+      expectedRunCount: 1,
+      error: "dispatch failed",
+      now: 1001,
+    });
+    const restored = getAutomation(db, automation.id);
+    expect(restored?.enabled).toBe(false);
+    expect(restored?.nextRunAt).toBeNull();
+    expect(restored?.runCount).toBe(1);
+    expect(restored?.lastRunStatus).toBe("failed");
+  });
+
+  it("does not claim due agent automations when no host is connected", async () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const bb = {
+      sdk: {
+        hosts: {
+          list: async () => [
+            {
+              id: "host_test",
+              name: "host",
+              type: "persistent",
+              status: "disconnected",
+              lastSeenAt: null,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ],
+        },
+        threads: {
+          get: async () => {
+            throw new Error("not expected");
+          },
+          send: async () => {
+            throw new Error("not expected");
+          },
+          spawn: async () => {
+            throw new Error("not expected");
+          },
+        },
+      },
+      realtime: { publish: () => undefined },
+      log: {
+        debug: () => undefined,
+        error: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+      },
+    };
+
+    await sweepDueAutomations(bb, db, {
+      pluginDataDir: "/tmp",
+      allowScriptRuns: true,
+      serverUrl: "http://127.0.0.1:38886",
+      now: 1000,
+    });
+
+    expect(getAutomation(db, automation.id)?.runCount).toBe(0);
+    expect(listAutomationRuns(db, { automationId: automation.id, limit: 10 })).toHaveLength(0);
   });
 
   it("dedupes manual runs by idempotency key", () => {
@@ -178,6 +283,66 @@ describe("automation data access", () => {
     });
     expect(closed?.status).toBe("skipped");
     expect(closed?.skipReason).toBe("empty output");
+  });
+});
+
+describe("automation service", () => {
+  it("validates project availability before creating an automation", async () => {
+    const db = createTestDb();
+    const bb = {
+      sdk: {
+        projects: {
+          get: async () => {
+            throw new Error("Project not found");
+          },
+          list: async () => [],
+        },
+        threads: {
+          get: async () => {
+            throw new Error("not expected");
+          },
+          send: async () => {
+            throw new Error("not expected");
+          },
+          spawn: async () => {
+            throw new Error("not expected");
+          },
+        },
+      },
+      realtime: { publish: () => undefined },
+      log: {
+        debug: () => undefined,
+        error: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+      },
+    };
+    const service = createAutomationService({
+      bb,
+      db,
+      pluginDataDir: "/tmp",
+      getAllowScriptRuns: async () => true,
+      serverUrl: "http://127.0.0.1:38886",
+    });
+
+    await expect(
+      service.create({
+        projectId: "proj_missing",
+        name: "Missing project",
+        enabled: true,
+        trigger: { triggerType: "once", runAt: Date.now() + 60_000 },
+        execution: {
+          mode: "agent",
+          prompt: "hello",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: "readonly",
+          environment: { type: "project-default" },
+        },
+        origin: "human",
+      }),
+    ).rejects.toThrow("Project proj_missing is not available");
+    expect(listAutomationsForProject(db, "proj_missing")).toHaveLength(0);
   });
 });
 

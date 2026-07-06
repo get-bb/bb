@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
+import { z } from "zod";
 import {
   createAutomation,
   createManualRun,
@@ -29,7 +30,6 @@ import {
   type AutomationRunRpcResponse,
   type AutomationResponse,
   type AutomationsOverviewResponse,
-  type CreateAutomationInput,
   type ResolvedCreateAutomationInput,
   type ResolvedAutomationRunsInput,
   type RunAutomationInput,
@@ -46,6 +46,22 @@ import {
   writeInlineAutomationScript,
 } from "./script-files.js";
 import { executeAgentRun, executeScriptRun } from "./run.js";
+
+type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: {
+    projects: {
+      get(args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0]): Promise<unknown>;
+      list(args?: Parameters<BbPluginApi["sdk"]["projects"]["list"]>[0]): Promise<unknown>;
+    };
+    threads: {
+      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
+      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      spawn(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
+      ): Promise<unknown>;
+    };
+  };
+};
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
@@ -155,17 +171,11 @@ function parseRunCursor(
   return { startedAt, id };
 }
 
-interface ProjectSummary {
-  id: string;
-  name?: string;
-  deletedAt?: number | null;
-}
-
 async function projectNameById(
-  bb: Pick<BbPluginApi, "sdk" | "log">,
+  bb: Pick<ServiceApi, "sdk" | "log">,
 ): Promise<Map<string, string>> {
   try {
-    const projects = (await bb.sdk.projects.list()) as ProjectSummary[];
+    const projects = projectSummaryListSchema.parse(await bb.sdk.projects.list());
     return new Map(
       projects
         .filter((project) => project.deletedAt === undefined || project.deletedAt === null)
@@ -181,8 +191,34 @@ async function projectNameById(
   }
 }
 
+const projectAvailableSchema = z.object({ id: z.string() }).passthrough();
+const projectSummaryListSchema = z.array(
+  z
+    .object({
+      id: z.string(),
+      name: z.string().optional(),
+      deletedAt: z.number().nullable().optional(),
+    })
+    .passthrough(),
+);
+
+async function requireProjectAvailable(
+  bb: Pick<ServiceApi, "sdk">,
+  projectId: string,
+): Promise<void> {
+  try {
+    projectAvailableSchema.parse(await bb.sdk.projects.get({ projectId }));
+  } catch (error) {
+    throw new Error(
+      `Project ${projectId} is not available: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 export function createAutomationService(args: {
-  bb: Pick<BbPluginApi, "sdk" | "realtime" | "log">;
+  bb: ServiceApi;
   db: Db;
   pluginDataDir: string;
   getAllowScriptRuns: () => Promise<boolean>;
@@ -223,8 +259,8 @@ export function createAutomationService(args: {
       return toAutomationResponse(requireProjectAutomation(db, input));
     },
 
-    async create(input: CreateAutomationInput) {
-      const payload = input as ResolvedCreateAutomationInput;
+    async create(payload) {
+      await requireProjectAvailable(bb, payload.projectId);
       const allowScriptRuns = await args.getAllowScriptRuns();
       const now = Date.now();
       validateTrigger(payload.trigger, now);
@@ -244,7 +280,6 @@ export function createAutomationService(args: {
         trigger: payload.trigger,
         runMode: storedExecution.mode,
         execution: storedExecution,
-        autoArchive: payload.autoArchive,
         origin: payload.origin,
         createdByThreadId: payload.createdByThreadId ?? null,
         nextRunAt: computeInitialNextRunAt({
@@ -258,6 +293,7 @@ export function createAutomationService(args: {
     },
 
     async update(input) {
+      await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
       const allowScriptRuns = await args.getAllowScriptRuns();
       const now = Date.now();
@@ -268,7 +304,6 @@ export function createAutomationService(args: {
         patch.trigger = input.trigger;
         patch.nextRunAt = current.enabled ? computeNextRunAt(input.trigger, now) : null;
       }
-      if (input.autoArchive !== undefined) patch.autoArchive = input.autoArchive;
       if (input.execution !== undefined) {
         assertScriptRunsAllowed(allowScriptRuns, input.execution);
         patch.execution = await resolveStoredExecution({
@@ -342,22 +377,13 @@ export function createAutomationService(args: {
       });
       if (!deduped) {
         publishAutomationChange(bb, input.projectId, "automation-runs-changed");
-        const settleFailed = (error: unknown): void => {
-          bb.log.error(
-            `Manual automation run ${run.id} failed to dispatch: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+        const closeFailedRun = (error: unknown): void => {
           closeAutomationRun(db, {
             runId: run.id,
             status: "failed",
             error: error instanceof Error ? error.message : String(error),
             now: Date.now(),
           });
-          publishAutomationChange(bb, input.projectId, [
-            "automations-changed",
-            "automation-runs-changed",
-          ]);
         };
         void (async () => {
           try {
@@ -366,7 +392,7 @@ export function createAutomationService(args: {
                 automation,
                 run,
                 execution,
-                onFailure: settleFailed,
+                onFailure: closeFailedRun,
               });
             } else {
               await executeScriptRun(bb, db, {
@@ -374,13 +400,21 @@ export function createAutomationService(args: {
                 automation,
                 run,
                 execution,
-                onFailure: settleFailed,
-                now,
+                onFailure: closeFailedRun,
                 serverUrl,
               });
             }
           } catch (error) {
-            settleFailed(error);
+            closeFailedRun(error);
+            bb.log.error(
+              `Manual automation run ${run.id} failed unexpectedly: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            publishAutomationChange(bb, input.projectId, [
+              "automations-changed",
+              "automation-runs-changed",
+            ]);
           }
         })();
       }
