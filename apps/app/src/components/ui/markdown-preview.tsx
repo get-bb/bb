@@ -1220,13 +1220,13 @@ function MarkdownPreviewComponent({
   // `whitespace-pre-wrap` behavior. The two mention props are mutually exclusive
   // in practice but are honoured independently here.
   const remarkPlugins = useMemo(
-    () => [
+    (): NonNullable<ReactMarkdownOptions["remarkPlugins"]> => [
       remarkGfm,
-      // `remark-math` with single-dollar math left ON (the default), matching
-      // GitHub: `$x$` is inline and `$$x$$` is block. The known trade-off is that
-      // a line with two unescaped `$` (e.g. "$5 to $10", "$HOME and $PATH") parses
-      // the span between them as math; authors escape a literal dollar with `\$`.
-      remarkMath,
+      // `remark-math` with single-dollar math OFF: micromark pairs any two
+      // unescaped `$` on a line, so "$5 to $10" or "$HOME and $PATH" render the
+      // span between them as math — and literal dollars dominate chat (#511).
+      // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
+      [remarkMath, { singleDollarTextMath: false }],
       ...(threadMentions !== undefined || promptMentions !== undefined
         ? [remarkBreaks]
         : []),
