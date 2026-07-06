@@ -29,18 +29,15 @@ import type {
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "@/src/rpc-types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,8 +46,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyStatePanel } from "@/components/ui/empty-state";
+import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
 import {
   formatAutomationTrigger,
@@ -61,6 +58,11 @@ import {
 
 const PANEL_PATH = "automations";
 const PERSONAL_PROJECT_ID = "proj_personal";
+
+// Prefill text for the "Create via chat" entry point — an agent turns this
+// into a real automation. Inlined here (the kernel kept it in
+// apps/app/src/lib/loop-prompt.ts) so the plugin bundle stays self-contained.
+const CREATE_LOOP_PROMPT = "Create a new bb loop to ";
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 
@@ -341,6 +343,15 @@ function formatRunDuration(run: AutomationRunResponse): string | null {
   return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
 }
 
+/** A succeeded script run that produced no surfaced output reads as "silent". */
+function isSilentRun(run: AutomationRunResponse): boolean {
+  return (
+    run.status === "succeeded" &&
+    run.runMode === "script" &&
+    (run.output === null || run.output.trim().length === 0)
+  );
+}
+
 interface RunStatusLabel {
   label: string;
   tone: "ok" | "fail" | "muted";
@@ -355,7 +366,9 @@ function getRunStatusLabel(run: AutomationRunResponse): RunStatusLabel {
     case "skipped":
       return { label: "Skipped", tone: "muted" };
     case "succeeded":
-      return { label: "Succeeded", tone: "ok" };
+      return isSilentRun(run)
+        ? { label: "Succeeded · silent", tone: "muted" }
+        : { label: "Succeeded", tone: "ok" };
     default: {
       const _exhaustive: never = run.status;
       return _exhaustive;
@@ -429,59 +442,74 @@ function AutomationBadges({ automation }: { automation: AutomationResponse }) {
   return (
     <>
       {automation.execution.mode === "script" ? (
-        <Badge variant="outline" className="shrink-0 font-normal">
+        <Pill variant="outline" className="shrink-0">
           Script
-        </Badge>
+        </Pill>
       ) : null}
       {automation.origin === "agent" ? (
-        <Badge variant="secondary" className="shrink-0 font-normal">
+        <Pill variant="secondary" className="shrink-0">
           API
-        </Badge>
+        </Pill>
       ) : null}
     </>
   );
 }
 
-/** Confirm-before-delete dialog, controlled by the caller. */
+/**
+ * Confirm-before-delete dialog, controlled by the caller. Uses the responsive
+ * Dialog — a centered modal on desktop, a bottom drawer on compact viewports —
+ * matching the kernel's ConfirmDeleteDialog pattern. Kept mounted until the
+ * mutation resolves so the pending state stays visible.
+ */
 function DeleteAutomationDialog({
   open,
   onOpenChange,
   name,
   pending,
   onConfirm,
+  onCancel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   name: string;
   pending: boolean;
   onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete automation?</AlertDialogTitle>
-          <AlertDialogDescription>
-            &ldquo;{name}&rdquo; and its run history will be permanently
-            removed.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            disabled={pending}
-            onClick={(event) => {
-              // Keep the dialog mounted until the mutation resolves.
-              event.preventDefault();
-              onConfirm();
-            }}
-          >
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        {open ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Delete automation?</DialogTitle>
+              <DialogDescription>
+                &ldquo;{name}&rdquo; and its run history will be permanently
+                removed.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={onCancel}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pending}
+                onClick={onConfirm}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -520,7 +548,6 @@ function OverviewRow({
   onAction: (method: "pause" | "resume" | "run", route: DetailRoute) => void;
   onDelete: (entry: OverviewEntry) => void;
 }) {
-  const navigate = useBbNavigate();
   const { automation, project } = entry;
   const route = routeOf(automation);
   const projectLabel =
@@ -530,117 +557,69 @@ function OverviewRow({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
-  const lastRunStatus = automation.lastRunStatus;
 
   return (
-    <div className="group flex flex-col gap-1 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
-      <div className="flex items-center gap-2 text-sm">
-        <StatusDot enabled={automation.enabled} />
-        <button
-          type="button"
-          onClick={() => onNavigate(route)}
-          className="min-w-0 flex-1 truncate text-left hover:underline"
-        >
-          {automation.name}
-        </button>
-        {projectLabel ? (
-          <Badge variant="outline" className="shrink-0 font-normal">
-            {projectLabel}
-          </Badge>
-        ) : null}
-        <AutomationBadges automation={automation} />
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {formatScheduleStatusLabel({
-            enabled: automation.enabled,
-            nextRunAt: automation.nextRunAt,
-            trigger: automation.trigger,
-            runCount: automation.runCount,
-          })}
-        </span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 rounded-md p-0 text-muted-foreground"
-              aria-label={`${automation.name} actions`}
-            >
-              <Icon name="MoreHorizontal" className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-44"
-            mobileTitle={`${automation.name} actions`}
-          >
-            {automation.enabled ? (
-              <DropdownMenuItem onSelect={() => onAction("pause", route)}>
-                Pause
-              </DropdownMenuItem>
-            ) : completedOneShot ? null : (
-              <DropdownMenuItem onSelect={() => onAction("resume", route)}>
-                Resume
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onSelect={() => onAction("run", route)}>
-              Run now
-            </DropdownMenuItem>
-            {automation.lastRunThreadId ? (
-              <DropdownMenuItem
-                onSelect={() => navigate.toThread(automation.lastRunThreadId!)}
-              >
-                View last thread
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => onDelete(entry)}
-            >
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="flex items-center gap-2 pl-[calc(0.375rem+0.5rem)] text-xs text-muted-foreground">
-        <span className="min-w-0 truncate">
-          {formatAutomationTrigger(automation.trigger)}
-        </span>
-        {lastRunStatus !== null ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="shrink-0">
-              Last run {lastRunStatus}
-              {automation.lastRunAt !== null
-                ? ` ${formatRunTimestamp(automation.lastRunAt)}`
-                : ""}
-            </span>
-          </>
-        ) : null}
-        {automation.lastRunThreadId ? (
-          <button
+    <div className="group flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-state-hover">
+      <StatusDot enabled={automation.enabled} />
+      <button
+        type="button"
+        onClick={() => onNavigate(route)}
+        className="min-w-0 flex-1 truncate text-left hover:underline"
+      >
+        {automation.name}
+      </button>
+      {projectLabel ? (
+        <Pill variant="outline" className="shrink-0">
+          {projectLabel}
+        </Pill>
+      ) : null}
+      <AutomationBadges automation={automation} />
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {formatScheduleStatusLabel({
+          enabled: automation.enabled,
+          nextRunAt: automation.nextRunAt,
+          trigger: automation.trigger,
+          runCount: automation.runCount,
+        })}
+      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
             type="button"
-            onClick={() => navigate.toThread(automation.lastRunThreadId!)}
-            className="ml-auto shrink-0 hover:text-foreground hover:underline"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            aria-label={`${automation.name} actions`}
           >
-            View thread
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function OverviewSkeleton() {
-  return (
-    <div className="space-y-2">
-      {[0, 1, 2].map((row) => (
-        <div key={row} className="flex flex-col gap-2 px-3 py-2">
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
-      ))}
+            <Icon name="MoreHorizontal" className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-40"
+          mobileTitle={`${automation.name} actions`}
+        >
+          {automation.enabled ? (
+            <DropdownMenuItem onSelect={() => onAction("pause", route)}>
+              Pause
+            </DropdownMenuItem>
+          ) : completedOneShot ? null : (
+            <DropdownMenuItem onSelect={() => onAction("resume", route)}>
+              Resume
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onSelect={() => onAction("run", route)}>
+            Run now
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => onDelete(entry)}
+          >
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -650,6 +629,7 @@ function OverviewView({
 }: {
   onOpenDetail: (route: DetailRoute) => void;
 }) {
+  const navigate = useBbNavigate();
   const { entries, error } = useOverview();
   const mutations = useMutations();
   const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
@@ -686,6 +666,10 @@ function OverviewView({
       .finally(() => setDeleting(false));
   }, [deleteTarget, mutations]);
 
+  const createViaChat = useCallback(() => {
+    navigate.toCompose({ focusPrompt: true, initialPrompt: CREATE_LOOP_PROMPT });
+  }, [navigate]);
+
   const groups = useMemo(
     () => (entries === null ? [] : groupByStatus(entries)),
     [entries],
@@ -695,17 +679,17 @@ function OverviewView({
   if (error !== null) {
     body = <p className="text-sm text-destructive">Failed to load automations.</p>;
   } else if (entries === null) {
-    body = <OverviewSkeleton />;
+    body = <p className="text-sm text-muted-foreground">Loading...</p>;
   } else if (entries.length === 0) {
     body = (
-      <EmptyState message="No automations yet. Create one with `bb automations create` or by asking an agent." />
+      <EmptyStatePanel className="py-6">No automations yet.</EmptyStatePanel>
     );
   } else {
     body = (
       <div className="space-y-6">
         {groups.map((group) => (
           <section key={group.status}>
-            <p className="px-3 text-xs font-medium uppercase text-muted-foreground">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
               {group.label}
             </p>
             <div className="mt-1.5 space-y-1">
@@ -727,6 +711,17 @@ function OverviewView({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="flex items-center justify-end">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={createViaChat}
+        >
+          <Icon name="MessageSquarePlus" className="size-4" />
+          Create via chat
+        </Button>
+      </div>
       {body}
       <DeleteAutomationDialog
         open={deleteTarget !== null}
@@ -736,6 +731,7 @@ function OverviewView({
         name={deleteTarget?.automation.name ?? ""}
         pending={deleting}
         onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );
@@ -754,10 +750,10 @@ function RunRow({
 }) {
   const status = getRunStatusLabel(run);
   const duration = formatRunDuration(run);
-  const hasOutput =
+  const silent = isSilentRun(run);
+  const showOutput =
     run.runMode === "script" &&
-    (run.output !== null || run.error !== null);
-  const [expanded, setExpanded] = useState(false);
+    (run.output !== null || run.error !== null || silent);
 
   return (
     <div className="overflow-hidden rounded-md border border-border">
@@ -765,9 +761,6 @@ function RunRow({
         <span className={cn("font-medium", RUN_STATUS_TONE_CLASS[status.tone])}>
           {status.label}
         </span>
-        <Badge variant="outline" className="shrink-0 font-normal capitalize">
-          {run.trigger}
-        </Badge>
         <span className="text-xs text-muted-foreground">
           {formatRunTimestamp(run.startedAt)}
           {duration ? ` · ${duration}` : ""}
@@ -791,30 +784,19 @@ function RunRow({
           {run.skipReason}
         </p>
       ) : null}
-      {hasOutput ? (
-        <div className="border-t border-border-seam">
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Icon
-              name={expanded ? "ChevronDown" : "ChevronRight"}
-              className="size-3.5"
-            />
-            {run.error ? "Error output" : "Output"}
-          </button>
-          {expanded ? (
-            <pre
-              className={cn(
-                "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
-                run.error ? "text-destructive" : "text-foreground",
-              )}
-            >
-              {run.error ?? run.output ?? ""}
-            </pre>
-          ) : null}
-        </div>
+      {showOutput ? (
+        <pre
+          className={cn(
+            "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
+            run.error ? "text-destructive" : "text-foreground",
+            silent && "italic text-subtle-foreground",
+          )}
+        >
+          {run.error ??
+            (silent
+              ? "no output — silent gate, nothing surfaced"
+              : (run.output ?? ""))}
+        </pre>
       ) : null}
     </div>
   );
@@ -872,23 +854,9 @@ function DetailView({
       .finally(() => setDeleting(false));
   }, [mutations, route, onBack]);
 
-  const backButton = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="-ml-2 h-7 gap-1.5 px-2 text-muted-foreground"
-      onClick={onBack}
-    >
-      <Icon name="ChevronLeft" className="size-4" />
-      Automations
-    </Button>
-  );
-
   if (error !== null || missing) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-4">
-        {backButton}
+      <div className="mx-auto w-full max-w-3xl">
         <p className="text-sm text-destructive">
           {missing ? "Automation not found." : "Failed to load automation."}
         </p>
@@ -898,11 +866,8 @@ function DetailView({
 
   if (automation === null) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-4">
-        {backButton}
-        <Skeleton className="h-6 w-1/2" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-24 w-full" />
+      <div className="mx-auto w-full max-w-3xl">
+        <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     );
   }
@@ -916,8 +881,6 @@ function DetailView({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
-      {backButton}
-
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <StatusDot enabled={automation.enabled} />
@@ -948,6 +911,7 @@ function DetailView({
             type="button"
             variant="outline"
             size="sm"
+            aria-label="Pause"
             disabled={actionPending}
             onClick={() => runAction("pause")}
           >
@@ -959,6 +923,7 @@ function DetailView({
             type="button"
             variant="outline"
             size="sm"
+            aria-label="Resume"
             disabled={actionPending}
             onClick={() => runAction("resume")}
           >
@@ -970,6 +935,7 @@ function DetailView({
           type="button"
           variant="outline"
           size="sm"
+          aria-label="Run now"
           disabled={actionPending}
           onClick={() => runAction("run")}
         >
@@ -981,6 +947,7 @@ function DetailView({
           variant="outline"
           size="sm"
           className="text-destructive hover:text-destructive"
+          aria-label="Delete automation"
           disabled={actionPending}
           onClick={() => setDeleteOpen(true)}
         >
@@ -996,12 +963,9 @@ function DetailView({
         {runsState.error !== null ? (
           <p className="text-sm text-destructive">Failed to load runs.</p>
         ) : runsState.loading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : runsState.runs.length === 0 ? (
-          <EmptyState message="No runs yet." />
+          <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
         ) : (
           <div className="space-y-2">
             {runsState.runs.map((run) => (
@@ -1030,6 +994,7 @@ function DetailView({
         name={automation.name}
         pending={deleting}
         onConfirm={confirmDelete}
+        onCancel={() => setDeleteOpen(false)}
       />
     </div>
   );
@@ -1065,7 +1030,9 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "automations",
     title: "Automations",
-    icon: "Repeat",
+    // Matches the original ProjectList Automations row (Icon name="Clock");
+    // the host resolves this hint through its own Icon set to the same glyph.
+    icon: "Clock",
     path: PANEL_PATH,
     component: AutomationsPanel,
   });
