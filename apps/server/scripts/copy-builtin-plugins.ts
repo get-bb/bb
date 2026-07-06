@@ -93,5 +93,10 @@ export async function copyBuiltinPlugins(args: {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  await copyBuiltinPlugins();
+  const targetFlagIndex = process.argv.indexOf("--target");
+  const targetArg =
+    targetFlagIndex !== -1 ? process.argv[targetFlagIndex + 1] : undefined;
+  await copyBuiltinPlugins(
+    targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {},
+  );
 }

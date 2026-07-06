@@ -22,9 +22,10 @@ export function builtinPluginSource(name: string): string {
 }
 
 /**
- * Builtin plugin roots live in two layouts:
- * - source checkout: <repoRoot>/plugins/<name>
- * - packaged server: <server dist>/builtin-plugins/<name>
+ * Builtin plugin roots live in three layouts:
+ * - packaged server: <server dist>/builtin-plugins/<name> (written at packaging)
+ * - built-from-source server (bundle at apps/server/dist): <repoRoot>/plugins/<name>
+ * - source checkout (module at apps/server/src/services/plugins): <repoRoot>/plugins/<name>
  */
 export function resolveBuiltinPluginRootPathForModuleDir(
   args: ResolveBuiltinPluginRootPathArgs,
@@ -35,6 +36,15 @@ export function resolveBuiltinPluginRootPathForModuleDir(
     args.name,
   );
   if (existsSync(packagedCandidate)) return packagedCandidate;
+
+  // apps/server/dist → repo root is three levels up.
+  const builtCheckoutCandidate = path.resolve(
+    args.moduleDir,
+    "../../..",
+    "plugins",
+    args.name,
+  );
+  if (existsSync(builtCheckoutCandidate)) return builtCheckoutCandidate;
 
   return path.resolve(args.moduleDir, "../../../../..", "plugins", args.name);
 }
