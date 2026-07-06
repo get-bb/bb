@@ -60,7 +60,6 @@ import {
   acpRequestPermissionParamsSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
-  type AcpSessionModels,
   acpStopReasonSchema,
   acpWriteTextFileParamsSchema,
   type AcpContentBlock,
@@ -705,7 +704,6 @@ async function selectAcpNativeModel(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   configOptions: readonly AcpConfigOption[] | undefined;
-  models: AcpSessionModels | undefined;
   modelSelection: AcpBridgeThreadStartParams["modelSelection"];
 }): Promise<void> {
   const selection = args.modelSelection;
@@ -714,19 +712,18 @@ async function selectAcpNativeModel(args: {
   }
   let configOptions = args.configOptions;
   const modelOption = findAcpModelConfigOption(args.configOptions);
-  const availableSessionModels = args.models?.availableModels ?? [];
-  const sessionModelsIncludeSelection = availableSessionModels.some(
-    (model) => model.modelId === selection.modelId,
-  );
-  const shouldSetModel =
-    (modelOption && modelOption.currentValue !== selection.modelId) ||
-    (!modelOption &&
-      sessionModelsIncludeSelection &&
-      args.models?.currentModelId !== selection.modelId);
-  if (shouldSetModel) {
+  // ACP exposes model selection as a "model"-category session config option
+  // (SessionConfigOptionCategory) set via session/set_config_option; there is
+  // no session/set_model method. Pin the requested model only when it differs
+  // from the agent's current value so the agent keeps its default otherwise.
+  if (modelOption && modelOption.currentValue !== selection.modelId) {
     const configState = await args.connection.request({
-      method: "session/set_model",
-      params: { sessionId: args.sessionId, modelId: selection.modelId },
+      method: "session/set_config_option",
+      params: {
+        sessionId: args.sessionId,
+        configId: modelOption.id,
+        value: selection.modelId,
+      },
       resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
     });
     configOptions = configState?.configOptions ?? configOptions;
@@ -1210,7 +1207,6 @@ async function startAgentSession(
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
-    let loadedModels: AcpSessionModels | undefined;
     if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
       try {
@@ -1224,7 +1220,6 @@ async function startAgentSession(
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
         });
         loadedConfigOptions = configState?.configOptions;
-        loadedModels = configState?.models;
         sessionId = request.params.providerThreadId;
       } catch {
         sessionId = undefined;
@@ -1244,7 +1239,6 @@ async function startAgentSession(
         connection,
         sessionId,
         configOptions: newSession.configOptions,
-        models: newSession.models,
         modelSelection: params.modelSelection,
       });
       if (request.kind === "resume") {
@@ -1258,11 +1252,9 @@ async function startAgentSession(
         connection,
         sessionId,
         configOptions: loadedConfigOptions,
-        models: loadedModels,
         modelSelection: params.modelSelection,
       });
     }
-
     session.providerThreadId = sessionId;
     sessionsByBbThreadId.set(bbThreadId, session);
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
