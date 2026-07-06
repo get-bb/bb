@@ -119,7 +119,8 @@ simply unavailable.
 
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
-be launched as `opencode acp`.
+be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
+and can be launched as `omp acp`.
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the

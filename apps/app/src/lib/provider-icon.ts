@@ -9,6 +9,7 @@ import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
+import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
 import { Icon } from "@/components/ui/icon";
 
@@ -31,6 +32,7 @@ const KNOWN_ACP_BRAND_ICONS: Record<
   ComponentType<{ className?: string }>
 > = {
   opencode: OpencodeIcon,
+  omp: OmpIcon,
 };
 
 /**

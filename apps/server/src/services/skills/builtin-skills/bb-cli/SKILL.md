@@ -70,7 +70,8 @@ message agents, or inspect projects, providers, and environments.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 - Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode` on PATH appears as provider `acp-opencode`.
+  host; for example `opencode` or `omp` on PATH appears as provider
+  `acp-opencode` or `acp-omp`.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known

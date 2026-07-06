@@ -29,6 +29,17 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     env: {},
     executableName: "opencode",
   },
+  {
+    // omp (oh-my-pi) speaks the Agent Client Protocol via `omp acp`
+    // (https://omp.sh); registering it here auto-detects an installed omp CLI
+    // and exposes it as provider `acp-omp`, mirroring acp-opencode.
+    id: "acp-omp",
+    displayName: "omp",
+    command: "omp",
+    args: ["acp"],
+    env: {},
+    executableName: "omp",
+  },
 ];
 
 export function listKnownAcpAgentExecutableQueries(): KnownAcpAgentExecutableQuery[] {

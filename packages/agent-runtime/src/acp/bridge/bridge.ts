@@ -60,6 +60,7 @@ import {
   acpRequestPermissionParamsSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
+  type AcpConfigStateResult,
   type AcpSessionModels,
   acpStopReasonSchema,
   acpWriteTextFileParamsSchema,
@@ -724,11 +725,38 @@ async function selectAcpNativeModel(args: {
       sessionModelsIncludeSelection &&
       args.models?.currentModelId !== selection.modelId);
   if (shouldSetModel) {
-    const configState = await args.connection.request({
-      method: "session/set_model",
-      params: { sessionId: args.sessionId, modelId: selection.modelId },
-      resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
-    });
+    // Agents that surface a "model" config option (e.g. omp) pin the model via
+    // the standard session/set_config_option and may not implement the legacy
+    // session/set_model method, while agents that only report session models
+    // state (e.g. opencode) support only session/set_model. Prefer the config
+    // option when the agent advertises one and fall back to set_model so
+    // option-advertising agents that only implement the legacy method keep
+    // working.
+    let configState: AcpConfigStateResult | null = null;
+    let setModel = true;
+    if (modelOption) {
+      try {
+        configState = await args.connection.request({
+          method: "session/set_config_option",
+          params: {
+            sessionId: args.sessionId,
+            configId: modelOption.id,
+            value: selection.modelId,
+          },
+          resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+        });
+        setModel = false;
+      } catch {
+        setModel = true;
+      }
+    }
+    if (setModel) {
+      configState = await args.connection.request({
+        method: "session/set_model",
+        params: { sessionId: args.sessionId, modelId: selection.modelId },
+        resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+      });
+    }
     configOptions = configState?.configOptions ?? configOptions;
   }
   await selectAcpNativeReasoning({

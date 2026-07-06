@@ -624,9 +624,27 @@ describe("acp bridge", () => {
     ).toBe(true);
   });
 
-  it("selects ACP-native models with session/set_model before the first prompt", async () => {
+  it("selects ACP-native models with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      modelSelection: { modelId: "fake/strong" },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
+  it("falls back to session/set_model when the model config option errors", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_SET_CONFIG_MODEL_ERROR: "1",
+      },
       modelSelection: { modelId: "fake/strong" },
     });
 
