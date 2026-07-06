@@ -574,6 +574,20 @@ declare const runAutomationRequestSchema: z$1.ZodObject<{
 }, z$1.core.$strict>;
 type RunAutomationRequest = z$1.infer<typeof runAutomationRequestSchema>;
 
+/**
+ * `POST /connect/pair` — redeem a one-time connect code so this server is
+ * reachable at `<handle>.<domain>` through the connect tunnel. The server
+ * holds the tunnel from then on (across restarts); the CLI/app just pair.
+ * `baseUrl` (the connect cloud apex, e.g. https://getbb.app) is derived from
+ * `serverUrl` when omitted.
+ */
+declare const connectPairRequestSchema: z$1.ZodObject<{
+    code: z$1.ZodString;
+    serverUrl: z$1.ZodString;
+    baseUrl: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strict>;
+type ConnectPairRequest = z$1.infer<typeof connectPairRequestSchema>;
+
 declare const createProjectSourceRequestSchema: z$1.ZodObject<{
     hostId: z$1.ZodString;
     type: z$1.ZodLiteral<"local_path">;
@@ -1269,6 +1283,16 @@ interface AutomationsArea {
 }
 declare function createAutomationsArea(args: CreateSdkAreaArgs): AutomationsArea;
 
+interface ConnectPairArgs extends ConnectPairRequest {
+}
+type ConnectStatusResult = PublicApiOutput<"/connect/status", "$get">;
+interface ConnectArea {
+    pair(args: ConnectPairArgs): Promise<ConnectStatusResult>;
+    status(): Promise<ConnectStatusResult>;
+    disconnect(): Promise<ConnectStatusResult>;
+}
+declare function createConnectArea(args: CreateSdkAreaArgs): ConnectArea;
+
 interface EnvironmentGetArgs {
     environmentId: string;
 }
@@ -1759,6 +1783,7 @@ declare function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea;
 
 interface BbSdk extends BbRealtime {
     automations: ReturnType<typeof createAutomationsArea>;
+    connect: ReturnType<typeof createConnectArea>;
     environments: ReturnType<typeof createEnvironmentsArea>;
     files: ReturnType<typeof createFilesArea>;
     guide: ReturnType<typeof createGuideArea>;
