@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@bb/plugin-sdk": [
+        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

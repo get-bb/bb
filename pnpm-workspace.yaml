@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "apps/*"
   - "tests/*"
+  - "plugins/*"
   # Example plugins are workspace members so their declared dependencies
   # (agent-enrichment's zod) are installed into the example's own
   # node_modules — plugins bring their own dependencies.
