@@ -48,7 +48,6 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
-import { sweepDueAutomations } from "../scheduling/automation-sweep.js";
 
 export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -519,13 +518,6 @@ function runDestroyedEnvironmentPruneSweep(
   pruneDestroyedEnvironments(deps.db, deps.hub);
 }
 
-async function runDueAutomationSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  await sweepDueAutomations(deps, { now });
-}
-
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -580,12 +572,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "project-deletion",
     run: runProjectDeletionSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "scheduler",
-    name: "due-automation",
-    run: runDueAutomationSweep,
   },
   {
     cadenceMs: 0,

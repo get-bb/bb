@@ -61,9 +61,6 @@ export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
-export const AUTOMATIONS_QUERY_KEY = "automations";
-export const AUTOMATION_DETAIL_QUERY_KEY = "automationDetail";
-export const AUTOMATION_RUNS_QUERY_KEY = "automationRuns";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -452,24 +449,6 @@ export type HostPathExistenceQueryKey = readonly [
 export type HostPathExistenceQueryKeyPrefix = readonly [
   typeof HOST_PATH_EXISTENCE_QUERY_KEY,
 ];
-export type AutomationsQueryKey = readonly [typeof AUTOMATIONS_QUERY_KEY];
-export type AutomationDetailQueryKey = readonly [
-  typeof AUTOMATION_DETAIL_QUERY_KEY,
-  string,
-  string,
-];
-export type AutomationRunsQueryKey = readonly [
-  typeof AUTOMATION_RUNS_QUERY_KEY,
-  string,
-  string,
-];
-export type AllAutomationDetailQueryKeyPrefix = readonly [
-  typeof AUTOMATION_DETAIL_QUERY_KEY,
-];
-export type AllAutomationRunsQueryKeyPrefix = readonly [
-  typeof AUTOMATION_RUNS_QUERY_KEY,
-];
-
 export interface ProjectDefaultExecutionOptionsQueryKeyArgs {
   projectId: string;
 }
@@ -1079,30 +1058,4 @@ export function hostPathExistenceQueryKey(
 
 export function hostPathExistenceQueryKeyPrefix(): HostPathExistenceQueryKeyPrefix {
   return [HOST_PATH_EXISTENCE_QUERY_KEY];
-}
-
-export function automationsQueryKey(): AutomationsQueryKey {
-  return [AUTOMATIONS_QUERY_KEY];
-}
-
-export function automationDetailQueryKey(
-  projectId: string,
-  automationId: string,
-): AutomationDetailQueryKey {
-  return [AUTOMATION_DETAIL_QUERY_KEY, projectId, automationId];
-}
-
-export function automationRunsQueryKey(
-  projectId: string,
-  automationId: string,
-): AutomationRunsQueryKey {
-  return [AUTOMATION_RUNS_QUERY_KEY, projectId, automationId];
-}
-
-export function allAutomationDetailQueryKeyPrefix(): AllAutomationDetailQueryKeyPrefix {
-  return [AUTOMATION_DETAIL_QUERY_KEY];
-}
-
-export function allAutomationRunsQueryKeyPrefix(): AllAutomationRunsQueryKeyPrefix {
-  return [AUTOMATION_RUNS_QUERY_KEY];
 }

@@ -226,7 +226,6 @@ function makeThread(
 ): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
   return {
     archivedAt: null,
-    automationId: null,
     createdAt: 0,
     deletedAt: null,
     environmentId: null,

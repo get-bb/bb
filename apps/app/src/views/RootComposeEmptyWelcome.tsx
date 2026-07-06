@@ -12,7 +12,7 @@ const IMPORT_PROJECTS_PROMPT =
   "Search my home directory (max depth 3) for git repositories touched in the last 30 days and import only those projects into bb using the cli";
 
 const LEARN_PROMPT =
-  "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads, projects, and automations.";
+  "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads and projects.";
 
 interface WelcomeActionProps {
   icon: IconName;

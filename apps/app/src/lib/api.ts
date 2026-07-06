@@ -13,10 +13,6 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
-  Automation,
-  AutomationRunListResponse,
-  AutomationRunResponse,
-  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -583,108 +579,6 @@ export async function listProjectPromptHistory(
 
 export async function deleteProject(id: string): Promise<void> {
   await requestVoid(apiClient.projects[":id"].$delete({ param: { id } }));
-}
-
-export async function listAutomations(
-  signal?: AbortSignal,
-): Promise<AutomationsOverviewResponse> {
-  return request<AutomationsOverviewResponse>(
-    apiClient.automations.$get(undefined, requestOptions(signal)),
-  );
-}
-
-interface AutomationRef {
-  projectId: string;
-  automationId: string;
-}
-
-interface GetAutomationArgs extends AutomationRef {
-  signal?: AbortSignal;
-}
-
-interface ListAutomationRunsArgs extends AutomationRef {
-  limit?: number;
-  cursor?: string;
-  signal?: AbortSignal;
-}
-
-export async function getAutomation({
-  projectId,
-  automationId,
-  signal,
-}: GetAutomationArgs): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].$get(
-      { param: { id: projectId, automationId } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function listAutomationRuns({
-  projectId,
-  automationId,
-  limit,
-  cursor,
-  signal,
-}: ListAutomationRunsArgs): Promise<AutomationRunListResponse> {
-  return request<AutomationRunListResponse>(
-    apiClient.projects[":id"].automations[":automationId"].runs.$get(
-      {
-        param: { id: projectId, automationId },
-        query: {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
-          ...(cursor ? { cursor } : {}),
-        },
-      },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function pauseAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].pause.$post({
-      param: { id: projectId, automationId },
-    }),
-  );
-}
-
-export async function resumeAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].resume.$post({
-      param: { id: projectId, automationId },
-    }),
-  );
-}
-
-export async function runAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<AutomationRunResponse> {
-  return request<AutomationRunResponse>(
-    apiClient.projects[":id"].automations[":automationId"].run.$post({
-      param: { id: projectId, automationId },
-      json: {},
-    }),
-  );
-}
-
-export async function deleteAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<void> {
-  await requestVoid(
-    apiClient.projects[":id"].automations[":automationId"].$delete({
-      param: { id: projectId, automationId },
-    }),
-  );
 }
 
 export async function addProjectSource(

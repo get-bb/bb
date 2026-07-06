@@ -771,24 +771,6 @@ const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
-/**
- * Run a one-shot command in an environment workspace and capture its output.
- * Used by script-mode automations (no agent, no token spend). The daemon spawns
- * `command` with `args`, captures combined stdout/stderr as `output`, and returns
- * the exit code without throwing on non-zero. `timedOut` is true when the process
- * was SIGKILL'd after `timeoutMs`. The server fills every field at the boundary.
- */
-const hostRunScriptCommandSchema = hostDaemonWorkspaceTargetSchema
-  .extend({
-    type: z.literal("host.run_script"),
-    command: z.string().min(1),
-    args: z.array(z.string()),
-    cwd: z.string().min(1),
-    env: z.record(z.string(), z.string()),
-    timeoutMs: z.number().int().positive(),
-  })
-  .strict();
-
 const fileReadResultSchema = z.object({
   path: z.string(),
   content: z.string(),
@@ -970,15 +952,6 @@ const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
   merged: z.boolean(),
 });
 const workspacePullRequestActionResultSchema = z.object({}).strict();
-const hostRunScriptResultSchema = z
-  .object({
-    exitCode: z.number().int().nullable(),
-    output: z.string(),
-    durationMs: z.number().int().nonnegative(),
-    timedOut: z.boolean(),
-  })
-  .strict();
-
 // ---------------------------------------------------------------------------
 // Provider usage limits (live read from the host's provider credentials)
 // ---------------------------------------------------------------------------
@@ -1219,15 +1192,6 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.pull_request_action",
     schema: workspacePullRequestActionCommandSchema,
     resultSchema: workspacePullRequestActionResultSchema,
-    transport: "settled",
-    retryable: false,
-    flushEventsBeforeResult: false,
-    envLane: "write",
-  }),
-  "host.run_script": defineHostDaemonCommandDescriptor({
-    type: "host.run_script",
-    schema: hostRunScriptCommandSchema,
-    resultSchema: hostRunScriptResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

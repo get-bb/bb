@@ -1243,9 +1243,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     setServiceTier,
   ]);
 
-  // Seed the composer from navigation state `initialPrompt` (e.g. "Create via
-  // chat" from Automations). Single-use: applied only when the current draft is
-  // empty so it never clobbers an in-progress draft, then cleared from
+  // Seed the composer from navigation state `initialPrompt`. Single-use:
+  // applied only when the current draft is empty so it never clobbers an
+  // in-progress draft, then cleared from
   // location.state so a refresh starts from the persisted draft.
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
   useEffect(() => {

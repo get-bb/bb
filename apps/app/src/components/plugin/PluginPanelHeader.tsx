@@ -6,7 +6,7 @@ import { PluginContext } from "./plugin-context";
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
  * AppLayout's AppHeader): plugin panels get the SAME chrome as
- * Settings/Automations — logo + panel title in the header center, the
+ * Settings — logo + panel title in the header center, the
  * registration's optional `headerContent` component in the header actions.
  * PluginPanelView renders only the panel body.
  */

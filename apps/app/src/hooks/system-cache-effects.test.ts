@@ -3,9 +3,6 @@ import { QueryObserver } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
-  automationDetailQueryKey,
-  automationRunsQueryKey,
-  automationsQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
   sidebarNavigationQueryKey,
@@ -119,15 +116,6 @@ describe("system cache effects", () => {
       kind: "thread",
       threadId: "thread-1",
     });
-    const automationsKey = automationsQueryKey();
-    const automationDetailKey = automationDetailQueryKey(
-      "project-1",
-      "automation-1",
-    );
-    const automationRunsKey = automationRunsQueryKey(
-      "project-1",
-      "automation-1",
-    );
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     queryClient.setQueryData(threadKey, { id: "thread-1" });
     queryClient.setQueryData(threadBootstrapKey, { id: "thread-1" });
@@ -153,9 +141,6 @@ describe("system cache effects", () => {
     });
     queryClient.setQueryData(executionOptionsKey, EMPTY_EXECUTION_OPTIONS);
     queryClient.setQueryData(terminalsKey, { sessions: [] });
-    queryClient.setQueryData(automationsKey, { automations: [] });
-    queryClient.setQueryData(automationDetailKey, { id: "automation-1" });
-    queryClient.setQueryData(automationRunsKey, { runs: [] });
     queryClient.setQueryData(sidebarNavigationKey, {
       projects: [],
       personalProject: { threads: [] },
@@ -193,15 +178,6 @@ describe("system cache effects", () => {
       true,
     );
     expect(queryClient.getQueryState(terminalsKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(automationsKey)?.isInvalidated).toBe(
-      true,
-    );
-    expect(queryClient.getQueryState(automationDetailKey)?.isInvalidated).toBe(
-      true,
-    );
-    expect(queryClient.getQueryState(automationRunsKey)?.isInvalidated).toBe(
-      true,
-    );
     expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
       true,
     );

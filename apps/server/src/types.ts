@@ -22,13 +22,6 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 export interface ServerRuntimeConfig {
   appVersion: string;
   appSurface: AppSurface;
-  /**
-   * Operator gate for script-mode automations (which execute arbitrary host
-   * commands). DEFAULT ENABLED so the feature works out of the box; set
-   * BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS=false to forbid creating new script
-   * automations (400) and to skip/fail script runs at execution time.
-   */
-  automationsAllowScriptRuns: boolean;
   builtinSkillsRootPath: string;
   customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];

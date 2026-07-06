@@ -333,7 +333,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
     commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
     commandRpcResponseSuccessSchemaFor("workspace.pull_request_action"),
-    commandRpcResponseSuccessSchemaFor("host.run_script"),
   ],
 );
 

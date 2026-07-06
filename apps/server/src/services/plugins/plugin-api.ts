@@ -177,8 +177,7 @@ export interface PluginAgentToolRecord {
  * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
  */
 export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  // "automation" is intentionally absent: the builtin automations plugin
-  // registers it while the core command is migrated out of the server.
+  // "automation" is intentionally absent: the builtin automations plugin owns it.
   "environment",
   "guide",
   "help",

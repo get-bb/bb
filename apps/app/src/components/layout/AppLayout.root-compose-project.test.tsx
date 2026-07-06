@@ -80,10 +80,6 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
   }),
 }));
 
-vi.mock("@/hooks/queries/automation-queries", () => ({
-  useAutomationDetail: () => ({ data: undefined }),
-}));
-
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {

@@ -441,12 +441,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     merged: true,
   },
   "workspace.pull_request_action": {},
-  "host.run_script": {
-    exitCode: 0,
-    output: "ok\n",
-    durationMs: 12,
-    timedOut: false,
-  },
 };
 
 const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {

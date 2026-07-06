@@ -179,8 +179,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenAutomations?: () => void;
-  isAutomationsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -226,8 +224,7 @@ interface LocalSourcePathTarget {
   projectId: string;
 }
 
-// Exported for the plugin nav entries, which render as sibling rows of the
-// Automations action and must match its look exactly.
+// Exported for plugin nav entries that render as sibling primary action rows.
 export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_BASE_CLASS,
   LIST_HOVER_TRANSITION,
@@ -1189,8 +1186,6 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenAutomations,
-  isAutomationsActive = false,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -1272,22 +1267,6 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            PROJECT_LIST_ACTION_BUTTON_CLASS,
-            isAutomationsActive && "bg-sidebar-accent text-sidebar-foreground",
-          )}
-          aria-current={isAutomationsActive ? "page" : undefined}
-          onClick={onOpenAutomations}
-        >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
-        </Button>
-      ) : null}
     </div>
   );
 }

@@ -29,7 +29,7 @@ const HIGHLIGHTER_OPTIONS = {};
  * This view renders ONLY the panel body. The title chrome (plugin logo +
  * panel title + the registration's `headerContent`) lives in the shared app
  * header — AppLayout's AppHeader + PluginPanelHeader — so plugin panels get
- * the same chrome as Settings/Automations. Body per the registration's
+ * the same chrome as Settings. Body per the registration's
  * `chrome` (default "page"):
  * - "page": full-width PageShell body (no prose max-width cap).
  * - "none": the plugin component owns the entire body region — no host

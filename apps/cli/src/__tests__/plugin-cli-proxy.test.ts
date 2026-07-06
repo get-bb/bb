@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 
-import { registerAutomationCommands } from "../commands/automation.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
 import { registerManagerCommands } from "../commands/manager.js";
@@ -44,7 +43,6 @@ function buildProgram(): Command {
   registerManagerCommands(program, getUrl);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
-  registerAutomationCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
   registerUiCommands(program, getUrl);
   registerPluginCommands(program, getUrl);
@@ -64,9 +62,6 @@ describe("reserved bb CLI command names", () => {
     const names = topLevelCommandNames(buildProgram());
     const reserved = new Set(RESERVED_BB_CLI_COMMANDS);
     for (const name of names) {
-      // Transitional: the automations plugin owns "automation"; the core
-      // command is being deleted and must not re-reserve the name.
-      if (name === "automation") continue;
       expect(reserved, `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`).toContain(
         name,
       );

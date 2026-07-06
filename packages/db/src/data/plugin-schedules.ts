@@ -80,8 +80,7 @@ export function listDuePluginSchedules(
 }
 
 /**
- * Optimistic at-most-once claim (same CAS pattern as
- * claimAutomationScheduledRun): advance next_run_at only if it still equals
+ * Optimistic at-most-once claim: advance next_run_at only if it still equals
  * the expected value. A single UPDATE, so no explicit transaction is needed.
  */
 export function claimPluginScheduledRun(

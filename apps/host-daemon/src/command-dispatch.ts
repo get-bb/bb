@@ -33,7 +33,6 @@ import {
 import { writeHostFile } from "./command-handlers/file-write.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
-import { runScript } from "./command-handlers/run-script.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
@@ -311,7 +310,6 @@ const commandHandlers: CommandHandlerMap = {
     }
     return {};
   },
-  "host.run_script": runScript,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {

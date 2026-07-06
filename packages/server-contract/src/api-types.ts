@@ -1,5 +1,4 @@
 export * from "./api/shared.js";
-export * from "./api/automations.js";
 export * from "./api/connect.js";
 export * from "./api/projects.js";
 export * from "./api/environments.js";

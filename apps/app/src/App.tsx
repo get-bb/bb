@@ -19,8 +19,6 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
-  AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
@@ -43,16 +41,6 @@ const ThreadDetailRoute = lazy(
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
     default: m.SettingsView,
-  })),
-);
-const AutomationsView = lazy(() =>
-  import("./views/AutomationsView").then((m) => ({
-    default: m.AutomationsView,
-  })),
-);
-const AutomationDetailView = lazy(() =>
-  import("./views/AutomationDetailView").then((m) => ({
-    default: m.AutomationDetailView,
   })),
 );
 const ProjectSettingsView = lazy(() =>
@@ -109,14 +97,6 @@ function AppRoutes() {
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
-          <Route
-            path={AUTOMATIONS_ROUTE_PATH}
-            element={<AutomationsView />}
-          />
-          <Route
-            path={AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<AutomationDetailView />}
-          />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}

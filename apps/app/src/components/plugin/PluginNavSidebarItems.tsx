@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row
- * per registered panel, styled like the Automations action, navigating to
+ * per registered panel, styled like primary sidebar actions, navigating to
  * the panel's own route under /plugins/<pluginId>/<path>. Renders nothing
  * while no plugin contributes a panel. Only host chrome renders here — the
  * plugin's component mounts on the route (PluginPanelView).
@@ -34,7 +34,7 @@ function PluginNavSidebarItemList({
     <div
       // -mt-1 tightens the seam against the primary-actions block (its py-2
       // bottom) so the first panel row sits on the same 4px (space-y-1) rhythm
-      // as New thread / Automations above it, instead of an 8px gap.
+      // as New thread above it, instead of an 8px gap.
       className="-mt-1 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
     >

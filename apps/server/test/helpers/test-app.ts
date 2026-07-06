@@ -120,7 +120,6 @@ export async function createTestAppHarness(
   const config: ServerRuntimeConfig = {
     appSurface: "web",
     appVersion: "0.0.0-test",
-    automationsAllowScriptRuns: true,
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
     customAcpAgents: [],
     customModels: [],

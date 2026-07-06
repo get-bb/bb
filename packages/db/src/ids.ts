@@ -40,14 +40,6 @@ export function createThreadFolderId(): string {
   return createId("fld");
 }
 
-export function createAutomationId(): string {
-  return createId("auto");
-}
-
-export function createAutomationRunId(): string {
-  return createId("arun");
-}
-
 export function createThreadProvisioningId(): string {
   return createId("tpv");
 }

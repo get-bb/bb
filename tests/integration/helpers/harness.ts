@@ -220,7 +220,6 @@ async function startIntegrationServer(
   const config: ServerRuntimeConfig = {
     appSurface: "web",
     appVersion: "0.0.0-dev",
-    automationsAllowScriptRuns: true,
     builtinSkillsRootPath,
     customAcpAgents: [],
     customModels: [],

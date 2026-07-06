@@ -1,5 +1,4 @@
 import type { BbSdkContext, BbSdkTransport } from "./transport.js";
-import { createAutomationsArea } from "./areas/automations.js";
 import { createConnectArea } from "./areas/connect.js";
 import { createEnvironmentsArea } from "./areas/environments.js";
 import { createFilesArea } from "./areas/files.js";
@@ -19,7 +18,6 @@ export interface CreateBbSdkArgs {
 }
 
 export interface BbSdk extends BbRealtime {
-  automations: ReturnType<typeof createAutomationsArea>;
   connect: ReturnType<typeof createConnectArea>;
   environments: ReturnType<typeof createEnvironmentsArea>;
   files: ReturnType<typeof createFilesArea>;
@@ -39,7 +37,6 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     transport: args.transport,
   });
   return {
-    automations: createAutomationsArea(sdkContext),
     connect: createConnectArea(sdkContext),
     environments: createEnvironmentsArea(sdkContext),
     files: createFilesArea(sdkContext),

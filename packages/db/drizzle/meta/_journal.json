@@ -386,6 +386,13 @@
       "when": 1783351082402,
       "tag": "0054_same_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1783354375744,
+      "tag": "0055_drop_kernel_automations",
+      "breakpoints": true
     }
   ]
 }

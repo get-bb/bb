@@ -19,7 +19,6 @@ import {
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
-import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   getLatestPendingInteraction,
@@ -52,7 +51,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
-  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
@@ -227,7 +225,6 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
-  "/automations": { title: "Automations" },
 };
 
 interface AppHeaderProps {
@@ -396,16 +393,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     isArchivedView,
     isSettingsView,
     isRootView,
-    isAutomationDetailView,
-    automationId,
-    automationProjectId,
   } = useRouteState();
-  const { data: automationDetail } = useAutomationDetail(
-    automationProjectId ?? "",
-    automationId ?? "",
-    { enabled: isAutomationDetailView },
-  );
-  const automationName = automationDetail?.name ?? "Automation";
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
@@ -481,16 +469,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isAutomationDetailView
-      ? {
-          title: "",
-          subtitle: undefined,
-          breadcrumbs: [
-            { label: "Automations", to: getAutomationsRoutePath() },
-            { label: automationName },
-          ],
-        }
-      : isArchivedView && projectId
+    : isArchivedView && projectId
         ? isProjectlessProjectId(projectId)
           ? {
               title: "",
@@ -537,9 +516,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (pluginPanel) {
       return pluginPanel.title;
-    }
-    if (isAutomationDetailView) {
-      return `${automationName} · Automations`;
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

@@ -1016,8 +1016,6 @@ describe("server-contract canonical schemas", () => {
       "project-sources-changed",
       "threads-changed",
       "project-order-changed",
-      "automations-changed",
-      "automation-runs-changed",
     ]);
     expect(SYSTEM_CHANGE_KINDS).toEqual([
       "config-changed",
