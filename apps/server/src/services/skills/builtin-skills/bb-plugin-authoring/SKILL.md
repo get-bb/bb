@@ -549,6 +549,81 @@ hardcoded colors break custom palettes.
 
 ## Testing a plugin
 
+### Unit tests with `@bb/plugin-sdk/testing`
+
+In a bb checkout (workspace/in-repo plugins), `@bb/plugin-sdk/testing` is
+the official vitest harness: a fake plugin host whose `bb` satisfies
+`BbPluginApi` with host-faithful semantics — real better-sqlite3 `:memory:`
+storage (never mock the db), the kv 256KB cap, the same registration
+name-validation and error messages, rpc/cli JSON round-tripping, and
+`threads.spawn` plugin attribution. It is NOT part of the bundled `.d.ts`
+that `bb plugin new` scaffolds ship (V1 is workspace consumers only), so
+standalone plugins outside a checkout cannot import it yet.
+
+Backend (`server.ts`) — `createFakePluginHost()`:
+
+```ts
+import { createFakePluginHost, makeThreadResponse } from "@bb/plugin-sdk/testing";
+import plugin from "./server";
+
+const { bb, harness } = createFakePluginHost({
+  pluginId: "my-plugin",
+  settings: { apiToken: "tok" }, // pre-seeded stored values (secrets included)
+  sdk: { threads: { spawn: async () => ({ id: "th_1" }) } },
+});
+await plugin(bb);
+
+await harness.callRpc("list", { q: "x" });          // JSON round-trip like the wire
+await harness.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
+await harness.runCli(["search", "x"]);              // { exitCode, stdout, stderr }
+const svc = harness.runService("watcher");          // start now; svc.controller.abort(); await svc.done
+await harness.runSchedule("sync");                  // no timers, no cron sweep
+await harness.setSettings({ apiToken: "next" });    // validates + fires onChange like a host save
+await harness.emitThreadEvent("thread.idle", {
+  thread: makeThreadResponse({ id: "th_1" }),       // complete ThreadResponse fixture
+  lastAssistantText: "done",
+});
+await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.dispose();                            // abort services, hooks LIFO, close sqlite; stale bb throws
+```
+
+Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
+`bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
+`harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
+`harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
+`harness.registrations` (http routes, rpc methods, services, schedules, cli,
+agent tools, thread actions, mention providers).
+
+Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
+
+```tsx
+// @vitest-environment jsdom
+import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+
+// The thunk matters: app.tsx binds the plugin runtime at module load, so
+// loadPluginApp installs the test runtime BEFORE importing it. (For static
+// imports, call installTestPluginRuntime() in a vitest setup file instead.)
+const app = await loadPluginApp(() => import("./app"));
+
+const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
+  rpc: { listNotes: () => ({ mounts: [] }) },   // method → handler, calls logged
+  settings: { greeting: "hi" },                 // useSettings() values
+  context: { projectId: "p1", threadId: null }, // useBbContext()
+});
+await slot.findByText("…");                     // Testing Library queries
+slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activity
+await slot.emitRealtime("notes-changed", null); // push into useRealtime()
+```
+
+`loadPluginApp` validates registrations with the host's own rules (slot id
+patterns, navPanel path, chrome, fileOpener extensions) and returns them
+typed with defaults filled. Working examples:
+`examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
+`thread.idle` reply) and `examples/plugins/notes/app.test.tsx` (nav panel
+tree over rpc + realtime refresh + navigate assertions).
+
+### Live loop against a running bb
+
 - `bb plugin dev` is the loop: save → rebuild (if `bb.app`) → reload; open
   app pages pick new UI up live. Build/reload failures print and keep
   watching.
