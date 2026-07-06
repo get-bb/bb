@@ -204,6 +204,7 @@ interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
+  isBuiltin: boolean;
 }
 
 export interface PluginServiceDeps {
@@ -1142,12 +1143,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return deps.isEnabled() || isBuiltinSource(row.source);
   }
 
-  function shouldExposeLoadedPlugin(id: string): boolean {
-    return deps.isEnabled() || isBuiltinPluginId(id);
+  function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
+    return deps.isEnabled() || plugin.isBuiltin;
+  }
+
+  function shouldExposePluginId(id: string): boolean {
+    const plugin = loaded.get(id);
+    return deps.isEnabled() || (plugin?.isBuiltin ?? isBuiltinPluginId(id));
   }
 
   function exposedLoadedEntries(): Array<[string, LoadedPlugin]> {
-    return [...loaded.entries()].filter(([id]) => shouldExposeLoadedPlugin(id));
+    return [...loaded.entries()].filter(([, plugin]) =>
+      shouldExposeLoadedPlugin(plugin),
+    );
   }
 
   /**
@@ -1357,6 +1365,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         startedAt: 0,
         disposed: false,
       })),
+      isBuiltin: isBuiltinSource(row.source),
     };
     loaded.set(row.id, plugin);
     // Sync durable schedule rows to this load's registrations: upsert each
@@ -1438,8 +1447,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   async function disposeNonBuiltins(): Promise<void> {
-    for (const id of [...loaded.keys()]) {
-      if (isBuiltinPluginId(id)) continue;
+    for (const [id, plugin] of [...loaded.entries()]) {
+      if (plugin.isBuiltin) continue;
       await withLifecycleLock(id, () => disposeOne(id));
     }
   }
@@ -2193,12 +2202,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async runCliCommand(id, argv, ctx) {
       const fail = (stderr: string) => ({ exitCode: 1, stdout: "", stderr });
-      if (!deps.isEnabled() && !isBuiltinPluginId(id)) {
+      const plugin = loaded.get(id);
+      if (!shouldExposePluginId(id)) {
         return fail(
           'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
         );
       }
-      const plugin = loaded.get(id);
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return fail(`unknown plugin "${id}"`);
@@ -2310,7 +2319,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getThreadAction(id, actionId) {
-      if (!shouldExposeLoadedPlugin(id)) return { outcome: "unknown-plugin" };
+      if (!shouldExposePluginId(id)) return { outcome: "unknown-plugin" };
       return wireLookup(id, (plugin) =>
         plugin.handle.threadActions.find((record) => record.id === actionId),
       );
@@ -2414,7 +2423,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async resolveMention({ pluginId, itemId }) {
-      if (!deps.isEnabled() && !isBuiltinPluginId(pluginId)) {
+      if (!shouldExposePluginId(pluginId)) {
         return {
           ok: false,
           error:

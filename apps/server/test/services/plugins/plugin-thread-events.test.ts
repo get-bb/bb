@@ -189,6 +189,45 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
+  it("delivers thread.deleted when thread creation rolls back after insert", async () => {
+    const deleted: RecordedThreadPayload[] = [];
+    globals.__rollbackDeletedEvents = deleted;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.on("thread.deleted", (payload: any) => {
+          (globalThis as any).__rollbackDeletedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, project } = seedThreadFixture(harness);
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          providerId: "codex",
+          origin: "app",
+          title: "Rollback event test",
+          input: [{ type: "text", text: "hello", mentions: [] }],
+          model: "gpt-5",
+          reasoningLevel: "max",
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await vi.waitFor(() => expect(deleted).toHaveLength(1));
+      expect(deleted[0]?.thread.id).toEqual(expect.stringMatching(/^thr_/));
+      expect(deleted[0]?.thread.projectId).toBe(project.id);
+      expect(deleted[0]?.thread.deletedAt).toEqual(expect.any(Number));
+    } finally {
+      delete globals.__rollbackDeletedEvents;
+      await cleanup();
+    }
+  });
+
   it("delivers thread.deleted from route-driven deletion", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__deletedEvents = recorded;

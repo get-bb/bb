@@ -6,7 +6,10 @@ import type {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { ensurePersonalProjectBootstrap } from "./services/projects/personal-project.js";
-import { exportLegacyAutomationsForPluginImport } from "./legacy-automations-export.js";
+import {
+  exportLegacyAutomationsForPluginImport,
+  hasLegacyAutomationsToExport,
+} from "./legacy-automations-export.js";
 
 export type InitDbLogger = MigrationWarningLogger &
   SlowDbQueryLogger &
@@ -30,6 +33,10 @@ export function initDb(
       db,
       logger: options.logger,
     });
+  } else if (hasLegacyAutomationsToExport(db)) {
+    throw new Error(
+      "Cannot migrate legacy automations without dataDir and logger; refusing to drop kernel automation rows before exporting them for the automations plugin",
+    );
   }
   migrate(db, {
     deferDestructiveLegacyCleanup: true,

@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { DbConnection } from "@bb/db";
+import { resolveContainedPath } from "@bb/process-utils";
 
 interface LegacyAutomationsExportLogger {
   error(fields: { err: unknown }, message: string): void;
@@ -94,11 +95,11 @@ function toBoolean(value: z.infer<typeof sqliteBooleanSchema>): boolean {
 }
 
 function containedPath(rootPath: string, pathFromRoot: string): string {
-  const candidate = resolve(rootPath, pathFromRoot);
-  const rel = relative(rootPath, candidate);
-  if (rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))) {
-    return candidate;
-  }
+  const candidate = resolveContainedPath({
+    rootPath,
+    candidatePath: resolve(rootPath, pathFromRoot),
+  });
+  if (candidate !== null) return candidate;
   throw new Error(`Legacy automation script path escapes its directory: ${pathFromRoot}`);
 }
 
@@ -283,4 +284,8 @@ export function exportLegacyAutomationsForPluginImport(args: {
     );
     throw err;
   }
+}
+
+export function hasLegacyAutomationsToExport(db: DbConnection): boolean {
+  return tableExists(db, "automations") && tableRowCount(db, "automations") > 0;
 }

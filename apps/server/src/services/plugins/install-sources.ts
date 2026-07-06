@@ -32,10 +32,6 @@ export function isCommitSha(ref: string): boolean {
   return COMMIT_SHA_PATTERN.test(ref);
 }
 
-export function isBuiltinPluginSource(source: string): boolean {
-  return parsePluginSource(source).kind === "builtin";
-}
-
 function assertSafeSegments(value: string, label: string): void {
   const segments = value.split("/");
   if (

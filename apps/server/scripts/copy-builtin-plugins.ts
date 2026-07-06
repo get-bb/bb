@@ -7,6 +7,7 @@ import {
   BUILTIN_PLUGIN_NAMES,
   resolveBuiltinPluginRootPathForModuleDir,
 } from "../src/services/plugins/builtin-registry.js";
+import { LOGO_CONVENTION_EXTENSIONS } from "../src/services/plugins/app-bundle.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(scriptDir, "..");
@@ -19,7 +20,9 @@ const targetRoot = path.resolve(
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
 const RUNTIME_FILES = ["package.json"] as const;
-const LOGO_FILES = ["logo.svg", "logo.png", "logo.webp"] as const;
+const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.map(
+  (extension) => `logo.${extension}`,
+);
 
 async function exists(filePath: string): Promise<boolean> {
   try {

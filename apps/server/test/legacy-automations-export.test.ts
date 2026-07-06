@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type DbConnection } from "@bb/db";
 import { exportLegacyAutomationsForPluginImport } from "../src/legacy-automations-export.js";
+import { initDb } from "../src/db.js";
 import { testLogger } from "./helpers/test-app.js";
 
 function createLegacyTables(db: DbConnection): void {
@@ -72,6 +73,20 @@ describe("exportLegacyAutomationsForPluginImport", () => {
         logger: testLogger,
       }),
     ).not.toThrow();
+  });
+
+  it("refuses to migrate legacy automation rows without plugin export context", () => {
+    const dbPath = join(dataDir, "legacy.sqlite");
+    const legacyDb = createConnection(dbPath);
+    legacyDb.$client.exec(`
+      CREATE TABLE automations (id text PRIMARY KEY NOT NULL);
+      INSERT INTO automations (id) VALUES ('auto_legacy');
+    `);
+    legacyDb.$client.close();
+
+    expect(() => initDb(dbPath)).toThrow(
+      "Cannot migrate legacy automations without dataDir and logger",
+    );
   });
 
   it("exports legacy rows and referenced script files for plugin import", async () => {
