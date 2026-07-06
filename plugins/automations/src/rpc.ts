@@ -8,36 +8,39 @@ import {
 } from "./rpc-types.js";
 import type { AutomationService } from "./service.js";
 
+// The bb plugin host restricts rpc method names to /^[a-zA-Z0-9_-]+$/ (they
+// ride the URL POST /api/v1/plugins/<id>/rpc/<method>), so the namespaced
+// names use "_" rather than "." — the plugin id already namespaces the route.
 export function createRpcHandlers(service: AutomationService) {
   return {
-    "automations.overview"(_input: unknown) {
+    automations_overview(_input: unknown) {
       return service.overview();
     },
-    "automations.list"(input: unknown) {
+    automations_list(input: unknown) {
       return service.list(listAutomationsInputSchema.parse(input));
     },
-    "automations.get"(input: unknown) {
+    automations_get(input: unknown) {
       return service.get(projectAutomationInputSchema.parse(input));
     },
-    "automations.create"(input: unknown) {
+    automations_create(input: unknown) {
       return service.create(createAutomationInputSchema.parse(input));
     },
-    "automations.update"(input: unknown) {
+    automations_update(input: unknown) {
       return service.update(updateAutomationInputSchema.parse(input));
     },
-    "automations.delete"(input: unknown) {
+    automations_delete(input: unknown) {
       return service.delete(projectAutomationInputSchema.parse(input));
     },
-    "automations.pause"(input: unknown) {
+    automations_pause(input: unknown) {
       return service.pause(projectAutomationInputSchema.parse(input));
     },
-    "automations.resume"(input: unknown) {
+    automations_resume(input: unknown) {
       return service.resume(projectAutomationInputSchema.parse(input));
     },
-    "automations.run"(input: unknown) {
+    automations_run(input: unknown) {
       return service.run(runAutomationInputSchema.parse(input));
     },
-    "automations.runs"(input: unknown) {
+    automations_runs(input: unknown) {
       return service.runs(automationRunsInputSchema.parse(input));
     },
   };
