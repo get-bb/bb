@@ -35,7 +35,8 @@ import {
 } from "@/src/types";
 
 const PANEL_PATH = "connect";
-const DASHBOARD_URL = "https://getbb.app";
+// Sign in → claim a handle → generate a connect code, all on one page.
+const DASHBOARD_URL = "https://getbb.app/dashboard";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -185,7 +186,7 @@ function PairForm({
         <Input
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          placeholder="Paste a connect code"
+          placeholder="Paste your connect code"
           autoComplete="off"
           spellCheck={false}
           className="max-w-xs font-mono"
@@ -194,7 +195,7 @@ function PairForm({
           {pending ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
-          {paired ? "Re-pair" : "Pair"}
+          {paired ? "Re-pair" : "Connect"}
         </Button>
       </form>
       {error !== null ? (
@@ -218,6 +219,17 @@ function PairForm({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function StepNumber({ value }: { value: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-recessed text-xs font-medium text-muted-foreground"
+    >
+      {value}
+    </span>
   );
 }
 
@@ -271,26 +283,42 @@ function DisconnectDialog({
 
 function NotPairedCard({ onPaired }: { onPaired: () => void }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <StatusDot tone="muted" />
-        <h2 className="text-sm font-semibold">Not paired</h2>
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <StatusDot tone="muted" />
+          <h2 className="text-sm font-semibold">Set up remote access</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Use this bb from any device at{" "}
+          <span className="font-mono">https://&lt;handle&gt;.getbb.app</span>.
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Pair this bb with a getbb.app handle to reach it from any browser at{" "}
-        <span className="font-mono">https://&lt;handle&gt;.getbb.app</span>.
-        Generate a one-time connect code on the{" "}
-        <a
-          href={DASHBOARD_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          getbb.app dashboard
-        </a>{" "}
-        and paste it below.
-      </p>
-      <PairForm paired={false} onPaired={onPaired} />
+
+      <div className="flex gap-3">
+        <StepNumber value={1} />
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm">
+            Sign in to getbb.app and pick a name for your bb. The dashboard
+            shows a one-time connect code.
+          </p>
+          <Button type="button" variant="outline" size="sm" asChild>
+            <a href={DASHBOARD_URL} target="_blank" rel="noreferrer">
+              Sign in to getbb.app
+              <Icon name="ExternalLink" className="size-3.5" />
+            </a>
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <StepNumber value={2} />
+        <div className="min-w-0 flex-1 space-y-2">
+          <p className="text-sm">Paste the connect code here.</p>
+          <PairForm paired={false} onPaired={onPaired} />
+        </div>
+      </div>
+
       <p className="text-xs text-muted-foreground">
         Anyone signed into your getbb.app account gets full control of this
         bb.
@@ -310,6 +338,7 @@ function PairedCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [repairOpen, setRepairOpen] = useState(false);
   const connected = status.state === "connected";
 
   const disconnect = useCallback(() => {
@@ -350,12 +379,15 @@ function PairedCard({
 
       {status.url !== null ? (
         <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Open this URL on any device — or scan the code:
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <a
               href={status.url}
               target="_blank"
               rel="noreferrer"
-              className="break-all font-mono text-base font-medium underline-offset-4 hover:underline"
+              className="break-all font-mono text-lg font-medium underline-offset-4 hover:underline"
             >
               {status.url}
             </a>
@@ -366,21 +398,33 @@ function PairedCard({
       ) : null}
 
       <div className="space-y-2 border-t border-border-seam pt-4">
-        <PairForm paired onPaired={onChanged} />
-      </div>
-
-      <div className="border-t border-border-seam pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setConfirmOpen(true)}
-        >
-          Disconnect
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setRepairOpen((open) => !open)}
+          >
+            <Icon
+              name={repairOpen ? "ChevronDown" : "ChevronRight"}
+              className="size-3.5"
+            />
+            Re-pair with a new code
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmOpen(true)}
+          >
+            Disconnect
+          </Button>
+        </div>
+        {repairOpen ? <PairForm paired onPaired={onChanged} /> : null}
         {disconnectError !== null ? (
-          <p className="mt-2 text-sm text-destructive">{disconnectError}</p>
+          <p className="text-sm text-destructive">{disconnectError}</p>
         ) : null}
       </div>
 
