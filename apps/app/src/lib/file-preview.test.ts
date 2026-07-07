@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   areEnvironmentFilePreviewSourcesEqual,
   buildFilePreview,
+  isCsvFilePreview,
   isMarkdownFilePreview,
   normalizeFilePreviewMimeType,
 } from "./file-preview";
@@ -182,5 +183,30 @@ describe("file-preview", () => {
     expect(isMarkdownFilePreview(markdownByPath)).toBe(true);
     expect(isMarkdownFilePreview(markdownByMime)).toBe(true);
     expect(isMarkdownFilePreview(plainText)).toBe(false);
+  });
+
+  it("detects CSV text previews by extension and mime type", () => {
+    const csvByPath = buildFilePreview({
+      contentBytes: new TextEncoder().encode("name,score\nAda,10\n"),
+      mimeType: "text/plain",
+      path: "reports/scores.csv",
+      url: "/files/reports/scores.csv",
+    });
+    const csvByMime = buildFilePreview({
+      contentBytes: new TextEncoder().encode("name,score\nAda,10\n"),
+      mimeType: "text/csv",
+      path: "reports/scores",
+      url: "/files/reports/scores",
+    });
+    const plainText = buildFilePreview({
+      contentBytes: new TextEncoder().encode("name,score\nAda,10\n"),
+      mimeType: "text/plain",
+      path: "reports/scores.txt",
+      url: "/files/reports/scores.txt",
+    });
+
+    expect(isCsvFilePreview(csvByPath)).toBe(true);
+    expect(isCsvFilePreview(csvByMime)).toBe(true);
+    expect(isCsvFilePreview(plainText)).toBe(false);
   });
 });

@@ -48,7 +48,7 @@ import { FilePreview } from "...";
   state={{
     kind: "ready",
     lineRange: null,
-    showMarkdownModeToggle: true,
+    textPreviewKind: "markdown",
     file,
   }}
 />;
@@ -107,10 +107,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 `;
 
+const SAMPLE_METRICS_CSV = `Name,Status,Revenue,Notes
+Ada Lovelace,Active,12800,"Renewal call booked, asked for CSV export"
+Grace Hopper,Trial,4200,"Prefers yearly billing"
+Katherine Johnson,Active,9600,"Needs ""Executive Summary"" column added"
+`;
+
 const README_PATH = "docs/right-panel/README.md";
 const DIAGRAM_PATH = "docs/right-panel/preview-flow.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
+const METRICS_PATH = "reports/customers.csv";
 const SCREENSHOT_PATH = "docs/screenshots/right-panel.svg";
 const STORY_WORKSPACE_ROOT = "/Users/alex/Code/bb";
 
@@ -156,7 +163,7 @@ export function Overview() {
             state={{
               kind: "ready",
               lineRange: null,
-              showMarkdownModeToggle: true,
+              textPreviewKind: "markdown",
               file: { name: "README.md", contents: SAMPLE_README_MD },
             }}
           />
@@ -174,8 +181,26 @@ export function Overview() {
             state={{
               kind: "ready",
               lineRange: null,
-              showMarkdownModeToggle: true,
+              textPreviewKind: "markdown",
               file: { name: "preview-flow.md", contents: SAMPLE_DIAGRAM_MD },
+            }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="CSV file"
+        hint="CSV previews render as a table with a Raw toggle for the original source"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={METRICS_PATH}
+            copyPath={copyPathFor(METRICS_PATH)}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "ready",
+              lineRange: null,
+              textPreviewKind: "csv",
+              file: { name: "customers.csv", contents: SAMPLE_METRICS_CSV },
             }}
           />
         </PreviewStage>
@@ -192,7 +217,7 @@ export function Overview() {
             state={{
               kind: "ready",
               lineRange: null,
-              showMarkdownModeToggle: true,
+              textPreviewKind: null,
               file: {
                 name: "Button.tsx",
                 contents: SAMPLE_BUTTON_TSX,
@@ -215,7 +240,7 @@ export function Overview() {
             state={{
               kind: "ready",
               lineRange: null,
-              showMarkdownModeToggle: true,
+              textPreviewKind: null,
               file: {
                 name: "legacy-button.tsx",
                 contents: SAMPLE_BUTTON_TSX,

@@ -74,7 +74,7 @@ export type FilePreviewState =
       kind: "ready";
       file: FilePreviewFile;
       lineRange: FilePreviewLineRange | null;
-      showMarkdownModeToggle: boolean;
+      textPreviewKind: TextFilePreviewKind | null;
       markdownUrlTransform?: UrlTransform;
     };
 
@@ -137,6 +137,11 @@ interface MarkdownFilePreviewProps {
   markdownLinkRouting?: MarkdownLinkRouting;
 }
 
+interface CsvFilePreviewProps {
+  file: FilePreviewFile;
+  onSelectionAddToChat?: (text: string) => void;
+}
+
 interface FilePreviewImageProps {
   url: string;
   alt: string;
@@ -177,16 +182,21 @@ interface GetInitialFilePreviewViewModeArgs {
   toggleKind: FilePreviewToggleKind | null;
 }
 
+interface CsvPreviewData {
+  columnCount: number;
+  rows: string[][];
+  truncatedColumns: boolean;
+  truncatedRows: boolean;
+}
+
 type FilePreviewViewMode = "preview" | "source";
-type FilePreviewToggleKind = "html" | "markdown";
+export type TextFilePreviewKind = "csv" | "markdown";
+type FilePreviewToggleKind = "csv" | "html" | "markdown";
 export type FilePreviewHeaderMode = "file" | "none";
 type IframeLoadState = "loading" | "loaded" | "error";
 
-const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set([
-  "md",
-  "mdx",
-  "markdown",
-]);
+const CSV_PREVIEW_MAX_COLUMNS = 100;
+const CSV_PREVIEW_MAX_ROWS = 500;
 
 const FILE_PREVIEW_VIEW_STYLE = {
   "--diffs-font-size": "12px",
@@ -214,32 +224,33 @@ const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
 const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
   "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
 
-function isMarkdownFile(name: string): boolean {
-  const extension = name.split(".").pop()?.toLowerCase();
-  return extension !== undefined && MARKDOWN_EXTENSIONS.has(extension);
-}
-
 function getFilePreviewToggleKind(
   state: FilePreviewState,
 ): FilePreviewToggleKind | null {
   if (state.kind === "html") {
     return "html";
   }
-  if (
-    state.kind === "ready" &&
-    state.showMarkdownModeToggle &&
-    isMarkdownFile(state.file.name)
-  ) {
-    return "markdown";
+  if (state.kind === "ready") {
+    return state.textPreviewKind;
   }
   return null;
 }
 
 function getToggleAriaLabel(kind: FilePreviewToggleKind): string {
-  return kind === "html" ? "HTML view mode" : "Markdown view mode";
+  switch (kind) {
+    case "csv":
+      return "CSV view mode";
+    case "html":
+      return "HTML view mode";
+    case "markdown":
+      return "Markdown view mode";
+  }
 }
 
 function getFileContentsCopyLabel(kind: FilePreviewToggleKind | null): string {
+  if (kind === "csv") {
+    return "Copy CSV";
+  }
   if (kind === "markdown") {
     return "Copy markdown";
   }
@@ -273,7 +284,7 @@ function getInitialFilePreviewViewMode({
   lineRange,
   toggleKind,
 }: GetInitialFilePreviewViewModeArgs): FilePreviewViewMode {
-  if (toggleKind === "markdown") {
+  if (toggleKind === "csv" || toggleKind === "markdown") {
     return "preview";
   }
   return lineRange === null ? "preview" : "source";
@@ -291,7 +302,90 @@ function usesCodeViewLayout(
     return false;
   }
 
-  return !isMarkdownFile(state.file.name) || viewMode === "source";
+  return state.textPreviewKind === null || viewMode === "source";
+}
+
+function parseCsvRows(contents: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let quotedField = false;
+  let endedWithLineBreak = false;
+
+  for (let index = 0; index < contents.length; index += 1) {
+    const character = contents[index];
+    endedWithLineBreak = false;
+
+    if (inQuotes) {
+      if (character === '"') {
+        if (contents[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += character;
+      }
+      continue;
+    }
+
+    if (character === '"' && field.length === 0) {
+      inQuotes = true;
+      quotedField = true;
+      continue;
+    }
+
+    if (character === ",") {
+      row.push(field);
+      field = "";
+      quotedField = false;
+      continue;
+    }
+
+    if (character === "\n" || character === "\r") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      quotedField = false;
+      endedWithLineBreak = true;
+      if (character === "\r" && contents[index + 1] === "\n") {
+        index += 1;
+      }
+      continue;
+    }
+
+    field += character;
+  }
+
+  if (
+    field.length > 0 ||
+    row.length > 0 ||
+    quotedField ||
+    !endedWithLineBreak
+  ) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function buildCsvPreviewData(contents: string): CsvPreviewData {
+  const parsedRows = parseCsvRows(contents);
+  const columnCount = parsedRows.reduce(
+    (maximum, row) => Math.max(maximum, row.length),
+    0,
+  );
+
+  return {
+    columnCount: Math.min(columnCount, CSV_PREVIEW_MAX_COLUMNS),
+    rows: parsedRows.slice(0, CSV_PREVIEW_MAX_ROWS),
+    truncatedColumns: columnCount > CSV_PREVIEW_MAX_COLUMNS,
+    truncatedRows: parsedRows.length > CSV_PREVIEW_MAX_ROWS,
+  };
 }
 
 export function FilePreview({
@@ -340,9 +434,14 @@ export function FilePreview({
   // documents still scroll the outer panel rather than an inner box.
   const usesMarkdownPreviewLayout =
     state.kind === "ready" &&
-    isMarkdownFile(state.file.name) &&
+    state.textPreviewKind === "markdown" &&
     bodyViewMode === "preview";
-  const usesContentHeightLayout = usesCodeLayout || usesMarkdownPreviewLayout;
+  const usesCsvPreviewLayout =
+    state.kind === "ready" &&
+    state.textPreviewKind === "csv" &&
+    bodyViewMode === "preview";
+  const usesContentHeightLayout =
+    usesCodeLayout || usesMarkdownPreviewLayout || usesCsvPreviewLayout;
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
   // table breakout sizes against this panel, not the viewport.
@@ -434,7 +533,15 @@ function FilePreviewBody({
       />
     );
   }
-  if (isMarkdownFile(state.file.name) && viewMode === "preview") {
+  if (state.textPreviewKind === "csv" && viewMode === "preview") {
+    return (
+      <CsvFilePreview
+        file={state.file}
+        onSelectionAddToChat={onSelectionAddToChat}
+      />
+    );
+  }
+  if (state.textPreviewKind === "markdown" && viewMode === "preview") {
     return (
       <MarkdownFilePreview
         file={state.file}
@@ -698,6 +805,98 @@ function MarkdownFilePreview({
           urlTransform={urlTransform}
           linkRouting={markdownLinkRouting}
         />
+      </div>
+    </SecondaryPanelSelectionActions>
+  );
+}
+
+function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
+  const preview = useMemo(
+    () => buildCsvPreviewData(file.contents),
+    [file.contents],
+  );
+  const headerRow = preview.rows[0] ?? [];
+  const bodyRows = preview.rows.slice(1);
+  const columns = Array.from({ length: preview.columnCount }, (_, index) => ({
+    index,
+    label: headerRow[index] ?? "",
+  }));
+  const tableWidth = `max(100%, ${3 + columns.length * 18}rem)`;
+
+  return (
+    <SecondaryPanelSelectionActions
+      className="contents"
+      onSelectionAddToChat={onSelectionAddToChat}
+    >
+      <div className="flex-auto bg-surface-raised px-4 py-4">
+        <div className="overflow-auto rounded-md border border-border bg-background">
+          <table
+            className="min-w-full table-fixed border-separate border-spacing-0 font-mono text-xs leading-5"
+            aria-label={`${file.name} CSV preview`}
+            style={{ width: tableWidth }}
+          >
+            <colgroup>
+              <col className="w-12" />
+              {columns.map((column) => (
+                <col key={column.index} className="w-72" />
+              ))}
+            </colgroup>
+            <thead>
+              <tr>
+                <th
+                  scope="col"
+                  className="sticky left-0 top-0 z-30 w-12 min-w-12 border-b border-r border-border bg-surface-recessed-solid px-2 py-1 text-right font-medium text-muted-foreground"
+                >
+                  #
+                </th>
+                {columns.map((column) => (
+                  <th
+                    key={column.index}
+                    scope="col"
+                    className="sticky top-0 z-20 w-72 max-w-72 border-b border-r border-border bg-surface-recessed-solid px-2 py-1 text-left font-medium text-foreground"
+                    title={column.label}
+                  >
+                    <span className="block max-w-full truncate">
+                      {column.label || `Column ${column.index + 1}`}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 w-12 min-w-12 border-b border-r border-border bg-surface-recessed-solid px-2 py-1 text-right font-medium text-muted-foreground"
+                  >
+                    {rowIndex + 2}
+                  </th>
+                  {columns.map((column) => {
+                    const cell = row[column.index] ?? "";
+                    return (
+                      <td
+                        key={column.index}
+                        className="w-72 max-w-72 overflow-hidden border-b border-r border-border px-2 py-1 align-top text-foreground"
+                        title={cell}
+                      >
+                        <span className="block max-w-full truncate">
+                          {cell}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {preview.truncatedRows || preview.truncatedColumns ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            Showing the first {preview.rows.length.toLocaleString()} rows and{" "}
+            {preview.columnCount.toLocaleString()} columns.
+          </p>
+        ) : null}
       </div>
     </SecondaryPanelSelectionActions>
   );
