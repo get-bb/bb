@@ -91,7 +91,6 @@ import {
 } from "../queries/plugin-settings-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
-import { uiSourceStatusQueryKey } from "../queries/ui-source-queries";
 import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,
@@ -420,17 +419,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginManagementQueries,
       reconcilePluginFrontendBundles,
     ],
-  },
-  // The live page reload after a UI-source rebuild is owned entirely by the
-  // server-injected recovery shim (outside the editable app bundle), so the
-  // app's cache layer does nothing here.
-  "ui-reloaded": {
-    dirty: [],
-  },
-  // Re-fetch UI-source status so the in-app status toast reflects a build
-  // failure / rebase-needed / revert without a full reload.
-  "ui-status-changed": {
-    dirty: [dirtyUiSourceStatusQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -866,10 +854,6 @@ function dirtySystemProviderQueries(): QueryKey[] {
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
-}
-
-function dirtyUiSourceStatusQueries(): QueryKey[] {
-  return [uiSourceStatusQueryKey()];
 }
 
 function dirtyPluginContributionQueries(): QueryKey[] {

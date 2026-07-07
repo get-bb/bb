@@ -262,17 +262,10 @@ function ExperimentsStory({
           plugins: enabled,
         }))
       }
-      onUiForkingEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          uiForking: enabled,
-        }))
-      }
       multiMachineEnabled={state.experiments.multiMachine}
       pluginsEnabled={state.experiments.plugins}
       popoutChatEnabled={state.experiments.popoutChat}
       popoutChatHotkey={state.experiments.popoutChatHotkey}
-      uiForkingEnabled={state.experiments.uiForking}
     />
   );
 }

@@ -15,7 +15,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
     plugins: false,
-    uiForking: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

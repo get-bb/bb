@@ -190,7 +190,6 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "status",
   "theme",
   "thread",
-  "ui",
 ];
 
 /**

@@ -13,7 +13,6 @@ export function getExperiments(db: DbConnection): Experiments {
       popoutChat: systemExperiments.popoutChat,
       popoutChatHotkey: systemExperiments.popoutChatHotkey,
       plugins: systemExperiments.plugins,
-      uiForking: systemExperiments.uiForking,
     })
     .from(systemExperiments)
     .where(eq(systemExperiments.id, SYSTEM_EXPERIMENTS_ROW_ID))
@@ -35,7 +34,6 @@ export function setExperiments(
       popoutChat: experiments.popoutChat,
       popoutChatHotkey: experiments.popoutChatHotkey,
       plugins: experiments.plugins,
-      uiForking: experiments.uiForking,
       updatedAt,
     })
     .onConflictDoUpdate({
@@ -46,7 +44,6 @@ export function setExperiments(
         popoutChat: experiments.popoutChat,
         popoutChatHotkey: experiments.popoutChatHotkey,
         plugins: experiments.plugins,
-        uiForking: experiments.uiForking,
         updatedAt,
       },
     })
