@@ -2201,6 +2201,19 @@ export function Overview() {
         </TimelineStage>
       </StoryRow>
       <StoryRow
+        label="deduped subagent children"
+        hint="expanded running subagent: child details start with useful progress, not a repeated background-agent lifecycle title"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows
+            {...baseProps}
+            threadRuntimeDisplayStatus="active"
+            initialExpanded={new Set([subagentDeduplicationDelegation.id])}
+            timelineRows={[subagentDeduplicationDelegation]}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
         label="error"
         hint="test quality review (real dispatch, status synthesized as error; childRows are real)"
       >
@@ -2216,26 +2229,6 @@ export function Overview() {
           <ThreadTimelineRows
             {...baseProps}
             timelineRows={[interruptedDelegation]}
-          />
-        </TimelineStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function SubagentDeduplication() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="deduped subagent children"
-        hint="expanded running subagent: child details start with useful progress, not a repeated background-agent lifecycle title"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            threadRuntimeDisplayStatus="active"
-            initialExpanded={new Set([subagentDeduplicationDelegation.id])}
-            timelineRows={[subagentDeduplicationDelegation]}
           />
         </TimelineStage>
       </StoryRow>
