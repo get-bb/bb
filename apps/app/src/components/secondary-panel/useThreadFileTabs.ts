@@ -406,14 +406,14 @@ export function useThreadFileTabs({
   ]);
 
   const openTab = useCallback(
-    (request: OpenSecondaryPanelTabRequest) => {
+    (request: OpenSecondaryPanelTabRequest): SecondaryPanelTab | null => {
       const tab = createTabForOpenRequest({
         projectId,
         request,
         resolvedEnvironmentId,
         threadId: resolvedFileOwnerThreadId,
       });
-      if (tab === null) return;
+      if (tab === null) return null;
 
       if (
         request.kind === "workspace-file-preview" &&
@@ -431,6 +431,7 @@ export function useThreadFileTabs({
         }
         return openSecondaryPanelTabInState({ state, tab });
       });
+      return tab;
     },
     [
       recordRecentItem,

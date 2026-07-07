@@ -8,12 +8,13 @@ import type {
   BbDesktopBrowserSetVisibleRequest,
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   createBbDesktopApi,
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
 import { BrowserTabDeck } from "./BrowserTabDeck";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 
@@ -101,6 +102,21 @@ function installDesktopBrowser(api: BbDesktopBrowserApi): void {
   window.bbDesktop = createBbDesktopApi(desktopInfo, api);
 }
 
+function createMatchMedia(
+  matchesPointerCoarse: boolean,
+): typeof window.matchMedia {
+  return vi.fn().mockImplementation((query: string) => ({
+    matches: query === POINTER_COARSE_QUERY && matchesPointerCoarse,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 function renderBrowserDeck({
   canShowNativeBrowserView,
   url = "https://example.com",
@@ -130,19 +146,31 @@ function callIndex(
 
 describe("BrowserTabDeck native browser first-show ordering", () => {
   const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+  const originalMatchMedia = window.matchMedia;
 
   beforeEach(() => {
     Object.defineProperty(Element.prototype, "getBoundingClientRect", {
       configurable: true,
       value: () => BROWSER_PANEL_RECT,
     });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: createMatchMedia(false),
+    });
   });
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     resetBrowserViewPersistence();
     window.localStorage.clear();
     delete window.bbDesktop;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    });
     Object.defineProperty(Element.prototype, "getBoundingClientRect", {
       configurable: true,
       value: originalGetBoundingClientRect,
@@ -206,6 +234,30 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       bounds: { x: 12, y: 24, width: 420, height: 260 },
     });
     expect(visibility.at(-1)).toEqual({ tabId: "tab-url", visible: true });
+  });
+
+  it("focuses the address bar when an empty browser tab requests focus", () => {
+    const { api } = createRecordingBrowserApi();
+    installDesktopBrowser(api);
+    const focusSpy = vi
+      .spyOn(HTMLInputElement.prototype, "focus")
+      .mockImplementation(() => {});
+    const tab = makeBrowserTab("tab-url", "");
+
+    render(
+      <BrowserTabDeck
+        browserTabs={[tab]}
+        activeBrowserTabId={tab.id}
+        addressFocusRequest={{ requestId: 1, tabId: tab.id }}
+        environmentId="env-1"
+        canShowNativeBrowserView={true}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("Address and search bar")).toBeTruthy();
+    expect(focusSpy).toHaveBeenCalled();
   });
 
   it("shows a neutral page state and hides the native view after a main-frame load error", async () => {

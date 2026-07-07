@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
-import { BrowserTabContent } from "./BrowserTabContent";
+import {
+  BrowserTabContent,
+  type BrowserAddressFocusRequest,
+} from "./BrowserTabContent";
 import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserView,
@@ -11,6 +14,8 @@ import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 export interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];
   activeBrowserTabId: string | null;
+  addressFocusRequest?: BrowserAddressFocusRequest | null;
+  onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
   environmentId: string | null;
   /**
    * Readiness-gated permission for the active native browser view to become
@@ -71,6 +76,8 @@ export function selectActiveBrowserTab(
 export function BrowserTabDeck({
   browserTabs,
   activeBrowserTabId,
+  addressFocusRequest = null,
+  onAddressFocusRequestConsumed,
   environmentId,
   canShowNativeBrowserView,
   threadId,
@@ -117,6 +124,12 @@ export function BrowserTabDeck({
         key={activeBrowserTab.id}
         tabId={activeBrowserTab.id}
         initialUrl={activeBrowserTab.url}
+        addressFocusRequest={
+          addressFocusRequest?.tabId === activeBrowserTab.id
+            ? addressFocusRequest
+            : null
+        }
+        onAddressFocusRequestConsumed={onAddressFocusRequestConsumed}
         canShowNativeBrowserView={canShowNativeBrowserView}
         visibilityCoordinator={visibilityCoordinator}
         environmentId={environmentId}

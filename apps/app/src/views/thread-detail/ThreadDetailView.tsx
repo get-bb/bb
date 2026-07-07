@@ -117,6 +117,7 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
@@ -534,6 +535,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
+    useState<BrowserAddressFocusRequest | null>(null);
   const shouldLoadThreadStorageFiles = thread !== undefined;
   const {
     isThreadStorageFilesLoading,
@@ -595,6 +598,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const browserDeckThreadId = thread?.id ?? null;
   const browserDeckEnvironmentId = thread?.environmentId ?? null;
+  const handleBrowserAddressFocusRequestConsumed = useCallback(
+    (request: BrowserAddressFocusRequest) => {
+      setBrowserAddressFocusRequest((current) =>
+        current?.requestId === request.requestId &&
+        current.tabId === request.tabId
+          ? null
+          : current,
+      );
+    },
+    [],
+  );
   // Browser tabs are not rendered through the single `fileTabContent` slot:
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
@@ -611,6 +625,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         <BrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
+          addressFocusRequest={browserAddressFocusRequest}
+          onAddressFocusRequestConsumed={
+            handleBrowserAddressFocusRequestConsumed
+          }
           environmentId={browserDeckEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={browserDeckThreadId}
@@ -620,9 +638,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [
       activeBrowserTab?.id,
+      browserAddressFocusRequest,
       browserTabs,
       browserDeckEnvironmentId,
       browserDeckThreadId,
+      handleBrowserAddressFocusRequestConsumed,
       updateBrowserTab,
     ],
   );
@@ -643,7 +663,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     );
   const openBrowserTab = useCallback(
     (url?: string) => {
-      openTab({ kind: "browser", url: url ?? "" });
+      const browserUrl = url ?? "";
+      const tab = openTab({ kind: "browser", url: browserUrl });
+      if (browserUrl.length === 0 && tab?.kind === "browser") {
+        setBrowserAddressFocusRequest((current) => ({
+          requestId: (current?.requestId ?? 0) + 1,
+          tabId: tab.id,
+        }));
+      }
     },
     [openTab],
   );

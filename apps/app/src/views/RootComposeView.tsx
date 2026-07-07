@@ -58,6 +58,7 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon.js";
@@ -1997,6 +1998,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     [terminalSessions],
   );
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
+    useState<BrowserAddressFocusRequest | null>(null);
   const {
     activePluginPanelTab,
     activeHostFileEnvironmentId,
@@ -2241,7 +2244,14 @@ export function RootComposeView(props: RootComposeViewProps) {
   }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab, props.surface]);
   const openBrowserTab = useCallback(
     (url?: string) => {
-      openTab({ kind: "browser", url: url ?? "" });
+      const browserUrl = url ?? "";
+      const tab = openTab({ kind: "browser", url: browserUrl });
+      if (browserUrl.length === 0 && tab?.kind === "browser") {
+        setBrowserAddressFocusRequest((current) => ({
+          requestId: (current?.requestId ?? 0) + 1,
+          tabId: tab.id,
+        }));
+      }
     },
     [openTab],
   );
@@ -2258,6 +2268,17 @@ export function RootComposeView(props: RootComposeViewProps) {
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
+  const handleBrowserAddressFocusRequestConsumed = useCallback(
+    (request: BrowserAddressFocusRequest) => {
+      setBrowserAddressFocusRequest((current) =>
+        current?.requestId === request.requestId &&
+        current.tabId === request.tabId
+          ? null
+          : current,
+      );
+    },
+    [],
+  );
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -2294,6 +2315,10 @@ export function RootComposeView(props: RootComposeViewProps) {
         <BrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
+          addressFocusRequest={browserAddressFocusRequest}
+          onAddressFocusRequestConsumed={
+            handleBrowserAddressFocusRequestConsumed
+          }
           environmentId={rootPanelEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={rootPanelThreadId}
@@ -2303,7 +2328,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [
       activeBrowserTab?.id,
+      browserAddressFocusRequest,
       browserTabs,
+      handleBrowserAddressFocusRequestConsumed,
       rootPanelEnvironmentId,
       rootPanelThreadId,
       updateBrowserTab,

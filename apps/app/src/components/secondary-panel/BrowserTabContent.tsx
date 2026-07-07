@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
 } from "react";
 import type {
   BbDesktopBrowserApi,
@@ -30,6 +31,7 @@ import {
 import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -41,6 +43,8 @@ import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 export interface BrowserTabContentProps {
   tabId: string;
   initialUrl: string;
+  addressFocusRequest: BrowserAddressFocusRequest | null;
+  onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
   /**
    * Whether this browser tab's native view may be visible. The native view
    * stays attached (and its page intact) across deactivation; only its
@@ -59,11 +63,17 @@ export interface BrowserTabContentProps {
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
 
+export interface BrowserAddressFocusRequest {
+  requestId: number;
+  tabId: string;
+}
+
 interface BrowserChromeProps {
   addressDraft: string;
   isEditing: boolean;
   state: BbDesktopBrowserState | null;
   currentUrl: string;
+  addressInputRef: RefObject<HTMLInputElement | null>;
   onAddressChange: (value: string) => void;
   onAddressFocus: () => void;
   onAddressBlur: () => void;
@@ -209,6 +219,7 @@ function BrowserChrome({
   isEditing,
   state,
   currentUrl,
+  addressInputRef,
   onAddressChange,
   onAddressFocus,
   onAddressBlur,
@@ -275,6 +286,7 @@ function BrowserChrome({
             />
           )}
           <input
+            ref={addressInputRef}
             type="text"
             value={addressValue}
             onChange={(event) => onAddressChange(event.target.value)}
@@ -386,6 +398,8 @@ function BrowserPageLoadError({
 export function BrowserTabContent({
   tabId,
   initialUrl,
+  addressFocusRequest,
+  onAddressFocusRequestConsumed,
   canShowNativeBrowserView,
   visibilityCoordinator,
   environmentId,
@@ -397,6 +411,8 @@ export function BrowserTabContent({
     [],
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const isPointerCoarse = usePointerCoarse();
   const {
     entries: recent,
     recordVisit,
@@ -643,6 +659,34 @@ export function BrowserTabContent({
     visibilityCoordinator.hide(tabId);
   }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
 
+  useEffect(() => {
+    if (addressFocusRequest === null) {
+      return;
+    }
+    if (addressFocusRequest.tabId !== tabId) {
+      return;
+    }
+    if (isPointerCoarse) {
+      onAddressFocusRequestConsumed?.(addressFocusRequest);
+      return;
+    }
+
+    setAddressDraft(currentUrl);
+    setIsEditing(true);
+    addressInputRef.current?.focus({ preventScroll: true });
+    const frame = requestAnimationFrame(() => {
+      addressInputRef.current?.focus({ preventScroll: true });
+      onAddressFocusRequestConsumed?.(addressFocusRequest);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    addressFocusRequest,
+    currentUrl,
+    isPointerCoarse,
+    onAddressFocusRequestConsumed,
+    tabId,
+  ]);
+
   const navigateToInput = useCallback(
     (rawInput: string) => {
       const url = resolveBrowserAddressInput(rawInput);
@@ -692,6 +736,7 @@ export function BrowserTabContent({
         isEditing={isEditing}
         state={state}
         currentUrl={currentUrl}
+        addressInputRef={addressInputRef}
         onAddressChange={setAddressDraft}
         onAddressFocus={handleAddressFocus}
         onAddressBlur={() => setIsEditing(false)}
