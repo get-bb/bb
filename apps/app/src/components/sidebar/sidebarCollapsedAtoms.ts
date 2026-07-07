@@ -14,7 +14,11 @@ const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
-export type CollapsibleSidebarSectionId = "projects" | "threads";
+export type CollapsibleSidebarSectionId =
+  | "folders"
+  | "pinned"
+  | "projects"
+  | "threads";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
 // value for the cross-project Folders view that replaced the old None view.

@@ -180,16 +180,19 @@ describe("getSelectedThreadSidebarExpansion", () => {
         isPinned: false,
         selectedThread: thread({ folderId: "fld_work", projectId: "proj_app" }),
       }),
-    ).toEqual({ folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work` });
+    ).toEqual({
+      folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work`,
+      sidebarSectionId: "folders",
+    });
   });
 
-  it("does not expand non-pinned sections for pinned threads", () => {
+  it("expands the pinned section for pinned threads", () => {
     expect(
       getSelectedThreadSidebarExpansion({
         isFolderOrganizationMode: true,
         isPinned: true,
         selectedThread: thread({ folderId: null, projectId: "proj_app" }),
       }),
-    ).toEqual({});
+    ).toEqual({ sidebarSectionId: "pinned" });
   });
 });

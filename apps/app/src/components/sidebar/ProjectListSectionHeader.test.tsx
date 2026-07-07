@@ -80,4 +80,25 @@ describe("TopLevelSidebarSection", () => {
         ?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
   });
+
+  it("hides the section body and exposes an expand action when collapsed", () => {
+    const onToggleCollapsed = vi.fn();
+
+    render(
+      <TopLevelSidebarSection
+        label="Pinned"
+        collapseControl={{ isCollapsed: true, onToggleCollapsed }}
+      >
+        <div>Pinned thread</div>
+      </TopLevelSidebarSection>,
+    );
+
+    expect(screen.queryByText("Pinned thread")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand Pinned section" }),
+    );
+
+    expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+  });
 });

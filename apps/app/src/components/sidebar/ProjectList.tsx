@@ -352,7 +352,7 @@ export function getSelectedThreadSidebarExpansion({
   selectedThread,
 }: SelectedThreadSidebarExpansionArgs): SelectedThreadSidebarExpansion {
   if (isPinned) {
-    return {};
+    return { sidebarSectionId: "pinned" };
   }
 
   if (isFolderOrganizationMode) {
@@ -360,7 +360,9 @@ export function getSelectedThreadSidebarExpansion({
       CHRONOLOGICAL_CONTAINER_ID,
       selectedThread.folderId,
     );
-    return folderKey ? { folderKey } : { sidebarSectionId: "threads" };
+    return folderKey
+      ? { folderKey, sidebarSectionId: "folders" }
+      : { sidebarSectionId: "threads" };
   }
 
   if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
@@ -380,7 +382,12 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
 function isCollapsibleSidebarSectionId(
   value: string,
 ): value is CollapsibleSidebarSectionId {
-  return value === "projects" || value === "threads";
+  return (
+    value === "folders" ||
+    value === "pinned" ||
+    value === "projects" ||
+    value === "threads"
+  );
 }
 
 function normalizeSidebarSectionOrder(
@@ -2121,6 +2128,10 @@ function ProjectListComponent({
           actions={folderSectionActions}
           actionsOpen={projectsDisplayOptionsMenuOpen !== null}
           actionsMobileAlways
+          collapseControl={{
+            isCollapsed: collapsedSidebarSectionIds.has("folders"),
+            onToggleCollapsed: () => toggleSidebarSectionCollapsed("folders"),
+          }}
         >
           {content}
         </TopLevelSidebarSection>
@@ -2209,7 +2220,13 @@ function ProjectListComponent({
       <ProjectListShell>
         <div className="space-y-4">
           {hasPinnedSection ? (
-            <TopLevelSidebarSection label="Pinned">
+            <TopLevelSidebarSection
+              label="Pinned"
+              collapseControl={{
+                isCollapsed: collapsedSidebarSectionIds.has("pinned"),
+                onToggleCollapsed: () => toggleSidebarSectionCollapsed("pinned"),
+              }}
+            >
               {pinnedSectionContent}
             </TopLevelSidebarSection>
           ) : null}
@@ -2237,6 +2254,11 @@ function ProjectListComponent({
                   id={sectionId}
                   label="Pinned"
                   disabled={visibleSidebarSectionOrder.length < 2}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("pinned"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("pinned"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }
