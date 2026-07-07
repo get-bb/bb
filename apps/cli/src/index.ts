@@ -10,7 +10,6 @@ import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
-import { registerUiCommands } from "./commands/ui.js";
 import {
   createCliRuntimeContext,
   resolveContextSnapshot,
@@ -80,7 +79,6 @@ registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerHostCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
-registerUiCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
 registerGuideCommand(program);
 

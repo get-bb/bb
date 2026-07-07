@@ -2076,14 +2076,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "ui_forking": {
-          "name": "ui_forking",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "updated_at": {
           "name": "updated_at",
           "type": "integer",

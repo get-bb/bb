@@ -1,7 +1,7 @@
 # BB Plugin System — V1 Design
 
-Status: reviewed draft (adversarial review round 1 folded in). Replaces ad-hoc UI forking
-as the sanctioned extension path.
+Status: reviewed draft (adversarial review round 1 folded in). Establishes plugins as
+the sanctioned extension path.
 
 ## 1. Summary
 
@@ -35,8 +35,7 @@ needed to exercise), **Slack bot** (headless
 background service), **Small UX pack** (thread actions), **Agent
 enrichment** (skills/CLI tools/context only).
 
-The whole system launches behind a `plugins` system experiment (same gate style as
-`uiForking`) until Phase 3 stabilizes.
+The whole system launches behind a `plugins` system experiment until Phase 3 stabilizes.
 
 ### Decisions record (interview 2026-07-01)
 
@@ -52,7 +51,6 @@ The whole system launches behind a `plugins` system experiment (same gate style 
 | Scoping | Global enable/disable only in V1 (per-project gating later) |
 | Settings | Declarative schema, host-rendered UI, `secret: true` fields |
 | Name | "Plugins" (`bb plugin …`, `<dataDir>/plugins`, `@bb/plugin-sdk`) |
-| `bb ui fork` | Keep behind experiment during V1; deprecate after heroes prove parity |
 | Rollout | Behind a `plugins` experiment until Phase 3 stabilizes |
 | Component reuse | Vendored shadcn-style copies from the in-repo registry (§5.5; the host-provided kit was removed 2026-07-03) + full internal module registry (`unstable_`, Phase 6) |
 
@@ -123,13 +121,13 @@ npm `@bb/plugin-sdk` package is types + frontend runtime only.
 
 **Experiment gate.** A `plugins` field in `experimentsSchema`
 (`packages/domain/src/experiments.ts`, default false, persisted in `system_experiments`)
-gates the entire system, mirroring `uiForking`. Off means: the loader never runs, the
-boot-time dispatcher and contributions endpoints return a structured "disabled" error,
-the frontend loads no bundles and shows no plugin settings sections, and `bb plugin *`
-commands fail with the same style of message as `bb ui fork` ("Plugins are disabled.
-Enable the \"Plugins\" experiment …"). The toggle is **live** — no server restart:
-enabling runs the normal load path for all enabled plugins; disabling runs the §3 dispose
-sequence for every loaded plugin (both paths must exist anyway for reload).
+gates the entire system. Off means: the loader never runs, the boot-time dispatcher and
+contributions endpoints return a structured "disabled" error, the frontend loads no
+bundles and shows no plugin settings sections, and `bb plugin *` commands fail with a
+clear "Plugins are disabled. Enable the \"Plugins\" experiment …" message. The toggle is
+**live** — no server restart: enabling runs the normal load path for all enabled plugins;
+disabling runs the §3 dispose sequence for every loaded plugin (both paths must exist
+anyway for reload).
 
 **Boot order.** Plugins load **after** the HTTP listener is up (they are additive; nothing
 core awaits them). Factory execution is time-boxed (30s → status `error: load timed out`)
@@ -425,8 +423,8 @@ strict validation and no payload field (`packages/domain/src/change-kinds.ts`,
 `hub.ts:712`). V1 adds a new ephemeral WS message type (`plugin-signal`, precedent:
 `threadOpenFileSignalSchema` / `notifyThreadOpenFile`) plus a plugin subscription target
 in `@bb/domain` + `@bb/server-contract`. `plugin-reloaded` similarly joins
-`SYSTEM_CHANGE_KINDS` (distinct from `ui-reloaded`, which hard-reloads the page via the
-recovery shim — plugin dev iterations must not).
+`SYSTEM_CHANGE_KINDS`; plugin dev iterations reconcile frontend bundles in place instead
+of hard-reloading the page.
 
 ### 4.8 `bb.background` — services and schedules
 
@@ -614,12 +612,11 @@ the telemetry for where the stable API grows.
 (`app.unstable_swizzle("ThreadHeader", () => MyThreadHeader)`) is eject semantics, built
 against the plugin SDK. On top of that, `bb plugin swizzle eject <name>` copies the
 component's source files into the plugin as a **reference starting point**, pulled from
-the version-matched UI source (dev checkout, or the `ensureClonedUiSource` clone at the
-`desktop-v<version>` tag that `bb ui fork` already uses); the author adapts its imports to
-the plugin SDK by hand. Making ejected source compile *unmodified* is the partial-fork
-tier — §5.4, scheduled as Phase 6.
+the version-matched source checkout or release tag; the author adapts its imports to the
+plugin SDK by hand. Making ejected source compile *unmodified* is the unstable module
+override tier — §5.4, scheduled as Phase 6.
 
-### 5.4 `unstable_modules` — partial UI forks (Phase 6)
+### 5.4 `unstable_modules` — partial UI overrides (Phase 6)
 
 The full-power tier: the host exposes its internal module graph at runtime so a plugin
 can eject a real slice of the UI — a component, a view, the whole homepage — edit the
@@ -642,15 +639,14 @@ copied source, and compile it against the live app.
   upgrade-drift detection *before* the bundle evaluates.
 - **Why this beats vendoring**: the registry hands back the *live* host modules, so
   singletons stay correct — ejected code shares the host's Jotai atoms, query client, and
-  router instead of dragging in second copies. This is the guarantee whole-app forking
-  never had.
+  router instead of dragging in second copies. This is the guarantee coarse full-app
+  replacement cannot provide.
 - **Fragility contract**: internal module paths and exports may change in any release —
   `unstable_` applies in full. What makes it sane is the degradation story already built
   in §5.1/§7: bundles are SDK-version-stamped, git/path plugins auto-rebuild at boot
   after a BB upgrade, a failed rebuild surfaces as plugin status (never a broken app),
-  and the Swizzleable fallback renders stock UI. The `bb ui fork` experience with a
-  safety net: an upgrade conflict downgrades one component to stock instead of holding
-  the whole UI hostage on a rebase.
+  and the Swizzleable fallback renders stock UI. An upgrade conflict downgrades one
+  component to stock instead of holding the whole UI hostage on a rebase.
 
 ### 5.5 Component registry (shadcn-style) — REPLACES the host-provided kit
 
@@ -929,16 +925,14 @@ plugin node_modules.
 test for plugin `className` on vendored portal content; stacking test (plugin dialog +
 host overlay, Escape/outside-click each way); registry `--check` drift gate.
 
-**Phase 5 — swizzle + fork deprecation.** `Swizzleable` boundaries (initial five),
+**Phase 5 — swizzle rollout.** `Swizzleable` boundaries (initial five),
 boot-frozen registry, Original-fallback error boundaries, `bb plugin swizzle --list`,
-`bb plugin swizzle eject <name>` (reference-copy from version-matched UI source);
-deprecate `bb ui fork` in CLI output and docs; removal once heroes + one real swizzle
-user confirm parity.
+`bb plugin swizzle eject <name>` (reference-copy from version-matched app source).
 *Exit criteria*: a demo plugin wraps `ThreadHeader` in the packaged app; a second demo
 fully replaces it from an ejected reference copy; a throwing wrapper degrades to stock
-`ThreadHeader`; fork deprecation notice shipped.
+`ThreadHeader`.
 
-**Phase 6 — partial UI forks.** `unstable_modules` registry (`import.meta.glob` over app
+**Phase 6 — partial UI overrides.** `unstable_modules` registry (`import.meta.glob` over app
 src + `@bb/thread-view`/`@bb/core-ui`), host-internal import rewriting in
 `bb plugin build` (synchronous registry reads + a module-path manifest in `app.meta.json`
 the host preloads before bundle import — see §5.4; no top-level-await shims),

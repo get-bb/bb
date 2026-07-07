@@ -1020,8 +1020,6 @@ describe("server-contract canonical schemas", () => {
     expect(SYSTEM_CHANGE_KINDS).toEqual([
       "config-changed",
       "plugins-changed",
-      "ui-reloaded",
-      "ui-status-changed",
     ]);
   });
 

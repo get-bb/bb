@@ -159,9 +159,8 @@ function notRunningError(
  * Plugin management routes plus the boot-time wire dispatchers
  * (/plugins/:id/http/* and /plugins/:id/rpc/:method). Mounted under /api/v1
  * before the catch-all; dispatch goes through the plugin service's live
- * routing tables so reload swaps handlers without re-registering Hono
- * routes. Plain Hono handlers (like the ui-source routes) — this surface is
- * server-policy glue, not part of the typed product contract.
+ * routing tables so reload swaps handlers without re-registering Hono routes.
+ * This surface is server-policy glue, not part of the typed product contract.
  */
 export function registerPluginRoutes(
   app: Hono,
