@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
@@ -128,6 +128,42 @@ const closeWindowRequestListeners =
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
 const popoutThreadChangedListeners =
   new Set<BbDesktopPopoutThreadChangedHandler>();
+
+interface BbDesktopSpellcheckCorrectionContext {
+  dictionarySuggestions: string[];
+  misspelledWord: string;
+}
+
+interface BbDesktopSpellcheckApi {
+  getCorrectionContext(
+    word: string,
+  ): BbDesktopSpellcheckCorrectionContext | null;
+}
+
+function normalizeSpellcheckWord(word: string): string | null {
+  const normalized = word.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 80 ||
+    /\s/u.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+const bbSpellcheckApi: BbDesktopSpellcheckApi = {
+  getCorrectionContext(word) {
+    const normalized = normalizeSpellcheckWord(word);
+    if (normalized === null || !webFrame.isWordMisspelled(normalized)) {
+      return null;
+    }
+    return {
+      dictionarySuggestions: webFrame.getWordSuggestions(normalized),
+      misspelledWord: normalized,
+    };
+  },
+};
 
 const bbBrowserApi: BbDesktopBrowserApi = {
   attach(request): void {
@@ -328,7 +364,8 @@ ipcRenderer.on(
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   (_event, payload: unknown) => {
-    const parsed = bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
+    const parsed =
+      bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
     if (!parsed.success) {
       return;
     }
@@ -366,4 +403,5 @@ ipcRenderer.on(
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 
+contextBridge.exposeInMainWorld("__bbDesktopSpellcheck", bbSpellcheckApi);
 contextBridge.exposeInMainWorld("bbDesktop", bbDesktopApi);

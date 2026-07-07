@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildDesktopContextMenuTemplate,
   registerDesktopContextMenu,
+  resolveDesktopSpellcheckFallback,
   type DesktopContextMenuWebContents,
 } from "../src/desktop-context-menu.js";
 
@@ -45,10 +46,13 @@ const DEFAULT_MEDIA_FLAGS = {
 
 interface FakeWebContents extends Pick<
   DesktopContextMenuWebContents,
-  "replaceMisspelling" | "session"
+  "executeJavaScript" | "insertText" | "replaceMisspelling" | "session"
 > {
   addedDictionaryWords: string[];
+  executedScripts: string[];
+  insertedTexts: string[];
   replacedMisspellings: string[];
+  spellCheckerEnabledValues: boolean[];
 }
 
 function createContextMenuParams(
@@ -87,10 +91,23 @@ function createContextMenuParams(
 
 function createFakeWebContents(): FakeWebContents {
   const addedDictionaryWords: string[] = [];
+  const executedScripts: string[] = [];
+  const insertedTexts: string[] = [];
   const replacedMisspellings: string[] = [];
+  const spellCheckerEnabledValues: boolean[] = [];
   return {
     addedDictionaryWords,
+    executedScripts,
+    insertedTexts,
     replacedMisspellings,
+    spellCheckerEnabledValues,
+    executeJavaScript(script) {
+      executedScripts.push(script);
+      return Promise.resolve(null);
+    },
+    insertText(text) {
+      insertedTexts.push(text);
+    },
     replaceMisspelling(text) {
       replacedMisspellings.push(text);
     },
@@ -98,6 +115,9 @@ function createFakeWebContents(): FakeWebContents {
       addWordToSpellCheckerDictionary(word) {
         addedDictionaryWords.push(word);
         return true;
+      },
+      setSpellCheckerEnabled(enabled) {
+        spellCheckerEnabledValues.push(enabled);
       },
     },
   };
@@ -126,6 +146,58 @@ describe("desktop context menu", () => {
     clickMenuItem(template[0]);
 
     expect(webContents.replacedMisspellings).toEqual(["the"]);
+  });
+
+  it("offers renderer spellcheck replacements when Electron omits suggestions for selected prompt text", () => {
+    const webContents = createFakeWebContents();
+    const template = buildDesktopContextMenuTemplate({
+      webContents,
+      params: createContextMenuParams({
+        isEditable: true,
+        selectionText: "recieve",
+      }),
+      spellcheckContext: {
+        dictionarySuggestions: ["receive", "relieve"],
+        misspelledWord: "recieve",
+        replacementMode: "selected-text",
+      },
+    });
+
+    expect(template[0]).toMatchObject({ label: "receive" });
+    expect(template[1]).toMatchObject({ label: "relieve" });
+
+    clickMenuItem(template[0]);
+
+    expect(webContents.insertedTexts).toEqual(["receive"]);
+    expect(webContents.replacedMisspellings).toEqual([]);
+  });
+
+  it("looks up fallback spellcheck suggestions for a selected editable word", async () => {
+    const webContents = {
+      ...createFakeWebContents(),
+      executeJavaScript: vi.fn().mockResolvedValue({
+        dictionarySuggestions: ["receive"],
+        misspelledWord: "recieve",
+      }),
+    } satisfies FakeWebContents;
+
+    await expect(
+      resolveDesktopSpellcheckFallback({
+        webContents,
+        params: createContextMenuParams({
+          isEditable: true,
+          selectionText: "recieve",
+          spellcheckEnabled: false,
+        }),
+      }),
+    ).resolves.toEqual({
+      dictionarySuggestions: ["receive"],
+      misspelledWord: "recieve",
+      replacementMode: "selected-text",
+    });
+    expect(webContents.executeJavaScript).toHaveBeenCalledWith(
+      expect.stringContaining('"recieve"'),
+    );
   });
 
   it("can add a misspelled word to the spellchecker dictionary", () => {
@@ -191,13 +263,15 @@ describe("desktop context menu", () => {
     ).toEqual([]);
   });
 
-  it("registers the native menu popup for context-menu events", () => {
+  it("registers the native menu popup for context-menu events", async () => {
     const webContents = {
       ...createFakeWebContents(),
       on: vi.fn(),
     } satisfies DesktopContextMenuWebContents;
 
     registerDesktopContextMenu({ webContents });
+
+    expect(webContents.spellCheckerEnabledValues).toEqual([true]);
 
     const listener = webContents.on.mock.calls[0]?.[1];
     listener?.(
@@ -207,6 +281,8 @@ describe("desktop context menu", () => {
         editFlags: { ...DEFAULT_EDIT_FLAGS, canCopy: true },
       }),
     );
+
+    await Promise.resolve();
 
     expect(popup).toHaveBeenCalledOnce();
   });

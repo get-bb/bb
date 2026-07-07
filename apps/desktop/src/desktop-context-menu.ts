@@ -11,15 +11,27 @@ export interface DesktopContextMenuWebContents {
     eventName: "context-menu",
     listener: (event: Event, params: ContextMenuParams) => void,
   ): void;
+  executeJavaScript(script: string): Promise<unknown>;
+  insertText(text: string): Promise<void> | void;
   replaceMisspelling(text: string): void;
-  session: Pick<Session, "addWordToSpellCheckerDictionary">;
+  session: Pick<
+    Session,
+    "addWordToSpellCheckerDictionary" | "setSpellCheckerEnabled"
+  >;
+}
+
+export interface DesktopContextMenuSpellcheckContext {
+  dictionarySuggestions: string[];
+  misspelledWord: string;
+  replacementMode: "electron-misspelling" | "selected-text";
 }
 
 export interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
+  spellcheckContext?: DesktopContextMenuSpellcheckContext | null;
   webContents: Pick<
     DesktopContextMenuWebContents,
-    "replaceMisspelling" | "session"
+    "executeJavaScript" | "insertText" | "replaceMisspelling" | "session"
   >;
 }
 
@@ -46,22 +58,104 @@ function trimTrailingSeparator(
   return template.slice(0, -1);
 }
 
+function getSpellcheckContextFromParams(
+  params: ContextMenuParams,
+): DesktopContextMenuSpellcheckContext | null {
+  if (
+    !params.isEditable ||
+    !params.spellcheckEnabled ||
+    params.misspelledWord.length === 0
+  ) {
+    return null;
+  }
+  return {
+    dictionarySuggestions: params.dictionarySuggestions,
+    misspelledWord: params.misspelledWord,
+    replacementMode: "electron-misspelling",
+  };
+}
+
+function selectedSpellcheckWord(params: ContextMenuParams): string | null {
+  const word = params.selectionText.trim();
+  if (word.length === 0 || word.length > 80 || /\s/u.test(word)) {
+    return null;
+  }
+  return word;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseSpellcheckLookupResult(
+  value: unknown,
+): DesktopContextMenuSpellcheckContext | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { dictionarySuggestions, misspelledWord } = value;
+  if (
+    typeof misspelledWord !== "string" ||
+    !Array.isArray(dictionarySuggestions) ||
+    dictionarySuggestions.some((suggestion) => typeof suggestion !== "string")
+  ) {
+    return null;
+  }
+  return {
+    dictionarySuggestions,
+    misspelledWord,
+    replacementMode: "selected-text",
+  };
+}
+
+function spellcheckLookupScript(word: string): string {
+  return `globalThis.__bbDesktopSpellcheck?.getCorrectionContext(${JSON.stringify(word)}) ?? null`;
+}
+
+export async function resolveDesktopSpellcheckFallback({
+  params,
+  webContents,
+}: BuildDesktopContextMenuTemplateArgs): Promise<DesktopContextMenuSpellcheckContext | null> {
+  if (getSpellcheckContextFromParams(params) !== null || !params.isEditable) {
+    return null;
+  }
+  const word = selectedSpellcheckWord(params);
+  if (word === null) {
+    return null;
+  }
+  try {
+    return parseSpellcheckLookupResult(
+      await webContents.executeJavaScript(spellcheckLookupScript(word)),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function buildDesktopContextMenuTemplate({
   params,
+  spellcheckContext,
   webContents,
 }: BuildDesktopContextMenuTemplateArgs): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [];
+  const resolvedSpellcheckContext =
+    getSpellcheckContextFromParams(params) ?? spellcheckContext ?? null;
 
-  if (
-    params.isEditable &&
-    params.spellcheckEnabled &&
-    params.misspelledWord.length > 0
-  ) {
-    if (params.dictionarySuggestions.length > 0) {
-      for (const suggestion of params.dictionarySuggestions) {
+  if (resolvedSpellcheckContext !== null) {
+    if (resolvedSpellcheckContext.dictionarySuggestions.length > 0) {
+      for (const suggestion of resolvedSpellcheckContext.dictionarySuggestions) {
         template.push({
           label: suggestion,
-          click: () => webContents.replaceMisspelling(suggestion),
+          click: () => {
+            if (
+              resolvedSpellcheckContext.replacementMode ===
+              "electron-misspelling"
+            ) {
+              webContents.replaceMisspelling(suggestion);
+              return;
+            }
+            void webContents.insertText(suggestion);
+          },
         });
       }
     } else {
@@ -71,10 +165,10 @@ export function buildDesktopContextMenuTemplate({
       });
     }
     template.push({
-      label: `Add "${params.misspelledWord}" to Dictionary`,
+      label: `Add "${resolvedSpellcheckContext.misspelledWord}" to Dictionary`,
       click: () => {
         webContents.session.addWordToSpellCheckerDictionary(
-          params.misspelledWord,
+          resolvedSpellcheckContext.misspelledWord,
         );
       },
     });
@@ -108,14 +202,32 @@ export function buildDesktopContextMenuTemplate({
   return trimTrailingSeparator(template);
 }
 
+async function showDesktopContextMenu({
+  params,
+  webContents,
+}: RegisterDesktopContextMenuArgs & {
+  params: ContextMenuParams;
+}): Promise<void> {
+  const spellcheckContext = await resolveDesktopSpellcheckFallback({
+    params,
+    webContents,
+  });
+  const template = buildDesktopContextMenuTemplate({
+    params,
+    spellcheckContext,
+    webContents,
+  });
+  if (template.length === 0) {
+    return;
+  }
+  Menu.buildFromTemplate(template).popup();
+}
+
 export function registerDesktopContextMenu({
   webContents,
 }: RegisterDesktopContextMenuArgs): void {
+  webContents.session.setSpellCheckerEnabled(true);
   webContents.on("context-menu", (_event, params) => {
-    const template = buildDesktopContextMenuTemplate({ params, webContents });
-    if (template.length === 0) {
-      return;
-    }
-    Menu.buildFromTemplate(template).popup();
+    void showDesktopContextMenu({ params, webContents });
   });
 }

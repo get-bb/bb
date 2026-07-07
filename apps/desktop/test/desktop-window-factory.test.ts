@@ -52,15 +52,21 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly addedDictionaryWords: string[] = [];
   public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
     [];
+  public readonly spellCheckerEnabledValues: boolean[] = [];
   public readonly session: DesktopContextMenuWebContents["session"] = {
     addWordToSpellCheckerDictionary: (word) => {
       this.addedDictionaryWords.push(word);
       return true;
     },
+    setSpellCheckerEnabled: (enabled) => {
+      this.spellCheckerEnabledValues.push(enabled);
+    },
   };
   public readonly contextMenuListeners: Parameters<
     DesktopContextMenuWebContents["on"]
   >[1][] = [];
+  public readonly executedScripts: string[] = [];
+  public readonly insertedTexts: string[] = [];
   public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
@@ -73,6 +79,15 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     if (options.mode === "detach") {
       this.devToolsOpenCount += 1;
     }
+  }
+
+  executeJavaScript(script: string): Promise<unknown> {
+    this.executedScripts.push(script);
+    return Promise.resolve(null);
+  }
+
+  insertText(text: string): void {
+    this.insertedTexts.push(text);
   }
 
   send(channel: string, payload: unknown): void {
@@ -253,6 +268,9 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options.minWidth).toBe(MIN_WINDOW_WIDTH);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
     expect(createdWindows[0]?.options.webPreferences?.spellcheck).toBe(true);
+    expect(createdWindows[0]?.webContents.spellCheckerEnabledValues).toEqual([
+      true,
+    ]);
     // Equal x/y inset places the traffic lights on a 45° diagonal from the
     // window's top-left corner (see MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET).
     expect(createdWindows[0]?.options.trafficLightPosition).toEqual({
@@ -494,9 +512,9 @@ describe("desktop window factory", () => {
       userDataPath: tempDir.path,
     });
 
-    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
-      false,
-    );
+    expect(
+      factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" }),
+    ).toBe(false);
 
     await factory.createWindow({
       initialUrl: "http://127.0.0.1:38886",
@@ -507,9 +525,9 @@ describe("desktop window factory", () => {
       throw new Error("Expected desktop window");
     }
 
-    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
-      true,
-    );
+    expect(
+      factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" }),
+    ).toBe(true);
     expect(browserWindow.webContents.sentMessages).toEqual([
       { channel: "bb:test", payload: { path: "/threads/thr_a" } },
     ]);

@@ -230,6 +230,7 @@ export function createDesktopWindowFactory(
           preloadPath: args.preloadPath,
         }),
       );
+      browserWindow.webContents.session.setSpellCheckerEnabled(true);
 
       activeWindows.set(stateKey, browserWindow);
 
