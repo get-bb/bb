@@ -1,5 +1,10 @@
 import type { TimelineRow } from "@bb/server-contract";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
+import {
+  conversationRow,
+  delegationRow,
+  workflowRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -2120,6 +2125,55 @@ const interruptedDelegation: TimelineRow = {
   ],
 };
 
+const subagentDeduplicationDelegation = delegationRow({
+  id: "thr_subagent_dedup:delegation:toolu_build_direction_a",
+  threadId: "thr_subagent_dedup",
+  turnId: "turn_subagent_dedup",
+  sourceSeqStart: 1,
+  sourceSeqEnd: 6,
+  startedAt: Date.now() - 8_420,
+  createdAt: Date.now() - 8_420,
+  status: "pending",
+  durationMs: null,
+  callId: "toolu_build_direction_a",
+  toolName: "Agent",
+  subagentType: "frontend-dev",
+  description: "Build Direction A Tools hub Ladle story",
+  output: "",
+  childRows: [
+    conversationRow({
+      id: "thr_subagent_dedup:assistant-progress",
+      threadId: "thr_subagent_dedup",
+      turnId: "turn_subagent_dedup",
+      sourceSeqStart: 4,
+      sourceSeqEnd: 4,
+      startedAt: Date.now() - 5_200,
+      createdAt: Date.now() - 5_200,
+      role: "assistant",
+      text: "Explored 19 files, 1 list, 4 searches",
+      attachments: null,
+    }),
+    workflowRow({
+      id: "thr_subagent_dedup:workflow:collect-screenshots",
+      itemId: "task:collect-screenshots",
+      threadId: "thr_subagent_dedup",
+      turnId: "turn_subagent_dedup",
+      sourceSeqStart: 5,
+      sourceSeqEnd: 6,
+      startedAt: Date.now() - 3_100,
+      createdAt: Date.now() - 3_100,
+      status: "pending",
+      taskStatus: "running",
+      taskType: "local_workflow",
+      workflowName: "visual-qa",
+      description: "Collect screenshots",
+      durationMs: null,
+      usage: null,
+      workflow: null,
+    }),
+  ],
+});
+
 export function Overview() {
   return (
     <StoryCard>
@@ -2162,6 +2216,26 @@ export function Overview() {
           <ThreadTimelineRows
             {...baseProps}
             timelineRows={[interruptedDelegation]}
+          />
+        </TimelineStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function SubagentDeduplication() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="deduped subagent children"
+        hint="expanded running subagent: child details start with useful progress, not a repeated background-agent lifecycle title"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows
+            {...baseProps}
+            threadRuntimeDisplayStatus="active"
+            initialExpanded={new Set([subagentDeduplicationDelegation.id])}
+            timelineRows={[subagentDeduplicationDelegation]}
           />
         </TimelineStage>
       </StoryRow>
