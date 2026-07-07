@@ -1,6 +1,7 @@
 // Redeem a one-time connect code against the connect cloud for a durable
-// tunnel credential. The server owns this (not the CLI) so the credential
-// lifecycle lives in one place; the app UI can call the same pairing route.
+// tunnel credential. Ported from the kernel's services/connect/redeem.ts.
+
+export const DEFAULT_CONNECT_BASE_URL = "https://getbb.app";
 
 export interface RedeemedCredential {
   credential: string;
@@ -13,6 +14,12 @@ export interface RedeemedCredential {
  */
 export function deriveConnectBaseUrl(serverUrl: string): string {
   return new URL(serverUrl).origin.replace(/\/\/[^.]+\./, "//");
+}
+
+/** `https://getbb.app` + `sawyer` → `https://sawyer.getbb.app`. */
+export function serverUrlForHandle(baseUrl: string, handle: string): string {
+  const url = new URL(baseUrl);
+  return `${url.protocol}//${handle}.${url.host}`;
 }
 
 export async function redeemConnectCode(args: {

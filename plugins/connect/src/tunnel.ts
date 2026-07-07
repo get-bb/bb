@@ -1,10 +1,11 @@
-// Server-hosted connect tunnel. When paired, the server dials the per-handle
-// gate, holds an outbound NodeWebSocket, and proxies relayed HTTP/WS streams to its
-// own loopback base URL (which serves the SPA + /api + /ws). The server owns
-// the tunnel's lifetime and reconnects on restart; `bb connect` (and, later,
-// the app) only pair via the /connect routes.
-//
-// Proxy loop ported from apps/connect/scripts/tunnel-client.mts.
+// The connect tunnel, hosted by the plugin's "tunnel" background service.
+// When paired, it dials the per-handle gate over an outbound WebSocket and
+// proxies relayed HTTP/WS streams to the server's own loopback base URL
+// (which serves the SPA + /api + /ws). Ported from the kernel's
+// services/connect/tunnel-service.ts with three changes: the credential
+// lives in plugin kv (injected CredentialStore), status is a small state
+// machine pushed over bb.realtime, and an auth-rejected credential is
+// cleared (landing in "not paired") instead of reconnecting forever.
 import { WebSocket as NodeWebSocket } from "ws";
 import {
   HEARTBEAT_REQUEST,
@@ -17,15 +18,15 @@ import {
   type OpenHttpFrame,
   type OpenWsFrame,
 } from "@bb/tunnel-contract";
-import type { ConnectStatusResponse } from "@bb/server-contract";
-import type { ServerLogger } from "../../types.js";
+import type { PluginLogger } from "@bb/plugin-sdk";
+import type { ConnectCredential, CredentialStore } from "./credential.js";
 import {
-  clearConnectCredential,
-  readConnectCredential,
-  writeConnectCredential,
-  type ConnectCredential,
-} from "./credential-store.js";
-import { deriveConnectBaseUrl, redeemConnectCode } from "./redeem.js";
+  DEFAULT_CONNECT_BASE_URL,
+  deriveConnectBaseUrl,
+  redeemConnectCode,
+  serverUrlForHandle,
+} from "./redeem.js";
+import type { ConnectStateName, ConnectStatus } from "./types.js";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const HEARTBEAT_DEADLINE_MS = 60_000;
@@ -62,13 +63,13 @@ class TunnelSession {
   constructor(
     private readonly tunnel: NodeWebSocket,
     private readonly origin: string,
-    private readonly logger: ServerLogger,
+    private readonly log: PluginLogger,
   ) {}
 
   start(): void {
     this.heartbeat = setInterval(() => {
       if (Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
-        this.logger.warn("connect tunnel heartbeat missed; reconnecting");
+        this.log.warn("tunnel heartbeat missed; reconnecting");
         this.tunnel.terminate();
         return;
       }
@@ -83,7 +84,7 @@ class TunnelSession {
       try {
         this.onFrame(decodeFrame(data));
       } catch (e) {
-        this.logger.warn({ err: String(e) }, "connect tunnel bad frame");
+        this.log.warn(`tunnel bad frame: ${String(e)}`);
       }
     });
     this.tunnel.on("close", () => this.dispose());
@@ -244,86 +245,129 @@ class TunnelSession {
       }
     });
     socket.on("error", (e: Error) =>
-      this.logger.warn({ err: e.message, path: frame.path }, "connect origin ws error"),
+      this.log.warn(`origin ws error on ${frame.path}: ${e.message}`),
     );
   }
 }
 
-export interface ConnectTunnelServiceOptions {
-  dataDir: string;
-  /** This server's own loopback base URL, e.g. http://127.0.0.1:38886. */
-  loopbackBaseUrl: string;
-  logger: ServerLogger;
+export interface ConnectTunnelOptions {
+  store: CredentialStore;
+  /**
+   * The server's own loopback base URL, read lazily (bb.server is
+   * bind-gated; the tunnel only needs it once a socket opens).
+   */
+  getLoopbackBaseUrl: () => string;
+  log: PluginLogger;
+  /** Fired on every state/handle/error transition (bb.realtime push). */
+  onStatusChange?: (status: ConnectStatus) => void;
 }
 
 /**
- * Holds the connect tunnel for the server. Pairing writes the durable
- * credential and (re)connects; the tunnel reconnects with capped backoff on
- * drops and is re-established from the stored credential on server boot.
+ * Holds the connect tunnel for this bb. Pairing writes the durable credential
+ * to plugin kv and (re)connects; the tunnel reconnects with capped backoff on
+ * drops and is re-established from the stored credential when the background
+ * service starts. Disabling the plugin aborts the service, which stops the
+ * tunnel — the plugin is the single owner of remote access.
  */
-export class ConnectTunnelService {
+export class ConnectTunnel {
   private credential: ConnectCredential | null = null;
   private tunnel: NodeWebSocket | undefined;
   private session: TunnelSession | undefined;
   private connected = false;
+  private pairing = false;
   private lastError: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private attempt = 0;
   private stopped = false;
+  private lastState: ConnectStateName = "disconnected";
+  private stateSince = Date.now();
 
-  constructor(private readonly options: ConnectTunnelServiceOptions) {}
+  constructor(private readonly options: ConnectTunnelOptions) {}
 
-  /** Boot: reconnect from a previously-stored credential, if any. */
-  start(): void {
-    const stored = readConnectCredential(this.options.dataDir);
+  /** Service start: reconnect from a previously-stored credential, if any. */
+  async start(): Promise<void> {
+    const stored = await this.options.store.read();
     if (stored) {
       this.credential = stored;
       this.stopped = false;
       this.openTunnel();
     }
+    this.publish();
   }
 
   async pair(args: {
     code: string;
-    serverUrl: string;
+    serverUrl?: string;
     baseUrl?: string;
-  }): Promise<ConnectStatusResponse> {
-    const serverUrl = args.serverUrl.replace(/\/$/, "");
-    const baseUrl = args.baseUrl ?? deriveConnectBaseUrl(serverUrl);
-    const redeemed = await redeemConnectCode({ code: args.code, baseUrl });
-    const credential: ConnectCredential = {
-      serverUrl,
-      handle: redeemed.handle,
-      credential: redeemed.credential,
-    };
-    writeConnectCredential(this.options.dataDir, credential);
-    this.credential = credential;
-    this.lastError = null;
-    this.reconnect();
+  }): Promise<ConnectStatus> {
+    const baseUrl =
+      args.baseUrl ??
+      (args.serverUrl !== undefined
+        ? deriveConnectBaseUrl(args.serverUrl)
+        : DEFAULT_CONNECT_BASE_URL);
+    this.pairing = true;
+    this.publish();
+    try {
+      const redeemed = await redeemConnectCode({ code: args.code, baseUrl });
+      const serverUrl = (
+        args.serverUrl ?? serverUrlForHandle(baseUrl, redeemed.handle)
+      ).replace(/\/$/, "");
+      const credential: ConnectCredential = {
+        serverUrl,
+        handle: redeemed.handle,
+        credential: redeemed.credential,
+      };
+      await this.options.store.write(credential);
+      this.credential = credential;
+      this.lastError = null;
+      this.reconnect();
+    } finally {
+      this.pairing = false;
+      this.publish();
+    }
     return this.status();
   }
 
-  disconnect(): ConnectStatusResponse {
-    clearConnectCredential(this.options.dataDir);
+  async disconnect(): Promise<ConnectStatus> {
+    await this.options.store.clear();
     this.credential = null;
     this.teardown();
     this.lastError = null;
+    this.publish();
     return this.status();
   }
 
-  status(): ConnectStatusResponse {
+  status(): ConnectStatus {
     return {
+      state: this.computeState(),
       paired: this.credential !== null,
       handle: this.credential?.handle ?? null,
       url: this.credential?.serverUrl ?? null,
-      connected: this.connected,
       lastError: this.lastError,
+      since: this.stateSince,
     };
   }
 
-  /** Stop the tunnel without clearing the credential (server shutdown). */
+  /** Stop the tunnel without clearing the credential (service abort). */
   stop(): void {
     this.teardown();
+    this.publish();
+  }
+
+  private computeState(): ConnectStateName {
+    if (this.pairing) return "pairing";
+    if (this.credential === null) return "disconnected";
+    return this.connected ? "connected" : "reconnecting";
+  }
+
+  /** Recompute the state and push a status snapshot when anything changed. */
+  private publish(): void {
+    const state = this.computeState();
+    if (state !== this.lastState) {
+      this.lastState = state;
+      this.stateSince = Date.now();
+    }
+    this.options.onStatusChange?.(this.status());
   }
 
   private teardown(): void {
@@ -350,18 +394,51 @@ export class ConnectTunnelService {
     this.openTunnel();
   }
 
+  /**
+   * The gate refused our bearer credential: reconnecting cannot help, so
+   * forget it and land in "not paired" with an explanation — unlike network
+   * failures, which keep the credential and stay in "reconnecting".
+   */
+  private credentialRejected(statusCode: number): void {
+    this.lastError =
+      `the gate rejected this bb's credential (HTTP ${statusCode}) — ` +
+      "pairing was revoked; get a new code from the getbb.app dashboard and re-pair";
+    this.options.log.warn(this.lastError);
+    this.credential = null;
+    this.teardown();
+    this.publish();
+    void this.options.store.clear().catch((error: unknown) => {
+      this.options.log.warn(
+        `failed to clear the rejected credential: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }
+
   private openTunnel(): void {
     const credential = this.credential;
     if (!credential || this.stopped) return;
 
     const tunnelUrl = tunnelUrlForServer(credential.serverUrl);
-    this.options.logger.info(
-      { url: tunnelUrl, origin: this.options.loopbackBaseUrl },
-      "connect tunnel connecting",
+    this.options.log.info(
+      `tunnel connecting to ${tunnelUrl} (origin ${this.options.getLoopbackBaseUrl()})`,
     );
-    const tunnel = new NodeWebSocket(tunnelUrl, {
-      headers: { authorization: `Bearer ${credential.credential}` },
-    });
+    let tunnel: NodeWebSocket;
+    try {
+      tunnel = new NodeWebSocket(tunnelUrl, {
+        headers: { authorization: `Bearer ${credential.credential}` },
+      });
+    } catch (error) {
+      // A malformed stored serverUrl throws synchronously. Retrying cannot
+      // help; surface it and wait for a re-pair (or disconnect).
+      this.lastError = `cannot dial ${tunnelUrl}: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      this.options.log.warn(this.lastError);
+      this.publish();
+      return;
+    }
     this.tunnel = tunnel;
     let connectedAt = 0;
 
@@ -369,17 +446,23 @@ export class ConnectTunnelService {
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;
-      this.options.logger.info("connect tunnel connected");
+      this.options.log.info("tunnel connected");
       this.session = new TunnelSession(
         tunnel,
-        this.options.loopbackBaseUrl,
-        this.options.logger,
+        this.options.getLoopbackBaseUrl(),
+        this.options.log,
       );
       this.session.start();
+      this.publish();
     });
     tunnel.on("unexpected-response", (_req, res) => {
-      this.lastError = `tunnel rejected: HTTP ${res.statusCode}`;
-      this.options.logger.warn({ status: res.statusCode }, "connect tunnel rejected");
+      const statusCode = res.statusCode ?? 0;
+      if (statusCode === 401 || statusCode === 403) {
+        this.credentialRejected(statusCode);
+        return;
+      }
+      this.lastError = `tunnel rejected: HTTP ${statusCode}`;
+      this.options.log.warn(this.lastError);
     });
     tunnel.on("error", (e: Error) => {
       this.lastError = e.message;
@@ -392,11 +475,11 @@ export class ConnectTunnelService {
       const stable = connectedAt ? Date.now() - connectedAt : 0;
       this.attempt = stable > 10_000 ? 0 : this.attempt + 1;
       const delay = Math.min(1000 * 2 ** this.attempt, MAX_RECONNECT_DELAY_MS);
-      this.options.logger.warn(
-        { code, reason: reason.toString(), delay },
-        "connect tunnel closed; reconnecting",
+      this.options.log.warn(
+        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""}); reconnecting in ${delay}ms`,
       );
       this.reconnectTimer = setTimeout(() => this.openTunnel(), delay);
+      this.publish();
     });
   }
 }

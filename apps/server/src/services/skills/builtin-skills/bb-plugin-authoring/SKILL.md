@@ -141,6 +141,15 @@ bb.storage.migrate(db, [
 ]);
 ```
 
+### bb.server
+
+Read-only facts about the running server. `bb.server.loopbackBaseUrl` is the
+server's own loopback base URL (e.g. `http://127.0.0.1:38886`), which serves
+the SPA + `/api` + `/ws` — for plugins that proxy or relay traffic back to
+the server itself (the builtin connect plugin's tunnel is the canonical
+user). **Bind-gated** like `bb.sdk`: reading it before the server is
+listening throws, so prefer reading it from handlers, services, and timers.
+
 ### bb.sdk
 
 The full bb SDK bound to this server over loopback — threads, projects,

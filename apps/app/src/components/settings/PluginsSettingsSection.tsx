@@ -332,6 +332,11 @@ export function PluginRow({ plugin }: { plugin: PluginListItem }) {
           </Pill>
         ) : null}
       </div>
+      {plugin.description !== null && plugin.description.length > 0 ? (
+        <p className="mt-1 text-xs leading-snug text-muted-foreground">
+          {plugin.description}
+        </p>
+      ) : null}
       {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
         <p className="mt-1 text-xs leading-snug text-subtle-foreground/75">
           {plugin.statusDetail}

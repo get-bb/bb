@@ -362,5 +362,16 @@ describe("builtin plugin packaging", () => {
     await expect(stat(join(copiedRoot, "src"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "app.tsx"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "node_modules"))).rejects.toThrow();
+
+    const connectRoot = join(targetRoot, "connect");
+    await expect(stat(join(connectRoot, "package.json"))).resolves.toBeTruthy();
+    await expect(
+      stat(join(connectRoot, "dist", "server.js")),
+    ).resolves.toBeTruthy();
+    await expect(
+      stat(join(connectRoot, "dist", "app.js")),
+    ).resolves.toBeTruthy();
+    await expect(stat(join(connectRoot, "src"))).rejects.toThrow();
+    await expect(stat(join(connectRoot, "node_modules"))).rejects.toThrow();
   });
 });

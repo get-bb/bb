@@ -24,6 +24,7 @@ import type {
   PluginMentionSearchContext,
   PluginRealtime,
   PluginRpc,
+  PluginServerApi,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -301,6 +302,11 @@ export interface FakePluginHarness {
 export interface CreateFakePluginHostOptions {
   /** Defaults to "test-plugin". */
   pluginId?: string;
+  /**
+   * Value served by `bb.server.loopbackBaseUrl` (always bound here, like
+   * `bb.sdk`). Defaults to "http://127.0.0.1:38886".
+   */
+  loopbackBaseUrl?: string;
   /**
    * Pre-seeded stored settings values (as if saved before this load) —
    * including secret ones, which the fake keeps in memory instead of
@@ -1024,6 +1030,15 @@ export function createFakePluginHost(
     },
   };
 
+  // --- server ---
+  const loopbackBaseUrl = options.loopbackBaseUrl ?? "http://127.0.0.1:38886";
+  const server: PluginServerApi = {
+    get loopbackBaseUrl(): string {
+      assertLive();
+      return loopbackBaseUrl;
+    },
+  };
+
   // --- sdk ---
   const { sdk, harness: sdkHarness } = createFakeSdk({
     pluginId,
@@ -1055,6 +1070,7 @@ export function createFakePluginHost(
     agents,
     ui,
     status,
+    server,
     get sdk() {
       assertLive();
       return sdk;

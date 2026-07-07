@@ -239,18 +239,26 @@ the same experiment as they land.
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Pairing is a thin call to the server's
-`POST /connect/pair` route: **the server** redeems the code, stores the durable
-credential under its data dir (`connect.json`), and holds the connect tunnel
-itself — dialing the gate, proxying relayed requests to its own loopback (which
-serves the SPA + `/api` + `/ws`), and reconnecting with capped backoff. The
-tunnel therefore lives as long as the bb server runs and re-establishes on
-restart; there is no foreground client. Pair from a machine without an installed
-bb via `npx -p bb-app@latest bb connect …`. `bb connect status` shows the
-server's connect state and `bb connect off` disconnects and clears the pairing.
+command at https://getbb.app). Remote access is owned by the builtin
+**connect plugin** (`plugins/connect/`): pairing redeems the code and stores
+the durable credential in the plugin's kv storage (in `bb.db`), and the
+plugin's background service holds the connect tunnel — dialing the gate,
+proxying relayed requests to the server's own loopback (which serves the SPA
++ `/api` + `/ws`), and reconnecting with capped backoff. The tunnel therefore
+lives as long as the bb server runs (with the plugin enabled) and
+re-establishes on restart; there is no foreground client. Pair from a machine
+without an installed bb via `npx -p bb-app@latest bb connect …`.
+`bb connect status` shows the connect state and `bb connect off` disconnects
+and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
+cuts off all remote access.
 
-The tunnel client lives in `apps/server` (`services/connect/`); the CLI and app
-only drive the `/connect/*` routes.
+Upgrading from a kernel-era pairing: the legacy credential file
+(`<dataDir>/connect.json`) is imported into plugin storage on the plugin's
+first load and the file is renamed to `connect.json.migrated` — a previously
+connected bb stays connected with zero action.
+
+The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
+the plugin, and the app's "Remote access" panel drives the plugin's rpc.
 
 ## Plugins
 

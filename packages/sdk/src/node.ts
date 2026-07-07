@@ -103,7 +103,6 @@ export {
 } from "./areas/threads.js";
 export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
 export type * from "./realtime.js";
-export type * from "./areas/connect.js";
 export type * from "./areas/guide.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";

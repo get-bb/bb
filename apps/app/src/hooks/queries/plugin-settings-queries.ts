@@ -22,6 +22,8 @@ export interface PluginListItem {
   enabled: boolean;
   status: string;
   statusDetail: string | null;
+  /** Manifest description (package.json); null when absent or not loaded. */
+  description: string | null;
   /** Hash-busted logo asset URL; null when the plugin ships no logo. */
   logoUrl: string | null;
   /** Dark-theme logo variant URL; null when the plugin ships none. */
@@ -46,6 +48,7 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     enabled: item.enabled,
     status: item.status,
     statusDetail: item.statusDetail,
+    description: typeof item.description === "string" ? item.description : null,
     // Absent on older servers → no logo, never a dropped row.
     logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
     logoDarkUrl:

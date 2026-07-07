@@ -63,9 +63,10 @@ message agents, or inspect projects, providers, and environments.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the server itself holds the
-  tunnel (credential stored in its data dir) and reconnects on restart, so
-  there is no foreground process. `bb connect status` / `bb connect off` report
-  and clear the pairing.
+  tunnel and reconnects on restart, so there is no foreground process.
+  `bb connect status` / `bb connect off` report and clear the pairing. Remote
+  access is owned by the builtin `connect` plugin: `bb plugin disable connect`
+  cuts it off entirely, `bb plugin enable connect` restores the command.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or

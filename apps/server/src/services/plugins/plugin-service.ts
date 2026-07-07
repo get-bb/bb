@@ -153,6 +153,8 @@ export interface PluginListEntry {
   rootDir: string;
   version: string;
   enabled: boolean;
+  /** Manifest description (package.json), null when not currently loaded. */
+  description: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -785,6 +787,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // two-phase load/bind). One shared instance — plugin-api wraps it per
   // plugin for spawn attribution.
   let boundSdk: BbSdk | undefined;
+  // The server's own loopback base URL, bound alongside the SDK; backs the
+  // bind-gated bb.server.loopbackBaseUrl.
+  let boundLoopbackBaseUrl: string | undefined;
 
   function setStatus(
     id: string,
@@ -1317,6 +1322,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1876,6 +1882,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: row.rootDir,
           version: row.version,
           enabled: row.enabled,
+          description: loaded.get(row.id)?.manifest.description ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1948,6 +1955,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     bindSdk({ baseUrl }) {
       boundSdk = createNodeBbSdk({ baseUrl });
+      boundLoopbackBaseUrl = baseUrl;
     },
 
     async start() {
