@@ -7,7 +7,7 @@
 // GitHub integration, shrunk to a panel). "Send agent" buttons everywhere an
 // issue or PR shows up. Deep links use the URL hash
 // (#/issues/<owner>/<repo>/<n>, #/pulls/<owner>/<repo>/<n>) since navPanel
-// owns a single route today. A threadPanelAction opens the same PR view in a
+// owns /plugins/github/github/* via subPath routing. A threadPanelAction opens the same PR view in a
 // thread's right panel, auto-resolved to that thread's PR.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -15,6 +15,7 @@ import {
   useBbNavigate,
   useRealtime,
   useRpc,
+  type PluginNavPanelProps,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
 // Shimmed to the host's copy at build time (shared worker-pool context +
@@ -162,9 +163,13 @@ function relativeTime(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hash routing — the navPanel owns one route, so sub-navigation lives in the
-// URL hash: #/issues, #/pulls, #/new, #/issues/<owner>/<repo>/<number>.
+// Sub-routing — the navPanel owns /plugins/github/github/*, so sub-navigation
+// lives in the route's subPath: "issues", "pulls", "new",
+// "issues/<owner>/<repo>/<number>". Deep-linkable, and browser back/forward
+// walks panel history.
 // ---------------------------------------------------------------------------
+
+const PANEL_PATH = "github";
 
 type Route =
   | { view: "issues" }
@@ -173,8 +178,8 @@ type Route =
   | { view: "issue"; repo: string; number: number }
   | { view: "pull"; repo: string; number: number };
 
-function parseHash(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter((p) => p.length > 0);
+function parseSubPath(subPath: string): Route {
+  const parts = subPath.split("/").filter((p) => p.length > 0);
   if (parts[0] === "pulls" && parts.length === 4) {
     const number = Number(parts[3]);
     if (Number.isFinite(number)) {
@@ -192,32 +197,30 @@ function parseHash(hash: string): Route {
   return { view: "issues" };
 }
 
-function routeToHash(route: Route): string {
+function routeToSubPath(route: Route): string {
   switch (route.view) {
     case "issues":
-      return "#/issues";
+      return "issues";
     case "pulls":
-      return "#/pulls";
+      return "pulls";
     case "new":
-      return "#/new";
+      return "new";
     case "issue":
-      return `#/issues/${route.repo}/${route.number}`;
+      return `issues/${route.repo}/${route.number}`;
     case "pull":
-      return `#/pulls/${route.repo}/${route.number}`;
+      return `pulls/${route.repo}/${route.number}`;
   }
 }
 
-function useHashRoute(): [Route, (route: Route) => void] {
-  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
-  useEffect(() => {
-    const onChange = () => setRoute(parseHash(window.location.hash));
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-  const navigate = useCallback((next: Route) => {
-    window.location.hash = routeToHash(next);
-    setRoute(next);
-  }, []);
+function useSubPathRoute(subPath: string): [Route, (route: Route) => void] {
+  const bbNavigate = useBbNavigate();
+  const route = useMemo(() => parseSubPath(subPath), [subPath]);
+  const navigate = useCallback(
+    (next: Route) => {
+      bbNavigate.toPluginPanel(PANEL_PATH, { subPath: routeToSubPath(next) });
+    },
+    [bbNavigate],
+  );
   return [route, navigate];
 }
 
@@ -415,7 +418,7 @@ function LabelChips({ labels, className }: { labels: string[]; className?: strin
 }
 
 // ---------------------------------------------------------------------------
-// Mutations (status + assignees) with optimistic-friendly callbacks.
+// Mutations (status, assignees, labels) with optimistic-friendly callbacks.
 // ---------------------------------------------------------------------------
 
 function useIssueMutations() {
@@ -432,7 +435,12 @@ function useIssueMutations() {
       rpc.call("setAssignees", { repo, number, assignees }),
     [rpc],
   );
-  return { setIssueState, setAssignees };
+  const setLabels = useCallback(
+    (repo: string, number: number, labels: string[]) =>
+      rpc.call("setLabels", { repo, number, labels }),
+    [rpc],
+  );
+  return { setIssueState, setAssignees, setLabels };
 }
 
 // ---------------------------------------------------------------------------
@@ -1107,6 +1115,67 @@ function AssigneePicker({
   );
 }
 
+function LabelPicker({
+  repo,
+  labels,
+  onToggle,
+}: {
+  repo: string;
+  labels: string[];
+  onToggle: (label: string, enabled: boolean) => void;
+}) {
+  const rpc = useRpc();
+  const [available, setAvailable] = useState<string[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    if (available !== null) return;
+    rpc.call("repositoryLabels", { repo }).then(
+      (result) => {
+        const list = (result as { labels?: unknown })?.labels;
+        setAvailable(Array.isArray(list) ? list.map(String) : []);
+      },
+      (error: unknown) => setLoadError(errorText(error)),
+    );
+  }, [rpc, repo, available]);
+
+  const ordered =
+    available === null
+      ? null
+      : [...new Set([...labels, ...available])].sort((a, b) => a.localeCompare(b));
+
+  return (
+    <DropdownMenu onOpenChange={(open) => open && load()}>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-muted-foreground">
+          Edit
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-72 w-56 overflow-y-auto">
+        <DropdownMenuLabel>Labels</DropdownMenuLabel>
+        {loadError !== null ? (
+          <DropdownMenuItem disabled>{loadError}</DropdownMenuItem>
+        ) : ordered === null ? (
+          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+        ) : ordered.length === 0 ? (
+          <DropdownMenuItem disabled>No labels in repo</DropdownMenuItem>
+        ) : (
+          ordered.map((label) => (
+            <DropdownMenuCheckboxItem
+              key={label}
+              checked={labels.includes(label)}
+              onCheckedChange={(checked) => onToggle(label, checked === true)}
+              onSelect={(event) => event.preventDefault()}
+            >
+              <span className="min-w-0 truncate">{label}</span>
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function IssueDetailView({
   repo,
   number,
@@ -1119,7 +1188,7 @@ function IssueDetailView({
   const rpc = useRpc();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
-  const { setIssueState, setAssignees } = useIssueMutations();
+  const { setIssueState, setAssignees, setLabels } = useIssueMutations();
   const [detail, setDetail] = useState<IssueDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [comment, setComment] = useState("");
@@ -1170,6 +1239,24 @@ function IssueDetailView({
       });
     },
     [setAssignees, repo, number, load],
+  );
+
+  const toggleLabel = useCallback(
+    (label: string, enabled: boolean) => {
+      let next: string[] = [];
+      setDetail((prev) => {
+        if (prev === null) return prev;
+        next = enabled
+          ? [...new Set([...prev.labels, label])]
+          : prev.labels.filter((entry) => entry !== label);
+        return { ...prev, labels: next };
+      });
+      setLabels(repo, number, next).catch((err: unknown) => {
+        toast.error(errorText(err));
+        load();
+      });
+    },
+    [setLabels, repo, number, load],
   );
 
   const postComment = useCallback(() => {
@@ -1328,7 +1415,10 @@ function IssueDetailView({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <SidebarHeading>Labels</SidebarHeading>
+            <div className="flex items-center justify-between">
+              <SidebarHeading>Labels</SidebarHeading>
+              <LabelPicker repo={repo} labels={detail.labels} onToggle={toggleLabel} />
+            </div>
             {detail.labels.length === 0 ? (
               <p className="text-sm text-muted-foreground">None yet</p>
             ) : (
@@ -2117,8 +2207,8 @@ function PanelHeader() {
 const QUERY_KEY = "bb-plugin-github:query";
 const DEFAULT_QUERY = "is:open ";
 
-function GithubPanel() {
-  const [route, navigate] = useHashRoute();
+function GithubPanel({ subPath }: PluginNavPanelProps) {
+  const [route, navigate] = useSubPathRoute(subPath);
   const { status } = useStatus();
   const [query, setQueryState] = useState<string>(() => {
     try {

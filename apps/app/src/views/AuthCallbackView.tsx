@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 
 const STATUS_CONTENT = {
   success: {

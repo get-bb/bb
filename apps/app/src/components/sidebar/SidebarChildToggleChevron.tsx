@@ -1,7 +1,7 @@
-import { Icon } from "@/components/ui/icon.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export type SidebarChildToggleHandler = () => void;
 

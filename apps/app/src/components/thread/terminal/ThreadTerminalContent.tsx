@@ -1,6 +1,6 @@
 import type { TerminalSession } from "@bb/server-contract";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";

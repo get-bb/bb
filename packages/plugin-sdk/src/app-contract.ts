@@ -24,8 +24,17 @@ export interface PluginHomepageSectionProps {
 }
 
 /** Props passed to a `navPanel` component (it owns its whole route). */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PluginNavPanelProps {}
+export interface PluginNavPanelProps {
+  /**
+   * The route remainder after the panel root, "" at the root. The panel's
+   * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
+   * `/plugins/notes/notes/work/ideas.md` renders the panel with
+   * `subPath: "work/ideas.md"`. Navigate within the panel via
+   * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
+   * back/forward then walks panel-internal history.
+   */
+  subPath: string;
+}
 
 /** Props passed to a panel tab opened by a `threadPanelAction`. */
 export interface PluginThreadPanelProps {
@@ -42,6 +51,25 @@ export interface PluginThreadPanelProps {
 export interface PluginComposerAccessoryProps {
   projectId: string | null;
   threadId: string | null;
+}
+
+/**
+ * Where a file being opened by a `fileOpener` lives. `path` semantics follow
+ * the source: workspace paths are relative to the environment's worktree,
+ * thread-storage paths are relative to the thread's storage root, host paths
+ * are absolute on the thread's host.
+ */
+export interface PluginFileOpenerSource {
+  kind: "workspace" | "host" | "thread-storage";
+  threadId: string | null;
+  environmentId: string | null;
+  projectId: string | null;
+}
+
+/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
+export interface PluginFileOpenerProps {
+  path: string;
+  source: PluginFileOpenerSource;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +157,25 @@ export interface PluginComposerAccessoryRegistration {
   component: ComponentType<PluginComposerAccessoryProps>;
 }
 
+/**
+ * Register this plugin as a viewer/editor for file extensions. The user
+ * picks (and can set as default) an opener per extension via the file tab's
+ * "Open with" menu; matching files opened in the panel then render
+ * `component` in a plugin tab instead of the built-in preview. Applies to
+ * working-tree, host, and thread-storage files — never to git-ref snapshots
+ * (diff views always use the built-in preview). The built-in preview stays
+ * one menu click away, and a missing/disabled opener falls back to it.
+ */
+export interface PluginFileOpenerRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label in the "Open with" menu (e.g. "Notes editor"). */
+  title: string;
+  /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+  extensions: readonly string[];
+  component: ComponentType<PluginFileOpenerProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -138,6 +185,7 @@ export interface PluginAppSlots {
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+  fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 
 export interface PluginAppBuilder {
@@ -180,6 +228,46 @@ export interface PluginSettingsState {
   isLoading: boolean;
 }
 
+/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
+export type PluginComposerScope =
+  | { kind: "thread"; threadId: string }
+  | { kind: "new-thread"; projectId: string | null };
+
+/** An @-mention pill bound to one of the calling plugin's mention providers. */
+export interface PluginComposerMention {
+  /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
+  provider: string;
+  /** Item id your provider's `resolve` will receive at send time. */
+  id: string;
+  /** Pill text shown in the composer. */
+  label: string;
+}
+
+/**
+ * Programmatic access to the chat composer draft — the same shared draft the
+ * built-in "Add to chat" affordances (file preview, diff, terminal selections)
+ * write to. Inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread
+ * composer draft, which persists until the user sends or clears it.
+ */
+export interface PluginComposerApi {
+  scope: PluginComposerScope;
+  /**
+   * Append text to the draft as a `> ` blockquote block and focus the
+   * composer. Blank text is a no-op. This is the "reference this selection
+   * in chat" primitive.
+   */
+  addQuote(text: string): void;
+  /**
+   * Insert an @-mention pill that resolves through this plugin's mention
+   * provider at send time — the durable way to reference an entity whose
+   * content should be fetched fresh when the message is sent.
+   */
+  insertMention(mention: PluginComposerMention): void;
+  /** Focus the composer caret at the end of the draft. */
+  focus(): void;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -189,8 +277,23 @@ export interface BbContext {
 export interface BbNavigate {
   toThread(threadId: string): void;
   toProject(projectId: string): void;
-  /** Navigate to one of this plugin's own nav panels by its `path`. */
-  toPluginPanel(path: string): void;
+  /**
+   * Navigate to one of this plugin's own nav panels by its `path`.
+   * `subPath` targets a location inside the panel (the component's
+   * `subPath` prop); `replace` swaps the current history entry instead of
+   * pushing — use it for redirects so back does not bounce.
+   */
+  toPluginPanel(
+    path: string,
+    options?: { subPath?: string; replace?: boolean },
+  ): void;
+  /**
+   * Navigate to the root compose surface (the new-thread screen). Pass
+   * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
+   * composer on arrival — the pairing behind "Create via chat" style entry
+   * points that drop the user into chat with a prefilled prompt.
+   */
+  toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +319,7 @@ export interface PluginSdkApp {
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
+  useComposer(): PluginComposerApi;
 }
 
 /**
@@ -228,6 +332,7 @@ export const PLUGIN_SDK_APP_EXPORT_NAMES = [
   "definePluginApp",
   "useBbContext",
   "useBbNavigate",
+  "useComposer",
   "useRealtime",
   "useRpc",
   "useSettings",

@@ -2,11 +2,11 @@ import type { ReactNode } from "react";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon } from "@/components/ui/icon.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
-import { cn } from "@/lib/utils";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 // Shared shell for the secondary-panel launcher rows — the app/file/recent
 // results in the New tab page and the browser tab's recently-visited list — so

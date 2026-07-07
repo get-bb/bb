@@ -21,6 +21,7 @@ const bbManifestFieldSchema = z.object({
 const pluginPackageJsonSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
+  description: z.string().optional(),
   engines: z.object({ bb: z.string().min(1).optional() }).optional(),
   bb: bbManifestFieldSchema,
 });
@@ -31,6 +32,8 @@ export interface PluginManifest {
   /** Full npm package name. */
   name: string;
   version: string;
+  /** package.json description, shown in the Settings → Plugins row. */
+  description: string | null;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
   /** Absolute path of the backend entry file. */
@@ -117,7 +120,7 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
       `invalid plugin package.json${path ? ` (${path})` : ""}: ${issue?.message ?? "unknown error"}`,
     );
   }
-  const { name, version, engines, bb } = parsed.data;
+  const { name, version, description, engines, bb } = parsed.data;
   const serverEntry = resolveEntry(rootDir, bb.server, "bb.server");
   try {
     await stat(serverEntry);
@@ -145,6 +148,10 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
     id: derivePluginId(name),
     name,
     version,
+    description:
+      description !== undefined && description.trim().length > 0
+        ? description
+        : null,
     bbEngineRange: engines?.bb,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,

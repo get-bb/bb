@@ -59,8 +59,8 @@ import {
   buildNeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
 import {
   ThreadFolderCreateDialog,
   ThreadFolderRenameDialog,
@@ -71,9 +71,9 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   SidebarGroupContent,
   SidebarStickyGroup,
@@ -86,7 +86,7 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ChronologicalFolderThreadSections,
   ProjectThreadTree,
@@ -134,13 +134,13 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@bb/shared-ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+} from "@bb/shared-ui/tooltip";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
@@ -179,8 +179,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenAutomations?: () => void;
-  isAutomationsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -226,8 +224,7 @@ interface LocalSourcePathTarget {
   projectId: string;
 }
 
-// Exported for the plugin nav entries, which render as sibling rows of the
-// Automations action and must match its look exactly.
+// Exported for plugin nav entries that render as sibling primary action rows.
 export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_BASE_CLASS,
   LIST_HOVER_TRANSITION,
@@ -1196,8 +1193,6 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenAutomations,
-  isAutomationsActive = false,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -1279,22 +1274,6 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            PROJECT_LIST_ACTION_BUTTON_CLASS,
-            isAutomationsActive && "bg-sidebar-accent text-sidebar-foreground",
-          )}
-          aria-current={isAutomationsActive ? "page" : undefined}
-          onClick={onOpenAutomations}
-        >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
-        </Button>
-      ) : null}
     </div>
   );
 }

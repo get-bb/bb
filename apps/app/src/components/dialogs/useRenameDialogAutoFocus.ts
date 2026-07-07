@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
 export interface RenameDialogAutoFocus {
   /** Attach to the rename `Input`. */

@@ -16,7 +16,11 @@
   html.bb-app-shell-root,
   body.bb-app-shell {
     overflow: hidden;
-    overscroll-behavior: none;
+    /*
+     * Suppress vertical rubber-banding without blocking the native horizontal
+     * two-finger back/forward gesture.
+     */
+    overscroll-behavior-y: none;
   }
 
   html.bb-app-shell-root[data-bb-popout-route],
@@ -274,6 +278,41 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /*
+   * Opt out of the global thin scrollbar into always-visible classic
+   * scrollbars for two-axis data surfaces (e.g. the CSV table preview).
+   * Native thin scrollbars render as macOS overlay bars that fade out and
+   * give a wide table no persistent horizontal-scroll affordance. Chromium
+   * only honors `::-webkit-scrollbar` customization when `scrollbar-width`
+   * and `scrollbar-color` are both `auto`, so those resets are what
+   * re-enable the persistent chrome below.
+   */
+  .persistent-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-track,
+  .persistent-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
   }
 
   /*

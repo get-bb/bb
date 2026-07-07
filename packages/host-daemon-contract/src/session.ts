@@ -307,6 +307,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.list_branches"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
+    onlineRpcResponseSuccessSchemaFor("host.write_file"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("known_acp_agents.status"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
@@ -332,7 +333,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
     commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
     commandRpcResponseSuccessSchemaFor("workspace.pull_request_action"),
-    commandRpcResponseSuccessSchemaFor("host.run_script"),
   ],
 );
 

@@ -10,6 +10,7 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
+import { parsePluginSource } from "../services/plugins/install-sources.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
@@ -172,6 +173,15 @@ export function registerPluginRoutes(
     error:
       'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
   };
+  const gateAllowsPlugin = (id: string): boolean =>
+    plugins.isEnabled() || plugins.isBuiltin(id);
+  const sourceBypassesGate = (source: string): boolean => {
+    try {
+      return parsePluginSource(source).kind === "builtin";
+    } catch {
+      return false;
+    }
+  };
 
   app.get("/plugins", (context) =>
     context.json({ enabled: plugins.isEnabled(), plugins: plugins.list() }),
@@ -193,7 +203,6 @@ export function registerPluginRoutes(
   // guard as the rpc dispatcher. Registered before the /plugins/:id/*
   // routes so the static "mentions" segment cannot be captured as an id.
   app.get("/plugins/mentions/search", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const problem = localAuthProblem(context, deps);
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
@@ -256,7 +265,9 @@ export function registerPluginRoutes(
   // code with full server capabilities, so it takes the same local-origin
   // guard as the rpc dispatcher.
   app.post("/plugins/:id/actions/:actionId", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const problem = localAuthProblem(context, deps);
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
@@ -320,7 +331,9 @@ export function registerPluginRoutes(
   } as const;
 
   app.get("/plugins/:id/assets/:file", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const file = context.req.param("file");
     // The plugin's logo (logo.(svg|png|webp) / manifest bb.logo) and its
     // optional dark-theme variant (logo-dark.* / bb.logoDark): same
@@ -376,7 +389,9 @@ export function registerPluginRoutes(
   });
 
   app.get("/plugins/:id/logs", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const rawTail = Number(context.req.query("tail") ?? "100");
     const tail = Number.isFinite(rawTail)
       ? Math.min(Math.max(Math.trunc(rawTail), 1), 10_000)
@@ -391,7 +406,6 @@ export function registerPluginRoutes(
   // Body: { source: "path:<dir>" | "git:<url>@<ref>" | "npm:<name>@<version>" }
   // (bare paths are treated as path: sources).
   app.post("/plugins/install", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const body = (await context.req.json().catch(() => null)) as {
       source?: unknown;
     } | null;
@@ -401,35 +415,49 @@ export function registerPluginRoutes(
         400,
       );
     }
+    if (!plugins.isEnabled() && !sourceBypassesGate(body.source)) {
+      return context.json(DISABLED, 422);
+    }
     try {
       const plugin = await plugins.install(body.source);
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(
-        { ok: false, error: error instanceof Error ? error.message : String(error) },
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
         422,
       );
     }
   });
 
   app.post("/plugins/reload", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const id = context.req.query("id") ?? undefined;
+    if (!plugins.isEnabled() && (id === undefined || !gateAllowsPlugin(id))) {
+      return context.json(DISABLED, 422);
+    }
     await plugins.reload(id);
     return context.json({ ok: true, plugins: plugins.list() });
   });
 
   app.post("/plugins/:id/enable", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const plugin = await plugins.setEnabled(context.req.param("id"), true);
-    if (!plugin) return context.json({ ok: false, error: "unknown plugin" }, 404);
+    if (!plugin)
+      return context.json({ ok: false, error: "unknown plugin" }, 404);
     return context.json({ ok: true, plugin });
   });
 
   app.post("/plugins/:id/disable", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const plugin = await plugins.setEnabled(context.req.param("id"), false);
-    if (!plugin) return context.json({ ok: false, error: "unknown plugin" }, 404);
+    if (!plugin)
+      return context.json({ ok: false, error: "unknown plugin" }, 404);
     return context.json({ ok: true, plugin });
   });
 
@@ -440,14 +468,18 @@ export function registerPluginRoutes(
   };
 
   app.get("/plugins/:id/settings", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const view = await plugins.getSettings(context.req.param("id"));
     if (!view) return context.json(NOT_RUNNING, 404);
     return context.json({ ok: true, ...view });
   });
 
   app.put("/plugins/:id/settings", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const body = (await context.req.json().catch(() => null)) as {
       values?: unknown;
     } | null;
@@ -479,14 +511,19 @@ export function registerPluginRoutes(
   });
 
   app.delete("/plugins/:id", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const removed = await plugins.remove(context.req.param("id"));
-    if (!removed) return context.json({ ok: false, error: "unknown plugin" }, 404);
+    if (!removed)
+      return context.json({ ok: false, error: "unknown plugin" }, 404);
     return context.json({ ok: true });
   });
 
   app.post("/plugins/:id/token", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json(DISABLED, 422);
+    }
     const body = (await context.req.json().catch(() => null)) as {
       rotate?: unknown;
     } | null;
@@ -503,8 +540,8 @@ export function registerPluginRoutes(
   // cannot be added or removed after boot, so one wildcard route dispatches
   // through the live per-plugin route table (exact method+path match).
   app.all("/plugins/:id/http/*", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const id = context.req.param("id");
+    if (!gateAllowsPlugin(id)) return context.json(DISABLED, 422);
     const prefix = `/api/v1/plugins/${id}/http`;
     const requestPath = context.req.path;
     const subPath = requestPath.startsWith(prefix)
@@ -548,7 +585,10 @@ export function registerPluginRoutes(
     const fresh = plugins.getHttpRoute(id, context.req.method, subPath);
     if (fresh.outcome !== "found" || fresh.value.auth !== auth) {
       return context.json(
-        { ok: false, error: `plugin "${id}" reloaded during the request — retry` },
+        {
+          ok: false,
+          error: `plugin "${id}" reloaded during the request — retry`,
+        },
         503,
       );
     }
@@ -558,8 +598,8 @@ export function registerPluginRoutes(
   // bb.rpc dispatcher (design §4.6): always "local" auth semantics —
   // JSON-only body plus the Origin/Host check.
   app.post("/plugins/:id/rpc/:method", async (context) => {
-    if (!plugins.isEnabled()) return context.json(DISABLED, 422);
     const id = context.req.param("id");
+    if (!gateAllowsPlugin(id)) return context.json(DISABLED, 422);
     const method = context.req.param("method");
     const problem = localAuthProblem(context, deps);
     if (problem) {

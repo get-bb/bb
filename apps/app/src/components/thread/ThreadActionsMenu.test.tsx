@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Thread } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
 
 const mockActions = vi.hoisted(() => ({

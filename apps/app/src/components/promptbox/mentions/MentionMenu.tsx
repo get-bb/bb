@@ -19,9 +19,9 @@ import {
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   ComposerCommandSuggestion,
   PromptMentionSuggestion,

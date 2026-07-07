@@ -6,7 +6,7 @@ import { PluginContext } from "./plugin-context";
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
  * AppLayout's AppHeader): plugin panels get the SAME chrome as
- * Settings/Automations — logo + panel title in the header center, the
+ * Settings — logo + panel title in the header center, the
  * registration's optional `headerContent` component in the header actions.
  * PluginPanelView renders only the panel body.
  */
@@ -63,8 +63,10 @@ export function PluginPanelHeaderCenter({
  */
 export function PluginPanelHeaderActions({
   panel,
+  subPath,
 }: {
   panel: PluginNavPanelSlot;
+  subPath: string;
 }) {
   const HeaderContent = panel.headerContent;
   if (HeaderContent === undefined || panel.chrome === "none") return null;
@@ -83,7 +85,7 @@ export function PluginPanelHeaderActions({
           data-bb-plugin={panel.pluginId}
           className="flex shrink-0 items-center gap-2"
         >
-          <HeaderContent />
+          <HeaderContent subPath={subPath} />
         </div>
       </PluginContext.Provider>
     </HeaderContentBoundary>

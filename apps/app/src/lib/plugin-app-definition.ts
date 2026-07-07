@@ -3,6 +3,7 @@ import {
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
+  type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
   type PluginThreadPanelActionRegistration,
@@ -84,11 +85,13 @@ export function collectPluginAppRegistrations(
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
+  const fileOpeners: PluginFileOpenerRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    fileOpener: new Set<string>(),
   };
 
   definition.setup({
@@ -171,6 +174,34 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      fileOpener(registration) {
+        const kind = "slots.fileOpener";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.fileOpener, id);
+        const rawExtensions = registration?.extensions;
+        if (!Array.isArray(rawExtensions) || rawExtensions.length === 0) {
+          throw new Error(
+            `${kind}: "extensions" must be a non-empty array of lowercase extensions without the dot`,
+          );
+        }
+        const extensions = rawExtensions.map((extension) => {
+          if (
+            typeof extension !== "string" ||
+            !/^[a-z0-9]+$/.test(extension)
+          ) {
+            throw new Error(
+              `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
+            );
+          }
+          return extension;
+        });
+        fileOpeners.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          extensions,
+          component: requireComponent(kind, registration.component),
+        });
+      },
     },
   });
 
@@ -179,6 +210,7 @@ export function collectPluginAppRegistrations(
     navPanels,
     threadPanelActions,
     composerAccessories,
+    fileOpeners,
   };
 }
 

@@ -39,39 +39,6 @@ export type {
 } from "./thread-folders.js";
 
 export {
-  createAutomation,
-  getAutomation,
-  getAutomationForProject,
-  listAutomationsForProject,
-  listAutomationsWithProject,
-  updateAutomation,
-  setAutomationEnabled,
-  deleteAutomation,
-  listDueAutomations,
-  claimAutomationScheduledRun,
-  restoreAutomationAfterFailedRun,
-  closeAutomationRun,
-  createManualRun,
-  getAutomationRun,
-  setAutomationRunThread,
-  getRunningAutomationRunByThread,
-  isAutomationSpawnedThread,
-  listAutomationRuns,
-  disableAutomationsForDeletedThread,
-} from "./automations.js";
-export type {
-  AutomationRow,
-  AutomationRunRow,
-  AutomationWithProject,
-  CreateAutomationInput,
-  UpdateAutomationInput,
-  ClaimScheduledRunArgs,
-  ClaimScheduledRunResult,
-  CloseAutomationRunArgs,
-  ListAutomationRunsArgs,
-} from "./automations.js";
-
-export {
   createPromptHistoryEntry,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
@@ -191,7 +158,9 @@ export { getExperiments, setExperiments } from "./experiments.js";
 export {
   deleteInstalledPlugin,
   getInstalledPlugin,
+  getInstalledPluginRegistration,
   listInstalledPlugins,
+  markInstalledPluginRemoved,
   setInstalledPluginEnabled,
   upsertInstalledPlugin,
   type InstalledPluginRow,

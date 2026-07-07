@@ -1,0 +1,43 @@
+{
+  "name": "bb-plugin-automations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "server": "./src/server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "@radix-ui/react-slot": "^1.2.4",
+    "cron-parser": "^5.5.0",
+    "cronstrue": "^3.14.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "better-sqlite3": "12.10.0",
+    "sonner": "^1.7.4",
+    "typescript": "^5.7.0",
+    "vaul": "^1.1.2",
+    "vitest": "^4.1.1"
+  }
+}

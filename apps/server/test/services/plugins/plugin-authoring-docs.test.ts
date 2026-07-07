@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginAppSlots,
   type PluginComposerAccessoryProps,
+  type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
   type PluginNavPanelProps,
@@ -46,6 +47,7 @@ const BB_PLUGIN_API_KEYS = [
   "agents",
   "ui",
   "status",
+  "server",
   "sdk",
   "on",
   "onDispose",
@@ -106,6 +108,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.created": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
+  "thread.deleted": ["thread"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
@@ -133,6 +136,7 @@ type SlotPropsByName = {
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  fileOpener: PluginFileOpenerProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -141,9 +145,10 @@ void _assertAllSlotsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
-  navPanel: [],
+  navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  fileOpener: ["path", "source"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };

@@ -1,0 +1,17 @@
+{
+  "extends": ["@bb/tsconfig/base.json"],
+  "compilerOptions": {
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["@cloudflare/workers-types", "vite/client"],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noUnusedLocals": false,
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "vite.config.ts"]
+}

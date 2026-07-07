@@ -6,7 +6,11 @@ import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ModelReasoningPicker } from "./ModelReasoningPicker";
+import {
+  buildFuzzyRegex,
+  buildModelNavRows,
+  ModelReasoningPicker,
+} from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -24,6 +28,16 @@ const providerOptions: readonly PickerOption<string>[] = [
 
 const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
+];
+
+// A list long enough (> MODEL_SEARCH_MIN_OPTIONS) to render the search box.
+const manyCodexModels: readonly PickerOption<string>[] = [
+  { value: "gpt-5.5", label: "GPT-5.5" },
+  { value: "gpt-5.2", label: "GPT-5.2" },
+  { value: "gpt-4.1", label: "GPT-4.1" },
+  { value: "o3", label: "o3" },
+  { value: "o4-mini", label: "o4-mini" },
+  { value: "sonnet-in-codex", label: "Sonnet" },
 ];
 
 const reasoningOptions: readonly PickerOption<ReasoningLevel>[] = [
@@ -70,10 +84,12 @@ function executionOptions({
 function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
+  modelOptions = codexModels,
   moreModelOptions = [],
 }: {
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
+  modelOptions?: readonly PickerOption<string>[];
   moreModelOptions?: readonly PickerOption<string>[];
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -100,7 +116,7 @@ function renderPicker({
       onSelectedProviderChange={onSelectedProviderChange}
       hasMultipleProviders
       modelValue="gpt-5.5"
-      modelOptions={codexModels}
+      modelOptions={modelOptions}
       moreModelOptions={moreModelOptions}
       onModelChange={onModelChange}
       reasoningValue="medium"
@@ -161,5 +177,157 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(await screen.findByText("5.2"));
 
     expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+  });
+
+  it("fuzzy-filters a long model list and selects the match by keyboard", () => {
+    const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.change(search, { target: { value: "o4" } });
+
+    // Only the fuzzy match survives; unrelated models are filtered out.
+    expect(screen.getByText("o4-mini")).not.toBeNull();
+    expect(screen.queryByText("Sonnet")).toBeNull();
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+  });
+
+  it("reaches selected-only models by keyboard once a search flattens them", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+      moreModelOptions: [{ value: "gpt-4.1-legacy", label: "GPT-4.1 Legacy" }],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    // On desktop the extra models normally hide in a hover submenu; searching
+    // flattens them inline so the keyboard can reach them.
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.change(search, { target: { value: "legacy" } });
+
+    expect(screen.getByText("4.1 Legacy")).not.toBeNull();
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(onModelChange).toHaveBeenCalledWith("gpt-4.1-legacy");
+  });
+
+  it("does not render the search box for short model lists", () => {
+    renderPicker();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.queryByPlaceholderText("Search models")).toBeNull();
+  });
+});
+
+describe("buildModelNavRows", () => {
+  const primary: readonly PickerOption<string>[] = [
+    { value: "a", label: "A" },
+    { value: "b", label: "B" },
+  ];
+  const more: readonly PickerOption<string>[] = [{ value: "c", label: "C" }];
+
+  it("keeps desktop extra models out of keyboard nav (submenu-driven)", () => {
+    const rows = buildModelNavRows({
+      modelOptions: primary,
+      moreModelOptions: more,
+      isCompactViewport: false,
+      isSearching: false,
+      showMoreModels: false,
+    });
+
+    expect(rows).toEqual([
+      { kind: "model", option: primary[0] },
+      { kind: "model", option: primary[1] },
+    ]);
+  });
+
+  it("flattens extra models inline while searching, on any viewport", () => {
+    for (const isCompactViewport of [false, true]) {
+      const rows = buildModelNavRows({
+        modelOptions: primary,
+        moreModelOptions: more,
+        isCompactViewport,
+        isSearching: true,
+        showMoreModels: false,
+      });
+
+      expect(rows).toEqual([
+        { kind: "model", option: primary[0] },
+        { kind: "model", option: primary[1] },
+        { kind: "model", option: more[0] },
+      ]);
+    }
+  });
+
+  it("compact: a toggle precedes the extra models and only lists them when expanded", () => {
+    const collapsed = buildModelNavRows({
+      modelOptions: primary,
+      moreModelOptions: more,
+      isCompactViewport: true,
+      isSearching: false,
+      showMoreModels: false,
+    });
+    expect(collapsed.map((row) => row.kind)).toEqual([
+      "model",
+      "model",
+      "more-toggle",
+    ]);
+
+    const expanded = buildModelNavRows({
+      modelOptions: primary,
+      moreModelOptions: more,
+      isCompactViewport: true,
+      isSearching: false,
+      showMoreModels: true,
+    });
+    expect(expanded.map((row) => row.kind)).toEqual([
+      "model",
+      "model",
+      "more-toggle",
+      "model",
+    ]);
+  });
+
+  it("omits the toggle entirely when there are no extra models", () => {
+    const rows = buildModelNavRows({
+      modelOptions: primary,
+      moreModelOptions: [],
+      isCompactViewport: true,
+      isSearching: false,
+      showMoreModels: true,
+    });
+
+    expect(rows).toEqual([
+      { kind: "model", option: primary[0] },
+      { kind: "model", option: primary[1] },
+    ]);
+  });
+});
+
+describe("buildFuzzyRegex", () => {
+  it("matches subsequences case-insensitively", () => {
+    expect(buildFuzzyRegex("gpt4").test("GPT-4 Turbo")).toBe(true);
+    expect(buildFuzzyRegex("o4m").test("o4-mini")).toBe(true);
+    expect(buildFuzzyRegex("xyz").test("o4-mini")).toBe(false);
+  });
+
+  it("escapes regex metacharacters so they match literally", () => {
+    expect(buildFuzzyRegex("5.2").test("5.2")).toBe(true);
+    // The dot is literal, so it must not match an arbitrary character.
+    expect(buildFuzzyRegex("5.2").test("512")).toBe(false);
   });
 });

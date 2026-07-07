@@ -12,14 +12,16 @@ background services, cron schedules, HTTP/RPC endpoints, thread lifecycle
 handlers, settings, storage — and `bb` CLI subcommands that agents and humans
 run like any other command. Plugins are full-trust code inside the server.
 
-Plugins are an experiment, off by default: enable "Plugins" under Settings →
-Experiments first. Until then `bb plugin` commands report that plugins are
-disabled. Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin
-SQLite file, secrets, logs).
+User-installed plugins are an experiment, off by default: enable "Plugins" under
+Settings → Experiments first. Builtin plugins (`builtin:<name>`) ship with bb and
+can remain available even when the experiment is off; `connect` additionally
+requires the "Multi-machine" experiment. Plugin state lives under
+`<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
-  bb plugin install <src>        Install from a local path, git:<url>@<ref>,
-                                 or npm:<name>@<version> (npm: needs npm on
-                                 PATH; installs prompt — pass --yes to skip)
+  bb plugin install <src>        Install from a local path, builtin:<name>,
+                                 git:<url>@<ref>, or npm:<name>@<version>
+                                 (npm: needs npm on PATH; installs prompt —
+                                 pass --yes to skip)
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -30,7 +32,8 @@ SQLite file, secrets, logs).
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
                                  routes; --rotate generates a new token,
                                  invalidating the old one
-  bb plugin remove <id>          Uninstall (managed git:/npm: files deleted)
+  bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
+                                 builtin removals are remembered)
   bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
                                  --app adds a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
@@ -49,7 +52,7 @@ dist/ at install time (a build failure fails the install), and the server
 rebuilds them at load after a bb upgrade. npm packages must publish a
 prebuilt dist/ (app.js + app.meta.json) or the install is refused.
 
-The backend half is prebuilt too: when a git/npm install ships a
+The backend half is prebuilt too: when a builtin/git/npm install ships a
 dist/server.js built for the running SDK major, the server loads it instead
 of the TypeScript source — consumers never need npm or node_modules. Path
 installs always load server.ts from source, so `bb plugin dev`/reload see
@@ -65,12 +68,17 @@ refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
-navPanel (own sidebar entry + /plugins/<id>/<path> route), threadPanelAction
+navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
+arrives as the component's subPath prop for panel-internal deep links),
+threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
-footer). Hooks:
+footer), and fileOpener (register as a per-extension file viewer/editor;
+users pick defaults under Settings → File openers and can right-click a
+file link for a one-off choice). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate. Components are vendored shadcn source the plugin owns (the
+useBbNavigate, and useComposer (quote selections / insert mention pills
+into the chat composer draft). Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
@@ -127,7 +135,7 @@ bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
 bb.storage.sqlite()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.on (observe thread.created/idle/failed);
+attributed to the plugin); bb.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); bb.rpc.register (the frontend data plane);
 bb.realtime.publish (ephemeral signals to open app pages);

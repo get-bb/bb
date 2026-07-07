@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 interface TruncateStartProps extends HTMLAttributes<HTMLSpanElement> {
   children: string;

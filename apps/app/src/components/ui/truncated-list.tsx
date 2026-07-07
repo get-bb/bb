@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
-import { Icon } from "@/components/ui/icon.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
 
 const DEFAULT_VISIBLE_LIMIT = 5;
 

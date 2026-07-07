@@ -10,7 +10,7 @@ import {
   type SecondaryPanelFileTab,
 } from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,

@@ -107,7 +107,7 @@ $ pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@b
 \`\`\``;
 
 const MATH_MARKDOWN = `Inline math sits in the prose, like the mass–energy
-relation $E = mc^2$ or the quadratic root $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$.
+relation $$E = mc^2$$ or the quadratic root $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$.
 
 Display math gets its own centered block:
 
@@ -115,8 +115,8 @@ $$
 \\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi}
 $$
 
-Escaped dollars stay literal text, so a budget line like \\$5 to \\$10 reads as
-written. Invalid TeX such as $\\frac{1}{$ surfaces a contained error instead of
+Single dollars stay literal text, so a budget line like $5 to $10 reads as
+written. Invalid TeX such as $$\\frac{1}{$$ surfaces a contained error instead of
 breaking the document.`;
 
 const MERMAID_MARKDOWN = `A Mermaid flowchart renders as a diagram:
@@ -224,7 +224,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="math (LaTeX)"
-        hint="inline $…$ and display $$…$$ render with KaTeX; escaped \\$ stays literal; invalid TeX is contained"
+        hint="inline $$…$$ and display $$ blocks render with KaTeX; single $ stays literal; invalid TeX is contained"
       >
         <PreviewStage>
           <MarkdownPreview content={MATH_MARKDOWN} />

@@ -15,14 +15,14 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "./dialog.js";
-import { Button } from "./button.js";
+} from "@bb/shared-ui/dialog";
+import { Button } from "@bb/shared-ui/button";
 import { CopyButton } from "./copy-button.js";
-import { Icon } from "./icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { loadMermaid } from "./markdown-mermaid-loader.js";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import type { Theme } from "@/hooks/useTheme";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface MarkdownMermaidDiagramProps {
   preferredTheme: Theme;

@@ -9,35 +9,35 @@ import {
   type RefObject,
 } from "react";
 import { useDebounceValue } from "usehooks-ts";
-import { Button } from "@/components/ui/button.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   MENU_ITEM_LAST_HOVERED_CLASS,
   MenuHoverProvider,
   useMenuItemHover,
-} from "@/components/ui/menu-item-hover.js";
+} from "@bb/shared-ui/menu-item-hover";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
-import { Input } from "@/components/ui/input.js";
-import { blurActiveKeyboardInputWithin } from "@/components/ui/overlay-trigger.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { Input } from "@bb/shared-ui/input";
+import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover.js";
+} from "@bb/shared-ui/popover";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "./OptionPicker";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
 
 interface GetMergeBaseBranchCandidatesArgs {

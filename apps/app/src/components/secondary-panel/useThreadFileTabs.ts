@@ -20,6 +20,12 @@ import {
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
+import {
+  createFileOpenerTabForRequest,
+  type FileTabViewerOverride,
+} from "@/components/plugin/file-opener-tabs";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
@@ -405,14 +411,36 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState,
   ]);
 
+  const { fileOpeners } = usePluginSlots();
+  const fileOpenerPreference = useFileOpenerPreferenceValue();
+
   const openTab = useCallback(
-    (request: OpenSecondaryPanelTabRequest): SecondaryPanelTab | null => {
-      const tab = createTabForOpenRequest({
+    (
+      request: OpenSecondaryPanelTabRequest,
+      options?: { viewer?: FileTabViewerOverride },
+    ): SecondaryPanelTab | null => {
+      // Default-opener diversion (plugin design §5.2): every file-open flow
+      // funnels through here (links, file search, `bb thread open`), so a
+      // preferred plugin opener applies uniformly. Falls through to the
+      // built-in tab when no opener matches; a link menu's per-open viewer
+      // choice overrides the default in either direction.
+      const openerTab = createFileOpenerTabForRequest({
+        fileOpeners,
+        preference: fileOpenerPreference,
         projectId,
         request,
         resolvedEnvironmentId,
         threadId: resolvedFileOwnerThreadId,
+        ...(options?.viewer !== undefined ? { viewer: options.viewer } : {}),
       });
+      const tab =
+        openerTab ??
+        createTabForOpenRequest({
+          projectId,
+          request,
+          resolvedEnvironmentId,
+          threadId: resolvedFileOwnerThreadId,
+        });
       if (tab === null) return null;
 
       if (
@@ -434,6 +462,8 @@ export function useThreadFileTabs({
       return tab;
     },
     [
+      fileOpenerPreference,
+      fileOpeners,
       recordRecentItem,
       projectId,
       resolvedEnvironmentId,

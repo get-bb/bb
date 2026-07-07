@@ -15,9 +15,6 @@ export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
   "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
-export const AUTOMATIONS_ROUTE_PATH = "/automations";
-export const AUTOMATION_DETAIL_ROUTE_PATH =
-  "/automations/:projectId/:automationId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -26,7 +23,8 @@ export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
-export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath";
+// Trailing splat: the remainder is the panel's `subPath` (empty at the root).
+export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -60,22 +58,6 @@ export function isProjectlessProjectId(
 
 export function getRootComposeRoutePath(): string {
   return ROOT_COMPOSE_ROUTE_PATH;
-}
-
-export function getAutomationsRoutePath(): string {
-  return AUTOMATIONS_ROUTE_PATH;
-}
-
-export interface AutomationDetailRoutePathArgs {
-  projectId: string;
-  automationId: string;
-}
-
-export function getAutomationDetailRoutePath({
-  projectId,
-  automationId,
-}: AutomationDetailRoutePathArgs): string {
-  return `/automations/${projectId}/${automationId}`;
 }
 
 export function getPopoutRoutePath(): string {
@@ -129,13 +111,25 @@ export interface PluginPanelRoutePathArgs {
   pluginId: string;
   /** The nav panel's registered `path` segment (validated: [a-zA-Z0-9_-]+). */
   path: string;
+  /** Location inside the panel; segments are encoded, slashes preserved. */
+  subPath?: string;
 }
 
 export function getPluginPanelRoutePath({
   pluginId,
   path,
+  subPath,
 }: PluginPanelRoutePathArgs): string {
-  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+  const root = `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+  if (subPath === undefined || subPath === "") {
+    return root;
+  }
+  const encoded = subPath
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return encoded.length > 0 ? `${root}/${encoded}` : root;
 }
 
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
@@ -159,8 +153,6 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
-  AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

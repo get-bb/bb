@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePointerCoarse } from "./use-pointer-coarse.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
 interface HoverPopoverHandlers {
   onPointerEnter: () => void;

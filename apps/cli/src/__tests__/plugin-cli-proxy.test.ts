@@ -1,7 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 
-import { registerAutomationCommands } from "../commands/automation.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
 import { registerManagerCommands } from "../commands/manager.js";
@@ -13,6 +12,8 @@ import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 import { registerUiCommands } from "../commands/ui.js";
 import {
+  fetchPluginCliContributions,
+  findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
   type PluginCliContributionEntry,
@@ -22,7 +23,6 @@ import {
 // apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
 // CLI commands shadowing core bb commands. Update both together.
 const RESERVED_BB_CLI_COMMANDS = [
-  "automation",
   "environment",
   "guide",
   "help",
@@ -45,7 +45,6 @@ function buildProgram(): Command {
   registerManagerCommands(program, getUrl);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
-  registerAutomationCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
   registerUiCommands(program, getUrl);
   registerPluginCommands(program, getUrl);
@@ -89,6 +88,18 @@ describe("pluginProxyCandidate", () => {
     expect(pluginProxyCandidate("linear", known)).toBe("linear");
   });
 
+  it("proxies the builtin plugin commands the kernel no longer owns", () => {
+    // `automation` and `connect` moved into builtin plugins: they must not
+    // be reserved, and the real program must not register them, so the
+    // proxy resolves them against the running server.
+    const names = new Set(topLevelCommandNames(buildProgram()));
+    names.add("help");
+    for (const moved of ["automation", "connect"]) {
+      expect(RESERVED_BB_CLI_COMMANDS).not.toContain(moved);
+      expect(pluginProxyCandidate(moved, names)).toBe(moved);
+    }
+  });
+
   it("never proxies flags, empty args, or core commands", () => {
     expect(pluginProxyCandidate(undefined, known)).toBeNull();
     expect(pluginProxyCandidate("", known)).toBeNull();
@@ -96,6 +107,140 @@ describe("pluginProxyCandidate", () => {
     expect(pluginProxyCandidate("-h", known)).toBeNull();
     expect(pluginProxyCandidate("thread", known)).toBeNull();
     expect(pluginProxyCandidate("help", known)).toBeNull();
+  });
+});
+
+describe("fetchPluginCliContributions", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("distinguishes an unreachable server from an old/invalid one", async () => {
+    // Unreachable (server down): fetch rejects → tell the user to start bb.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    );
+    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+      outcome: "unreachable",
+    });
+
+    // Old server without the route: silent fallback to commander's error.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not found", { status: 404 })),
+    );
+    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+      outcome: "invalid",
+    });
+  });
+
+  it("returns validated contribution entries", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              cliCommands: [
+                { pluginId: "connect", name: "connect", summary: "s", commands: [] },
+                { bogus: true },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const result = await fetchPluginCliContributions("http://localhost");
+    expect(result).toEqual({
+      outcome: "ok",
+      contributions: [
+        { pluginId: "connect", name: "connect", summary: "s", commands: [] },
+      ],
+    });
+  });
+});
+
+describe("findDisabledPluginForCommand", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("matches an installed-but-disabled plugin by id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              plugins: [
+                { id: "automations", enabled: true },
+                { id: "connect", enabled: false },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "connect"),
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: false,
+      status: null,
+      statusDetail: null,
+    });
+    // Enabled plugins and unknown names never match.
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "automations"),
+    ).resolves.toBeNull();
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "linear"),
+    ).resolves.toBeNull();
+  });
+
+  it("matches an experiment-disabled plugin by runtime status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              plugins: [
+                {
+                  id: "connect",
+                  enabled: true,
+                  status: "disabled",
+                  statusDetail: 'disabled by the "Multi-machine" experiment',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "connect"),
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: true,
+      status: "disabled",
+      statusDetail: 'disabled by the "Multi-machine" experiment',
+    });
+  });
+
+  it("returns null on any fetch failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    );
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "connect"),
+    ).resolves.toBeNull();
   });
 });
 

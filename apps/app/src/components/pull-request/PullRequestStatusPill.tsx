@@ -3,8 +3,8 @@ import type {
   ThreadPullRequest,
   ThreadPullRequestChecksState,
 } from "@bb/domain";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const checksSuccessIcon =
   "https://github.githubassets.com/favicons/favicon-success.png";

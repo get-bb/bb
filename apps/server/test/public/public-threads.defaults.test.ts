@@ -7,9 +7,10 @@ import {
   createProjectSource,
   getProjectExecutionDefaults,
   listThreads,
+  setExperiments,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
-import { threadSchema } from "@bb/domain";
+import { defaultExperiments, threadSchema } from "@bb/domain";
 import { sidebarBootstrapResponseSchema } from "@bb/server-contract";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
@@ -103,7 +104,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("rejects managed-worktree threads on a secondary host", async () => {
+  it("allows managed-worktree threads on a secondary host", async () => {
     await withTestHarness(async (harness) => {
       const { host: localHost } = seedHostSession(harness.deps, {
         id: "host-managed-default",
@@ -112,6 +113,8 @@ describe("public thread default routes", () => {
       const { host: secondaryHost } = seedHostSession(harness.deps, {
         id: "host-managed-secondary",
       });
+      // Targeting a non-primary host requires the multi-machine experiment.
+      setExperiments(harness.db, { ...defaultExperiments, multiMachine: true });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: localHost.id,
         path: "/tmp/default-managed-source",
@@ -149,9 +152,15 @@ describe("public thread default routes", () => {
         }),
       });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "unsupported_host",
+      // Multi-host: a thread may target a connected secondary host that has a
+      // project source; its environment is provisioned on that host.
+      expect(response.status).toBe(201);
+      const thread = (await readJson(response)) as { id: string };
+      const environmentResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}?include=environment`,
+      );
+      await expect(readJson(environmentResponse)).resolves.toMatchObject({
+        environment: { hostId: secondaryHost.id },
       });
       expect(secondarySource.path).toBe("/tmp/secondary-managed-source");
     });

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -24,11 +26,13 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
-  it("supports local project source updates and rejects secondary host sources", async () => {
+  it("supports local project source updates and allows secondary host sources", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
       const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      // Targeting a non-primary host requires the multi-machine experiment.
+      setExperiments(harness.db, { ...defaultExperiments, multiMachine: true });
 
       const projectResponse = await harness.app.request("/api/v1/projects", {
         method: "POST",
@@ -64,9 +68,13 @@ describe("public project local host routes", () => {
           }),
         },
       );
-      expect(createSourceResponse.status).toBe(400);
+      // Multi-host: a project may register a source on any known host, not just
+      // the primary. Connectivity is enforced later at dispatch, not here.
+      expect(createSourceResponse.status).toBe(201);
       await expect(readJson(createSourceResponse)).resolves.toMatchObject({
-        code: "unsupported_host",
+        hostId: secondaryHost.id,
+        path: "/tmp/project-sources-2",
+        type: "local_path",
       });
 
       const updateSourceResponse = await harness.app.request(
@@ -88,13 +96,16 @@ describe("public project local host routes", () => {
         path: "/tmp/project-sources-renamed",
       });
 
+      // With the secondary-host source added above the project now has two
+      // sources, so deleting one succeeds (the last-source guard no longer
+      // applies).
       const deleteSourceResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/sources/${defaultSourceId}`,
         {
           method: "DELETE",
         },
       );
-      expect(deleteSourceResponse.status).toBe(409);
+      expect(deleteSourceResponse.status).toBe(200);
     });
   });
 
@@ -128,6 +139,7 @@ describe("public project local host routes", () => {
         contentEncoding: "utf8",
         mimeType: "application/typescript",
         sizeBytes: 18,
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;

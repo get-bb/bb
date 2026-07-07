@@ -10,7 +10,7 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   SidebarInset,
   SidebarProvider,
@@ -19,7 +19,6 @@ import {
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
-import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   getLatestPendingInteraction,
@@ -30,7 +29,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -52,7 +51,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
-  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
@@ -221,7 +219,6 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
-  "/automations": { title: "Automations" },
 };
 
 interface AppHeaderProps {
@@ -239,6 +236,8 @@ interface AppHeaderProps {
    * the shared header shows plugin logo + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
+  /** The panel route's splat remainder ("" at the panel root). */
+  pluginPanelSubPath?: string;
   meta: {
     title: string;
     subtitle?: string;
@@ -254,6 +253,7 @@ function AppHeader({
   projectId,
   project,
   pluginPanel,
+  pluginPanelSubPath,
   meta,
 }: AppHeaderProps) {
   const headerBreadcrumbs = meta.breadcrumbs;
@@ -319,7 +319,10 @@ function AppHeader({
   ) : null;
 
   const actions = pluginPanel ? (
-    <PluginPanelHeaderActions panel={pluginPanel} />
+    <PluginPanelHeaderActions
+      panel={pluginPanel}
+      subPath={pluginPanelSubPath ?? ""}
+    />
   ) : usesProjectChromeStyle &&
     projectId &&
     !isProjectlessProjectId(projectId) ? (
@@ -384,16 +387,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     isArchivedView,
     isSettingsView,
     isRootView,
-    isAutomationDetailView,
-    automationId,
-    automationProjectId,
   } = useRouteState();
-  const { data: automationDetail } = useAutomationDetail(
-    automationProjectId ?? "",
-    automationId ?? "",
-    { enabled: isAutomationDetailView },
-  );
-  const automationName = automationDetail?.name ?? "Automation";
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
@@ -469,16 +463,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isAutomationDetailView
-      ? {
-          title: "",
-          subtitle: undefined,
-          breadcrumbs: [
-            { label: "Automations", to: getAutomationsRoutePath() },
-            { label: automationName },
-          ],
-        }
-      : isArchivedView && projectId
+    : isArchivedView && projectId
         ? isProjectlessProjectId(projectId)
           ? {
               title: "",
@@ -525,9 +510,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (pluginPanel) {
       return pluginPanel.title;
-    }
-    if (isAutomationDetailView) {
-      return `${automationName} · Automations`;
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {
@@ -678,6 +660,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   projectId={projectId}
                   project={project}
                   pluginPanel={pluginPanel}
+                  pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
                   meta={meta}
                 />
               ) : null}

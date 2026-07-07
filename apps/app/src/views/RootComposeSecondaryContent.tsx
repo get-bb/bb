@@ -14,14 +14,14 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
@@ -30,7 +30,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;

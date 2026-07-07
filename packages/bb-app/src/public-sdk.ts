@@ -310,7 +310,6 @@ export const ThreadWaitUnreachableError: ThreadWaitUnreachableErrorConstructor =
 export class BBSdk {
   #sdk: ReturnType<typeof createNodeBbSdk>;
 
-  readonly automations: object;
   readonly environments: object;
   readonly guide: object;
   readonly hosts: object;
@@ -323,7 +322,6 @@ export class BBSdk {
   constructor(options: BBSdkOptions = {}) {
     const sdk = createNodeBbSdk(options);
     this.#sdk = sdk;
-    this.automations = sdk.automations;
     this.environments = sdk.environments;
     this.guide = sdk.guide;
     this.hosts = sdk.hosts;

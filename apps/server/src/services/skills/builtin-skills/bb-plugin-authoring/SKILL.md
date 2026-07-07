@@ -10,8 +10,9 @@ Its backend entry default-exports a factory that receives the full plugin API
 (`bb`); an optional frontend entry registers React UI inside the bb app.
 Plugins are full-trust code: they can read all local bb data.
 
-Plugins are gated behind the "Plugins" experiment (Settings → Experiments).
-`bb plugin list` tells you if plugins are disabled.
+User-installed plugins are gated behind the "Plugins" experiment (Settings →
+Experiments). Builtin plugins ship with bb and can remain available under their
+own product gates. `bb plugin list` tells you if plugins are disabled.
 
 ## Quickstart
 
@@ -141,6 +142,15 @@ bb.storage.migrate(db, [
 ]);
 ```
 
+### bb.server
+
+Read-only facts about the running server. `bb.server.loopbackBaseUrl` is the
+server's own loopback base URL (e.g. `http://127.0.0.1:38886`), which serves
+the SPA + `/api` + `/ws` — for plugins that proxy or relay traffic back to
+the server itself (the builtin connect plugin's tunnel is the canonical
+user). **Bind-gated** like `bb.sdk`: reading it before the server is
+listening throws, so prefer reading it from handlers, services, and timers.
+
 ### bb.sdk
 
 The full bb SDK bound to this server over loopback — threads, projects,
@@ -165,15 +175,42 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+`bb.sdk.files` reads and writes files on a connected host (not just the
+server machine — this is the right primitive when the user's files may live
+on another host, and its `rootPath` confinement + compare-and-swap guard make
+it the right save path even locally):
+
+```ts
+const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
+// → { content, contentEncoding, sha256, sizeBytes, modifiedAtMs?, ... }
+
+const saved = await bb.sdk.files.write({
+  path: "/home/me/notes/todo.md",
+  rootPath: "/home/me/notes",     // optional: confine writes beneath this root
+  content: "# Todo\n",
+  expectedSha256: file.sha256,    // CAS guard; omit for unconditional, null for create-only
+});
+if (saved.outcome === "conflict") {
+  // File changed since the read (saved.currentSha256, null = deleted) —
+  // re-read and merge instead of clobbering.
+}
+```
+
+`hostId` is optional everywhere (defaults to the primary/local host).
+`bb.sdk.files.list({ path, query?, limit? })` is a recursive fuzzy file
+listing under a directory. Writes cap at 25 MB and return
+`{ outcome: "written", sha256, sizeBytes }`.
+
 ### bb.on — thread lifecycle events
 
 ```ts
 bb.on("thread.created", ({ thread }) => { ... });
 bb.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
 bb.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly three events. Observe-only: handlers run fire-and-forget after the
+Exactly four events. Observe-only: handlers run fire-and-forget after the
 transition and can never block or veto it. `thread` is the same DTO
 `GET /api/v1/threads/:id` serves. Errors are caught, logged, and counted in
 the plugin's handler stats (`bb plugin list`).
@@ -378,11 +415,17 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
-- `navPanel` → `{}` — owns the whole route at `/plugins/<pluginId>/<path>`
-  and gets its own sidebar entry.
+- `navPanel` → `{ subPath: string }` — owns the whole route at
+  `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
+  is the route remainder after the panel root (`""` at the root), so deep
+  links like `/plugins/notes/notes/work/ideas.md` land with
+  `subPath: "work/ideas.md"`. Navigate within the panel via
+  `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
+  back/forward then walks panel-internal history (prefer this over hash
+  routing).
   Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
   The host renders your plugin logo + `title` into the SHARED app header
-  (the same chrome as Settings/Automations) with your optional
+  (the same chrome as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component; the body below is yours,
   full-width. `headerContent` is plugin code inside host chrome and is
@@ -409,6 +452,21 @@ Slot props contracts (versioned, additive-only):
   or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `fileOpener` → `{ path: string, source }` — register as a viewer/editor
+  for file extensions: `{ id, title, extensions: ["md"], component }`.
+  Users set the per-extension default under Settings → "File openers", and
+  right-clicking a file link in rendered markdown offers a one-off
+  "Open with …" choice; matching files opened in the right panel then
+  render your component in a plugin tab instead of the built-in preview —
+  this includes links clicked in rendered markdown, the file picker, and
+  `bb thread open`. `source` is
+  `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
+  projectId }` (nullable fields) and `path` follows the source (workspace:
+  worktree-relative; host: absolute; thread-storage: storage-relative).
+  Applies only to live file content — git-ref snapshots and deleted files
+  always use the built-in preview, and a removed/disabled opener degrades
+  back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
+  CAS-save the content.
 
 Hooks:
 
@@ -419,12 +477,25 @@ Hooks:
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path) }`.
+- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt).
+- `useComposer()` → programmatic access to the chat composer draft (the
+  same one the built-in "Add to chat" affordances write to):
+  `addQuote(text)` appends the text as a `> ` blockquote block and focuses
+  the composer — the "reference this selection in chat" primitive;
+  `insertMention({ provider, id, label })` inserts an @-mention pill bound
+  to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
+  fresh context at send time; `focus()` focuses the caret; `scope` reports
+  where writes land (`{ kind: "thread", threadId }` inside a thread
+  context, `{ kind: "new-thread", projectId }` from nav panels and
+  homepage sections — those seed the composer the user lands on next).
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
 only `definePluginApp` + the hooks):
 
+- Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
+  single source of truth the app also consumes and the registry generates
+  from); external and example plugins still vendor source through the registry.
 - `bb plugin new --app` pre-vendors button, card, input, dialog (plus their
   support files: `lib/utils`, `lib/portal-scope`, icon, responsive-overlay,
   drawer, hooks) into `components/ui/` etc., and writes a `components.json`
@@ -492,6 +563,84 @@ hardcoded colors break custom palettes.
 
 ## Testing a plugin
 
+### Unit tests with `@bb/plugin-sdk/testing`
+
+In a bb checkout (workspace/in-repo plugins), `@bb/plugin-sdk/testing` is
+the official vitest harness: a fake plugin host whose `bb` satisfies
+`BbPluginApi` with host-faithful semantics — real better-sqlite3 `:memory:`
+storage (never mock the db), the kv 256KB cap, the same registration
+name-validation and error messages, rpc/cli JSON round-tripping, and
+`threads.spawn` plugin attribution. It is NOT part of the bundled `.d.ts`
+that `bb plugin new` scaffolds ship (V1 is workspace consumers only), so
+standalone plugins outside a checkout cannot import it yet.
+
+Backend (`server.ts`) — `createFakePluginHost()`:
+
+```ts
+import { createFakePluginHost, makeThreadResponse } from "@bb/plugin-sdk/testing";
+import plugin from "./server";
+
+const { bb, harness } = createFakePluginHost({
+  pluginId: "my-plugin",
+  settings: { apiToken: "tok" }, // pre-seeded stored values (secrets included)
+  sdk: { threads: { spawn: async () => ({ id: "th_1" }) } },
+});
+await plugin(bb);
+
+await harness.callRpc("list", { q: "x" });          // JSON round-trip like the wire
+await harness.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
+await harness.runCli(["search", "x"]);              // { exitCode, stdout, stderr }
+const svc = harness.runService("watcher");          // start now; svc.controller.abort(); await svc.done
+await harness.runSchedule("sync");                  // no timers, no cron sweep
+await harness.setSettings({ apiToken: "next" });    // validates + fires onChange like a host save
+await harness.emitThreadEvent("thread.idle", {
+  thread: makeThreadResponse({ id: "th_1" }),       // complete ThreadResponse fixture
+  lastAssistantText: "done",
+});
+await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.dispose();                            // abort services, hooks LIFO, close sqlite; stale bb throws
+```
+
+Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
+`bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
+`harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
+`harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
+`harness.registrations` (http routes, rpc methods, services, schedules, cli,
+agent tools, thread actions, mention providers).
+
+Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
+
+```tsx
+// @vitest-environment jsdom
+import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+
+// The thunk matters: app.tsx binds the plugin runtime at module load, so
+// loadPluginApp installs the test runtime BEFORE importing it. (For static
+// imports, call installTestPluginRuntime() in a vitest setup file instead.)
+const app = await loadPluginApp(() => import("./app"));
+
+const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
+  rpc: {
+    listNotes: () => ({ root: "/notes", notes: [], error: null }),
+  },                                             // method → handler, calls logged
+  settings: { greeting: "hi" },                 // useSettings() values
+  context: { projectId: "p1", threadId: null }, // useBbContext()
+});
+await slot.findByText("…");                     // Testing Library queries
+slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activity
+```
+
+`loadPluginApp` validates registrations with the host's own rules (slot id
+patterns, navPanel path, chrome, fileOpener extensions) and returns them
+typed with defaults filled. Working examples:
+`examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
+`thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
+panel list over rpc + create/open navigation assertions), and
+`examples/plugins/markdown-editor/app.test.tsx` (nav tree, realtime refresh,
+and markdown creation assertions).
+
+### Live loop against a running bb
+
 - `bb plugin dev` is the loop: save → rebuild (if `bb.app`) → reload; open
   app pages pick new UI up live. Build/reload failures print and keep
   watching.
@@ -507,10 +656,22 @@ hardcoded colors break custom palettes.
 Reference examples in `examples/plugins/` (a bb checkout):
 
 - `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
-  in a single navPanel (with `headerContent`), hash-based sub-navigation,
+  in a single navPanel (with `headerContent`), subPath-based sub-navigation,
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
+- `simple-notes` — Apple Notes-style local markdown notebook: one configurable
+  `directory` (default `~/Notes`), `bb.sdk.files` read/CAS-write for note
+  contents, Tiptap markdown WYSIWYG bundled per-plugin, navPanel with
+  `chrome: "none"` + subPath deep links, autosave, conflict reload/overwrite,
+  delete, search, and backend title-based filename renames.
+- `markdown-editor` — full-surface markdown editor: mounted directories via
+  a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe WYSIWYG bundled
+  per-plugin (its theme CSS served from a `bb.http` route), navPanel with
+  `chrome: "none"` + subPath deep links, threadPanelAction, a markdown
+  `fileOpener`, `useComposer()` quote/mention buttons, an fs watcher
+  publishing realtime tree refreshes, and a mention provider resolving note
+  content at send.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.
@@ -528,8 +689,8 @@ Reference examples in `examples/plugins/` (a bb checkout):
 - `storage.migrate` is append-only by statement index.
 - Settings saves do NOT auto-reload the plugin; `bb plugin reload <id>`.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly three
-  (`thread.created`, `thread.idle`, `thread.failed`).
+- Thread events are observe-only; there are exactly four
+  (`thread.created`, `thread.idle`, `thread.failed`, `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

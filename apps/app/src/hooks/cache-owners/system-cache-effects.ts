@@ -1,8 +1,6 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import {
-  allAutomationDetailQueryKeyPrefix,
-  allAutomationRunsQueryKeyPrefix,
   allEnvironmentDiffFilesQueryKeyPrefix,
   allEnvironmentDiffPatchQueryKeyPrefix,
   allEnvironmentFilePreviewQueryKeyPrefix,
@@ -24,7 +22,6 @@ import {
   allThreadStoragePathsQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
   allThreadTimelineTurnSummaryDetailsQueryKeyPrefix,
-  automationsQueryKey,
   hostPathExistenceQueryKeyPrefix,
   hostsQueryKey,
   projectsQueryKey,
@@ -133,9 +130,6 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     hostPathExistenceQueryKeyPrefix(),
-    automationsQueryKey(),
-    allAutomationDetailQueryKeyPrefix(),
-    allAutomationRunsQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
   ];

@@ -9,7 +9,11 @@ import {
 } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FilePreview } from "./FilePreview";
+import {
+  FilePreview,
+  buildCsvPreviewData,
+  getCsvTruncationNote,
+} from "./FilePreview";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 
 interface MockPierreFileProps {
@@ -140,7 +144,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -188,7 +192,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -205,7 +209,8 @@ describe("FilePreview", () => {
   });
 
   it("remounts the code view when the highlighted file cache resolves", async () => {
-    const cacheKey = "file-preview:/api/v1/projects/proj/files/content:thread-read-state.ts";
+    const cacheKey =
+      "file-preview:/api/v1/projects/proj/files/content:thread-read-state.ts";
 
     render(
       <FilePreview
@@ -219,7 +224,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -253,7 +258,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -286,7 +291,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -312,7 +317,7 @@ describe("FilePreview", () => {
             contents: "export const marker = true;",
           },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: null,
         }}
       />,
     );
@@ -345,7 +350,7 @@ describe("FilePreview", () => {
             contents: "# Preview\n\nRaw markdown.",
           },
           lineRange: null,
-          showMarkdownModeToggle: true,
+          textPreviewKind: "markdown",
         }}
       />,
     );
@@ -375,7 +380,7 @@ describe("FilePreview", () => {
             contents: "# Preview\n\nRaw markdown.",
           },
           lineRange: null,
-          showMarkdownModeToggle: true,
+          textPreviewKind: "markdown",
         }}
       />,
     );
@@ -405,7 +410,7 @@ describe("FilePreview", () => {
             contents: "# Preview\n\nRaw markdown.",
           },
           lineRange: null,
-          showMarkdownModeToggle: true,
+          textPreviewKind: "markdown",
         }}
       />,
     );
@@ -432,7 +437,7 @@ describe("FilePreview", () => {
             contents: "# Preview\n\nRaw markdown.",
           },
           lineRange: null,
-          showMarkdownModeToggle: true,
+          textPreviewKind: "markdown",
         }}
       />,
     );
@@ -445,6 +450,117 @@ describe("FilePreview", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Open in editor",
     );
+  });
+
+  it("renders CSV previews as a table by default", () => {
+    render(
+      <FilePreview
+        path="reports/customers.csv"
+        state={{
+          kind: "ready",
+          file: {
+            name: "customers.csv",
+            contents:
+              'Name,Note\n"Ada, Lovelace","said ""hello"""\nGrace,"line two"',
+          },
+          lineRange: null,
+          textPreviewKind: "csv",
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("table", { name: "customers.csv CSV preview" }),
+    ).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Name" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Note" })).not.toBeNull();
+    expect(screen.getByRole("cell", { name: "Ada, Lovelace" })).not.toBeNull();
+    expect(screen.getByRole("cell", { name: 'said "hello"' })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Copy CSV" })).not.toBeNull();
+    expect(screen.queryByTestId("pierre-file")).toBeNull();
+  });
+
+  it("toggles CSV previews back to raw source", async () => {
+    render(
+      <FilePreview
+        path="reports/customers.csv"
+        state={{
+          kind: "ready",
+          file: {
+            name: "customers.csv",
+            contents: "Name,Score\nAda,10\n",
+          },
+          lineRange: null,
+          textPreviewKind: "csv",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+
+    await screen.findByTestId("pierre-file");
+    expect(
+      screen.queryByRole("table", { name: "customers.csv CSV preview" }),
+    ).toBeNull();
+  });
+
+  it("caps oversized CSV previews and reports the visible data-row count", () => {
+    const columnCount = 105;
+    const dataRowCount = 501;
+    const header = Array.from({ length: columnCount }, (_, i) => `c${i + 1}`);
+    const lines = [header.join(",")];
+    for (let rowIndex = 0; rowIndex < dataRowCount; rowIndex += 1) {
+      lines.push(header.map((name) => `${name}r${rowIndex + 1}`).join(","));
+    }
+
+    const preview = buildCsvPreviewData(lines.join("\n"));
+
+    // rows includes the header, so the cap keeps 500 data rows.
+    expect(preview.rows.length).toBe(501);
+    expect(preview.rows.at(-1)?.[0]).toBe("c1r500");
+    expect(preview.columnCount).toBe(100);
+    expect(preview.truncatedRows).toBe(true);
+    expect(preview.truncatedColumns).toBe(true);
+    // The footnote counts data rows, not parsed rows.
+    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBe(
+      "Showing the first 500 rows and 100 columns.",
+    );
+  });
+
+  it("does not report truncation for a CSV exactly at the row cap", () => {
+    const lines = ["name"];
+    for (let rowIndex = 0; rowIndex < 500; rowIndex += 1) {
+      lines.push(`r${rowIndex + 1}`);
+    }
+
+    const preview = buildCsvPreviewData(`${lines.join("\n")}\n`);
+
+    expect(preview.rows.length).toBe(501);
+    expect(preview.truncatedRows).toBe(false);
+    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBeNull();
+  });
+
+  it("uses the CSV table preview for loaded CSV text files", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="exports/scores.csv"
+        filePreview={{
+          kind: "text",
+          content: "Name,Score\nAda,10\n",
+          mimeType: "application/octet-stream",
+          name: "scores.csv",
+          path: "exports/scores.csv",
+          url: "/api/v1/preview/scores",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("table", { name: "scores.csv CSV preview" }),
+    ).not.toBeNull();
+    expect(screen.getByRole("cell", { name: "Ada" })).not.toBeNull();
+    expect(screen.getByRole("cell", { name: "10" })).not.toBeNull();
   });
 
   it("does not show the file preview actions menu for non-text previews", () => {
@@ -476,7 +592,9 @@ describe("FilePreview", () => {
       />,
     );
 
-    await waitFor(() => expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy());
+    await waitFor(() =>
+      expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy(),
+    );
     const firstCacheKey = pierreMock.state.lastFile?.cacheKey;
 
     view.rerender(

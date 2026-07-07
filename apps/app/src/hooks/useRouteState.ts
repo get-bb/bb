@@ -12,17 +12,6 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
-  /**
-   * On the Automations surface: the cross-project list ("/automations") or an
-   * automation detail page. True for both so the sidebar entry stays active.
-   */
-  isAutomationsView: boolean;
-  /** On an automation detail page ("/automations/:projectId/:automationId"). */
-  isAutomationDetailView: boolean;
-  /** ID of the automation in view (automation detail only), else undefined. */
-  automationId: string | undefined;
-  /** Owning project of the automation in view (automation detail only). */
-  automationProjectId: string | undefined;
   /** On the root route ("/"). */
   isRootView: boolean;
   /** On a projectless surface: compose, thread detail, or archived threads. */
@@ -51,9 +40,6 @@ export function useRouteState(): RouteState {
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
-  const automationDetailMatch = useMatch(
-    "/automations/:projectId/:automationId",
-  );
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID ||
@@ -87,11 +73,6 @@ export function useRouteState(): RouteState {
     isArchivedView:
       Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
-    isAutomationsView:
-      location.pathname === "/automations" || Boolean(automationDetailMatch),
-    isAutomationDetailView: Boolean(automationDetailMatch),
-    automationId: automationDetailMatch?.params.automationId,
-    automationProjectId: automationDetailMatch?.params.projectId,
     isRootView,
     isProjectlessView:
       isRootView ||

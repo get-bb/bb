@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   createDiffWorker,
@@ -29,17 +29,21 @@ const HIGHLIGHTER_OPTIONS = {};
  * This view renders ONLY the panel body. The title chrome (plugin logo +
  * panel title + the registration's `headerContent`) lives in the shared app
  * header — AppLayout's AppHeader + PluginPanelHeader — so plugin panels get
- * the same chrome as Settings/Automations. Body per the registration's
+ * the same chrome as Settings. Body per the registration's
  * `chrome` (default "page"):
  * - "page": full-width PageShell body (no prose max-width cap).
  * - "none": the plugin component owns the entire body region — no host
  *   padding — with only the error boundary remaining.
  */
 export function PluginPanelView() {
-  const { pluginId, panelPath } = useParams<{
+  const params = useParams<{
     pluginId: string;
     panelPath: string;
+    "*": string;
   }>();
+  const { pluginId, panelPath } = params;
+  // The route's trailing splat: panel-internal location ("" at the root).
+  const subPath = params["*"] ?? "";
   const { navPanels } = usePluginSlots();
   const panel =
     navPanels.find(
@@ -67,7 +71,7 @@ export function PluginPanelView() {
       slotKind="navPanel"
       slotId={panel.id}
     >
-      <panel.component />
+      <panel.component subPath={subPath} />
     </PluginSlotMount>
   );
   // The provider spawns workers eagerly; environments without Worker

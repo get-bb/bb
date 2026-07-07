@@ -50,6 +50,7 @@ const promptActions: readonly PromptBoxAction[] = [
 const idleVoice: PromptVoiceConfig = {
   state: "idle",
   isSupported: true,
+  stream: null,
   start: noop,
   stop: noop,
   cancel: noop,

@@ -30,6 +30,7 @@ import {
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
   getThreadSafe,
@@ -439,6 +440,11 @@ async function createProvisioningThread(
       titleProvided: Boolean(args.request.title),
     });
   } catch (error) {
+    emitPluginThreadDeleted({
+      ...thread,
+      deletedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
     deleteThread(deps.db, deps.hub, thread.id);
     throw error;
   }

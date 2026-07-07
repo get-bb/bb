@@ -45,6 +45,7 @@ vi.mock("@/components/promptbox/usePromptVoice", () => ({
   usePromptVoice: () => ({
     state: "idle",
     isSupported: false,
+    stream: null,
     start: vi.fn(),
     stop: vi.fn(),
     cancel: vi.fn(),

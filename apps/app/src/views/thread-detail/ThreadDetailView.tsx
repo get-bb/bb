@@ -49,6 +49,7 @@ import {
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -107,6 +108,7 @@ import {
   type ThreadSecondaryPanelHostFileOpenHandler,
   type ThreadSecondaryPanelStorageFileOpenHandler,
   type ThreadSecondaryPanelWorkspaceFileOpenHandler,
+  type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
@@ -121,13 +123,15 @@ import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/Br
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
-import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
-import { Icon } from "@/components/ui/icon.js";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { getFileExtension } from "@/lib/file-opener-preference";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   getBbDesktopInfo,
   getDesktopBrowserApi,
@@ -178,9 +182,10 @@ import {
   resolveThreadLocalFileLink,
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
-import type {
-  MarkdownLinkRouting,
-  MarkdownLocalFileLinkRouting,
+import {
+  MarkdownLocalFileOpenWithContext,
+  type MarkdownLinkRouting,
+  type MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
   useFixedPanelTabsState,
@@ -195,7 +200,7 @@ import {
   buildParentSelectorOptions,
   isRootThread,
 } from "./threadParentSelectorOptions";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,
@@ -591,6 +596,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openPluginPanel,
     threadId,
   });
+  const { fileOpeners: pluginFileOpeners } = usePluginSlots();
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -648,17 +654,20 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const openPersistedWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
-      (file) => openTab({ kind: "workspace-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "workspace-file-preview", tab: file }, options),
       [openTab],
     );
   const openPersistedStorageFile =
     useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
-      (file) => openTab({ kind: "thread-storage-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "thread-storage-file-preview", tab: file }, options),
       [openTab],
     );
   const openPersistedHostFile =
     useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
-      (file) => openTab({ kind: "host-file-preview", tab: file }),
+      (file, options) =>
+        openTab({ kind: "host-file-preview", tab: file }, options),
       [openTab],
     );
   const openBrowserTab = useCallback(
@@ -853,6 +862,15 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // sharing the localStorage draft) can focus its caret at the end, ready for
   // the reply under the quote.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
+  // Plugin useComposer() writes ride the focus bus (they can't reach this
+  // view's local nonce); same storage key = same draft the composer shows.
+  useEffect(
+    () =>
+      subscribeComposerFocusRequests(selectionPromptDraft.storageKey, () =>
+        setComposerFocusRequestNonce((nonce) => nonce + 1),
+      ),
+    [selectionPromptDraft.storageKey],
+  );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       addQuoteToComposer(text, attachments);
@@ -1682,7 +1700,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [thread, updateThread],
   );
   const handleTimelineLocalFileLinkResolution = useCallback(
-    (resolution: ThreadLocalFileLinkResolution) => {
+    (
+      resolution: ThreadLocalFileLinkResolution,
+      options?: ThreadSecondaryPanelFileOpenOptions,
+    ) => {
       if (resolution.kind === "app-route") {
         return false;
       }
@@ -1694,33 +1715,45 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       }
 
       if (resolution.kind === "open-workspace-path") {
-        openWorkspaceFile({
-          lineRange: resolution.request.lineRange,
-          path: resolution.request.relativePath,
-          source: { kind: "working-tree" },
-          statusLabel: null,
-        });
+        openWorkspaceFile(
+          {
+            lineRange: resolution.request.lineRange,
+            path: resolution.request.relativePath,
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
+          options,
+        );
         return true;
       }
 
       if (resolution.kind === "open-thread-storage-path") {
-        openStorageFile({
-          lineRange: resolution.request.lineRange,
-          path: resolution.request.relativePath,
-        });
+        openStorageFile(
+          {
+            lineRange: resolution.request.lineRange,
+            path: resolution.request.relativePath,
+          },
+          options,
+        );
         return true;
       }
 
-      openHostFile({
-        lineRange: resolution.request.lineRange,
-        path: resolution.request.path,
-      });
+      openHostFile(
+        {
+          lineRange: resolution.request.lineRange,
+          path: resolution.request.path,
+        },
+        options,
+      );
       return true;
     },
     [openHostFile, openStorageFile, openWorkspaceFile],
   );
   const handleOpenTimelineLocalFileLink = useCallback(
-    (link: ThreadTimelineLocalFileLink) => {
+    (
+      link: ThreadTimelineLocalFileLink,
+      options?: ThreadSecondaryPanelFileOpenOptions,
+    ) => {
       const resolution = resolveThreadLocalFileLink({
         hostFileLinksAvailable:
           thread?.environmentId !== null && thread?.environmentId !== undefined,
@@ -1733,7 +1766,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         resolution.kind !== "open-host-path" ||
         threadStorageRootPath !== null
       ) {
-        return handleTimelineLocalFileLinkResolution(resolution);
+        return handleTimelineLocalFileLinkResolution(resolution, options);
       }
 
       void refetchThreadStorageFiles()
@@ -1753,7 +1786,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             threadStorageRootPath: resolvedThreadStorageRootPath,
             workspaceRootPath: workspacePreviewRootPath,
           });
-          handleTimelineLocalFileLinkResolution(resolvedResolution);
+          handleTimelineLocalFileLinkResolution(resolvedResolution, options);
         })
         .catch((error: Error) => {
           appToast.error("Failed to open file locally", {
@@ -1880,6 +1913,38 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadStorageRootPath,
     workspaceRootPath: workspacePreviewRootPath,
   });
+  // Right-click "Open with" on local file links: per-open viewer choice
+  // between the built-in preview and any plugin opener matching the file's
+  // extension. Only rendered when at least one opener matches.
+  const getLocalFileOpenWithItems = useCallback(
+    (link: ThreadTimelineLocalFileLink) => {
+      const extension = getFileExtension(link.path);
+      if (extension === null) return null;
+      const matching = pluginFileOpeners.filter((opener) =>
+        opener.extensions.includes(extension),
+      );
+      if (matching.length === 0) return null;
+      return [
+        {
+          id: "builtin",
+          label: "Open with built-in preview",
+          onSelect: () => {
+            handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
+          },
+        },
+        ...matching.map((opener) => ({
+          id: `${opener.pluginId}:${opener.id}`,
+          label: `Open with ${opener.title}`,
+          onSelect: () => {
+            handleOpenTimelineLocalFileLink(link, {
+              viewer: { pluginId: opener.pluginId, openerId: opener.id },
+            });
+          },
+        })),
+      ];
+    },
+    [handleOpenTimelineLocalFileLink, pluginFileOpeners],
+  );
   const workspaceMarkdownLinkRouting = useMemo(
     () =>
       buildMarkdownPreviewLinkRouting({
@@ -2213,6 +2278,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
+    <MarkdownLocalFileOpenWithContext.Provider
+      value={getLocalFileOpenWithItems}
+    >
     <UrlOpenRoutingProvider
       openInAppBrowser={
         canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
@@ -2350,5 +2418,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         />
       ) : null}
     </UrlOpenRoutingProvider>
+    </MarkdownLocalFileOpenWithContext.Provider>
   );
 }

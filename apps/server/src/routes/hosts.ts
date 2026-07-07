@@ -11,6 +11,7 @@ import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
 } from "../services/lib/entity-lookup.js";
+import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
@@ -46,7 +47,10 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   // `path` lists the host's home directory (resolved on the host).
   get(routes.directory, async (context, query) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    // Directing a host to do work (browse, install, pick) is host execution:
+    // gate non-primary targets behind the Multi-machine experiment. The
+    // primary host always passes, so single-host installs are unaffected.
+    assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -60,7 +64,10 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.pathsExist, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    // Directing a host to do work (browse, install, pick) is host execution:
+    // gate non-primary targets behind the Multi-machine experiment. The
+    // primary host always passes, so single-host installs are unaffected.
+    assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -74,7 +81,10 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.pickFolder, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    // Directing a host to do work (browse, install, pick) is host execution:
+    // gate non-primary targets behind the Multi-machine experiment. The
+    // primary host always passes, so single-host installs are unaffected.
+    assertUsableHostId(deps, { hostId });
     if (payload.clientHostId !== hostId) {
       throw new ApiError(
         409,
@@ -94,7 +104,10 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.providerCliStatus, async (context) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    // Directing a host to do work (browse, install, pick) is host execution:
+    // gate non-primary targets behind the Multi-machine experiment. The
+    // primary host always passes, so single-host installs are unaffected.
+    assertUsableHostId(deps, { hostId });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -107,7 +120,10 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.providerCliInstall, async (context, payload) => {
     const hostId = context.req.param("id");
-    requireNonDestroyedHostWithStatus(deps, hostId);
+    // Directing a host to do work (browse, install, pick) is host execution:
+    // gate non-primary targets behind the Multi-machine experiment. The
+    // primary host always passes, so single-host installs are unaffected.
+    assertUsableHostId(deps, { hostId });
     const result = await callHostOnlineRpc(deps, {
       hostId,
       timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,

@@ -17,7 +17,6 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadFolderRoutes } from "./routes/thread-folders.js";
-import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
@@ -379,6 +378,7 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,
+    isConnectEnabled: () => getExperiments(deps.db).multiMachine,
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);
@@ -387,7 +387,6 @@ export function createApp(
   const publicApi = new Hono();
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
-  registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);

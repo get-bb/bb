@@ -1,6 +1,6 @@
 import type { BbSdkContext, BbSdkTransport } from "./transport.js";
-import { createAutomationsArea } from "./areas/automations.js";
 import { createEnvironmentsArea } from "./areas/environments.js";
+import { createFilesArea } from "./areas/files.js";
 import { createGuideArea } from "./areas/guide.js";
 import { createHostsArea } from "./areas/hosts.js";
 import { createProjectsArea } from "./areas/projects.js";
@@ -17,8 +17,8 @@ export interface CreateBbSdkArgs {
 }
 
 export interface BbSdk extends BbRealtime {
-  automations: ReturnType<typeof createAutomationsArea>;
   environments: ReturnType<typeof createEnvironmentsArea>;
+  files: ReturnType<typeof createFilesArea>;
   guide: ReturnType<typeof createGuideArea>;
   hosts: ReturnType<typeof createHostsArea>;
   projects: ReturnType<typeof createProjectsArea>;
@@ -35,8 +35,8 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     transport: args.transport,
   });
   return {
-    automations: createAutomationsArea(sdkContext),
     environments: createEnvironmentsArea(sdkContext),
+    files: createFilesArea(sdkContext),
     guide: createGuideArea(),
     hosts: createHostsArea(sdkContext),
     on(args) {

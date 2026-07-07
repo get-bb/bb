@@ -5,7 +5,7 @@
 // `origin` remote) plus an optional extraRepos setting. A background service
 // syncs open + recently-closed issues/PRs into the plugin's SQLite cache;
 // the frontend panel and @-mention providers read that cache, while
-// mutations (comment, create, close/reopen, assign) and detail views go
+// mutations (comment, create, close/reopen, assign, label) and detail views go
 // straight through `gh`.
 import { execFile } from "node:child_process";
 import type { BbPluginApi } from "@bb/plugin-sdk";
@@ -386,7 +386,7 @@ export default async function plugin(bb: BbPluginApi) {
     kind: "issue" | "pr",
     repo: string,
     number: number,
-    patch: { state?: string; assignees?: string[] },
+    patch: { state?: string; assignees?: string[]; labels?: string[] },
   ): void {
     if (patch.state !== undefined) {
       db.prepare("UPDATE items SET state = ? WHERE repo = ? AND kind = ? AND number = ?")
@@ -395,6 +395,10 @@ export default async function plugin(bb: BbPluginApi) {
     if (patch.assignees !== undefined) {
       db.prepare("UPDATE items SET assignees = ? WHERE repo = ? AND kind = ? AND number = ?")
         .run(JSON.stringify(patch.assignees), repo, kind, number);
+    }
+    if (patch.labels !== undefined) {
+      db.prepare("UPDATE items SET labels = ? WHERE repo = ? AND kind = ? AND number = ?")
+        .run(JSON.stringify(patch.labels), repo, kind, number);
     }
     bb.realtime.publish("data-changed", {});
   }
@@ -576,6 +580,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   const assignableCache = new Map<string, { users: string[]; fetchedAt: number }>();
+  const labelsCache = new Map<string, { labels: string[]; fetchedAt: number }>();
 
   async function getAssignableUsers(repo: string): Promise<string[]> {
     const cached = assignableCache.get(repo);
@@ -590,6 +595,21 @@ export default async function plugin(bb: BbPluginApi) {
       .sort((a, b) => a.localeCompare(b));
     assignableCache.set(repo, { users, fetchedAt: Date.now() });
     return users;
+  }
+
+  async function getRepoLabels(repo: string): Promise<string[]> {
+    const cached = labelsCache.get(repo);
+    if (cached !== undefined && Date.now() - cached.fetchedAt < 10 * 60_000) {
+      return cached.labels;
+    }
+    const raw = await gh(["api", `repos/${repo}/labels?per_page=100`], 15_000);
+    const entries = JSON.parse(raw) as Array<{ name?: unknown }>;
+    const labels = entries
+      .map((entry) => String(entry?.name ?? "").trim())
+      .filter((name) => name.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+    labelsCache.set(repo, { labels, fetchedAt: Date.now() });
+    return labels;
   }
 
   // ------------------------------------------------------------------
@@ -657,6 +677,13 @@ export default async function plugin(bb: BbPluginApi) {
       return { users: await getAssignableUsers(repo) };
     },
 
+    /** { repo } → labels available in that repo. */
+    async repositoryLabels(input: unknown) {
+      const repo = (input as { repo?: unknown })?.repo;
+      if (!isRepoName(repo)) throw new Error('expected { repo: "owner/name" }');
+      return { labels: await getRepoLabels(repo) };
+    },
+
     /** { repo, number, state: "open"|"closed" } → close or reopen an issue. */
     async setIssueState(input: unknown) {
       const { repo, number } = requireItemInput(input);
@@ -691,6 +718,36 @@ export default async function plugin(bb: BbPluginApi) {
       await gh(args);
       patchCachedItem("issue", repo, number, { assignees: next });
       return { ok: true, assignees: next };
+    },
+
+    /** { repo, number, labels: string[] } → set the exact issue label list. */
+    async setLabels(input: unknown) {
+      const { repo, number } = requireItemInput(input);
+      const raw = (input as { labels?: unknown })?.labels;
+      if (!Array.isArray(raw) || raw.some((label) => typeof label !== "string")) {
+        throw new Error("expected { labels: string[] }");
+      }
+      const next = [
+        ...new Set((raw as string[]).map((label) => label.trim()).filter(Boolean)),
+      ];
+      const currentRaw = await gh([
+        "issue", "view", String(number), "-R", repo, "--json", "labels",
+      ], 15_000);
+      const currentDetail = JSON.parse(currentRaw) as {
+        labels?: Array<{ name?: unknown }>;
+      };
+      const current = (currentDetail.labels ?? [])
+        .map((label) => String(label?.name ?? "").trim())
+        .filter((label) => label.length > 0);
+      const add = next.filter((label) => !current.includes(label));
+      const remove = current.filter((label) => !next.includes(label));
+      if (add.length === 0 && remove.length === 0) return { ok: true, labels: next };
+      const args = ["issue", "edit", String(number), "-R", repo];
+      for (const label of add) args.push("--add-label", label);
+      for (const label of remove) args.push("--remove-label", label);
+      await gh(args);
+      patchCachedItem("issue", repo, number, { labels: next });
+      return { ok: true, labels: next };
     },
 
     /** { repo, number } → live issue detail incl. comments. */

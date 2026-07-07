@@ -16,8 +16,8 @@ import type {
 import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {

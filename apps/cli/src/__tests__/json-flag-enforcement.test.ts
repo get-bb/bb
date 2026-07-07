@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 
 import { registerStatusCommand } from "../commands/status.js";
+import { registerHostCommands } from "../commands/host.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
 import { registerManagerCommands } from "../commands/manager.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
-import { registerAutomationCommands } from "../commands/automation.js";
 // Commands intentionally excluded from --json requirement
 const EXCLUDED_COMMANDS = new Set<string>();
 
@@ -33,11 +33,11 @@ describe("CLI --json flag enforcement", () => {
     const getUrl = () => "http://localhost";
 
     registerStatusCommand(program, getUrl);
+    registerHostCommands(program, getUrl);
     registerProjectCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
     registerManagerCommands(program, getUrl);
     registerThreadCommands(program, getUrl);
-    registerAutomationCommands(program, getUrl);
 
     const commands = collectLeafCommands(program);
     const missing: string[] = [];

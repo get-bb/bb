@@ -1,0 +1,58 @@
+name: Deploy Connect
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/connect/**"
+      - "packages/connect-db/**"
+      - "packages/tunnel-contract/**"
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-connect-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy tunnel gate to Cloudflare Workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      # No build step: the gate is a single worker entry (src/worker.ts) and
+      # wrangler's esbuild bundles its workspace deps (@bb/connect-db,
+      # @bb/tunnel-contract) straight from source. Plain `wrangler deploy`
+      # uses the top-level (production) config -> the bb-connect worker on
+      # *.getbb.app. BETTER_AUTH_SECRET is set once by hand (it must equal
+      # bb-web's) and is intentionally NOT synced from CI.
+      - name: Deploy tunnel gate
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @bb/connect exec wrangler deploy

@@ -69,9 +69,12 @@ export function registerSystemRoutes(
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
     const next = getExperiments(deps.db);
-    if (previous.plugins !== next.plugins) {
-      // Live toggle: enable loads all enabled plugins, disable disposes them.
-      void pluginService.onExperimentChanged(next.plugins).catch((error) => {
+    if (
+      previous.plugins !== next.plugins ||
+      previous.multiMachine !== next.multiMachine
+    ) {
+      // Live toggle: plugin-affecting experiments load/unload matching rows.
+      void pluginService.onExperimentsChanged().catch((error) => {
         deps.logger.error({ err: error }, "Plugin experiment toggle failed");
       });
     }

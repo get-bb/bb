@@ -25,11 +25,13 @@ import {
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
+  getInstalledPluginRegistration,
   getInstalledPlugin,
   getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPluginSchedules,
+  markInstalledPluginRemoved,
   prunePluginSchedules,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
@@ -61,6 +63,11 @@ import {
   swapDirIntoPlace,
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
+import {
+  builtinPluginSource,
+  listBuiltinPluginRegistrations,
+  type BuiltinPluginRegistration,
+} from "./builtin-registry.js";
 import {
   createPluginApi,
   isNeedsConfigurationError,
@@ -146,6 +153,8 @@ export interface PluginListEntry {
   rootDir: string;
   version: string;
   enabled: boolean;
+  /** Manifest description (package.json), null when not currently loaded. */
+  description: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -197,6 +206,8 @@ interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
+  isBuiltin: boolean;
+  builtinName: string | null;
 }
 
 export interface PluginServiceDeps {
@@ -212,8 +223,12 @@ export interface PluginServiceDeps {
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;
-  /** The `plugins` experiment gate, read live. */
+  /** The `plugins` experiment gate for user-installed plugins, read live. */
   isEnabled: () => boolean;
+  /** The `multiMachine` experiment gate for the builtin connect plugin, read live. */
+  isConnectEnabled: () => boolean;
+  /** Declared first-party plugins installed by default; test-only override. */
+  builtinPlugins?: readonly BuiltinPluginRegistration[];
   /** Factory-execution time box; overridable in tests. */
   loadTimeoutMs?: number;
   /** Bound on awaiting a service's start() promise at dispose; tests shrink it. */
@@ -288,6 +303,7 @@ export interface PluginThreadEventEmitter {
   emitThreadCreated(thread: Thread): void;
   emitThreadIdle(thread: Thread): void;
   emitThreadFailed(thread: Thread): void;
+  emitThreadDeleted(thread: Thread): void;
 }
 
 /**
@@ -308,6 +324,8 @@ export type PluginWireLookup<T> =
 export interface PluginService {
   /** Whether the `plugins` experiment is currently on. */
   isEnabled(): boolean;
+  /** Whether this installed plugin is a builtin. */
+  isBuiltin(id: string): boolean;
   /** Thread lifecycle event emitter, called from the lifecycle seams. */
   events: PluginThreadEventEmitter;
   /**
@@ -319,8 +337,8 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown or experiment turned off). */
   stop(): Promise<void>;
-  /** React to the `plugins` experiment being toggled at runtime. */
-  onExperimentChanged(enabled: boolean): Promise<void>;
+  /** React to experiments that affect plugin loading being toggled at runtime. */
+  onExperimentsChanged(): Promise<void>;
   list(): PluginListEntry[];
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
@@ -539,6 +557,7 @@ const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
+const CONNECT_BUILTIN_PLUGIN_NAME = "connect";
 
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
@@ -708,6 +727,8 @@ function normalizeMentionSearchItems(
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
+  const builtinPlugins =
+    deps.builtinPlugins ?? listBuiltinPluginRegistrations();
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
@@ -770,6 +791,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // two-phase load/bind). One shared instance — plugin-api wraps it per
   // plugin for spawn attribution.
   let boundSdk: BbSdk | undefined;
+  // The server's own loopback base URL, bound alongside the SDK; backs the
+  // bind-gated bb.server.loopbackBaseUrl.
+  let boundLoopbackBaseUrl: string | undefined;
 
   function setStatus(
     id: string,
@@ -1107,12 +1131,86 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   /** Parsed source kind; stored sources always parse, but never throw here. */
-  function sourceKind(source: string): "path" | "git" | "npm" {
+  function sourceKind(source: string): "path" | "git" | "npm" | "builtin" {
     try {
       return parsePluginSource(source).kind;
     } catch {
       return "path";
     }
+  }
+
+  function isBuiltinSource(source: string): boolean {
+    return sourceKind(source) === "builtin";
+  }
+
+  function builtinNameFromSource(source: string): string | null {
+    try {
+      const parsed = parsePluginSource(source);
+      return parsed.kind === "builtin" ? parsed.name : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isPackagedBuiltinAppEntry(args: {
+    kind: ReturnType<typeof sourceKind>;
+    manifest: PluginManifest;
+    rootDir: string;
+  }): boolean {
+    return (
+      args.kind === "builtin" &&
+      args.manifest.appEntry === resolve(args.rootDir, "dist", "app.js")
+    );
+  }
+
+  function isBuiltinPluginId(id: string): boolean {
+    const row = getInstalledPlugin(deps.db, id);
+    return row !== undefined && isBuiltinSource(row.source);
+  }
+
+  function isBuiltinPluginLoadEnabled(name: string): boolean {
+    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
+      return deps.isConnectEnabled();
+    }
+    return true;
+  }
+
+  function experimentGateDisabledDetail(row: InstalledPluginRow): string | null {
+    const builtinName = builtinNameFromSource(row.source);
+    if (builtinName === CONNECT_BUILTIN_PLUGIN_NAME) {
+      return 'disabled by the "Multi-machine" experiment';
+    }
+    if (builtinName === null) {
+      return 'disabled by the "Plugins" experiment';
+    }
+    return null;
+  }
+
+  function shouldLoadRow(row: InstalledPluginRow): boolean {
+    const builtinName = builtinNameFromSource(row.source);
+    if (builtinName !== null) return isBuiltinPluginLoadEnabled(builtinName);
+    return deps.isEnabled();
+  }
+
+  function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
+    if (plugin.builtinName !== null) {
+      return isBuiltinPluginLoadEnabled(plugin.builtinName);
+    }
+    return deps.isEnabled();
+  }
+
+  function shouldExposePluginId(id: string): boolean {
+    const plugin = loaded.get(id);
+    if (plugin !== undefined) return shouldExposeLoadedPlugin(plugin);
+    const row = getInstalledPlugin(deps.db, id);
+    if (row === undefined) return deps.isEnabled();
+    return shouldLoadRow(row);
+  }
+
+  function exposedLoadedEntries(): Array<[string, LoadedPlugin]> {
+    return [...loaded.entries()].filter(([, plugin]) =>
+      shouldExposeLoadedPlugin(plugin),
+    );
   }
 
   /**
@@ -1172,7 +1270,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
       return null;
     }
-    if (sourceKind(row.source) !== "npm") {
+    const kind = sourceKind(row.source);
+    if (
+      kind !== "npm" &&
+      !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
+    ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
       if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
         logger.info(
@@ -1259,6 +1361,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1309,6 +1412,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       return;
     }
+    const builtinName = builtinNameFromSource(row.source);
     const plugin: LoadedPlugin = {
       manifest,
       handle,
@@ -1322,6 +1426,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         startedAt: 0,
         disposed: false,
       })),
+      isBuiltin: builtinName !== null,
+      builtinName,
     };
     loaded.set(row.id, plugin);
     // Sync durable schedule rows to this load's registrations: upsert each
@@ -1353,7 +1459,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const details = [agentToolProblems.get(row.id), appBundleProblem].filter(
         (detail): detail is string => typeof detail === "string",
       );
-      setStatus(row.id, "running", details.length > 0 ? details.join("; ") : null);
+      setStatus(
+        row.id,
+        "running",
+        details.length > 0 ? details.join("; ") : null,
+      );
     }
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
   }
@@ -1398,12 +1508,35 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
+  function clearRuntimeState(id: string): void {
+    statuses.delete(id);
+    appBundles.delete(id);
+    logos.delete(id);
+    needsConfiguration.delete(id);
+    agentToolProblems.delete(id);
+  }
+
+  async function unloadOneForExperimentGate(row: InstalledPluginRow): Promise<void> {
+    await disposeOne(row.id);
+    clearRuntimeState(row.id);
+    if (row.enabled) {
+      setStatus(row.id, "disabled", experimentGateDisabledDetail(row));
+    } else {
+      setStatus(row.id, "disabled");
+    }
+  }
+
   async function loadAll(): Promise<void> {
     const rows = listInstalledPlugins(deps.db).sort((a, b) =>
       a.id.localeCompare(b.id),
     );
     for (const row of rows) {
-      await withLifecycleLock(row.id, () => loadOne(row));
+      if (shouldLoadRow(row)) {
+        if (loaded.has(row.id)) continue;
+        await withLifecycleLock(row.id, () => loadOne(row));
+      } else {
+        await withLifecycleLock(row.id, () => unloadOneForExperimentGate(row));
+      }
     }
   }
 
@@ -1416,6 +1549,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     id: string,
     find: (plugin: LoadedPlugin) => T | undefined,
   ): PluginWireLookup<T> {
+    if (!shouldExposePluginId(id)) {
+      const row = getInstalledPlugin(deps.db, id);
+      if (!row) return { outcome: "unknown-plugin" };
+      const runtime = statuses.get(id);
+      return {
+        outcome: "not-running",
+        status: runtime?.status ?? "disabled",
+        detail: runtime?.detail ?? experimentGateDisabledDetail(row),
+      };
+    }
     const plugin = loaded.get(id);
     if (!plugin) {
       const row = getInstalledPlugin(deps.db, id);
@@ -1464,16 +1607,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // prebuilt dist (a major mismatch is tolerated: the backend runs, the
     // frontend marks the bundle "needs update").
     if (manifest.appEntry !== undefined) {
-      if (sourceKind(args.source) === "npm") {
+      const kind = sourceKind(args.source);
+      if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
           .then(() => true)
           .catch(() => false);
-        if (!jsPresent || (await readPluginAppBundleMeta(args.rootDir)) === null) {
+        if (
+          !jsPresent ||
+          (await readPluginAppBundleMeta(args.rootDir)) === null
+        ) {
           throw new Error(
             `install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle — "${manifest.id}" is missing dist/app.js + dist/app.meta.json`,
           );
         }
-      } else {
+      } else if (
+        !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
+      ) {
         try {
           await buildPluginApp(args.rootDir);
         } catch (error) {
@@ -1514,14 +1663,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       version: manifest.version,
       enabled: existing?.enabled ?? true,
     });
-    if (deps.isEnabled()) {
+    const row = getInstalledPlugin(deps.db, manifest.id);
+    if (row && shouldLoadRow(row)) {
       await withLifecycleLock(manifest.id, async () => {
         await disposeOne(manifest.id);
-        const row = getInstalledPlugin(deps.db, manifest.id);
-        if (row) await loadOne(row);
+        await loadOne(row);
       });
       await syncCliSkill();
       notifyPluginsChanged();
+    } else if (row) {
+      await withLifecycleLock(manifest.id, () => unloadOneForExperimentGate(row));
     }
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
@@ -1653,6 +1804,67 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     });
   }
 
+  function findBuiltinPlugin(
+    name: string,
+  ): BuiltinPluginRegistration | undefined {
+    return builtinPlugins.find((plugin) => plugin.name === name);
+  }
+
+  async function installBuiltinSource(
+    parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "builtin" }>,
+  ): Promise<PluginListEntry> {
+    const builtin = findBuiltinPlugin(parsed.name);
+    if (!builtin) {
+      throw new Error(`unknown builtin plugin "${parsed.name}"`);
+    }
+    return registerInstalled({
+      rootDir: builtin.rootDir,
+      source: builtinPluginSource(parsed.name),
+      refuseEngineMismatch: false,
+      validated: false,
+    });
+  }
+
+  async function reconcileBuiltins(): Promise<void> {
+    for (const builtin of builtinPlugins) {
+      const source = builtinPluginSource(builtin.name);
+      let manifest: PluginManifest;
+      try {
+        manifest = await readPluginManifest(builtin.rootDir);
+      } catch (error) {
+        logger.warn(
+          `builtin plugin ${builtin.name} is unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        continue;
+      }
+      const existing = getInstalledPluginRegistration(deps.db, manifest.id);
+      if (existing?.removedAt !== null && existing?.removedAt !== undefined) {
+        continue;
+      }
+      if (existing !== undefined && existing.source !== source) {
+        logger.warn(
+          `builtin plugin ${builtin.name} resolved to id "${manifest.id}", but that id is already installed from ${existing.source}; skipping builtin reconciliation`,
+        );
+        continue;
+      }
+      if (
+        existing === undefined ||
+        existing.version !== manifest.version ||
+        existing.rootDir !== builtin.rootDir
+      ) {
+        upsertInstalledPlugin(deps.db, {
+          id: manifest.id,
+          source,
+          rootDir: builtin.rootDir,
+          version: manifest.version,
+          enabled: existing?.enabled ?? true,
+        });
+      }
+    }
+  }
+
   /**
    * The live native-tool view: loaded plugins in id order, registration
    * order within a plugin, deduped first-wins (defensive — registration
@@ -1662,10 +1874,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     pluginId: string;
     record: PluginAgentToolRecord;
   }> {
-    if (!deps.isEnabled()) return [];
     const seen = new Set<string>(RESERVED_AGENT_TOOL_NAMES);
     const out: Array<{ pluginId: string; record: PluginAgentToolRecord }> = [];
-    for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+    for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
       a.localeCompare(b),
     )) {
       for (const record of plugin.handle.agentTools) {
@@ -1678,9 +1889,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   function cliContributions(): PluginCliContribution[] {
-    if (!deps.isEnabled()) return [];
     const contributions: PluginCliContribution[] = [];
-    for (const [id, plugin] of loaded) {
+    for (const [id, plugin] of exposedLoadedEntries()) {
       const registration = plugin.handle.cli.registration;
       if (!registration) continue;
       contributions.push({
@@ -1725,13 +1935,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       .map((row) => {
         const runtime = statuses.get(row.id);
         const stats = handlerStats.get(row.id);
-        const cliRegistration = loaded.get(row.id)?.handle.cli.registration;
+        const loadedPlugin = loaded.get(row.id);
+        const exposedPlugin =
+          loadedPlugin !== undefined && shouldExposeLoadedPlugin(loadedPlugin)
+            ? loadedPlugin
+            : undefined;
+        const cliRegistration = exposedPlugin?.handle.cli.registration;
         return {
           id: row.id,
           source: row.source,
           rootDir: row.rootDir,
           version: row.version,
           enabled: row.enabled,
+          description: exposedPlugin?.manifest.description ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1743,7 +1959,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-          services: (loaded.get(row.id)?.services ?? []).map((service) => ({
+          services: (exposedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,
           })),
@@ -1763,10 +1979,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
           // Only advertise URLs the asset route will actually serve (it
           // gates on the live runtime, like the bundle assets).
-          logoUrl: loaded.has(row.id)
+          logoUrl: exposedPlugin !== undefined
             ? (logos.get(row.id)?.logo?.url ?? null)
             : null,
-          logoDarkUrl: loaded.has(row.id)
+          logoDarkUrl: exposedPlugin !== undefined
             ? (logos.get(row.id)?.logoDark?.url ?? null)
             : null,
         };
@@ -1775,6 +1991,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   return {
     isEnabled: () => deps.isEnabled(),
+    isBuiltin: isBuiltinPluginId,
 
     events: {
       emitThreadCreated(thread) {
@@ -1794,17 +2011,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           error: getLastThreadErrorMessage(deps.db, thread.id),
         }));
       },
+      emitThreadDeleted(thread) {
+        emitThreadEvent("thread.deleted", () => ({
+          thread: buildThreadDto(thread),
+        }));
+      },
     },
 
     bindSdk({ baseUrl }) {
       boundSdk = createNodeBbSdk({ baseUrl });
+      boundLoopbackBaseUrl = baseUrl;
     },
 
     async start() {
-      if (!deps.isEnabled()) {
-        await syncCliSkill();
-        return;
-      }
+      await reconcileBuiltins();
       await loadAll();
       await syncCliSkill();
       notifyPluginsChanged();
@@ -1816,15 +2036,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       notifyPluginsChanged();
     },
 
-    async onExperimentChanged(enabled) {
-      if (enabled) {
-        await loadAll();
-      } else {
-        await disposeAll();
-        statuses.clear();
-        appBundles.clear();
-        logos.clear();
-      }
+    async onExperimentsChanged() {
+      await loadAll();
       await syncCliSkill();
       notifyPluginsChanged();
     },
@@ -1833,6 +2046,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async install(source) {
       const parsed = parsePluginSource(source);
+      if (parsed.kind === "builtin") return installBuiltinSource(parsed);
       if (parsed.kind === "git") return installGitSource(parsed, source);
       if (parsed.kind === "npm") return installNpmSource(parsed, source);
       return installPathSource(parsed.path);
@@ -1848,7 +2062,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       agentToolProblems.delete(id);
       appBundles.delete(id);
       logos.delete(id);
-      const removed = deleteInstalledPlugin(deps.db, id);
+      const removed = row
+        ? isBuiltinSource(row.source)
+          ? markInstalledPluginRemoved(deps.db, id)
+          : deleteInstalledPlugin(deps.db, id)
+        : false;
       if (removed && row) {
         // Configuration goes with the registration (a future same-id plugin
         // must not inherit secrets); kv rows and data.db are plugin data and
@@ -1863,7 +2081,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // Managed installs (git:/npm:) own their files under
         // <dataDir>/plugins; path: sources are the user's directory and are
         // never deleted.
-        const managedDir = managedInstallDir(deps.dataDir, row.source);
+        const managedDir = isBuiltinSource(row.source)
+          ? undefined
+          : managedInstallDir(deps.dataDir, row.source);
         if (managedDir !== undefined) {
           await rm(managedDir, { recursive: true, force: true });
         }
@@ -1877,8 +2097,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
       if (enabled) {
         const row = getInstalledPlugin(deps.db, id);
-        if (row && deps.isEnabled()) {
+        if (row && shouldLoadRow(row)) {
           await withLifecycleLock(id, () => loadOne(row));
+        } else if (row) {
+          await withLifecycleLock(id, () => unloadOneForExperimentGate(row));
         }
       } else {
         await withLifecycleLock(id, async () => {
@@ -1897,7 +2119,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async reload(id) {
       const rows = listInstalledPlugins(deps.db).filter(
-        (row) => id === undefined || row.id === id,
+        (row) => (id === undefined || row.id === id) && shouldLoadRow(row),
       );
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
         await withLifecycleLock(row.id, async () => {
@@ -1910,6 +2132,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getApi(id) {
+      if (!shouldExposePluginId(id)) return undefined;
       return loaded.get(id)?.handle.api;
     },
 
@@ -1917,6 +2140,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       // Honest gate: assets are only downloadable while the plugin runtime
       // is live. A disabled/errored/removed plugin's recorded snapshot may
       // still ride the inventory for display, but its bytes are not served.
+      if (!shouldExposePluginId(id)) return undefined;
       if (!loaded.has(id)) return undefined;
       const assets = appBundles.get(id)?.assets;
       if (!assets) return undefined;
@@ -1928,14 +2152,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     getLogoAsset(id, variant) {
       // Same honest gate as getAppAsset: bytes only while the runtime is
       // live (matches the inventory's logoUrl/logoDarkUrl gating).
+      if (!shouldExposePluginId(id)) return undefined;
       if (!loaded.has(id)) return undefined;
       const set = logos.get(id);
       const logo = variant === "logo-dark" ? set?.logoDark : set?.logo;
       if (!logo) return undefined;
-      return { path: logo.path, contentType: logo.contentType, hash: logo.hash };
+      return {
+        path: logo.path,
+        contentType: logo.contentType,
+        hash: logo.hash,
+      };
     },
 
     async getSettings(id) {
+      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       return buildPluginSettingsView({
@@ -1947,6 +2177,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async updateSettings(id, values) {
+      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       const storeArgs = {
@@ -2064,12 +2295,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async runCliCommand(id, argv, ctx) {
       const fail = (stderr: string) => ({ exitCode: 1, stdout: "", stderr });
-      if (!deps.isEnabled()) {
+      const plugin = loaded.get(id);
+      if (!shouldExposePluginId(id)) {
         return fail(
           'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
         );
       }
-      const plugin = loaded.get(id);
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return fail(`unknown plugin "${id}"`);
@@ -2106,8 +2337,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listSkillsRootPaths() {
-      if (!deps.isEnabled()) return [];
-      return [...loaded.entries()]
+      return exposedLoadedEntries()
         .sort(([a], [b]) => a.localeCompare(b))
         .flatMap(([, plugin]) => plugin.manifest.skillsRootPaths);
     },
@@ -2164,9 +2394,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listThreadActionContributions() {
-      if (!deps.isEnabled()) return [];
       const contributions: PluginThreadActionContribution[] = [];
-      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         for (const record of plugin.handle.threadActions) {
@@ -2183,6 +2412,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getThreadAction(id, actionId) {
+      if (!shouldExposePluginId(id)) return { outcome: "unknown-plugin" };
       return wireLookup(id, (plugin) =>
         plugin.handle.threadActions.find((record) => record.id === actionId),
       );
@@ -2207,9 +2437,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listMentionProviderContributions() {
-      if (!deps.isEnabled()) return [];
       const contributions: PluginMentionProviderContribution[] = [];
-      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         for (const record of plugin.handle.mentionProviders) {
@@ -2224,11 +2453,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async searchMentions(args) {
-      if (!deps.isEnabled() || loaded.size === 0) return [];
-      const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
-      const entries = [...loaded.entries()].sort(([a], [b]) =>
+      const entries = exposedLoadedEntries().sort(([a], [b]) =>
         a.localeCompare(b),
       );
+      if (entries.length === 0) return [];
+      const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
           tasks.push(
@@ -2287,7 +2516,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async resolveMention({ pluginId, itemId }) {
-      if (!deps.isEnabled()) {
+      if (!shouldExposePluginId(pluginId)) {
         return {
           ok: false,
           error:
@@ -2375,7 +2604,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async sweepDueSchedules(now) {
-      if (!deps.isEnabled() || loaded.size === 0) return;
+      if (loaded.size === 0) return;
       const due = listDuePluginSchedules(deps.db, {
         now,
         limit: SCHEDULE_SWEEP_BATCH_SIZE,

@@ -6,19 +6,19 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu.js";
+} from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { isThreadRead } from "@/lib/thread-read-state";
 import { useThreadActions } from "./ThreadActionsProvider";
 

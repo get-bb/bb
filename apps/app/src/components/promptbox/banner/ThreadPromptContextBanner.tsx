@@ -30,8 +30,8 @@ import {
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import { cn } from "@/lib/utils";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   getPullRequestAttentionDisplay,
   PULL_REQUEST_STATE_DISPLAY,
@@ -43,7 +43,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@bb/shared-ui/dropdown-menu";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 export interface ContextBannerMergeBaseConfig {

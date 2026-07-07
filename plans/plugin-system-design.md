@@ -227,6 +227,13 @@ Two SDK-level additions plugins need (server-contract changes):
   `originPluginId`, rendered as a badge/filter in the thread list so plugin-spawned
   threads are distinguishable.
 
+*(Added 2026-07-04)* **`bb.sdk.files`** — host file primitives (`read`/`write`/`list`)
+backed by a new `host.write_file` daemon command (25 MB cap, optional `rootPath`
+containment, `expectedSha256` compare-and-swap returning a `conflict` outcome instead of
+an error; reads now include `sha256`). `hostId` optional → primary host, resolved at the
+server boundary. This is the sanctioned path for plugins that edit user files (e.g. the
+notes plugin) — it reaches remote hosts where in-process `node:fs` cannot.
+
 ### 4.2 `bb.settings`
 
 ```ts
@@ -552,11 +559,15 @@ V1 slot set with **versioned per-slot props contracts** (additive-only within a 
 | `navPanel` | `{}` (own route) | `AppRoutes` + `AppSidebar.tsx` (route + sidebar entry + nav state) |
 | `threadPanelAction` | action: `run({ threadId, openPanel })`; opened tab: `{ threadId, params }` | `NewTabFileSearch.tsx` Actions list; tabs are `plugin-panel` file-strip tabs (`fixed-panel-tabs-state.ts`) *(reworked 2026-07-03: replaced the fixed `threadPanelTab` toggle — actions run code and open closable, param-carrying tabs with the plugin logo as tab icon)* |
 | `composerAccessory` | `{ projectId, threadId: string \| null }` | `PromptBoxInternal.tsx` (`footerStart` slot prop already exists) |
+| `fileOpener` *(added 2026-07-04)* | `{ path, source: { kind: workspace\|host\|thread-storage, threadId, environmentId, projectId } }` | `useThreadFileTabs.openTab` diversion → `plugin-panel` tabs (`file-opener:<id>` action ids); "Open with" context menu on rendered-markdown file links (per-open); Settings → File openers section for per-extension defaults in localStorage (`file-opener-preference.ts`). Live content only — never git-ref snapshots |
 | `settingsSection` | auto-generated from settings schema | `SettingsView.tsx` |
 
 Hooks from `@bb/plugin-sdk/app`: `useRpc<Rpc>()`, `useRealtime<Channels>()`,
 `useSettings()` (secrets excluded), `useBbContext()` (current project/thread selection),
-and `useBbNavigate()` with **typed helpers** (`toThread(id)`, `toPluginPanel(path)`) — no
+and `useBbNavigate()` with **typed helpers** (`toThread(id)`, `toPluginPanel(path,
+{ subPath?, replace? })`) — plus `useComposer()` *(added 2026-07-04)* for programmatic
+composer-draft writes (addQuote / insertMention / focus, scope-resolved to the thread or
+new-thread draft) — no
 guessed URL schemes. *(A host-provided UI kit — 65 shadcn-shaped component re-exports —
 shipped with Phase 3 and was REMOVED by decision 2026-07-03: it froze every component's
 props into a pinned compatibility surface, so any app component evolution became a

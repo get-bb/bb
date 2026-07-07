@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { PLUGIN_SDK_APP_EXPORT_NAMES } from "@bb/plugin-sdk";
@@ -143,23 +143,125 @@ interface PluginAppConfig {
   packageName: string;
 }
 
-/** Read `<rootDir>/package.json` and resolve its `bb.app` entry, or throw. */
-async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
-  const packageJsonPath = join(rootDir, "package.json");
+type ScannerSource = {
+  base: string;
+  pattern: string;
+  negated: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readDependencyNames(pkg: Record<string, unknown>): string[] {
+  const names = new Set<string>();
+  for (const field of ["dependencies", "devDependencies"] as const) {
+    const dependencies = pkg[field];
+    if (!isRecord(dependencies)) continue;
+    for (const name of Object.keys(dependencies)) {
+      names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+async function readPackageJson(
+  filePath: string,
+): Promise<Record<string, unknown>> {
   let raw: string;
   try {
-    raw = await readFile(packageJsonPath, "utf8");
+    raw = await readFile(filePath, "utf8");
   } catch {
-    throw new Error(`no readable package.json at ${packageJsonPath}`);
+    throw new Error(`no readable package.json at ${filePath}`);
   }
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    throw new Error(`package.json is not valid JSON at ${packageJsonPath}`);
+    throw new Error(`package.json is not valid JSON at ${filePath}`);
   }
-  const pkg = json as { name?: unknown; bb?: { app?: unknown } };
-  const app = pkg.bb?.app;
+  if (!isRecord(json)) {
+    throw new Error(`package.json must contain an object at ${filePath}`);
+  }
+  return json;
+}
+
+function readTailwindContentPatterns(
+  pkg: Record<string, unknown>,
+  packageJsonPath: string,
+): string[] {
+  const bb = pkg.bb;
+  if (!isRecord(bb) || bb.pluginTailwindContent === undefined) {
+    return [];
+  }
+  const patterns = bb.pluginTailwindContent;
+  if (
+    !Array.isArray(patterns) ||
+    !patterns.every((pattern) => typeof pattern === "string")
+  ) {
+    throw new Error(
+      `bb.pluginTailwindContent must be an array of strings in ${packageJsonPath}`,
+    );
+  }
+  return patterns;
+}
+
+async function packageJsonPathForDirectDependency(
+  rootDir: string,
+  packageName: string,
+): Promise<string | null> {
+  const packageJsonPath = join(
+    rootDir,
+    "node_modules",
+    packageName,
+    "package.json",
+  );
+  try {
+    await stat(packageJsonPath);
+    return packageJsonPath;
+  } catch {
+    return null;
+  }
+}
+
+async function readDependencyTailwindSources(
+  rootDir: string,
+): Promise<ScannerSource[]> {
+  const rootPackageJsonPath = join(rootDir, "package.json");
+  const rootPackageJson = await readPackageJson(rootPackageJsonPath);
+  const sources: ScannerSource[] = [];
+
+  for (const packageName of readDependencyNames(rootPackageJson)) {
+    const packageJsonPath = await packageJsonPathForDirectDependency(
+      rootDir,
+      packageName,
+    );
+    if (packageJsonPath === null) continue;
+
+    const packageJson = await readPackageJson(packageJsonPath);
+    for (const rawPattern of readTailwindContentPatterns(
+      packageJson,
+      packageJsonPath,
+    )) {
+      const negated = rawPattern.startsWith("!");
+      const pattern = negated ? rawPattern.slice(1) : rawPattern;
+      sources.push({
+        base: dirname(packageJsonPath),
+        pattern,
+        negated,
+      });
+    }
+  }
+
+  return sources;
+}
+
+/** Read `<rootDir>/package.json` and resolve its `bb.app` entry, or throw. */
+async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
+  const packageJsonPath = join(rootDir, "package.json");
+  const pkg = await readPackageJson(packageJsonPath);
+  const bb = isRecord(pkg.bb) ? pkg.bb : undefined;
+  const app = bb?.app;
   if (typeof app !== "string" || app.length === 0) {
     throw new Error(
       `no frontend entry: ${packageJsonPath} has no "bb": { "app": "./app.tsx" } field (only plugins with an app entry can be built)`,
@@ -188,6 +290,12 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * the compiled classes resolve against the host's live CSS variables at
  * runtime. Tailwind itself comes from the CLI's own installation (plugins do
  * not need tailwindcss installed), via `customCssResolver`.
+ *
+ * Direct dependencies can contribute additional scan roots with
+ * `bb.pluginTailwindContent` in their package.json. Builtin plugins use this
+ * for workspace UI packages that ship raw TS/TSX source: esbuild bundles the
+ * package fine, but Tailwind must also see its class strings or it will purge
+ * their utilities from app.css.
  *
  * The input embeds two generated constants (plugin-theme.generated.ts) so
  * plugin utilities compile against the same tokens the host uses:
@@ -245,12 +353,14 @@ async function buildTailwindCss(rootDir: string): Promise<string> {
       }
     },
   });
+  const scannerSources: ScannerSource[] = [
+    { base: rootDir, pattern: "**/*", negated: false },
+    { base: join(rootDir, "dist"), pattern: "**/*", negated: true },
+    { base: join(rootDir, "node_modules"), pattern: "**/*", negated: true },
+    ...(await readDependencyTailwindSources(rootDir)),
+  ];
   const scanner = new Scanner({
-    sources: [
-      { base: rootDir, pattern: "**/*", negated: false },
-      { base: join(rootDir, "dist"), pattern: "**/*", negated: true },
-      { base: join(rootDir, "node_modules"), pattern: "**/*", negated: true },
-    ],
+    sources: scannerSources,
   });
   return compiler.build(scanner.scan());
 }

@@ -12,17 +12,17 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
-import { Switch } from "@/components/ui/switch.js";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { Switch } from "@bb/shared-ui/switch";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
+} from "@bb/shared-ui/dropdown-menu";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsSection,
@@ -37,6 +37,7 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import {
   useUpdateAppearance,
   useUpdateExperiments,
@@ -53,7 +54,7 @@ import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   resolvePreferredWorkspaceOpenTarget,
   supportsWorkspaceOpenTargetCapability,
@@ -153,7 +154,9 @@ export interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   desktopShellAvailable: boolean;
+  multiMachineEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onMultiMachineEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
@@ -667,6 +670,7 @@ export function GeneralSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
@@ -851,7 +855,9 @@ export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   desktopShellAvailable,
   disabled,
+  multiMachineEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
@@ -877,6 +883,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={MULTI_MACHINE_EXPERIMENT_LABEL}
+          description="Run threads on other connected machines (bb thread spawn --host) and bb connect remote access. Off rejects execution on any host but this machine's."
+        >
+          <Switch
+            checked={multiMachineEnabled}
+            disabled={disabled}
+            onCheckedChange={onMultiMachineEnabledChange}
+            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1021,6 +1039,8 @@ export function SettingsView() {
           targets={workspaceOpenTargets}
         />
 
+        <FileOpenersSettingsSection />
+
         <ExperimentsSettingsSection
           claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
           desktopShellAvailable={desktopShellAvailable}
@@ -1046,6 +1066,12 @@ export function SettingsView() {
               popoutChatHotkey: hotkey,
             })
           }
+          onMultiMachineEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              multiMachine: enabled,
+            })
+          }
           onPluginsEnabledChange={(enabled) =>
             updateExperimentsMutation.mutate({
               ...experiments,
@@ -1058,6 +1084,7 @@ export function SettingsView() {
               uiForking: enabled,
             })
           }
+          multiMachineEnabled={experiments.multiMachine}
           pluginsEnabled={experiments.plugins}
           popoutChatEnabled={experiments.popoutChat}
           popoutChatHotkey={experiments.popoutChatHotkey}

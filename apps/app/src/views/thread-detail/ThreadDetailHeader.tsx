@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon } from "@/components/ui/icon.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon } from "@bb/shared-ui/icon";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
-import { Pill } from "@/components/ui/pill.js";
+import { Pill } from "@bb/shared-ui/pill";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -15,7 +15,7 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;

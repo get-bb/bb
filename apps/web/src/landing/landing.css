@@ -1,0 +1,2591 @@
+/* bb landing — editorial light, themed to match the bb app.
+   Tokens mirror apps/app/src/components/ui/theme.css: a neutral zero-chroma
+   ink-over-canvas ramp, inverted-neutral primary button, and the app's own
+   chromatic tokens (file-accent, success, diff-added/removed, warning-text).
+   All color-mix() interpolation is done `in oklab` (rectangular), never
+   `in oklch` (polar) — mixing a chromatic accent toward white in oklch
+   interpolates the hue through pink; oklab keeps the hue put. */
+
+/* Inter Variable @font-face rules (this sheet loads standalone on the
+   marketing route — the old landing app pulled these in via a JS import). */
+@import "@fontsource-variable/inter";
+
+/* Metric-adjusted fallback (Arial sized to Inter) shown until Inter loads, so
+   text — the large hero title especially — doesn't reflow/snap when the web
+   font swaps in mid-animation. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  ascent-override: 90.49%;
+  descent-override: 22.56%;
+  line-gap-override: 0%;
+  size-adjust: 107.06%;
+}
+
+:root {
+  --bg: oklch(1 0 0);
+  --ink: oklch(0.3211 0 0);
+  --dim: oklch(0.44 0 0);
+  --subtle: oklch(0.5 0 0);
+  --border: color-mix(in oklab, var(--ink) 14%, var(--bg));
+  --border-soft: color-mix(in oklab, var(--ink) 8%, var(--bg));
+  --surface: color-mix(in oklab, var(--ink) 3.5%, var(--bg));
+  --surface-recessed: color-mix(in oklab, var(--ink) 6%, var(--bg));
+  --state-hover: color-mix(in oklab, var(--ink) 5.9%, var(--bg));
+  /* Chromatic tokens pulled straight from the app's light theme. */
+  --accent: oklch(0.55 0.1 250); /* --file-accent (paper blue) */
+  --ok: oklch(0.7 0.15 155); /* --success */
+  --add: oklch(0.4 0.13 163); /* --diff-added */
+  --del: oklch(0.4 0.17 28); /* --diff-removed */
+  --spark: oklch(0.55 0.14 50); /* --warning-text */
+  --radius: 0.5rem;
+  --font-sans:
+    "Inter Variable", "Inter Fallback", Inter, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* The hero's faint full-bleed wash (::before/::after) extends past the wrap on
+   purpose; clip it at the viewport so it never adds a horizontal scroll. `clip`
+   (vs `hidden`) avoids creating a scroll container, so vertical scrolling and
+   any sticky positioning are unaffected. */
+html {
+  overflow-x: clip;
+  /* Reserve the scrollbar gutter on both sides so centered sections (hero,
+     statement, closer) stay centered in the viewport rather than nudged left
+     by the vertical scrollbar's width. */
+  scrollbar-gutter: stable both-edges;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* ── Nav ────────────────────────────────────────────────────────── */
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 0;
+  animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The header drops in first, then the hero copy rises in below it. */
+@keyframes hdr-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.logo img {
+  display: block;
+}
+
+.nav-links {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  font-size: 14.5px;
+}
+
+.nav-links a:not(.btn) {
+  color: var(--dim);
+}
+
+.nav-links a:not(.btn):hover {
+  color: var(--ink);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.btn-primary:hover {
+  background: color-mix(in oklab, var(--ink) 90%, var(--bg));
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.btn-ghost {
+  border-color: var(--border);
+}
+
+.btn-ghost:hover {
+  background: var(--state-hover);
+}
+
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+
+.cta-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 38px;
+  flex-wrap: wrap;
+}
+
+.cta-row-secondary {
+  margin-top: 18px;
+}
+
+/* Two equal-height CTAs — solid "Download for macOS" and an outline button
+   whose body is the copyable run command — over one centered caption. */
+.install-options {
+  margin: 38px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+}
+
+.install-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Hero-sized CTA: a touch larger than the base button. An explicit line-height
+   keeps the <a> (inherits the body's 1.6) and the <button> (UA resets it to
+   `normal`) the same height, so their captions sit on one baseline. */
+.btn-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 22px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.btn-ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* The browser path: an outline button that copies the install command.
+   Explicit background because a bare <button> otherwise shows the UA
+   `buttonface` grey (the anchor-based ghost buttons stay transparent). */
+.cmd-btn {
+  position: relative;
+  background: var(--bg);
+  font-family: var(--font-mono);
+}
+
+.cmd-dollar {
+  color: var(--accent);
+}
+
+.cmd-copy {
+  margin-left: 3px;
+  padding-left: 11px;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.cmd-btn:hover .cmd-copy {
+  color: var(--ink);
+}
+
+.cmd-btn.copied .cmd-copy {
+  color: var(--accent);
+}
+
+/* Copy confirmation toast — anchored above the button, out of flow so it
+   never shifts the centered CTA row. */
+.cmd-toast {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  z-index: 2;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  box-shadow: 0 8px 22px -8px color-mix(in oklab, var(--ink) 50%, transparent);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.cmd-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* little pointer notch under the toast */
+.cmd-toast::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--ink);
+}
+
+/* Each button carries its own caption, directly beneath it, so the platform
+   note clearly targets its option rather than the pair. */
+.install-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.install-note {
+  font-size: 12.5px;
+  color: var(--subtle);
+  text-align: center;
+}
+
+/* ── Hero ───────────────────────────────────────────────────────── */
+
+.hero {
+  padding: 96px 0 48px;
+  text-align: center;
+  position: relative;
+}
+
+/* Faint neutral wash behind the hero. Kept within the hero box (no negative
+   horizontal inset) so the centered gradient never adds a horizontal scroll. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -140px 0 auto;
+  height: 480px;
+  z-index: -1;
+  background: radial-gradient(
+    640px 300px at 50% 12%,
+    color-mix(in oklab, var(--ink) 4.5%, transparent),
+    transparent 70%
+  );
+}
+
+/* Dot-grid texture, masked so it fades out toward the hero edges. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -60px 0 30%;
+  z-index: -1;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--ink) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  mask-image: radial-gradient(
+    540px 280px at 50% 18%,
+    rgb(0 0 0 / 70%),
+    transparent 75%
+  );
+}
+
+/* Hand-drawn accent underline that draws in under the key word. */
+.uline {
+  position: relative;
+  white-space: nowrap;
+}
+
+.uline svg {
+  position: absolute;
+  left: 0;
+  bottom: 0.02em;
+  width: 100%;
+  height: 0.14em;
+  overflow: visible;
+}
+
+.uline path {
+  fill: none;
+  stroke: color-mix(in oklab, var(--accent) 75%, transparent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 210;
+  stroke-dashoffset: 210;
+  animation: draw-underline 0.7s ease-out 0.55s forwards;
+}
+
+@keyframes draw-underline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Staggered entrance for hero content — rises in just after the nav, matching
+   the app mock's rise so the whole header reads as one entrance. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero > * {
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.12s;
+}
+
+.hero > :nth-child(2) {
+  animation-delay: 0.21s;
+}
+
+.hero > :nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.hero > :nth-child(4) {
+  animation-delay: 0.39s;
+}
+
+.hero > :nth-child(5) {
+  animation-delay: 0.48s;
+}
+
+.hero > :nth-child(6) {
+  animation-delay: 0.57s;
+}
+
+/* Scroll reveal: sections start hidden only once JS marks them pending,
+   so prerendered/no-JS pages stay fully visible. */
+[data-reveal] {
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-reveal].reveal-pending {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.hero h1 {
+  font-size: clamp(36px, 6vw, 58px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  max-width: 780px;
+  margin: 0 auto;
+  color: oklch(0.21 0 0);
+}
+
+.lde-star {
+  color: var(--accent);
+}
+
+.lde-expand {
+  margin: 9px auto 0;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--subtle);
+}
+
+.hero .sub {
+  margin: 22px auto 0;
+  color: var(--dim);
+  max-width: 600px;
+  font-size: 17.5px;
+  text-wrap: balance;
+}
+
+.fine {
+  margin-top: 14px;
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.providers {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 44px;
+  flex-wrap: wrap;
+}
+
+.providers .label {
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+/* Provider brand marks shown as a plain logo row (no pills). */
+.plogo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  color: var(--dim);
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.plogo:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+/* ── Hero app mock (interactive recreation of the bb app) ───────── */
+
+.mockup-wrap {
+  margin: 14px 0 8px;
+}
+
+/* No divider directly beneath the interactive demo. */
+.mockup-wrap + .band {
+  border-top: none;
+}
+
+.mock {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
+    0 30px 70px -32px color-mix(in oklab, var(--ink) 34%, transparent);
+}
+
+/* ── Self-constructing mock ───────────────────────────────────────────
+   On scroll-in the app assembles itself: frame drops in, title bar slides
+   down (dots pop), sidebar rows cascade from the left, then the
+   conversation rises and the composer settles in last. The `html.js` gate
+   holds it hidden from first paint; JS adds .constructing to play it.
+   Without JS the mock renders finished. */
+@keyframes c-frame {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes c-left {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes c-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* When JS is available, hold the whole mock hidden from the first paint until
+   it scrolls into view and assembles. No-JS/prerender skip the `js` class, so
+   the finished mock stays visible. */
+html.js .mock[data-construct]:not(.constructing):not(.constructed) {
+  opacity: 0;
+}
+
+.mock.constructing {
+  animation: c-frame 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* title bar drops down, traffic-light dots pop in */
+.mock.constructing .mock-bar {
+  animation: c-down 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.16s;
+}
+
+.mock.constructing .mock-dots i {
+  animation: c-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.mock.constructing .mock-dots i:nth-child(1) {
+  animation-delay: 0.3s;
+}
+
+.mock.constructing .mock-dots i:nth-child(2) {
+  animation-delay: 0.37s;
+}
+
+.mock.constructing .mock-dots i:nth-child(3) {
+  animation-delay: 0.44s;
+}
+
+/* sidebar rows cascade in from the left */
+.mock.constructing .side > *:not(.threads) {
+  animation: c-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mock.constructing .side > *:nth-child(1) {
+  animation-delay: 0.34s;
+}
+
+.mock.constructing .side > *:nth-child(2) {
+  animation-delay: 0.4s;
+}
+
+.mock.constructing .side > *:nth-child(3) {
+  animation-delay: 0.46s;
+}
+
+.mock.constructing .side > *:nth-child(4) {
+  animation-delay: 0.52s;
+}
+
+.mock.constructing .side > *:nth-child(5) {
+  animation-delay: 0.58s;
+}
+
+/* gear in the footer lands last */
+.mock.constructing .side > *:nth-child(7) {
+  animation-delay: 0.88s;
+}
+
+.mock.constructing .threads li {
+  animation: c-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* per-row delay set inline */
+}
+
+/* conversation rises message by message, composer settles in last */
+.mock.constructing .feed > * {
+  animation: c-up 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* per-message delay set inline */
+}
+
+.mock.constructing .main-new .composer,
+.mock.constructing .feed ~ .composer {
+  animation: c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 1s;
+}
+
+/* window title bar (mirrors the desktop app) */
+.mock-bar {
+  display: flex;
+  align-items: stretch;
+  height: 46px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.bar-left {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 210px;
+  flex-shrink: 0;
+  padding: 0 16px;
+  border-right: 1px solid var(--border-soft);
+}
+
+.bar-nav {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+  color: var(--subtle);
+}
+
+.bar-nav .ri {
+  width: 17px;
+  height: 17px;
+}
+
+.bar-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.bar-ic {
+  width: 17px;
+  height: 17px;
+  color: var(--subtle);
+}
+
+.bar-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-kebab {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.bar-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 7px;
+}
+
+.editor-ic {
+  width: 17px;
+  height: 17px;
+  border-radius: 3px;
+  display: block;
+}
+
+.chev-xs {
+  width: 13px;
+  height: 13px;
+  color: var(--subtle);
+}
+
+.commit-btn {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.mock-dots {
+  display: inline-flex;
+  gap: 7px;
+}
+
+.mock-dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.mock-dots i:nth-child(1) {
+  background: #ff5f57;
+}
+
+.mock-dots i:nth-child(2) {
+  background: #febc2e;
+}
+
+.mock-dots i:nth-child(3) {
+  background: #28c840;
+}
+
+.trow-pin .trow-title {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ri {
+  width: 18px;
+  height: 18px;
+}
+
+/* body: sidebar | main | (diff panel). position:relative anchors the mobile
+   sidebar drawer + backdrop. */
+.mock-body {
+  position: relative;
+  display: flex;
+  height: 520px;
+}
+
+/* Sidebar-toggle glyph in the title bar — decorative window chrome. */
+.bar-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+/* sidebar */
+.side {
+  display: flex;
+  flex-direction: column;
+  width: 210px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border-soft);
+  padding: 8px 8px 10px;
+  overflow: hidden;
+}
+
+.side-act {
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.active-act {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+  color: var(--ink);
+}
+
+.side-foot {
+  margin-top: auto;
+  padding: 6px 8px 2px;
+  color: var(--subtle);
+}
+
+.side-act {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.sa-ic {
+  width: 16px;
+  height: 16px;
+  color: var(--dim);
+}
+
+.side-label {
+  font-size: 11.5px;
+  color: var(--subtle);
+  padding: 13px 8px 5px;
+}
+
+.threads {
+  list-style: none;
+}
+
+.trow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--dim);
+  transition: background 0.14s ease;
+}
+
+.trow:hover {
+  background: var(--state-hover);
+}
+
+.trow.active {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+  color: var(--ink);
+}
+
+.trow-glyph {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.trow-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nested children of a thread that spawned subagents. Mirrors the real app:
+   indented rows with a hairline running under the parent's title start. */
+.thread-kids {
+  position: relative;
+  margin-top: 2px;
+}
+
+.thread-kids::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 2px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.8;
+}
+
+.kid-li {
+  animation: kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.trow-kid {
+  padding-left: 26px;
+}
+
+@keyframes kid-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Fixed-width centered box so every status (spinner / check / dot) aligns,
+   regardless of its own size. */
+.tstatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Status glyphs mirror the real app: all muted gray, no green/orange.
+   Working/done sit back; the needs-input bubble is a touch more present. */
+.trun {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--subtle);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tdone {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.twait {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+/* main thread pane */
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.main-new {
+  justify-content: flex-start;
+  padding: 16px 18px;
+}
+
+.feed {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.msg-user {
+  align-self: flex-start;
+  max-width: 94%;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.msg-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.step-chev {
+  width: 13px;
+  height: 13px;
+}
+
+.msg-say {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: oklch(0.28 0 0);
+  max-width: 58ch;
+}
+
+.msg-say code,
+.msg-step code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface-recessed);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* A running thread streams work in endlessly; anchor it to the bottom so the
+   newest rows stay visible and older ones clip past the top edge. */
+.feed-live {
+  justify-content: flex-end;
+}
+
+/* Tool line for a spawned subagent — its child appears nested in the sidebar. */
+.msg-spawn {
+  color: var(--dim);
+}
+
+.msg-spawn strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* AskUserQuestion tool — replaces the prompt box (recessed card in the
+   composer slot), mirroring the app's pending-interaction banner. */
+.askq {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-recessed);
+}
+
+.askq-q {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.askq-opts {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.askq-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.askq-opt:hover {
+  background: var(--state-hover);
+}
+
+.askq-opt.on {
+  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
+}
+
+.askq-radio {
+  margin-top: 1px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  color: var(--bg);
+}
+
+.askq-opt.on .askq-radio {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.askq-check {
+  width: 11px;
+  height: 11px;
+}
+
+.askq-text {
+  min-width: 0;
+}
+
+.askq-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.askq-desc {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--subtle);
+}
+
+.askq-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.askq-cancel {
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.askq-submit {
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* composer */
+.composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-soft);
+  padding: 12px 16px 14px;
+}
+
+.composer-new {
+  border-top: none;
+  padding: 0;
+}
+
+.pr-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 7px 11px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.pr-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.pr-strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pr-dim {
+  color: var(--subtle);
+}
+
+.pr-add {
+  color: var(--add);
+  font-weight: 500;
+}
+
+.pr-del {
+  color: var(--del);
+  font-weight: 500;
+}
+
+.pr-chev {
+  margin-left: auto;
+  color: var(--subtle);
+}
+
+.composer-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.composer-top {
+  position: relative;
+}
+
+.cb-expand {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--subtle);
+}
+
+.composer-input {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  min-height: 38px;
+  padding-right: 22px;
+}
+
+.composer-input::placeholder {
+  color: var(--subtle);
+}
+
+.composer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.model {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.model-ic {
+  width: 15px;
+  height: 15px;
+  color: var(--dim);
+}
+
+.chev-sm {
+  width: 14px;
+  height: 14px;
+  color: var(--subtle);
+}
+
+.composer-clip {
+  width: 16px;
+  height: 16px;
+  color: var(--subtle);
+}
+
+.composer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.send-ic {
+  width: 15px;
+  height: 15px;
+}
+
+/* Project / environment / branch / permission pickers under the prompt box. */
+.context-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+.ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--dim);
+}
+
+.ctx-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.ctx-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.ctx-branch {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.ctx-perm {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  color: var(--spark);
+  font-weight: 500;
+}
+
+.ctx-spin {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dim);
+  animation: spin 0.9s linear infinite;
+}
+
+/* Title-bar panel-right toggle (opens the diff panel). */
+.bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  border-radius: 7px;
+  color: var(--subtle);
+  cursor: pointer;
+}
+
+.bar-toggle:hover,
+.bar-toggle.active {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.bar-toggle .ri {
+  width: 17px;
+  height: 17px;
+}
+
+/* Diff / secondary panel. */
+.diff-panel {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  flex-shrink: 0;
+  min-width: 0;
+  border-left: 1px solid var(--border-soft);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.diff-ic {
+  width: 16px;
+  height: 16px;
+  color: var(--dim);
+}
+
+.diff-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.diff-stat {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.diff-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  color: var(--subtle);
+  cursor: pointer;
+}
+
+.diff-close:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.diff-close .ri {
+  width: 16px;
+  height: 16px;
+}
+
+.diff-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  font-size: 12px;
+  color: var(--dim);
+  background: var(--surface-recessed);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.diff-file-ic {
+  width: 13px;
+  height: 13px;
+  color: var(--subtle);
+}
+
+.diff-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+}
+
+.dl {
+  display: flex;
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.dl-sign {
+  width: 11px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.dl-text {
+  min-width: 0;
+}
+
+.dl-ctx {
+  color: var(--dim);
+}
+
+.dl-add {
+  background: color-mix(in oklab, var(--add) 13%, transparent);
+}
+
+.dl-add .dl-sign,
+.dl-add .dl-text {
+  color: color-mix(in oklab, var(--add) 62%, var(--ink));
+}
+
+.dl-del {
+  background: color-mix(in oklab, var(--del) 13%, transparent);
+}
+
+.dl-del .dl-sign,
+.dl-del .dl-text {
+  color: color-mix(in oklab, var(--del) 62%, var(--ink));
+}
+
+/* ── Bands ──────────────────────────────────────────────────────── */
+
+.band {
+  padding: 80px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.band-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: center;
+}
+
+.band-flip .band-copy {
+  order: 2;
+}
+
+.band-flip .band-visual {
+  order: 1;
+}
+
+.band h2 {
+  font-size: clamp(24px, 3.2vw, 34px);
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  color: oklch(0.21 0 0);
+}
+
+.band-copy p {
+  color: var(--dim);
+  margin-top: 18px;
+  font-size: 16px;
+  max-width: 32em;
+}
+
+.band-cta {
+  margin-top: 26px;
+}
+
+.band-copy .providers {
+  justify-content: flex-start;
+  margin-top: 26px;
+}
+
+.band-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* ── Band visual: Telegram-style chat with the bb bot ───────────── */
+
+.tg {
+  width: 100%;
+  max-width: 340px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 18px 50px -26px color-mix(in oklab, var(--ink) 32%, transparent);
+}
+
+/* contact bar */
+.tg-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.tg-back {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.tg-contact {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.tg-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tg-sub {
+  font-size: 11px;
+  color: var(--subtle);
+}
+
+.tg-av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-recessed);
+}
+
+.tg-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* wallpaper + messages */
+.tg-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 12px;
+  min-height: 236px;
+  background-color: oklch(0.95 0.025 150);
+  background-image:
+    radial-gradient(
+      color-mix(in oklab, oklch(0.45 0.06 150) 9%, transparent) 1px,
+      transparent 1.5px
+    ),
+    linear-gradient(165deg, oklch(0.96 0.02 155), oklch(0.92 0.035 140));
+  background-size:
+    17px 17px,
+    100% 100%;
+}
+
+/* The messages live in their own layer so they can fade out together at the end
+   of the loop while the wallpaper underneath stays put (no reset flash). */
+.tg-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-msgs.leaving {
+  animation: tg-leave 0.6s ease forwards;
+}
+
+@keyframes tg-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+.tg-msg {
+  display: flex;
+  max-width: 86%;
+  animation: tg-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.tg-out {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+.tg-in {
+  align-self: flex-start;
+}
+
+.tg-bubble {
+  padding: 7px 10px 7px 11px;
+  border-radius: 15px;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.tg-in .tg-bubble {
+  background: #fff;
+  color: oklch(0.28 0 0);
+  border-bottom-left-radius: 5px;
+}
+
+.tg-out .tg-bubble {
+  background: linear-gradient(180deg, #4ec264, #38ab53);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+
+.tg-time {
+  margin-left: 8px;
+  font-size: 10px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+/* The bb spawn command the bot runs, shown inline in its message. */
+.tg-cmd {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--surface-recessed);
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the bb thread card the bot spawns */
+.tg-thread {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  border-bottom-left-radius: 5px;
+  padding: 10px 11px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.tg-thread-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tg-thread-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tg-thread-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.tg-stat {
+  position: relative;
+  flex-shrink: 0;
+  width: 76px;
+  height: 18px;
+  margin-left: auto;
+}
+
+.tg-thread-title {
+  margin-top: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tg-thread-branch {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tg-stat-spawn,
+.tg-stat-run {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tg-stat-spawn {
+  color: var(--accent);
+  animation: tg-fade-out 0.35s ease forwards;
+}
+
+.tg-stat-run {
+  opacity: 0;
+  color: var(--ok);
+  animation: tg-fade-in 0.35s ease forwards;
+}
+
+.tg-spin {
+  width: 12px;
+  height: 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+.tg-rdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+/* composer */
+.tg-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.tg-attach {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.tg-field {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: 99px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.tg-send {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+}
+
+.tg-send-ic {
+  width: 15px;
+  height: 15px;
+  color: #fff;
+}
+
+@keyframes tg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tg-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes tg-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
+
+.mockup-wrap-automation {
+  width: min(100%, 360px);
+  margin: 0;
+}
+
+.mock-automation-mobile {
+  width: 100%;
+  border-radius: 22px;
+}
+
+.mock-automation-mobile .mock-bar {
+  height: 42px;
+}
+
+.mock-automation-mobile .bar-left {
+  width: auto;
+  gap: 10px;
+  padding: 0 10px 0 14px;
+}
+
+.mock-automation-mobile .bar-main {
+  padding: 0 12px;
+}
+
+.mock-automation-mobile .bar-actions {
+  display: none;
+}
+
+.automation-body {
+  height: 438px;
+  border-top: 0;
+}
+
+.automation-body.leaving {
+  animation: automation-leave 0.5s ease forwards;
+}
+
+.mock-automation-mobile .main {
+  min-height: 0;
+}
+
+.automation-feed {
+  padding: 18px 18px 16px;
+  gap: 11px;
+}
+
+.automation-msg {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: automation-msg-in 0.44s ease forwards;
+}
+
+.automation-tool {
+  color: var(--accent);
+}
+
+.automation-composer {
+  padding: 12px;
+}
+
+.automation-composer-box {
+  padding: 11px 12px;
+}
+
+.automation-typeahead {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding-right: 20px;
+  color: var(--ink);
+}
+
+.automation-type-text {
+  display: inline-block;
+  width: 0;
+  max-width: min(100%, var(--automation-prompt-width));
+  overflow: hidden;
+  white-space: nowrap;
+  animation:
+    automation-type 1.45s steps(28, end) 0.25s forwards,
+    automation-clear 0.2s ease 2.95s forwards;
+}
+
+.automation-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  flex-shrink: 0;
+  background: currentColor;
+  color: var(--ink);
+  animation:
+    automation-caret-blink 0.8s step-end infinite,
+    automation-clear 0.2s ease 2.95s forwards;
+}
+
+.automation-send {
+  animation: automation-send-pulse 0.42s ease 2.7s both;
+}
+
+.automation-context {
+  gap: 5px;
+}
+
+.automation-context .ctx {
+  max-width: 100%;
+}
+
+@keyframes automation-type {
+  to {
+    width: min(100%, var(--automation-prompt-width));
+  }
+}
+
+@keyframes automation-clear {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes automation-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes automation-send-pulse {
+  50% {
+    transform: translateY(-1px) scale(1.04);
+    box-shadow: 0 8px 18px -12px color-mix(in oklab, var(--ink) 60%, transparent);
+  }
+}
+
+@keyframes automation-msg-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes automation-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── Spawn sidebar (Band 5): a worker thread per provider, nested ──── */
+
+.spawnbar {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px 10px;
+}
+
+.sb-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sb-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sb-active {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.sb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-list.leaving {
+  animation: rc-leave 0.5s ease forwards;
+}
+
+.sb-thread {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  animation: rc-step 0.45s ease backwards;
+}
+
+.sb-parent {
+  background: var(--bg);
+  border-color: color-mix(in oklab, var(--accent) 32%, var(--bg));
+  box-shadow: 0 1px 10px color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.sb-prov {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+}
+
+.sb-parent .sb-prov {
+  background: var(--surface);
+}
+
+.sb-ic {
+  width: 15px;
+  height: 15px;
+  color: var(--ink);
+}
+
+.sb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sb-task {
+  font-size: 11.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* status: running → done flip, mirroring the run-receipt pill */
+.sb-stat {
+  position: relative;
+  flex-shrink: 0;
+  width: 70px;
+  height: 16px;
+}
+
+.sb-run,
+.sb-done {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sb-run {
+  color: var(--accent);
+  animation: rc-out 0.4s ease forwards;
+}
+
+.sb-done {
+  opacity: 0;
+  color: var(--ok);
+  animation: rc-in 0.4s ease forwards;
+}
+
+.sb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: rc-blink 1.1s ease-in-out infinite;
+}
+
+.sb-check {
+  width: 12px;
+  height: 12px;
+}
+
+/* nesting: workers sit under the parent on a connector rail */
+.sb-kids {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 24px;
+}
+
+.sb-kids::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: -6px;
+  bottom: 23px;
+  width: 1px;
+  background: var(--border);
+}
+
+.sb-kids .sb-thread::before {
+  content: "";
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  width: 13px;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Statement (Band 4) ─────────────────────────────────────────── */
+
+.statement {
+  border-top: 1px solid var(--border-soft);
+  padding: 84px 0;
+  text-align: center;
+}
+
+.statement .sec-title {
+  margin-bottom: 0;
+}
+
+.statement > p {
+  color: var(--dim);
+  max-width: 560px;
+  margin: 16px auto 0;
+}
+
+/* ── Section titles, closer, footer ─────────────────────────────── */
+
+.sec-title {
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin-bottom: 12px;
+  color: oklch(0.21 0 0);
+}
+
+.closer {
+  border-top: 1px solid var(--border-soft);
+  padding: 88px 0;
+  text-align: center;
+}
+
+.closer p {
+  color: var(--dim);
+  margin-top: 12px;
+}
+
+/* ── Email signup ───────────────────────────────────────────────── */
+
+/* A slim, secondary strip — deliberately lighter than the closer above it so
+   the two don't read as the same centered band twice. */
+.subscribe {
+  border-top: 1px solid var(--border-soft);
+  padding: 44px 0;
+  text-align: center;
+}
+
+.subscribe-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.subscribe p {
+  color: var(--dim);
+  margin-top: 5px;
+  font-size: 14px;
+}
+
+.subscribe-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 18px auto 0;
+  max-width: 440px;
+}
+
+.subscribe-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 10px 14px;
+  font-size: 14.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.subscribe-input::placeholder {
+  color: var(--subtle);
+}
+
+.subscribe-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.subscribe-input[aria-invalid="true"] {
+  border-color: var(--del);
+}
+
+.subscribe-btn {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.subscribe-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+/* The validation message takes the full width so it sits under the row. */
+.subscribe-error {
+  flex-basis: 100%;
+  color: var(--del);
+  font-size: 13.5px;
+}
+
+.subscribe-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.subscribe-done-ic {
+  width: 18px;
+  height: 18px;
+  color: var(--ok);
+  flex-shrink: 0;
+}
+
+.footer {
+  padding: 32px 0 52px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--subtle);
+  font-size: 14px;
+}
+
+.footer a:hover {
+  color: var(--ink);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 820px) {
+  .band-grid {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+
+  .band-flip .band-copy,
+  .band-flip .band-visual {
+    order: 0;
+  }
+
+  .band {
+    padding: 64px 0;
+  }
+
+  /* The stacked sidebar visual already shows every provider logo, so the
+     chip row under the copy is redundant on narrow screens. */
+  .band-copy .providers {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
+     radial that can't fade within the narrow mobile hero, leaving a tinted
+     rectangle with hard side edges/corners. Re-size it relative to the hero
+     so the wash fades on all sides. */
+  .hero::before {
+    background: radial-gradient(
+      78% 55% at 50% 6%,
+      color-mix(in oklab, var(--ink) 4.5%, transparent),
+      transparent 70%
+    );
+  }
+
+  /* The desktop dot-grid mask is sized in fixed px for the wide hero; on the
+     narrow mobile hero those values stretch past the edges, leaving a hard
+     full-width band of dots instead of a fading patch. Use a relative-sized
+     ellipse (narrower than the hero) so the field fades on all sides as
+     ambient texture. -webkit- prefix included for iOS Safari. */
+  .hero::after {
+    -webkit-mask-image: radial-gradient(
+      85% 48% at 50% 26%,
+      rgb(0 0 0 / 60%),
+      transparent 80%
+    );
+    mask-image: radial-gradient(
+      85% 48% at 50% 26%,
+      rgb(0 0 0 / 60%),
+      transparent 80%
+    );
+  }
+
+  /* Mobile shows the desktop layout at a legible scale, anchored left, so only
+     its left portion is on screen — the rest bleeds off the right edge.
+     Full-bleed the card across the viewport: pull both edges out to cancel
+     .wrap's 28px side padding, then re-inset the card with padding-left so it
+     still lines up with the page content. overflow-x clips the card's right
+     bleed, but because the clip box now reaches the left screen edge too, the
+     card's drop shadow fades into the left gutter instead of being shaved off
+     at the card's own edge. overflow-y stays visible so the bottom shadow and
+     the scroll-in entrance still show. */
+  .mockup-wrap:not(.mockup-wrap-automation) {
+    margin-left: -28px;
+    margin-right: -28px;
+    padding-left: 28px;
+    overflow-x: clip;
+  }
+
+  /* The mock keeps its full desktop width and is shrunk with `zoom` (which
+     reflows, so the card occupies its scaled size and the page below flows
+     normally). JS sets `--mock-scale` so a fixed slice of the app
+     (`--mock-visible-width`) fills the available width. Both vars are defined
+     only here, so the mock is unscaled above this breakpoint; the fallback
+     scale covers the pre-hydration/no-JS paint. */
+  .mockup-wrap:not(.mockup-wrap-automation) .mock {
+    --mock-desktop-width: 980px;
+    --mock-visible-width: 560px;
+    width: var(--mock-desktop-width);
+    zoom: var(--mock-scale, 0.62);
+  }
+
+  /* Left-align the centered statement on mobile so it reads like the bands
+     above it instead of centered multi-line text on a narrow screen. */
+  .statement {
+    text-align: left;
+  }
+
+  .statement .cta-row {
+    justify-content: flex-start;
+  }
+
+  /* Stack the two CTAs full-width so neither wraps awkwardly. */
+  .install-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-install {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .nav,
+  .hero > * {
+    animation: none;
+  }
+
+  .uline path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .trun {
+    animation: none;
+  }
+
+  .automation-body,
+  .automation-msg,
+  .automation-type-text,
+  .automation-caret,
+  .automation-send {
+    animation: none;
+  }
+
+  .automation-msg {
+    opacity: 1;
+    transform: none;
+  }
+
+  .automation-type-text {
+    clip-path: none;
+    opacity: 0;
+  }
+
+  .automation-caret {
+    opacity: 0;
+  }
+
+  .tg-msg,
+  .tg-stat-spawn,
+  .tg-stat-run,
+  .tg-spin {
+    animation: none;
+  }
+
+  .sb-thread,
+  .sb-run,
+  .sb-done,
+  .sb-dot {
+    animation: none;
+  }
+
+  /* Static settled sidebar when motion is reduced: every thread done. */
+  .sb-run {
+    opacity: 0;
+  }
+
+  .sb-done {
+    opacity: 1;
+  }
+
+  /* Static spawned thread when motion is reduced. */
+  .tg-stat-spawn {
+    opacity: 0;
+  }
+
+  .tg-stat-run {
+    opacity: 1;
+  }
+
+  .btn,
+  .plogo,
+  .trow,
+  .side,
+  [data-reveal] {
+    transition: none;
+  }
+
+  /* The mock construction is JS-gated off here, but keep it inert as a
+     safety net so the finished app always shows. */
+  html.js .mock[data-construct]:not(.constructing):not(.constructed) {
+    opacity: 1;
+  }
+
+  .mock.constructing,
+  .mock.constructing .mock-bar,
+  .mock.constructing .mock-dots i,
+  .mock.constructing .side > *,
+  .mock.constructing .threads li,
+  .mock.constructing .feed > *,
+  .mock.constructing .composer,
+  .kid-li {
+    animation: none;
+  }
+}

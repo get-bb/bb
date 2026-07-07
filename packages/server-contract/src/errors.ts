@@ -28,7 +28,6 @@ export const domainErrorCodeSchema = z.enum([
   "host_unavailable",
   "project_unavailable",
   "parent_thread_invalid",
-  "automation_not_found",
 ]);
 
 /** Base public error envelope shared by server routes. Route-specific schemas

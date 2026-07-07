@@ -1,4 +1,4 @@
-import { Icon, ICON_NAMES, type IconName } from "./icon";
+import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -39,6 +39,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   CornerDownLeft: "Mod+Enter submit hint in prompt footer",
   CornerDownRight:
     "Queued message indicator, steer/edit request label marker in conversation",
+  Discord: "Join Discord link in sidebar footer",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
   File: "Right-panel markdown/doc file visual, Open file action",

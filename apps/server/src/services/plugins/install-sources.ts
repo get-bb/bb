@@ -10,6 +10,7 @@ import { spawnPortableOutputProcess } from "@bb/process-utils";
  */
 export type ParsedPluginSource =
   | { kind: "path"; path: string }
+  | { kind: "builtin"; name: string }
   | {
       kind: "git";
       /** Clone URL (https, or an on-disk repo path). */
@@ -25,6 +26,7 @@ const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 // Loose npm package-name shape; enough to keep names safe as path segments.
 const NPM_NAME_PATTERN =
   /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+const BUILTIN_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export function isCommitSha(ref: string): boolean {
   return COMMIT_SHA_PATTERN.test(ref);
@@ -105,8 +107,18 @@ function parseNpmSource(spec: string): ParsedPluginSource {
   return { kind: "npm", name, version };
 }
 
+function parseBuiltinSource(spec: string): ParsedPluginSource {
+  if (!BUILTIN_NAME_PATTERN.test(spec)) {
+    throw new Error(
+      `invalid builtin plugin name "${spec}" — use lowercase letters, digits, and dashes`,
+    );
+  }
+  return { kind: "builtin", name: spec };
+}
+
 /** Parse an install source spec. Bare strings are treated as local paths. */
 export function parsePluginSource(source: string): ParsedPluginSource {
+  if (source.startsWith("builtin:")) return parseBuiltinSource(source.slice(8));
   if (source.startsWith("git:")) return parseGitSource(source.slice(4));
   if (source.startsWith("npm:")) return parseNpmSource(source.slice(4));
   const path = source.startsWith("path:") ? source.slice(5) : source;
@@ -203,9 +215,7 @@ export async function runInstallCommand(
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(
-        new Error(`${command} ${args[0]} timed out after ${timeoutMs}ms`),
-      );
+      reject(new Error(`${command} ${args[0]} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     timer.unref?.();
     child.on("error", (error: NodeJS.ErrnoException) => {

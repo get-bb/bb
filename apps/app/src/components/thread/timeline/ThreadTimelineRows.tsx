@@ -47,7 +47,7 @@ import {
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   collectTimelineAutoExpansionRowIds,
   isNonExpandableSummary,
@@ -82,12 +82,12 @@ import {
 } from "./TimelineTitleView.js";
 import { WorkRowBody } from "./TimelineRowDetails.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
-import { Button } from "../../ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   collectSearchedMessageAncestorRowIds,
   readSearchMessageTarget,

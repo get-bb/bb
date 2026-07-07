@@ -1,6 +1,7 @@
 import {
   FilePreview as FilePreviewSurface,
   type FilePreviewFile,
+  type TextFilePreviewKind,
 } from "./FilePreview";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { HttpError } from "@/lib/api";
@@ -11,7 +12,11 @@ import type {
   TextFilePreview,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
-import { isHtmlFilePreviewPath } from "@/lib/file-preview";
+import {
+  isCsvFilePreview,
+  isHtmlFilePreviewPath,
+  isMarkdownFilePreview,
+} from "@/lib/file-preview";
 
 // Generic HTML comes from arbitrary worktree/storage files. Allow scripts for
 // realistic previews, but omit allow-same-origin so the frame gets an opaque
@@ -77,6 +82,18 @@ function buildTextPreviewFile({
     name: filePreview.name ?? activePath,
     contents: filePreview.content,
   };
+}
+
+function getTextPreviewKind(
+  filePreview: TextFilePreview,
+): TextFilePreviewKind | null {
+  if (isCsvFilePreview(filePreview)) {
+    return "csv";
+  }
+  if (isMarkdownFilePreview(filePreview)) {
+    return "markdown";
+  }
+  return null;
 }
 
 export function SecondaryPanelFilePreview({
@@ -183,7 +200,7 @@ export function SecondaryPanelFilePreview({
         state={{
           kind: "ready",
           lineRange,
-          showMarkdownModeToggle: true,
+          textPreviewKind: getTextPreviewKind(filePreview),
           file: buildTextPreviewFile({ activePath, filePreview }),
         }}
       />

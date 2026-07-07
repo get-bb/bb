@@ -1,5 +1,5 @@
 {
-  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under apps/app/src/components/ui that are published as registry:ui items; every file in their transitive @/-import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. BB-specific components sharing the directory are excluded until deliberately listed. `overrides` swaps app-internal files for plugin flavors (paths relative to apps/app/src → packages/plugin-registry/src). `dependencyPins` forces npm versions where latest breaks the vendored source.",
+  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill, empty-state) are excluded until deliberately listed. `overrides` can swap a shared-ui source file for a registry-only flavor (paths relative to packages/shared-ui/src → packages/plugin-registry/src); it is empty because @bb/shared-ui already ships the plugin/no-op flavor of the two environment leaves (portal-scope, useBrowserDimmingModal) and the app injects its own flavors at build time. `dependencyPins` forces npm versions where latest breaks the vendored source.",
   "uiItems": [
     "accordion",
     "alert",
@@ -47,8 +47,5 @@
     "tooltip"
   ],
   "dependencyPins": {},
-  "overrides": {
-    "lib/portal-scope.ts": "src/lib/portal-scope.ts",
-    "hooks/useBrowserDimmingModal.ts": "src/hooks/useBrowserDimmingModal.ts"
-  }
+  "overrides": {}
 }

@@ -37,9 +37,9 @@ import {
 
 /**
  * Plugin frontend bundle loading (plugin design §5.1). Once per page load,
- * after system config resolves the `plugins` experiment: expose the shared
+ * after system config resolves: expose the shared
  * runtime on `globalThis.__bbPluginRuntime`, fetch the plugin inventory, and
- * for each enabled+running plugin with a compatible bundle link its CSS and
+ * for each running plugin with a compatible bundle link its CSS and
  * dynamic-import() its JS. Per-plugin containment: a bundle that fails to
  * import records status "failed" and never breaks the app or other plugins;
  * an SDK-major-mismatched bundle records "needs-update" and is skipped.
@@ -222,7 +222,7 @@ function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
   );
 }
 
-/** Enabled + running plugins with a servable bundle, from GET /api/v1/plugins. */
+/** Running plugins with a servable bundle, from GET /api/v1/plugins. */
 async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   const response = await fetch("/api/v1/plugins");
   // Nothing to load rather than an error: an older server or a disabled
@@ -237,7 +237,6 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   for (const entry of body.plugins) {
     const typed = entry as {
       id?: unknown;
-      enabled?: unknown;
       status?: unknown;
       logoUrl?: unknown;
       logoDarkUrl?: unknown;
@@ -250,7 +249,7 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
     if (logoUrl !== null || logoDarkUrl !== null) {
       logoUrls.set(typed.id, { logoUrl, logoDarkUrl });
     }
-    if (typed.enabled !== true || typed.status !== "running") {
+    if (typed.status !== "running") {
       continue;
     }
     const bundle = typed.app?.bundle;
@@ -444,8 +443,8 @@ export function getPluginFrontendRecords(): ReadonlyMap<
 }
 
 /**
- * Idempotent per page load. Called after system config confirms the
- * `plugins` experiment; runs entirely off the first-paint path.
+ * Idempotent per page load. Called after system config resolves; runs entirely
+ * off the first-paint path.
  */
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {

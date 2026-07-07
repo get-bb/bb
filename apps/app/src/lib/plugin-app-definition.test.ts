@@ -52,6 +52,12 @@ describe("collectPluginAppRegistrations", () => {
         run,
       });
       app.slots.composerAccessory({ id: "picker", component: Component });
+      app.slots.fileOpener({
+        id: "editor",
+        title: "Notes editor",
+        extensions: ["md", "mdx"],
+        component: Component,
+      });
     });
 
     const registrations = collectPluginAppRegistrations(definition);
@@ -74,6 +80,14 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
+    ]);
+    expect(registrations.fileOpeners).toEqual([
+      {
+        id: "editor",
+        title: "Notes editor",
+        extensions: ["md", "mdx"],
+        component: Component,
+      },
     ]);
   });
 
@@ -112,6 +126,32 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"path" must match/,
+    ],
+    [
+      "file opener with no extensions",
+      () =>
+        definePluginApp((app) => {
+          app.slots.fileOpener({
+            id: "x",
+            title: "X",
+            extensions: [],
+            component: Component,
+          });
+        }),
+      /"extensions" must be a non-empty array/,
+    ],
+    [
+      "file opener with a dotted extension",
+      () =>
+        definePluginApp((app) => {
+          app.slots.fileOpener({
+            id: "x",
+            title: "X",
+            extensions: [".md"],
+            component: Component,
+          });
+        }),
+      /extensions must be lowercase alphanumerics/,
     ],
     [
       "thread panel action with a non-function run",

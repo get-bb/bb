@@ -88,7 +88,8 @@ export const ExecutionControls = memo(function ExecutionControls({
     model.loadFailed ||
     model.options.length > 0 ||
     canSwitchProviders ||
-    selectedProviderId.length > 0;
+    selectedProviderId.length > 0 ||
+    footerAction !== undefined;
 
   return (
     <>

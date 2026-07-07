@@ -250,6 +250,12 @@ function ExperimentsStory({
           popoutChatHotkey,
         }))
       }
+      onMultiMachineEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          multiMachine: enabled,
+        }))
+      }
       onPluginsEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
@@ -262,6 +268,7 @@ function ExperimentsStory({
           uiForking: enabled,
         }))
       }
+      multiMachineEnabled={state.experiments.multiMachine}
       pluginsEnabled={state.experiments.plugins}
       popoutChatEnabled={state.experiments.popoutChat}
       popoutChatHotkey={state.experiments.popoutChatHotkey}

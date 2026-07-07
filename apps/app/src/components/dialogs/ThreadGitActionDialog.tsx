@@ -9,9 +9,9 @@ import {
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.js";
+} from "@bb/shared-ui/dialog";
 import {
   getMergeBaseBranchCandidateGroups,
   BranchPicker,

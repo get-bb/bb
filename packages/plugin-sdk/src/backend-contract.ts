@@ -132,6 +132,7 @@ export interface PluginStorage {
  * block or veto it. `thread` is the same public DTO GET /threads/:id serves.
  */
 export interface PluginThreadEventPayloads {
+  /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `idle`. `lastAssistantText` is
    * assembled the same way GET /threads/:id/output is. */
@@ -139,6 +140,8 @@ export interface PluginThreadEventPayloads {
   /** Fired when a thread transitions into `error`. `error` is the latest
    * system/error event message, when one exists. */
   "thread.failed": { thread: ThreadResponse; error: string | null };
+  /** Fired after a thread is soft-deleted. */
+  "thread.deleted": { thread: ThreadResponse };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -433,6 +436,21 @@ export interface PluginUi {
 }
 
 // ---------------------------------------------------------------------------
+// Server info.
+// ---------------------------------------------------------------------------
+
+export interface PluginServerApi {
+  /**
+   * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
+   * which serves the SPA + /api + /ws. For plugins that proxy or relay
+   * traffic back to the server itself (e.g. a tunnel). Bind-gated like
+   * `bb.sdk`: reading it before the server is listening throws, so prefer
+   * reading it from handlers, services, and timers.
+   */
+  readonly loopbackBaseUrl: string;
+}
+
+// ---------------------------------------------------------------------------
 // Status + the API root.
 // ---------------------------------------------------------------------------
 
@@ -477,6 +495,8 @@ export interface BbPluginApi {
   readonly ui: PluginUi;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
+  /** Read-only facts about the running server (loopback base URL). */
+  readonly server: PluginServerApi;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

@@ -63,7 +63,6 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     appUrl: "https://ambient-app.example.test",
     appSurface: "web",
     appVersion: "0.0.0-test",
-    automationsAllowScriptRuns: true,
     builtinSkillsRootPath: "/tmp/bb-test/builtin-skills",
     customAcpAgents: [],
     customModels: [],

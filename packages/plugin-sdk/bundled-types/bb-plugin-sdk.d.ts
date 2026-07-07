@@ -27,6 +27,15 @@ interface PluginHomepageSectionProps {
 }
 /** Props passed to a `navPanel` component (it owns its whole route). */
 interface PluginNavPanelProps {
+    /**
+     * The route remainder after the panel root, "" at the root. The panel's
+     * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
+     * `/plugins/notes/notes/work/ideas.md` renders the panel with
+     * `subPath: "work/ideas.md"`. Navigate within the panel via
+     * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
+     * back/forward then walks panel-internal history.
+     */
+    subPath: string;
 }
 /** Props passed to a panel tab opened by a `threadPanelAction`. */
 interface PluginThreadPanelProps {
@@ -42,6 +51,23 @@ interface PluginThreadPanelProps {
 interface PluginComposerAccessoryProps {
     projectId: string | null;
     threadId: string | null;
+}
+/**
+ * Where a file being opened by a `fileOpener` lives. `path` semantics follow
+ * the source: workspace paths are relative to the environment's worktree,
+ * thread-storage paths are relative to the thread's storage root, host paths
+ * are absolute on the thread's host.
+ */
+interface PluginFileOpenerSource {
+    kind: "workspace" | "host" | "thread-storage";
+    threadId: string | null;
+    environmentId: string | null;
+    projectId: string | null;
+}
+/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
+interface PluginFileOpenerProps {
+    path: string;
+    source: PluginFileOpenerSource;
 }
 /**
  * Slot/panel ids and nav-panel paths must match this pattern (letters,
@@ -121,11 +147,30 @@ interface PluginComposerAccessoryRegistration {
     id: string;
     component: ComponentType<PluginComposerAccessoryProps>;
 }
+/**
+ * Register this plugin as a viewer/editor for file extensions. The user
+ * picks (and can set as default) an opener per extension via the file tab's
+ * "Open with" menu; matching files opened in the panel then render
+ * `component` in a plugin tab instead of the built-in preview. Applies to
+ * working-tree, host, and thread-storage files — never to git-ref snapshots
+ * (diff views always use the built-in preview). The built-in preview stays
+ * one menu click away, and a missing/disabled opener falls back to it.
+ */
+interface PluginFileOpenerRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Label in the "Open with" menu (e.g. "Notes editor"). */
+    title: string;
+    /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+    extensions: readonly string[];
+    component: ComponentType<PluginFileOpenerProps>;
+}
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
     navPanel(registration: PluginNavPanelRegistration): void;
     threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
     composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+    fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
@@ -158,6 +203,47 @@ interface PluginSettingsState {
     values: Record<string, string | boolean> | undefined;
     isLoading: boolean;
 }
+/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
+type PluginComposerScope = {
+    kind: "thread";
+    threadId: string;
+} | {
+    kind: "new-thread";
+    projectId: string | null;
+};
+/** An @-mention pill bound to one of the calling plugin's mention providers. */
+interface PluginComposerMention {
+    /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
+    provider: string;
+    /** Item id your provider's `resolve` will receive at send time. */
+    id: string;
+    /** Pill text shown in the composer. */
+    label: string;
+}
+/**
+ * Programmatic access to the chat composer draft — the same shared draft the
+ * built-in "Add to chat" affordances (file preview, diff, terminal selections)
+ * write to. Inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread
+ * composer draft, which persists until the user sends or clears it.
+ */
+interface PluginComposerApi {
+    scope: PluginComposerScope;
+    /**
+     * Append text to the draft as a `> ` blockquote block and focus the
+     * composer. Blank text is a no-op. This is the "reference this selection
+     * in chat" primitive.
+     */
+    addQuote(text: string): void;
+    /**
+     * Insert an @-mention pill that resolves through this plugin's mention
+     * provider at send time — the durable way to reference an entity whose
+     * content should be fetched fresh when the message is sent.
+     */
+    insertMention(mention: PluginComposerMention): void;
+    /** Focus the composer caret at the end of the draft. */
+    focus(): void;
+}
 /** Current app selection, derived from the route. */
 interface BbContext {
     projectId: string | null;
@@ -166,8 +252,26 @@ interface BbContext {
 interface BbNavigate {
     toThread(threadId: string): void;
     toProject(projectId: string): void;
-    /** Navigate to one of this plugin's own nav panels by its `path`. */
-    toPluginPanel(path: string): void;
+    /**
+     * Navigate to one of this plugin's own nav panels by its `path`.
+     * `subPath` targets a location inside the panel (the component's
+     * `subPath` prop); `replace` swaps the current history entry instead of
+     * pushing — use it for redirects so back does not bounce.
+     */
+    toPluginPanel(path: string, options?: {
+        subPath?: string;
+        replace?: boolean;
+    }): void;
+    /**
+     * Navigate to the root compose surface (the new-thread screen). Pass
+     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
+     * composer on arrival — the pairing behind "Create via chat" style entry
+     * points that drop the user into chat with a prefilled prompt.
+     */
+    toCompose(options?: {
+        initialPrompt?: string;
+        focusPrompt?: boolean;
+    }): void;
 }
 /**
  * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
@@ -181,6 +285,7 @@ interface PluginSdkApp {
     useSettings(): PluginSettingsState;
     useBbContext(): BbContext;
     useBbNavigate(): BbNavigate;
+    useComposer(): PluginComposerApi;
 }
 /**
  * Named runtime exports of `@bb/plugin-sdk/app`, in sorted order. Single
@@ -188,7 +293,7 @@ interface PluginSdkApp {
  * implementation-key test — adding a surface member without updating this
  * list fails the type assertion below.
  */
-declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useRealtime", "useRpc", "useSettings"];
+declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useComposer", "useRealtime", "useRpc", "useSettings"];
 
 declare const appThemeSchema: z$1.ZodObject<{
     themeId: z$1.ZodString;
@@ -244,8 +349,6 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         "project-sources-changed": "project-sources-changed";
         "threads-changed": "threads-changed";
         "project-order-changed": "project-order-changed";
-        "automations-changed": "automations-changed";
-        "automation-runs-changed": "automation-runs-changed";
     }>>>;
 }, z$1.core.$strict>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"changed">;
@@ -329,155 +432,13 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
 type ThreadTimelinePendingTodos = z$1.infer<typeof threadTimelinePendingTodosSchema>;
-
-declare const createAutomationRequestSchema: z$1.ZodObject<{
-    name: z$1.ZodString;
-    enabled: z$1.ZodDefault<z$1.ZodBoolean>;
-    trigger: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        triggerType: z$1.ZodLiteral<"schedule">;
-        cron: z$1.ZodString;
-        timezone: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        triggerType: z$1.ZodLiteral<"once">;
-        runAt: z$1.ZodNumber;
-    }, z$1.core.$strip>], "triggerType">;
-    execution: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        mode: z$1.ZodLiteral<"agent">;
-        prompt: z$1.ZodString;
-        providerId: z$1.ZodString;
-        model: z$1.ZodString;
-        permissionMode: z$1.ZodEnum<{
-            readonly: "readonly";
-            full: "full";
-            "workspace-write": "workspace-write";
-        }>;
-        targetThreadId: z$1.ZodOptional<z$1.ZodString>;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        mode: z$1.ZodLiteral<"script">;
-        script: z$1.ZodOptional<z$1.ZodString>;
-        scriptFile: z$1.ZodOptional<z$1.ZodString>;
-        interpreter: z$1.ZodOptional<z$1.ZodEnum<{
-            bash: "bash";
-            sh: "sh";
-            node: "node";
-            python3: "python3";
-        }>>;
-        timeoutMs: z$1.ZodDefault<z$1.ZodNumber>;
-        env: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodString>>;
-    }, z$1.core.$strip>], "mode">;
-    environment: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        type: z$1.ZodLiteral<"reuse">;
-        environmentId: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        type: z$1.ZodLiteral<"host">;
-        hostId: z$1.ZodOptional<z$1.ZodString>;
-        workspace: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-            type: z$1.ZodLiteral<"unmanaged">;
-            path: z$1.ZodNullable<z$1.ZodString>;
-            branch: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"existing">;
-                name: z$1.ZodString;
-            }, z$1.core.$strict>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"new">;
-                baseBranch: z$1.ZodString;
-            }, z$1.core.$strict>], "kind">>;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            type: z$1.ZodLiteral<"managed-worktree">;
-            baseBranch: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"named">;
-                name: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"default">;
-            }, z$1.core.$strip>], "kind">;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            type: z$1.ZodLiteral<"personal">;
-        }, z$1.core.$strip>], "type">;
-    }, z$1.core.$strip>], "type">;
-    autoArchive: z$1.ZodDefault<z$1.ZodBoolean>;
-    origin: z$1.ZodEnum<{
-        agent: "agent";
-        human: "human";
-        app: "app";
-    }>;
-    createdByThreadId: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strict>;
-type CreateAutomationRequest = z$1.input<typeof createAutomationRequestSchema>;
-declare const updateAutomationRequestSchema: z$1.ZodObject<{
-    name: z$1.ZodOptional<z$1.ZodString>;
-    trigger: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        triggerType: z$1.ZodLiteral<"schedule">;
-        cron: z$1.ZodString;
-        timezone: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        triggerType: z$1.ZodLiteral<"once">;
-        runAt: z$1.ZodNumber;
-    }, z$1.core.$strip>], "triggerType">>;
-    execution: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        mode: z$1.ZodLiteral<"agent">;
-        prompt: z$1.ZodString;
-        providerId: z$1.ZodString;
-        model: z$1.ZodString;
-        permissionMode: z$1.ZodEnum<{
-            readonly: "readonly";
-            full: "full";
-            "workspace-write": "workspace-write";
-        }>;
-        targetThreadId: z$1.ZodOptional<z$1.ZodString>;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        mode: z$1.ZodLiteral<"script">;
-        script: z$1.ZodOptional<z$1.ZodString>;
-        scriptFile: z$1.ZodOptional<z$1.ZodString>;
-        interpreter: z$1.ZodOptional<z$1.ZodEnum<{
-            bash: "bash";
-            sh: "sh";
-            node: "node";
-            python3: "python3";
-        }>>;
-        timeoutMs: z$1.ZodDefault<z$1.ZodNumber>;
-        env: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodString>>;
-    }, z$1.core.$strip>], "mode">>;
-    environment: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        type: z$1.ZodLiteral<"reuse">;
-        environmentId: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        type: z$1.ZodLiteral<"host">;
-        hostId: z$1.ZodOptional<z$1.ZodString>;
-        workspace: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-            type: z$1.ZodLiteral<"unmanaged">;
-            path: z$1.ZodNullable<z$1.ZodString>;
-            branch: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"existing">;
-                name: z$1.ZodString;
-            }, z$1.core.$strict>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"new">;
-                baseBranch: z$1.ZodString;
-            }, z$1.core.$strict>], "kind">>;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            type: z$1.ZodLiteral<"managed-worktree">;
-            baseBranch: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"named">;
-                name: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"default">;
-            }, z$1.core.$strip>], "kind">;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            type: z$1.ZodLiteral<"personal">;
-        }, z$1.core.$strip>], "type">;
-    }, z$1.core.$strip>], "type">>;
-    autoArchive: z$1.ZodOptional<z$1.ZodBoolean>;
-}, z$1.core.$strict>;
-type UpdateAutomationRequest = z$1.infer<typeof updateAutomationRequestSchema>;
-declare const runAutomationRequestSchema: z$1.ZodObject<{
-    idempotencyKey: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strict>;
-type RunAutomationRequest = z$1.infer<typeof runAutomationRequestSchema>;
 
 declare const createProjectSourceRequestSchema: z$1.ZodObject<{
     hostId: z$1.ZodString;
@@ -671,7 +632,6 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
     origin: z$1.ZodEnum<{
         plugin: "plugin";
         app: "app";
-        automation: "automation";
         cli: "cli";
         sdk: "sdk";
     }>;
@@ -1121,59 +1081,6 @@ type PublicApiEndpointOutput<TEndpoint> = TEndpoint extends {
 type SuccessfulHttpStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207 | 208 | 226;
 type PublicApiOutput<TPath extends keyof PublicApiSchema, TMethod extends keyof PublicApiSchema[TPath]> = PublicApiEndpointOutput<PublicApiSchema[TPath][TMethod]>;
 
-interface AutomationCreateArgs extends CreateAutomationRequest {
-    projectId?: string;
-}
-interface AutomationListArgs {
-    projectId?: string;
-}
-interface AutomationGetArgs {
-    projectId?: string;
-    automationId: string;
-}
-interface AutomationUpdateArgs extends UpdateAutomationRequest {
-    projectId?: string;
-    automationId: string;
-}
-interface AutomationActionArgs {
-    projectId?: string;
-    automationId: string;
-}
-interface AutomationRunArgs extends RunAutomationRequest {
-    projectId?: string;
-    automationId: string;
-}
-interface AutomationRunsArgs {
-    projectId?: string;
-    automationId: string;
-    limit?: number;
-    cursor?: string;
-}
-type AutomationCreateResult = PublicApiOutput<"/projects/:id/automations", "$post">;
-type AutomationListResult = PublicApiOutput<"/projects/:id/automations", "$get">;
-type AutomationGetResult = PublicApiOutput<"/projects/:id/automations/:automationId", "$get">;
-type AutomationUpdateResult = PublicApiOutput<"/projects/:id/automations/:automationId", "$patch">;
-type AutomationPauseResult = PublicApiOutput<"/projects/:id/automations/:automationId/pause", "$post">;
-type AutomationResumeResult = PublicApiOutput<"/projects/:id/automations/:automationId/resume", "$post">;
-type AutomationRunResult = PublicApiOutput<"/projects/:id/automations/:automationId/run", "$post">;
-type AutomationRunsResult = PublicApiOutput<"/projects/:id/automations/:automationId/runs", "$get">;
-type AutomationsOverviewResult = PublicApiOutput<"/automations", "$get">;
-interface AutomationsArea {
-    create(args: AutomationCreateArgs): Promise<AutomationCreateResult>;
-    delete(args: AutomationActionArgs): Promise<{
-        ok: true;
-    }>;
-    get(args: AutomationGetArgs): Promise<AutomationGetResult>;
-    list(args?: AutomationListArgs): Promise<AutomationListResult>;
-    overview(): Promise<AutomationsOverviewResult>;
-    pause(args: AutomationActionArgs): Promise<AutomationPauseResult>;
-    resume(args: AutomationActionArgs): Promise<AutomationResumeResult>;
-    run(args: AutomationRunArgs): Promise<AutomationRunResult>;
-    runs(args: AutomationRunsArgs): Promise<AutomationRunsResult>;
-    update(args: AutomationUpdateArgs): Promise<AutomationUpdateResult>;
-}
-declare function createAutomationsArea(args: CreateSdkAreaArgs): AutomationsArea;
-
 interface EnvironmentGetArgs {
     environmentId: string;
 }
@@ -1236,6 +1143,48 @@ interface EnvironmentsArea {
     update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
 }
 declare function createEnvironmentsArea(args: CreateSdkAreaArgs): EnvironmentsArea;
+
+/**
+ * Host file primitives. `hostId` may be omitted to target the server's
+ * primary (local) host. `rootPath`, when set, confines the target beneath
+ * that absolute root on the host (symlink-safe).
+ */
+interface FileReadArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+}
+interface FileWriteArgs {
+    hostId?: string;
+    path: string;
+    rootPath?: string;
+    content: string;
+    /** Defaults to "utf8". */
+    contentEncoding?: "utf8" | "base64";
+    /** Defaults to false. */
+    createParents?: boolean;
+    /**
+     * Optimistic-concurrency guard: omitted → unconditional write; a hash →
+     * write only when the current content hashes to it (use `read().sha256`);
+     * null → create-only. A failed guard resolves to the `conflict` outcome.
+     */
+    expectedSha256?: string | null;
+}
+interface FileListArgs {
+    hostId?: string;
+    path: string;
+    query?: string;
+    limit?: number;
+}
+type FileReadResult = PublicApiOutput<"/files/read", "$post">;
+type FileWriteResult = PublicApiOutput<"/files/write", "$post">;
+type FileListResult = PublicApiOutput<"/files/list", "$post">;
+interface FilesArea {
+    read(args: FileReadArgs): Promise<FileReadResult>;
+    write(args: FileWriteArgs): Promise<FileWriteResult>;
+    list(args: FileListArgs): Promise<FileListResult>;
+}
+declare function createFilesArea(args: CreateSdkAreaArgs): FilesArea;
 
 interface GuideRenderArgs {
     chapter?: string;
@@ -1621,8 +1570,8 @@ interface ThreadsArea {
 declare function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea;
 
 interface BbSdk extends BbRealtime {
-    automations: ReturnType<typeof createAutomationsArea>;
     environments: ReturnType<typeof createEnvironmentsArea>;
+    files: ReturnType<typeof createFilesArea>;
     guide: ReturnType<typeof createGuideArea>;
     hosts: ReturnType<typeof createHostsArea>;
     projects: ReturnType<typeof createProjectsArea>;
@@ -1730,6 +1679,7 @@ interface PluginStorage {
  * block or veto it. `thread` is the same public DTO GET /threads/:id serves.
  */
 interface PluginThreadEventPayloads {
+    /** Fired after a thread row is created. */
     "thread.created": {
         thread: ThreadResponse;
     };
@@ -1744,6 +1694,10 @@ interface PluginThreadEventPayloads {
     "thread.failed": {
         thread: ThreadResponse;
         error: string | null;
+    };
+    /** Fired after a thread is soft-deleted. */
+    "thread.deleted": {
+        thread: ThreadResponse;
     };
 }
 type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -1976,6 +1930,16 @@ interface PluginUi {
      */
     registerMentionProvider(provider: PluginMentionProviderRegistration): void;
 }
+interface PluginServerApi {
+    /**
+     * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
+     * which serves the SPA + /api + /ws. For plugins that proxy or relay
+     * traffic back to the server itself (e.g. a tunnel). Bind-gated like
+     * `bb.sdk`: reading it before the server is listening throws, so prefer
+     * reading it from handlers, services, and timers.
+     */
+    readonly loopbackBaseUrl: string;
+}
 interface PluginStatusApi {
     /**
      * Mark this plugin `needs-configuration` (with a message shown in
@@ -2016,6 +1980,8 @@ interface BbPluginApi {
     readonly ui: PluginUi;
     /** Plugin-reported status (needs-configuration). */
     readonly status: PluginStatusApi;
+    /** Read-only facts about the running server (loopback base URL). */
+    readonly server: PluginServerApi;
     /**
      * The full BB SDK, bound to this server over loopback (design §4.1).
      * Bind-gated: reading this before the host binds the SDK throws. The real
@@ -2040,4 +2006,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };

@@ -13,12 +13,23 @@
       "source": "./src/app.ts",
       "types": "./src/app.ts",
       "default": "./src/app.ts"
+    },
+    "./testing": {
+      "source": "./src/testing/index.ts",
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    },
+    "./testing/app": {
+      "source": "./src/testing/app.tsx",
+      "types": "./src/testing/app.tsx",
+      "default": "./src/testing/app.tsx"
     }
   },
   "types": "./src/index.ts",
   "scripts": {
     "build": "node scripts/build-bundled-dts.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
   },
   "devDependencies": {
@@ -26,25 +37,37 @@
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "better-sqlite3": "12.10.0",
+    "cron-parser": "^5.5.0",
     "hono": "4.11.9",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
     "typescript": "^5.7.0",
+    "vitest": "^4.1.1",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/react": "^19.0.0",
     "better-sqlite3": ">=12",
+    "cron-parser": "^5.5.0",
     "hono": "^4.11.9",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "zod": "^4.3.6"
   },
   "peerDependenciesMeta": {
+    "@testing-library/react": {
+      "optional": true
+    },
     "@types/better-sqlite3": {
       "optional": true
     },
@@ -54,10 +77,16 @@
     "better-sqlite3": {
       "optional": true
     },
+    "cron-parser": {
+      "optional": true
+    },
     "hono": {
       "optional": true
     },
     "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     },
     "zod": {

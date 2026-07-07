@@ -2,7 +2,6 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
-  disableAutomationsForDeletedThread,
   getEnvironment,
   getThreadFolderById,
   listThreadsWithPendingInteractionState,
@@ -52,6 +51,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -380,18 +380,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread,
     });
-    markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
-    // Automations that re-prompt this thread are disabled (never deleted) so the
-    // schedule stays visible; notify each affected project so live views update.
-    const disabledAutomations = disableAutomationsForDeletedThread(deps.db, {
+    const deletedThread = markThreadDeleted(deps.db, deps.hub, {
       threadId: thread.id,
-      now: Date.now(),
     });
-    for (const projectId of new Set(
-      disabledAutomations.map((automation) => automation.projectId),
-    )) {
-      deps.hub.notifyProject(projectId, ["automations-changed"]);
-    }
+    if (deletedThread) emitPluginThreadDeleted(deletedThread);
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
       finalizeStoppedThread(deps, {

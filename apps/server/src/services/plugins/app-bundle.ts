@@ -68,7 +68,7 @@ const LOGO_CONTENT_TYPES: Record<string, string> = {
 export type PluginLogoVariant = "logo" | "logo-dark";
 
 /** Extensions probed at the plugin root, in precedence order. */
-const LOGO_CONVENTION_EXTENSIONS = ["svg", "png", "webp"];
+export const LOGO_CONVENTION_EXTENSIONS = ["svg", "png", "webp"] as const;
 
 /** On-disk logo record backing GET /plugins/:id/assets/logo[-dark] + *Url. */
 export interface PluginLogoSnapshot {

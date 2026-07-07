@@ -50,7 +50,6 @@ export const sendMessageModeSchema = z.enum([
 export const threadCreateOriginSchema = z.enum([
   "app",
   "cli",
-  "automation",
   "sdk",
   "plugin",
 ]);

@@ -29,9 +29,9 @@ import {
   useHostListRealtimeSubscription,
   useProjectListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
-import { Icon } from "@/components/ui/icon";
-import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { cn } from "@/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const ThreadDetailRoute = lazy(
   () => import("./thread-detail/ThreadDetailRoute"),

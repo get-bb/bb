@@ -15,7 +15,12 @@ import {
 } from "../../helpers/test-app.js";
 
 interface RecordedThreadPayload {
-  thread: { id: string; status: string };
+  thread: {
+    deletedAt?: number | null;
+    id: string;
+    projectId?: string;
+    status: string;
+  };
   lastAssistantText?: string | null;
   error?: string | null;
 }
@@ -180,6 +185,113 @@ describe("plugin thread lifecycle events", () => {
       expect(recorded[0]?.thread.status).toBe("starting");
     } finally {
       delete globals.__createdEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers thread.deleted when thread creation rolls back after insert", async () => {
+    const deleted: RecordedThreadPayload[] = [];
+    globals.__rollbackDeletedEvents = deleted;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.on("thread.deleted", (payload: any) => {
+          (globalThis as any).__rollbackDeletedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, project } = seedThreadFixture(harness);
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          providerId: "codex",
+          origin: "app",
+          title: "Rollback event test",
+          input: [{ type: "text", text: "hello", mentions: [] }],
+          model: "gpt-5",
+          reasoningLevel: "max",
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await vi.waitFor(() => expect(deleted).toHaveLength(1));
+      expect(deleted[0]?.thread.id).toEqual(expect.stringMatching(/^thr_/));
+      expect(deleted[0]?.thread.projectId).toBe(project.id);
+      expect(deleted[0]?.thread.deletedAt).toEqual(expect.any(Number));
+    } finally {
+      delete globals.__rollbackDeletedEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers thread.deleted from route-driven deletion", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__deletedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.on("thread.deleted", (payload: any) => {
+          (globalThis as any).__deletedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { project, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+
+      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ childThreadsConfirmed: false }),
+      });
+
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.id).toBe(thread.id);
+      expect(recorded[0]?.thread.projectId).toBe(project.id);
+      expect(recorded[0]?.thread.deletedAt).toEqual(expect.any(Number));
+    } finally {
+      delete globals.__deletedEvents;
+      await cleanup();
+    }
+  });
+
+  it("isolates a throwing thread.deleted handler and still deletes", async () => {
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.on("thread.deleted", () => {
+          throw new Error("delete handler boom");
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+
+      const response = await harness.app.request(`/api/v1/threads/${thread.id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ childThreadsConfirmed: false }),
+      });
+
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => {
+        const entry = harness.pluginService
+          .list()
+          .find((plugin) => plugin.id === "observer");
+        expect(entry?.handlerStats.count).toBe(1);
+        expect(entry?.handlerStats.errorCount).toBe(1);
+        expect(entry?.status).toBe("running");
+        expect(entry?.statusDetail).toContain(
+          "thread.deleted handler failed",
+        );
+      });
+    } finally {
       await cleanup();
     }
   });

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.js";
-import { Icon } from "@/components/ui/icon.js";
+} from "@bb/shared-ui/dialog";
+import { Icon } from "@bb/shared-ui/icon";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {

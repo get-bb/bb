@@ -60,13 +60,13 @@ import {
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
-import { EmptyStatePanel } from "@/components/ui/empty-state";
-import { Icon } from "@/components/ui/icon.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { Button } from "@/components/ui/button.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
-import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { Button } from "@bb/shared-ui/button";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
@@ -96,6 +96,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -928,6 +929,18 @@ export function RootComposeView(props: RootComposeViewProps) {
   const primaryHostId = primaryHost?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
+  // Plugin useComposer() writes (from nav panels / homepage sections) target
+  // the new-thread draft; surface + focus the composer when they ask.
+  useEffect(
+    () =>
+      subscribeComposerFocusRequests(promptDraft.storageKey, () => {
+        setStartedComposing(true);
+        window.requestAnimationFrame(() => {
+          promptBoxRef.current?.focusEnd();
+        });
+      }),
+    [promptDraft.storageKey],
+  );
   const handleRootPanelSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       promptDraft.addQuote(text, attachments);
@@ -1231,9 +1244,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     setServiceTier,
   ]);
 
-  // Seed the composer from navigation state `initialPrompt` (e.g. "Create via
-  // chat" from Automations). Single-use: applied only when the current draft is
-  // empty so it never clobbers an in-progress draft, then cleared from
+  // Seed the composer from navigation state `initialPrompt`. Single-use:
+  // applied only when the current draft is empty so it never clobbers an
+  // in-progress draft, then cleared from
   // location.state so a refresh starts from the persisted draft.
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
   useEffect(() => {
@@ -2038,6 +2051,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
   });
+
   const activeRootHostFileThreadId =
     activeHostFileThreadId ??
     (activeHostFilePath !== null ? rootPanelThreadId : null);
@@ -2620,9 +2634,9 @@ export function RootComposeView(props: RootComposeViewProps) {
               onClose: () => closeTab(tab.id),
             };
           case "plugin-panel":
-            // Plugin panel tabs are opened from a thread's launcher; the root
-            // panel offers no plugin actions, but its persisted state must
-            // still render any tab kind without crashing.
+            // Plugin action tabs are opened from a thread's launcher; the
+            // root panel offers no plugin actions, but file-opener tabs open
+            // here too and persisted state must render any kind.
             return {
               id: tab.id,
               filename: tab.title,

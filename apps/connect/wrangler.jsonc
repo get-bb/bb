@@ -1,0 +1,53 @@
+// bb connect — tunnel gate worker + TunnelDO.
+//
+// The gate resolves `<handle>.<BASE_DOMAIN>` to a server row in D1, authenticates
+// the tunnel client by durable credential and visitors by better-auth session,
+// then proxies through the per-handle TunnelDO. Staging serves per-handle custom
+// domains attached on demand (e.g. sawyer.vibecodethis.site).
+//
+// Deploy prod:    pnpm --filter @bb/connect exec wrangler deploy
+// Deploy staging: pnpm --filter @bb/connect exec wrangler deploy --env staging
+// Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
+//         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
+//         session cookie's HMAC with it)
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bb-connect",
+  "main": "./src/worker.ts",
+  "account_id": "7bb84c630057dafa53e2aacbe6bd094f",
+  "compatibility_date": "2026-06-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
+  "durable_objects": {
+    "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+  },
+  // Production: every *.getbb.app subdomain hits the gate via the wildcard
+  // zone route (backed by a proxied `*` DNS record). The apex + www are
+  // custom domains on bb-web and take precedence over this route.
+  "vars": { "BASE_DOMAIN": "getbb.app" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bb-connect-prod",
+      "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b"
+    }
+  ],
+  "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
+  "env": {
+    "staging": {
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
+      "durable_objects": {
+        "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+      },
+      "vars": { "BASE_DOMAIN": "vibecodethis.site" },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "bb-connect-staging",
+          "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c"
+        }
+      ]
+    }
+  }
+}

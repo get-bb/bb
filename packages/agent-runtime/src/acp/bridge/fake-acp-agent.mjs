@@ -15,6 +15,8 @@
  *                            → advertise per-model effort configOptions
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
+ * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
+ *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -45,6 +47,13 @@ let currentMcpServers = [];
 const effortsByModel = new Map([
   ["fake/strong", ["none", "low", "medium", "high", "xhigh"]],
 ]);
+
+const modelCount = Number(process.env.FAKE_ACP_MODEL_COUNT ?? "0");
+for (let i = fakeModels.length; i < modelCount; i += 1) {
+  const value = `fake/gen-${i}`;
+  fakeModels.push({ value, name: `Fake Gen ${i}` });
+  effortsByModel.set(value, ["low", "medium", "high"]);
+}
 
 process.on("SIGTERM", () => {
   if (process.env.FAKE_ACP_SIGNAL_FILE) {

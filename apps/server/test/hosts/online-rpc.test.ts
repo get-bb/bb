@@ -260,6 +260,7 @@ describe("host online RPC retry semantics", () => {
                 contentEncoding: "utf8",
                 mimeType: "text/html",
                 sizeBytes: 15,
+                sha256: "0".repeat(64),
               },
             },
           });
@@ -328,6 +329,7 @@ describe("host online RPC retry semantics", () => {
                 mimeType: "text/html",
                 modifiedAtMs: 1234,
                 sizeBytes: 15,
+                sha256: "0".repeat(64),
               },
             },
           });

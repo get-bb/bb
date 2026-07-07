@@ -10,6 +10,7 @@ declare module "ws" {
   }
 
   export class WebSocket extends EventEmitter {
+    constructor(address: string | URL, options?: ClientOptions);
     constructor(
       address: string | URL,
       protocols?: string | string[],
@@ -17,13 +18,23 @@ declare module "ws" {
     );
     static readonly OPEN: number;
     readonly readyState: number;
-    send(data: string | Buffer): void;
+    readonly protocol: string;
+    send(data: string | Buffer | Uint8Array): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
     on(event: "open", listener: () => void): this;
     on(event: "message", listener: (data: RawData) => void): this;
+    on(
+      event: "message",
+      listener: (data: Buffer, isBinary: boolean) => void,
+    ): this;
     on(event: "close", listener: () => void): this;
+    on(event: "close", listener: (code: number, reason: Buffer) => void): this;
     on(event: "error", listener: (error: Error) => void): this;
+    on(
+      event: "unexpected-response",
+      listener: (request: unknown, response: IncomingMessage) => void,
+    ): this;
     removeAllListeners(): this;
   }
 

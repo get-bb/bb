@@ -3,7 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
-import type { MarkdownLinkRouting } from "./markdown-link-routing";
+import {
+  MarkdownLocalFileOpenWithContext,
+  type MarkdownLinkRouting,
+} from "./markdown-link-routing";
 
 const workspaceLinkRouting = {
   localFile: {
@@ -74,6 +77,51 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
   });
 
+  it("shows an Open with menu on local file links when the context provides items", () => {
+    const openBuiltin = vi.fn();
+    const openWithPlugin = vi.fn();
+    render(
+      <MarkdownLocalFileOpenWithContext.Provider
+        value={(link) =>
+          link.path.endsWith(".md")
+            ? [
+                {
+                  id: "builtin",
+                  label: "Open with built-in preview",
+                  onSelect: openBuiltin,
+                },
+                {
+                  id: "notes:editor",
+                  label: "Open with Notes editor",
+                  onSelect: openWithPlugin,
+                },
+              ]
+            : null
+        }
+      >
+        <MarkdownPreview
+          content="See [notes](/workspace/notes/todo.md) and [app](/workspace/src/app.ts)."
+          linkRouting={{
+            localFile: {
+              absoluteLinks: { kind: "trusted-host" },
+              onOpenLink: vi.fn(() => true),
+            },
+          }}
+        />
+      </MarkdownLocalFileOpenWithContext.Provider>,
+    );
+
+    const link = screen.getByRole("link", { name: /notes/ });
+    fireEvent.contextMenu(link);
+    fireEvent.click(screen.getByText("Open with Notes editor"));
+    expect(openWithPlugin).toHaveBeenCalledTimes(1);
+    expect(openBuiltin).not.toHaveBeenCalled();
+
+    // The provider returned null for the .ts link — plain anchor, no menu.
+    fireEvent.contextMenu(screen.getByRole("link", { name: /app/ }));
+    expect(screen.queryByText(/Open with/)).toBeNull();
+  });
+
   it("leaves inline-code Markdown paths as code without local file routing", () => {
     render(<MarkdownPreview content="Read `README.md`." />);
 
@@ -132,11 +180,23 @@ describe("MarkdownPreview", () => {
 
   it("renders inline LaTeX math with KaTeX", () => {
     const { container } = render(
-      <MarkdownPreview content={"Mass-energy is $E = mc^2$ exactly."} />,
+      <MarkdownPreview content={"Mass-energy is $$E = mc^2$$ exactly."} />,
     );
 
     expect(container.querySelector(".katex")).not.toBeNull();
     expect(container.querySelector(".katex-display")).toBeNull();
+  });
+
+  it("leaves single-dollar spans as literal text", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={"It went from $5 to $10 last week, so $x$ stays literal."}
+      />,
+    );
+
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toContain("$5 to $10");
+    expect(container.textContent).toContain("$x$");
   });
 
   it("renders display LaTeX math blocks with KaTeX", () => {
@@ -161,7 +221,7 @@ describe("MarkdownPreview", () => {
     const { container } = render(
       <MarkdownPreview
         allowHtml
-        content={"$a^2 + b^2 = c^2$\n\n<script>alert(1)</script>"}
+        content={"$$a^2 + b^2 = c^2$$\n\n<script>alert(1)</script>"}
       />,
     );
 
@@ -172,7 +232,7 @@ describe("MarkdownPreview", () => {
 
   it("contains invalid TeX instead of throwing", () => {
     const { container } = render(
-      <MarkdownPreview content={"Broken: $\\frac{1}{$ keeps rendering."} />,
+      <MarkdownPreview content={"Broken: $$\\frac{1}{$$ keeps rendering."} />,
     );
 
     expect(container.querySelector(".katex-error")).not.toBeNull();

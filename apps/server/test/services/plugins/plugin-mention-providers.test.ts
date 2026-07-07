@@ -295,10 +295,10 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const disabled = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=fix`,
     );
-    expect(disabled.status).toBe(422);
-    expect(await disabled.json()).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Plugins are disabled"),
+    expect(disabled.status).toBe(200);
+    expect(await disabled.json()).toEqual({
+      ok: true,
+      groups: [],
     });
   });
 
@@ -578,6 +578,7 @@ describe("mention search time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionSearchTimeoutMs: 100,
     });
@@ -656,6 +657,7 @@ describe("mention resolve time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionResolveTimeoutMs: 100,
     });

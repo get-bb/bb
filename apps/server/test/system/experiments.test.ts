@@ -13,6 +13,7 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
+        multiMachine: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,
@@ -28,6 +29,7 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
+          multiMachine: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
           plugins: false,
@@ -37,6 +39,7 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
@@ -44,6 +47,7 @@ describe("experiments settings", () => {
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
@@ -55,6 +59,7 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         claudeCodeMockCliTraffic: true,
+        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,

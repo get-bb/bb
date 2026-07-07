@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   anchorPointFromMouseEvent,
   selectionAnchorFromPointerRelease,

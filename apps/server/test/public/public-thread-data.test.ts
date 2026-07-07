@@ -2931,7 +2931,10 @@ describe("public thread data routes", () => {
       ).toEqual([
         {
           type: "known_acp_agents.status",
-          agents: [{ id: "acp-opencode", executableName: "opencode" }],
+          agents: [
+            { id: "acp-opencode", executableName: "opencode" },
+            { id: "acp-omp", executableName: "omp" },
+          ],
         },
         { type: "provider.list_models", providerId: "codex" },
       ]);
@@ -4017,6 +4020,7 @@ describe("public thread data routes", () => {
         contentEncoding: "base64",
         mimeType: "image/png",
         sizeBytes: pngBytes.byteLength,
+        sha256: "0".repeat(64),
       });
       const fileResponse = await filePromise;
       expect(fileResponse.status).toBe(200);
@@ -4067,6 +4071,7 @@ describe("public thread data routes", () => {
         contentEncoding: "utf8",
         mimeType: "text/html",
         sizeBytes: Buffer.byteLength(html),
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;
@@ -4124,6 +4129,7 @@ describe("public thread data routes", () => {
         contentEncoding: "utf8",
         mimeType: "text/html",
         sizeBytes: Buffer.byteLength(html),
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;
@@ -4175,6 +4181,7 @@ describe("public thread data routes", () => {
         contentEncoding: "utf8",
         mimeType: "text/html",
         sizeBytes: Buffer.byteLength(html),
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;
@@ -4268,6 +4275,7 @@ describe("public thread data routes", () => {
         contentEncoding: "utf8",
         mimeType: "text/html",
         sizeBytes: 5 * 1024 * 1024 + 1,
+        sha256: "0".repeat(64),
       });
 
       const fileResponse = await filePromise;
@@ -4335,6 +4343,7 @@ describe("public thread data routes", () => {
           contentEncoding: "utf8",
           mimeType: "text/markdown",
           sizeBytes: fileBytes.byteLength,
+          sha256: "0".repeat(64),
         },
         { hostId: host.id },
       );

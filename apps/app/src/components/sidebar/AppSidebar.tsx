@@ -5,11 +5,11 @@ import {
   useState,
   type KeyboardEventHandler,
 } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
-import { Icon } from "@/components/ui/icon.js";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -32,12 +32,7 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import {
-  getAutomationsRoutePath,
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
-import { useRouteState } from "@/hooks/useRouteState";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   haveSameSidebarThreadSearchNavigationItems,
@@ -45,6 +40,7 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
@@ -77,7 +73,6 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isAutomationsView } = useRouteState();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
@@ -162,11 +157,6 @@ export function AppSidebar({
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
-  }, [closeOnMobile, navigate]);
-
-  const handleOpenAutomations = useCallback(() => {
-    closeOnMobile();
-    void navigate(getAutomationsRoutePath());
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -296,8 +286,6 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
-            onOpenAutomations={handleOpenAutomations}
-            isAutomationsActive={isAutomationsView}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
@@ -357,6 +345,27 @@ export function AppSidebar({
               >
                 <Icon name="ChatFeedback" />
                 <span className="sr-only">Feedback</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem className="min-w-0">
+              <SidebarMenuButton
+                className={SIDEBAR_FOOTER_ACTION_CLASS}
+                tooltip={{
+                  children: "Join Discord",
+                  hidden: false,
+                  side: "top",
+                }}
+                aria-label="Join Discord"
+                onClick={() => {
+                  closeOnMobile();
+                  openUrlInExternalBrowser(DISCORD_INVITE_URL);
+                }}
+              >
+                <Icon
+                  name="Discord"
+                  className="!size-[18px] max-md:pointer-coarse:!size-[22px]"
+                />
+                <span className="sr-only">Join Discord</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

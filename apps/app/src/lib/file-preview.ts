@@ -20,6 +20,8 @@ const UTF8_TEXT_MIME_TYPES = new Set([
 
 const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown"];
 const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
+const CSV_FILE_EXTENSIONS = [".csv"];
+const CSV_MIME_TYPES = new Set(["application/csv", "text/csv"]);
 const HTML_FILE_EXTENSION = ".html";
 const NULL_CHARACTER = "\u0000";
 
@@ -195,6 +197,13 @@ function hasMarkdownExtension(path: string): boolean {
   );
 }
 
+function hasCsvExtension(path: string): boolean {
+  const normalizedPath = path.toLowerCase();
+  return CSV_FILE_EXTENSIONS.some((extension) =>
+    normalizedPath.endsWith(extension),
+  );
+}
+
 export function isHtmlFilePreviewPath(path: string): boolean {
   return path.toLowerCase().endsWith(HTML_FILE_EXTENSION);
 }
@@ -212,6 +221,15 @@ export function isMarkdownFilePreview(preview: FilePreview): boolean {
     (MARKDOWN_MIME_TYPES.has(preview.mimeType) ||
       hasMarkdownExtension(preview.path) ||
       (preview.name ? hasMarkdownExtension(preview.name) : false))
+  );
+}
+
+export function isCsvFilePreview(preview: FilePreview): boolean {
+  return (
+    preview.kind === "text" &&
+    (CSV_MIME_TYPES.has(preview.mimeType) ||
+      hasCsvExtension(preview.path) ||
+      (preview.name ? hasCsvExtension(preview.name) : false))
   );
 }
 

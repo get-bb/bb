@@ -4,7 +4,6 @@
 // "./thread.js".
 export * from "./active-thinking.js";
 export * from "./app-theme.js";
-export * from "./automation.js";
 export * from "./background-task.js";
 export * from "./change-kinds.js";
 export * from "./claude-task-tools.js";

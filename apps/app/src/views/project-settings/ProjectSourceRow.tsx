@@ -1,15 +1,15 @@
 import { type LocalPathProjectSource, type ProjectSource } from "@bb/domain";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { SettingsRow } from "@/components/ui/settings-section.js";
-import { Pill } from "@/components/ui/pill.js";
+import { Pill } from "@bb/shared-ui/pill";
 import { PersistentHostIconName } from "@/lib/host-display";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
+} from "@bb/shared-ui/dropdown-menu";
 
 interface ProjectSourceRowProps {
   source: ProjectSource;

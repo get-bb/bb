@@ -29,6 +29,7 @@ import type {
   PluginMentionSearchContext,
   PluginRealtime,
   PluginRpc,
+  PluginServerApi,
   PluginSettingDescriptors,
   PluginSettingValue,
   PluginSettings,
@@ -75,6 +76,7 @@ export type {
   PluginMentionSearchContext,
   PluginRealtime,
   PluginRpc,
+  PluginServerApi,
   PluginSettings,
   PluginSettingsHandle,
   PluginSettingsValues,
@@ -177,7 +179,7 @@ export interface PluginAgentToolRecord {
  * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
  */
 export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  "automation",
+  // "automation" is intentionally absent: the builtin automations plugin owns it.
   "environment",
   "guide",
   "help",
@@ -375,6 +377,8 @@ export function createPluginApi(options: {
   dataDir: string;
   /** Undefined until the server is listening (bb.sdk is bind-gated). */
   getSdk: () => BbSdk | undefined;
+  /** Undefined until the server is listening (bb.server is bind-gated too). */
+  getLoopbackBaseUrl: () => string | undefined;
   /** Broadcasts a plugin-signal WS message (hub.notifyPluginSignal). */
   publishSignal: (channel: string, payload: unknown) => void;
   /** Marks the plugin needs-configuration in the loader's status table. */
@@ -392,6 +396,7 @@ export function createPluginApi(options: {
     db,
     dataDir,
     getSdk,
+    getLoopbackBaseUrl,
     publishSignal,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
@@ -409,6 +414,7 @@ export function createPluginApi(options: {
     "thread.created": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.deleted": [],
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -936,6 +942,20 @@ export function createPluginApi(options: {
     },
   };
 
+  const server: PluginServerApi = {
+    get loopbackBaseUrl(): string {
+      assertLive();
+      const baseUrl = getLoopbackBaseUrl();
+      if (baseUrl === undefined) {
+        throw new Error(
+          "bb.server.loopbackBaseUrl is not available until the server is listening — " +
+            "use it inside handlers, services, or timers, not at factory load time",
+        );
+      }
+      return baseUrl;
+    },
+  };
+
   const api: BbPluginApi = {
     pluginId,
     log,
@@ -949,6 +969,7 @@ export function createPluginApi(options: {
     agents,
     ui,
     status,
+    server,
     get sdk(): BbSdk {
       assertLive();
       const sdk = getSdk();

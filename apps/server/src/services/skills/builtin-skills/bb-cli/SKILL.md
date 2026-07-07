@@ -56,6 +56,20 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Pass `--host <host-id>` to run the thread on a specific connected machine
+  (list ids with `bb host list`); omit it to use the local primary host.
+  Non-primary hosts require the "Multi-machine" experiment (Settings →
+  Experiments) — when off, the server rejects with `multi_machine_disabled`.
+- `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
+  server for browser access at `<handle>.getbb.app` (get the code from
+  https://getbb.app). It requires the "Multi-machine" experiment; when off the
+  builtin connect plugin is not loaded. Pairing returns immediately — the
+  server itself holds the tunnel and reconnects on restart, so there is no
+  foreground process.
+  `bb connect status` / `bb connect off` report and clear the pairing. Remote
+  access is owned by the builtin `connect` plugin: `bb plugin disable connect`
+  cuts it off entirely; with Multi-machine still enabled, `bb plugin enable
+  connect` restores the command.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -66,7 +80,8 @@ message agents, or inspect projects, providers, and environments.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 - Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode` on PATH appears as provider `acp-opencode`.
+  host; for example `opencode` or `omp` on PATH appears as provider
+  `acp-opencode` or `acp-omp`.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known
@@ -144,10 +159,11 @@ For review or fix pipelines, get the environment ID from
 
 ## Automations
 
-- Use `bb automation ...` to manage scheduled tasks. When due, an automation
-  runs in one of two modes: `agent` (spawns a thread running a prompt — uses
-  tokens) or `script` (runs a stored command and captures stdout/exit — no
-  agent, no tokens).
+- Use `bb automation ...` to manage scheduled tasks. This command is provided
+  by the builtin `automations` plugin. When due, an automation runs in one of
+  two modes: `agent` (spawns a thread running a prompt — uses tokens) or
+  `script` (runs a stored command and captures stdout/exit — no agent, no
+  tokens).
 - Choosing a mode: pick `script` when the output is fully determined by code
   (watchdogs, threshold alerts, health checks, pollers with a fixed output) —
   write the check so it prints nothing when there's nothing to report, so quiet
@@ -156,10 +172,8 @@ For review or fix pipelines, get the environment ID from
 - For a "watch X and alert me when Y" request, prefer a script automation:
   author the check script (inline `--script` or a file via `--script-file`) so
   its stdout IS the alert, then create it — no model spend per tick.
-- Automations cannot create automations (runs are origin-gated); never schedule
-  one whose job is to make more. Host-script automations may be disabled by
-  server policy — fall back to an `agent` automation if script creation is
-  rejected.
+- Script automations may be disabled by the plugin setting; fall back to an
+  `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
 - Create a one-shot agent automation with
@@ -169,10 +183,10 @@ For review or fix pipelines, get the environment ID from
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
-- Script automations run with the bb environment injected — `BB_SERVER_URL`,
-  `BB_HOST_DAEMON_PORT`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_AUTOMATION_ID`,
-  `BB_AUTOMATION_RUN_ID` — and inherit the daemon's PATH, so `bb ...` and
-  `node ...` work with no manual exports.
+- Script automations run on the server with cwd set to the plugin data
+  directory. They have no environment/workspace. Injected variables are
+  `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID`, and
+  `BB_AUTOMATION_RUN_ID`.
 - A script run's status IS its exit code: exit 0 = succeeded; a non-zero exit is
   recorded as failed even if the script already produced a visible side effect
   (e.g. posted a message via `bb thread tell`). Make scripts exit 0 on success
@@ -188,7 +202,8 @@ For review or fix pipelines, get the environment ID from
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
-- Run `bb guide automations` for the full command reference.
+- Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
+  automations plugin should be installed and running.
 
 ## Theming
 
@@ -237,19 +252,22 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - A bb plugin is a TypeScript package running inside the bb server, extending
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
-- **Enable it first.** Plugins are an experiment, off by default: turn on
-  **"Plugins"** under Settings → Experiments. Until then, `bb plugin` commands
-  report that plugins are disabled.
+- **Enable user-installed plugins first.** Plugins are an experiment, off by
+  default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
+  (`builtin:<name>`) ship with bb and remain available even when the experiment
+  is off, except `connect`, which is gated by the **"Multi-machine"**
+  experiment.
 - Commands:
-  - `bb plugin install <src>` — local path, `git:<url>@<ref>`, or
-    `npm:<name>@<version>` (npm on PATH required for `npm:`). Installs prompt
-    for confirmation (plugins are full-trust code); pass `--yes` to skip.
+  - `bb plugin install <src>` — local path, `builtin:<name>`,
+    `git:<url>@<ref>`, or `npm:<name>@<version>` (npm on PATH required for
+    `npm:`). Installs prompt for confirmation (plugins are full-trust code);
+    pass `--yes` to skip.
     Plugins that declare a frontend (`bb.app`) are built at install time for
     path/git sources; npm packages must publish a prebuilt `dist/`.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
-    `bb plugin remove <id>`.
+    `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

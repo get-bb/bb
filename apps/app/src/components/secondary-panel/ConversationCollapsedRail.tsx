@@ -1,9 +1,9 @@
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 
 interface ConversationCollapsedRailProps {

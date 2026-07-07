@@ -7,9 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { cn } from "@/lib/utils";
-import { Icon } from "@/components/ui/icon.js";
-import { CONTROL_HOVER_TRANSITION } from "./motion.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 
 interface ClipboardCopyOptions {
   text: string;

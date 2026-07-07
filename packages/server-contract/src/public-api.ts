@@ -30,22 +30,13 @@ import {
 import type {
   EmptyInput,
   PathId,
-  PathProjectAutomationId,
   PathProjectId,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathTerminal,
 } from "./common.js";
 import type {
-  Automation,
-  AutomationRunListQuery,
-  AutomationRunListResponse,
-  AutomationRunResponse,
-  AutomationsOverviewResponse,
   CloseTerminalRequest,
-  CreateAutomationRequest,
-  RunAutomationRequest,
-  UpdateAutomationRequest,
   CommandListResponse,
   CreateTerminalRequest,
   CreateProjectRequest,
@@ -74,6 +65,12 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostFileListRequest,
+  HostFileListResponse,
+  HostFileReadRequest,
+  HostFileReadResponse,
+  HostFileWriteRequest,
+  HostFileWriteResponse,
   HostPickFolderRequest,
   HostPickFolderResponse,
   HostPathsExistRequest,
@@ -161,11 +158,7 @@ import type {
   WorkspacePathListResponse,
 } from "./api-types.js";
 import {
-  automationRunListQuerySchema,
   closeTerminalRequestSchema,
-  createAutomationRequestSchema,
-  runAutomationRequestSchema,
-  updateAutomationRequestSchema,
   createThreadFolderRequestSchema,
   deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
@@ -182,6 +175,9 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostFileListRequestSchema,
+  hostFileReadRequestSchema,
+  hostFileWriteRequestSchema,
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
@@ -378,6 +374,33 @@ export const publicApiRoutes = {
         projectAttachmentContentQuerySchema,
       ),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  files: {
+    read: defineRoute({
+      path: "/files/read",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileReadRequest>(
+        hostFileReadRequestSchema,
+      ),
+      response: jsonResponse<HostFileReadResponse>(),
+    }),
+    write: defineRoute({
+      path: "/files/write",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileWriteRequest>(
+        hostFileWriteRequestSchema,
+      ),
+      response: jsonResponse<HostFileWriteResponse>(),
+    }),
+    list: defineRoute({
+      path: "/files/list",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostFileListRequest>(
+        hostFileListRequestSchema,
+      ),
+      response: jsonResponse<HostFileListResponse>(),
     }),
   },
 
@@ -1027,79 +1050,6 @@ export const publicApiRoutes = {
     }),
   },
 
-  automations: {
-    overview: defineRoute({
-      path: "/automations",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<AutomationsOverviewResponse>(),
-    }),
-    list: defineRoute({
-      path: "/projects/:id/automations",
-      method: "get",
-      request: noRequest<PathProjectId>(),
-      response: jsonResponse<Automation[]>(),
-    }),
-    create: defineRoute({
-      path: "/projects/:id/automations",
-      method: "post",
-      request: jsonRequest<PathProjectId, CreateAutomationRequest>(
-        createAutomationRequestSchema,
-      ),
-      response: jsonResponse<Automation>({ status: 201 }),
-    }),
-    get: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "get",
-      request: noRequest<PathProjectAutomationId>(),
-      response: [
-        jsonResponse<Automation>(),
-        jsonResponse<ApiError>({ status: 404 }),
-      ],
-    }),
-    update: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "patch",
-      request: jsonRequest<PathProjectAutomationId, UpdateAutomationRequest>(
-        updateAutomationRequestSchema,
-      ),
-      response: jsonResponse<Automation>(),
-    }),
-    pause: defineRoute({
-      path: "/projects/:id/automations/:automationId/pause",
-      method: "post",
-      request: noRequest<PathProjectAutomationId>(),
-      response: jsonResponse<Automation>(),
-    }),
-    resume: defineRoute({
-      path: "/projects/:id/automations/:automationId/resume",
-      method: "post",
-      request: noRequest<PathProjectAutomationId>(),
-      response: jsonResponse<Automation>(),
-    }),
-    delete: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "delete",
-      request: noRequest<PathProjectAutomationId>(),
-      response: jsonResponse<{ ok: true }>(),
-    }),
-    run: defineRoute({
-      path: "/projects/:id/automations/:automationId/run",
-      method: "post",
-      request: jsonRequest<PathProjectAutomationId, RunAutomationRequest>(
-        runAutomationRequestSchema,
-      ),
-      response: jsonResponse<AutomationRunResponse, 202>({ status: 202 }),
-    }),
-    runs: defineRoute({
-      path: "/projects/:id/automations/:automationId/runs",
-      method: "get",
-      request: queryRequest<PathProjectAutomationId, AutomationRunListQuery>(
-        automationRunListQuerySchema,
-      ),
-      response: jsonResponse<AutomationRunListResponse>(),
-    }),
-  },
 };
 
 export type PublicApiSchema = ApiSchemaFromRouteDescriptors<

@@ -132,8 +132,8 @@ export type EnvironmentArgs = z.infer<typeof environmentArgsSchema>;
  * the host and workspace using its own defaulting policy (personal workspace
  * for the personal project, a managed worktree on the primary host otherwise).
  * For callers — plugins, scripts — that should not re-derive compose-flow
- * policy. Accepted only by thread creation; automations and other surfaces
- * keep the explicit {@link environmentArgsSchema}.
+ * policy. Accepted only by thread creation; other surfaces keep the explicit
+ * {@link environmentArgsSchema}.
  */
 export const projectDefaultEnvironmentSchema = z.object({
   type: z.literal("project-default"),

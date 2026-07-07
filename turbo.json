@@ -1,19 +1,20 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "@bb/landing#build": {
+    "@bb/web#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/landing/package.json",
-        "$TURBO_ROOT$/apps/landing/src/**",
-        "$TURBO_ROOT$/apps/landing/tsconfig.json",
-        "$TURBO_ROOT$/apps/landing/vite.config.ts",
+        "$TURBO_ROOT$/apps/web/package.json",
+        "$TURBO_ROOT$/apps/web/src/**",
+        "$TURBO_ROOT$/apps/web/tsconfig.json",
+        "$TURBO_ROOT$/apps/web/vite.config.ts",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
       ],
       "env": [
+        "CLOUDFLARE_ENV",
         "VITE_POSTHOG_KEY",
         "VITE_POSTHOG_HOST"
       ],
@@ -90,7 +91,16 @@
         "$TURBO_ROOT$/packages/sdk/package.json",
         "$TURBO_ROOT$/packages/sdk/src/**",
         "$TURBO_ROOT$/packages/sdk/tsconfig.json",
+        "$TURBO_ROOT$/packages/shared-ui/package.json",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
+        "$TURBO_ROOT$/packages/shared-ui/tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/plugins/automations/**",
+        "!$TURBO_ROOT$/plugins/automations/dist/**",
+        "!$TURBO_ROOT$/plugins/automations/node_modules/**",
+        "$TURBO_ROOT$/plugins/connect/**",
+        "!$TURBO_ROOT$/plugins/connect/dist/**",
+        "!$TURBO_ROOT$/plugins/connect/node_modules/**",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
       "outputs": [
@@ -239,6 +249,17 @@
       "outputs": []
     },
     "typecheck": {},
+    "bb-plugin-automations#typecheck": {
+      "dependsOn": [
+        "@bb/shared-ui#typecheck"
+      ]
+    },
+    "bb-plugin-connect#typecheck": {
+      "dependsOn": [
+        "@bb/shared-ui#typecheck",
+        "@bb/tunnel-contract#typecheck"
+      ]
+    },
     "@bb/integration-tests#typecheck": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -359,17 +380,13 @@
     "@bb/plugin-registry#typecheck": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/src/components/**",
-        "$TURBO_ROOT$/apps/app/src/lib/**",
-        "$TURBO_ROOT$/apps/app/src/hooks/**"
+        "$TURBO_ROOT$/packages/shared-ui/src/**"
       ]
     },
     "@bb/plugin-registry#test": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/src/components/**",
-        "$TURBO_ROOT$/apps/app/src/lib/**",
-        "$TURBO_ROOT$/apps/app/src/hooks/**"
+        "$TURBO_ROOT$/packages/shared-ui/src/**"
       ]
     }
   }

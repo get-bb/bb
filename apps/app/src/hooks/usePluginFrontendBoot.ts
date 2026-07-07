@@ -4,15 +4,17 @@ import { useSystemConfig } from "./queries/system-queries";
 
 /**
  * Load plugin frontend bundles (plugin design §5.1) once per page load,
- * after the system config resolves the `plugins` experiment flag — the
- * loading never delays first paint. After boot, the realtime
+ * after system config resolves — the loading never delays first paint.
+ * The server inventory already filters to running, loadable plugins; builtin
+ * plugin frontends can be present even when the Plugins experiment is off.
+ * After boot, the realtime
  * `plugins-changed` broadcast keeps bundles live via
  * schedulePluginFrontendReconcile (no page refresh needed).
  */
 export function usePluginFrontendBoot(): void {
   const systemConfig = useSystemConfig();
-  const enabled = systemConfig.data?.experiments.plugins === true;
+  const resolved = systemConfig.data !== undefined;
   useEffect(() => {
-    if (enabled) void bootPluginFrontends();
-  }, [enabled]);
+    if (resolved) void bootPluginFrontends();
+  }, [resolved]);
 }

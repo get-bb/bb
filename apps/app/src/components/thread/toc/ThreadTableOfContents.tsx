@@ -7,7 +7,7 @@ import type {
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface TocItem {
   id: string;
