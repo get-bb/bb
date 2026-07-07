@@ -10,7 +10,7 @@ export default defineWorkspaceTestConfig({
   },
   test: {
     silent: "passed-only",
-    name: "bb-plugin-notes",
+    name: "bb-plugin-markdown-editor",
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**"],
   },

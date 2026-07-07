@@ -610,21 +610,24 @@ import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 const app = await loadPluginApp(() => import("./app"));
 
 const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
-  rpc: { listNotes: () => ({ mounts: [] }) },   // method → handler, calls logged
+  rpc: {
+    listNotes: () => ({ root: "/notes", notes: [], error: null }),
+  },                                             // method → handler, calls logged
   settings: { greeting: "hi" },                 // useSettings() values
   context: { projectId: "p1", threadId: null }, // useBbContext()
 });
 await slot.findByText("…");                     // Testing Library queries
 slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activity
-await slot.emitRealtime("notes-changed", null); // push into useRealtime()
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, navPanel path, chrome, fileOpener extensions) and returns them
 typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
-`thread.idle` reply) and `examples/plugins/notes/app.test.tsx` (nav panel
-tree over rpc + realtime refresh + navigate assertions).
+`thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
+panel list over rpc + create/open navigation assertions), and
+`examples/plugins/markdown-editor/app.test.tsx` (nav tree, realtime refresh,
+and markdown creation assertions).
 
 ### Live loop against a running bb
 
@@ -647,13 +650,18 @@ Reference examples in `examples/plugins/` (a bb checkout):
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
-- `notes` — full-surface markdown notes (Obsidian-style): mounted
-  directories via a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe
-  WYSIWYG bundled per-plugin (its theme CSS served from a `bb.http` route),
-  navPanel with `chrome: "none"` + subPath deep links, threadPanelAction,
-  a markdown `fileOpener`, `useComposer()` quote/mention buttons, an fs
-  watcher publishing realtime tree refreshes, and a `@Notes` mention
-  provider resolving note content at send.
+- `simple-notes` — Apple Notes-style local markdown notebook: one configurable
+  `directory` (default `~/Notes`), `bb.sdk.files` read/CAS-write for note
+  contents, Tiptap markdown WYSIWYG bundled per-plugin, navPanel with
+  `chrome: "none"` + subPath deep links, autosave, conflict reload/overwrite,
+  delete, search, and backend title-based filename renames.
+- `markdown-editor` — full-surface markdown editor: mounted directories via
+  a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe WYSIWYG bundled
+  per-plugin (its theme CSS served from a `bb.http` route), navPanel with
+  `chrome: "none"` + subPath deep links, threadPanelAction, a markdown
+  `fileOpener`, `useComposer()` quote/mention buttons, an fs watcher
+  publishing realtime tree refreshes, and a mention provider resolving note
+  content at send.
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

@@ -4,19 +4,18 @@ import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The notes example bundles Milkdown Crepe (prosemirror + codemirror) —
-// a large graph that blows the 5s default on cold CI runners.
+// The Simple Notes example bundles Tiptap (prosemirror) — a large graph that
+// blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 120_000 });
 import { buildPluginApp } from "@bb/plugin-build";
 
 /**
- * Evaluates the notes hero example's built bundle against a stub runtime
- * (the github-example-bundle.test.ts pattern) and asserts its default
- * export registers the nav panel, the thread panel action, and the markdown
- * fileOpener.
+ * Evaluates the Simple Notes example's built bundle against a stub runtime (the
+ * github-example-bundle.test.ts pattern) and asserts its default export
+ * registers the installed plugin's nav panel surface.
  */
-const NOTES_DIR = fileURLToPath(
-  new URL("../../../../examples/plugins/notes", import.meta.url),
+const SIMPLE_NOTES_DIR = fileURLToPath(
+  new URL("../../../../examples/plugins/simple-notes", import.meta.url),
 );
 
 interface SlotRegistration {
@@ -29,11 +28,11 @@ interface SlotRegistration {
   component: unknown;
 }
 
-describe("notes example frontend bundle", () => {
+describe("simple notes example frontend bundle", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "bb-notes-bundle-"));
+    root = await mkdtemp(join(tmpdir(), "bb-simple-notes-bundle-"));
   });
 
   afterEach(async () => {
@@ -42,9 +41,9 @@ describe("notes example frontend bundle", () => {
     delete (globalThis as { document?: unknown }).document;
   });
 
-  it("registers the notes nav panel, panel action, and markdown opener", async () => {
-    const pluginDir = join(root, "notes");
-    await cp(NOTES_DIR, pluginDir, {
+  it("registers the Simple Notes nav panel", async () => {
+    const pluginDir = join(root, "simple-notes");
+    await cp(SIMPLE_NOTES_DIR, pluginDir, {
       recursive: true,
       filter: (source) => {
         const name = basename(source);
@@ -52,8 +51,12 @@ describe("notes example frontend bundle", () => {
       },
     });
     // The example's own node_modules already holds every bundled dep
-    // (Milkdown among them) — link it wholesale instead of per-package.
-    await symlink(join(NOTES_DIR, "node_modules"), join(pluginDir, "node_modules"), "dir");
+    // (Tiptap among them) — link it wholesale instead of per-package.
+    await symlink(
+      join(SIMPLE_NOTES_DIR, "node_modules"),
+      join(pluginDir, "node_modules"),
+      "dir",
+    );
     const { jsPath } = await buildPluginApp(pluginDir);
 
     const registered: Record<string, SlotRegistration[]> = {
@@ -87,9 +90,8 @@ describe("notes example frontend bundle", () => {
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
     };
-    // decode-named-character-reference and CodeMirror's browser sniffing
-    // touch `document` at module scope (browser bundles legitimately assume
-    // one); registration evaluation never renders, so inert stubs suffice.
+    // Some browser-bundle dependencies touch `document` at module scope.
+    // Registration evaluation never renders, so inert stubs suffice.
     (globalThis as { document?: unknown }).document = {
       createElement: () => ({ innerHTML: "", textContent: "", style: {} }),
       documentElement: { style: {} },
@@ -117,28 +119,16 @@ describe("notes example frontend bundle", () => {
 
     expect(registered.navPanel).toHaveLength(1);
     expect(registered.navPanel[0]).toMatchObject({
-      id: "notes",
-      title: "Notes",
-      path: "notes",
+      id: "simple-notes",
+      title: "Simple Notes",
+      path: "simple-notes",
       chrome: "none",
     });
     expect(typeof registered.navPanel[0]?.component).toBe("function");
 
-    expect(registered.threadPanelAction).toHaveLength(1);
-    expect(registered.threadPanelAction[0]).toMatchObject({
-      id: "note",
-      title: "Open note",
-    });
-
-    expect(registered.fileOpener).toHaveLength(1);
-    expect(registered.fileOpener[0]).toMatchObject({
-      id: "editor",
-      title: "Notes editor",
-      extensions: ["md", "mdx", "markdown"],
-    });
-    expect(typeof registered.fileOpener[0]?.component).toBe("function");
-
     expect(registered.homepageSection).toHaveLength(0);
+    expect(registered.threadPanelAction).toHaveLength(0);
     expect(registered.composerAccessory).toHaveLength(0);
+    expect(registered.fileOpener).toHaveLength(0);
   });
 });

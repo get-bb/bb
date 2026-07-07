@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Frontend tests for the notes plugin's app.tsx, written against the
+// Frontend tests for the Markdown Editor plugin's app.tsx, written against the
 // official harness (`@bb/plugin-sdk/testing/app`) — no bb host, no bundle.
 // The thunk import matters: app.tsx binds the plugin runtime at module load,
 // so loadPluginApp installs the test runtime first.
@@ -22,23 +22,25 @@ function listNotesResult(files: MountFile[]) {
   };
 }
 
-describe("notes slot registrations", () => {
+describe("markdown editor slot registrations", () => {
   it("registers the nav panel, thread panel action, and markdown file opener", () => {
     expect(app.navPanels).toHaveLength(1);
     expect(app.navPanels[0]).toMatchObject({
-      id: "notes",
-      path: "notes",
+      id: "markdown-editor",
+      title: "Markdown Editor",
+      path: "markdown-editor",
       chrome: "none",
     });
     expect(app.threadPanelActions[0]?.id).toBe("note");
     expect(app.fileOpeners[0]).toMatchObject({
       id: "editor",
+      title: "Markdown Editor",
       extensions: ["md", "mdx", "markdown"],
     });
   });
 });
 
-describe("notes nav panel", () => {
+describe("markdown editor nav panel", () => {
   it("renders the mounted tree from rpc and deep-links notes via toPluginPanel", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -58,7 +60,7 @@ describe("notes nav panel", () => {
     expect(slot.navigateCalls).toEqual([
       {
         method: "toPluginPanel",
-        path: "notes",
+        path: "markdown-editor",
         options: { subPath: "0/ideas.md" },
       },
     ]);
@@ -110,7 +112,7 @@ describe("notes nav panel", () => {
     ]);
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",
-      path: "notes",
+      path: "markdown-editor",
       options: { subPath: "0/plan.md" },
     });
   });

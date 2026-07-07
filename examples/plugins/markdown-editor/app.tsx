@@ -1,8 +1,8 @@
-// bb-plugin-notes frontend: an Obsidian-style notes surface.
-// - navPanel "Notes" (chrome none): mounted-directory tree + Milkdown Crepe
+// bb-plugin-markdown-editor frontend: an Obsidian-style markdown surface.
+// - navPanel "Markdown Editor" (chrome none): mounted-directory tree + Milkdown Crepe
 //   WYSIWYG editor, deep-linked via the panel's subPath.
-// - threadPanelAction "Open note": the same editor in a thread's side panel.
-// - fileOpener "Notes editor" for md/mdx/markdown: workspace/host markdown
+// - threadPanelAction "Open Markdown Editor": the same editor in a thread's side panel.
+// - fileOpener "Markdown Editor" for md/mdx/markdown: workspace/host markdown
 //   opened in the panel renders here instead of the read-only preview (set
 //   as default via the tab's "Open with" menu).
 // - useComposer(): quote a selection (or the whole note) into the chat
@@ -60,11 +60,11 @@ function asMounts(value: unknown): MountListing[] {
 // keep the editor on the app palette in both light and dark themes.
 // ---------------------------------------------------------------------------
 
-const CREPE_CSS_URL = "/api/v1/plugins/notes/http/crepe.css";
-const STYLE_MARKER = "data-bb-notes-styles";
+const CREPE_CSS_URL = "/api/v1/plugins/markdown-editor/http/crepe.css";
+const STYLE_MARKER = "data-bb-markdown-editor-styles";
 
 const EDITOR_THEME_CSS = `
-.bb-notes-editor .milkdown {
+.bb-markdown-editor .milkdown {
   --crepe-color-background: transparent;
   --crepe-color-on-background: var(--foreground);
   --crepe-color-surface: var(--background);
@@ -88,7 +88,7 @@ const EDITOR_THEME_CSS = `
   height: 100%;
   font-size: 14px;
 }
-.bb-notes-editor .milkdown .ProseMirror {
+.bb-markdown-editor .milkdown .ProseMirror {
   padding: 20px 28px 96px;
 }
 `;
@@ -144,7 +144,7 @@ function CrepeEditor({
   return (
     <div
       ref={rootRef}
-      className="bb-notes-editor min-h-0 flex-1 overflow-y-auto"
+      className="bb-markdown-editor min-h-0 flex-1 overflow-y-auto"
     />
   );
 }
@@ -389,8 +389,8 @@ function useMountNoteTarget(
         })) as SaveResult;
       },
       mention: {
-        provider: "notes",
-        id: `${root}\n${notePath}`,
+        provider: "markdown",
+        id: `${root}\u0000${notePath}`,
         label: notePath.split("/").at(-1) ?? notePath,
       },
     };
@@ -424,8 +424,8 @@ function NotesTree({
   if (mounts.length === 0) {
     return (
       <div className="p-3 text-xs text-muted-foreground">
-        No note directories yet. Add one under Settings → Plugins → notes
-        (e.g. <code>~/Notes</code>), then reload the plugin.
+        No markdown directories yet. Add one under Settings → Plugins →
+        markdown-editor (e.g. <code>~/Notes</code>), then reload the plugin.
       </div>
     );
   }
@@ -532,7 +532,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
 
   const openNote = useCallback(
     (mountIndex: number, path: string) => {
-      navigate.toPluginPanel("notes", { subPath: `${mountIndex}/${path}` });
+      navigate.toPluginPanel("markdown-editor", { subPath: `${mountIndex}/${path}` });
     },
     [navigate],
   );
@@ -553,7 +553,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           openNote(mountIndex, name);
         })
         .catch((createError: unknown) => {
-          console.warn(`[plugin:notes] create failed:`, createError);
+          console.warn(`[plugin:markdown-editor] create failed:`, createError);
         });
     },
     [mounts, openNote, refresh, rpc],
@@ -696,22 +696,22 @@ function NotesFileOpener({ path, source }: PluginFileOpenerProps) {
 
 export default definePluginApp((app) => {
   app.slots.navPanel({
-    id: "notes",
-    title: "Notes",
+    id: "markdown-editor",
+    title: "Markdown Editor",
     icon: "FileText",
-    path: "notes",
+    path: "markdown-editor",
     chrome: "none",
     component: NotesPanel,
   });
   app.slots.threadPanelAction({
     id: "note",
-    title: "Open note",
+    title: "Open Markdown Editor",
     icon: "FileText",
     component: NotePanelTab,
   });
   app.slots.fileOpener({
     id: "editor",
-    title: "Notes editor",
+    title: "Markdown Editor",
     extensions: ["md", "mdx", "markdown"],
     component: NotesFileOpener,
   });

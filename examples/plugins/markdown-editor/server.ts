@@ -1,4 +1,4 @@
-// bb-plugin-notes — Obsidian-style markdown notes (plugin design hero for
+// bb-plugin-markdown-editor — Obsidian-style markdown editor (plugin design hero for
 // bb.sdk.files + the fileOpener/useComposer/subPath surfaces).
 //
 // The backend is a thin file service over `bb.sdk.files`: the user mounts
@@ -133,7 +133,7 @@ export default async function plugin(bb: BbPluginApi) {
     const mount = (await getMounts()).find((m) => m.root === root);
     if (!mount) {
       throw new Error(
-        `"${root}" is not a configured notes directory — add it in Settings → Plugins → notes`,
+        `"${root}" is not a configured markdown directory — add it in Settings → Plugins → markdown-editor`,
       );
     }
     return mount;
@@ -141,7 +141,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   if ((await getMounts()).length === 0) {
     bb.status.needsConfiguration(
-      "Set the notes directories setting (e.g. ~/Notes), then `bb plugin reload notes`.",
+      "Set the markdown directories setting (e.g. ~/Notes), then `bb plugin reload markdown-editor`.",
     );
   }
 
@@ -233,7 +233,7 @@ export default async function plugin(bb: BbPluginApi) {
         };
       }
       throw new Error(
-        "Only workspace and host files can open in the notes editor",
+        "Only workspace and host files can open in Markdown Editor",
       );
     },
 
@@ -325,11 +325,11 @@ export default async function plugin(bb: BbPluginApi) {
     });
   });
 
-  // --- @note mentions ------------------------------------------------------------
+  // --- @markdown mentions ------------------------------------------------------------
 
   bb.ui.registerMentionProvider({
-    id: "notes",
-    label: "Notes",
+    id: "markdown",
+    label: "Markdown Editor",
     async search({ query }) {
       const mounts = await getMounts();
       const needle = query.toLowerCase();
@@ -350,7 +350,7 @@ export default async function plugin(bb: BbPluginApi) {
               continue;
             }
             items.push({
-              id: `${mount.root} ${file.path}`,
+              id: `${mount.root}\u0000${file.path}`,
               title: file.name,
               subtitle: `${mount.name}/${file.path}`,
             });
@@ -362,10 +362,10 @@ export default async function plugin(bb: BbPluginApi) {
       return items.slice(0, 25);
     },
     async resolve(itemId) {
-      const [root, notePath] = itemId.split(" ");
+      const [root, notePath] = itemId.split("\u0000");
       if (!root || !notePath) throw new Error(`Unknown note: ${itemId}`);
       const mount = (await getMounts()).find((m) => m.root === root);
-      if (!mount) throw new Error(`"${root}" is no longer a notes directory`);
+      if (!mount) throw new Error(`"${root}" is no longer a markdown directory`);
       const file = await bb.sdk.files.read({
         path: path.join(root, notePath),
         rootPath: root,
