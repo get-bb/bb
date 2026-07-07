@@ -24,7 +24,9 @@ export function WaveformVisualizer({
 }: WaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const barsRef = useRef<number[]>([]);
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const prefersReducedMotion = useMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;

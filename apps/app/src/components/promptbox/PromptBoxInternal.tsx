@@ -2406,6 +2406,23 @@ export function PromptBoxInternal({
     handleEditorKeyDownRef.current = handleEditorKeyDown;
   }, [handleEditorKeyDown]);
 
+  // While the voice bar is up, Escape cancels it just like its X button.
+  // Capture phase + stopPropagation so it wins over the composer's own
+  // Escape-to-dismiss (which would otherwise hide the whole box) and never
+  // reaches the collapsed editor.
+  useEffect(() => {
+    if (!showVoiceActionGroup || !voice) return;
+    const cancelVoice = voice.cancel;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelVoice();
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [showVoiceActionGroup, voice]);
+
   return (
     <form
       ref={formRef}

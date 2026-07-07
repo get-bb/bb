@@ -27,6 +27,7 @@ import {
   suppressPromptEditorAnchorActivation,
   type PromptBoxAction,
   type PromptBoxHandle,
+  type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
 import type { ProviderCommandSuggestion } from "./mentions/types";
@@ -1123,5 +1124,83 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("voice recording escape", () => {
+  function voiceConfig(
+    overrides: Partial<PromptVoiceConfig> = {},
+  ): PromptVoiceConfig {
+    return {
+      state: "recording",
+      isSupported: true,
+      stream: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      cancel: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  function pressEscape(): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.body.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("cancels the recording on Escape and consumes the event before the composer's dismiss", () => {
+    const cancel = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ voice: voiceConfig({ cancel }) })}
+      />,
+    );
+
+    // Stand in for the composer's own bubble-phase Escape-to-dismiss listener.
+    const dismiss = vi.fn();
+    const onWindowEscape = (event: Event) => {
+      if ((event as KeyboardEvent).key === "Escape") dismiss();
+    };
+    window.addEventListener("keydown", onWindowEscape);
+    const event = pressEscape();
+    window.removeEventListener("keydown", onWindowEscape);
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it("cancels on Escape while transcribing too", () => {
+    const cancel = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: voiceConfig({ state: "transcribing", cancel }),
+        })}
+      />,
+    );
+
+    expect(pressEscape().defaultPrevented).toBe(true);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape alone when not recording", () => {
+    const cancel = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: voiceConfig({ state: "idle", cancel }),
+        })}
+      />,
+    );
+
+    expect(pressEscape().defaultPrevented).toBe(false);
+    expect(cancel).not.toHaveBeenCalled();
   });
 });
