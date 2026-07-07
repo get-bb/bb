@@ -107,6 +107,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   const [state, setState] = useState<VoiceInputState>("idle");
   const [isSupported, setIsSupported] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const showError = useCallback((message: string) => {
     setState("error");
@@ -118,6 +119,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setStream(null);
   }, []);
 
   const requestRecordingWakeLock = useCallback(() => {
@@ -248,6 +250,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setStream(stream);
       chunksRef.current = [];
       startedAtMsRef.current = Date.now();
       promptContextRef.current = options.getPromptContext?.();
@@ -407,6 +410,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   return {
     state,
     isSupported,
+    stream,
     isRecording: state === "recording",
     isProcessing: state === "transcribing",
     isListening: state === "recording" || state === "transcribing",

@@ -41,6 +41,7 @@ export function usePromptVoice(
     () => ({
       state: voiceInput.state,
       isSupported: voiceInput.isSupported,
+      stream: voiceInput.stream,
       start: voiceInput.start,
       stop: voiceInput.stop,
       cancel: voiceInput.cancel,
@@ -48,6 +49,7 @@ export function usePromptVoice(
     [
       voiceInput.state,
       voiceInput.isSupported,
+      voiceInput.stream,
       voiceInput.start,
       voiceInput.stop,
       voiceInput.cancel,

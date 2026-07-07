@@ -39,7 +39,6 @@ import { Icon } from "@/components/ui/icon.js";
 import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-  COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
@@ -54,6 +53,7 @@ import {
 } from "@/lib/prompt-draft";
 import { cn } from "@/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
+import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
   PromptBoxActionsMenu,
   type PromptBoxAction,
@@ -266,6 +266,7 @@ export type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
   isSupported: boolean;
+  stream: MediaStream | null;
   start: () => void | Promise<void>;
   stop: () => void;
   cancel: () => void;
@@ -2417,11 +2418,15 @@ export function PromptBoxInternal({
       }}
       className={cn(
         "relative w-full rounded-xl border border-border bg-background pb-2 shadow-lift",
+        "transition-[border-radius,padding] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+        showVoiceActionGroup && "rounded-3xl pb-0",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
-        isZenMode && "flex flex-col",
-        isZenMode && ZEN_MODE_HEIGHT_CLASS[zenModeLayout],
+        isZenMode && !showVoiceActionGroup && "flex flex-col",
+        isZenMode &&
+          !showVoiceActionGroup &&
+          ZEN_MODE_HEIGHT_CLASS[zenModeLayout],
         className,
       )}
     >
@@ -2432,266 +2437,252 @@ export function PromptBoxInternal({
         className="hidden"
         onChange={handleAttachmentInputChange}
       />
-      {header ? (
-        // Left padding matches the editor's so the header content aligns
-        // with the placeholder column in both normal and zen modes (editor
-        // shifts from px-4 to px-6 when entering zen). Right padding leaves
-        // room for the zen-mode toggle button in the top-right corner. Zen
-        // mode also gets more top room since the card fills the viewport.
-        <div className="pl-4 pr-14 pt-3">{header}</div>
-      ) : null}
       <div
-        className={cn("relative", isZenMode && "min-h-0 flex flex-1 flex-col")}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+          isZenMode && !showVoiceActionGroup && "min-h-0 flex-1",
+        )}
+        style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
       >
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onMouseDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={toggleZenMode}
-          aria-label={isZenMode ? "Exit zen mode" : "Enter zen mode"}
-          aria-pressed={isZenMode}
-          // Neutralise the ghost variant's `aria-pressed:bg-state-active`
-          // styling — the icon swap (Maximize2 ↔ Minimize2) is the only
-          // state cue we want for zen mode.
-          className="absolute right-2 top-2 z-20 size-auto h-6 px-1.5 text-subtle-foreground hover:text-muted-foreground aria-pressed:bg-transparent aria-pressed:text-subtle-foreground aria-pressed:hover:bg-transparent aria-pressed:hover:text-muted-foreground"
-        >
-          {isZenMode ? (
-            <Icon name="Minimize2" className="size-3" />
-          ) : (
-            <Icon name="Maximize2" className="size-3" />
-          )}
-        </Button>
-        <div
-          ref={editorScrollContainerRef}
-          data-promptbox-editor-scroll=""
-          className={cn(
-            "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
-            COARSE_POINTER_TEXT_BASE_CLASS,
-            // Keep line-height after the text-size class. tailwind-merge treats
-            // text size utilities as owning line-height and would otherwise
-            // drop this, making composer rows tighter than timeline messages.
-            "leading-relaxed",
-            // Zen mode only adds the flex-fill behavior so the editor
-            // stretches to the dvh-sized form. Inset padding (px / pt / pb)
-            // is identical between modes — toggling shouldn't shift the
-            // placeholder position.
-            isZenMode && "min-h-0 flex-1",
-          )}
-          style={{
-            minHeight: isZenMode ? "0px" : `${minHeight}px`,
-            height: isZenMode ? "100%" : undefined,
-            maxHeight: isZenMode
-              ? "none"
-              : PROMPTBOX_MAX_HEIGHT_BY_LAYOUT[zenModeLayout],
-          }}
-        >
-          <PromptMentionLinkContext.Provider value={mentionResolveLink ?? null}>
-            <EditorContent
-              editor={editor}
-              className={cn(
-                "h-full min-h-full",
-                "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
-                "[&_.ProseMirror_p]:m-0",
-                "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
-                // Markdown formatting styles (mirrors what the timeline renders).
-                "[&_.ProseMirror_h1]:my-1 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold",
-                "[&_.ProseMirror_h2]:my-1 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold",
-                "[&_.ProseMirror_h3]:my-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold",
-                "[&_.ProseMirror_h4]:my-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h5]:font-semibold [&_.ProseMirror_h6]:font-semibold",
-                "[&_.ProseMirror_ul]:my-1 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
-                "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
-                "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
-                "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
-                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
-              )}
-            />
-          </PromptMentionLinkContext.Provider>
-        </div>
-      </div>
-
-      {showTypeaheadMenu ? (
         <div
           className={cn(
-            // Zen mode: menu floats inside the form, anchored just above
-            // the action footer so it stays visible. The form's pb-3 +
-            // ~36px button row sets the bottom offset.
-            // Normal mode: menu floats outside the form (above or below).
-            // -left-px / -right-px aligns the menu with the form's outer
-            // edge (form has a 1px border; left-0/right-0 would otherwise
-            // sit inside it, leaving the banner above peeking out 1px on
-            // each side).
-            "absolute -left-px -right-px z-20",
-            isZenMode
-              ? "bottom-14 px-3"
-              : mentionMenuPlacement === "top"
-                ? "bottom-full mb-2"
-                : "top-full mt-2",
+            "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
+            isZenMode && "flex flex-col",
+            showVoiceActionGroup && "opacity-0",
           )}
         >
-          <MentionMenu
-            state={typeaheadMenuState}
-            selectedIndex={selectedIndex}
-            onApply={applyTrigger}
-            onCommandLoadMore={
-              canLoadMoreCommands ? loadMoreCommands : undefined
-            }
-          />
-        </div>
-      ) : null}
-
-      <AttachmentPreview
-        attachments={attachments}
-        attachmentProjectId={attachmentProjectId}
-        expandedImageIndex={expandedImageIndex}
-        onExpandedImageIndexChange={setExpandedImageIndex}
-        onRemoveAttachment={onRemoveAttachment}
-      />
-
-      {attachmentError ? (
-        <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
-          {attachmentError}
-        </div>
-      ) : null}
-
-      <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
-        <div
-          className="flex min-w-0 flex-1 flex-row items-center gap-1"
-          aria-live="polite"
-        >
-          <PromptBoxActionsMenu
-            actions={promptActions}
-            onAction={applyPromptAction}
-          />
-          {footerStart}
-          <PluginComposerAccessories />
-        </div>
-        <div className="flex shrink-0 flex-row items-center gap-1">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label="Attach files"
-            disabled={!onAttachFiles || isAttaching}
-            onClick={() => attachmentInputRef.current?.click()}
-            className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
-          >
-            {isAttaching ? (
-              <Icon name="Spinner" className="size-4 animate-spin" />
-            ) : (
-              <Icon name="Paperclip" className="size-4" />
+          {header ? (
+            // Left padding matches the editor's so the header content aligns
+            // with the placeholder column in both normal and zen modes (editor
+            // shifts from px-4 to px-6 when entering zen). Right padding leaves
+            // room for the zen-mode toggle button in the top-right corner. Zen
+            // mode also gets more top room since the card fills the viewport.
+            <div className="pl-4 pr-14 pt-3">{header}</div>
+          ) : null}
+          <div
+            className={cn(
+              "relative",
+              isZenMode && "min-h-0 flex flex-1 flex-col",
             )}
-          </Button>
-          {voice && !showVoiceActionGroup ? (
+          >
             <Button
               type="button"
               size="icon"
               variant="ghost"
-              aria-label={
-                !voice.isSupported
-                  ? "Voice input is not supported in this browser"
-                  : "Start voice input"
-              }
-              disabled={!canStartVoiceInput}
-              onClick={voice.start}
-              className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={toggleZenMode}
+              aria-label={isZenMode ? "Exit zen mode" : "Enter zen mode"}
+              aria-pressed={isZenMode}
+              // Neutralise the ghost variant's `aria-pressed:bg-state-active`
+              // styling — the icon swap (Maximize2 ↔ Minimize2) is the only
+              // state cue we want for zen mode.
+              className="absolute right-2 top-2 z-20 size-auto h-6 px-1.5 text-subtle-foreground hover:text-muted-foreground aria-pressed:bg-transparent aria-pressed:text-subtle-foreground aria-pressed:hover:bg-transparent aria-pressed:hover:text-muted-foreground"
             >
-              <Icon name="Mic" className="size-4" />
-            </Button>
-          ) : null}
-          {showStop ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              aria-label="Stop run"
-              onClick={onStop}
-              className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
-            >
-              <Icon
-                name="Square"
-                className="size-3.5 fill-current [&_*]:stroke-0"
-              />
-            </Button>
-          ) : voice && isVoiceRecording ? (
-            <div className="relative inline-flex">
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Stop and transcribe recording"
-                onClick={voice.stop}
-                className={cn(
-                  "rounded-r-none",
-                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                )}
-              >
-                <Icon name="AudioLines" className="size-4 animate-pulse" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Cancel recording"
-                onClick={voice.cancel}
-                className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
-              >
-                <Icon name="X" className="size-3.5" />
-              </Button>
-            </div>
-          ) : voice && isVoiceProcessing ? (
-            <div className="relative inline-flex">
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Transcribing voice input"
-                disabled
-                className={cn(
-                  "rounded-r-none",
-                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                )}
-              >
-                <Icon name="AudioLines" className="size-4" />
-                <Icon name="Spinner" className="size-4 animate-spin" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                aria-label="Cancel transcription"
-                onClick={voice.cancel}
-                className={COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS}
-              >
-                <Icon name="X" className="size-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="submit"
-              size="sm"
-              variant="default"
-              aria-label={effectiveSubmitTitle}
-              disabled={!canSubmit}
-              className={cn("ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS)}
-            >
-              {isSubmitting ? (
-                <Icon name="Spinner" className="size-4 animate-spin" />
-              ) : isZenMode ? (
-                <Icon name="ArrowUp" className="size-4" />
+              {isZenMode ? (
+                <Icon name="Minimize2" className="size-3" />
               ) : (
-                <Icon name="CornerDownLeft" className="size-4" />
+                <Icon name="Maximize2" className="size-3" />
               )}
             </Button>
-          )}
+            <div
+              ref={editorScrollContainerRef}
+              data-promptbox-editor-scroll=""
+              className={cn(
+                "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
+                COARSE_POINTER_TEXT_BASE_CLASS,
+                // Keep line-height after the text-size class. tailwind-merge treats
+                // text size utilities as owning line-height and would otherwise
+                // drop this, making composer rows tighter than timeline messages.
+                "leading-relaxed",
+                // Zen mode only adds the flex-fill behavior so the editor
+                // stretches to the dvh-sized form. Inset padding (px / pt / pb)
+                // is identical between modes — toggling shouldn't shift the
+                // placeholder position.
+                isZenMode && "min-h-0 flex-1",
+              )}
+              style={{
+                minHeight: isZenMode ? "0px" : `${minHeight}px`,
+                height: isZenMode ? "100%" : undefined,
+                maxHeight: isZenMode
+                  ? "none"
+                  : PROMPTBOX_MAX_HEIGHT_BY_LAYOUT[zenModeLayout],
+              }}
+            >
+              <PromptMentionLinkContext.Provider
+                value={mentionResolveLink ?? null}
+              >
+                <EditorContent
+                  editor={editor}
+                  className={cn(
+                    "h-full min-h-full",
+                    "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
+                    "[&_.ProseMirror_p]:m-0",
+                    "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
+                    // Markdown formatting styles (mirrors what the timeline renders).
+                    "[&_.ProseMirror_h1]:my-1 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold",
+                    "[&_.ProseMirror_h2]:my-1 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold",
+                    "[&_.ProseMirror_h3]:my-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold",
+                    "[&_.ProseMirror_h4]:my-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h5]:font-semibold [&_.ProseMirror_h6]:font-semibold",
+                    "[&_.ProseMirror_ul]:my-1 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
+                    "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
+                    "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
+                    "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
+                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
+                  )}
+                />
+              </PromptMentionLinkContext.Provider>
+            </div>
+          </div>
+
+          {showTypeaheadMenu ? (
+            <div
+              className={cn(
+                // Zen mode: menu floats inside the form, anchored just above
+                // the action footer so it stays visible. The form's pb-3 +
+                // ~36px button row sets the bottom offset.
+                // Normal mode: menu floats outside the form (above or below).
+                // -left-px / -right-px aligns the menu with the form's outer
+                // edge (form has a 1px border; left-0/right-0 would otherwise
+                // sit inside it, leaving the banner above peeking out 1px on
+                // each side).
+                "absolute -left-px -right-px z-20",
+                isZenMode
+                  ? "bottom-14 px-3"
+                  : mentionMenuPlacement === "top"
+                    ? "bottom-full mb-2"
+                    : "top-full mt-2",
+              )}
+            >
+              <MentionMenu
+                state={typeaheadMenuState}
+                selectedIndex={selectedIndex}
+                onApply={applyTrigger}
+                onCommandLoadMore={
+                  canLoadMoreCommands ? loadMoreCommands : undefined
+                }
+              />
+            </div>
+          ) : null}
+
+          <AttachmentPreview
+            attachments={attachments}
+            attachmentProjectId={attachmentProjectId}
+            expandedImageIndex={expandedImageIndex}
+            onExpandedImageIndexChange={setExpandedImageIndex}
+            onRemoveAttachment={onRemoveAttachment}
+          />
+
+          {attachmentError ? (
+            <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
+              {attachmentError}
+            </div>
+          ) : null}
+
+          <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
+            <div
+              className="flex min-w-0 flex-1 flex-row items-center gap-1"
+              aria-live="polite"
+            >
+              <PromptBoxActionsMenu
+                actions={promptActions}
+                onAction={applyPromptAction}
+              />
+              {footerStart}
+              <PluginComposerAccessories />
+            </div>
+            <div className="flex shrink-0 flex-row items-center gap-1">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Attach files"
+                disabled={!onAttachFiles || isAttaching}
+                onClick={() => attachmentInputRef.current?.click()}
+                className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+              >
+                {isAttaching ? (
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                ) : (
+                  <Icon name="Paperclip" className="size-4" />
+                )}
+              </Button>
+              {voice && !showVoiceActionGroup ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label={
+                    !voice.isSupported
+                      ? "Voice input is not supported in this browser"
+                      : "Start voice input"
+                  }
+                  disabled={!canStartVoiceInput}
+                  onClick={voice.start}
+                  className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+                >
+                  <Icon name="Mic" className="size-4" />
+                </Button>
+              ) : null}
+              {showStop ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  aria-label="Stop run"
+                  onClick={onStop}
+                  className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+                >
+                  <Icon
+                    name="Square"
+                    className="size-3.5 fill-current [&_*]:stroke-0"
+                  />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="default"
+                  aria-label={effectiveSubmitTitle}
+                  disabled={!canSubmit}
+                  className={cn(
+                    "ml-1",
+                    COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                  )}
+                >
+                  {isSubmitting ? (
+                    <Icon name="Spinner" className="size-4 animate-spin" />
+                  ) : isZenMode ? (
+                    <Icon name="ArrowUp" className="size-4" />
+                  ) : (
+                    <Icon name="CornerDownLeft" className="size-4" />
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        style={{ gridTemplateRows: showVoiceActionGroup ? "1fr" : "0fr" }}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {voice && showVoiceActionGroup ? (
+            <VoiceRecordingBar
+              state={isVoiceRecording ? "recording" : "transcribing"}
+              stream={voice.stream}
+              onConfirm={voice.stop}
+              onCancel={voice.cancel}
+            />
+          ) : null}
         </div>
       </div>
     </form>
