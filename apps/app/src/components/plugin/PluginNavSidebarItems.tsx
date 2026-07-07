@@ -32,9 +32,9 @@ function PluginNavSidebarItemList({
   const location = useLocation();
   return (
     <div
-      // Cancel the primary-actions block's bottom padding so plugin panel rows
-      // sit flush under New thread as one continuous action list.
-      className="-mt-2 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+      // Pull back most of the primary-actions bottom padding so plugin panel
+      // rows keep the same compact 2px rhythm as sidebar thread rows.
+      className="-mt-1.5 shrink-0 space-y-0.5 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
     >
       {navPanels.map((panel) => {
