@@ -29,6 +29,7 @@
 
 - Do not load all rows and filter in JavaScript when a targeted query with `WHERE` or `JOIN` is possible.
 - Add indexes only when they are required by the new or changed query.
+- Do not manually edit Drizzle snapshot JSON. Change the schema, then regenerate migrations/snapshots with Drizzle so the snapshot chain stays consistent.
 - Never mock the database in tests. Use in-memory SQLite via `createConnection(":memory:")` plus `migrate(db)`.
 
 ## UI
