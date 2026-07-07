@@ -2610,11 +2610,11 @@ export function PromptBoxInternal({
           {showStop ? (
             <Button
               type="button"
-              size="icon"
+              size="sm"
               variant="secondary"
               aria-label="Stop run"
               onClick={onStop}
-              className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+              className={cn("ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS)}
             >
               <Icon
                 name="Square"
