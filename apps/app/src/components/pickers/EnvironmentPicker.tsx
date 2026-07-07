@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { Host, ProjectSource } from "@bb/domain";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,15 +10,15 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
+} from "@bb/shared-ui/dropdown-menu";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,

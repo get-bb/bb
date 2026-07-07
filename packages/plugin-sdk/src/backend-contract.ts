@@ -436,6 +436,21 @@ export interface PluginUi {
 }
 
 // ---------------------------------------------------------------------------
+// Server info.
+// ---------------------------------------------------------------------------
+
+export interface PluginServerApi {
+  /**
+   * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
+   * which serves the SPA + /api + /ws. For plugins that proxy or relay
+   * traffic back to the server itself (e.g. a tunnel). Bind-gated like
+   * `bb.sdk`: reading it before the server is listening throws, so prefer
+   * reading it from handlers, services, and timers.
+   */
+  readonly loopbackBaseUrl: string;
+}
+
+// ---------------------------------------------------------------------------
 // Status + the API root.
 // ---------------------------------------------------------------------------
 
@@ -480,6 +495,8 @@ export interface BbPluginApi {
   readonly ui: PluginUi;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
+  /** Read-only facts about the running server (loopback base URL). */
+  readonly server: PluginServerApi;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

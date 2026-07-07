@@ -126,6 +126,7 @@ describe("PluginRow settings gating", () => {
       enabled: true,
       status,
       statusDetail: null,
+      description: null,
       logoUrl,
       logoDarkUrl: null,
     };

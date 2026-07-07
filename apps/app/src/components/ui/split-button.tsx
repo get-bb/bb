@@ -1,8 +1,8 @@
 import { Fragment, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "./button.js";
-import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "./coarse-pointer-sizing.js";
-import { Icon } from "@/components/ui/icon.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { buttonVariants } from "@bb/shared-ui/button";
+import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "./dropdown-menu.js";
+} from "@bb/shared-ui/dropdown-menu";
 
 const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
 

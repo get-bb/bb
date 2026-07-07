@@ -153,6 +153,8 @@ export interface PluginListEntry {
   rootDir: string;
   version: string;
   enabled: boolean;
+  /** Manifest description (package.json), null when not currently loaded. */
+  description: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -785,6 +787,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // two-phase load/bind). One shared instance — plugin-api wraps it per
   // plugin for spawn attribution.
   let boundSdk: BbSdk | undefined;
+  // The server's own loopback base URL, bound alongside the SDK; backs the
+  // bind-gated bb.server.loopbackBaseUrl.
+  let boundLoopbackBaseUrl: string | undefined;
 
   function setStatus(
     id: string,
@@ -1134,6 +1139,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return sourceKind(source) === "builtin";
   }
 
+  function isPackagedBuiltinAppEntry(args: {
+    kind: ReturnType<typeof sourceKind>;
+    manifest: PluginManifest;
+    rootDir: string;
+  }): boolean {
+    return (
+      args.kind === "builtin" &&
+      args.manifest.appEntry === resolve(args.rootDir, "dist", "app.js")
+    );
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && isBuiltinSource(row.source);
@@ -1215,7 +1231,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
       return null;
     }
-    if (sourceKind(row.source) !== "npm") {
+    const kind = sourceKind(row.source);
+    if (
+      kind !== "npm" &&
+      !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
+    ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
       if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
         logger.info(
@@ -1302,6 +1322,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1528,7 +1549,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // prebuilt dist (a major mismatch is tolerated: the backend runs, the
     // frontend marks the bundle "needs update").
     if (manifest.appEntry !== undefined) {
-      if (sourceKind(args.source) === "npm") {
+      const kind = sourceKind(args.source);
+      if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
           .then(() => true)
           .catch(() => false);
@@ -1540,7 +1562,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             `install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle — "${manifest.id}" is missing dist/app.js + dist/app.meta.json`,
           );
         }
-      } else {
+      } else if (
+        !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
+      ) {
         try {
           await buildPluginApp(args.rootDir);
         } catch (error) {
@@ -1858,6 +1882,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: row.rootDir,
           version: row.version,
           enabled: row.enabled,
+          description: loaded.get(row.id)?.manifest.description ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1930,6 +1955,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     bindSdk({ baseUrl }) {
       boundSdk = createNodeBbSdk({ baseUrl });
+      boundLoopbackBaseUrl = baseUrl;
     },
 
     async start() {

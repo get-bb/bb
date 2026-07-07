@@ -1,7 +1,8 @@
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import { z } from "zod";
 import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
   BUILTIN_PLUGIN_NAMES,
@@ -19,10 +20,20 @@ const targetRoot = path.resolve(
 );
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
-const RUNTIME_FILES = ["package.json"] as const;
 const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.map(
   (extension) => `logo.${extension}`,
 );
+
+const pluginPackageJsonSchema = z
+  .object({
+    bb: z
+      .object({
+        server: z.string().min(1),
+        app: z.string().min(1).optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -39,6 +50,32 @@ async function copyIfExists(from: string, to: string): Promise<void> {
   }
 }
 
+async function writeRuntimePackageJson(args: {
+  sourceRoot: string;
+  targetDir: string;
+}): Promise<void> {
+  const raw = await readFile(
+    path.join(args.sourceRoot, "package.json"),
+    "utf8",
+  );
+  const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
+  await writeFile(
+    path.join(args.targetDir, "package.json"),
+    `${JSON.stringify(
+      {
+        ...packageJson,
+        bb: {
+          ...packageJson.bb,
+          server: "./dist/server.js",
+          ...(packageJson.bb.app === undefined ? {} : { app: "./dist/app.js" }),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 async function copyBuiltinPlugin(args: {
   build: boolean;
   name: (typeof BUILTIN_PLUGIN_NAMES)[number];
@@ -53,22 +90,31 @@ async function copyBuiltinPlugin(args: {
   const targetDir = path.join(args.targetRoot, args.name);
   await mkdir(targetDir, { recursive: true });
 
-  for (const fileName of RUNTIME_FILES) {
-    await cp(path.join(args.sourceRoot, fileName), path.join(targetDir, fileName));
-  }
+  await writeRuntimePackageJson({
+    sourceRoot: args.sourceRoot,
+    targetDir,
+  });
   for (const dirName of RUNTIME_DIRS) {
-    await copyIfExists(path.join(args.sourceRoot, dirName), path.join(targetDir, dirName));
+    await copyIfExists(
+      path.join(args.sourceRoot, dirName),
+      path.join(targetDir, dirName),
+    );
   }
   for (const logoFile of LOGO_FILES) {
-    await copyIfExists(path.join(args.sourceRoot, logoFile), path.join(targetDir, logoFile));
+    await copyIfExists(
+      path.join(args.sourceRoot, logoFile),
+      path.join(targetDir, logoFile),
+    );
   }
 }
 
-export async function copyBuiltinPlugins(args: {
-  build?: boolean;
-  sourceModuleDir?: string;
-  targetRoot?: string;
-} = {}): Promise<void> {
+export async function copyBuiltinPlugins(
+  args: {
+    build?: boolean;
+    sourceModuleDir?: string;
+    targetRoot?: string;
+  } = {},
+): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
   const build = args.build ?? true;

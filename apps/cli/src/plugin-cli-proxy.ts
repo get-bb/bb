@@ -18,31 +18,78 @@ export interface PluginCliContributionEntry {
 const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 
 /**
- * Fetch plugin CLI contributions with a short timeout. Returns null on any
- * failure (server down, old server, timeout) so unknown-command handling can
- * silently fall back to the normal commander error.
+ * Result of asking the server for plugin CLI contributions. "unreachable"
+ * (fetch threw: server down, timeout) is distinguished from "invalid" (an
+ * old server without the route, or a malformed payload) so unknown-command
+ * handling can tell the user to start bb instead of printing a misleading
+ * "unknown command" for a plugin command that would exist if bb were up.
  */
+export type PluginCliContributionsResult =
+  | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
+  | { outcome: "unreachable" }
+  | { outcome: "invalid" };
+
+/** Fetch plugin CLI contributions with a short timeout. */
 export async function fetchPluginCliContributions(
   baseUrl: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
-): Promise<PluginCliContributionEntry[] | null> {
+): Promise<PluginCliContributionsResult> {
+  let response: Response;
   try {
-    const response = await fetch(`${baseUrl}/api/v1/plugins/contributions`, {
+    response = await fetch(`${baseUrl}/api/v1/plugins/contributions`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!response.ok) return null;
+  } catch {
+    return { outcome: "unreachable" };
+  }
+  try {
+    if (!response.ok) return { outcome: "invalid" };
     const parsed = (await response.json()) as {
       cliCommands?: unknown;
     } | null;
     const cliCommands = parsed?.cliCommands;
-    if (!Array.isArray(cliCommands)) return null;
-    return cliCommands.filter(
-      (entry): entry is PluginCliContributionEntry =>
+    if (!Array.isArray(cliCommands)) return { outcome: "invalid" };
+    return {
+      outcome: "ok",
+      contributions: cliCommands.filter(
+        (entry): entry is PluginCliContributionEntry =>
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as { pluginId?: unknown }).pluginId === "string" &&
+          typeof (entry as { name?: unknown }).name === "string",
+      ),
+    };
+  } catch {
+    return { outcome: "invalid" };
+  }
+}
+
+/**
+ * Look up an installed-but-disabled plugin whose id matches the unknown
+ * command name (the `bb <id>` convention builtins follow), so `bb connect`
+ * with the connect plugin disabled explains itself instead of erroring with
+ * "unknown command". Best effort: any failure returns null.
+ */
+export async function findDisabledPluginForCommand(
+  baseUrl: string,
+  name: string,
+  timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
+): Promise<{ id: string } | null> {
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/plugins`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return null;
+    const parsed = (await response.json()) as { plugins?: unknown } | null;
+    if (!Array.isArray(parsed?.plugins)) return null;
+    const match = parsed.plugins.find(
+      (entry): entry is { id: string; enabled: boolean } =>
         typeof entry === "object" &&
         entry !== null &&
-        typeof (entry as { pluginId?: unknown }).pluginId === "string" &&
-        typeof (entry as { name?: unknown }).name === "string",
+        (entry as { id?: unknown }).id === name &&
+        (entry as { enabled?: unknown }).enabled === false,
     );
+    return match === undefined ? null : { id: match.id };
   } catch {
     return null;
   }

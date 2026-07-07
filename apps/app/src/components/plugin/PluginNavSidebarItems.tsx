@@ -1,10 +1,10 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
  * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row
@@ -32,10 +32,9 @@ function PluginNavSidebarItemList({
   const location = useLocation();
   return (
     <div
-      // -mt-1 tightens the seam against the primary-actions block (its py-2
-      // bottom) so the first panel row sits on the same 4px (space-y-1) rhythm
-      // as New thread above it, instead of an 8px gap.
-      className="-mt-1 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+      // Pull back most of the primary-actions bottom padding so plugin panel
+      // rows keep the same compact 2px rhythm as sidebar thread rows.
+      className="-mt-1.5 shrink-0 space-y-0.5 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
     >
       {navPanels.map((panel) => {

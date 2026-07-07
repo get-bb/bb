@@ -4,7 +4,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { cn } from "../src/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const ROW_GRID =
   "grid grid-cols-[var(--story-label-width,210px)_minmax(0,1fr)] gap-x-4";

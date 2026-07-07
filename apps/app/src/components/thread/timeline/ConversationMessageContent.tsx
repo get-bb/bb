@@ -6,7 +6,7 @@ import type {
 } from "@bb/server-contract";
 import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";

@@ -3,14 +3,14 @@ import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   activityIconClass,
   activityMetaClass,
   activityRowClass,
   activityTextClass,
 } from "@/components/ui/activity-row-styles";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-background-commands-card-body";

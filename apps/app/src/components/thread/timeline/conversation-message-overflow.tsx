@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, type RefObject } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 interface UseOverflowMeasurementArgs {
   elementRef: RefObject<HTMLElement | null>;

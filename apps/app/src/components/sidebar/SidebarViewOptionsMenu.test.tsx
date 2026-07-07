@@ -10,8 +10,8 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarGroupOptionsMenu, SidebarSortOptionsMenu } from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,

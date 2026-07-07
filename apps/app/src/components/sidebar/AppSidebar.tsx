@@ -5,11 +5,11 @@ import {
   useState,
   type KeyboardEventHandler,
 } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
-import { Icon } from "@/components/ui/icon.js";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,

@@ -4,9 +4,9 @@ import {
   type Action,
   type ExternalToast,
 } from "sonner";
-import { Button } from "./button";
-import { Icon, type IconName } from "./icon";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export type AppToastTone =
   | "message"

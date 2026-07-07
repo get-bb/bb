@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
  * A detail-row label with a leading icon, styled like the timeline's tool-call

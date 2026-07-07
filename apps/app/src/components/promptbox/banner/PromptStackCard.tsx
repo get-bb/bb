@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
 export const PROMPT_STACK_CARD_RADIUS_CLASS = "rounded-lg";

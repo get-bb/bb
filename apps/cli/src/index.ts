@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { registerConnectCommands } from "./commands/connect.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerHostCommands } from "./commands/host.js";
@@ -20,6 +19,7 @@ import {
 } from "./context-env.js";
 import {
   fetchPluginCliContributions,
+  findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
   runPluginCliCommand,
@@ -79,7 +79,6 @@ registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerHostCommands(program, getUrl);
-registerConnectCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerUiCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
@@ -98,10 +97,29 @@ async function tryPluginCommandProxy(): Promise<void> {
   knownCommandNames.add("help");
   const candidate = pluginProxyCandidate(process.argv[2], knownCommandNames);
   if (candidate === null) return;
-  const contributions = await fetchPluginCliContributions(getUrl());
-  if (contributions === null) return;
-  const match = findPluginCliCommand(contributions, candidate);
-  if (match === undefined) return;
+  const result = await fetchPluginCliContributions(getUrl());
+  if (result.outcome === "unreachable") {
+    // The candidate may be a plugin command (`bb connect` on a fresh
+    // machine is the canonical case) — only the running server can say, so
+    // a dead server must not degrade into commander's "unknown command".
+    console.error("bb isn't running — open the bb app, then re-run this command.");
+    process.exit(1);
+  }
+  if (result.outcome === "invalid") return;
+  const match = findPluginCliCommand(result.contributions, candidate);
+  if (match === undefined) {
+    // Disabled plugins contribute no commands; explain instead of erroring
+    // when the name matches an installed-but-disabled plugin's id.
+    const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
+    if (disabled !== null) {
+      console.error(
+        `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
+          `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
+      );
+      process.exit(1);
+    }
+    return;
+  }
   process.exit(
     await runPluginCliCommand(getUrl(), match.pluginId, process.argv.slice(3)),
   );

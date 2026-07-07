@@ -5,7 +5,7 @@ import {
   isLocalPathProjectSource,
   type LocalPathProjectSource,
 } from "@bb/domain";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {

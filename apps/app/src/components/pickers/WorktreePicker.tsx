@@ -1,20 +1,20 @@
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button.js";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { Icon } from "@/components/ui/icon.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import {
   OPTION_BASE_CLASS_NAME,

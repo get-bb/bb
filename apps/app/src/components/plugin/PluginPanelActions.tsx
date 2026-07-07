@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
   type PluginThreadPanelActionSlot,

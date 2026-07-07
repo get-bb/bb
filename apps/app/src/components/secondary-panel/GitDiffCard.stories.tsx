@@ -52,7 +52,7 @@ const PROJECT_ROW_TSX = `import {
   memo,
   useMemo,
 } from "react";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { Sidebar, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton } from "@/components/ui/sidebar.js";
 import { useThreadList } from "@/hooks/queries/thread-queries";
 import type { Project } from "@bb/domain";
@@ -150,8 +150,8 @@ ProjectRow.displayName = "ProjectRow";
 
 const THREAD_ROW_TSX = `import { memo, useMemo } from "react";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
-import { Pill } from "@/components/ui/pill.js";
-import { cn } from "@/lib/utils";
+import { Pill } from "@bb/shared-ui/pill";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getEnvironmentWorkspaceDisplayIconName } from "@/lib/environment-workspace-display";
 import type { ThreadListEntry } from "@bb/server-contract";
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
   CHROME_ROW_CLASS,
@@ -13,7 +13,7 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
  * Shared sizing for icon-only header action buttons (sidebar trigger, kebab

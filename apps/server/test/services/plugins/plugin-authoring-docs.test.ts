@@ -47,6 +47,7 @@ const BB_PLUGIN_API_KEYS = [
   "agents",
   "ui",
   "status",
+  "server",
   "sdk",
   "on",
   "onDispose",

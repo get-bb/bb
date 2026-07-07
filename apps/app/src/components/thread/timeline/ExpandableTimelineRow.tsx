@@ -14,8 +14,8 @@ import {
   ExpandablePanel,
   getCollapsibleHeaderToneClass,
 } from "../../ui/disclosure.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME,
   timelineRowHeaderClassName,

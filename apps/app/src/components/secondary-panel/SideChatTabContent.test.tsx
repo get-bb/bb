@@ -205,7 +205,7 @@ vi.mock("@/components/ui/height-transition.js", () => ({
   HeightTransition: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("@/components/ui/icon.js", () => ({
+vi.mock("@bb/shared-ui/icon", () => ({
   Icon: () => <span />,
 }));
 
@@ -213,7 +213,7 @@ vi.mock("@/components/ui/overflow-fade", () => ({
   OverflowFade: () => null,
 }));
 
-vi.mock("@/components/ui/skeleton.js", () => ({
+vi.mock("@bb/shared-ui/skeleton", () => ({
   Skeleton: () => <div />,
 }));
 

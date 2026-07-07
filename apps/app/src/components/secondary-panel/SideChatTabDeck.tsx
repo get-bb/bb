@@ -1,7 +1,7 @@
 import type { Environment, Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   SideChatTabContent,

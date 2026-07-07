@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   createDiffWorker,

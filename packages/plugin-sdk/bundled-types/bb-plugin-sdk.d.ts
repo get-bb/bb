@@ -432,27 +432,13 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
 type ThreadTimelinePendingTodos = z$1.infer<typeof threadTimelinePendingTodosSchema>;
-
-/**
- * `POST /connect/pair` — redeem a one-time connect code so this server is
- * reachable at `<handle>.<domain>` through the connect tunnel. The server
- * holds the tunnel from then on (across restarts); the CLI/app just pair.
- * `baseUrl` (the connect cloud apex, e.g. https://getbb.app) is derived from
- * `serverUrl` when omitted.
- */
-declare const connectPairRequestSchema: z$1.ZodObject<{
-    code: z$1.ZodString;
-    serverUrl: z$1.ZodString;
-    baseUrl: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strict>;
-type ConnectPairRequest = z$1.infer<typeof connectPairRequestSchema>;
 
 declare const createProjectSourceRequestSchema: z$1.ZodObject<{
     hostId: z$1.ZodString;
@@ -1095,16 +1081,6 @@ type PublicApiEndpointOutput<TEndpoint> = TEndpoint extends {
 type SuccessfulHttpStatus = 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207 | 208 | 226;
 type PublicApiOutput<TPath extends keyof PublicApiSchema, TMethod extends keyof PublicApiSchema[TPath]> = PublicApiEndpointOutput<PublicApiSchema[TPath][TMethod]>;
 
-interface ConnectPairArgs extends ConnectPairRequest {
-}
-type ConnectStatusResult = PublicApiOutput<"/connect/status", "$get">;
-interface ConnectArea {
-    pair(args: ConnectPairArgs): Promise<ConnectStatusResult>;
-    status(): Promise<ConnectStatusResult>;
-    disconnect(): Promise<ConnectStatusResult>;
-}
-declare function createConnectArea(args: CreateSdkAreaArgs): ConnectArea;
-
 interface EnvironmentGetArgs {
     environmentId: string;
 }
@@ -1594,7 +1570,6 @@ interface ThreadsArea {
 declare function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea;
 
 interface BbSdk extends BbRealtime {
-    connect: ReturnType<typeof createConnectArea>;
     environments: ReturnType<typeof createEnvironmentsArea>;
     files: ReturnType<typeof createFilesArea>;
     guide: ReturnType<typeof createGuideArea>;
@@ -1955,6 +1930,16 @@ interface PluginUi {
      */
     registerMentionProvider(provider: PluginMentionProviderRegistration): void;
 }
+interface PluginServerApi {
+    /**
+     * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
+     * which serves the SPA + /api + /ws. For plugins that proxy or relay
+     * traffic back to the server itself (e.g. a tunnel). Bind-gated like
+     * `bb.sdk`: reading it before the server is listening throws, so prefer
+     * reading it from handlers, services, and timers.
+     */
+    readonly loopbackBaseUrl: string;
+}
 interface PluginStatusApi {
     /**
      * Mark this plugin `needs-configuration` (with a message shown in
@@ -1995,6 +1980,8 @@ interface BbPluginApi {
     readonly ui: PluginUi;
     /** Plugin-reported status (needs-configuration). */
     readonly status: PluginStatusApi;
+    /** Read-only facts about the running server (loopback base URL). */
+    readonly server: PluginServerApi;
     /**
      * The full BB SDK, bound to this server over loopback (design §4.1).
      * Bind-gated: reading this before the host binds the SDK throws. The real
@@ -2019,4 +2006,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginNavPanelProps, PluginNavPanelRegistration, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsState, PluginSettingsValues, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };

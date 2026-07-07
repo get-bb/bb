@@ -25,11 +25,11 @@ import {
   parseGitDiffFiles,
   type ParsedGitDiffFile,
 } from "@/components/git-diff/git-diff-parsing";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
  * Build the file label for a TOC entry. Renames/copies read as `old -> new`;

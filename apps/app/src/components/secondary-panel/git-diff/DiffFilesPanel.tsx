@@ -10,7 +10,7 @@ import {
   type RetryDiffPatchPath,
   useEnvironmentDiffPatches,
 } from "@/hooks/queries/use-environment-diff-patches";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFileCard } from "./DiffFileCard";
 import {
   diffFileCardStateAtomFamily,

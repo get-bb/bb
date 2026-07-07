@@ -148,9 +148,35 @@ function ClaimCard() {
 
 type ServerState = Extract<ReturnType<typeof Route.useLoaderData>, { authed: true }>;
 
+function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? "Copied" : label}
+    </Button>
+  );
+}
+
+interface IssuedCode {
+  code: string;
+  serverUrl: string;
+  expiresInMs: number;
+}
+
 function ServerCard({ state }: { state: ServerState }) {
   const router = useRouter();
-  const [command, setCommand] = useState<string | null>(null);
+  const [issued, setIssued] = useState<IssuedCode | null>(null);
+  const [showCli, setShowCli] = useState(false);
+  const [machineCommand, setMachineCommand] = useState<string | null>(null);
   const connected = state.server?.connected ?? false;
   const online = state.server?.online ?? false;
 
@@ -168,36 +194,37 @@ function ServerCard({ state }: { state: ServerState }) {
     </Badge>
   );
 
-  async function makeCommand() {
+  async function generateCode() {
     const r = await createCodeFn();
     if ("code" in r) {
-      const mins = Math.round(r.expiresInMs / 60000);
-      setCommand(
-        `# On the machine running your bb server:\n` +
-          `npx -p bb-app@latest bb connect --code ${r.code} --server ${r.serverUrl}\n\n` +
-          `# Already have bb installed? Drop the npx prefix:\n` +
-          `# bb connect --code ${r.code} --server ${r.serverUrl}\n\n` +
-          `# code expires in ${mins} min`,
-      );
+      setIssued({ code: r.code, serverUrl: r.serverUrl, expiresInMs: r.expiresInMs });
+      setShowCli(false);
+      setMachineCommand(null);
     }
   }
 
   async function addMachine() {
     const r = await createMachineCodeFn();
     if ("code" in r) {
-      setCommand(
+      setMachineCommand(
         `# Run on the machine you want to add as an execution host:\n` +
           `curl -fsSL ${state.appUrl}/connect | sh -s -- machine --code ${r.code} --server ${r.serverUrl}`,
       );
     } else {
-      setCommand(`# Could not add machine: ${r.error}`);
+      setMachineCommand(`# Could not add machine: ${r.error}`);
     }
+    setIssued(null);
   }
 
   async function disconnect() {
     await disconnectFn();
     void router.invalidate();
   }
+
+  const cliCommand =
+    issued === null
+      ? null
+      : `npx -p bb-app@latest bb connect --code ${issued.code} --server ${issued.serverUrl}`;
 
   return (
     <Card>
@@ -223,13 +250,8 @@ function ServerCard({ state }: { state: ServerState }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-xs text-subtle-foreground/75">
-          Run this on the machine hosting your bb server:
-        </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void makeCommand()}>
-            Generate connect command
-          </Button>
+          <Button onClick={() => void generateCode()}>Generate connect code</Button>
           {connected && (
             <Button variant="secondary" onClick={() => void addMachine()}>
               Add a machine
@@ -241,14 +263,49 @@ function ServerCard({ state }: { state: ServerState }) {
             </Button>
           )}
         </div>
-        {command && (
+        {issued && cliCommand && (
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-recessed px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <code className="select-all font-mono text-2xl font-semibold tracking-[0.2em]">
+                {issued.code}
+              </code>
+              <CopyButton text={issued.code} label="Copy code" />
+            </div>
+            <p className="text-xs text-subtle-foreground/75">
+              In bb, open <span className="text-foreground">Connect</span> and paste this
+              code. Expires in {Math.round(issued.expiresInMs / 60000)} min.
+            </p>
+            <button
+              className="self-start text-xs text-subtle-foreground/75 underline-offset-2 hover:text-foreground hover:underline"
+              onClick={() => setShowCli((v) => !v)}
+            >
+              {showCli ? "Hide terminal command" : "Using a terminal instead?"}
+            </button>
+            {showCli && (
+              <div className="flex flex-col gap-2">
+                <pre
+                  className={cn(
+                    "overflow-x-auto rounded-md border border-border bg-background px-3 py-2.5",
+                    "font-mono text-xs leading-relaxed text-foreground",
+                  )}
+                >
+                  {cliCommand}
+                </pre>
+                <div>
+                  <CopyButton text={cliCommand} label="Copy command" />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {machineCommand && (
           <pre
             className={cn(
               "overflow-x-auto rounded-md border border-border bg-surface-recessed px-3 py-2.5",
               "font-mono text-xs leading-relaxed text-foreground",
             )}
           >
-            {command}
+            {machineCommand}
           </pre>
         )}
       </CardContent>

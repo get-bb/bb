@@ -5,20 +5,20 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Drawer as DrawerPrimitive } from "vaul";
 
-import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
-import { cn } from "@/lib/utils";
-import { Button } from "./button.js";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "./coarse-pointer-sizing.js";
-import { Input } from "./input.js";
-import { Separator } from "./separator.js";
-import { Skeleton } from "./skeleton.js";
-import { Icon } from "@/components/ui/icon.js";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { Input } from "@bb/shared-ui/input";
+import { Separator } from "@bb/shared-ui/separator";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "./tooltip.js";
+} from "@bb/shared-ui/tooltip";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";

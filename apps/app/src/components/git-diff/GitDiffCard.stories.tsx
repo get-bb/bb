@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BuiltInThemeId } from "@bb/domain";
 import { builtInThemes } from "@bb/domain";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
 import { resolveAppThemeCss } from "@/lib/themes";
 import {
   GitDiffCard,

@@ -85,10 +85,15 @@ Remote access (bb connect):
     --server <url>         https://<handle>.getbb.app (from the dashboard)
 
   Pairing returns immediately: the bb SERVER redeems the code, stores the
-  credential in its data dir, and holds the tunnel itself — so it stays up as
-  long as bb is running and reconnects on restart (no foreground process).
+  credential, and holds the tunnel itself — so it stays up as long as bb is
+  running and reconnects on restart (no foreground process).
   Without an installed bb, pair via npm:
   `npx -p bb-app@latest bb connect --code <code> --server <url>`.
 
   bb connect status                       Show the server's connect status
   bb connect off                          Disconnect and forget the pairing
+
+  Remote access is owned by the builtin "connect" plugin (its "Connect"
+  panel in the app shows the URL and a QR code). Disabling the plugin
+  (`bb plugin disable connect`) cuts off all remote access; re-enable with
+  `bb plugin enable connect`.

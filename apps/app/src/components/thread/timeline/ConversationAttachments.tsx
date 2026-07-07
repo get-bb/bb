@@ -5,7 +5,7 @@ import {
   ImageLightbox,
   getWrappedImageIndex,
 } from "../../ui/image-lightbox.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
 import type {
   ThreadTimelineLocalFileLinkHandler,

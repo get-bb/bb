@@ -13,12 +13,12 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {

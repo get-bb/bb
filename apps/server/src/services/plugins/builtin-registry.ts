@@ -13,7 +13,7 @@ interface ResolveBuiltinPluginRootPathArgs {
 }
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
-export const BUILTIN_PLUGIN_NAMES = ["automations"] as const satisfies readonly string[];
+export const BUILTIN_PLUGIN_NAMES = ["automations", "connect"] as const satisfies readonly string[];
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 

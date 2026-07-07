@@ -15,14 +15,14 @@ import type {
 } from "@pierre/diffs";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
 import {
   getWrappedImageIndex,
   ImageLightbox,
   IMAGE_TRANSPARENCY_CHECKER_STYLE,
 } from "@/components/ui/image-lightbox.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   formatGitDiffFileLabel,
   enrichGitDiffFileForContext,

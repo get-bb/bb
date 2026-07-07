@@ -9,15 +9,15 @@ import type {
   PendingInteractionUserQuestionOption,
   PendingInteractionUserQuestionQuestion,
 } from "@bb/domain";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TabPill } from "@/components/ui/tab-pill.js";
 import { useAutoGrow } from "@/hooks/useAutoGrow";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   answerStateFor,
   buildUserAnswerResolution,

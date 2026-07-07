@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { DetailRow } from "@/components/ui/detail-card.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { Icon } from "@/components/ui/icon.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   renderChangeSummary,
   toChangeTally,

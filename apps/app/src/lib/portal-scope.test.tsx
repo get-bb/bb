@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PluginContext } from "@/components/plugin/plugin-context";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@bb/shared-ui/tooltip";
 
 /**
  * Portaled overlay content renders into document.body — outside every

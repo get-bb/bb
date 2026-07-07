@@ -6,7 +6,6 @@ import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
-import type { ConnectTunnelService } from "./services/connect/tunnel-service.js";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
@@ -41,7 +40,6 @@ export interface ServerRuntimeConfig {
 
 export interface AppDeps {
   config: ServerRuntimeConfig;
-  connectTunnel: ConnectTunnelService;
   db: DbConnection;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;

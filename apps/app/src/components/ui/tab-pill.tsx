@@ -1,7 +1,7 @@
-import { Icon } from "@/components/ui/icon.js";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { cn } from "@/lib/utils";
-import { LIST_HOVER_TRANSITION } from "./motion.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import type { ReactNode } from "react";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
   hasActiveWorkflowActivity,
@@ -11,7 +11,7 @@ import {
   isUnreadDoneThread,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const MOBILE_RECENT_THREAD_LIMIT = 3;
 

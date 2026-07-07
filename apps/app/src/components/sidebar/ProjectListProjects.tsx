@@ -6,7 +6,7 @@ import {
 } from "@dnd-kit/sortable";
 import type { ProjectResponse } from "@bb/server-contract";
 import type { ConnectionAwareQueryStatus } from "@/hooks/queries/connection-aware-query-state";
-import { EmptyState } from "@/components/ui/empty-state.js";
+import { EmptyState } from "@bb/shared-ui/empty-state";
 import {
   SidebarMenu,
   SidebarMenuItem,

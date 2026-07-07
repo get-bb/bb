@@ -6,7 +6,7 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { AppToaster } from "../src/components/AppToaster";
-import { TooltipProvider } from "../src/components/ui/tooltip";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { setPreferredTheme } from "../src/hooks/useTheme";
 import {
   createDiffWorker,

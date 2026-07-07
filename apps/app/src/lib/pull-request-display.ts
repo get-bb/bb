@@ -6,7 +6,7 @@ import type {
   ThreadPullRequestMergeabilityState,
   ThreadPullRequestReviewState,
 } from "@bb/domain";
-import type { IconName } from "@/components/ui/icon.js";
+import type { IconName } from "@bb/shared-ui/icon";
 
 interface PullRequestDisplay {
   label: string;

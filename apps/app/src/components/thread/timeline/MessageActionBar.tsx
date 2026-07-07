@@ -1,20 +1,20 @@
 import { useCallback, useState } from "react";
 import { CopyButton } from "../../ui/copy-button.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
+} from "@bb/shared-ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip.js";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/tooltip";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 
 interface MessageActionBarProps {

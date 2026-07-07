@@ -10,8 +10,8 @@ import {
   activityRowClass,
   activityTextClass,
 } from "@/components/ui/activity-row-styles";
-import { Icon } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-workflow-card-body";

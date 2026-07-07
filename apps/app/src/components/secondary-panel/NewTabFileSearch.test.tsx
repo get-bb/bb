@@ -2,7 +2,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { NewTabFileSearch } from "./NewTabFileSearch";
 
 vi.mock("@/hooks/useFileSearchSuggestions", () => ({

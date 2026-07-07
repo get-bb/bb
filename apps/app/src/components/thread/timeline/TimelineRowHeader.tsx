@@ -3,7 +3,7 @@ import {
   COLLAPSIBLE_HEADER_STATIC_TONE_CLASS,
   CollapsibleHeader,
 } from "../../ui/disclosure.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export type TimelineRowHorizontalPadding = "default" | "flush";
 
