@@ -18,6 +18,7 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
+import { BUILTIN_PLUGIN_NAMES } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
 
@@ -43,68 +44,72 @@ function packagedLoadCount(): number {
 
 async function writePackagedBuiltinSource(workDir: string): Promise<{
   sourceModuleDir: string;
-  sourceRoot: string;
 }> {
   const sourceModuleDir = join(workDir, "source-module");
-  const sourceRoot = join(sourceModuleDir, "builtin-plugins", "automations");
-  await mkdir(join(sourceRoot, "dist"), { recursive: true });
-  await mkdir(join(sourceRoot, "skills", "automations"), { recursive: true });
-  await mkdir(join(sourceRoot, "src"), { recursive: true });
-  await writeFile(
-    join(sourceRoot, "package.json"),
-    JSON.stringify(
-      {
-        name: "bb-plugin-automations",
-        version: "0.1.0",
-        type: "module",
-        bb: {
-          server: "./src/server.ts",
-          app: "./app.tsx",
-          skills: ["skills"],
+  // copyBuiltinPlugins packages EVERY declared builtin, so the synthetic
+  // source tree must carry one packaged plugin per BUILTIN_PLUGIN_NAMES
+  // entry — a name added to the registry is covered here automatically.
+  for (const name of BUILTIN_PLUGIN_NAMES) {
+    const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
+    await mkdir(join(sourceRoot, "dist"), { recursive: true });
+    await mkdir(join(sourceRoot, "skills", name), { recursive: true });
+    await mkdir(join(sourceRoot, "src"), { recursive: true });
+    await writeFile(
+      join(sourceRoot, "package.json"),
+      JSON.stringify(
+        {
+          name: `bb-plugin-${name}`,
+          version: "0.1.0",
+          type: "module",
+          bb: {
+            server: "./src/server.ts",
+            app: "./app.tsx",
+            skills: ["skills"],
+          },
         },
-      },
-      null,
-      2,
-    ),
-  );
-  await writeFile(
-    join(sourceRoot, "src", "server.ts"),
-    `throw new Error("packaged builtin should not load source");\n`,
-  );
-  await writeFile(
-    join(sourceRoot, "app.tsx"),
-    `throw new Error("packaged builtin should not build app source");\n`,
-  );
-  await writeFile(
-    join(sourceRoot, "dist", "server.js"),
-    `export default function plugin() {
+        null,
+        2,
+      ),
+    );
+    await writeFile(
+      join(sourceRoot, "src", "server.ts"),
+      `throw new Error("packaged builtin should not load source");\n`,
+    );
+    await writeFile(
+      join(sourceRoot, "app.tsx"),
+      `throw new Error("packaged builtin should not build app source");\n`,
+    );
+    await writeFile(
+      join(sourceRoot, "dist", "server.js"),
+      `export default function plugin() {
   globalThis.__packagedBuiltinLoads = (globalThis.__packagedBuiltinLoads ?? 0) + 1;
 }
 `,
-  );
-  await writeFile(
-    join(sourceRoot, "dist", "server.meta.json"),
-    `${JSON.stringify(
-      { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
-      null,
-      2,
-    )}\n`,
-  );
-  await writeFile(join(sourceRoot, "dist", "app.js"), `export default {};\n`);
-  await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
-  await writeFile(
-    join(sourceRoot, "dist", "app.meta.json"),
-    `${JSON.stringify(
-      { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
-      null,
-      2,
-    )}\n`,
-  );
-  await writeFile(
-    join(sourceRoot, "skills", "automations", "SKILL.md"),
-    "---\nname: automations\n---\n",
-  );
-  return { sourceModuleDir, sourceRoot };
+    );
+    await writeFile(
+      join(sourceRoot, "dist", "server.meta.json"),
+      `${JSON.stringify(
+        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(sourceRoot, "dist", "app.js"), `export default {};\n`);
+    await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
+    await writeFile(
+      join(sourceRoot, "dist", "app.meta.json"),
+      `${JSON.stringify(
+        { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(
+      join(sourceRoot, "skills", name, "SKILL.md"),
+      `---\nname: ${name}\n---\n`,
+    );
+  }
+  return { sourceModuleDir };
 }
 
 function createService(args: {
