@@ -22,7 +22,6 @@
   "vars": {
     "BASE_DOMAIN": "vibecodethis.site",
     "APP_URL": "https://vibecodethis.site",
-    "CONNECT_ALLOWED_GITHUB_USERS": "sawyerhood",
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44"
@@ -77,7 +76,6 @@
       "vars": {
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
-        "CONNECT_ALLOWED_GITHUB_USERS": "sawyerhood",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44"
       },
       "d1_databases": [

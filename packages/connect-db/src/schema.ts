@@ -24,8 +24,7 @@ export const user = sqliteTable("user", {
   emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
   // GitHub username, refreshed from the OAuth profile on every sign-in.
-  // Null only for rows predating the column; the signup allowlist treats
-  // null as not allowed.
+  // Null only for rows predating the column.
   githubLogin: text("github_login"),
   createdAt: timestampMs("created_at").notNull(),
   updatedAt: timestampMs("updated_at").notNull(),

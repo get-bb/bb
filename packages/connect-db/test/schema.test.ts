@@ -9,8 +9,6 @@ import {
   CONNECT_CODE_TTL_MS,
   connectCode,
   handleFromHost,
-  isGithubUserAllowed,
-  parseAllowedGithubUsers,
   profile,
   schema,
   server,
@@ -171,23 +169,6 @@ describe("validateHandle", () => {
     expect(validateHandle("api")).toBe("reserved");
     expect(validateHandle("www")).toBe("reserved");
     expect(validateHandle("admin")).toBe("reserved");
-  });
-});
-
-describe("github signup allowlist", () => {
-  it("parses a comma-separated var case-insensitively, ignoring blanks", () => {
-    const allowed = parseAllowedGithubUsers(" SawyerHood, other-user, ,");
-    expect(isGithubUserAllowed(allowed, "sawyerhood")).toBe(true);
-    expect(isGithubUserAllowed(allowed, "SAWYERHOOD")).toBe(true);
-    expect(isGithubUserAllowed(allowed, "other-user")).toBe(true);
-    expect(isGithubUserAllowed(allowed, "stranger")).toBe(false);
-  });
-
-  it("fails closed: unset/empty var and null login are not allowed", () => {
-    expect(isGithubUserAllowed(parseAllowedGithubUsers(undefined), "sawyerhood")).toBe(false);
-    expect(isGithubUserAllowed(parseAllowedGithubUsers(""), "sawyerhood")).toBe(false);
-    expect(isGithubUserAllowed(parseAllowedGithubUsers("sawyerhood"), null)).toBe(false);
-    expect(isGithubUserAllowed(parseAllowedGithubUsers("sawyerhood"), undefined)).toBe(false);
   });
 });
 
