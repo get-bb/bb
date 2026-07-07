@@ -161,6 +161,10 @@ const PROMPTBOX_MAX_HEIGHT_BY_LAYOUT: Record<ZenModeLayout, string> = {
   "root-compose": "70dvh",
 };
 
+// Shared by the two rows that crossfade between the editor and the voice bar.
+const COLLAPSING_GRID_CLASS =
+  "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
+
 export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
   disabled?: boolean;
@@ -2024,8 +2028,11 @@ export function PromptBoxInternal({
 
   const isVoiceRecording = voice?.state === "recording";
   const isVoiceProcessing = voice?.state === "transcribing";
-  const isVoiceBusy = isVoiceRecording || isVoiceProcessing;
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
+  const isVoiceBusy = showVoiceActionGroup;
+  // Zen only affects the editor layout; while the voice bar is showing, the box
+  // collapses to the pill instead, so zen styling is suppressed.
+  const showZenLayout = isZenMode && !showVoiceActionGroup;
   const canSubmit =
     hasSubmittableInput && !isSubmitting && !submitDisabled && !isVoiceBusy;
   const canModifierSubmit =
@@ -2423,10 +2430,8 @@ export function PromptBoxInternal({
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
-        isZenMode && !showVoiceActionGroup && "flex flex-col",
-        isZenMode &&
-          !showVoiceActionGroup &&
-          ZEN_MODE_HEIGHT_CLASS[zenModeLayout],
+        showZenLayout && "flex flex-col",
+        showZenLayout && ZEN_MODE_HEIGHT_CLASS[zenModeLayout],
         className,
       )}
     >
@@ -2438,10 +2443,7 @@ export function PromptBoxInternal({
         onChange={handleAttachmentInputChange}
       />
       <div
-        className={cn(
-          "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-          isZenMode && !showVoiceActionGroup && "min-h-0 flex-1",
-        )}
+        className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
         style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
       >
         <div
@@ -2671,7 +2673,7 @@ export function PromptBoxInternal({
         </div>
       </div>
       <div
-        className="grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        className={COLLAPSING_GRID_CLASS}
         style={{ gridTemplateRows: showVoiceActionGroup ? "1fr" : "0fr" }}
       >
         <div className="min-h-0 overflow-hidden">

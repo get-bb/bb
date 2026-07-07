@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 interface WaveformVisualizerProps {
@@ -23,6 +24,7 @@ export function WaveformVisualizer({
 }: WaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const barsRef = useRef<number[]>([]);
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,10 +32,15 @@ export function WaveformVisualizer({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Everything below is derived from the canvas size and only changes in
+    // measure() (mount + resize), so it's computed there instead of per frame.
     let color = "currentColor";
     let cssWidth = 0;
     let cssHeight = 0;
-    let barCount = Math.max(1, Math.floor(cssWidth / BAR_PITCH));
+    let barCount = 1;
+    let midY = 0;
+    let maxHalf = 0;
+    let edgeFade = 0;
 
     const measure = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -42,8 +49,15 @@ export function WaveformVisualizer({
       cssHeight = rect.height;
       canvas.width = Math.max(1, Math.round(cssWidth * dpr));
       canvas.height = Math.max(1, Math.round(cssHeight * dpr));
+      // Resizing the canvas resets all 2D context state, so re-apply it here.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       color = getComputedStyle(canvas).color || color;
+      ctx.strokeStyle = color;
+      ctx.lineCap = "round";
+      ctx.lineWidth = BAR_WIDTH;
+      midY = cssHeight / 2;
+      maxHalf = Math.max(0, (cssHeight * 0.95 - BAR_WIDTH) / 2);
+      edgeFade = cssWidth * 0.15;
       barCount = Math.max(1, Math.floor(cssWidth / BAR_PITCH));
       if (barsRef.current.length > barCount) {
         barsRef.current = barsRef.current.slice(
@@ -54,13 +68,7 @@ export function WaveformVisualizer({
 
     const draw = () => {
       ctx.clearRect(0, 0, cssWidth, cssHeight);
-      ctx.strokeStyle = color;
-      ctx.lineCap = "round";
-      ctx.lineWidth = BAR_WIDTH;
       const bars = barsRef.current;
-      const midY = cssHeight / 2;
-      const maxHalf = Math.max(0, (cssHeight * 0.95 - BAR_WIDTH) / 2);
-      const edgeFade = cssWidth * 0.15;
       for (let i = 0; i < bars.length; i++) {
         const amp = bars[bars.length - 1 - i];
         const cx = cssWidth - BAR_WIDTH / 2 - i * BAR_PITCH;
@@ -75,11 +83,20 @@ export function WaveformVisualizer({
       ctx.globalAlpha = 1;
     };
 
+    const observeResize = (onResize: () => void): ResizeObserver | null => {
+      if (typeof ResizeObserver === "undefined") return null;
+      const observer = new ResizeObserver(onResize);
+      observer.observe(canvas);
+      return observer;
+    };
+
+    const redrawOnResize = () => {
+      measure();
+      draw();
+    };
+
     measure();
 
-    const prefersReducedMotion =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const audioTrack = stream?.getAudioTracks()[0] ?? null;
     const canAnimate =
       active &&
@@ -95,15 +112,8 @@ export function WaveformVisualizer({
         );
       }
       draw();
-      if (typeof ResizeObserver === "undefined") {
-        return;
-      }
-      const observer = new ResizeObserver(() => {
-        measure();
-        draw();
-      });
-      observer.observe(canvas);
-      return () => observer.disconnect();
+      const observer = observeResize(redrawOnResize);
+      return () => observer?.disconnect();
     }
 
     const audioCtx = new AudioContext();
@@ -136,17 +146,14 @@ export function WaveformVisualizer({
         const bars = barsRef.current;
         bars.push(amp);
         if (bars.length > barCount) bars.shift();
+        // Bars only change on sample frames, so only redraw then.
+        draw();
       }
       frame++;
-      draw();
       rafId = requestAnimationFrame(tick);
     };
 
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => measure());
-    observer?.observe(canvas);
+    const observer = observeResize(redrawOnResize);
     rafId = requestAnimationFrame(tick);
 
     return () => {
@@ -157,7 +164,7 @@ export function WaveformVisualizer({
       analysisTrack.stop();
       void audioCtx.close();
     };
-  }, [stream, active]);
+  }, [stream, active, prefersReducedMotion]);
 
   return (
     <canvas
