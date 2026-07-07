@@ -28,9 +28,8 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
@@ -286,9 +285,7 @@ export function AppSidebar({
               onNavigate={closeOnMobile}
               className={cn(
                 "group-data-[collapsible=icon]:hidden",
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                usesDesktopChrome &&
-                  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+                usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
               )}
             />
           </div>

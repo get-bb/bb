@@ -15,6 +15,7 @@ import {
   type PersistBrowserWindowStateSnapshot,
   type StatefulBrowserWindow,
 } from "./window-state.js";
+import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 
 export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
@@ -47,7 +48,7 @@ export interface DesktopWindowOpenDevToolsOptions {
   mode: "detach";
 }
 
-export interface DesktopWindowWebContents {
+export interface DesktopWindowWebContents extends DesktopContextMenuWebContents {
   id: number;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
   send(channel: string, payload: unknown): void;
@@ -175,6 +176,7 @@ function createWindowOptions(
       nodeIntegration: false,
       preload: args.preloadPath,
       sandbox: true,
+      spellcheck: true,
     },
     width: args.bounds.width,
     x: args.bounds.x,

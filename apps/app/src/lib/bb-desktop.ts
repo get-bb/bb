@@ -59,15 +59,18 @@ export const CHROME_ROW_HEIGHT_CLASS = "h-[48px]";
 // row and vertically centered so its contents share the titlebar axis.
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
-// macOS native traffic lights and Chromium-rendered chrome land on slightly
-// different visual axes. A Retina screenshot of the desktop titlebar measures
-// the light centers and the sidebar trigger about 2 device px apart with a 2px
-// nudge, so use the smaller crisp shift here: 1 CSS px = 2 device px at 2x.
-// This is the single knob for the collapse trigger, the route-history arrows,
-// and the page/thread header content, and is applied only under macOS desktop
-// chrome. The web build has no traffic lights and stays row-centered.
+// Single adjustment point for macOS titlebar controls that visually align with
+// the native traffic lights. The traffic-light top inset is 18px and the chrome
+// row is 48px, so 28px header controls are already centered on the same axis:
+// (48 - 28) / 2 + 14 = 24, matching the traffic-light center at 18 + 6 = 24.
+// Keep the offset as a token instead of sprinkling ad hoc translate classes;
+// if Electron/macOS geometry changes, the collapse trigger, route-history
+// arrows, and page/thread header content can move together from here.
+export const MACOS_CHROME_CONTROL_AXIS_CLASS =
+  "[--bb-macos-chrome-control-y:0px] [transform:translateY(var(--bb-macos-chrome-control-y))]";
+export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;
 export const MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS =
-  "[transform:translateY(1px)]";
+  MACOS_CHROME_CONTROL_AXIS_CLASS;
 
 export type BbDesktopInfoResult = BbDesktopApi | null;
 

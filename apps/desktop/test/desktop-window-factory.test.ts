@@ -11,6 +11,7 @@ import {
   type DesktopWindowOpenDevToolsOptions,
   type DesktopWindowWebContents,
 } from "../src/desktop-window-factory.js";
+import type { DesktopContextMenuWebContents } from "../src/desktop-context-menu.js";
 import { readPersistedWindowStateEntries } from "../src/window-state.js";
 import {
   MIN_WINDOW_HEIGHT,
@@ -48,8 +49,19 @@ afterEach(async () => {
 class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public devToolsOpenCount = 0;
   public id: number;
+  public readonly addedDictionaryWords: string[] = [];
   public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
     [];
+  public readonly session: DesktopContextMenuWebContents["session"] = {
+    addWordToSpellCheckerDictionary: (word) => {
+      this.addedDictionaryWords.push(word);
+      return true;
+    },
+  };
+  public readonly contextMenuListeners: Parameters<
+    DesktopContextMenuWebContents["on"]
+  >[1][] = [];
+  public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
 
@@ -65,6 +77,17 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 
   send(channel: string, payload: unknown): void {
     this.sentMessages.push({ channel, payload });
+  }
+
+  on(...args: Parameters<DesktopContextMenuWebContents["on"]>): void {
+    const [eventName, listener] = args;
+    if (eventName === "context-menu") {
+      this.contextMenuListeners.push(listener);
+    }
+  }
+
+  replaceMisspelling(text: string): void {
+    this.replacedMisspellings.push(text);
   }
 
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void {
@@ -229,6 +252,7 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options.minHeight).toBe(MIN_WINDOW_HEIGHT);
     expect(createdWindows[0]?.options.minWidth).toBe(MIN_WINDOW_WIDTH);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
+    expect(createdWindows[0]?.options.webPreferences?.spellcheck).toBe(true);
     // Equal x/y inset places the traffic lights on a 45° diagonal from the
     // window's top-left corner (see MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET).
     expect(createdWindows[0]?.options.trafficLightPosition).toEqual({

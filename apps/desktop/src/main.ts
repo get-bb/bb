@@ -71,6 +71,7 @@ import {
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
+import { registerDesktopContextMenu } from "./desktop-context-menu.js";
 import {
   createDesktopUpdateService,
   DESKTOP_UPDATE_FEED_URL,
@@ -791,6 +792,7 @@ function startPopoutConfigSync(serverUrl: string): void {
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
+  registerDesktopContextMenu({ webContents: browserWindow.webContents });
   browserWindow.on("closed", () => {
     applicationWindowWebContentsIds.delete(webContentsId);
   });
