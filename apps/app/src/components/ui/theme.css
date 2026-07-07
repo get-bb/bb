@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "..";
+/* The UI kit's component source lives in @bb/shared-ui (a workspace package
+   resolved via a node_modules symlink, which Tailwind v4 does not auto-scan).
+   Without this, utility classes used only by moved components — row-height,
+   overlay, icon sizing — get purged from the app's CSS. */
+@source "../../../../../packages/shared-ui/src";
 
 @custom-variant dark (&:is(.dark *));
 
