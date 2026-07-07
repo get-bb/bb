@@ -272,7 +272,7 @@ function ServerCard({ state }: { state: ServerState }) {
               <CopyButton text={issued.code} label="Copy code" />
             </div>
             <p className="text-xs text-subtle-foreground/75">
-              In bb, open <span className="text-foreground">Remote access</span> and paste this
+              In bb, open <span className="text-foreground">Connect</span> and paste this
               code. Expires in {Math.round(issued.expiresInMs / 60000)} min.
             </p>
             <button

@@ -253,7 +253,7 @@ and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
 cuts off all remote access.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and the app's "Remote access" panel drives the plugin's rpc.
+the plugin, and the app's "Connect" panel drives the plugin's rpc.
 
 ## Plugins
 

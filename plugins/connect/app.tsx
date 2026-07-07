@@ -503,8 +503,8 @@ function RemoteAccessPanel() {
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "remote-access",
-    title: "Remote access",
-    icon: "Globe",
+    title: "Connect",
+    icon: "Smartphone",
     path: PANEL_PATH,
     component: RemoteAccessPanel,
   });
