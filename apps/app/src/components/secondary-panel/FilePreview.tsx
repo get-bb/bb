@@ -305,7 +305,14 @@ function usesCodeViewLayout(
   return state.textPreviewKind === null || viewMode === "source";
 }
 
-function parseCsvRows(contents: string): string[][] {
+interface ParsedCsvRows {
+  rows: string[][];
+  truncatedRows: boolean;
+}
+
+// Stops scanning once `maxRows` rows are collected, so a multi-megabyte CSV
+// only pays for the previewed prefix.
+function parseCsvRows(contents: string, maxRows: number): ParsedCsvRows {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -354,6 +361,9 @@ function parseCsvRows(contents: string): string[][] {
       if (character === "\r" && contents[index + 1] === "\n") {
         index += 1;
       }
+      if (rows.length >= maxRows) {
+        return { rows, truncatedRows: index + 1 < contents.length };
+      }
       continue;
     }
 
@@ -370,22 +380,45 @@ function parseCsvRows(contents: string): string[][] {
     rows.push(row);
   }
 
-  return rows;
+  return { rows, truncatedRows: false };
 }
 
-function buildCsvPreviewData(contents: string): CsvPreviewData {
-  const parsedRows = parseCsvRows(contents);
-  const columnCount = parsedRows.reduce(
+export function buildCsvPreviewData(contents: string): CsvPreviewData {
+  // +1: the first parsed row is the header, so the cap counts data rows.
+  const { rows, truncatedRows } = parseCsvRows(
+    contents,
+    CSV_PREVIEW_MAX_ROWS + 1,
+  );
+  // Column stats only consider the previewed rows; a wider row past the row
+  // cap won't flag truncatedColumns. Fine for a preview.
+  const columnCount = rows.reduce(
     (maximum, row) => Math.max(maximum, row.length),
     0,
   );
 
   return {
     columnCount: Math.min(columnCount, CSV_PREVIEW_MAX_COLUMNS),
-    rows: parsedRows.slice(0, CSV_PREVIEW_MAX_ROWS),
+    rows,
     truncatedColumns: columnCount > CSV_PREVIEW_MAX_COLUMNS,
-    truncatedRows: parsedRows.length > CSV_PREVIEW_MAX_ROWS,
+    truncatedRows,
   };
+}
+
+export function getCsvTruncationNote(
+  preview: CsvPreviewData,
+  dataRowCount: number,
+): string | null {
+  const limits: string[] = [];
+  if (preview.truncatedRows) {
+    limits.push(`${dataRowCount.toLocaleString()} rows`);
+  }
+  if (preview.truncatedColumns) {
+    limits.push(`${preview.columnCount.toLocaleString()} columns`);
+  }
+  if (limits.length === 0) {
+    return null;
+  }
+  return `Showing the first ${limits.join(" and ")}.`;
 }
 
 export function FilePreview({
@@ -436,19 +469,25 @@ export function FilePreview({
     state.kind === "ready" &&
     state.textPreviewKind === "markdown" &&
     bodyViewMode === "preview";
+  // The CSV table needs one scroller that owns both axes: its sticky header
+  // row and row-number gutter only stick against their own scrollport, and
+  // splitting the axes (panel scrolls vertically, inner box horizontally)
+  // strands the horizontal scrollbar at the bottom of the full-height table
+  // and lets the sticky gutter paint over the panel header. So fill the panel
+  // like the iframe layout and let CsvFilePreview scroll internally.
   const usesCsvPreviewLayout =
     state.kind === "ready" &&
     state.textPreviewKind === "csv" &&
     bodyViewMode === "preview";
-  const usesContentHeightLayout =
-    usesCodeLayout || usesMarkdownPreviewLayout || usesCsvPreviewLayout;
+  const usesFullHeightLayout = usesIframeLayout || usesCsvPreviewLayout;
+  const usesContentHeightLayout = usesCodeLayout || usesMarkdownPreviewLayout;
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
   // table breakout sizes against this panel, not the viewport.
   return (
     <div
       className={
-        usesIframeLayout
+        usesFullHeightLayout
           ? "@container/page flex h-full min-h-0 flex-col"
           : usesContentHeightLayout
             ? "@container/page flex min-h-full flex-col"
@@ -822,14 +861,22 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
     label: headerRow[index] ?? "",
   }));
   const tableWidth = `max(100%, ${3 + columns.length * 18}rem)`;
+  const truncationNote = getCsvTruncationNote(preview, bodyRows.length);
 
   return (
     <SecondaryPanelSelectionActions
       className="contents"
       onSelectionAddToChat={onSelectionAddToChat}
     >
-      <div className="flex-auto bg-surface-raised px-4 py-4">
-        <div className="overflow-auto rounded-md border border-border bg-background">
+      {/* Single scroll container for both axes: the sticky header row and
+          row-number gutter stick against this box, the horizontal scrollbar
+          stays visible at the panel bottom, and the sticky cells are clipped
+          here so they can't paint over the panel header. */}
+      <div className="flex min-h-0 flex-auto flex-col bg-surface-raised px-4 py-4">
+        {/* overscroll-contain: panning a wide table past its edge must not
+            chain into the browser back/forward gesture (kept alive globally —
+            see app.css overscroll notes) or scroll an ancestor. */}
+        <div className="persistent-scrollbar min-h-0 overflow-auto overscroll-contain rounded-md border border-border bg-background">
           <table
             className="min-w-full table-fixed border-separate border-spacing-0 font-mono text-xs leading-5"
             aria-label={`${file.name} CSV preview`}
@@ -891,12 +938,11 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
             </tbody>
           </table>
         </div>
-        {preview.truncatedRows || preview.truncatedColumns ? (
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Showing the first {preview.rows.length.toLocaleString()} rows and{" "}
-            {preview.columnCount.toLocaleString()} columns.
+        {truncationNote === null ? null : (
+          <p className="mt-2 shrink-0 text-xs leading-5 text-muted-foreground">
+            {truncationNote}
           </p>
-        ) : null}
+        )}
       </div>
     </SecondaryPanelSelectionActions>
   );

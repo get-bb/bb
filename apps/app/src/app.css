@@ -281,6 +281,41 @@
   }
 
   /*
+   * Opt out of the global thin scrollbar into always-visible classic
+   * scrollbars for two-axis data surfaces (e.g. the CSV table preview).
+   * Native thin scrollbars render as macOS overlay bars that fade out and
+   * give a wide table no persistent horizontal-scroll affordance. Chromium
+   * only honors `::-webkit-scrollbar` customization when `scrollbar-width`
+   * and `scrollbar-color` are both `auto`, so those resets are what
+   * re-enable the persistent chrome below.
+   */
+  .persistent-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-track,
+  .persistent-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+  }
+
+  /*
    * Soft right-edge fade for single-line text that is clipped horizontally
    * (e.g. a queued-message preview). Fades the text out instead of a hard
    * `…` ellipsis. Self-gating: short text doesn't reach the fade zone, so the

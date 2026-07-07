@@ -9,7 +9,11 @@ import {
 } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FilePreview } from "./FilePreview";
+import {
+  FilePreview,
+  buildCsvPreviewData,
+  getCsvTruncationNote,
+} from "./FilePreview";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 
 interface MockPierreFileProps {
@@ -498,6 +502,42 @@ describe("FilePreview", () => {
     expect(
       screen.queryByRole("table", { name: "customers.csv CSV preview" }),
     ).toBeNull();
+  });
+
+  it("caps oversized CSV previews and reports the visible data-row count", () => {
+    const columnCount = 105;
+    const dataRowCount = 501;
+    const header = Array.from({ length: columnCount }, (_, i) => `c${i + 1}`);
+    const lines = [header.join(",")];
+    for (let rowIndex = 0; rowIndex < dataRowCount; rowIndex += 1) {
+      lines.push(header.map((name) => `${name}r${rowIndex + 1}`).join(","));
+    }
+
+    const preview = buildCsvPreviewData(lines.join("\n"));
+
+    // rows includes the header, so the cap keeps 500 data rows.
+    expect(preview.rows.length).toBe(501);
+    expect(preview.rows.at(-1)?.[0]).toBe("c1r500");
+    expect(preview.columnCount).toBe(100);
+    expect(preview.truncatedRows).toBe(true);
+    expect(preview.truncatedColumns).toBe(true);
+    // The footnote counts data rows, not parsed rows.
+    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBe(
+      "Showing the first 500 rows and 100 columns.",
+    );
+  });
+
+  it("does not report truncation for a CSV exactly at the row cap", () => {
+    const lines = ["name"];
+    for (let rowIndex = 0; rowIndex < 500; rowIndex += 1) {
+      lines.push(`r${rowIndex + 1}`);
+    }
+
+    const preview = buildCsvPreviewData(`${lines.join("\n")}\n`);
+
+    expect(preview.rows.length).toBe(501);
+    expect(preview.truncatedRows).toBe(false);
+    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBeNull();
   });
 
   it("uses the CSV table preview for loaded CSV text files", () => {
