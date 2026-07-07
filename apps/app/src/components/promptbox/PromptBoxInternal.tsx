@@ -1268,7 +1268,6 @@ export function PromptBoxInternal({
           enterkeyhint: editorEnterKeyHint,
           ...(id ? { id } : {}),
           role: "textbox",
-          spellcheck: "true",
         },
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),

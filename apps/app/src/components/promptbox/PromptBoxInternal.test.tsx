@@ -398,14 +398,6 @@ describe("suppressPromptEditorAnchorActivation", () => {
   });
 });
 
-describe("PromptBoxInternal editor attributes", () => {
-  it("enables browser spellcheck in the prompt editor", () => {
-    render(<PromptBoxInternal {...createPromptBoxProps()} />);
-
-    expect(getPromptEditorElement().getAttribute("spellcheck")).toBe("true");
-  });
-});
-
 describe("PromptBoxInternal controlled value sync", () => {
   it("honors early focusEnd requests once the editor is ready", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
