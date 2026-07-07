@@ -1087,7 +1087,7 @@ function TimelineExpandableBody({
                 <TimelineRowsList
                   rows={row.childRows}
                   scopeActive={delegationActive}
-                  showAssistantMessageActions={showAssistantMessageActions}
+                  showAssistantMessageActions={false}
                   compactActivityIntents={false}
                   spacing="nested"
                   unreadDividerAutoScroll={false}
@@ -1103,7 +1103,7 @@ function TimelineExpandableBody({
                   projectId={projectId}
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
                   role="assistant"
-                  showActions={showAssistantMessageActions}
+                  showActions={false}
                   sourceSeqEnd={row.sourceSeqEnd}
                   sourceSeqStart={row.sourceSeqStart}
                   text={row.output}

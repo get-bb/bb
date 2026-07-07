@@ -14,7 +14,11 @@ import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
-import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  conversationRow,
+  delegationRow,
+  turnRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
 // ThreadTimelineRows reads route state for the search deep-link scroll, so it
@@ -282,6 +286,41 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Working");
     expect(markup).toContain("Streaming assistant response.");
     expect(markup).toContain('aria-label="Copy message"');
+  });
+
+  it("hides assistant message actions inside delegation rows", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        initialExpanded={new Set(["delegation_with_child_answer"])}
+        timelineRows={[
+          conversationRow({
+            id: "top_level_agent",
+            role: "assistant",
+            text: "Top-level agent response.",
+          }),
+          delegationRow({
+            id: "delegation_with_child_answer",
+            status: "pending",
+            durationMs: null,
+            output: "Nested final answer.",
+            childRows: [
+              conversationRow({
+                id: "nested_agent_progress",
+                role: "assistant",
+                text: "Nested subagent progress.",
+              }),
+            ],
+          }),
+        ]}
+        threadRuntimeDisplayStatus="active"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain("Top-level agent response.");
+    expect(markup).toContain("Nested subagent progress.");
+    expect(markup).toContain("Nested final answer.");
+    expect(markup.match(/aria-label="Copy message"/g)).toHaveLength(1);
   });
 
   it("passes regular user message text to add-to-chat", () => {
