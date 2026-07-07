@@ -73,12 +73,14 @@ Hosts:
   specific connected machine; omit it to use the local primary host.
   Targeting a non-primary host requires the "Multi-machine" experiment
   (Settings → Experiments); when it is off such requests are rejected.
+  The same experiment gates bb connect remote access.
 
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Claim a handle at https://getbb.app and copy the connect command it
-  generates, then run it here to pair:
+  browser. Enable the "Multi-machine" experiment, claim a handle at
+  https://getbb.app, copy the connect command it generates, then run it here to
+  pair:
 
   bb connect --code <code> --server https://<handle>.getbb.app
     --code <code>          One-time pairing code from the dashboard
@@ -95,5 +97,6 @@ Remote access (bb connect):
 
   Remote access is owned by the builtin "connect" plugin (its "Connect"
   panel in the app shows the URL and a QR code). Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; re-enable with
-  `bb plugin enable connect`.
+  (`bb plugin disable connect`) cuts off all remote access; with the
+  Multi-machine experiment still enabled, re-enable with `bb plugin enable
+  connect`.

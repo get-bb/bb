@@ -10,8 +10,9 @@ Its backend entry default-exports a factory that receives the full plugin API
 (`bb`); an optional frontend entry registers React UI inside the bb app.
 Plugins are full-trust code: they can read all local bb data.
 
-Plugins are gated behind the "Plugins" experiment (Settings → Experiments).
-`bb plugin list` tells you if plugins are disabled.
+User-installed plugins are gated behind the "Plugins" experiment (Settings →
+Experiments). Builtin plugins ship with bb and can remain available under their
+own product gates. `bb plugin list` tells you if plugins are disabled.
 
 ## Quickstart
 

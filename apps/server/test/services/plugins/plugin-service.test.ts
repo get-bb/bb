@@ -59,6 +59,7 @@ describe("plugin service", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => experimentOn,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });
@@ -184,6 +185,7 @@ describe("plugin service", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.0.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
     const gated = await writePlugin(workDir, {
@@ -223,11 +225,13 @@ describe("plugin service", () => {
     const globals = globalThis as Record<string, unknown>;
     const loadsAfterInstall = globals.__gatedLoads as number;
 
-    await service.onExperimentChanged(false);
+    experimentOn = false;
+    await service.onExperimentsChanged();
     expect(globals.__gatedDisposed).toBe(true);
     expect(service.getApi("gated")).toBeUndefined();
 
-    await service.onExperimentChanged(true);
+    experimentOn = true;
+    await service.onExperimentsChanged();
     expect(globals.__gatedLoads).toBe(loadsAfterInstall + 1);
     expect(service.list().find((p) => p.id === "gated")?.status).toBe(
       "running",
@@ -276,6 +280,7 @@ describe("plugins-changed broadcast", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
     });
   });

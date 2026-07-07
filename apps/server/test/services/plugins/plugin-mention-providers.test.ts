@@ -578,6 +578,7 @@ describe("mention search time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionSearchTimeoutMs: 100,
     });
@@ -656,6 +657,7 @@ describe("mention resolve time box", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       isEnabled: () => true,
+      isConnectEnabled: () => false,
       loadTimeoutMs: 2000,
       mentionResolveTimeoutMs: 100,
     });

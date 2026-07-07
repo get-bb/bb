@@ -186,7 +186,12 @@ describe("findDisabledPluginForCommand", () => {
     );
     await expect(
       findDisabledPluginForCommand("http://localhost", "connect"),
-    ).resolves.toEqual({ id: "connect" });
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: false,
+      status: null,
+      statusDetail: null,
+    });
     // Enabled plugins and unknown names never match.
     await expect(
       findDisabledPluginForCommand("http://localhost", "automations"),
@@ -194,6 +199,36 @@ describe("findDisabledPluginForCommand", () => {
     await expect(
       findDisabledPluginForCommand("http://localhost", "linear"),
     ).resolves.toBeNull();
+  });
+
+  it("matches an experiment-disabled plugin by runtime status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              plugins: [
+                {
+                  id: "connect",
+                  enabled: true,
+                  status: "disabled",
+                  statusDetail: 'disabled by the "Multi-machine" experiment',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "connect"),
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: true,
+      status: "disabled",
+      statusDetail: 'disabled by the "Multi-machine" experiment',
+    });
   });
 
   it("returns null on any fetch failure", async () => {

@@ -62,11 +62,14 @@ message agents, or inspect projects, providers, and environments.
   Experiments) — when off, the server rejects with `multi_machine_disabled`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
-  https://getbb.app). Pairing returns immediately — the server itself holds the
-  tunnel and reconnects on restart, so there is no foreground process.
+  https://getbb.app). It requires the "Multi-machine" experiment; when off the
+  builtin connect plugin is not loaded. Pairing returns immediately — the
+  server itself holds the tunnel and reconnects on restart, so there is no
+  foreground process.
   `bb connect status` / `bb connect off` report and clear the pairing. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
-  cuts it off entirely, `bb plugin enable connect` restores the command.
+  cuts it off entirely; with Multi-machine still enabled, `bb plugin enable
+  connect` restores the command.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -252,7 +255,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - **Enable user-installed plugins first.** Plugins are an experiment, off by
   default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
   (`builtin:<name>`) ship with bb and remain available even when the experiment
-  is off.
+  is off, except `connect`, which is gated by the **"Multi-machine"**
+  experiment.
 - Commands:
   - `bb plugin install <src>` — local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<name>@<version>` (npm on PATH required for

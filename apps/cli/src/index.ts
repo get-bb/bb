@@ -112,10 +112,25 @@ async function tryPluginCommandProxy(): Promise<void> {
     // when the name matches an installed-but-disabled plugin's id.
     const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
     if (disabled !== null) {
-      console.error(
-        `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
-          `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
-      );
+      if (disabled.enabled && disabled.statusDetail?.includes("Multi-machine")) {
+        console.error(
+          `bb ${candidate} is behind the "Multi-machine" experiment — ` +
+            "enable it in Settings → Experiments.",
+        );
+      } else if (
+        disabled.enabled &&
+        disabled.statusDetail?.includes("Plugins")
+      ) {
+        console.error(
+          `bb ${candidate} is behind the "Plugins" experiment — ` +
+            "enable it in Settings → Experiments.",
+        );
+      } else {
+        console.error(
+          `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
+            `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
+        );
+      }
       process.exit(1);
     }
     return;

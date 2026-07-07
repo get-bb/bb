@@ -117,6 +117,7 @@ function createService(args: {
   db: DbConnection;
   builtinName?: string;
   isEnabled?: () => boolean;
+  isConnectEnabled?: () => boolean;
   rootDir?: string;
 }): PluginService {
   return createPluginService({
@@ -130,6 +131,7 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
+    isConnectEnabled: args.isConnectEnabled ?? (() => false),
     builtinPlugins: [
       {
         name: args.builtinName ?? "fixture",
@@ -174,6 +176,54 @@ describe("builtin plugin reconciliation", () => {
       },
     ]);
     expect(loadCount()).toBe(1);
+  });
+
+  it("loads the builtin connect plugin only while the multi-machine experiment is on", async () => {
+    let connectEnabled = false;
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "connect",
+      isConnectEnabled: () => connectEnabled,
+    });
+
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "builtin-fixture",
+        source: "builtin:connect",
+        enabled: true,
+        status: "disabled",
+        statusDetail: 'disabled by the "Multi-machine" experiment',
+      },
+    ]);
+    expect(loadCount()).toBe(0);
+
+    connectEnabled = true;
+    await service.onExperimentsChanged();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "builtin-fixture",
+        source: "builtin:connect",
+        status: "running",
+      },
+    ]);
+    expect(loadCount()).toBe(1);
+
+    connectEnabled = false;
+    await service.onExperimentsChanged();
+
+    expect(service.getApi("builtin-fixture")).toBeUndefined();
+    expect(service.list()).toMatchObject([
+      {
+        id: "builtin-fixture",
+        source: "builtin:connect",
+        status: "disabled",
+        statusDetail: 'disabled by the "Multi-machine" experiment',
+      },
+    ]);
   });
 
   it("keeps a builtin tombstoned after remove and restart", async () => {

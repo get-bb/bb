@@ -74,7 +74,12 @@ export async function findDisabledPluginForCommand(
   baseUrl: string,
   name: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
-): Promise<{ id: string } | null> {
+): Promise<{
+  id: string;
+  enabled: boolean;
+  status: string | null;
+  statusDetail: string | null;
+} | null> {
   try {
     const response = await fetch(`${baseUrl}/api/v1/plugins`, {
       signal: AbortSignal.timeout(timeoutMs),
@@ -83,13 +88,32 @@ export async function findDisabledPluginForCommand(
     const parsed = (await response.json()) as { plugins?: unknown } | null;
     if (!Array.isArray(parsed?.plugins)) return null;
     const match = parsed.plugins.find(
-      (entry): entry is { id: string; enabled: boolean } =>
+      (
+        entry,
+      ): entry is {
+        id: string;
+        enabled: boolean;
+        status?: unknown;
+        statusDetail?: unknown;
+      } =>
         typeof entry === "object" &&
         entry !== null &&
         (entry as { id?: unknown }).id === name &&
-        (entry as { enabled?: unknown }).enabled === false,
+        typeof (entry as { enabled?: unknown }).enabled === "boolean" &&
+        ((entry as { enabled?: unknown }).enabled === false ||
+          (entry as { status?: unknown }).status === "disabled"),
     );
-    return match === undefined ? null : { id: match.id };
+    return match === undefined
+      ? null
+      : {
+          id: match.id,
+          enabled: match.enabled,
+          status: typeof match.status === "string" ? match.status : null,
+          statusDetail:
+            typeof match.statusDetail === "string"
+              ? match.statusDetail
+              : null,
+        };
   } catch {
     return null;
   }

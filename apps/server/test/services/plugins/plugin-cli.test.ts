@@ -275,7 +275,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
 
     // Turning the experiment off removes the generated skill entirely.
     setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    await harness.pluginService.onExperimentChanged(false);
+    await harness.pluginService.onExperimentsChanged();
     await expect(readFile(skillFile, "utf8")).rejects.toThrow();
     const goneSources = resolveInjectedSkillSources(testLogger, {
       additionalSkillsRootPaths: [

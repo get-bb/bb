@@ -378,6 +378,7 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     isEnabled: () => getExperiments(deps.db).plugins,
+    isConnectEnabled: () => getExperiments(deps.db).multiMachine,
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);
