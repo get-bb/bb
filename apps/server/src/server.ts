@@ -20,6 +20,7 @@ import { registerThreadFolderRoutes } from "./routes/thread-folders.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerUiRoutes } from "./routes/ui.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import {
   createPluginService,
@@ -27,6 +28,8 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { createUiSourceService } from "./services/ui-source/ui-source.js";
+import { injectRecoveryShim } from "./services/ui-source/recovery-shim.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -96,6 +99,16 @@ function normalizeInternalAuthPath(path: string): string {
 interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
+  /**
+   * Directory holding the shipped app source (with vite.ui.config.ts), used to
+   * seed and build the user-editable UI source. When set, the `/api/v1/ui/*`
+   * routes are enabled and static serving can swap to the built UI source.
+   */
+  appDir?: string;
+  /** Directory holding the @bb/* packages as source (defaults to <appDir>/../../packages). */
+  packagesSourceDir?: string;
+  /** Fetch the shipped source before seeding (packaged install clones the release tag). */
+  ensureUiSource?: () => Promise<{ ok: boolean; log: string }>;
 }
 
 interface StaticResponseHeadersArgs {
@@ -380,6 +393,21 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginRoutes(publicApi, deps, pluginService);
+  const uiSource = options?.appDir
+    ? createUiSourceService({
+        dataDir: deps.config.dataDir,
+        appDir: options.appDir,
+        packagesSourceDir: options.packagesSourceDir,
+        ensureSource: options.ensureUiSource,
+        hub: deps.hub,
+        logger: deps.logger,
+        version: deps.config.appVersion,
+        isEnabled: () => getExperiments(deps.db).uiForking,
+      })
+    : undefined;
+  if (uiSource) {
+    registerUiRoutes(publicApi, deps, uiSource);
+  }
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -478,7 +506,12 @@ export function createApp(
     };
 
     app.get("*", async (context) => {
-      const root = shippedRoot;
+      // Per request, serve from the built UI source when it is active, else the
+      // shipped UI. Falls back to shipped if the UI source dist is missing.
+      const root = uiSource
+        ? uiSource.resolveActiveRoot(shippedRoot)
+        : shippedRoot;
+      const uiSourceRecoveryEnabled = root !== shippedRoot;
       const urlPath =
         context.req.path === "/" ? "/index.html" : context.req.path;
       const filePath = join(root, urlPath);
@@ -490,6 +523,17 @@ export function createApp(
         if (fileStat.isFile()) {
           const contentType =
             MIME[extname(filePath)] ?? "application/octet-stream";
+          // Inject the recovery shim into every served HTML document so the
+          // reload wiring is always present. The UI-source escape hatch is only
+          // valid when this response is serving an active fork.
+          if (contentType === "text/html") {
+            const html = injectRecoveryShim(await readFile(filePath, "utf8"), {
+              recoverEnabled: uiSourceRecoveryEnabled,
+            });
+            return new Response(html, {
+              headers: createStaticResponseHeaders({ contentType, urlPath }),
+            });
+          }
           const precompressedFile = await findPrecompressedStaticFile({
             acceptEncodingHeader: context.req.header("accept-encoding"),
             contentType,
@@ -514,7 +558,10 @@ export function createApp(
       } catch {
         // File not found — fall through to SPA fallback
       }
-      const indexHtml = await readFile(join(root, "index.html"), "utf8");
+      const indexHtml = injectRecoveryShim(
+        await readFile(join(root, "index.html"), "utf8"),
+        { recoverEnabled: uiSourceRecoveryEnabled },
+      );
       return new Response(indexHtml, {
         headers: createStaticResponseHeaders({
           contentType: "text/html",

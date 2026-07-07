@@ -160,9 +160,11 @@ export interface ExperimentsSettingsSectionProps {
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
+  onUiForkingEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
+  uiForkingEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -672,6 +674,7 @@ const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
+const UI_FORKING_EXPERIMENT_LABEL = "UI forking";
 
 interface HotkeyRecorderProps {
   disabled: boolean;
@@ -858,9 +861,11 @@ export function ExperimentsSettingsSection({
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
+  onUiForkingEnabledChange,
   pluginsEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
+  uiForkingEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -902,6 +907,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onPluginsEnabledChange}
             aria-label={PLUGINS_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={UI_FORKING_EXPERIMENT_LABEL}
+          description="Let the bb CLI (bb ui) fork, edit, and live-reload the app's own frontend. This feature is unstable, and your forks will probably break in the future. Off keeps the shipped UI."
+        >
+          <Switch
+            checked={uiForkingEnabled}
+            disabled={disabled}
+            onCheckedChange={onUiForkingEnabledChange}
+            aria-label={UI_FORKING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1061,10 +1078,17 @@ export function SettingsView() {
               plugins: enabled,
             })
           }
+          onUiForkingEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              uiForking: enabled,
+            })
+          }
           multiMachineEnabled={experiments.multiMachine}
           pluginsEnabled={experiments.plugins}
           popoutChatEnabled={experiments.popoutChat}
           popoutChatHotkey={experiments.popoutChatHotkey}
+          uiForkingEnabled={experiments.uiForking}
         />
 
         <PluginsSettingsSection />

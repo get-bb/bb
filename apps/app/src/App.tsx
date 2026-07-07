@@ -13,6 +13,7 @@ import {
   useDesktopUpdateAvailableToast,
   useUpdateAvailableToast,
 } from "./hooks/useUpdateAvailableToast";
+import { useUiSourceStatusToast } from "./hooks/useUiSourceStatusToast";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -141,6 +142,8 @@ export function App() {
   useUpdateAvailableToast();
   // Show a separate toast when the Electron shell reports a desktop update.
   useDesktopUpdateAvailableToast();
+  // Surface UI-source build failures / rebase-needed state from `bb ui`.
+  useUiSourceStatusToast();
   // Keep the Electron window chrome (traffic lights, inactive title bar)
   // in sync with bb's resolved theme.
   useDesktopThemeSync();

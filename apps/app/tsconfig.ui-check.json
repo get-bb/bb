@@ -1,0 +1,18 @@
+{
+  "//": "Scoped typecheck for the UI-source fork (bb ui apply). Extends the app's tsconfig but typechecks only the shipped UI source — excluding tests/stories/fixtures — so an agent gets clean type feedback on its edits.",
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/test",
+    "src/tests",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.stories.ts",
+    "**/*.stories.tsx",
+    "**/*.fixtures.ts",
+    "**/*.fixtures.tsx"
+  ]
+}

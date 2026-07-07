@@ -10,6 +10,7 @@ import { registerProviderCommands } from "../commands/provider.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
+import { registerUiCommands } from "../commands/ui.js";
 import {
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
@@ -32,6 +33,7 @@ const RESERVED_BB_CLI_COMMANDS = [
   "status",
   "theme",
   "thread",
+  "ui",
 ];
 
 function buildProgram(): Command {
@@ -44,6 +46,7 @@ function buildProgram(): Command {
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
+  registerUiCommands(program, getUrl);
   registerPluginCommands(program, getUrl);
   registerGuideCommand(program);
   return program;
