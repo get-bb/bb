@@ -1134,6 +1134,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return sourceKind(source) === "builtin";
   }
 
+  function isPackagedBuiltinAppEntry(args: {
+    kind: ReturnType<typeof sourceKind>;
+    manifest: PluginManifest;
+    rootDir: string;
+  }): boolean {
+    return (
+      args.kind === "builtin" &&
+      args.manifest.appEntry === resolve(args.rootDir, "dist", "app.js")
+    );
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && isBuiltinSource(row.source);
@@ -1215,7 +1226,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
       return null;
     }
-    if (sourceKind(row.source) !== "npm") {
+    const kind = sourceKind(row.source);
+    if (
+      kind !== "npm" &&
+      !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
+    ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
       if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
         logger.info(
@@ -1528,7 +1543,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     // prebuilt dist (a major mismatch is tolerated: the backend runs, the
     // frontend marks the bundle "needs update").
     if (manifest.appEntry !== undefined) {
-      if (sourceKind(args.source) === "npm") {
+      const kind = sourceKind(args.source);
+      if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
           .then(() => true)
           .catch(() => false);
@@ -1540,7 +1556,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             `install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle — "${manifest.id}" is missing dist/app.js + dist/app.meta.json`,
           );
         }
-      } else {
+      } else if (
+        !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
+      ) {
         try {
           await buildPluginApp(args.rootDir);
         } catch (error) {

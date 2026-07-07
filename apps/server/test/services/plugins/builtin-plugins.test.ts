@@ -1,9 +1,18 @@
-import { cp, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -28,9 +37,80 @@ function loadCount(): number {
   return (globals.__builtinFixtureLoads as number | undefined) ?? 0;
 }
 
+function packagedLoadCount(): number {
+  return (globals.__packagedBuiltinLoads as number | undefined) ?? 0;
+}
+
+async function writePackagedBuiltinSource(workDir: string): Promise<{
+  sourceModuleDir: string;
+  sourceRoot: string;
+}> {
+  const sourceModuleDir = join(workDir, "source-module");
+  const sourceRoot = join(sourceModuleDir, "builtin-plugins", "automations");
+  await mkdir(join(sourceRoot, "dist"), { recursive: true });
+  await mkdir(join(sourceRoot, "skills", "automations"), { recursive: true });
+  await mkdir(join(sourceRoot, "src"), { recursive: true });
+  await writeFile(
+    join(sourceRoot, "package.json"),
+    JSON.stringify(
+      {
+        name: "bb-plugin-automations",
+        version: "0.1.0",
+        type: "module",
+        bb: {
+          server: "./src/server.ts",
+          app: "./app.tsx",
+          skills: ["skills"],
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(
+    join(sourceRoot, "src", "server.ts"),
+    `throw new Error("packaged builtin should not load source");\n`,
+  );
+  await writeFile(
+    join(sourceRoot, "app.tsx"),
+    `throw new Error("packaged builtin should not build app source");\n`,
+  );
+  await writeFile(
+    join(sourceRoot, "dist", "server.js"),
+    `export default function plugin() {
+  globalThis.__packagedBuiltinLoads = (globalThis.__packagedBuiltinLoads ?? 0) + 1;
+}
+`,
+  );
+  await writeFile(
+    join(sourceRoot, "dist", "server.meta.json"),
+    `${JSON.stringify(
+      { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(sourceRoot, "dist", "app.js"), `export default {};\n`);
+  await writeFile(join(sourceRoot, "dist", "app.css"), `/* built */\n`);
+  await writeFile(
+    join(sourceRoot, "dist", "app.meta.json"),
+    `${JSON.stringify(
+      { sdkMajor: PLUGIN_SDK_MAJOR, sdkVersion: PLUGIN_SDK_VERSION },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    join(sourceRoot, "skills", "automations", "SKILL.md"),
+    "---\nname: automations\n---\n",
+  );
+  return { sourceModuleDir, sourceRoot };
+}
+
 function createService(args: {
   dataDir: string;
   db: DbConnection;
+  builtinName?: string;
   isEnabled?: () => boolean;
   rootDir?: string;
 }): PluginService {
@@ -45,7 +125,12 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     isEnabled: args.isEnabled ?? (() => false),
-    builtinPlugins: [{ name: "fixture", rootDir: args.rootDir ?? fixtureRoot }],
+    builtinPlugins: [
+      {
+        name: args.builtinName ?? "fixture",
+        rootDir: args.rootDir ?? fixtureRoot,
+      },
+    ],
     loadTimeoutMs: 2000,
   });
 }
@@ -57,6 +142,7 @@ describe("builtin plugin reconciliation", () => {
 
   beforeEach(async () => {
     delete globals.__builtinFixtureLoads;
+    delete globals.__packagedBuiltinLoads;
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
@@ -175,6 +261,63 @@ describe("builtin plugin reconciliation", () => {
       'unknown builtin plugin "missing"',
     );
   });
+
+  it("installs and loads a packaged builtin whose source files are omitted", async () => {
+    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
+    const targetRoot = join(workDir, "builtin-plugins");
+    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
+    const copiedRoot = join(targetRoot, "automations");
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "automations",
+      rootDir: copiedRoot,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "automations",
+        source: "builtin:automations",
+        version: "0.1.0",
+        enabled: true,
+        status: "running",
+        app: {
+          hasApp: true,
+          bundle: {
+            compatible: true,
+          },
+        },
+      },
+    ]);
+    expect(packagedLoadCount()).toBe(1);
+  });
+
+  it("explicitly installs a packaged builtin without rebuilding its app bundle", async () => {
+    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
+    const targetRoot = join(workDir, "builtin-plugins");
+    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
+    const copiedRoot = join(targetRoot, "automations");
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "automations",
+      isEnabled: () => true,
+      rootDir: copiedRoot,
+    });
+
+    await expect(service.install("builtin:automations")).resolves.toMatchObject(
+      {
+        id: "automations",
+        status: "running",
+      },
+    );
+    await expect(
+      readFile(join(copiedRoot, "dist", "app.css"), "utf8"),
+    ).resolves.toBe("/* built */\n");
+  });
 });
 
 describe("builtin plugin packaging", () => {
@@ -189,11 +332,22 @@ describe("builtin plugin packaging", () => {
   });
 
   it("copies only the runtime layout for packaged builtins", async () => {
+    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
     const targetRoot = join(workDir, "builtin-plugins");
 
-    await copyBuiltinPlugins({ build: false, targetRoot });
+    await copyBuiltinPlugins({ build: false, sourceModuleDir, targetRoot });
 
     const copiedRoot = join(targetRoot, "automations");
+    const packageJson = JSON.parse(
+      await readFile(join(copiedRoot, "package.json"), "utf8"),
+    );
+    expect(packageJson).toMatchObject({
+      bb: {
+        server: "./dist/server.js",
+        app: "./dist/app.js",
+        skills: ["skills"],
+      },
+    });
     await expect(stat(join(copiedRoot, "package.json"))).resolves.toBeTruthy();
     await expect(
       stat(join(copiedRoot, "dist", "server.js")),
@@ -206,6 +360,7 @@ describe("builtin plugin packaging", () => {
     ).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "src"))).rejects.toThrow();
+    await expect(stat(join(copiedRoot, "app.tsx"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "node_modules"))).rejects.toThrow();
   });
 });

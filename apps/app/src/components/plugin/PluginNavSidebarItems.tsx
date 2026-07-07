@@ -32,10 +32,9 @@ function PluginNavSidebarItemList({
   const location = useLocation();
   return (
     <div
-      // -mt-1 tightens the seam against the primary-actions block (its py-2
-      // bottom) so the first panel row sits on the same 4px (space-y-1) rhythm
-      // as New thread above it, instead of an 8px gap.
-      className="-mt-1 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+      // Cancel the primary-actions block's bottom padding so plugin panel rows
+      // sit flush under New thread as one continuous action list.
+      className="-mt-2 shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
     >
       {navPanels.map((panel) => {
