@@ -15,6 +15,7 @@ import type {
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import {
+  isBackgroundAgentTaskType,
   readTerminalOutputLines,
   type ActiveThinking,
   type Thread,
@@ -350,6 +351,18 @@ function buildWorkflowWorkRow(
   };
 }
 
+function isDelegationLifecycleChildRow(row: TimelineRow): boolean {
+  return (
+    row.kind === "work" &&
+    row.workKind === "workflow" &&
+    isBackgroundAgentTaskType(row.taskType)
+  );
+}
+
+function filterDelegationChildRows(childRows: TimelineRow[]): TimelineRow[] {
+  return childRows.filter((row) => !isDelegationLifecycleChildRow(row));
+}
+
 function isReconnectErrorMessage(
   message: EventProjectionErrorMessage,
 ): boolean {
@@ -673,11 +686,13 @@ function convertMessage(
           description: message.description ?? null,
           output: message.output,
           completedAt: message.completedAt,
-          childRows: buildTimelineRows(message.childProjection, {
-            includeNestedRows: true,
-            rowIdPrefix: `${base.id}:child:`,
-            workspaceRoot: options.workspaceRoot,
-          }),
+          childRows: filterDelegationChildRows(
+            buildTimelineRows(message.childProjection, {
+              includeNestedRows: true,
+              rowIdPrefix: `${base.id}:child:`,
+              workspaceRoot: options.workspaceRoot,
+            }),
+          ),
         },
       ];
     }

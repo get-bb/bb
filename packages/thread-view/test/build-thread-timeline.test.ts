@@ -5,6 +5,7 @@ import type {
   OwnershipChangeOperationAction,
   PromptInput,
   ProviderErrorInfo,
+  ThreadEventBackgroundTaskItem,
   ThreadEventFileChange,
   ThreadEventItemStatus,
   UserQuestionPendingInteractionResolution,
@@ -164,8 +165,24 @@ interface UserQuestionLifecycleEventArgs {
   statusReason?: string | null;
 }
 
+interface BackgroundTaskStartedEventArgs {
+  description: string;
+  id: string;
+  parentToolCallId: string;
+  seq: number;
+  taskType: string;
+}
+
 type BuildTimelineRowsThreadStatus = "active" | "idle";
 type TimelineConversationRow = Extract<TimelineRow, { kind: "conversation" }>;
+type TimelineDelegationWorkRow = Extract<
+  TimelineRow,
+  { kind: "work"; workKind: "delegation" }
+>;
+type TimelineWorkflowRow = Extract<
+  TimelineRow,
+  { kind: "work"; workKind: "workflow" }
+>;
 
 interface OwnershipOperationCase {
   action: OwnershipChangeOperationAction;
@@ -397,6 +414,39 @@ function turnCompletedEvent({
       scope: turnScope("turn-1"),
       status,
       ...(errorMessage ? { error: { message: errorMessage } } : {}),
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function backgroundTaskStartedEvent({
+  description,
+  id,
+  parentToolCallId,
+  seq,
+  taskType,
+}: BackgroundTaskStartedEventArgs): ThreadEventWithMeta {
+  const item: ThreadEventBackgroundTaskItem = {
+    type: "backgroundTask",
+    id,
+    taskType,
+    description,
+    status: "pending",
+    taskStatus: "running",
+    skipTranscript: false,
+    parentToolCallId,
+  };
+  return {
+    event: {
+      type: "item/started",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item,
     },
     meta: {
       id: `event-${seq}`,
@@ -712,6 +762,43 @@ function collectToolRows(rows: readonly TimelineRow[]): TimelineToolWorkRow[] {
   return toolRows;
 }
 
+function collectDelegationRows(
+  rows: readonly TimelineRow[],
+): TimelineDelegationWorkRow[] {
+  const delegationRows: TimelineDelegationWorkRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "delegation") {
+      delegationRows.push(row);
+      delegationRows.push(...collectDelegationRows(row.childRows));
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      delegationRows.push(...collectDelegationRows(row.children));
+    }
+  }
+  return delegationRows;
+}
+
+function collectWorkflowRows(
+  rows: readonly TimelineRow[],
+): TimelineWorkflowRow[] {
+  const workflowRows: TimelineWorkflowRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "workflow") {
+      workflowRows.push(row);
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      workflowRows.push(...collectWorkflowRows(row.children));
+      continue;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      workflowRows.push(...collectWorkflowRows(row.childRows));
+    }
+  }
+  return workflowRows;
+}
+
 function collectApprovalRows(
   rows: readonly TimelineRow[],
 ): TimelineApprovalWorkRow[] {
@@ -955,6 +1042,70 @@ describe("buildThreadTimelineFromEvents", () => {
     });
 
     expect(timeline.activePromptMode).toBeNull();
+  });
+
+  it("omits duplicated background-agent lifecycle rows from delegation children", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const parentToolCallId = "toolu-agent-1";
+    const subagentDescription = "Build Direction A Tools hub Ladle story";
+    const rows = buildTimelineRows([
+      ...fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: parentToolCallId,
+          tool: "Agent",
+          arguments: {
+            description: subagentDescription,
+            prompt: subagentDescription,
+          },
+        }),
+      ]),
+      backgroundTaskStartedEvent({
+        seq: 3,
+        id: "task:subagent",
+        taskType: "local_agent",
+        description: subagentDescription,
+        parentToolCallId,
+      }),
+      backgroundTaskStartedEvent({
+        seq: 4,
+        id: "task:workflow",
+        taskType: "local_workflow",
+        description: "Collect screenshots",
+        parentToolCallId,
+      }),
+      ...fromRows([
+        event.assistantCompleted({
+          seq: 5,
+          itemId: "subagent-progress",
+          parentToolCallId,
+          text: "Explored 19 files, 1 list, 4 searches",
+        }),
+      ]),
+    ]);
+
+    const [delegation] = collectDelegationRows(rows);
+
+    expect(delegation).toBeDefined();
+    if (!delegation) {
+      throw new Error("Expected a delegation row");
+    }
+    expect(
+      collectWorkflowRows(delegation.childRows).map((row) => row.taskType),
+    ).toEqual(["local_workflow"]);
+    expect(delegation.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Explored 19 files, 1 list, 4 searches",
+        }),
+      ]),
+    );
   });
 
   it("does not project thread-start provider-session markers as provisioning rows", () => {
