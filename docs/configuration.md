@@ -252,11 +252,6 @@ without an installed bb via `npx -p bb-app@latest bb connect …`.
 and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
 cuts off all remote access.
 
-Upgrading from a kernel-era pairing: the legacy credential file
-(`<dataDir>/connect.json`) is imported into plugin storage on the plugin's
-first load and the file is renamed to `connect.json.migrated` — a previously
-connected bb stays connected with zero action.
-
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and the app's "Remote access" panel drives the plugin's rpc.
 

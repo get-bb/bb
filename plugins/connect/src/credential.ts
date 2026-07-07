@@ -1,10 +1,7 @@
 import { z } from "zod";
 import type { PluginKvStorage } from "@bb/plugin-sdk";
 
-// The durable tunnel credential lives in the plugin's kv storage (bb.db),
-// replacing the kernel-era <dataDir>/connect.json file (imported once by
-// migrate-legacy.ts). Same shape as the legacy file, so the schema parses
-// both.
+// The durable tunnel credential lives in the plugin's kv storage (bb.db).
 export const connectCredentialSchema = z.object({
   serverUrl: z.string().min(1),
   handle: z.string().min(1),

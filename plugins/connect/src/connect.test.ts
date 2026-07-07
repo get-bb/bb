@@ -1,7 +1,3 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -9,7 +5,6 @@ import {
 } from "@bb/plugin-sdk/testing";
 import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
 import { CREDENTIAL_KV_KEY } from "./credential.js";
-import { dataDirFromDb } from "./migrate-legacy.js";
 import plugin from "./server.js";
 import type { ConnectStatus } from "./types.js";
 
@@ -282,45 +277,5 @@ describe("connect CLI", () => {
     ]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Redeem failed (410): expired");
-  });
-});
-
-describe("dataDirFromDb", () => {
-  let dir: string | undefined;
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
-  it("recovers the data dir from the host sqlite layout", () => {
-    dir = mkdtempSync(join(tmpdir(), "bb-connect-datadir-"));
-    const pluginDir = join(dir, "plugins", "connect");
-    mkdirSync(pluginDir, { recursive: true });
-    const db = new Database(join(pluginDir, "data.db"));
-    try {
-      // sqlite reports the realpath (macOS /tmp is a symlink).
-      expect(dataDirFromDb(db, "connect")).toBe(realpathSync(dir));
-    } finally {
-      db.close();
-    }
-  });
-
-  it("returns null outside the host layout (isolated harnesses)", () => {
-    dir = mkdtempSync(join(tmpdir(), "bb-connect-datadir-"));
-    const db = new Database(join(dir, "data.db"));
-    try {
-      expect(dataDirFromDb(db, "connect")).toBeNull();
-    } finally {
-      db.close();
-    }
-  });
-
-  it("returns null for in-memory databases", () => {
-    const db = new Database(":memory:");
-    try {
-      expect(dataDirFromDb(db, "connect")).toBeNull();
-    } finally {
-      db.close();
-    }
   });
 });
