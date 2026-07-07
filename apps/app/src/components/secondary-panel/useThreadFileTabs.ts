@@ -16,6 +16,7 @@ import {
   type FixedPanelTab,
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
+  type PluginPanelFixedPanelTab,
   type SideChatFixedPanelTab,
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
@@ -135,7 +136,8 @@ type SecondaryPanelTab =
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | PluginPanelFixedPanelTab;
 
 function isSideChatTab(tab: FixedPanelTab): tab is SideChatFixedPanelTab {
   return tab.kind === "side-chat";
