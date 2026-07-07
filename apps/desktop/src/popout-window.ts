@@ -11,6 +11,7 @@ import {
   type BbDesktopPopoutThreadRef,
 } from "@bb/desktop-contract";
 import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "./popout-ipc.js";
+import { registerDesktopContextMenu } from "./desktop-context-menu.js";
 
 interface CreatePopoutWindowManagerArgs {
   appUrl: string;
@@ -92,6 +93,7 @@ function createPopoutWindowOptions(
       nodeIntegration: false,
       preload: args.preloadPath,
       sandbox: true,
+      spellcheck: true,
     },
     width: POPOUT_WINDOW_WIDTH,
   };
@@ -226,6 +228,7 @@ export function createPopoutWindowManager(
     hasPositionedWindow = false;
     const browserWindow = new BrowserWindow(createPopoutWindowOptions(args));
     popoutWindow = browserWindow;
+    registerDesktopContextMenu({ webContents: browserWindow.webContents });
     browserWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true,
     });

@@ -5,6 +5,10 @@ import {
   type MenuItemConstructorOptions,
   type Session,
 } from "electron";
+import {
+  buildBbDesktopSpellcheckLookupScript,
+  parseBbDesktopSpellcheckCorrectionContext,
+} from "./desktop-spellcheck-contract.js";
 
 export interface DesktopContextMenuWebContents {
   on(
@@ -83,40 +87,15 @@ function selectedSpellcheckWord(params: ContextMenuParams): string | null {
   return word;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseSpellcheckLookupResult(
-  value: unknown,
-): DesktopContextMenuSpellcheckContext | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const { dictionarySuggestions, misspelledWord } = value;
-  if (
-    typeof misspelledWord !== "string" ||
-    !Array.isArray(dictionarySuggestions) ||
-    dictionarySuggestions.some((suggestion) => typeof suggestion !== "string")
-  ) {
-    return null;
-  }
-  return {
-    dictionarySuggestions,
-    misspelledWord,
-    replacementMode: "selected-text",
-  };
-}
-
-function spellcheckLookupScript(word: string): string {
-  return `globalThis.__bbDesktopSpellcheck?.getCorrectionContext(${JSON.stringify(word)}) ?? null`;
-}
-
 export async function resolveDesktopSpellcheckFallback({
   params,
   webContents,
 }: BuildDesktopContextMenuTemplateArgs): Promise<DesktopContextMenuSpellcheckContext | null> {
-  if (getSpellcheckContextFromParams(params) !== null || !params.isEditable) {
+  if (
+    getSpellcheckContextFromParams(params) !== null ||
+    !params.isEditable ||
+    !params.spellcheckEnabled
+  ) {
     return null;
   }
   const word = selectedSpellcheckWord(params);
@@ -124,9 +103,17 @@ export async function resolveDesktopSpellcheckFallback({
     return null;
   }
   try {
-    return parseSpellcheckLookupResult(
-      await webContents.executeJavaScript(spellcheckLookupScript(word)),
+    const context = parseBbDesktopSpellcheckCorrectionContext(
+      await webContents.executeJavaScript(
+        buildBbDesktopSpellcheckLookupScript(word),
+      ),
     );
+    return context === null
+      ? null
+      : {
+          ...context,
+          replacementMode: "selected-text",
+        };
   } catch {
     return null;
   }

@@ -43,6 +43,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
+import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -69,6 +70,7 @@ const electronMock = vi.hoisted(() => {
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
+  const exposedNames: string[] = [];
   let currentPopoutThread: BbDesktopPopoutThreadChangedPayload = null;
   let exposedApi: BbDesktopApi | null = null;
   let exposedName: string | null = null;
@@ -83,6 +85,7 @@ const electronMock = vi.hoisted(() => {
     get exposedName() {
       return exposedName;
     },
+    exposedNames,
     get exposedSpellcheckApi() {
       return exposedSpellcheckApi;
     },
@@ -93,6 +96,7 @@ const electronMock = vi.hoisted(() => {
       exposedApi = null;
       exposedName = null;
       exposedSpellcheckApi = null;
+      exposedNames.length = 0;
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
@@ -103,12 +107,13 @@ const electronMock = vi.hoisted(() => {
     },
     contextBridge: {
       exposeInMainWorld(name: string, api: unknown): void {
+        exposedNames.push(name);
         if (name === "bbDesktop") {
           exposedName = name;
           exposedApi = api as BbDesktopApi;
           return;
         }
-        if (name === "__bbDesktopSpellcheck") {
+        if (name !== "bbDesktop") {
           exposedSpellcheckApi = api as {
             getCorrectionContext(word: string): unknown;
           };
@@ -181,6 +186,10 @@ describe("desktop preload browser API", () => {
   it("exposes a narrow spellcheck helper for desktop context menus", async () => {
     await loadPreload();
 
+    expect(electronMock.exposedNames).toContain(
+      BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+    );
+    expect(electronMock.exposedSpellcheckApi).not.toBeNull();
     expect(
       electronMock.exposedSpellcheckApi?.getCorrectionContext("recieve"),
     ).toEqual({

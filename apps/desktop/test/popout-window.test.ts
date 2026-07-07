@@ -60,13 +60,32 @@ const electronMock = vi.hoisted(() => {
   class FakeWebContents {
     public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
       [];
+    public readonly spellCheckerEnabledValues: boolean[] = [];
     private readonly listeners = new Map<string, Listener[]>();
+    public readonly session = {
+      addWordToSpellCheckerDictionary: () => true,
+      setSpellCheckerEnabled: (enabled: boolean) => {
+        this.spellCheckerEnabledValues.push(enabled);
+      },
+    };
+
+    executeJavaScript(): Promise<unknown> {
+      return Promise.resolve(null);
+    }
+
+    insertText(): void {}
 
     on(channel: string, listener: Listener): void {
       const listeners = this.listeners.get(channel) ?? [];
       listeners.push(listener);
       this.listeners.set(channel, listeners);
     }
+
+    registeredListenerCount(channel: string): number {
+      return this.listeners.get(channel)?.length ?? 0;
+    }
+
+    replaceMisspelling(): void {}
 
     send(channel: string, payload: unknown): void {
       this.sentMessages.push({ channel, payload });
@@ -229,6 +248,9 @@ const electronMock = vi.hoisted(() => {
 
 vi.mock("electron", () => ({
   BrowserWindow: electronMock.BrowserWindow,
+  Menu: {
+    buildFromTemplate: vi.fn(),
+  },
   screen: electronMock.screen,
 }));
 
@@ -261,6 +283,7 @@ describe("createPopoutWindowManager", () => {
       nodeIntegration: false,
       preload: "/tmp/preload.cjs",
       sandbox: true,
+      spellcheck: true,
     });
     expect(browserWindow?.options.show).toBe(false);
     expect(browserWindow?.loadUrlCalls).toEqual([
@@ -270,6 +293,25 @@ describe("createPopoutWindowManager", () => {
     expect(browserWindow?.focused).toBe(false);
     expect(browserWindow?.isVisible()).toBe(false);
     expect(browserWindow?.webContents.sentMessages).toEqual([]);
+  });
+
+  it("enables spellcheck and registers the desktop context menu", () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+
+    const browserWindow = electronMock.createdWindows[0];
+    expect(browserWindow?.webContents.spellCheckerEnabledValues).toEqual([
+      true,
+    ]);
+    expect(
+      browserWindow?.webContents.registeredListenerCount("context-menu"),
+    ).toBe(1);
   });
 
   it("shows a warmed popout without loading the renderer again", async () => {
@@ -376,6 +418,7 @@ describe("createPopoutWindowManager", () => {
       nodeIntegration: false,
       preload: "/tmp/preload.cjs",
       sandbox: true,
+      spellcheck: true,
     });
     expect(browserWindow?.options).not.toHaveProperty("vibrancy");
     expect(browserWindow?.ignoreMouseEventsCalls).toEqual([]);

@@ -62,6 +62,10 @@ import {
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
+import {
+  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+  type BbDesktopSpellcheckApi,
+} from "./desktop-spellcheck-contract.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -128,17 +132,6 @@ const closeWindowRequestListeners =
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
 const popoutThreadChangedListeners =
   new Set<BbDesktopPopoutThreadChangedHandler>();
-
-interface BbDesktopSpellcheckCorrectionContext {
-  dictionarySuggestions: string[];
-  misspelledWord: string;
-}
-
-interface BbDesktopSpellcheckApi {
-  getCorrectionContext(
-    word: string,
-  ): BbDesktopSpellcheckCorrectionContext | null;
-}
 
 function normalizeSpellcheckWord(word: string): string | null {
   const normalized = word.trim();
@@ -403,5 +396,8 @@ ipcRenderer.on(
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 
-contextBridge.exposeInMainWorld("__bbDesktopSpellcheck", bbSpellcheckApi);
+contextBridge.exposeInMainWorld(
+  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+  bbSpellcheckApi,
+);
 contextBridge.exposeInMainWorld("bbDesktop", bbDesktopApi);

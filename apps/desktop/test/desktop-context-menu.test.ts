@@ -187,7 +187,7 @@ describe("desktop context menu", () => {
         params: createContextMenuParams({
           isEditable: true,
           selectionText: "recieve",
-          spellcheckEnabled: false,
+          spellcheckEnabled: true,
         }),
       }),
     ).resolves.toEqual({
@@ -198,6 +198,28 @@ describe("desktop context menu", () => {
     expect(webContents.executeJavaScript).toHaveBeenCalledWith(
       expect.stringContaining('"recieve"'),
     );
+  });
+
+  it("does not look up fallback spellcheck suggestions when spellcheck is disabled", async () => {
+    const webContents = {
+      ...createFakeWebContents(),
+      executeJavaScript: vi.fn().mockResolvedValue({
+        dictionarySuggestions: ["receive"],
+        misspelledWord: "recieve",
+      }),
+    } satisfies FakeWebContents;
+
+    await expect(
+      resolveDesktopSpellcheckFallback({
+        webContents,
+        params: createContextMenuParams({
+          isEditable: true,
+          selectionText: "recieve",
+          spellcheckEnabled: false,
+        }),
+      }),
+    ).resolves.toBeNull();
+    expect(webContents.executeJavaScript).not.toHaveBeenCalled();
   });
 
   it("can add a misspelled word to the spellchecker dictionary", () => {
