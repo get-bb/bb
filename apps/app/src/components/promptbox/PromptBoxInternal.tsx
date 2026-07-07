@@ -161,7 +161,6 @@ const PROMPTBOX_MAX_HEIGHT_BY_LAYOUT: Record<ZenModeLayout, string> = {
   "root-compose": "70dvh",
 };
 
-// Shared by the two rows that crossfade between the editor and the voice bar.
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 
@@ -2030,8 +2029,8 @@ export function PromptBoxInternal({
   const isVoiceProcessing = voice?.state === "transcribing";
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
   const isVoiceBusy = showVoiceActionGroup;
-  // Zen only affects the editor layout; while the voice bar is showing, the box
-  // collapses to the pill instead, so zen styling is suppressed.
+  // Zen styling is suppressed while the voice bar shows, since the box
+  // collapses to the pill instead.
   const showZenLayout = isZenMode && !showVoiceActionGroup;
   const canSubmit =
     hasSubmittableInput && !isSubmitting && !submitDisabled && !isVoiceBusy;
@@ -2406,10 +2405,9 @@ export function PromptBoxInternal({
     handleEditorKeyDownRef.current = handleEditorKeyDown;
   }, [handleEditorKeyDown]);
 
-  // While the voice bar is up, Escape cancels it just like its X button.
-  // Capture phase + stopPropagation so it wins over the composer's own
-  // Escape-to-dismiss (which would otherwise hide the whole box) and never
-  // reaches the collapsed editor.
+  // Capture phase + stopPropagation so Escape cancels the recording and wins
+  // over the composer's own Escape-to-dismiss (which would otherwise hide the
+  // whole box), instead of leaking to the collapsed editor.
   useEffect(() => {
     if (!showVoiceActionGroup || !voice) return;
     const cancelVoice = voice.cancel;
