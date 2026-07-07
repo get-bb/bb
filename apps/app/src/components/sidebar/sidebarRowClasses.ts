@@ -1,4 +1,4 @@
-import { COARSE_POINTER_DOT_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { COARSE_POINTER_DOT_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 
 export type SidebarUnreadDotTone = "default" | "error";
 

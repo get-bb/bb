@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,9 +6,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Icon } from "@/components/ui/icon";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,

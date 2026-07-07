@@ -9,7 +9,7 @@ import {
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   hasActiveWorkflowActivity,
@@ -17,7 +17,7 @@ import {
   isRuntimeBusyThread,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
 import {
   SIDEBAR_ROW_BASE_CLASS,

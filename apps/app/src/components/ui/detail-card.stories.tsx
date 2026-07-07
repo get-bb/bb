@@ -1,6 +1,6 @@
-import { Button } from "./button";
+import { Button } from "@bb/shared-ui/button";
 import { DetailCard, DetailRow } from "./detail-card";
-import { Input } from "./input";
+import { Input } from "@bb/shared-ui/input";
 import { BranchPicker } from "../pickers/BranchPicker";
 import { OptionPicker } from "../pickers/OptionPicker";
 import {
@@ -8,7 +8,7 @@ import {
   type WorkspaceChangedFile,
 } from "../thread/WorkspaceChangesList";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 
 export default {
   title: "ui/Detail Card",

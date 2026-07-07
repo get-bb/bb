@@ -2,16 +2,16 @@ import type {
   ProviderUsage,
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@bb/shared-ui/tooltip";
 import { useSystemUsageLimits } from "@/hooks/queries/system-queries";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
   key: "codex" | "claudeCode";

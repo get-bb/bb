@@ -27,8 +27,8 @@ import webstormIcon from "@/assets/workspace-open-target-icons/webstorm.svg";
 import windsurfIcon from "@/assets/workspace-open-target-icons/windsurf.png";
 import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
 import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
-import { Icon } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getWorkspaceOpenTargetFallbackIcon } from "./workspace-open-target-display";
 
 const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {

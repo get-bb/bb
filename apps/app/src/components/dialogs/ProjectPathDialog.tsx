@@ -5,7 +5,7 @@ import {
   normalizeProjectPathInput,
 } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,10 +13,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.js";
-import { Input } from "@/components/ui/input.js";
+} from "@bb/shared-ui/dialog";
+import { Input } from "@bb/shared-ui/input";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
 export type ProjectPathDialogTarget =
   | {

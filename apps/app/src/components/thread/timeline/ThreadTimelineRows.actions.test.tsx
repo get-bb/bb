@@ -12,8 +12,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
-import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
-import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 

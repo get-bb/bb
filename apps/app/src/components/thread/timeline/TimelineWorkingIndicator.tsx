@@ -3,7 +3,7 @@ import {
   ExpandablePanel,
   getCollapsibleHeaderToneClass,
 } from "../../ui/disclosure.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 
 // Both indicator states — the plain status line and the expandable thinking

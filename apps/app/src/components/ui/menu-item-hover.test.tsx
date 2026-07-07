@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { MenuHoverProvider, useMenuItemHover } from "./menu-item-hover";
+import { MenuHoverProvider, useMenuItemHover } from "@bb/shared-ui/menu-item-hover";
 
 function HoverItem({ label }: { label: string }) {
   const { hoverProps } = useMenuItemHover();

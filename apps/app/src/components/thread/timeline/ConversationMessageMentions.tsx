@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionIconName,

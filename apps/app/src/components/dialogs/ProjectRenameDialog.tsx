@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent, type RefObject } from "react";
-import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
-import { Input } from "@/components/ui/input.js";
+import { Button } from "@bb/shared-ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
+import { Input } from "@bb/shared-ui/input";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 

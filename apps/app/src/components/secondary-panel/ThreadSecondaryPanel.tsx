@@ -8,16 +8,16 @@ import {
 } from "react";
 import { useAtomValue } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
-import { Icon } from "@/components/ui/icon.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,

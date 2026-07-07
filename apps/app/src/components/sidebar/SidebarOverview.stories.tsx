@@ -12,7 +12,7 @@ import {
 } from "../../../.ladle/story-fixtures";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectList,
   ProjectListActionButtons,

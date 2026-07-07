@@ -122,7 +122,7 @@ import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
-import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginPanelTabContent,
@@ -130,7 +130,7 @@ import {
 } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/file-opener-preference";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   getBbDesktopInfo,
   getDesktopBrowserApi,
@@ -199,7 +199,7 @@ import {
   buildParentSelectorOptions,
   isRootThread,
 } from "./threadParentSelectorOptions";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,

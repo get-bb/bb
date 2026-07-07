@@ -1,6 +1,6 @@
-import { Icon, ICON_NAMES, type IconName } from "@/components/ui/icon.js";
+import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { usePluginLogoUrl } from "@/lib/plugin-logos";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /** Plugin icon hints are freeform strings; unknown ones get a generic icon. */
 export function pluginIconName(icon: string | null): IconName {

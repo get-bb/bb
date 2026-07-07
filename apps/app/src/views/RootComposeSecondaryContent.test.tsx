@@ -3,7 +3,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport.js";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
@@ -78,7 +78,7 @@ vi.mock("react-resizable-panels", async () => {
   return { Panel, PanelGroup };
 });
 
-vi.mock("@/components/ui/responsive-overlay.js", async () => {
+vi.mock("@bb/shared-ui/responsive-overlay", async () => {
   const React = await import("react");
 
   const ResponsiveDrawerShell = ({

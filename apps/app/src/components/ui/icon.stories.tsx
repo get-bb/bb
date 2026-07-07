@@ -1,4 +1,4 @@
-import { Icon, ICON_NAMES, type IconName } from "./icon";
+import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {

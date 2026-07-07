@@ -9,7 +9,7 @@ import {
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -22,7 +22,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -38,8 +38,8 @@ import {
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { cn } from "@/lib/utils";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,

@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Pill } from "@/components/ui/pill";
+import { Pill } from "@bb/shared-ui/pill";
 import { PluginContext } from "./plugin-context";
 
 /**

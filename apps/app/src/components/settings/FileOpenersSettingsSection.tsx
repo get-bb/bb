@@ -1,24 +1,24 @@
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Icon } from "@/components/ui/icon";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   buildFileOpenerRef,
   resolvePreferredFileOpener,
   useFileOpenerPreference,
 } from "@/lib/file-opener-preference";
 import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEvent } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Icon, type IconName } from "../../ui/icon.js";
-import { preventOverlayTriggerSelection } from "../../ui/overlay-trigger.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
 // Labeled horizontal action button for the floating selection menu. Unlike the

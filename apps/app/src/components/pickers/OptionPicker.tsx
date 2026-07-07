@@ -1,16 +1,16 @@
 import type { ComponentType, ReactNode } from "react";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/dropdown-menu";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export const OPTION_BASE_CLASS_NAME =
   "h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight";

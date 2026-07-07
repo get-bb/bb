@@ -12,11 +12,11 @@ import type {
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
-import { Icon } from "@/components/ui/icon.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { Icon } from "@bb/shared-ui/icon";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";

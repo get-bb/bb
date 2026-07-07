@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type RefObject } from "react";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.js";
-import { Input } from "@/components/ui/input.js";
+} from "@bb/shared-ui/dialog";
+import { Input } from "@bb/shared-ui/input";
 import { normalizeFolderName } from "@/components/sidebar/folderKeys";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Icon, type IconName } from "@/components/ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 
 interface RootComposeEmptyWelcomeProps {
   /** Reveal the composer, optionally prefilled with a starter prompt. */

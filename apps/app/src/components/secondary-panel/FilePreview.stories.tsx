@@ -69,7 +69,7 @@ flowchart LR
 The Raw toggle still shows this markdown source unchanged.`;
 
 const SAMPLE_BUTTON_TSX = `import { forwardRef, type ButtonHTMLAttributes } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "default" | "ghost" | "outline";

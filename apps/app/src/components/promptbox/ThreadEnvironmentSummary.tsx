@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =

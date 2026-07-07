@@ -1,9 +1,9 @@
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon } from "@/components/ui/icon.js";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { formatRelativeTime } from "@/lib/relative-time";
 import type { BrowserHistoryEntry } from "@/lib/browser-history";

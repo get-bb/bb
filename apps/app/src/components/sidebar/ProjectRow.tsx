@@ -32,16 +32,16 @@ import {
 } from "@/hooks/mutations/environment-mutations";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useDialogState } from "@/hooks/useDialogState";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { EmptyState } from "@/components/ui/empty-state.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { EmptyState } from "@bb/shared-ui/empty-state";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
@@ -61,7 +61,7 @@ import {
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -70,7 +70,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";

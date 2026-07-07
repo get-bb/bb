@@ -1,10 +1,10 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
  * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row

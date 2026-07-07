@@ -34,16 +34,16 @@ import type {
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
@@ -52,7 +52,7 @@ import {
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@/lib/prompt-draft";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import {
   PromptBoxActionsMenu,

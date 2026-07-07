@@ -7,7 +7,7 @@ import {
 } from "@bb/thread-view";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
-import { EmptyStatePanel } from "../../ui/empty-state.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { TimelineFileDiffBlock } from "./TimelineFileDiffBlock.js";

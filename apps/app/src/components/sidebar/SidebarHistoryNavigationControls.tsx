@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useRouteStateHistoryNavigation } from "@/lib/app-route-history";
 
 interface SidebarHistoryNavigationControlsProps {

@@ -9,7 +9,7 @@ import {
   AppToastCommitDescription,
 } from "./app-toast-descriptions";
 import { ArchivedThreadToastTitle } from "../thread/ArchivedThreadToastTitle";
-import { Button } from "./button";
+import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import type { ReactNode } from "react";
 

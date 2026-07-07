@@ -1,14 +1,14 @@
 import { useCallback, useRef } from "react";
-import { Button } from "@/components/ui/button.js";
-import { cn } from "@/lib/utils";
+import { Button } from "@bb/shared-ui/button";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
 export type PromptBoxActionKind = "skills" | "plan" | "goal" | "loop";

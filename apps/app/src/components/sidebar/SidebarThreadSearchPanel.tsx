@@ -5,11 +5,11 @@ import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   COARSE_POINTER_TEXT_SM_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { useThreadSearch } from "@/hooks/queries/thread-queries";
 import { hasThreadSearchableQuery } from "@/hooks/queries/thread-queries";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getSidebarThreadSearchOptionId,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,

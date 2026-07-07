@@ -11,7 +11,7 @@ import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
-import { Icon } from "@/components/ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 
 const ACP_ID_PREFIX = "acp-";
 

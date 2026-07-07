@@ -29,7 +29,7 @@ import {
   SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
-import { Icon } from "./components/ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_SHADOW_MARGIN,

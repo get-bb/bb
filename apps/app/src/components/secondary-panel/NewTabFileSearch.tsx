@@ -14,12 +14,12 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
-} from "@/components/ui/coarse-pointer-sizing.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { LIST_HOVER_TRANSITION } from "@/components/ui/motion.js";
-import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
-import { Input } from "@/components/ui/input.js";
+} from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { Input } from "@bb/shared-ui/input";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import {
   useFileSearchSuggestions,
@@ -38,7 +38,7 @@ import {
   getFileNameFromPath,
   resolveRightPanelFileVisual,
 } from "./rightPanelFileVisuals";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {

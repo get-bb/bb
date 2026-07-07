@@ -7,8 +7,8 @@ import type {
 } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POINTER_COARSE_QUERY } from "./hooks/use-pointer-coarse";
-import { ResponsiveDrawerShell } from "./responsive-overlay";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 
 type CapturedAnimationEnd = (args: {
   currentTarget: HTMLElement;

@@ -5,10 +5,10 @@ import type {
   WorkflowPhaseSnapshot,
 } from "@bb/domain";
 import type { TimelineViewWorkflowWorkRow } from "@bb/thread-view";
-import { Icon } from "../../ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import type { DetailScrollSize } from "../../ui/detail-scroll-size.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   activityIconClass,
   activityMetaClass,

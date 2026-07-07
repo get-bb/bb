@@ -20,8 +20,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { Transform } from "@dnd-kit/utilities";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   PromptStackCard,
   PROMPT_STACK_COMPACT_INLAY_INSET_CLASS,
@@ -33,8 +33,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+} from "@bb/shared-ui/tooltip";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,

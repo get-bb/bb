@@ -1,22 +1,22 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { EmptyState } from "@/components/ui/empty-state.js";
-import { Icon } from "@/components/ui/icon.js";
-import { Input } from "@/components/ui/input.js";
-import { Pill, type PillVariant } from "@/components/ui/pill.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { EmptyState } from "@bb/shared-ui/empty-state";
+import { Icon } from "@bb/shared-ui/icon";
+import { Input } from "@bb/shared-ui/input";
+import { Pill, type PillVariant } from "@bb/shared-ui/pill";
 import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section.js";
-import { Switch } from "@/components/ui/switch.js";
+import { Switch } from "@bb/shared-ui/switch";
 import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   updatePluginSettings,

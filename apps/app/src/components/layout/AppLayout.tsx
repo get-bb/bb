@@ -10,7 +10,7 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   SidebarInset,
   SidebarProvider,
@@ -29,7 +29,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";

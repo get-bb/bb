@@ -2,8 +2,8 @@ import { useCallback, useEffect, type ReactNode } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
   useEnvironmentFilePreview,
@@ -22,7 +22,7 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";

@@ -10,7 +10,7 @@ import {
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
 const mockPathPickerHost = vi.hoisted(() => ({
