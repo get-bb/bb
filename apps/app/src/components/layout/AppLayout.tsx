@@ -17,6 +17,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -59,6 +60,7 @@ import {
   getRootComposeRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
+  SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -227,6 +229,17 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
 };
+
+function resolveRouteTitle(
+  pathname: string,
+): { title: string; subtitle?: string } | undefined {
+  // The global settings page owns a subtree (/settings/:section,
+  // /settings/plugins/:id); every sub-route keeps the "Settings" title.
+  if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
+    return routeTitles[SETTINGS_ROUTE_PATH];
+  }
+  return routeTitles[pathname];
+}
 
 interface AppHeaderProps {
   /**
@@ -401,6 +414,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Plugin panel routes ride the shared header (design §5.2): logo + panel
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
+  // Global settings routes swap the app sidebar for the settings sidebar.
+  const isGlobalSettingsView =
+    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const pluginPanelMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
   const pluginPanel = pluginPanelMatch
     ? navPanels.find(
@@ -514,7 +530,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               title: projectLabel ?? projectId,
               subtitle: undefined,
             }
-          : (routeTitles[location.pathname] ?? { title: "" });
+          : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -537,7 +553,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (projectId) {
       return projectLabel ?? projectId;
     }
-    const routeTitle = routeTitles[location.pathname]?.title;
+    const routeTitle = resolveRouteTitle(location.pathname)?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
   // The sidebar list omits archived threads and side chats, so it can't answer
@@ -651,11 +667,19 @@ export function AppLayout({ children }: AppLayoutProps) {
           providerRef={providerRef}
           style={sidebarProviderStyle}
         >
-          <AppSidebar
-            onResizeMouseDown={handleResizeMouseDown}
-            isResizing={isSidebarResizing}
-            showTopReserve={true}
-          />
+          {isGlobalSettingsView ? (
+            <SettingsSidebar
+              onResizeMouseDown={handleResizeMouseDown}
+              isResizing={isSidebarResizing}
+              showTopReserve={true}
+            />
+          ) : (
+            <AppSidebar
+              onResizeMouseDown={handleResizeMouseDown}
+              isResizing={isSidebarResizing}
+              showTopReserve={true}
+            />
+          )}
           <SidebarInset>
             <div
               data-testid="app-layout-content-shell"

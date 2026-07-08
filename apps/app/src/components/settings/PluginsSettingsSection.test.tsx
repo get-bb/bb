@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { PluginRow, PluginSettingsForm } from "./PluginsSettingsSection";
+import {
+  PluginSettingsDetail,
+  PluginSettingsForm,
+  PluginToggleRow,
+} from "./PluginsSettingsSection";
 
 interface RecordedRequest {
   url: string;
@@ -118,27 +123,28 @@ describe("PluginSettingsForm", () => {
   });
 });
 
-describe("PluginRow settings gating", () => {
-  function rowPlugin(status: string, logoUrl: string | null = null) {
-    return {
-      id: "linear",
-      version: "0.1.0",
-      enabled: true,
-      status,
-      statusDetail: null,
-      description: null,
-      logoUrl,
-      logoDarkUrl: null,
-    };
-  }
+function rowPlugin(status: string, logoUrl: string | null = null) {
+  return {
+    id: "linear",
+    version: "0.1.0",
+    enabled: true,
+    status,
+    statusDetail: null,
+    description: null,
+    logoUrl,
+    logoDarkUrl: null,
+    hasSettings: true,
+  };
+}
 
+describe("PluginSettingsDetail settings gating", () => {
   it("renders the settings form for a needs-configuration plugin (regression: the plugin that most needs configuring must be configurable)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginRow plugin={rowPlugin("needs-configuration")} />, {
+    render(<PluginSettingsDetail plugin={rowPlugin("needs-configuration")} />, {
       wrapper,
     });
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
@@ -148,7 +154,7 @@ describe("PluginRow settings gating", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginRow plugin={rowPlugin("error")} />, { wrapper });
+    render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
     expect(screen.queryByLabelText("Greeting")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -161,7 +167,7 @@ describe("PluginRow settings gating", () => {
     const { wrapper } = createQueryClientTestHarness();
     const logoUrl = "/api/v1/plugins/linear/assets/logo?h=f00d";
     const { unmount } = render(
-      <PluginRow plugin={rowPlugin("running", logoUrl)} />,
+      <PluginSettingsDetail plugin={rowPlugin("running", logoUrl)} />,
       { wrapper },
     );
     expect(
@@ -169,7 +175,66 @@ describe("PluginRow settings gating", () => {
     ).toBe(logoUrl);
     unmount();
 
-    render(<PluginRow plugin={rowPlugin("running")} />, { wrapper });
+    render(<PluginSettingsDetail plugin={rowPlugin("running")} />, {
+      wrapper,
+    });
     expect(screen.queryByTestId("plugin-settings-logo-linear")).toBeNull();
+  });
+});
+
+describe("PluginToggleRow", () => {
+  it("POSTs disable when toggling an enabled plugin off", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({ ok: true });
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginToggleRow plugin={rowPlugin("running")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Enable linear" }));
+
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.init?.method === "POST",
+      );
+      expect(post?.url).toBe("/api/v1/plugins/linear/disable");
+    });
+  });
+
+  it("links to the plugin's settings page only when it declares settings", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const { wrapper } = createQueryClientTestHarness();
+    const { unmount } = render(
+      <MemoryRouter>
+        <PluginToggleRow plugin={rowPlugin("running")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    expect(
+      screen.getByRole("link", { name: /plugin settings/i }).getAttribute(
+        "href",
+      ),
+    ).toBe("/settings/plugins/linear");
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <PluginToggleRow
+          plugin={{ ...rowPlugin("running"), hasSettings: false }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    expect(screen.queryByRole("link", { name: /plugin settings/i })).toBeNull();
   });
 });

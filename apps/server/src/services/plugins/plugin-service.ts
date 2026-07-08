@@ -165,6 +165,13 @@ export interface PluginListEntry {
   /** The plugin's registered `bb` subcommand; null when none or not loaded. */
   cliCommand: { name: string; summary: string } | null;
   /**
+   * True when the loaded plugin declared at least one setting via
+   * bb.settings.define — drives the app's per-plugin settings nav entries.
+   * False while the plugin is not loaded (its schema only exists once the
+   * factory has run).
+   */
+  hasSettings: boolean;
+  /**
    * Frontend bundle state (design §5.1), refreshed each time the plugin
    * loads. `{ hasApp: false, bundle: null }` until a load has read the
    * manifest this session (e.g. disabled-at-boot plugins).
@@ -1976,6 +1983,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           cliCommand: cliRegistration
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
+          hasSettings:
+            exposedPlugin !== undefined &&
+            Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
           // Only advertise URLs the asset route will actually serve (it
           // gates on the live runtime, like the bundle assets).

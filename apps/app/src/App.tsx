@@ -25,7 +25,9 @@ import {
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SETTINGS_SECTION_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
@@ -96,6 +98,14 @@ function AppRoutes() {
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
+          <Route
+            path={SETTINGS_SECTION_ROUTE_PATH}
+            element={<SettingsView />}
+          />
+          <Route
+            path={SETTINGS_PLUGIN_ROUTE_PATH}
+            element={<SettingsView />}
+          />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}

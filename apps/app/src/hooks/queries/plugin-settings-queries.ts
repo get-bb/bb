@@ -28,6 +28,8 @@ export interface PluginListItem {
   logoUrl: string | null;
   /** Dark-theme logo variant URL; null when the plugin ships none. */
   logoDarkUrl: string | null;
+  /** True when the loaded plugin declared settings; drives its nav entry. */
+  hasSettings: boolean;
 }
 
 function parsePluginListItem(value: unknown): PluginListItem | null {
@@ -53,6 +55,8 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
     logoDarkUrl:
       typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
+    // Absent on older servers → assume no declared settings.
+    hasSettings: item.hasSettings === true,
   };
 }
 
@@ -170,6 +174,30 @@ export async function updatePluginSettings(
     );
   }
   return view;
+}
+
+/**
+ * POST /api/v1/plugins/:id/enable|disable. Resolves on success; throws with
+ * the server's message on rejection (unknown plugin, experiment off).
+ */
+export async function setPluginEnabled(
+  fetchImpl: FetchLike,
+  pluginId: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetchImpl(
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}/${enabled ? "enable" : "disable"}`,
+    { method: "POST" },
+  );
+  if (response.ok) return;
+  const body = (await response.json().catch(() => null)) as {
+    error?: unknown;
+  } | null;
+  throw new Error(
+    typeof body?.error === "string"
+      ? body.error
+      : `${enabled ? "enabling" : "disabling"} the plugin failed (HTTP ${response.status})`,
+  );
 }
 
 export function pluginListQueryKey(pluginsEnabled: boolean): QueryKey {

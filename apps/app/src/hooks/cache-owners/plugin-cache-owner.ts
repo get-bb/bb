@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
+  allPluginListQueryKeyPrefix,
   pluginSettingsViewQueryKey,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
@@ -19,4 +20,17 @@ export function applyPluginSettingsView(args: {
     pluginSettingsViewQueryKey(args.pluginId),
     args.view,
   );
+}
+
+/**
+ * Refetch the installed-plugin list after an enable/disable POST. The
+ * realtime `plugins-changed` broadcast covers other windows; this gives the
+ * acting window an immediate refresh.
+ */
+export function invalidatePluginList(args: {
+  queryClient: QueryClient;
+}): void {
+  void args.queryClient.invalidateQueries({
+    queryKey: allPluginListQueryKeyPrefix(),
+  });
 }

@@ -17,6 +17,7 @@ import type { ThemePreference } from "@/hooks/useTheme";
 import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
 import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
+  AppearanceSettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
@@ -195,12 +196,30 @@ function GeneralSettingsStory({
 
   return (
     <GeneralSettingsSection
+      desktopBrowserAvailable={desktopBrowserAvailable}
+      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+      onNavigateToThreadAfterCreateChange={
+        state.setNavigateToThreadAfterCreate
+      }
+      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
+      onRichTextEditingChange={state.setRichTextEditing}
+      openLinksInAppBrowser={state.openLinksInAppBrowser}
+      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
+      richTextEditing={state.richTextEditing}
+    />
+  );
+}
+
+function AppearanceSettingsStory() {
+  const state = useSettingsStoryState();
+
+  return (
+    <AppearanceSettingsSection
       appearance={state.appearance}
       appearanceDisabled={false}
       customThemes={["Monochrome Lab", "Low Contrast"]}
-      desktopBrowserAvailable={desktopBrowserAvailable}
       faviconColor={state.appearance.faviconColor}
-      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }
@@ -208,16 +227,7 @@ function GeneralSettingsStory({
       onFaviconColorChange={(faviconColor) =>
         state.setAppearance((current) => ({ ...current, faviconColor }))
       }
-      onNavigateToThreadAfterCreateChange={
-        state.setNavigateToThreadAfterCreate
-      }
-      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-      onRichTextEditingChange={state.setRichTextEditing}
       onThemePreferenceChange={state.setThemePreference}
-      openLinksInAppBrowser={state.openLinksInAppBrowser}
-      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-      richTextEditing={state.richTextEditing}
       themePreference={state.themePreference}
     />
   );
@@ -343,6 +353,7 @@ export function Overview() {
   return (
     <SettingsStoryFrame useShell>
       <GeneralSettingsStory />
+      <AppearanceSettingsStory />
       <UsageLimitsStory />
       <VoiceInputStory />
       <FilePreferencesStory />
@@ -355,6 +366,15 @@ export function General() {
   return (
     <SettingsStoryFrame>
       <GeneralSettingsStory desktopBrowserAvailable />
+      <VoiceInputStory />
+    </SettingsStoryFrame>
+  );
+}
+
+export function Appearance() {
+  return (
+    <SettingsStoryFrame>
+      <AppearanceSettingsStory />
     </SettingsStoryFrame>
   );
 }

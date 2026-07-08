@@ -1,5 +1,10 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
   defaultAppTheme,
@@ -36,7 +41,11 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
-import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
+import {
+  PluginSettingsDetailSection,
+  PluginsSettingsSection,
+} from "@/components/settings/PluginsSettingsSection";
+import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
@@ -54,7 +63,10 @@ import {
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  SETTINGS_ROUTE_PATH,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -125,25 +137,28 @@ export interface FaviconColorSettingsControlProps {
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
 
-export interface GeneralSettingsSectionProps {
+export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
-  desktopBrowserAvailable: boolean;
   faviconColor: FaviconColorPreference;
-  navigateToThreadAfterCreate: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
   onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
+  onThemePreferenceChange: (themePreference: ThemePreference) => void;
+  themePreference: ThemePreference;
+}
+
+export interface GeneralSettingsSectionProps {
+  desktopBrowserAvailable: boolean;
+  navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
-  onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
-  themePreference: ThemePreference;
 }
 
 function appPaletteLabel(appearance: AppTheme): string {
@@ -505,28 +520,19 @@ export function RichTextEditingSettingsControl({
   );
 }
 
-export function GeneralSettingsSection({
+export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
   customThemes,
-  desktopBrowserAvailable,
   faviconColor,
-  navigateToThreadAfterCreate,
   onAppearanceThemeChange,
   onFaviconColorChange,
-  onNavigateToThreadAfterCreateChange,
-  onOpenLinksInAppBrowserChange,
-  onRewriteLocalhostLinksChange,
-  onRichTextEditingChange,
   onCreatePalette,
   onThemePreferenceChange,
-  openLinksInAppBrowser,
-  rewriteLocalhostLinks,
-  richTextEditing,
   themePreference,
-}: GeneralSettingsSectionProps) {
+}: AppearanceSettingsSectionProps) {
   return (
-    <SettingsSection title="General">
+    <SettingsSection title="Appearance">
       <div className="space-y-5">
         <SettingsWithControl label="Theme">
           <DropdownMenu>
@@ -640,7 +646,25 @@ export function GeneralSettingsSection({
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
         />
+      </div>
+    </SettingsSection>
+  );
+}
 
+export function GeneralSettingsSection({
+  desktopBrowserAvailable,
+  navigateToThreadAfterCreate,
+  onNavigateToThreadAfterCreateChange,
+  onOpenLinksInAppBrowserChange,
+  onRewriteLocalhostLinksChange,
+  onRichTextEditingChange,
+  openLinksInAppBrowser,
+  rewriteLocalhostLinks,
+  richTextEditing,
+}: GeneralSettingsSectionProps) {
+  return (
+    <SettingsSection title="General">
+      <div className="space-y-5">
         <RootComposeBehaviorSettingsControl
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           onNavigateToThreadAfterCreateChange={
@@ -971,54 +995,51 @@ export function SettingsView() {
   const updateExperimentsMutation = useUpdateExperiments();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
+  const { activePluginId, activeSection, hasUnknownSection } =
+    useSettingsNavState();
+  if (hasUnknownSection) {
+    return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
+  }
 
-  return (
-    <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-10">
-        <GeneralSettingsSection
-          appearance={appearance}
-          appearanceDisabled={
-            systemConfigQuery.data === undefined ||
-            updateAppearanceMutation.isPending
-          }
-          customThemes={systemConfigQuery.data?.customThemes ?? []}
-          desktopBrowserAvailable={desktopBrowserAvailable}
-          faviconColor={appearance.faviconColor}
-          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
-          openLinksInAppBrowser={openLinksInAppBrowser}
-          rewriteLocalhostLinks={rewriteLocalhostLinks}
-          richTextEditing={richTextEditing}
-          themePreference={themePreference}
-          onAppearanceThemeChange={(themeId) =>
-            updateAppearanceMutation.mutate({ themeId })
-          }
-          onCreatePalette={() =>
-            navigate(getRootComposeRoutePath(), {
-              state: {
-                focusPrompt: true,
-                initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
-              },
-            })
-          }
-          onFaviconColorChange={(faviconColor) =>
-            updateAppearanceMutation.mutate({
-              themeId: appearance.themeId,
-              faviconColor,
-            })
-          }
-          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
-          onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
-          onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
-          onRichTextEditingChange={setRichTextEditing}
-          onThemePreferenceChange={setPreferredTheme}
-        />
-
-        <UpdatesSettingsSection />
-
-        <UsageLimitsSettingsSection />
-
-        <VoiceInputSettingsSection />
-
+  let content: ReactNode = null;
+  if (activePluginId !== null) {
+    content = <PluginSettingsDetailSection pluginId={activePluginId} />;
+  } else if (activeSection === "appearance") {
+    content = (
+      <AppearanceSettingsSection
+        appearance={appearance}
+        appearanceDisabled={
+          systemConfigQuery.data === undefined ||
+          updateAppearanceMutation.isPending
+        }
+        customThemes={systemConfigQuery.data?.customThemes ?? []}
+        faviconColor={appearance.faviconColor}
+        themePreference={themePreference}
+        onAppearanceThemeChange={(themeId) =>
+          updateAppearanceMutation.mutate({ themeId })
+        }
+        onCreatePalette={() =>
+          navigate(getRootComposeRoutePath(), {
+            state: {
+              focusPrompt: true,
+              initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
+            },
+          })
+        }
+        onFaviconColorChange={(faviconColor) =>
+          updateAppearanceMutation.mutate({
+            themeId: appearance.themeId,
+            faviconColor,
+          })
+        }
+        onThemePreferenceChange={setPreferredTheme}
+      />
+    );
+  } else if (activeSection === "usage") {
+    content = <UsageLimitsSettingsSection />;
+  } else if (activeSection === "files") {
+    content = (
+      <>
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}
           fileTargetId={fileTargetId}
@@ -1027,54 +1048,79 @@ export function SettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
-
         <FileOpenersSettingsSection />
-
-        <ExperimentsSettingsSection
-          claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
-          desktopShellAvailable={desktopShellAvailable}
-          disabled={
-            systemConfigQuery.data === undefined ||
-            updateExperimentsMutation.isPending
-          }
-          onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              claudeCodeMockCliTraffic: enabled,
-            })
-          }
-          onPopoutChatEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              popoutChat: enabled,
-            })
-          }
-          onPopoutChatHotkeyChange={(hotkey) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              popoutChatHotkey: hotkey,
-            })
-          }
-          onBbConnectEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              bbConnect: enabled,
-            })
-          }
-          onPluginsEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              plugins: enabled,
-            })
-          }
-          bbConnectEnabled={experiments.bbConnect}
-          pluginsEnabled={experiments.plugins}
-          popoutChatEnabled={experiments.popoutChat}
-          popoutChatHotkey={experiments.popoutChatHotkey}
+      </>
+    );
+  } else if (activeSection === "experiments") {
+    content = (
+      <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
+        desktopShellAvailable={desktopShellAvailable}
+        disabled={
+          systemConfigQuery.data === undefined ||
+          updateExperimentsMutation.isPending
+        }
+        onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            claudeCodeMockCliTraffic: enabled,
+          })
+        }
+        onPopoutChatEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            popoutChat: enabled,
+          })
+        }
+        onPopoutChatHotkeyChange={(hotkey) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            popoutChatHotkey: hotkey,
+          })
+        }
+        onBbConnectEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            bbConnect: enabled,
+          })
+        }
+        onPluginsEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            plugins: enabled,
+          })
+        }
+        bbConnectEnabled={experiments.bbConnect}
+        pluginsEnabled={experiments.plugins}
+        popoutChatEnabled={experiments.popoutChat}
+        popoutChatHotkey={experiments.popoutChatHotkey}
+      />
+    );
+  } else if (activeSection === "plugins") {
+    content = <PluginsSettingsSection />;
+  } else {
+    content = (
+      <>
+        <GeneralSettingsSection
+          desktopBrowserAvailable={desktopBrowserAvailable}
+          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
+          openLinksInAppBrowser={openLinksInAppBrowser}
+          rewriteLocalhostLinks={rewriteLocalhostLinks}
+          richTextEditing={richTextEditing}
+          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
+          onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
+          onRichTextEditingChange={setRichTextEditing}
         />
+        <VoiceInputSettingsSection />
+        <UpdatesSettingsSection />
+      </>
+    );
+  }
 
-        <PluginsSettingsSection />
-      </div>
+  return (
+    <PageShell contentClassName="pt-4 md:pt-5">
+      <div className="mx-auto w-full max-w-3xl space-y-10">{content}</div>
     </PageShell>
   );
 }
