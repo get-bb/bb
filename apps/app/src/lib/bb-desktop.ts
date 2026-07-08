@@ -1,6 +1,7 @@
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
+  BbDesktopWindowState,
   BbDesktopPopoutApi,
 } from "@bb/desktop-contract";
 
@@ -74,6 +75,9 @@ export const MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS =
   MACOS_CHROME_CONTROL_AXIS_CLASS;
 
 export type BbDesktopInfoResult = BbDesktopApi | null;
+export const DEFAULT_DESKTOP_WINDOW_STATE: BbDesktopWindowState = {
+  isFullScreen: false,
+};
 
 export function getBbDesktopInfo(): BbDesktopInfoResult {
   if (typeof window === "undefined") {
@@ -86,6 +90,16 @@ export function shouldUseMacosDesktopChrome(
   desktopInfo: BbDesktopInfoResult,
 ): boolean {
   return desktopInfo?.platform === "macos";
+}
+
+export function shouldReserveMacosTrafficLights({
+  desktopInfo,
+  windowState,
+}: {
+  desktopInfo: BbDesktopInfoResult;
+  windowState: BbDesktopWindowState;
+}): boolean {
+  return shouldUseMacosDesktopChrome(desktopInfo) && !windowState.isFullScreen;
 }
 
 /**

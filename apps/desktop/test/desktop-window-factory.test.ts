@@ -191,7 +191,14 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     this.maximized = true;
   }
 
-  on(eventName: "close" | "closed", listener: () => void): void {
+  on(
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen",
+    listener: () => void,
+  ): void {
     if (eventName === "closed") {
       this.closedListeners.push(listener);
     }

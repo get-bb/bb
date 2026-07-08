@@ -7,6 +7,7 @@ import type {
   BbDesktopBrowserState,
   BbDesktopInfo,
   BbDesktopPopoutThreadChangedPayload,
+  BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -41,7 +42,9 @@ import {
 import {
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
 
@@ -66,6 +69,9 @@ const electronMock = vi.hoisted(() => {
     updateAvailable: false,
     updateDownloaded: false,
     version: "0.0.0-test",
+  };
+  const desktopWindowState: BbDesktopWindowState = {
+    isFullScreen: false,
   };
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
@@ -123,10 +129,17 @@ const electronMock = vi.hoisted(() => {
     ipcRenderer: {
       invoke(
         channel: string,
-      ): Promise<BbDesktopInfo | BbDesktopPopoutThreadChangedPayload> {
+      ): Promise<
+        | BbDesktopInfo
+        | BbDesktopPopoutThreadChangedPayload
+        | BbDesktopWindowState
+      > {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:popout:get-current-thread") {
           return Promise.resolve(currentPopoutThread);
+        }
+        if (channel === "bb-desktop:get-window-state") {
+          return Promise.resolve(desktopWindowState);
         }
         return Promise.resolve(desktopInfo);
       },
@@ -278,6 +291,9 @@ describe("desktop preload browser API", () => {
     await expect(api.popout.getCurrentThread()).resolves.toBeNull();
     api.setTheme("dark");
     await api.checkForUpdates();
+    await expect(api.getWindowState?.()).resolves.toEqual({
+      isFullScreen: false,
+    });
     await api.installUpdate();
 
     expect(electronMock.sendCalls).toEqual([
@@ -341,6 +357,9 @@ describe("desktop preload browser API", () => {
       BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
     );
     expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
     );
     expect(electronMock.invokeCalls).toContain(
@@ -357,6 +376,7 @@ describe("desktop preload browser API", () => {
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
+    const windowStates: BbDesktopWindowState[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
       url: "https://example.com/",
@@ -397,6 +417,9 @@ describe("desktop preload browser API", () => {
       closeWindowRequestCount += 1;
       return true;
     });
+    api.onWindowStateChange?.((windowState) => {
+      windowStates.push(windowState);
+    });
     api.popout.onThreadChanged((thread) => {
       popoutThreads.push(thread);
     });
@@ -418,6 +441,10 @@ describe("desktop preload browser API", () => {
       payload: { tabId: "browser:a", dataUrl: 42 },
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+      payload: { isFullScreen: false, extra: true },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
       payload: state,
     });
@@ -432,6 +459,10 @@ describe("desktop preload browser API", () => {
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+      payload: { isFullScreen: true },
     });
     emitIpcPayload({
       channel: BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
@@ -458,6 +489,7 @@ describe("desktop preload browser API", () => {
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
     expect(electronMock.sendCalls).toContainEqual({

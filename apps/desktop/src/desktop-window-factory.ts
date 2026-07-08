@@ -62,7 +62,14 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
   maximize(): void;
-  on(eventName: "close" | "closed", listener: () => void): void;
+  on(
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen",
+    listener: () => void,
+  ): void;
   once(eventName: "ready-to-show", listener: () => void): void;
   restore(): void;
   setFullScreen(isFullScreen: boolean): void;

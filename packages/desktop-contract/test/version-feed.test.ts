@@ -3,6 +3,7 @@ import {
   bbDesktopInfoSchema,
   bbDesktopThemeSchema,
   bbDesktopVersionFeedSchema,
+  bbDesktopWindowStateSchema,
 } from "../src/index.js";
 
 const checkedAt = "2026-05-21T00:00:00.000Z";
@@ -25,6 +26,18 @@ describe("desktop info schema", () => {
   it("accepts the desktop theme values", () => {
     expect(bbDesktopThemeSchema.safeParse("dark").success).toBe(true);
     expect(bbDesktopThemeSchema.safeParse("system").success).toBe(false);
+  });
+
+  it("accepts strict desktop window state payloads", () => {
+    expect(
+      bbDesktopWindowStateSchema.safeParse({ isFullScreen: true }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopWindowStateSchema.safeParse({
+        isFullScreen: true,
+        extra: true,
+      }).success,
+    ).toBe(false);
   });
 });
 

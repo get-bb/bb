@@ -15,11 +15,23 @@ export const bbDesktopInfoSchema = z.object({
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 
+export const bbDesktopWindowStateSchema = z
+  .object({
+    isFullScreen: z.boolean(),
+  })
+  .strict();
+export type BbDesktopWindowState = z.infer<
+  typeof bbDesktopWindowStateSchema
+>;
+
 export const bbDesktopThemeSchema = z.enum(["light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
+export type BbDesktopWindowStateChangeHandler = (
+  state: BbDesktopWindowState,
+) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
@@ -39,8 +51,21 @@ export interface BbDesktopApi extends BbDesktopInfo {
   popout: BbDesktopPopoutApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
+  /**
+   * Current native window state for renderer chrome geometry. Optional for
+   * version skew with desktop shells that predate this bridge; callers should
+   * feature-detect and fall back to the normal window layout.
+   */
+  getWindowState?(): Promise<BbDesktopWindowState>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
+  /**
+   * Subscribe to native window state pushes for this BrowserWindow. Optional
+   * for version skew with desktop shells that predate fullscreen-aware chrome.
+   */
+  onWindowStateChange?(
+    listener: BbDesktopWindowStateChangeHandler,
+  ): BbDesktopInfoUnsubscribe;
   /**
    * Subscribe to native desktop requests to open the current thread's secondary
    * panel new-tab page. Optional for desktop shells that predate this command.

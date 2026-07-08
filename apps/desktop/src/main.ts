@@ -30,6 +30,7 @@ import {
   getDesktopThreadRoutePath,
   type BbDesktopInfo,
   type BbDesktopPopoutThreadRef,
+  type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
   serverMessageLenientSchema,
@@ -96,7 +97,9 @@ import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -409,6 +412,29 @@ function sendDesktopInfoChanged(): void {
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
   }
+}
+
+function getDesktopWindowState(
+  browserWindow: Pick<DesktopBrowserWindow, "isFullScreen"> | null,
+): BbDesktopWindowState {
+  return {
+    isFullScreen: browserWindow?.isFullScreen() ?? false,
+  };
+}
+
+function getSenderDesktopWindowState(
+  event: IpcMainInvokeEvent,
+): BbDesktopWindowState {
+  return getDesktopWindowState(BrowserWindow.fromWebContents(event.sender));
+}
+
+function sendDesktopWindowStateChanged(
+  browserWindow: DesktopBrowserWindow,
+): void {
+  browserWindow.webContents.send(
+    BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+    getDesktopWindowState(browserWindow),
+  );
 }
 
 function createDesktopLogger(): DesktopAutoUpdateLogger {
@@ -793,6 +819,12 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
   registerDesktopContextMenu({ webContents: browserWindow.webContents });
+  browserWindow.on("enter-full-screen", () => {
+    sendDesktopWindowStateChanged(browserWindow);
+  });
+  browserWindow.on("leave-full-screen", () => {
+    sendDesktopWindowStateChanged(browserWindow);
+  });
   browserWindow.on("closed", () => {
     applicationWindowWebContentsIds.delete(webContentsId);
   });
@@ -1134,6 +1166,9 @@ async function finishQuit(): Promise<void> {
 function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
+  });
+  ipcMain.handle(BB_DESKTOP_GET_WINDOW_STATE_CHANNEL, (event) => {
+    return getSenderDesktopWindowState(event);
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
     await Promise.all([

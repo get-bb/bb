@@ -24,7 +24,9 @@ vi.mock("@/lib/browser-view-bounds-sync", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
+  DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   getBbDesktopInfo: () => null,
+  shouldReserveMacosTrafficLights: () => false,
   shouldUseMacosDesktopChrome: () => false,
 }));
 

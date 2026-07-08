@@ -5,6 +5,7 @@ import {
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopWindowStateSchema,
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   type BbDesktopApi,
@@ -24,6 +25,8 @@ import {
   type BbDesktopPopoutThreadChangedHandler,
   type BbDesktopPopoutUnsubscribe,
   type BbDesktopTheme,
+  type BbDesktopWindowState,
+  type BbDesktopWindowStateChangeHandler,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -51,7 +54,9 @@ import {
 import {
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
@@ -86,12 +91,26 @@ function createInitialDesktopInfo(): BbDesktopInfo {
   };
 }
 
+function createInitialDesktopWindowState(): BbDesktopWindowState {
+  return {
+    isFullScreen: false,
+  };
+}
+
 const listeners = new Set<BbDesktopInfoChangeHandler>();
+const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
 let currentInfo = createInitialDesktopInfo();
+let currentWindowState = createInitialDesktopWindowState();
 
 function notifyListeners(): void {
   for (const listener of listeners) {
     listener(currentInfo);
+  }
+}
+
+function notifyWindowStateListeners(): void {
+  for (const listener of windowStateListeners) {
+    listener(currentWindowState);
   }
 }
 
@@ -105,12 +124,35 @@ function applyDesktopInfoPayload(payload: unknown): BbDesktopInfo | null {
   return currentInfo;
 }
 
+function applyDesktopWindowStatePayload(
+  payload: unknown,
+): BbDesktopWindowState | null {
+  const parsed = bbDesktopWindowStateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+  currentWindowState = parsed.data;
+  notifyWindowStateListeners();
+  return currentWindowState;
+}
+
 async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
   try {
     const payload: unknown = await ipcRenderer.invoke(channel);
     return applyDesktopInfoPayload(payload) ?? currentInfo;
   } catch {
     return currentInfo;
+  }
+}
+
+async function invokeDesktopWindowState(): Promise<BbDesktopWindowState> {
+  try {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
+    );
+    return applyDesktopWindowStatePayload(payload) ?? currentWindowState;
+  } catch {
+    return currentWindowState;
   }
 }
 
@@ -282,6 +324,9 @@ const bbDesktopApi: BbDesktopApi = {
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
   },
+  getWindowState() {
+    return invokeDesktopWindowState();
+  },
   installUpdate() {
     return invokeInstallUpdate();
   },
@@ -289,6 +334,14 @@ const bbDesktopApi: BbDesktopApi = {
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
+    };
+  },
+  onWindowStateChange(
+    listener: BbDesktopWindowStateChangeHandler,
+  ): BbDesktopInfoUnsubscribe {
+    windowStateListeners.add(listener);
+    return () => {
+      windowStateListeners.delete(listener);
     };
   },
   onOpenNewTab(listener): BbDesktopInfoUnsubscribe {
@@ -314,6 +367,13 @@ const bbDesktopApi: BbDesktopApi = {
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
   applyDesktopInfoPayload(payload);
 });
+
+ipcRenderer.on(
+  BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+  (_event, payload: unknown) => {
+    applyDesktopWindowStatePayload(payload);
+  },
+);
 
 ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
   for (const listener of openNewTabListeners) {
@@ -395,6 +455,7 @@ ipcRenderer.on(
 );
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
+void invokeDesktopWindowState();
 
 contextBridge.exposeInMainWorld(
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
