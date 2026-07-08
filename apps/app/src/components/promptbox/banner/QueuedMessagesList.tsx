@@ -441,7 +441,7 @@ function QueuedMessagePreview({
   );
   const segments = useMemo(
     () => buildQueuedMessagePreviewSegments(queuedMessage),
-    [queuedMessage.content],
+    [queuedMessage],
   );
 
   return (
