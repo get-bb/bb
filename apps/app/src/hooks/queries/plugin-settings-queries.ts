@@ -1,5 +1,4 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { useSystemConfig } from "./system-queries";
 
 /**
  * Host-rendered plugin management data for the Settings "Plugins" section
@@ -200,8 +199,8 @@ export async function setPluginEnabled(
   );
 }
 
-export function pluginListQueryKey(pluginsEnabled: boolean): QueryKey {
-  return ["plugin-list", pluginsEnabled];
+export function pluginListQueryKey(enabled: boolean): QueryKey {
+  return ["plugin-list", enabled];
 }
 
 /** Prefix the realtime `plugins-changed` broadcast invalidates. */
@@ -218,14 +217,11 @@ export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
   return ["plugin-settings-view"];
 }
 
-/** Installed plugins, fetched only while the `plugins` experiment is on. */
-export function usePluginList() {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
+export function usePluginList(args: { enabled: boolean }) {
   return useQuery({
-    queryKey: pluginListQueryKey(pluginsEnabled),
+    queryKey: pluginListQueryKey(args.enabled),
     queryFn: () => fetchPluginList(fetch),
-    enabled: pluginsEnabled,
+    enabled: args.enabled,
     staleTime: 30_000,
   });
 }

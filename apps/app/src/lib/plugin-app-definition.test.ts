@@ -37,6 +37,11 @@ describe("collectPluginAppRegistrations", () => {
         title: "Issues",
         component: Component,
       });
+      app.slots.settingsSection({
+        id: "custom-settings",
+        title: "Custom settings",
+        component: Component,
+      });
       app.slots.navPanel({
         id: "board",
         title: "Board",
@@ -63,6 +68,13 @@ describe("collectPluginAppRegistrations", () => {
     const registrations = collectPluginAppRegistrations(definition);
     expect(registrations.homepageSections).toEqual([
       { id: "issues", title: "Issues", component: Component },
+    ]);
+    expect(registrations.settingsSections).toEqual([
+      {
+        id: "custom-settings",
+        title: "Custom settings",
+        component: Component,
+      },
     ]);
     expect(registrations.navPanels).toEqual([
       {
@@ -92,6 +104,27 @@ describe("collectPluginAppRegistrations", () => {
   });
 
   it.each([
+    [
+      "settings section with a non-string title",
+      () =>
+        definePluginApp((app) => {
+          app.slots.settingsSection({
+            id: "x",
+            title: 12 as never,
+            component: Component,
+          });
+        }),
+      /"title" must be a string when set/,
+    ],
+    [
+      "duplicate settings section id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.settingsSection({ id: "a", component: Component });
+          app.slots.settingsSection({ id: "a", component: Component });
+        }),
+      /duplicate id/,
+    ],
     [
       "bad id",
       () =>
