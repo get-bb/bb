@@ -61,6 +61,7 @@ async function buildPublicSdkDeclarations() {
       "source",
       "--types",
       "node",
+      "--ignoreConfig",
       "src/public-sdk.ts",
     ],
     { cwd: packageRoot },
