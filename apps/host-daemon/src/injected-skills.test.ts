@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  AgentRuntimeAcpSkillRoot,
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimeSkillRoot,
@@ -69,6 +70,12 @@ function isClaudeCodeSkillRoot(
   return root.providerId === "claude-code";
 }
 
+function isAcpSkillRoot(
+  root: AgentRuntimeSkillRoot,
+): root is AgentRuntimeAcpSkillRoot {
+  return root.providerId === "acp";
+}
+
 async function writeSkill(args: WriteSkillArgs): Promise<string> {
   const skillRootPath = path.join(args.rootPath, args.name);
   await mkdir(path.join(skillRootPath, "references"), { recursive: true });
@@ -117,7 +124,7 @@ describe("data-dir skills root", () => {
 });
 
 describe("injected skill staging", () => {
-  it("creates a shared staged snapshot for Codex and Claude Code", async () => {
+  it("creates a shared staged snapshot for Codex, Claude Code, and ACP", async () => {
     const dataDir = await makeTempDir();
     const skillRootPath = await writeSkill({
       rootPath: path.join(dataDir, "source-skills"),
@@ -137,6 +144,7 @@ describe("injected skill staging", () => {
 
     const codexRoot = staged.skillRoots.find(isCodexSkillRoot);
     const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
+    const acpRoot = staged.skillRoots.find(isAcpSkillRoot);
     expect(codexRoot).toEqual({
       id: `global-skills:${staged.catalogHash}:codex`,
       providerId: "codex",
@@ -157,6 +165,23 @@ describe("injected skill staging", () => {
         "global-skills",
         staged.catalogHash,
       ),
+    });
+    expect(acpRoot).toEqual({
+      id: `global-skills:${staged.catalogHash}:acp`,
+      providerId: "acp",
+      skillDirectoryRootPath: path.join(
+        dataDir,
+        "runtime",
+        "global-skills",
+        staged.catalogHash,
+        "skills",
+      ),
+      skills: [
+        {
+          description: "Use release-notes when host staging tests run.",
+          name: "release-notes",
+        },
+      ],
     });
 
     if (!claudeRoot) {

@@ -434,6 +434,23 @@ describe("RuntimeManager", () => {
           entry.skillCatalogHash ?? "",
         ),
       },
+      {
+        id: `global-skills:${entry.skillCatalogHash}:acp`,
+        providerId: "acp",
+        skillDirectoryRootPath: path.join(
+          dataDir,
+          "runtime",
+          "global-skills",
+          entry.skillCatalogHash ?? "",
+          "skills",
+        ),
+        skills: [
+          {
+            description: "Use release-notes when runtime manager tests run.",
+            name: "release-notes",
+          },
+        ],
+      },
     ]);
   });
 

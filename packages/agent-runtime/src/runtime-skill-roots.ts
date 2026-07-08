@@ -1,5 +1,7 @@
 import path from "node:path";
+import { isAcpProviderId } from "@bb/agent-providers";
 import type {
+  AgentRuntimeAcpSkillRoot,
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimePiSkillRoot,
@@ -35,8 +37,8 @@ export function normalizeSkillRoots(
 export function filterSkillRootsForProvider(
   args: FilterSkillRootsForProviderArgs,
 ): readonly AgentRuntimeSkillRoot[] {
-  return args.skillRoots.filter(
-    (skillRoot) => skillRoot.providerId === args.providerId,
+  return args.skillRoots.filter((skillRoot) =>
+    skillRootAppliesToProvider({ providerId: args.providerId, skillRoot }),
   );
 }
 
@@ -44,6 +46,8 @@ function normalizeSkillRoot(
   skillRoot: AgentRuntimeSkillRoot,
 ): AgentRuntimeSkillRoot {
   switch (skillRoot.providerId) {
+    case "acp":
+      return normalizeAcpSkillRoot(skillRoot);
     case "claude-code":
       return normalizeClaudeCodeSkillRoot(skillRoot);
     case "codex":
@@ -53,6 +57,37 @@ function normalizeSkillRoot(
     default:
       return assertKnownSkillRootProvider(skillRoot);
   }
+}
+
+function skillRootAppliesToProvider(args: {
+  providerId: string;
+  skillRoot: AgentRuntimeSkillRoot;
+}): boolean {
+  if (args.skillRoot.providerId === "acp") {
+    return isAcpProviderId(args.providerId);
+  }
+  return args.skillRoot.providerId === args.providerId;
+}
+
+function normalizeAcpSkillRoot(
+  skillRoot: AgentRuntimeAcpSkillRoot,
+): AgentRuntimeAcpSkillRoot {
+  assertAbsoluteSkillRootPath({
+    id: skillRoot.id,
+    path: skillRoot.skillDirectoryRootPath,
+    pathField: "skillDirectoryRootPath",
+    providerId: skillRoot.providerId,
+  });
+
+  return {
+    id: skillRoot.id,
+    providerId: skillRoot.providerId,
+    skillDirectoryRootPath: skillRoot.skillDirectoryRootPath,
+    skills: skillRoot.skills.map((skill) => ({
+      description: skill.description,
+      name: skill.name,
+    })),
+  };
 }
 
 function normalizeClaudeCodeSkillRoot(

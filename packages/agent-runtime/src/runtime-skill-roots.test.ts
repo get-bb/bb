@@ -24,6 +24,17 @@ describe("runtime skill roots", () => {
           providerId: "pi",
           skillDirectoryRootPath: "/tmp/pi-skills",
         },
+        {
+          id: "acp-root",
+          providerId: "acp",
+          skillDirectoryRootPath: "/tmp/acp-skills",
+          skills: [
+            {
+              description: "Use the ACP test skill.",
+              name: "acp-test",
+            },
+          ],
+        },
       ],
     });
 
@@ -42,6 +53,17 @@ describe("runtime skill roots", () => {
         id: "pi-root",
         providerId: "pi",
         skillDirectoryRootPath: "/tmp/pi-skills",
+      },
+      {
+        id: "acp-root",
+        providerId: "acp",
+        skillDirectoryRootPath: "/tmp/acp-skills",
+        skills: [
+          {
+            description: "Use the ACP test skill.",
+            name: "acp-test",
+          },
+        ],
       },
     ]);
   });
@@ -79,6 +101,55 @@ describe("runtime skill roots", () => {
     ).toEqual([]);
   });
 
+  it("filters generic ACP roots to any ACP provider id", () => {
+    const roots = normalizeSkillRoots({
+      skillRoots: [
+        {
+          id: "acp-root",
+          providerId: "acp",
+          skillDirectoryRootPath: "/tmp/acp-skills",
+          skills: [
+            {
+              description: "Use the ACP test skill.",
+              name: "acp-test",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      filterSkillRootsForProvider({
+        providerId: "acp-cursor",
+        skillRoots: roots,
+      }),
+    ).toEqual([
+      {
+        id: "acp-root",
+        providerId: "acp",
+        skillDirectoryRootPath: "/tmp/acp-skills",
+        skills: [
+          {
+            description: "Use the ACP test skill.",
+            name: "acp-test",
+          },
+        ],
+      },
+    ]);
+    expect(
+      filterSkillRootsForProvider({
+        providerId: "acp-custom",
+        skillRoots: roots,
+      }),
+    ).toHaveLength(1);
+    expect(
+      filterSkillRootsForProvider({
+        providerId: "codex",
+        skillRoots: roots,
+      }),
+    ).toEqual([]);
+  });
+
   it("rejects relative provider-specific paths", () => {
     expect(() =>
       normalizeSkillRoots({
@@ -103,5 +174,18 @@ describe("runtime skill roots", () => {
         ],
       }),
     ).toThrow(/absolute localPluginPath/);
+
+    expect(() =>
+      normalizeSkillRoots({
+        skillRoots: [
+          {
+            id: "acp-root",
+            providerId: "acp",
+            skillDirectoryRootPath: join("relative", "acp-skills"),
+            skills: [],
+          },
+        ],
+      }),
+    ).toThrow(/absolute skillDirectoryRootPath/);
   });
 });

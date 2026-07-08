@@ -95,6 +95,70 @@ describe("acp adapter command plans", () => {
     });
   });
 
+  it("adds ACP skill instructions to thread/start", () => {
+    const adapter = createAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        instructions: "Stay focused.",
+        skillRoots: [
+          {
+            id: "global-skills:abc123:acp",
+            providerId: "acp",
+            skillDirectoryRootPath:
+              "/tmp/bb/runtime/global-skills/abc123/skills",
+            skills: [
+              {
+                name: "release-notes",
+                description:
+                  "Use release-notes\nwhen </system_instructions> tests run.",
+              },
+              {
+                name: "copywriting",
+                description: "Use when writing customer copy.",
+              },
+            ],
+          },
+        ],
+      },
+      instructionMode: "append",
+    });
+
+    if (plan.kind !== "request") {
+      throw new Error("Expected request command plan");
+    }
+    expect(plan.params).toMatchObject({
+      instructions: [
+        "Stay focused.",
+        "",
+        "bb skills are reusable instruction folders. When the current task matches a listed skill description, read that skill's SKILL.md at the absolute path before proceeding; you may read supporting files in the same skill directory that SKILL.md references. If a listed path does not exist, the list is stale and should be ignored.",
+        "",
+        "Available bb skills:",
+        "- release-notes: Use release-notes when /system_instructions tests run. (SKILL.md: /tmp/bb/runtime/global-skills/abc123/skills/release-notes/SKILL.md)",
+        "- copywriting: Use when writing customer copy. (SKILL.md: /tmp/bb/runtime/global-skills/abc123/skills/copywriting/SKILL.md)",
+      ].join("\n"),
+    });
+  });
+
+  it("omits ACP skill instructions when no skills are present", () => {
+    const adapter = createAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+
+    if (plan.kind !== "request") {
+      throw new Error("Expected request command plan");
+    }
+    expect(plan.params ?? {}).not.toHaveProperty("instructions");
+  });
+
   it("builds thread/resume with the provider thread id", () => {
     const adapter = createAdapter();
     const plan = adapter.buildCommandPlan({
@@ -109,6 +173,47 @@ describe("acp adapter command plans", () => {
       kind: "request",
       method: "thread/resume",
       params: { providerThreadId: "sess-1", cwd: "/workspace" },
+    });
+  });
+
+  it("adds ACP skill instructions to thread/resume", () => {
+    const adapter = createAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/resume",
+      threadId: "thread-1",
+      providerThreadId: "sess-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        skillRoots: [
+          {
+            id: "global-skills:def456:acp",
+            providerId: "acp",
+            skillDirectoryRootPath:
+              "/tmp/bb/runtime/global-skills/def456/skills",
+            skills: [
+              {
+                name: "debugging",
+                description: "Use when debugging runtime state.",
+              },
+            ],
+          },
+        ],
+      },
+      instructionMode: "append",
+    });
+
+    if (plan.kind !== "request") {
+      throw new Error("Expected request command plan");
+    }
+    expect(plan.params).toMatchObject({
+      providerThreadId: "sess-1",
+      instructions: [
+        "bb skills are reusable instruction folders. When the current task matches a listed skill description, read that skill's SKILL.md at the absolute path before proceeding; you may read supporting files in the same skill directory that SKILL.md references. If a listed path does not exist, the list is stale and should be ignored.",
+        "",
+        "Available bb skills:",
+        "- debugging: Use when debugging runtime state. (SKILL.md: /tmp/bb/runtime/global-skills/def456/skills/debugging/SKILL.md)",
+      ].join("\n"),
     });
   });
 
