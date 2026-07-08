@@ -26,3 +26,10 @@ then `bb theme set <name>`. The full design-token reference is in the bb-cli
 skill (references/theming.md).
 
 Add --json to any theme command for machine-readable output.
+
+Client-local UI preferences
+
+Some Settings values live only in the current browser/client. The Voice Input
+microphone picker stores the selected browser MediaDevices device id in
+localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
+command and does not change the server-side transcription model.

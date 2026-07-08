@@ -38,6 +38,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
+import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import {
   useUpdateAppearance,
   useUpdateExperiments,
@@ -1012,6 +1013,8 @@ export function SettingsView() {
         />
 
         <UsageLimitsSettingsSection />
+
+        <VoiceInputSettingsSection />
 
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}

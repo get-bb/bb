@@ -11,8 +11,11 @@ import type {
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
+import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
 import { PageShell } from "@/components/ui/page-shell";
 import type { ThemePreference } from "@/hooks/useTheme";
+import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
+import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
   ExperimentsSettingsSection,
   GeneralSettingsSection,
@@ -25,6 +28,11 @@ export default {
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
+
+const audioInputDevices: AudioInputDeviceOption[] = [
+  { deviceId: "macbook-mic", label: "MacBook Pro Microphone" },
+  { deviceId: "studio-mic", label: "Studio Display Microphone" },
+];
 
 const vscodeTarget: WorkspaceOpenTarget = {
   capabilities: {
@@ -127,6 +135,8 @@ function useSettingsStoryState() {
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
+  const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
+    useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
@@ -143,6 +153,7 @@ function useSettingsStoryState() {
     fileTargetId,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
+    preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
     setAppearance,
@@ -151,11 +162,28 @@ function useSettingsStoryState() {
     setFileTargetId,
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
+    setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
     setThemePreference,
     themePreference,
   };
+}
+
+function VoiceInputStory() {
+  const state = useSettingsStoryState();
+
+  return (
+    <VoiceInputSettingsSectionContent
+      devices={audioInputDevices}
+      errorMessage={null}
+      isLoading={false}
+      isSupported={true}
+      onDeviceChange={state.setPreferredAudioInputDeviceId}
+      onRefresh={() => undefined}
+      preferredDeviceId={state.preferredAudioInputDeviceId}
+    />
+  );
 }
 
 function GeneralSettingsStory({
@@ -316,6 +344,7 @@ export function Overview() {
     <SettingsStoryFrame useShell>
       <GeneralSettingsStory />
       <UsageLimitsStory />
+      <VoiceInputStory />
       <FilePreferencesStory />
       <ExperimentsStory />
     </SettingsStoryFrame>
@@ -334,6 +363,7 @@ export function UsageAndFiles() {
   return (
     <SettingsStoryFrame>
       <UsageLimitsStory />
+      <VoiceInputStory />
       <FilePreferencesStory />
     </SettingsStoryFrame>
   );

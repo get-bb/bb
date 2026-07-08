@@ -82,6 +82,11 @@ By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
 
+The microphone picker in Settings → Voice Input is client-local. It stores the
+selected browser `MediaDevices` device id in localStorage as
+`bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
+server-side transcription model.
+
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
