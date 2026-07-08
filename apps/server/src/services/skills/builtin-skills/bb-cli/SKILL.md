@@ -100,8 +100,9 @@ or artifacts, validation performed, and blockers.
 - Let threads work after spawning. Do not poll with shell sleeps, repeated log
   reads, or repeated status reads.
 - Use `bb thread wait <thread-id>` when you explicitly need to block until a
-  thread finishes. It defaults to waiting for `idle`; pass `--status` or
-  `--event` for a different target.
+  thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
+  pass `--status` or `--event` for a different target, and `--timeout
+  <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 

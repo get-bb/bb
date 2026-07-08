@@ -62,7 +62,7 @@ Inspecting:
   bb thread wait <id>                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
-    --timeout <seconds>                    Timeout
+    --timeout <seconds>                    Timeout in seconds (default: 1200 / 20 min)
     --poll-interval <ms>                   Polling interval in milliseconds
 
 Opening files in the thread panel:

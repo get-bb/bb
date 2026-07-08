@@ -24,7 +24,7 @@ import type {
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
-export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 30_000;
+export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
