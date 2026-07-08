@@ -6,6 +6,7 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
+  type PluginSettingsSectionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 import type { PluginFrontendRecord } from "./plugin-frontend";
@@ -59,6 +60,17 @@ function requireNonEmptyString(
   return value;
 }
 
+function requireOptionalString(
+  kind: string,
+  field: string,
+  value: unknown,
+): string | undefined {
+  if (value !== undefined && typeof value !== "string") {
+    throw new Error(`${kind}: "${field}" must be a string when set`);
+  }
+  return value;
+}
+
 function requireComponent<T>(kind: string, value: unknown): T {
   if (typeof value !== "function") {
     throw new Error(`${kind}: "component" must be a React component function`);
@@ -82,12 +94,14 @@ export function collectPluginAppRegistrations(
   definition: PluginAppDefinition,
 ): PluginRegistrationSet {
   const homepageSections: PluginHomepageSectionRegistration[] = [];
+  const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
+    settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
@@ -103,6 +117,17 @@ export function collectPluginAppRegistrations(
         homepageSections.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      settingsSection(registration) {
+        const kind = "slots.settingsSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.settingsSection, id);
+        const title = requireOptionalString(kind, "title", registration.title);
+        settingsSections.push({
+          id,
+          ...(title !== undefined ? { title } : {}),
           component: requireComponent(kind, registration.component),
         });
       },
@@ -207,6 +232,7 @@ export function collectPluginAppRegistrations(
 
   return {
     homepageSections,
+    settingsSections,
     navPanels,
     threadPanelActions,
     composerAccessories,

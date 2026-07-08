@@ -13,32 +13,15 @@ function resolveServerUrl(): string {
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const settings = bb.settings.define({
-    allowScriptRuns: {
-      type: "boolean",
-      label: "Allow script automations",
-      description: "Allow automations to run stored bash/sh/node/python3 scripts on the server.",
-      default: true,
-    },
-  });
-
   const db = bb.storage.sqlite();
   bb.storage.migrate(db, migrations);
   const pluginDataDir = pluginDataDirFromDb(db);
   await ingestLegacyImport({ bb, db, pluginDataDir });
 
-  let allowScriptRuns = (await settings.get()).allowScriptRuns;
-  settings.onChange((next) => {
-    allowScriptRuns = next.allowScriptRuns;
-  });
-
-  const getAllowScriptRuns = async (): Promise<boolean> => allowScriptRuns;
-
   const service = createAutomationService({
     bb,
     db,
     pluginDataDir,
-    getAllowScriptRuns,
     serverUrl: resolveServerUrl(),
   });
 
@@ -69,7 +52,6 @@ export default async function plugin(bb: BbPluginApi) {
         try {
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
-            allowScriptRuns,
             serverUrl: resolveServerUrl(),
           });
         } catch (error) {

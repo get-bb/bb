@@ -1,10 +1,10 @@
 // bb-plugin-connect — the frontend bundle.
 //
-// One navPanel "Remote access": a single card driven by the `status` rpc and
-// live `connect` realtime pushes. Four states — not paired (explainer +
+// One settingsSection "Remote access", driven by the `status` rpc and live
+// `connect` realtime pushes. Four states: not paired (explainer +
 // paste-a-code pairing), pairing (button spinner + inline errors), connected
-// (hero URL + QR + disconnect-with-confirm), reconnecting (amber, last
-// error, retrying automatically).
+// (URL + QR + disconnect-with-confirm), reconnecting (amber, last error,
+// retrying automatically).
 import {
   useCallback,
   useEffect,
@@ -34,7 +34,6 @@ import {
   type ConnectStatus,
 } from "@/src/types";
 
-const PANEL_PATH = "connect";
 // Sign in → claim a handle → generate a connect code, all on one page.
 const DASHBOARD_URL = "https://getbb.app/dashboard";
 
@@ -281,7 +280,7 @@ function DisconnectDialog({
   );
 }
 
-function NotPairedCard({ onPaired }: { onPaired: () => void }) {
+function NotPairedContent({ onPaired }: { onPaired: () => void }) {
   return (
     <div className="space-y-5">
       <div className="space-y-1">
@@ -327,7 +326,7 @@ function NotPairedCard({ onPaired }: { onPaired: () => void }) {
   );
 }
 
-function PairedCard({
+function PairedContent({
   status,
   onChanged,
 }: {
@@ -438,7 +437,7 @@ function PairedCard({
   );
 }
 
-function RemoteAccessPanel() {
+function ConnectSettingsSection() {
   const rpc = useRpc();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -474,38 +473,29 @@ function RemoteAccessPanel() {
 
   if (loadError !== null) {
     return (
-      <div className="mx-auto w-full max-w-2xl">
-        <p className="text-sm text-destructive">
-          Failed to load remote-access status: {loadError}
-        </p>
-      </div>
+      <p className="text-sm text-destructive">
+        Failed to load remote-access status: {loadError}
+      </p>
     );
   }
   if (status === null) {
-    return (
-      <div className="mx-auto w-full max-w-2xl">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl rounded-lg border border-border p-4">
+    <>
       {status.paired ? (
-        <PairedCard status={status} onChanged={refetch} />
+        <PairedContent status={status} onChanged={refetch} />
       ) : (
-        <NotPairedCard onPaired={refetch} />
+        <NotPairedContent onPaired={refetch} />
       )}
-    </div>
+    </>
   );
 }
 
 export default definePluginApp((app) => {
-  app.slots.navPanel({
+  app.slots.settingsSection({
     id: "remote-access",
-    title: "Connect",
-    icon: "Smartphone",
-    path: PANEL_PATH,
-    component: RemoteAccessPanel,
+    component: ConnectSettingsSection,
   });
 });

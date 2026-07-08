@@ -233,7 +233,6 @@ describe("automation data access", () => {
 
     await sweepDueAutomations(bb, db, {
       pluginDataDir: "/tmp",
-      allowScriptRuns: true,
       serverUrl: "http://127.0.0.1:38886",
       now: 1000,
     });
@@ -321,7 +320,6 @@ describe("automation service", () => {
       bb,
       db,
       pluginDataDir: "/tmp",
-      getAllowScriptRuns: async () => true,
       serverUrl: "http://127.0.0.1:38886",
     });
 

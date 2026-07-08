@@ -15,6 +15,7 @@ function NotesEditor() {
 function registerNotesOpener() {
   setPluginSlotRegistrations("notes", {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],

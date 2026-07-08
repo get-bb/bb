@@ -21,6 +21,7 @@ function registrationSet(
 ): PluginRegistrationSet {
   return {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],

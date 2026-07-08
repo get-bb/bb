@@ -20,9 +20,10 @@ const targetRoot = path.resolve(
 );
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
-const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.map(
-  (extension) => `logo.${extension}`,
-);
+const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.flatMap((extension) => [
+  `logo.${extension}`,
+  `logo-dark.${extension}`,
+]);
 
 const pluginPackageJsonSchema = z
   .object({

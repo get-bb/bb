@@ -83,8 +83,8 @@ Remote access (bb connect):
   bb connect status                       Show the server's connect status
   bb connect off                          Disconnect and forget the pairing
 
-  Remote access is owned by the builtin "connect" plugin (its "Connect"
-  panel in the app shows the URL and a QR code). Disabling the plugin
+  Remote access is owned by the builtin "connect" plugin (Settings → Connect
+  shows the URL and a QR code). Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; with the
   bb connect experiment still enabled, re-enable with `bb plugin enable
   connect`.

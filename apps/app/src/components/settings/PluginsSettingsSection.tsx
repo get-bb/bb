@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast.js";
+import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -33,6 +34,7 @@ import {
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
 /**
@@ -341,6 +343,10 @@ function PluginLogo({
 /** Exported for tests (enable/disable round-trip). */
 export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
+  const { settingsSections } = usePluginSlots();
+  const hasSettingsSections = settingsSections.some(
+    (section) => section.pluginId === plugin.id,
+  );
   const toggle = useMutation({
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
@@ -385,7 +391,7 @@ export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
             {plugin.statusDetail}
           </p>
         ) : null}
-        {plugin.enabled && plugin.hasSettings ? (
+        {plugin.enabled && (plugin.hasSettings || hasSettingsSections) ? (
           <Link
             to={getSettingsPluginRoutePath(plugin.id)}
             className="mt-1.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
@@ -409,7 +415,7 @@ export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
 export function PluginsSettingsSection() {
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const listQuery = usePluginList();
+  const listQuery = usePluginList({ enabled: pluginsEnabled });
   const plugins = listQuery.data ?? [];
   return (
     <SettingsSection
@@ -433,60 +439,73 @@ export function PluginsSettingsSection() {
 
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
+  const { settingsSections } = usePluginSlots();
+  const hasSettingsSections = settingsSections.some(
+    (section) => section.pluginId === plugin.id,
+  );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
+  const showDeclarativeSettingsCard =
+    plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
   return (
-    <section className="space-y-3" data-testid={`plugin-detail-${plugin.id}`}>
-      <div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <PluginLogo
-            plugin={plugin}
-            className="size-4 shrink-0 rounded-sm object-contain"
-          />
-          <h2 className="text-sm font-semibold text-foreground">
-            {plugin.id}
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            v{plugin.version}
-          </span>
-          <Pill variant={statusPillVariant(plugin.status)} size="sm">
-            {plugin.status}
-          </Pill>
-          {!plugin.enabled ? (
-            <Pill variant="outline" size="sm">
-              disabled
+    <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
+      <div className="space-y-3">
+        <div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <PluginLogo
+              plugin={plugin}
+              className="size-4 shrink-0 rounded-sm object-contain"
+            />
+            <h2 className="text-sm font-semibold text-foreground">
+              {plugin.id}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              v{plugin.version}
+            </span>
+            <Pill variant={statusPillVariant(plugin.status)} size="sm">
+              {plugin.status}
             </Pill>
+            {!plugin.enabled ? (
+              <Pill variant="outline" size="sm">
+                disabled
+              </Pill>
+            ) : null}
+          </div>
+          {plugin.description !== null && plugin.description.length > 0 ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {plugin.description}
+            </p>
+          ) : null}
+          {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {plugin.statusDetail}
+            </p>
           ) : null}
         </div>
-        {plugin.description !== null && plugin.description.length > 0 ? (
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-            {plugin.description}
-          </p>
-        ) : null}
-        {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-            {plugin.statusDetail}
-          </p>
+        {showDeclarativeSettingsCard ? (
+          <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+            {settingsAvailable ? (
+              plugin.hasSettings ? (
+                <PluginSettingsForm pluginId={plugin.id} />
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  This plugin declares no settings.
+                </p>
+              )
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {plugin.enabled
+                  ? `Settings are unavailable while the plugin is ${plugin.status}.`
+                  : "Enable this plugin to edit its settings."}
+              </p>
+            )}
+          </div>
         ) : null}
       </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-        {settingsAvailable ? (
-          plugin.hasSettings ? (
-            <PluginSettingsForm pluginId={plugin.id} />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              This plugin declares no settings.
-            </p>
-          )
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {plugin.enabled
-              ? `Settings are unavailable while the plugin is ${plugin.status}.`
-              : "Enable this plugin to edit its settings."}
-          </p>
-        )}
-      </div>
-    </section>
+      {settingsAvailable ? (
+        <PluginSettingsSections pluginId={plugin.id} />
+      ) : null}
+    </div>
   );
 }
 
@@ -498,9 +517,15 @@ export function PluginSettingsDetailSection({
 }) {
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const listQuery = usePluginList();
+  const { settingsSections } = usePluginSlots();
+  const hasSettingsSections = settingsSections.some(
+    (section) => section.pluginId === pluginId,
+  );
+  const listQuery = usePluginList({
+    enabled: pluginsEnabled || hasSettingsSections,
+  });
   if (systemConfig.data === undefined) return null;
-  if (!pluginsEnabled) {
+  if (!pluginsEnabled && !hasSettingsSections) {
     return <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />;
   }
   const plugin = listQuery.data?.find((entry) => entry.id === pluginId);
