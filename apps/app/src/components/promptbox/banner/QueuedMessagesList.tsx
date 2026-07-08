@@ -19,7 +19,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Transform } from "@dnd-kit/utilities";
-import type { ThreadQueuedMessage } from "@bb/domain";
+import type {
+  PromptInput,
+  PromptTextMention,
+  ThreadQueuedMessage,
+} from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -38,9 +42,13 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
-  getQueuedMessageVisibleText,
 } from "@/views/thread-detail/threadQueuedMessages";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import {
+  renderMentionTextSegments,
+  shiftMentionsToTextRange,
+} from "@/components/thread/timeline/ConversationMessageMentions";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -52,6 +60,7 @@ export interface QueuedMessageGroupBoundaryRequest {
 
 export interface QueuedMessagesListProps {
   queuedMessages: readonly ThreadQueuedMessage[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   sendDisabled: boolean;
   actionDisabled: boolean;
   processingMessageId: string | null;
@@ -65,11 +74,18 @@ export interface QueuedMessagesListProps {
 
 interface QueuedMessagePreviewSegment {
   kind: "quote" | "text";
+  mentions: PromptTextMention[];
+  text: string;
+}
+
+interface QueuedMessagePreviewText {
+  mentions: PromptTextMention[];
   text: string;
 }
 
 interface QueuedMessageRowProps {
   queuedMessage: ThreadQueuedMessage;
+  resolveMentionLink?: PromptMentionLinkResolver;
   index: number;
   isProcessing: boolean;
   processingLabel: string;
@@ -253,22 +269,108 @@ function normalizePreviewSegmentText(lines: readonly string[]): string {
   return lines.join(" ").replace(/\s+/g, " ").trim();
 }
 
+function visibleQueuedMessageTextChunks(
+  input: readonly PromptInput[],
+): Extract<PromptInput, { type: "text" }>[] {
+  return input.filter(
+    (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
+      chunk.type === "text" && chunk.visibility !== "agent-only",
+  );
+}
+
+function shiftMentionsBy(
+  mentions: readonly PromptTextMention[],
+  offset: number,
+): PromptTextMention[] {
+  if (offset === 0) return [...mentions];
+  return mentions.map((mention) => ({
+    ...mention,
+    start: mention.start + offset,
+    end: mention.end + offset,
+  }));
+}
+
+function trimQueuedMessagePreviewTextRange({
+  mentions,
+  rangeEnd,
+  rangeStart,
+  text,
+}: {
+  mentions: readonly PromptTextMention[];
+  rangeEnd: number;
+  rangeStart: number;
+  text: string;
+}): QueuedMessagePreviewText | null {
+  const rawText = text.slice(rangeStart, rangeEnd);
+  const leadingWhitespaceLength =
+    rawText.length - rawText.trimStart().length;
+  const trimmedRelativeEnd = rawText.trimEnd().length;
+  if (trimmedRelativeEnd <= leadingWhitespaceLength) {
+    return null;
+  }
+
+  const trimmedStart = rangeStart + leadingWhitespaceLength;
+  const trimmedEnd = rangeStart + trimmedRelativeEnd;
+  return {
+    text: text.slice(trimmedStart, trimmedEnd),
+    mentions: shiftMentionsToTextRange({
+      mentions,
+      rangeStart: trimmedStart,
+      rangeEnd: trimmedEnd,
+    }),
+  };
+}
+
+function buildQueuedMessagePreviewText(
+  input: readonly PromptInput[],
+): QueuedMessagePreviewText {
+  let text = "";
+  const mentions: PromptTextMention[] = [];
+
+  for (const chunk of visibleQueuedMessageTextChunks(input)) {
+    const trimmedChunk = trimQueuedMessagePreviewTextRange({
+      text: chunk.text,
+      mentions: chunk.mentions,
+      rangeStart: 0,
+      rangeEnd: chunk.text.length,
+    });
+    if (!trimmedChunk) continue;
+
+    const separator = text.length > 0 ? "\n\n" : "";
+    const offset = text.length + separator.length;
+    text += separator + trimmedChunk.text;
+    mentions.push(...shiftMentionsBy(trimmedChunk.mentions, offset));
+  }
+
+  return { text, mentions };
+}
+
 function buildQueuedMessagePreviewSegments(
   queuedMessage: ThreadQueuedMessage,
 ): QueuedMessagePreviewSegment[] {
-  const text = getQueuedMessageVisibleText(queuedMessage.content);
-  if (!text.split("\n").some(isQuoteLine)) {
+  const preview = buildQueuedMessagePreviewText(queuedMessage.content);
+  if (!preview.text.split("\n").some(isQuoteLine)) {
     return [
       {
         kind: "text",
-        text: formatQueuedMessagePreview(queuedMessage.content, {
-          truncate: false,
-        }),
+        mentions: preview.mentions,
+        text:
+          preview.text ||
+          formatQueuedMessagePreview(queuedMessage.content, {
+            truncate: false,
+          }),
       },
     ];
   }
 
-  const lines = text.split("\n");
+  const lines = preview.text.split("\n");
+  const lineStarts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    lineStarts.push(offset);
+    offset += line.length + 1;
+  }
+
   const segments: QueuedMessagePreviewSegment[] = [];
   let index = 0;
   while (index < lines.length) {
@@ -278,14 +380,34 @@ function buildQueuedMessagePreviewSegments(
       end += 1;
     }
     const groupLines = lines.slice(index, end);
-    const segmentText = normalizePreviewSegmentText(
-      quote ? groupLines.map(stripQuotePrefix) : groupLines,
-    );
-    if (segmentText.length > 0) {
-      segments.push({
-        kind: quote ? "quote" : "text",
-        text: segmentText,
+    if (quote) {
+      const segmentText = normalizePreviewSegmentText(
+        groupLines.map(stripQuotePrefix),
+      );
+      if (segmentText.length > 0) {
+        segments.push({
+          kind: "quote",
+          mentions: [],
+          text: segmentText,
+        });
+      }
+    } else {
+      const spanStart = lineStarts[index]!;
+      const spanEnd =
+        lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
+      const segment = trimQueuedMessagePreviewTextRange({
+        text: preview.text,
+        mentions: preview.mentions,
+        rangeStart: spanStart,
+        rangeEnd: spanEnd,
       });
+      if (segment) {
+        segments.push({
+          kind: "text",
+          mentions: segment.mentions,
+          text: segment.text,
+        });
+      }
     }
     index = end;
   }
@@ -295,6 +417,7 @@ function buildQueuedMessagePreviewSegments(
     : [
         {
           kind: "text",
+          mentions: [],
           text: formatQueuedMessagePreview(queuedMessage.content, {
             truncate: false,
           }),
@@ -304,8 +427,10 @@ function buildQueuedMessagePreviewSegments(
 
 function QueuedMessagePreview({
   queuedMessage,
+  resolveMentionLink,
 }: {
   queuedMessage: ThreadQueuedMessage;
+  resolveMentionLink?: PromptMentionLinkResolver;
 }) {
   const preview = useMemo(
     () =>
@@ -316,7 +441,7 @@ function QueuedMessagePreview({
   );
   const segments = useMemo(
     () => buildQueuedMessagePreviewSegments(queuedMessage),
-    [queuedMessage],
+    [queuedMessage.content],
   );
 
   return (
@@ -324,7 +449,7 @@ function QueuedMessagePreview({
       className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
       title={preview}
     >
-      <div className="flex min-w-0 max-w-full items-center gap-1.5">
+      <div className="flex min-w-0 max-w-full items-baseline gap-1.5">
         {segments.map((segment, index) =>
           segment.kind === "quote" ? (
             <blockquote
@@ -340,7 +465,11 @@ function QueuedMessagePreview({
               key={`${segment.kind}-${index}`}
               className="min-w-0 shrink overflow-hidden whitespace-nowrap"
             >
-              {segment.text}
+              {renderMentionTextSegments({
+                mentions: segment.mentions,
+                resolveMentionLink,
+                text: segment.text,
+              })}
             </span>
           ),
         )}
@@ -351,6 +480,7 @@ function QueuedMessagePreview({
 
 const QueuedMessageRow = memo(function QueuedMessageRow({
   queuedMessage,
+  resolveMentionLink,
   index,
   isProcessing,
   processingLabel,
@@ -427,7 +557,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-            <QueuedMessagePreview queuedMessage={queuedMessage} />
+            <QueuedMessagePreview
+              queuedMessage={queuedMessage}
+              resolveMentionLink={resolveMentionLink}
+            />
             {attachmentCount > 0 ? (
               <span className="shrink-0 text-subtle-foreground opacity-70">
                 {attachmentCount === 1
@@ -541,6 +674,7 @@ function SortableGroupDivider({ disabled }: { disabled: boolean }) {
 
 export function QueuedMessagesList({
   queuedMessages,
+  resolveMentionLink,
   sendDisabled,
   actionDisabled,
   processingMessageId,
@@ -744,6 +878,7 @@ export function QueuedMessagesList({
                       <QueuedMessageRow
                         key={queuedMessage.id}
                         queuedMessage={queuedMessage}
+                        resolveMentionLink={resolveMentionLink}
                         index={index}
                         isProcessing={processingMessageId === queuedMessage.id}
                         processingLabel={processingLabel}
