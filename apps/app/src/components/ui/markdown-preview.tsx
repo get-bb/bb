@@ -15,6 +15,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import type {
@@ -49,8 +53,9 @@ import {
   type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 import {
-  MarkdownLocalFileOpenWithContext,
+  MarkdownLocalFileContextMenuContext,
   type MarkdownLinkRouting,
+  type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import {
@@ -481,10 +486,10 @@ function MarkdownAnchor({
         })
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
-  const getOpenWithItems = useContext(MarkdownLocalFileOpenWithContext);
-  const openWithItems =
-    localFileLink !== null && getOpenWithItems !== null
-      ? getOpenWithItems(localFileLink)
+  const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
+  const contextMenuItems =
+    localFileLink !== null && getContextMenuItems !== null
+      ? getContextMenuItems(localFileLink)
       : null;
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
@@ -532,22 +537,39 @@ function MarkdownAnchor({
       ) : null}
     </RouteAnchor>
   );
-  if (openWithItems === null || openWithItems.length === 0) {
+  if (contextMenuItems === null || contextMenuItems.length === 0) {
     return anchor;
   }
-  // Local file links with viewer choices get a right-click "Open with" menu
-  // (per-open override of the extension's default opener).
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{anchor}</ContextMenuTrigger>
-      <ContextMenuContent>
-        {openWithItems.map((item) => (
-          <ContextMenuItem key={item.id} onSelect={item.onSelect}>
-            {item.label}
-          </ContextMenuItem>
-        ))}
+      <ContextMenuContent className="min-w-44">
+        {contextMenuItems.map(renderMarkdownLocalFileContextMenuItem)}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+function renderMarkdownLocalFileContextMenuItem(
+  item: MarkdownLocalFileContextMenuItem,
+) {
+  if (item.type === "separator") {
+    return <ContextMenuSeparator key={item.id} />;
+  }
+  if (item.type === "submenu") {
+    return (
+      <ContextMenuSub key={item.id}>
+        <ContextMenuSubTrigger>{item.label}</ContextMenuSubTrigger>
+        <ContextMenuSubContent className="min-w-44">
+          {item.items.map(renderMarkdownLocalFileContextMenuItem)}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    );
+  }
+  return (
+    <ContextMenuItem key={item.id} onSelect={item.onSelect}>
+      {item.label}
+    </ContextMenuItem>
   );
 }
 

@@ -1,4 +1,4 @@
-import { createContext } from "react";
+import { createContext, type ReactNode } from "react";
 import type { MarkdownPreviewLinkHandler } from "./markdown-link.js";
 import type {
   MarkdownAbsoluteLocalFileLinkRouting,
@@ -7,29 +7,49 @@ import type {
   MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 
-/** One entry in a local file link's right-click "Open with" menu. */
-export interface MarkdownLocalFileOpenWithItem {
+/** One action in a local file link's right-click menu. */
+export interface MarkdownLocalFileContextMenuAction {
   id: string;
-  label: string;
+  label: ReactNode;
   onSelect: () => void;
+  type?: "action";
 }
 
+export interface MarkdownLocalFileContextMenuSeparator {
+  id: string;
+  type: "separator";
+}
+
+export type MarkdownLocalFileContextMenuLeafItem =
+  | MarkdownLocalFileContextMenuAction
+  | MarkdownLocalFileContextMenuSeparator;
+
+export interface MarkdownLocalFileContextMenuSubmenu {
+  id: string;
+  items: MarkdownLocalFileContextMenuLeafItem[];
+  label: ReactNode;
+  type: "submenu";
+}
+
+export type MarkdownLocalFileContextMenuItem =
+  | MarkdownLocalFileContextMenuLeafItem
+  | MarkdownLocalFileContextMenuSubmenu;
+
 /**
- * Viewer choices for the right-click menu on local file links (e.g. "Open
- * with built-in preview" / plugin file openers). Null/empty = no menu;
- * left-click behavior is unchanged either way.
+ * Right-click menu items for local file links. Null/empty = no menu; left-click
+ * behavior is unchanged either way.
  */
-export type MarkdownLocalFileOpenWithItemsProvider = (
+export type MarkdownLocalFileContextMenuItemsProvider = (
   link: MarkdownPreviewLocalFileLink,
-) => MarkdownLocalFileOpenWithItem[] | null;
+) => MarkdownLocalFileContextMenuItem[] | null;
 
 /**
  * Context, not a routing field: local file links render across the thread
  * timeline and every file-preview surface, whose link routings are built in
  * many places — one provider at the view root covers them all uniformly.
  */
-export const MarkdownLocalFileOpenWithContext =
-  createContext<MarkdownLocalFileOpenWithItemsProvider | null>(null);
+export const MarkdownLocalFileContextMenuContext =
+  createContext<MarkdownLocalFileContextMenuItemsProvider | null>(null);
 
 export interface MarkdownLocalFileLinkRouting {
   absoluteLinks: MarkdownAbsoluteLocalFileLinkRouting;

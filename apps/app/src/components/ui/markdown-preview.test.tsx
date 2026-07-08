@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
 import {
-  MarkdownLocalFileOpenWithContext,
+  MarkdownLocalFileContextMenuContext,
   type MarkdownLinkRouting,
 } from "./markdown-link-routing";
 
@@ -77,18 +77,39 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("src/app.ts").tagName).toBe("CODE");
   });
 
-  it("shows an Open with menu on local file links when the context provides items", () => {
+  it("shows a context menu on local file links when the context provides items", () => {
     const openBuiltin = vi.fn();
+    const openFinder = vi.fn();
     const openWithPlugin = vi.fn();
     render(
-      <MarkdownLocalFileOpenWithContext.Provider
+      <MarkdownLocalFileContextMenuContext.Provider
         value={(link) =>
           link.path.endsWith(".md")
             ? [
                 {
+                  id: "open-in",
+                  items: [
+                    {
+                      id: "finder",
+                      label: "Open in Finder",
+                      onSelect: openFinder,
+                    },
+                  ],
+                  label: "Open in",
+                  type: "submenu",
+                },
+                {
+                  id: "open-in-separator",
+                  type: "separator",
+                },
+                {
                   id: "builtin",
                   label: "Open with built-in preview",
                   onSelect: openBuiltin,
+                },
+                {
+                  id: "separator",
+                  type: "separator",
                 },
                 {
                   id: "notes:editor",
@@ -108,13 +129,15 @@ describe("MarkdownPreview", () => {
             },
           }}
         />
-      </MarkdownLocalFileOpenWithContext.Provider>,
+      </MarkdownLocalFileContextMenuContext.Provider>,
     );
 
     const link = screen.getByRole("link", { name: /notes/ });
     fireEvent.contextMenu(link);
+    expect(screen.getByText("Open in")).not.toBeNull();
     fireEvent.click(screen.getByText("Open with Notes editor"));
     expect(openWithPlugin).toHaveBeenCalledTimes(1);
+    expect(openFinder).not.toHaveBeenCalled();
     expect(openBuiltin).not.toHaveBeenCalled();
 
     // The provider returned null for the .ts link — plain anchor, no menu.

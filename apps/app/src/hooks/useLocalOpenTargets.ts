@@ -40,6 +40,11 @@ export interface OpenPathInDirectoryTargetArgs extends OpenLocalPathRequest {
   targetId: WorkspaceOpenTargetId;
 }
 
+export interface OpenPathInFileTargetArgs extends OpenLocalPathRequest {
+  rememberTarget: boolean;
+  targetId: WorkspaceOpenTargetId;
+}
+
 export interface OpenPathInPreferredTargetArgs extends OpenLocalPathRequest {}
 
 interface OpenPathInAvailableTargetArgs extends OpenLocalPathRequest {
@@ -52,9 +57,11 @@ export interface UseLocalOpenTargetsResult {
   canOpenPreferredDirectoryTarget: boolean;
   canOpenPreferredFileTarget: boolean;
   directoryOpenTargets: WorkspaceOpenTarget[];
+  fileOpenTargets: WorkspaceOpenTarget[];
   openPathInDirectoryTarget: (
     args: OpenPathInDirectoryTargetArgs,
   ) => Promise<boolean>;
+  openPathInFileTarget: (args: OpenPathInFileTargetArgs) => Promise<boolean>;
   openPathInPreferredDirectoryTarget: (
     args: OpenPathInPreferredTargetArgs,
   ) => Promise<boolean>;
@@ -97,6 +104,7 @@ interface UseOpenTargetResolutionArgs {
 
 interface OpenTargetResolution {
   directoryOpenTargets: WorkspaceOpenTarget[];
+  fileOpenTargets: WorkspaceOpenTarget[];
   preferredDirectoryTarget: WorkspaceOpenTarget | null;
   preferredFileTarget: WorkspaceOpenTarget | null;
 }
@@ -157,6 +165,17 @@ function useOpenTargetResolution(
       ),
     [args.contextKind, args.workspaceOpenTargets],
   );
+  const fileOpenTargets = useMemo(
+    () =>
+      args.workspaceOpenTargets.filter((target) =>
+        supportsWorkspaceOpenTargetCapability({
+          capability: "openFile",
+          contextKind: args.contextKind,
+          target,
+        }),
+      ),
+    [args.contextKind, args.workspaceOpenTargets],
+  );
   // Resolve locally from the already-gated `workspaceOpenTargets` so that
   // callers passing `enabled: false` don't trigger a daemon fetch via the
   // global atom.
@@ -176,13 +195,14 @@ function useOpenTargetResolution(
         capability: "openFile",
         contextKind: args.contextKind,
         preferredTargetId: args.preferredFileTargetId,
-        targets: args.workspaceOpenTargets,
+        targets: fileOpenTargets,
       }),
-    [args.contextKind, args.preferredFileTargetId, args.workspaceOpenTargets],
+    [args.contextKind, args.preferredFileTargetId, fileOpenTargets],
   );
 
   return {
     directoryOpenTargets,
+    fileOpenTargets,
     preferredDirectoryTarget,
     preferredFileTarget,
   };
@@ -208,6 +228,7 @@ export function useLocalOpenTargets(
     useFileOpenTargetPreference();
   const {
     directoryOpenTargets,
+    fileOpenTargets,
     preferredDirectoryTarget,
     preferredFileTarget,
   } = useOpenTargetResolution({
@@ -312,6 +333,32 @@ export function useLocalOpenTargets(
     },
     [directoryOpenTargets, hasDaemon, openPathInAvailableTarget],
   );
+  const openPathInFileTarget = useCallback(
+    async (request: OpenPathInFileTargetArgs) => {
+      const target = fileOpenTargets.find(
+        (candidate) => candidate.id === request.targetId,
+      );
+      if (!target) {
+        dispatchOpenFailureToast({
+          description: getOpenUnavailableDescription({
+            hasDaemon,
+            targetKind: "file-open-target",
+          }),
+        });
+        return false;
+      }
+
+      return openPathInAvailableTarget({
+        columnNumber: request.columnNumber ?? null,
+        lineNumber: request.lineNumber,
+        path: request.path,
+        rememberTarget: request.rememberTarget,
+        target,
+        targetKind: "file-open-target",
+      });
+    },
+    [fileOpenTargets, hasDaemon, openPathInAvailableTarget],
+  );
 
   const openPathInPreferredDirectoryTarget = useCallback(
     async (request: OpenPathInPreferredTargetArgs) => {
@@ -385,7 +432,9 @@ export function useLocalOpenTargets(
     canOpenPreferredDirectoryTarget: preferredDirectoryTarget !== null,
     canOpenPreferredFileTarget: preferredFileTarget !== null,
     directoryOpenTargets,
+    fileOpenTargets,
     openPathInDirectoryTarget,
+    openPathInFileTarget,
     openPathInPreferredDirectoryTarget,
     openPathInPreferredFileTarget,
     preferredDirectoryTarget,
