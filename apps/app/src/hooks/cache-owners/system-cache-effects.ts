@@ -89,6 +89,36 @@ export function refetchErroredRealtimeQueriesOnInitialConnect({
   });
 }
 
+interface InitialConnectInvalidationArgs extends QueryClientArg {
+  /** Timestamp at which the realtime subscriptions became active. */
+  connectedAt: number;
+}
+
+/**
+ * A query that resolved before the realtime subscriptions were active may have
+ * missed change events published in between, and nothing later corrects it:
+ * the initial-connect path never fires again and staleTime defers mount/focus
+ * refetches. On desktop cold start this window is real — the host daemon opens
+ * its session a few hundred ms after the server starts listening, so the first
+ * hosts/providers fetches capture "disconnected" and the `host-connected`
+ * broadcast lands before the app's subscription registers. Invalidate any
+ * realtime query whose data predates the subscription watermark; queries that
+ * resolve after it observe post-subscribe server state and stay untouched.
+ */
+export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
+  connectedAt,
+  queryClient,
+}: InitialConnectInvalidationArgs): void {
+  for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
+    queryClient.invalidateQueries({
+      queryKey,
+      predicate: (query) =>
+        query.state.dataUpdatedAt !== 0 &&
+        query.state.dataUpdatedAt < connectedAt,
+    });
+  }
+}
+
 /**
  * Refresh `/system/config` after an experiments write: the server broadcast
  * covers other windows, this gives the writing window an immediate re-gate.

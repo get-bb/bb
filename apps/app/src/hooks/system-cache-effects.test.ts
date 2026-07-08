@@ -5,7 +5,9 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
+  hostsQueryKey,
   sidebarNavigationQueryKey,
+  systemProvidersQueryKey,
   systemExecutionOptionsQueryKey,
   terminalsQueryKey,
   threadConversationOutlineQueryKey,
@@ -19,7 +21,10 @@ import {
   threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "./queries/query-keys";
-import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
+import {
+  invalidateRealtimeQueriesAfterServerReconnect,
+  invalidateRealtimeQueriesFetchedBeforeInitialConnect,
+} from "./cache-owners/system-cache-effects";
 
 function createCacheEffectQueryClient() {
   return createAppQueryClient({
@@ -217,6 +222,36 @@ describe("system cache effects", () => {
     }
     queryClient.unmount();
     queryClient.clear();
+  });
+
+  // Desktop cold start: the host daemon opens its session a few hundred ms
+  // after the server starts listening, so hosts/providers fetched in that
+  // window miss the `host-connected` broadcast and would otherwise show
+  // "Host is offline" (and no models) until something remounts the composer.
+  it("invalidates realtime queries whose data predates the initial connect", () => {
+    const queryClient = createCacheEffectQueryClient();
+    const hostsKey = hostsQueryKey();
+    const providersKey = systemProvidersQueryKey();
+    const neverFetchedKey = sidebarNavigationQueryKey();
+    const connectedAt = Date.now();
+    queryClient.setQueryData(hostsKey, [], { updatedAt: connectedAt - 500 });
+    queryClient.setQueryData(
+      providersKey,
+      { providers: [] },
+      { updatedAt: connectedAt + 500 },
+    );
+
+    invalidateRealtimeQueriesFetchedBeforeInitialConnect({
+      connectedAt,
+      queryClient,
+    });
+
+    // Fetched before the subscriptions were active: may have missed events.
+    expect(queryClient.getQueryState(hostsKey)?.isInvalidated).toBe(true);
+    // Fetched after the watermark: observed post-subscribe server state.
+    expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
+    // Never fetched: nothing stale to correct.
+    expect(queryClient.getQueryState(neverFetchedKey)).toBeUndefined();
   });
 
   it("refetches an active diff TOC query but evicts the observer-less patch cache after reconnect", async () => {

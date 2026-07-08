@@ -10,6 +10,7 @@ import {
 } from "@bb/domain";
 import {
   invalidateRealtimeQueriesAfterServerReconnect,
+  invalidateRealtimeQueriesFetchedBeforeInitialConnect,
   refetchErroredRealtimeQueriesOnInitialConnect,
 } from "./cache-owners/system-cache-effects";
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
@@ -308,6 +309,12 @@ export function createRealtimeCacheEffects({
         return;
       }
       refetchErroredRealtimeQueriesOnInitialConnect({ queryClient });
+      // The ws manager flushes subscribe messages before this callback runs,
+      // so "now" is the watermark after which change events are delivered.
+      invalidateRealtimeQueriesFetchedBeforeInitialConnect({
+        connectedAt: Date.now(),
+        queryClient,
+      });
     },
   };
 }
