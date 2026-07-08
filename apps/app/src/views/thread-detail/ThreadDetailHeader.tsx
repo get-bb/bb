@@ -27,7 +27,6 @@ interface ThreadHeaderGitAction {
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
-  activeTerminalCount: number;
   /** Pill shown beside the title for side chats and hierarchical child threads. */
   childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
@@ -42,7 +41,6 @@ interface ThreadDetailHeaderProps {
 
 export function ThreadDetailHeader({
   actionsMenu,
-  activeTerminalCount,
   childPillLabel,
   isSecondaryPanelOpen,
   onOpenThreadGitAction,
@@ -133,14 +131,6 @@ export function ThreadDetailHeader({
           onClick={onToggleSecondaryPanel}
         >
           <Icon name={rightPanelIconName} />
-          {activeTerminalCount > 0 ? (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
-            >
-              {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
-            </span>
-          ) : null}
         </Button>
       ) : null}
     </>

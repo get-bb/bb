@@ -11,7 +11,6 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
-  isActiveTerminalSessionStatus,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
@@ -434,7 +433,6 @@ interface BuildRootComposeTerminalSessionsArgs {
 }
 
 interface RootComposeRightPanelToggleProps {
-  activeTerminalCount: number;
   isOpen: boolean;
   onToggle: () => void;
 }
@@ -455,7 +453,6 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
 }
 
 function RootComposeRightPanelToggle({
-  activeTerminalCount,
   isOpen,
   onToggle,
 }: RootComposeRightPanelToggleProps) {
@@ -474,14 +471,6 @@ function RootComposeRightPanelToggle({
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
-      {activeTerminalCount > 0 ? (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
-        >
-          {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
-        </span>
-      ) : null}
     </Button>
   );
 }
@@ -1999,13 +1988,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   const terminalSessions =
     loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
-  const activeTerminalCount = useMemo(
-    () =>
-      terminalSessions.filter((session) =>
-        isActiveTerminalSessionStatus(session.status),
-      ).length,
-    [terminalSessions],
-  );
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
@@ -2991,7 +2973,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
       >
         <RootComposeRightPanelToggle
-          activeTerminalCount={activeTerminalCount}
           isOpen={isSecondaryPanelOpen}
           onToggle={handleToggleSecondaryPanel}
         />

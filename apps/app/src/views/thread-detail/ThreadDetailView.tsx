@@ -14,7 +14,6 @@ import {
   useThreadTimelineController,
 } from "@/components/thread/timeline";
 import {
-  isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
@@ -760,13 +759,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const closeTerminal = useCloseThreadTerminal();
   const terminalSessions =
     terminalsListQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
-  const activeTerminalCount = useMemo(
-    () =>
-      terminalSessions.filter((session) =>
-        isActiveTerminalSessionStatus(session.status),
-      ).length,
-    [terminalSessions],
-  );
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
@@ -2202,7 +2194,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               : null
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
-        activeTerminalCount={activeTerminalCount}
         onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
         onToggleSecondaryPanel={toggleSecondaryPanel}
         pluginActions={<PluginThreadActions threadId={thread.id} />}
