@@ -35,9 +35,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
   const hub = new NotificationHub();
-  // DIAGNOSTIC-ONLY (thr_v7jjaqbtaw): trace client WS registration/subscribe
-  // and host/system broadcasts into server.log for the cold-start offline bug.
-  hub.setDiagLogger((data, msg) => logger.info(data, msg));
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);

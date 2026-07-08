@@ -381,20 +381,6 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginRoutes(publicApi, deps, pluginService);
-  // DIAGNOSTIC-ONLY (thr_v7jjaqbtaw): ingest the renderer's startup timeline
-  // so it lands in server.log interleaved with server/daemon events.
-  publicApi.post("/diag/renderer", async (context) => {
-    const body = (await context.req.json().catch(() => null)) as {
-      lines?: { t?: number; msg?: string; data?: unknown }[];
-    } | null;
-    for (const line of body?.lines ?? []) {
-      deps.logger.info(
-        { renderer: true, rendererTime: line.t, data: line.data },
-        `diag renderer: ${line.msg ?? "?"}`,
-      );
-    }
-    return context.json({ ok: true });
-  });
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");

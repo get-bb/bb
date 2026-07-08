@@ -165,23 +165,9 @@ export class NotificationHub implements DbNotifier {
     Set<ThreadEventWaiter>
   >();
 
-  /** DIAGNOSTIC-ONLY (thr_v7jjaqbtaw): mirrors client WS lifecycle into the server log. */
-  private diagLog: ((data: Record<string, unknown>, msg: string) => void) | null =
-    null;
-
-  setDiagLogger(
-    diagLog: (data: Record<string, unknown>, msg: string) => void,
-  ): void {
-    this.diagLog = diagLog;
-  }
-
   registerClient(socket: HubSocket): void {
     if (!this.clientKeysBySocket.has(socket)) {
       this.clientKeysBySocket.set(socket, new Set());
-      this.diagLog?.(
-        { clientCount: this.clientKeysBySocket.size },
-        "diag: client ws registered",
-      );
     }
   }
 
@@ -289,9 +275,6 @@ export class NotificationHub implements DbNotifier {
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     this.registerClient(socket);
     const key = subscriptionKey(target);
-    if (key.startsWith("host") || key.startsWith("system")) {
-      this.diagLog?.({ key }, "diag: client subscribed");
-    }
     this.clientKeysBySocket.get(socket)?.add(key);
 
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
@@ -757,19 +740,6 @@ export class NotificationHub implements DbNotifier {
       for (const socket of specificSockets) {
         sockets.add(socket);
       }
-    }
-
-    if (message.entity === "host" || message.entity === "system") {
-      this.diagLog?.(
-        {
-          entity: message.entity,
-          id: "id" in message ? message.id : undefined,
-          changes: message.changes,
-          matchedSockets: sockets.size,
-          connectedClients: this.clientKeysBySocket.size,
-        },
-        "diag: broadcast",
-      );
     }
 
     const parseResult = serverMessageSchema.safeParse(message);

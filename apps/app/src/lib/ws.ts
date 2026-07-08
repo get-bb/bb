@@ -13,7 +13,6 @@ import type {
   ThreadOpenFileSignal,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
-import { diag } from "./renderer-diag";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type OpenFileCallback = (signal: ThreadOpenFileSignal) => void;
@@ -67,10 +66,6 @@ export class WebSocketManager {
       const reconnected = this.hasConnected;
       this.hasConnected = true;
       this.setConnectionState("connected");
-      diag("ws open", {
-        reconnected,
-        resubscribedTargets: [...this.subscriptions.keys()],
-      });
       // Re-subscribe to all active subscriptions
       for (const subscription of this.subscriptions.values()) {
         this.sendMessage({ type: "subscribe", target: subscription.target });
@@ -86,7 +81,6 @@ export class WebSocketManager {
     };
 
     this.socket.onclose = () => {
-      diag("ws close", { hasConnected: this.hasConnected });
       this.setConnectionState(
         this.hasConnected ? "reconnecting" : "connecting",
       );
@@ -133,13 +127,6 @@ export class WebSocketManager {
     // on additive contract changes.
     const msg = changedMessageLenientSchema.safeParse(parsed);
     if (msg.success) {
-      if (msg.data.entity === "host" || msg.data.entity === "system") {
-        diag("ws changed", {
-          entity: msg.data.entity,
-          id: "id" in msg.data ? msg.data.id : undefined,
-          changes: msg.data.changes,
-        });
-      }
       for (const cb of this.callbacks) {
         cb(msg.data);
       }
@@ -165,9 +152,7 @@ export class WebSocketManager {
     }
 
     this.subscriptions.set(key, { count: 1, target });
-    const socketOpen = this.socket?.readyState === WebSocket.OPEN;
-    diag("ws subscribe", { key, sentNow: socketOpen });
-    if (socketOpen) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
       this.sendMessage({ type: "subscribe", target });
     }
   }
