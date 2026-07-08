@@ -25,32 +25,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache: pnpm
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: checks
 
-      - name: Cache Turbo task outputs
-        uses: actions/cache@v4
+      - name: Build, typecheck, and lint
+        run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
+
+  # Tests run on their own runners instead of inside the checks job: the big
+  # suites are CPU-bound and previously fought each other (and the builds) for
+  # the same 4 vCPUs, which made tests the critical path of every run.
+  tests:
+    name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: server
+            filter: --filter=@bb/server
+          - shard: app
+            filter: --filter=@bb/app
+          - shard: integration
+            filter: --filter=@bb/integration-tests
+          - shard: packages
+            filter: --filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          path: .turbo/cache
-          key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-checks-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-checks-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-checks-turbo-
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: test-${{ matrix.shard }}
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
-
-      - name: Build, typecheck, lint, and test
-        run: pnpm exec turbo run build typecheck lint test --cache-dir=.turbo/cache --output-logs=new-only
+      - name: Test
+        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
 
   package-smoke:
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
@@ -70,29 +88,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ matrix.node-version }}
-          cache: pnpm
-
-      - name: Cache Turbo task outputs
-        uses: actions/cache@v4
-        with:
-          path: .turbo/cache
-          key: ${{ runner.os }}-node-${{ matrix.node-version }}-package-smoke-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ matrix.node-version }}-package-smoke-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-node-${{ matrix.node-version }}-package-smoke-turbo-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: package-smoke
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
@@ -123,29 +124,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ matrix.node-version }}
-          cache: pnpm
-
-      - name: Cache Turbo task outputs
-        uses: actions/cache@v4
-        with:
-          path: .turbo/cache
-          key: ${{ runner.os }}-node-${{ matrix.node-version }}-compat-smoke-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ matrix.node-version }}-compat-smoke-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-node-${{ matrix.node-version }}-compat-smoke-turbo-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: compat-smoke
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only

@@ -48,7 +48,8 @@
     },
     "@bb/sdk#test": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -248,19 +249,25 @@
       ],
       "outputs": []
     },
-    "typecheck": {},
-    "bb-plugin-automations#typecheck": {
+    // Transit node (no package defines a `topo` script; nothing executes).
+    // It exists so tasks that resolve `@bb/*` imports to *sources* — vitest
+    // and tsc both use the `source` export condition — hash the sources of
+    // dependency packages. Without it, a change in e.g. packages/domain
+    // would cache-hit @bb/server#test/#typecheck and skip them stale.
+    "topo": {
       "dependsOn": [
-        "@bb/shared-ui#typecheck"
+        "^topo"
       ]
     },
-    "bb-plugin-connect#typecheck": {
+    "typecheck": {
       "dependsOn": [
-        "@bb/shared-ui#typecheck",
-        "@bb/tunnel-contract#typecheck"
+        "topo"
       ]
     },
     "@bb/integration-tests#typecheck": {
+      "dependsOn": [
+        "topo"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -274,7 +281,8 @@
     },
     "test": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -290,7 +298,8 @@
     },
     "@bb/integration-tests#test": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -305,7 +314,8 @@
     },
     "test:smoke": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -314,7 +324,8 @@
     },
     "@bb/integration-tests#test:smoke": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -329,7 +340,8 @@
     },
     "test:integration": {
       "dependsOn": [
-        "//#ensure-native-modules"
+        "//#ensure-native-modules",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -339,7 +351,8 @@
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/agent-runtime#test:integration"
+        "@bb/agent-runtime#test:integration",
+        "topo"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -350,13 +363,6 @@
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
-      ]
-    },
-    "@bb/sdk#typecheck": {},
-    "@bb/server#typecheck": {},
-    "@bb/server#test": {
-      "dependsOn": [
-        "//#ensure-native-modules"
       ]
     },
     "@bb/plugin-sdk#build": {
@@ -371,6 +377,9 @@
       ]
     },
     "@bb/plugin-build#typecheck": {
+      "dependsOn": [
+        "topo"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
@@ -378,12 +387,19 @@
       ]
     },
     "@bb/plugin-registry#typecheck": {
+      "dependsOn": [
+        "topo"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/shared-ui/src/**"
       ]
     },
     "@bb/plugin-registry#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "topo"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/shared-ui/src/**"

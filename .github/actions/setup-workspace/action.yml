@@ -1,0 +1,41 @@
+name: Setup workspace
+description: Set up pnpm + Node, restore the Turbo cache, and install dependencies.
+
+inputs:
+  node-version:
+    description: Node version to install
+    required: true
+  pnpm-version:
+    description: pnpm version to install
+    required: true
+  cache-prefix:
+    description: Distinguishes Turbo cache entries per job type (e.g. checks, test-server)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ inputs.pnpm-version }}
+        run_install: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+
+    - name: Cache Turbo task outputs
+      uses: actions/cache@v4
+      with:
+        path: .turbo/cache
+        key: ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile --prefer-offline

@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { mergeConfig, type ViteUserConfig } from "vitest/config";
 
 /**
@@ -14,6 +16,58 @@ import { mergeConfig, type ViteUserConfig } from "vitest/config";
  * conditions through a config plugin, and Vite concatenates these arrays
  * with them during config merge.
  */
+/**
+ * Vitest APIs that mutate worker-global state (the module registry, globals,
+ * or `process.env`). Files calling any of these need their own isolated
+ * worker; running them with `isolate: false` makes mocks bleed across files
+ * or silently fail to apply when the target module is already loaded.
+ */
+const ISOLATION_REQUIRING_API =
+  /\bvi\.(mock|doMock|unmock|doUnmock|resetModules|stubGlobal|stubEnv)\(/;
+
+const TEST_FILE = /\.test\.tsx?$/;
+const SKIP_DIRS = new Set(["node_modules", "dist"]);
+
+/**
+ * Finds test files under `roots` (relative to `pkgDir`) that use
+ * worker-global vitest APIs and therefore must keep the default isolated
+ * worker. Everything else can run in a shared worker context
+ * (`isolate: false`), which skips re-importing the module graph for every
+ * file — by far the dominant cost of the big suites in CI.
+ *
+ * Returns package-relative posix paths, usable directly as vitest
+ * `include`/`exclude` entries.
+ */
+export function findIsolationRequiringTests(
+  pkgDir: string,
+  roots: string[],
+): string[] {
+  const matches: string[] = [];
+  const walk = (dir: string) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) walk(fullPath);
+      } else if (
+        TEST_FILE.test(entry.name) &&
+        ISOLATION_REQUIRING_API.test(readFileSync(fullPath, "utf8"))
+      ) {
+        matches.push(
+          path.relative(pkgDir, fullPath).split(path.sep).join("/"),
+        );
+      }
+    }
+  };
+  for (const root of roots) walk(path.join(pkgDir, root));
+  return matches.sort();
+}
+
 export function defineWorkspaceTestConfig(
   config: ViteUserConfig,
 ): ViteUserConfig {

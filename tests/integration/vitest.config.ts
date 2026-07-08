@@ -11,6 +11,10 @@ export default defineWorkspaceTestConfig({
     // Fake integration suites isolate temp roots, ports, and in-memory state,
     // so we can safely parallelize across files for a large runtime win.
     fileParallelism: true,
+    // No file here mocks modules or stubs globals/env (vitest.shared.ts's
+    // findIsolationRequiringTests would flag it), so workers can reuse their
+    // context across files instead of re-importing the server graph per file.
+    isolate: false,
     globalSetup: ["./global-setup.ts"],
     hookTimeout: Math.ceil(60_000 * timeoutScale),
     include: ["fake/**/*.test.ts"],
