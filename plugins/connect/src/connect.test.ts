@@ -4,6 +4,7 @@ import {
   type FakePluginHost,
 } from "@bb/plugin-sdk/testing";
 import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
+import { headersForLoopbackRequest } from "./tunnel.js";
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
 import type { ConnectStatus } from "./types.js";
@@ -24,6 +25,37 @@ describe("serverUrlForHandle", () => {
     expect(serverUrlForHandle("https://getbb.app", "sawyer")).toBe(
       "https://sawyer.getbb.app",
     );
+  });
+});
+
+describe("headersForLoopbackRequest", () => {
+  it("rewrites the paired connect origin to the loopback app origin only", () => {
+    expect(
+      headersForLoopbackRequest(
+        [
+          ["Origin", "https://sawyer.getbb.app"],
+          ["Content-Type", "application/json"],
+          ["Host", "sawyer.getbb.app"],
+        ],
+        {
+          publicOrigin: "https://sawyer.getbb.app",
+          loopbackOrigin: "http://127.0.0.1:38886",
+        },
+      ),
+    ).toEqual({
+      Origin: "http://127.0.0.1:38886",
+      "Content-Type": "application/json",
+    });
+
+    expect(
+      headersForLoopbackRequest(
+        [["Origin", "https://evil.example"]],
+        {
+          publicOrigin: "https://sawyer.getbb.app",
+          loopbackOrigin: "http://127.0.0.1:38886",
+        },
+      ),
+    ).toEqual({ Origin: "https://evil.example" });
   });
 });
 

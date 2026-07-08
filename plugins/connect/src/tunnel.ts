@@ -38,6 +38,27 @@ const SKIP_REQUEST_HEADERS = new Set([
   "accept-encoding",
 ]);
 
+export interface LoopbackHeaderRewrite {
+  publicOrigin: string;
+  loopbackOrigin: string;
+}
+
+export function headersForLoopbackRequest(
+  headers: HeaderPair[],
+  rewrite: LoopbackHeaderRewrite,
+): Record<string, string> {
+  const forwarded: Record<string, string> = {};
+  for (const [name, value] of headers) {
+    const lowerName = name.toLowerCase();
+    if (SKIP_REQUEST_HEADERS.has(lowerName)) continue;
+    forwarded[name] =
+      lowerName === "origin" && value === rewrite.publicOrigin
+        ? rewrite.loopbackOrigin
+        : value;
+  }
+  return forwarded;
+}
+
 function tunnelUrlForServer(serverUrl: string): string {
   return serverUrl.replace(/^http/, "ws").replace(/\/$/, "") + "/__tunnel";
 }
@@ -63,6 +84,7 @@ class TunnelSession {
   constructor(
     private readonly tunnel: NodeWebSocket,
     private readonly origin: string,
+    private readonly publicOrigin: string,
     private readonly log: PluginLogger,
   ) {}
 
@@ -162,10 +184,10 @@ class TunnelSession {
     stream: HttpStream,
   ): Promise<void> {
     const { meta } = stream;
-    const headers: Record<string, string> = {};
-    for (const [n, v] of meta.headers) {
-      if (!SKIP_REQUEST_HEADERS.has(n.toLowerCase())) headers[n] = v;
-    }
+    const headers = headersForLoopbackRequest(meta.headers, {
+      publicOrigin: this.publicOrigin,
+      loopbackOrigin: new URL(this.origin).origin,
+    });
     try {
       const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
       const res = await fetch(`${this.origin}${meta.path}`, {
@@ -205,10 +227,10 @@ class TunnelSession {
 
   private openOriginWs(frame: OpenWsFrame): void {
     const wsOrigin = this.origin.replace(/^http/, "ws");
-    const headers: Record<string, string> = {};
-    for (const [n, v] of frame.headers) {
-      if (!SKIP_REQUEST_HEADERS.has(n.toLowerCase())) headers[n] = v;
-    }
+    const headers = headersForLoopbackRequest(frame.headers, {
+      publicOrigin: this.publicOrigin,
+      loopbackOrigin: new URL(this.origin).origin,
+    });
     const socket = new NodeWebSocket(`${wsOrigin}${frame.path}`, frame.protocols, {
       headers,
     });
@@ -450,6 +472,7 @@ export class ConnectTunnel {
       this.session = new TunnelSession(
         tunnel,
         this.options.getLoopbackBaseUrl(),
+        new URL(credential.serverUrl).origin,
         this.options.log,
       );
       this.session.start();
