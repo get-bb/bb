@@ -20,6 +20,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -30,7 +34,10 @@ import {
   type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
-import type { ProviderCommandSuggestion } from "./mentions/types";
+import type {
+  PromptMentionSuggestion,
+  ProviderCommandSuggestion,
+} from "./mentions/types";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
@@ -77,18 +84,25 @@ function createPromptBoxProps(
 }
 
 function buildTypeaheadConfig({
+  mentionTriggers,
+  mentionSuggestions = [],
+  onMentionQueryChange = () => {},
   commandSuggestions = [],
   onCommandQueryChange = () => {},
 }: {
+  mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
+  mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+  onMentionQueryChange?: TypeaheadConfig["mention"]["onQueryChange"];
   commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   onCommandQueryChange?: (query: string | null) => void;
 } = {}): TypeaheadConfig {
   return {
     mention: {
-      suggestions: [],
+      triggers: mentionTriggers,
+      suggestions: mentionSuggestions,
       isLoading: false,
       isError: false,
-      onQueryChange: () => {},
+      onQueryChange: onMentionQueryChange,
     },
     command: {
       trigger: "/",
@@ -199,10 +213,13 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
 function renderPromptBox(
   initialValue: string,
   options: {
+    mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
+    mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   } = {},
 ) {
   const changes: PromptChange[] = [];
+  const onMentionQueryChange = vi.fn();
   const onCommandQueryChange = vi.fn();
   const promptBoxRef = createRef<PromptBoxHandle>();
 
@@ -222,6 +239,9 @@ function renderPromptBox(
         }}
         onSubmit={() => {}}
         typeahead={buildTypeaheadConfig({
+          mentionTriggers: options.mentionTriggers,
+          mentionSuggestions: options.mentionSuggestions,
+          onMentionQueryChange,
           commandSuggestions: options.commandSuggestions,
           onCommandQueryChange,
         })}
@@ -234,7 +254,12 @@ function renderPromptBox(
   }
 
   render(<PromptBoxHarness />);
-  return { changes, onCommandQueryChange, promptBoxRef };
+  return {
+    changes,
+    onMentionQueryChange,
+    onCommandQueryChange,
+    promptBoxRef,
+  };
 }
 
 function dispatchThroughEditorTarget({
@@ -349,6 +374,7 @@ function mockPointerCoarse(matches: boolean): () => void {
 
 afterEach(() => {
   cleanup();
+  resetPluginLogoStoreForTest();
   vi.clearAllMocks();
 });
 
@@ -606,6 +632,91 @@ describe("PromptBoxInternal zen mode layout", () => {
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
     window.localStorage.removeItem(storageKey);
+  });
+});
+
+describe("PromptBoxInternal mention triggers", () => {
+  const githubIssueSuggestion: PromptMentionSuggestion = {
+    kind: "plugin",
+    pluginId: "github",
+    providerId: "issue",
+    itemId: "issue:owner/repo#42",
+    providerLabel: "GitHub issues",
+    title: "#42 Fix login bug",
+    subtitle: "owner/repo",
+    replacement: "#42 Fix login bug",
+  };
+
+  it("reports hash mention queries with the active trigger", async () => {
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {
+      mentionTriggers: ["@", "#"],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("42", "#"),
+    );
+  });
+
+  it("does not open the menu for a bare non-at mention trigger", async () => {
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#", {
+      mentionTriggers: ["@", "#"],
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("", "#"),
+    );
+    expect(screen.queryByText("GitHub issues")).toBeNull();
+  });
+
+  it("inserts hash-triggered plugin mentions without duplicating the prefix", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "github",
+          {
+            logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
+    const { changes, promptBoxRef } = renderPromptBox("#42", {
+      mentionTriggers: ["@", "#"],
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const suggestion = await screen.findByRole("button", {
+      name: /#42 Fix login bug/u,
+    });
+    fireEvent.mouseDown(suggestion, { button: 0 });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("#42 Fix login bug "),
+    );
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "#42 Fix login bug".length,
+        resource: {
+          kind: "plugin",
+          pluginId: "github",
+          itemId: "issue:owner/repo#42",
+          label: "#42 Fix login bug",
+        },
+      },
+    ]);
+    const logo = within(getPromptEditorElement()).getByTestId(
+      "plugin-logo-github",
+    );
+    expect(logo.getAttribute("src")).toBe(
+      "/api/v1/plugins/github/assets/logo?h=abc",
+    );
   });
 });
 

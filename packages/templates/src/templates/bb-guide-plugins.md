@@ -113,7 +113,7 @@ range). The plugin id is the package name minus `bb-plugin-`.
 
 Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
 shows it wherever the plugin's contributions appear — the sidebar entry,
-panel title bar, composer command and @-mention menus, thread action
+panel title bar, composer command and mention menus, thread action
 buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while

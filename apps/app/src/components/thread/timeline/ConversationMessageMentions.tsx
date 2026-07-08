@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import { Icon } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import {
   getProjectComposeRoutePath,
@@ -10,9 +9,9 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
-  promptMentionIconName,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
+import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 
@@ -135,10 +134,9 @@ export function PromptMentionPill({
   });
   const labelNode = (
     <>
-      <Icon
-        name={promptMentionIconName(resource)}
+      <PromptMentionIcon
+        resource={resource}
         className="size-3.5 shrink-0 self-center text-muted-foreground"
-        aria-hidden
       />
       <span className="truncate">{resource.label}</span>
     </>

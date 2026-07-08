@@ -4,7 +4,7 @@
 // works. Repos are discovered from BB project sources (each local checkout's
 // `origin` remote) plus an optional extraRepos setting. A background service
 // syncs open + recently-closed issues/PRs into the plugin's SQLite cache;
-// the frontend panel and @-mention providers read that cache, while
+// the frontend panel and mention providers read that cache, while
 // mutations (comment, create, close/reopen, assign, label) and detail views go
 // straight through `gh`.
 import { execFile } from "node:child_process";
@@ -1072,7 +1072,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // ------------------------------------------------------------------
-  // @-mentions: issues and PRs attach their details as agent context.
+  // Mentions: issues and PRs attach their details as agent context.
   // Search reads the cache (2s time box); resolve prefers a live gh view
   // and falls back to the cache so a network blip doesn't block the send.
   // ------------------------------------------------------------------
@@ -1139,6 +1139,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.ui.registerMentionProvider({
     id: "issue",
     label: "GitHub issues",
+    triggers: ["@", "#"],
     search({ query }) {
       return mentionItems("issue", query);
     },
@@ -1150,6 +1151,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.ui.registerMentionProvider({
     id: "pr",
     label: "GitHub pull requests",
+    triggers: ["@", "#"],
     search({ query }) {
       return mentionItems("pr", query);
     },

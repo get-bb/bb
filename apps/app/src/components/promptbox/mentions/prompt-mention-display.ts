@@ -39,8 +39,8 @@ export function promptMentionIconLabel(
 }
 
 /**
- * Leading icon for a mention, shared by the suggestion menu rows and the
- * inserted pills so the two surfaces stay visually in lock-step.
+ * Named-icon fallback for a mention. React render paths use
+ * `PromptMentionIcon` so plugin mentions can prefer their plugin logo.
  */
 export function promptMentionIconName(
   resource: PromptMentionResource,

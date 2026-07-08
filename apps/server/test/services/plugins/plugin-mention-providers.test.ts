@@ -52,13 +52,14 @@ const MENTION_SOURCE = `
     bb.ui.registerMentionProvider({
       id: "issues",
       label: "Linear issues",
+      triggers: ["@", "#"],
       async search(ctx: any) {
         if (ctx.query === "none") return [];
         return [
           {
             id: "ISS-42",
             title: "Fix login bug",
-            subtitle: "ctx:" + ctx.query + ":" + ctx.projectId + ":" + ctx.threadId,
+            subtitle: "ctx:" + ctx.trigger + ":" + ctx.query + ":" + ctx.projectId + ":" + ctx.threadId,
           },
           { id: "ISS-43", title: "Ship mention providers" },
         ];
@@ -197,9 +198,19 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { mentionProviders: unknown };
     expect(body.mentionProviders).toEqual([
-      { pluginId: "mentions", id: "issues", label: "Linear issues" },
-      { pluginId: "mentions", id: "docs", label: "Docs" },
-      { pluginId: "mentions", id: "broken", label: "Broken" },
+      {
+        pluginId: "mentions",
+        id: "issues",
+        label: "Linear issues",
+        triggers: ["@", "#"],
+      },
+      { pluginId: "mentions", id: "docs", label: "Docs", triggers: ["@"] },
+      {
+        pluginId: "mentions",
+        id: "broken",
+        label: "Broken",
+        triggers: ["@"],
+      },
     ]);
   });
 
@@ -220,7 +231,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             itemId: "issues:ISS-42",
             title: "Fix login bug",
             // The provider saw the forwarded query + project/thread context.
-            subtitle: "ctx:fix:proj_1:thr_1",
+            subtitle: "ctx:@:fix:proj_1:thr_1",
             icon: null,
           },
           {
@@ -252,6 +263,47 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(entry?.handlerStats.errorCount).toBe(1);
   });
 
+  it("searches only providers registered for the requested trigger", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/search?q=fix&trigger=%23&projectId=proj_1&threadId=thr_1`,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; groups: unknown };
+    expect(body.ok).toBe(true);
+    expect(body.groups).toEqual([
+      {
+        pluginId: "mentions",
+        providerId: "issues",
+        label: "Linear issues",
+        items: [
+          {
+            itemId: "issues:ISS-42",
+            title: "Fix login bug",
+            subtitle: "ctx:#:fix:proj_1:thr_1",
+            icon: null,
+          },
+          {
+            itemId: "issues:ISS-43",
+            title: "Ship mention providers",
+            subtitle: null,
+            icon: null,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("rejects invalid search trigger params", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/search?q=fix&trigger=%3F`,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: 'invalid plugin mention trigger "?"',
+    });
+  });
+
   it("passes null project/thread context and returns empty groups for an empty query", async () => {
     const contextual = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=login`,
@@ -265,7 +317,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(
       body.groups.find((group) => group.providerId === "issues")?.items[0]
         ?.subtitle,
-    ).toBe("ctx:login:null:null");
+    ).toBe("ctx:@:login:null:null");
 
     const empty = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=%20%20`,
@@ -555,6 +607,25 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const badId = await harness.pluginService.installPath(badIdDir);
     expect(badId.status).toBe("error");
     expect(badId.statusDetail).toContain("invalid mention provider id");
+
+    const badTriggerDir = await writePlugin(
+      join(harness.config.dataDir, "fixtures"),
+      {
+        name: "bb-plugin-bad-mention-trigger",
+        serverSource: `
+          export default function plugin(bb: any) {
+            bb.ui.registerMentionProvider({
+              id: "bad", label: "Nope", triggers: ["?"], search: () => [], resolve: () => ({ context: "x" }),
+            });
+          }
+        `,
+      },
+    );
+    const badTrigger = await harness.pluginService.installPath(badTriggerDir);
+    expect(badTrigger.status).toBe("error");
+    expect(badTrigger.statusDetail).toContain(
+      'mention provider "bad" trigger "?" is invalid',
+    );
   });
 });
 
@@ -615,6 +686,7 @@ describe("mention search time box", () => {
     expect(entry.status).toBe("running");
 
     const groups = await service.searchMentions({
+      trigger: "@",
       query: "o",
       projectId: null,
       threadId: null,

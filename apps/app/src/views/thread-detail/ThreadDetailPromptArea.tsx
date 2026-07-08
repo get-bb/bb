@@ -995,6 +995,7 @@ export function ThreadDetailPromptArea({
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
+        triggers: promptMentions.triggers,
         suggestions: promptMentions.suggestions,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
@@ -1017,6 +1018,7 @@ export function ThreadDetailPromptArea({
       promptMentions.isLoading,
       promptMentions.setQuery,
       promptMentions.suggestions,
+      promptMentions.triggers,
       resolveMentionLink,
       commandSuggestions.isError,
       commandSuggestions.hasMore,

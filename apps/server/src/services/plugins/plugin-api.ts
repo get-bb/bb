@@ -27,6 +27,7 @@ import type {
   PluginLogger,
   PluginMentionItem,
   PluginMentionSearchContext,
+  PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -74,6 +75,7 @@ export type {
   PluginMentionItem,
   PluginMentionProviderRegistration,
   PluginMentionSearchContext,
+  PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -206,6 +208,7 @@ export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
 export interface PluginMentionProviderRecord {
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
   search: (
     ctx: PluginMentionSearchContext,
   ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
@@ -277,6 +280,57 @@ const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PLUGIN_MENTION_TRIGGER_VALUES = [
+  "@",
+  "#",
+  "$",
+  "!",
+  "~",
+] as const satisfies readonly PluginMentionTrigger[];
+const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
+  "@",
+] as const satisfies readonly PluginMentionTrigger[];
+
+function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger {
+  return (
+    typeof value === "string" &&
+    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
+  );
+}
+
+function normalizeMentionProviderTriggers(
+  providerId: string,
+  triggers: unknown,
+): readonly PluginMentionTrigger[] {
+  if (triggers === undefined) {
+    return DEFAULT_PLUGIN_MENTION_TRIGGERS;
+  }
+  if (!Array.isArray(triggers)) {
+    throw new Error(`mention provider "${providerId}" triggers must be an array`);
+  }
+  if (triggers.length === 0) {
+    throw new Error(
+      `mention provider "${providerId}" triggers must include at least one trigger`,
+    );
+  }
+  const seen = new Set<PluginMentionTrigger>();
+  const normalized: PluginMentionTrigger[] = [];
+  for (const trigger of triggers) {
+    if (!isPluginMentionTrigger(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid; use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
+      );
+    }
+    if (seen.has(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is duplicated`,
+      );
+    }
+    seen.add(trigger);
+    normalized.push(trigger);
+  }
+  return normalized;
+}
 
 export type PluginSettingsListener = (
   next: Record<string, PluginSettingValue | undefined>,
@@ -867,6 +921,7 @@ export function createPluginApi(options: {
       mentionProviders.push({
         id,
         label: provider.label.trim(),
+        triggers: normalizeMentionProviderTriggers(id, provider.triggers),
         search: provider.search.bind(provider),
         resolve: provider.resolve.bind(provider),
       });

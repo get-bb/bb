@@ -79,6 +79,7 @@ import {
   type PluginBackgroundServiceRecord,
   type PluginCliContext,
   type PluginHttpRouteRecord,
+  type PluginMentionTrigger,
   type PluginRpcHandler,
   type PluginThreadActionRecord,
   type PluginThreadActionToast,
@@ -276,6 +277,7 @@ export interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
 }
 
 /** One row in a mention search group. `itemId` is the wire-composed
@@ -522,6 +524,7 @@ export interface PluginService {
    * are dropped. Item ids are namespaced "<providerId>:<item id>".
    */
   searchMentions(args: {
+    trigger: PluginMentionTrigger;
     query: string;
     projectId: string | null;
     threadId: string | null;
@@ -2456,6 +2459,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: id,
             id: record.id,
             label: record.label,
+            triggers: record.triggers,
           });
         }
       }
@@ -2470,6 +2474,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
+          if (!record.triggers.includes(args.trigger)) continue;
           tasks.push(
             (async () => {
               const outcome = await invokeWrapped(
@@ -2478,6 +2483,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 async () => {
                   const searchPromise = (async () =>
                     record.search({
+                      trigger: args.trigger,
                       query: args.query,
                       projectId: args.projectId,
                       threadId: args.threadId,

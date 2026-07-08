@@ -14,7 +14,7 @@ GitHub issues and pull requests inside BB, with one-click agent dispatch.
   (or a review thread on the PR) in the repo's BB project. The issue/PR then
   shows a ⚡ pill linking to the thread.
 - **Homepage section**: recent open issues with the same Send agent buttons.
-- **@-mentions**: `@` in any composer completes GitHub issues and PRs; the
+- **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
 - **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also
   discoverable by agents through the plugin-commands skill.

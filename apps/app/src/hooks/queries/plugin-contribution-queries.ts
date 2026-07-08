@@ -1,5 +1,9 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useSystemConfig } from "./system-queries";
+import {
+  normalizePluginMentionTriggers,
+  type PluginMentionTrigger,
+} from "@/lib/plugin-mention-triggers";
 
 /**
  * Host-rendered plugin contributions (plugin design §4.9), served by
@@ -18,11 +22,12 @@ export interface PluginThreadActionContribution {
   confirm: string | null;
 }
 
-/** One `@`-mention provider contributed by a plugin (design §4.9). */
+/** One mention provider contributed by a plugin (design §4.9). */
 export interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
 }
 
 export interface PluginContributions {
@@ -40,16 +45,26 @@ const EMPTY_CONTRIBUTIONS: PluginContributions = {
   mentionProviders: [],
 };
 
-function isMentionProviderContribution(
+function toMentionProviderContribution(
   value: unknown,
-): value is PluginMentionProviderContribution {
-  if (typeof value !== "object" || value === null) return false;
+): PluginMentionProviderContribution | null {
+  if (typeof value !== "object" || value === null) return null;
   const provider = value as Record<string, unknown>;
-  return (
-    typeof provider.pluginId === "string" &&
-    typeof provider.id === "string" &&
-    typeof provider.label === "string"
-  );
+  const triggers = normalizePluginMentionTriggers(provider.triggers);
+  if (triggers === null) return null;
+  if (
+    typeof provider.pluginId !== "string" ||
+    typeof provider.id !== "string" ||
+    typeof provider.label !== "string"
+  ) {
+    return null;
+  }
+  return {
+    pluginId: provider.pluginId,
+    id: provider.id,
+    label: provider.label,
+    triggers,
+  };
 }
 
 function isThreadActionContribution(
@@ -82,7 +97,12 @@ async function fetchPluginContributions(
       ? body.threadActions.filter(isThreadActionContribution)
       : [],
     mentionProviders: Array.isArray(body.mentionProviders)
-      ? body.mentionProviders.filter(isMentionProviderContribution)
+      ? body.mentionProviders
+          .map(toMentionProviderContribution)
+          .filter(
+            (provider): provider is PluginMentionProviderContribution =>
+              provider !== null,
+          )
       : [],
   };
 }
@@ -204,6 +224,7 @@ function isMentionSearchGroup(
 }
 
 export interface PluginMentionSearchArgs {
+  trigger: PluginMentionTrigger;
   query: string;
   projectId: string | null;
   threadId: string | null;
@@ -213,7 +234,10 @@ async function fetchPluginMentionSearch(
   args: PluginMentionSearchArgs,
   signal: AbortSignal,
 ): Promise<PluginMentionSearchGroup[]> {
-  const params = new URLSearchParams({ q: args.query });
+  const params = new URLSearchParams({
+    q: args.query,
+    trigger: args.trigger,
+  });
   if (args.projectId !== null) params.set("projectId", args.projectId);
   if (args.threadId !== null) params.set("threadId", args.threadId);
   const response = await fetch(
@@ -241,6 +265,7 @@ export function usePluginMentionSearch(
   return useQuery({
     queryKey: [
       "plugin-mention-search",
+      args.trigger,
       args.query,
       args.projectId,
       args.threadId,
@@ -248,7 +273,7 @@ export function usePluginMentionSearch(
     queryFn: ({ signal }) => fetchPluginMentionSearch(args, signal),
     enabled: options.enabled,
     staleTime: 15_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === args.trigger ? previous : undefined,
   });
 }
-

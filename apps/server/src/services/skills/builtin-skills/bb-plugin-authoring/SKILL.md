@@ -360,7 +360,8 @@ bb.ui.registerThreadAction({
 
 bb.ui.registerMentionProvider({
   id: "issue", label: "Issues",
-  search({ query, projectId, threadId }) {             // as-you-type after "@"; 2s time box, failure = empty list
+  triggers: ["@", "#"],                                // optional; defaults to ["@"]. Valid: @ # $ ! ~
+  search({ trigger, query, projectId, threadId }) {    // 2s time box, failure = empty list
     return [{ id: "42", title: "ENG-42 Fix flake", subtitle: "Todo" }];
   },
   resolve(itemId) {                                    // once per unique item AT SEND TIME
@@ -369,11 +370,11 @@ bb.ui.registerMentionProvider({
 });
 ```
 
-Thread actions render in the thread header; mention items under `label`
-in the `@` menu. All handlers run server-side. There is deliberately no
-plugin slash-command surface: the composer's `/` menu lists skills, so a
-plugin capability that crafts a prompt for the agent ships as a `skills/`
-entry instead.
+Thread actions render in the thread header; mention items render under
+`label` in the menu for each registered trigger. All handlers run server-side.
+There is deliberately no plugin slash-command surface: the composer's `/`
+menu lists skills, so a plugin capability that crafts a prompt for the agent
+ships as a `skills/` entry instead.
 
 ### bb.status
 

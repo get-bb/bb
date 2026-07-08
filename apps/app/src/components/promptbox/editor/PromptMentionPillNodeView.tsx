@@ -2,11 +2,10 @@ import { useContext, type KeyboardEvent, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   PROMPT_MENTION_PILL_CLASS,
-  promptMentionIconName,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
+import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
@@ -110,10 +109,9 @@ export function PromptMentionPillNodeView({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <Icon
-        name={promptMentionIconName(resource)}
+      <PromptMentionIcon
+        resource={resource}
         className="-ml-px size-4 shrink-0 self-center"
-        aria-hidden
       />
       <span className={cn("truncate", activate && "group-hover:underline")}>
         {resource.label}

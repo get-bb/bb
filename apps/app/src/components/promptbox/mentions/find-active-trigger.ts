@@ -26,8 +26,9 @@ interface ActiveTriggerEditor {
  * fires at the start of input or after whitespace / an opening bracket, so a
  * mid-word `a/b` or `foo@bar` never opens a menu.
  *
- * - `@` (mention) keeps its self-exclusion query class `[^\s@]*`, so a second
- *   `@` ends the current query rather than extending it.
+ * - mention triggers keep a per-char self-exclusion query class, so a second
+ *   trigger char ends the current query rather than extending it (`##` stays a
+ *   markdown heading, not a `#` mention query).
  * - command triggers (`/`) capture the whole token up to whitespace
  *   (`\S*`), so a namespaced name like `frontend:component` is captured whole.
  */
@@ -35,12 +36,11 @@ function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
-function triggerPattern(char: TypeaheadTrigger["char"]): RegExp {
-  const queryClass = char === "@" ? "[^\\s@]*" : "\\S*";
-  return new RegExp(
-    `(^|[\\s([{])${escapeRegexLiteral(char)}(${queryClass})$`,
-    "u",
-  );
+function triggerPattern(trigger: TypeaheadTrigger): RegExp {
+  const escapedChar = escapeRegexLiteral(trigger.char);
+  const queryClass =
+    trigger.kind === "mention" ? `[^\\s${escapedChar}]*` : "\\S*";
+  return new RegExp(`(^|[\\s([{])${escapedChar}(${queryClass})$`, "u");
 }
 
 /**
@@ -69,16 +69,25 @@ export function findActiveTrigger(
   );
 
   for (const trigger of triggers) {
-    const match = triggerPattern(trigger.char).exec(textBeforeCursor);
+    const match = triggerPattern(trigger).exec(textBeforeCursor);
     if (!match) continue;
 
     const query = match[2] ?? "";
     const from = selection.from - query.length - 1;
     if (from < 0) continue;
 
+    if (trigger.kind === "mention") {
+      return {
+        char: trigger.char,
+        kind: "mention",
+        query,
+        from,
+        to: selection.from,
+      };
+    }
     return {
       char: trigger.char,
-      kind: trigger.kind,
+      kind: "command",
       query,
       from,
       to: selection.from,

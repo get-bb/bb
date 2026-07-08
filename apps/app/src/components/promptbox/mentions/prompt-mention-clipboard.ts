@@ -3,6 +3,7 @@ import {
   promptMentionResourceSchema,
   type PromptMentionResource,
 } from "@bb/domain";
+import { PLUGIN_MENTION_TRIGGER_VALUES } from "@/lib/plugin-mention-triggers";
 
 export const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR =
   "data-prompt-mention-resource";
@@ -78,6 +79,33 @@ export function serializedTextForPromptMentionResource(
   return `@${sourceQualifiedPath}${directorySuffix}`;
 }
 
+function isSerializedPluginMentionText(
+  resource: Extract<PromptMentionResource, { kind: "plugin" }>,
+  serializedText: string,
+): boolean {
+  if (serializedText === resource.label) {
+    return PLUGIN_MENTION_TRIGGER_VALUES.some((trigger) =>
+      resource.label.startsWith(trigger),
+    );
+  }
+  return PLUGIN_MENTION_TRIGGER_VALUES.some(
+    (trigger) => serializedText === `${trigger}${resource.label}`,
+  );
+}
+
+function serializedTextForClipboardPayload(
+  resource: PromptMentionResource,
+  serializedText: string,
+): string | null {
+  if (resource.kind === "plugin") {
+    return isSerializedPluginMentionText(resource, serializedText)
+      ? serializedText
+      : null;
+  }
+
+  return serializedTextForPromptMentionResource(resource);
+}
+
 export function parsePromptMentionClipboardElement({
   element,
 }: ParsePromptMentionClipboardElementArgs): PromptMentionClipboardPayload | null {
@@ -102,11 +130,16 @@ export function parsePromptMentionClipboardElement({
   if (!result.success) {
     return null;
   }
+  const normalizedSerializedText = serializedTextForClipboardPayload(
+    result.data.resource,
+    serializedText,
+  );
+  if (normalizedSerializedText === null) {
+    return null;
+  }
 
   return {
     resource: result.data.resource,
-    serializedText: serializedTextForPromptMentionResource(
-      result.data.resource,
-    ),
+    serializedText: normalizedSerializedText,
   };
 }

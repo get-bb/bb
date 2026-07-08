@@ -1117,6 +1117,7 @@ export function SideChatTabContent({
   const typeaheadConfig = useMemo<TypeaheadConfig>(
     () => ({
       mention: {
+        triggers: promptMentions.triggers,
         suggestions: promptMentions.suggestions,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
@@ -1146,6 +1147,7 @@ export function SideChatTabContent({
       promptMentions.isLoading,
       promptMentions.setQuery,
       promptMentions.suggestions,
+      promptMentions.triggers,
       resolveMentionLink,
     ],
   );

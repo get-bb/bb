@@ -4,6 +4,7 @@ import type {
   ProviderCommandSource,
 } from "@bb/server-contract";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import type { PluginMentionTrigger } from "@/lib/plugin-mention-triggers";
 
 export type PromptPathMentionSource = "workspace" | "thread-storage";
 export type PromptPathMentionEntryKind = "file" | "directory";
@@ -97,14 +98,14 @@ export function toProviderCommandSuggestion(
 export type ComposerCommandSuggestion = ProviderCommandSuggestion;
 
 /**
- * A typeahead trigger the composer watches for. `@` opens the mention menu and
- * the provider-owned command trigger opens the command menu. A thread is bound
- * to one provider, so at most one command trigger is ever active in a composer.
+ * A typeahead trigger the composer watches for. Mention triggers open the
+ * mention menu and the provider-owned command trigger opens the command menu.
+ * A thread is bound to one provider, so at most one command trigger is ever
+ * active in a composer.
  */
-export interface TypeaheadTrigger {
-  char: "@" | PromptMentionCommandTrigger;
-  kind: "mention" | "command";
-}
+export type TypeaheadTrigger =
+  | { char: PluginMentionTrigger; kind: "mention" }
+  | { char: PromptMentionCommandTrigger; kind: "command" };
 
 /**
  * The trigger currently under the caret, resolved by the composer's
@@ -113,13 +114,21 @@ export interface TypeaheadTrigger {
  * up to the caret (whole namespaced names like `frontend:component` are
  * captured, stopping at whitespace).
  */
-export interface ActiveTrigger {
-  char: string;
-  kind: "mention" | "command";
-  query: string;
-  from: number;
-  to: number;
-}
+export type ActiveTrigger =
+  | {
+      char: PluginMentionTrigger;
+      kind: "mention";
+      query: string;
+      from: number;
+      to: number;
+    }
+  | {
+      char: PromptMentionCommandTrigger;
+      kind: "command";
+      query: string;
+      from: number;
+      to: number;
+    };
 
 /**
  * Mutually-exclusive states the mention menu can render. Replaces the prior

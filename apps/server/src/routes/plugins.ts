@@ -11,6 +11,7 @@ import type {
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
 import { parsePluginSource } from "../services/plugins/install-sources.js";
+import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
@@ -56,6 +57,24 @@ function knownAppPorts(deps: PluginRoutesDeps): Set<string> {
     }
   }
   return ports;
+}
+
+function parsePluginMentionTrigger(
+  value: string | undefined,
+): PluginMentionTrigger | null {
+  if (value === undefined) {
+    return "@";
+  }
+  switch (value) {
+    case "@":
+    case "#":
+    case "$":
+    case "!":
+    case "~":
+      return value;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -197,7 +216,7 @@ export function registerPluginRoutes(
     }),
   );
 
-  // Composer `@`-mention search across every plugin's mention providers
+  // Composer mention search across every plugin provider for one trigger
   // (design §4.9). Executes plugin code, so it takes the same local-origin
   // guard as the rpc dispatcher. Registered before the /plugins/:id/*
   // routes so the static "mentions" segment cannot be captured as an id.
@@ -212,7 +231,18 @@ export function registerPluginRoutes(
     }
     const projectId = context.req.query("projectId") ?? null;
     const threadId = context.req.query("threadId") ?? null;
+    const trigger = parsePluginMentionTrigger(context.req.query("trigger"));
+    if (trigger === null) {
+      return context.json(
+        {
+          ok: false,
+          error: `invalid plugin mention trigger ${JSON.stringify(context.req.query("trigger"))}`,
+        },
+        400,
+      );
+    }
     const groups = await plugins.searchMentions({
+      trigger,
       query,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,

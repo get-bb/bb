@@ -2193,6 +2193,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
+        triggers: promptMentions.triggers,
         suggestions: promptMentions.suggestions,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
@@ -2215,6 +2216,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       promptMentions.isLoading,
       promptMentions.setQuery,
       promptMentions.suggestions,
+      promptMentions.triggers,
       resolveMentionLink,
       commandSuggestions.isError,
       commandSuggestions.hasMore,

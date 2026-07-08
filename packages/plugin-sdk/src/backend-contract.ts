@@ -378,9 +378,12 @@ export interface PluginThreadActionRegistration {
   ): PluginThreadActionResult | Promise<PluginThreadActionResult>;
 }
 
+export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
+
 /** Search context handed to a mention provider (design §4.9). `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 export interface PluginMentionSearchContext {
+  trigger: PluginMentionTrigger;
   query: string;
   projectId: string | null;
   threadId: string | null;
@@ -402,9 +405,15 @@ export interface PluginMentionProviderRegistration {
   /** Section label shown above this provider's rows in the mention menu. */
   label: string;
   /**
-   * Runs server-side as the user types after `@` in the composer. Each call
-   * is time-boxed (2s) and failure-isolated: a slow or throwing provider
-   * contributes an empty list — it can never break the mention menu.
+   * Composer trigger characters this provider should answer. Omit to use the
+   * default `@` mention trigger. Valid triggers are `@`, `#`, `$`, `!`, and `~`.
+   */
+  triggers?: readonly PluginMentionTrigger[];
+  /**
+   * Runs server-side as the user types after one of this provider's triggers
+   * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
+   * or throwing provider contributes an empty list — it can never break the
+   * mention menu.
    */
   search(
     ctx: PluginMentionSearchContext,
@@ -426,10 +435,11 @@ export interface PluginUi {
    */
   registerThreadAction(action: PluginThreadActionRegistration): void;
   /**
-   * Register an `@`-mention provider for the shipped app's composer
-   * (design §4.9). Items group under `label` in the mention menu; a picked
-   * item becomes a `{ kind: "plugin" }` mention resource whose context is
-   * resolved once at send time. Multiple providers per plugin; ids must be
+   * Register a mention provider for the shipped app's composer (design §4.9).
+   * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or
+   * `~` with `triggers`. Items group under `label` in the mention menu; a
+   * picked item becomes a `{ kind: "plugin" }` mention resource whose context
+   * is resolved once at send time. Multiple providers per plugin; ids must be
    * unique within the plugin.
    */
   registerMentionProvider(provider: PluginMentionProviderRegistration): void;

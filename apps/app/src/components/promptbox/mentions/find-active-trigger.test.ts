@@ -50,6 +50,42 @@ describe("findActiveTrigger", () => {
     });
   });
 
+  it("detects a hash mention trigger with an issue query", () => {
+    expect(
+      findActiveTrigger(editorWithText("Look at #42"), [
+        { char: "@", kind: "mention" },
+        { char: "#", kind: "mention" },
+        { char: "/", kind: "command" },
+      ]),
+    ).toEqual({
+      char: "#",
+      kind: "mention",
+      query: "42",
+      from: "Look at ".length,
+      to: "Look at #42".length,
+    });
+  });
+
+  it("does not treat markdown hash headings as mention queries", () => {
+    expect(
+      findActiveTrigger(editorWithText("##"), [
+        { char: "@", kind: "mention" },
+        { char: "#", kind: "mention" },
+        { char: "/", kind: "command" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("does not extend a mention query through a repeated trigger char", () => {
+    expect(
+      findActiveTrigger(editorWithText("Look at #one#two"), [
+        { char: "@", kind: "mention" },
+        { char: "#", kind: "mention" },
+        { char: "/", kind: "command" },
+      ]),
+    ).toBeNull();
+  });
+
   it("does not treat dollar as an active command trigger", () => {
     expect(
       findActiveTrigger(editorWithText("$openai-docs"), [

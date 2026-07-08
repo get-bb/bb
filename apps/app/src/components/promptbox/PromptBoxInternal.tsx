@@ -44,6 +44,10 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
+import {
+  DEFAULT_PLUGIN_MENTION_TRIGGER,
+  type PluginMentionTrigger,
+} from "@/lib/plugin-mention-triggers";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   arePromptDraftStatesEqual,
@@ -178,11 +182,16 @@ export interface PromptBoxSubmissionConfig {
  * `MentionsConfig` surface other than living under `typeahead.mention`.
  */
 export interface TypeaheadMentionConfig {
+  /** Mention trigger characters to watch. Defaults to `@`. */
+  triggers?: readonly PluginMentionTrigger[];
   suggestions: readonly PromptMentionSuggestion[];
   isLoading: boolean;
   isError: boolean;
-  /** Called whenever the active @-mention query changes; null when no mention is active. */
-  onQueryChange: (query: string | null) => void;
+  /** Called whenever the active mention query changes; null when no mention is active. */
+  onQueryChange: (
+    query: string | null,
+    trigger: PluginMentionTrigger | null,
+  ) => void;
   /**
    * Resolves the click action for an inserted mention pill (navigate to a
    * thread, open a file preview). Omit to render pills as non-interactive
@@ -344,7 +353,9 @@ interface PromptEditorValueKey {
   mentions: readonly PromptTextMention[];
 }
 
-const MENTION_TRIGGER: TypeaheadTrigger = { char: "@", kind: "mention" };
+const DEFAULT_TYPEAHEAD_MENTION_TRIGGERS = [
+  DEFAULT_PLUGIN_MENTION_TRIGGER,
+] as const satisfies readonly PluginMentionTrigger[];
 
 interface PromptEditorSelectionRevealArgs {
   editor: Editor;
@@ -1011,6 +1022,7 @@ export function PromptBoxInternal({
     onModifierSubmit,
   } = submission;
   const {
+    triggers: mentionTriggerChars = DEFAULT_TYPEAHEAD_MENTION_TRIGGERS,
     suggestions: mentionSuggestions,
     isLoading: mentionLoading,
     isError: mentionError,
@@ -1152,31 +1164,37 @@ export function PromptBoxInternal({
     };
   }, []);
 
-  // Active trigger set: `@` is always watched; the provider's command trigger
-  // joins it when present. A thread is bound to one provider, so this is at
-  // most two entries with distinct lead chars — never any trigger ambiguity.
+  // Active trigger set: mention triggers are always watched; the provider's
+  // command trigger joins them when present.
   const triggers = useMemo<TypeaheadTrigger[]>(() => {
+    const mentionTriggers = mentionTriggerChars.map((char) => ({
+      char,
+      kind: "mention" as const,
+    }));
     if (commandTriggerChar === null) {
-      return [MENTION_TRIGGER];
+      return mentionTriggers;
     }
-    return [MENTION_TRIGGER, { char: commandTriggerChar, kind: "command" }];
-  }, [commandTriggerChar]);
+    return [
+      ...mentionTriggers,
+      { char: commandTriggerChar, kind: "command" },
+    ];
+  }, [commandTriggerChar, mentionTriggerChars]);
 
   // Fan the active query out to the matching data source and null the other,
   // so switching from `@foo` to `/bar` (or vice versa) clears the stale query.
   const dispatchTriggerQuery = useCallback(
     (active: ActiveTrigger | null) => {
       if (active?.kind === "mention") {
-        onMentionQueryChange(active.query);
+        onMentionQueryChange(active.query, active.char);
         onCommandQueryChange(null);
         return;
       }
       if (active?.kind === "command") {
         onCommandQueryChange(active.query);
-        onMentionQueryChange(null);
+        onMentionQueryChange(null, null);
         return;
       }
-      onMentionQueryChange(null);
+      onMentionQueryChange(null, null);
       onCommandQueryChange(null);
     },
     [onCommandQueryChange, onMentionQueryChange],
@@ -1284,7 +1302,7 @@ export function PromptBoxInternal({
               };
             }
             setActiveTrigger(null);
-            onMentionQueryChange(null);
+            onMentionQueryChange(null, null);
             onCommandQueryChange(null);
             return false;
           },
@@ -1619,8 +1637,11 @@ export function PromptBoxInternal({
     [activeTriggerKind, commandSuggestions, mentionSuggestions],
   );
 
+  const activeMentionQuery = activeTrigger?.kind === "mention"
+    ? activeTrigger.query.trim()
+    : "";
   const mentionMenuState: MentionMenuState =
-    (activeTrigger?.query.trim() ?? "").length === 0
+    activeMentionQuery.length === 0
       ? { kind: "hint" }
       : mentionLoading
         ? { kind: "loading" }
@@ -1642,8 +1663,14 @@ export function PromptBoxInternal({
     !commandLoading &&
     !commandError &&
     commandSuggestions.length === 0;
+  const isBareNonDefaultMentionTrigger =
+    activeTrigger?.kind === "mention" &&
+    activeTrigger.char !== DEFAULT_PLUGIN_MENTION_TRIGGER &&
+    activeMentionQuery.length === 0;
   const showTypeaheadMenu =
-    activeTrigger !== null && !isCommandTriggerLiteral;
+    activeTrigger !== null &&
+    !isCommandTriggerLiteral &&
+    !isBareNonDefaultMentionTrigger;
 
   const typeaheadMenuState: TypeaheadMenuState =
     activeTriggerKind === "command"
@@ -1708,9 +1735,12 @@ export function PromptBoxInternal({
   const applyMentionSuggestion = useCallback(
     (item: PromptMentionSuggestion) => {
       const currentEditor = editorRef.current;
-      if (!currentEditor || activeTrigger === null) return;
+      if (!currentEditor || activeTrigger?.kind !== "mention") return;
 
-      const serializedText = `@${item.replacement.trim()}`;
+      const replacement = item.replacement.trim();
+      const serializedText = replacement.startsWith(activeTrigger.char)
+        ? replacement
+        : `${activeTrigger.char}${replacement}`;
       const resource = promptMentionResourceFromSuggestion(item);
       const trailingText = hasWhitespaceAfterPosition(
         currentEditor.state.doc,
@@ -1730,7 +1760,7 @@ export function PromptBoxInternal({
       isRestoringAppliedMentionRef.current = true;
       setActiveTrigger(null);
       setSelectedIndex(0);
-      onMentionQueryChange(null);
+      onMentionQueryChange(null, null);
 
       try {
         skipEditorChangeRef.current = true;
@@ -2258,7 +2288,7 @@ export function PromptBoxInternal({
             };
           }
           setActiveTrigger(null);
-          onMentionQueryChange(null);
+          onMentionQueryChange(null, null);
           onCommandQueryChange(null);
           return true;
         }
