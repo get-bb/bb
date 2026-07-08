@@ -252,6 +252,97 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("includes installed Grok Build ACP and sends its launch spec when loading models", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-grok-installed",
+      });
+      const catalogModel = availableModelFixture({
+        model: "grok-4.5",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-grok",
+                  executablePath:
+                    agent.id === "acp-grok"
+                      ? "/Users/example/.grok/bin/grok"
+                      : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-grok",
+      });
+
+      expect(response.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "acp-grok",
+            displayName: "Grok Build",
+            available: true,
+          }),
+        ]),
+      );
+      expect(response.models).toEqual([catalogModel]);
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status", "provider.list_models"],
+      );
+      expect(responder.requests[1].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-grok",
+        acpLaunchSpec: {
+          displayName: "Grok Build",
+          command: "grok",
+          args: ["agent", "stdio"],
+          env: {},
+          modelCli: {
+            listArgs: ["models"],
+            selectFlag: "--model",
+            primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
+          },
+          permissionCli: {
+            full: ["--always-approve"],
+            insertAfterArgs: 1,
+          },
+          reasoningCli: {
+            flag: "--reasoning-effort",
+            supportedLevels: ["low", "medium", "high"],
+            levelValues: {
+              none: "low",
+              xhigh: "high",
+              ultracode: "high",
+              max: "high",
+            },
+            defaultLevel: "high",
+          },
+        },
+      });
+    });
+  });
+
   it("omits known ACP agents that the host reports missing", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -486,8 +577,9 @@ describe("resolveSystemExecutionOptions", () => {
           sessionId: session.id,
           handle: (request) => {
             if (request.command.type === "known_acp_agents.status") {
-              // acp-omp is a known agent that is not overridden by custom
-              // config here, so the server probes host install status for it.
+              // acp-omp and acp-grok are known agents that are not overridden
+              // by custom config here, so the server probes host install
+              // status for them.
               return { ok: true, result: { agents: [] } };
             }
             if (request.command.type === "provider.list_models") {

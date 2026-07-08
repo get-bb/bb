@@ -1,4 +1,6 @@
 import {
+  acpPermissionCliSchema,
+  acpReasoningCliSchema,
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
@@ -32,7 +34,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 45 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 47 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -130,11 +132,46 @@ export const hostDaemonAcpLaunchSpecSchema = z
         modelCli.listArgs.length > 0 ? modelCli : undefined,
       )
       .optional(),
+    reasoningCli: acpReasoningCliSchema.optional(),
+    permissionCli: acpPermissionCliSchema.optional(),
   })
   .strict();
 export type HostDaemonAcpLaunchSpec = z.infer<
   typeof hostDaemonAcpLaunchSpecSchema
 >;
+
+export function normalizeHostDaemonAcpLaunchSpec(
+  spec: HostDaemonAcpLaunchSpec,
+): HostDaemonAcpLaunchSpec {
+  const {
+    displayName,
+    command,
+    args,
+    env,
+    cwd,
+    modelCli,
+    reasoningCli,
+    permissionCli,
+  } = spec;
+  const permissionCliHasMode =
+    permissionCli?.full !== undefined ||
+    permissionCli?.workspaceWrite !== undefined ||
+    permissionCli?.readonly !== undefined;
+  return {
+    displayName,
+    command,
+    args,
+    env,
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(modelCli !== undefined && modelCli.listArgs.length > 0
+      ? { modelCli }
+      : {}),
+    ...(reasoningCli !== undefined ? { reasoningCli } : {}),
+    ...(permissionCli !== undefined && permissionCliHasMode
+      ? { permissionCli }
+      : {}),
+  };
+}
 
 const hostDaemonThreadRuntimeContextSchema = z
   .object({

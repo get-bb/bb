@@ -1,0 +1,61 @@
+import { z } from "zod";
+import { reasoningLevelSchema } from "./shared-types.js";
+
+export const acpReasoningCliLevelValueOverridesSchema = z.partialRecord(
+  reasoningLevelSchema,
+  z.string().min(1),
+);
+
+export const acpReasoningCliSchema = z
+  .object({
+    flag: z.string().min(1),
+    supportedLevels: z.array(reasoningLevelSchema).min(1),
+    levelValues: acpReasoningCliLevelValueOverridesSchema.optional(),
+    defaultLevel: reasoningLevelSchema.optional(),
+  })
+  .strict()
+  .superRefine((reasoningCli, context) => {
+    const supportedLevels = new Set(reasoningCli.supportedLevels);
+    if (supportedLevels.size !== reasoningCli.supportedLevels.length) {
+      context.addIssue({
+        code: "custom",
+        message: "supportedLevels must not contain duplicates",
+        path: ["supportedLevels"],
+      });
+    }
+    if (
+      reasoningCli.defaultLevel !== undefined &&
+      !supportedLevels.has(reasoningCli.defaultLevel)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultLevel must be one of supportedLevels",
+        path: ["defaultLevel"],
+      });
+    }
+  });
+export type AcpReasoningCli = z.infer<typeof acpReasoningCliSchema>;
+
+const acpPermissionCliArgsSchema = z.array(z.string().min(1)).min(1);
+
+export const acpPermissionCliSchema = z
+  .object({
+    full: acpPermissionCliArgsSchema.optional(),
+    workspaceWrite: acpPermissionCliArgsSchema.optional(),
+    readonly: acpPermissionCliArgsSchema.optional(),
+    insertAfterArgs: z.number().int().min(0).optional(),
+  })
+  .strict()
+  .superRefine((permissionCli, context) => {
+    if (
+      permissionCli.full === undefined &&
+      permissionCli.workspaceWrite === undefined &&
+      permissionCli.readonly === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "permissionCli must configure at least one permission mode",
+      });
+    }
+  });
+export type AcpPermissionCli = z.infer<typeof acpPermissionCliSchema>;

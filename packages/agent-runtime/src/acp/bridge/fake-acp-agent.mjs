@@ -17,6 +17,8 @@
  *                            → fail session/set_config_option for model values
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
+ * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
+ *                              session creation requires authenticate first
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -31,6 +33,10 @@ const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
+const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
+  .split(",")
+  .map((method) => method.trim())
+  .filter(Boolean);
 const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
@@ -41,6 +47,7 @@ let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
+let authenticatedMethod = null;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -150,6 +157,18 @@ function configState() {
   return state;
 }
 
+function requireAuthenticated(message) {
+  if (authMethods.length === 0 || authenticatedMethod !== null) {
+    return true;
+  }
+  send({
+    jsonrpc: "2.0",
+    id: message.id,
+    error: { code: -32001, message: "Authentication required" },
+  });
+  return false;
+}
+
 function requestClient(method, params) {
   nextAgentRequestId += 1;
   const id = nextAgentRequestId;
@@ -239,6 +258,8 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
   } else if (text.includes("echo-selected-effort")) {
     notifyUpdate(messageChunk(`selected-effort:${selectedEffort}`));
+  } else if (text.includes("echo-auth-method")) {
+    notifyUpdate(messageChunk(`auth-method:${authenticatedMethod ?? "none"}`));
   } else if (text.includes("echo-electron-run-as-node")) {
     notifyUpdate(
       messageChunk(
@@ -284,10 +305,38 @@ async function handleMessage(message) {
             loadSession,
             promptCapabilities: { image: false },
           },
+          ...(authMethods.length > 0
+            ? { authMethods: authMethods.map((id) => ({ id })) }
+            : {}),
         },
       });
       return;
+    case "authenticate": {
+      const methodId = message.params?.methodId;
+      if (!authMethods.includes(methodId)) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32602, message: `unsupported auth: ${methodId}` },
+        });
+        return;
+      }
+      if (methodId === "xai.api_key" && !process.env.XAI_API_KEY) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32001, message: "XAI_API_KEY is required" },
+        });
+        return;
+      }
+      authenticatedMethod = methodId;
+      send({ jsonrpc: "2.0", id: message.id, result: null });
+      return;
+    }
     case "session/new":
+      if (!requireAuthenticated(message)) {
+        return;
+      }
       captureMcpServers(message);
       send({
         jsonrpc: "2.0",
@@ -299,6 +348,9 @@ async function handleMessage(message) {
       });
       return;
     case "session/load":
+      if (!requireAuthenticated(message)) {
+        return;
+      }
       if (loadSession) {
         captureMcpServers(message);
         send({ jsonrpc: "2.0", id: message.id, result: configState() });

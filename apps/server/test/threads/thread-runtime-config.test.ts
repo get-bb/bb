@@ -16,7 +16,6 @@ import {
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
 import {
-  buildAcpLaunchSpec,
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../src/services/threads/thread-commands.js";
@@ -79,28 +78,6 @@ async function writeWorkspaceAgentInstructions(
 }
 
 describe("thread runtime config", () => {
-  it("omits empty custom ACP modelCli from launch specs", () => {
-    expect(
-      buildAcpLaunchSpec({
-        id: "custom",
-        displayName: "Custom ACP",
-        command: "custom-agent",
-        args: [],
-        env: {},
-        modelCli: {
-          listArgs: [],
-          selectFlag: "--model",
-          primaryModels: ["model-a"],
-        },
-      }),
-    ).toEqual({
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: [],
-      env: {},
-    });
-  });
-
   it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
     await withTestHarness(
       {
@@ -209,88 +186,126 @@ describe("thread runtime config", () => {
     );
   });
 
-  it("attaches known ACP launch specs to thread start and turn submit commands", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-known-acp",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/known-acp",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "acp-opencode",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-opencode",
-        threadId: thread.id,
-      });
-      const execution = {
-        model: "opencode/default",
-        permissionMode: "workspace-write",
-        reasoningLevel: "medium",
-        serviceTier: "default",
-        source: "client/turn/requested",
-      } as const;
-      const expectedSpec = {
+  it.each([
+    {
+      expectedSpec: {
         displayName: "opencode",
         command: "opencode",
         args: ["acp"],
         env: {},
-      };
+      },
+      providerId: "acp-opencode",
+      requestedModel: "opencode/default",
+    },
+    {
+      expectedSpec: {
+        displayName: "Grok Build",
+        command: "grok",
+        args: ["agent", "stdio"],
+        env: {},
+        modelCli: {
+          listArgs: ["models"],
+          selectFlag: "--model",
+          primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
+        },
+        permissionCli: {
+          full: ["--always-approve"],
+          insertAfterArgs: 1,
+        },
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "medium", "high"],
+          levelValues: {
+            none: "low",
+            xhigh: "high",
+            ultracode: "high",
+            max: "high",
+          },
+          defaultLevel: "high",
+        },
+      },
+      providerId: "acp-grok",
+      requestedModel: "grok-4.5",
+    },
+  ])(
+    "attaches known ACP launch specs for $providerId to thread start and turn submit commands",
+    async ({ expectedSpec, providerId, requestedModel }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-runtime-known-${providerId}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/known-acp",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: `provider-${providerId}`,
+          threadId: thread.id,
+        });
+        const execution = {
+          model: requestedModel,
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        } as const;
 
-      const startCommand = await buildThreadStartCommand(harness.deps, {
-        environment,
-        execution,
-        fork: null,
-        permissionEscalation: "ask",
-        input: textInput("hello"),
-        projectId: project.id,
-        providerId: "acp-opencode",
-        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
-        syncGeneratedTitle: false,
-        thread,
-      });
-      expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
-      expect(startCommand.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: "update_environment_directory",
-        }),
-      ]);
-      expect(startCommand.instructions).toContain(
-        "update_environment_directory",
-      );
-
-      const submitCommand = await prepareTurnSubmitCommandPayload(
-        harness.deps,
-        {
+        const startCommand = await buildThreadStartCommand(harness.deps, {
           environment,
           execution,
+          fork: null,
           permissionEscalation: "ask",
-          input: textInput("continue"),
-          target: { mode: "start" },
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+          syncGeneratedTitle: false,
           thread,
-        },
-      );
-      expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-      expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
-      expect(submitCommand.resumeContext.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: "update_environment_directory",
-        }),
-      ]);
-      expect(submitCommand.resumeContext.instructions).toContain(
-        "update_environment_directory",
-      );
-    });
-  });
+        });
+        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(startCommand.instructions).toContain(
+          "update_environment_directory",
+        );
+
+        const submitCommand = await prepareTurnSubmitCommandPayload(
+          harness.deps,
+          {
+            environment,
+            execution,
+            permissionEscalation: "ask",
+            input: textInput("continue"),
+            target: { mode: "start" },
+            thread,
+          },
+        );
+        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(submitCommand.resumeContext.instructions).toContain(
+          "update_environment_directory",
+        );
+      });
+    },
+  );
 
   it.each([
     {

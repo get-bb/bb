@@ -1,35 +1,46 @@
 import { createHash } from "node:crypto";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonAcpLaunchSpec,
+} from "@bb/host-daemon-contract";
 
-function sortedRecord(record: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(record).sort(([left], [right]) =>
-      left.localeCompare(right),
-    ),
+type StableJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | StableJsonValue[]
+  | { [key: string]: StableJsonValue };
+
+function toStableJsonValue(value: unknown): StableJsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toStableJsonValue(item));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter((entry) => entry[1] !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entryValue]) => [key, toStableJsonValue(entryValue)]),
+    );
+  }
+  throw new Error(
+    `Cannot fingerprint ACP launch spec value of type ${typeof value}.`,
   );
 }
 
 export function fingerprintAcpLaunchSpec(
   spec: HostDaemonAcpLaunchSpec,
 ): string {
-  const stableSpec = {
-    displayName: spec.displayName,
-    command: spec.command,
-    args: spec.args,
-    env: sortedRecord(spec.env),
-    ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-    ...(spec.modelCli !== undefined && spec.modelCli.listArgs.length > 0
-      ? {
-          modelCli: {
-            listArgs: spec.modelCli.listArgs,
-            ...(spec.modelCli.selectFlag !== undefined
-              ? { selectFlag: spec.modelCli.selectFlag }
-              : {}),
-            primaryModels: spec.modelCli.primaryModels,
-          },
-        }
-      : {}),
-  };
+  const stableSpec = toStableJsonValue(normalizeHostDaemonAcpLaunchSpec(spec));
 
   return createHash("sha256")
     .update(JSON.stringify(stableSpec))

@@ -102,6 +102,57 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
+  it("keeps custom ACP reasoningCli config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          reasoningCli: {
+            flag: "--reasoning-effort",
+            supportedLevels: ["low", "medium", "high"],
+            levelValues: { max: "high" },
+            defaultLevel: "high",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        levelValues: { max: "high" },
+        defaultLevel: "high",
+      },
+    });
+  });
+
+  it("rejects custom ACP reasoningCli defaults outside supported levels", () => {
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          {
+            id: "my-agent",
+            displayName: "My Agent",
+            command: "my-agent",
+            reasoningCli: {
+              flag: "--reasoning-effort",
+              supportedLevels: ["low", "medium"],
+              defaultLevel: "high",
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects custom ACP agents with invalid ids, missing commands, collisions, and duplicates", () => {
     expect(
       bbAppManagedConfigSchema.safeParse({

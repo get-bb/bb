@@ -22,10 +22,11 @@ import {
   WorkspaceProvisionType,
   promptInputHasCommandMention,
 } from "@bb/domain";
-import type {
-  HostDaemonCommand,
-  HostDaemonAcpLaunchSpec,
-  TurnSubmitTarget,
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonAcpLaunchSpec,
+  type HostDaemonCommand,
+  type TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
@@ -163,20 +164,6 @@ interface DispatchArchivedThreadProviderArchiveCommandArgs {
   threadId: string;
 }
 
-interface AcpLaunchSpecAgent {
-  id?: string;
-  displayName: string;
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-  cwd?: string;
-  modelCli?: {
-    listArgs: string[];
-    selectFlag?: string;
-    primaryModels: string[];
-  };
-}
-
 function providerSupportsThreadRename(providerId: string): boolean {
   if (!isAgentProviderId(providerId)) {
     return true;
@@ -191,33 +178,6 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   }
 
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
-}
-
-export function buildAcpLaunchSpec(
-  agent: AcpLaunchSpecAgent,
-): HostDaemonAcpLaunchSpec {
-  const modelCli =
-    agent.modelCli !== undefined && agent.modelCli.listArgs.length > 0
-      ? agent.modelCli
-      : undefined;
-  return {
-    displayName: agent.displayName,
-    command: agent.command,
-    args: agent.args,
-    env: agent.env,
-    ...(agent.cwd !== undefined ? { cwd: agent.cwd } : {}),
-    ...(modelCli !== undefined
-      ? {
-          modelCli: {
-            listArgs: modelCli.listArgs,
-            primaryModels: modelCli.primaryModels,
-            ...(modelCli.selectFlag !== undefined
-              ? { selectFlag: modelCli.selectFlag }
-              : {}),
-          },
-        }
-      : {}),
-  };
 }
 
 function findCustomAcpAgentForProviderId(
@@ -238,10 +198,12 @@ function buildAcpLaunchSpecForProviderId(
     providerId,
   );
   if (agent) {
-    return buildAcpLaunchSpec(agent);
+    return normalizeHostDaemonAcpLaunchSpec(agent);
   }
   const knownAgent = findKnownAcpAgentForProviderId(providerId);
-  return knownAgent ? buildAcpLaunchSpec(knownAgent) : undefined;
+  return knownAgent
+    ? normalizeHostDaemonAcpLaunchSpec(knownAgent)
+    : undefined;
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(

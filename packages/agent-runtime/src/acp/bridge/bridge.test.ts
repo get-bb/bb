@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DynamicTool } from "@bb/domain";
+import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
@@ -96,9 +96,22 @@ interface StartThreadArgs {
         listCommand: { command: string; args: string[] };
         selectFlag: string;
         model: string;
-        reasoningLevel?: string;
+        reasoningLevel?: ReasoningLevel;
       }
-    | { modelId: string; reasoningLevel?: string };
+    | { modelId: string; reasoningLevel?: ReasoningLevel };
+  launchReasoningLevel?: ReasoningLevel;
+  reasoningCli?: {
+    flag: string;
+    supportedLevels: ReasoningLevel[];
+    levelValues?: Partial<Record<ReasoningLevel, string>>;
+    defaultLevel?: ReasoningLevel;
+  };
+  permissionCli?: {
+    full?: string[];
+    workspaceWrite?: string[];
+    readonly?: string[];
+    insertAfterArgs?: number;
+  };
 }
 
 async function startThread(args?: StartThreadArgs): Promise<{
@@ -115,6 +128,15 @@ async function startThread(args?: StartThreadArgs): Promise<{
       args: [FAKE_AGENT_PATH],
     },
     ...(args?.modelSelection ? { modelSelection: args.modelSelection } : {}),
+    ...(args?.launchReasoningLevel !== undefined
+      ? { launchReasoningLevel: args.launchReasoningLevel }
+      : {}),
+    ...(args?.reasoningCli !== undefined
+      ? { reasoningCli: args.reasoningCli }
+      : {}),
+    ...(args?.permissionCli !== undefined
+      ? { permissionCli: args.permissionCli }
+      : {}),
     permissionMode: args?.permissionMode ?? "full",
     permissionEscalation:
       args?.permissionEscalation === undefined
@@ -409,6 +431,76 @@ describe("acp bridge", () => {
     });
   });
 
+  it("advertises launch-time reasoning CLI levels on ACP-native models", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODELS_FIELD: "1" },
+      },
+      primaryModels: [],
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        defaultLevel: "high",
+      },
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          defaultReasoningEffort: "high",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low" },
+            { reasoningEffort: "medium" },
+            { reasoningEffort: "high" },
+          ],
+        },
+        {
+          id: "fake/strong",
+          defaultReasoningEffort: "high",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low" },
+            { reasoningEffort: "medium" },
+            { reasoningEffort: "high" },
+          ],
+        },
+      ],
+      selectedOnlyModels: [],
+    });
+  });
+
+  it("authenticates before ACP-native model discovery", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: {
+          FAKE_ACP_AUTH_METHODS: "cached_token",
+          FAKE_ACP_MODEL_CONFIG: "1",
+        },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [
+        {
+          id: "fake/default",
+          model: "fake/default",
+          displayName: "Fake Default",
+        },
+        {
+          id: "fake/strong",
+          model: "fake/strong",
+          displayName: "Fake Strong",
+        },
+      ],
+      selectedOnlyModels: [],
+    });
+  });
+
   it("probes per-model reasoning across large catalogs instead of falling back", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
@@ -655,6 +747,120 @@ describe("acp bridge", () => {
     ).toBe(true);
   });
 
+  it("launches ACP agents with a configured reasoning CLI flag", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      launchReasoningLevel: "xhigh",
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        levelValues: { xhigh: "high", max: "high" },
+        defaultLevel: "high",
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(
+      agentMessageTexts().some(
+        (text) => text === "argv:--reasoning-effort high",
+      ),
+    ).toBe(true);
+  });
+
+  it("launches full-mode ACP agents with configured permission CLI args", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: ["agent", "stdio"] },
+      permissionMode: "full",
+      permissionCli: {
+        full: ["--always-approve"],
+        insertAfterArgs: 1,
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(
+      agentMessageTexts().some(
+        (text) => text === "argv:agent --always-approve stdio",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not apply full-mode permission CLI args in workspace-write mode", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      permissionMode: "workspace-write",
+      permissionCli: {
+        full: ["--always-approve"],
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("argv:");
+  });
+
+  it("uses modelCli only for model selection when reasoningCli owns effort", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+    const listCommand = {
+      command: process.execPath,
+      args: ["-e", 'console.log("pinme - Pin Me")'],
+    };
+    await waitForResponse(
+      sendRequest("model/list", {
+        listCommand,
+        primaryModels: [],
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "medium", "high"],
+        },
+      }),
+    );
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      launchReasoningLevel: "max",
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        levelValues: { max: "high" },
+      },
+      modelSelection: {
+        listCommand,
+        selectFlag: "--model",
+        model: "pinme",
+        reasoningLevel: "max",
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(
+      agentMessageTexts().some(
+        (text) => text === "argv:--model pinme --reasoning-effort high",
+      ),
+    ).toBe(true);
+  });
+
   it("selects ACP-native models with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
@@ -817,6 +1023,59 @@ describe("acp bridge", () => {
     });
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(agentMessageTexts()).toContain("echo:hello there");
+  });
+
+  it("authenticates ACP sessions with cached tokens when advertised", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_AUTH_METHODS: "cached_token" },
+    });
+
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("auth-method:cached_token");
+  });
+
+  it("prefers xAI API-key auth when XAI_API_KEY is available", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token,xai.api_key",
+        XAI_API_KEY: "xai-test-key",
+      },
+    });
+
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("auth-method:xai.api_key");
+  });
+
+  it("lets agents surface their own error for unsupported advertised auth methods", async () => {
+    nextThreadSerial += 1;
+    const id = sendRequest("thread/start", {
+      threadId: `thread-${nextThreadSerial}`,
+      cwd: workspaceDir,
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+      },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_AUTH_METHODS: "agent.login" },
+    });
+    const response = await waitForResponse(id);
+
+    expect(response.error?.message).toContain("Authentication required");
+    expect(response.error?.message).not.toContain("does not support");
   });
 
   it("passes dynamic tools to ACP sessions as an MCP server", async () => {

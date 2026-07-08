@@ -1,24 +1,21 @@
 import type { AcpAgentProviderId } from "@bb/agent-providers";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonAcpLaunchSpec,
+} from "@bb/host-daemon-contract";
 
 /**
  * CLI model surface of the agent's launch binary: how to discover models and
  * how to pin one at launch. The bridge parses the listed ids into model
  * families with reasoning-effort variants (see `bridge/model-catalog.ts`).
  */
-export interface AcpAgentModelCli {
-  /** Args (on the agent binary) that print one `id - Display Name` line per model. */
-  listArgs: string[];
-  /** Global flag inserted before the agent args to pin a model at launch. */
-  selectFlag?: string;
-  /**
-   * Family ids (each family's default-variant raw id) shown in the picker by
-   * default; every other family lands in the collapsed "more models" pool.
-   * Names that stop matching simply drop out — when none match, the bridge
-   * falls back to showing everything.
-   */
-  primaryModels: string[];
-}
+export type AcpAgentModelCli = NonNullable<HostDaemonAcpLaunchSpec["modelCli"]>;
+export type AcpAgentReasoningCli = NonNullable<
+  HostDaemonAcpLaunchSpec["reasoningCli"]
+>;
+export type AcpAgentPermissionCli = NonNullable<
+  HostDaemonAcpLaunchSpec["permissionCli"]
+>;
 
 /**
  * Launch profile for a built-in ACP (Agent Client Protocol) provider. The
@@ -32,6 +29,8 @@ export interface AcpAgentProfile {
   env?: Record<string, string>;
   cwd?: string;
   modelCli?: AcpAgentModelCli;
+  reasoningCli?: AcpAgentReasoningCli;
+  permissionCli?: AcpAgentPermissionCli;
 }
 
 interface BuiltInAcpAgentProfile extends AcpAgentProfile {
@@ -79,26 +78,12 @@ export function acpProfileFromLaunchSpec(
   spec: HostDaemonAcpLaunchSpec,
   providerId: string,
 ): AcpAgentProfile {
-  const modelCli =
-    spec.modelCli !== undefined && spec.modelCli.listArgs.length > 0
-      ? spec.modelCli
-      : undefined;
+  const normalized = normalizeHostDaemonAcpLaunchSpec(spec);
+  const { command, args, env, ...profile } = normalized;
   return {
     providerId,
-    displayName: spec.displayName,
-    agentCommand: { command: spec.command, args: [...spec.args] },
-    ...(Object.keys(spec.env).length > 0 ? { env: { ...spec.env } } : {}),
-    ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-    ...(modelCli !== undefined
-      ? {
-          modelCli: {
-            listArgs: [...modelCli.listArgs],
-            primaryModels: [...modelCli.primaryModels],
-            ...(modelCli.selectFlag !== undefined
-              ? { selectFlag: modelCli.selectFlag }
-              : {}),
-          },
-        }
-      : {}),
+    ...profile,
+    agentCommand: { command, args },
+    ...(Object.keys(env).length > 0 ? { env } : {}),
   };
 }

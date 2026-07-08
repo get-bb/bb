@@ -519,6 +519,18 @@ export function createAcpProviderAdapter(
     };
   }
 
+  function buildReasoningCliParam(): Record<string, unknown> {
+    return profile.reasoningCli === undefined
+      ? {}
+      : { reasoningCli: profile.reasoningCli };
+  }
+
+  function buildPermissionCliParam(): Record<string, unknown> {
+    return profile.permissionCli === undefined
+      ? {}
+      : { permissionCli: profile.permissionCli };
+  }
+
   const turnState = createProviderTurnStateRegistry<AcpTurnState>({
     createState: () => ({
       assistantMessageCounter: 0,
@@ -1160,6 +1172,12 @@ export function createAcpProviderAdapter(
         args: [...profile.agentCommand.args],
       },
       ...buildModelSelectionParam(command.options),
+      ...buildReasoningCliParam(),
+      ...buildPermissionCliParam(),
+      ...(profile.reasoningCli !== undefined &&
+      command.options.reasoningLevel !== undefined
+        ? { launchReasoningLevel: command.options.reasoningLevel }
+        : {}),
       permissionMode: command.options.permissionMode,
       permissionEscalation: command.options.permissionEscalation,
       workspaceWriteRoots: [cwd, ...additionalWorkspaceWriteRoots],
@@ -1250,6 +1268,7 @@ export function createAcpProviderAdapter(
               ...(listCommand !== undefined ? { listCommand } : {}),
               ...(agent !== undefined ? { agent } : {}),
               primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
+              ...buildReasoningCliParam(),
             },
           };
         case "skills/configure":

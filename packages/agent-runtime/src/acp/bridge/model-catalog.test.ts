@@ -62,6 +62,28 @@ describe("acp model catalog", () => {
     ]);
   });
 
+  it("parses Grok's bulleted model list", () => {
+    expect(
+      parseAgentModelLines(
+        [
+          "You are logged in with grok.com.",
+          "",
+          "Default model: grok-4.5",
+          "",
+          "Available models:",
+          "  * grok-4.5 (default)",
+          "  - grok-composer-2.5-fast",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { id: "grok-4.5", displayName: "grok-4.5" },
+      {
+        id: "grok-composer-2.5-fast",
+        displayName: "grok-composer-2.5-fast",
+      },
+    ]);
+  });
+
   it("groups effort variants into families keyed by the default variant", () => {
     const catalog = catalogFromSample();
     const codex = catalog.models.find((m) => m.id === "gpt-5.3-codex");

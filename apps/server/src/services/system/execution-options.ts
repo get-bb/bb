@@ -17,11 +17,11 @@ import {
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
+import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
-import { buildAcpLaunchSpec } from "../threads/thread-commands.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -450,9 +450,15 @@ async function loadSystemProviderModels(
           type: "provider.list_models",
           providerId: provider.id,
           ...(customAcpAgent !== undefined
-            ? { acpLaunchSpec: buildAcpLaunchSpec(customAcpAgent) }
+            ? {
+                acpLaunchSpec:
+                  normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
+              }
             : knownAcpAgent !== undefined
-              ? { acpLaunchSpec: buildAcpLaunchSpec(knownAcpAgent) }
+              ? {
+                  acpLaunchSpec:
+                    normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
+                }
               : {}),
         },
       },

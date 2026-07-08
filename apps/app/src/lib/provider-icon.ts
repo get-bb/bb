@@ -7,6 +7,7 @@ import type { ComponentType } from "react";
 import { createElement } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
+import { GrokIcon } from "@/components/icons/GrokIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
@@ -31,6 +32,7 @@ const KNOWN_ACP_BRAND_ICONS: Record<
   string,
   ComponentType<{ className?: string }>
 > = {
+  grok: GrokIcon,
   opencode: OpencodeIcon,
   omp: OmpIcon,
 };

@@ -237,6 +237,60 @@ describe("provider registry", () => {
     });
   });
 
+  it("passes dynamic ACP reasoning CLI config to model listing and thread start", () => {
+    const reasoningCli: NonNullable<HostDaemonAcpLaunchSpec["reasoningCli"]> = {
+      flag: "--reasoning-effort",
+      supportedLevels: ["low", "medium", "high"],
+      levelValues: { max: "high" },
+      defaultLevel: "high",
+    };
+    const provider = createProviderForId("acp-custom", {
+      additionalWorkspaceWriteRoots: [],
+      acpLaunchSpec: {
+        displayName: "Custom ACP",
+        command: "custom-agent",
+        args: ["serve"],
+        env: {},
+        reasoningCli,
+      },
+    });
+
+    expect(provider.buildCommandPlan({ type: "model/list" })).toEqual({
+      kind: "request",
+      method: "model/list",
+      params: {
+        agent: { command: "custom-agent", args: ["serve"] },
+        primaryModels: [],
+        reasoningCli,
+      },
+    });
+
+    expect(
+      provider.buildCommandPlan({
+        type: "thread/start",
+        threadId: "thread-1",
+        cwd: "/workspace",
+        options: {
+          claudeCodeMockCliTraffic:
+            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+          reasoningLevel: "max",
+        },
+        instructionMode: "append",
+      }),
+    ).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        agent: { command: "custom-agent", args: ["serve"] },
+        launchReasoningLevel: "max",
+        reasoningCli,
+      },
+    });
+  });
+
   it.each<[string, HostDaemonAcpLaunchSpec["modelCli"]]>([
     ["no model cli", undefined],
     [

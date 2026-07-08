@@ -8,6 +8,8 @@
  */
 
 import {
+  acpPermissionCliSchema as acpBridgePermissionCliSchema,
+  acpReasoningCliSchema as acpBridgeReasoningCliSchema,
   dynamicToolSchema,
   permissionEscalationSchema,
   permissionModeSchema,
@@ -41,6 +43,14 @@ export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
  */
 export const ACP_DEFAULT_MODEL_ID = "acp-default";
 
+export type AcpBridgeReasoningCli = z.infer<
+  typeof acpBridgeReasoningCliSchema
+>;
+
+export type AcpBridgePermissionCli = z.infer<
+  typeof acpBridgePermissionCliSchema
+>;
+
 const acpBridgeModelListParamsSchema = z.object({
   /**
    * Command whose stdout lists one `id - Display Name` line per model. The
@@ -63,6 +73,7 @@ const acpBridgeModelListParamsSchema = z.object({
    * everything as primary.
    */
   primaryModels: z.array(z.string()).default([]),
+  reasoningCli: acpBridgeReasoningCliSchema.optional(),
 });
 
 /**
@@ -100,6 +111,17 @@ const acpBridgeSessionParamsSchema = z.object({
   cwd: z.string().min(1),
   agent: acpBridgeAgentCommandSchema,
   modelSelection: acpBridgeModelSelectionSchema.optional(),
+  /**
+   * Launch-time reasoning level for agents that take reasoning as a global CLI
+   * flag rather than an ACP `thought_level` config option.
+   */
+  launchReasoningLevel: reasoningLevelSchema.optional(),
+  reasoningCli: acpBridgeReasoningCliSchema.optional(),
+  /**
+   * Launch-time permission flags for agents whose own prompt policy must be
+   * selected by CLI args rather than by ACP permission responses.
+   */
+  permissionCli: acpBridgePermissionCliSchema.optional(),
   permissionMode: permissionModeSchema,
   permissionEscalation: permissionEscalationSchema.nullable(),
   /** Roots (workspace plus configured extras) where client fs writes are allowed. */

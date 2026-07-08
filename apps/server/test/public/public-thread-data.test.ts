@@ -2934,6 +2934,7 @@ describe("public thread data routes", () => {
           agents: [
             { id: "acp-opencode", executableName: "opencode" },
             { id: "acp-omp", executableName: "omp" },
+            { id: "acp-grok", executableName: "grok" },
           ],
         },
         { type: "provider.list_models", providerId: "codex" },
