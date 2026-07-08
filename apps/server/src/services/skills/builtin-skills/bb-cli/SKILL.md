@@ -35,6 +35,14 @@ message agents, or inspect projects, providers, and environments.
   server does not read the file.
 - Use `bb-app client ssh-target list --json` to inspect mappings.
 
+## App Settings
+
+- Settings → General has a macOS-only "Caffeinate" toggle. It is persisted
+  server-side and asks the local host daemon to run `/usr/bin/caffeinate -i -w
+  <daemon-pid>` while enabled, preventing system idle sleep while bb is running.
+  Turning it off stops that process. It is only shown when the reachable local
+  host daemon reports macOS.
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject

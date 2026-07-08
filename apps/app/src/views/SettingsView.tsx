@@ -7,6 +7,7 @@ import {
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
+  defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
   isValidElectronAccelerator,
@@ -50,6 +51,7 @@ import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSet
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import {
+  useUpdateGeneralSettings,
   useUpdateAppearance,
   useUpdateExperiments,
 } from "@/hooks/mutations/settings-mutations";
@@ -126,6 +128,12 @@ export interface RootComposeBehaviorSettingsControlProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
 }
 
+export interface CaffeinateSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
@@ -150,7 +158,11 @@ export interface AppearanceSettingsSectionProps {
 }
 
 export interface GeneralSettingsSectionProps {
+  caffeinateAvailable: boolean;
+  caffeinateDisabled: boolean;
+  caffeinateEnabled: boolean;
   desktopBrowserAvailable: boolean;
+  onCaffeinateChange: (enabled: boolean) => void;
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
@@ -453,6 +465,7 @@ const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL =
   "Markdown formatting in prompt box";
+const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -464,6 +477,26 @@ export function RootComposeBehaviorSettingsControl({
         checked={navigateToThreadAfterCreate}
         onCheckedChange={onNavigateToThreadAfterCreateChange}
         aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function CaffeinateSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: CaffeinateSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={CAFFEINATE_SETTING_LABEL}
+      description="Prevent system idle sleep while bb is running."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={CAFFEINATE_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -652,8 +685,12 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  caffeinateAvailable,
+  caffeinateDisabled,
+  caffeinateEnabled,
   desktopBrowserAvailable,
   navigateToThreadAfterCreate,
+  onCaffeinateChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
@@ -676,6 +713,14 @@ export function GeneralSettingsSection({
           enabled={richTextEditing}
           onEnabledChange={onRichTextEditingChange}
         />
+
+        {caffeinateAvailable ? (
+          <CaffeinateSettingsControl
+            disabled={caffeinateDisabled}
+            enabled={caffeinateEnabled}
+            onEnabledChange={onCaffeinateChange}
+          />
+        ) : null}
 
         {desktopBrowserAvailable ? (
           <InAppBrowserLinkSettingsControl
@@ -973,7 +1018,7 @@ export function SettingsView() {
   const navigate = useNavigate();
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
-  const { hasDaemon } = useHostDaemon();
+  const { hasDaemon, platform } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
   });
@@ -993,6 +1038,9 @@ export function SettingsView() {
   const [desktopShellAvailable] = useState(() => getBbDesktopInfo() !== null);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
+  const generalSettings =
+    systemConfigQuery.data?.generalSettings ?? defaultAppSettings;
+  const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
   const { activePluginId, activeSection, hasUnknownSection } =
@@ -1102,11 +1150,23 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          caffeinateAvailable={platform === "darwin"}
+          caffeinateDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
+          caffeinateEnabled={generalSettings.caffeinate}
           desktopBrowserAvailable={desktopBrowserAvailable}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
+          onCaffeinateChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              caffeinate: enabled,
+            })
+          }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}

@@ -109,6 +109,7 @@ export interface CommandRouterOptions {
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
+  caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
 }
@@ -299,6 +300,7 @@ export class CommandRouter {
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
+      caffeinateManager: this.options.caffeinateManager,
       threadStorageRootPath: this.options.threadStorageRootPath,
     };
   }

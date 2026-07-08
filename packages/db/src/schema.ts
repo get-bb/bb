@@ -153,6 +153,14 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const appSettings = sqliteTable("app_settings", {
+  id: text("id").primaryKey(),
+  caffeinate: integer("caffeinate", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 // Installed plugins registered by `bb plugin install`. Rows hold durable
 // registration facts only; live status (running/error/…) is plugin-loader
 // memory served via GET /api/v1/plugins.

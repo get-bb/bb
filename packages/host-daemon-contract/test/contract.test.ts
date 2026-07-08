@@ -216,6 +216,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.caffeinate": {
+    enabled: true,
+    supported: true,
+  },
   "host.list_branches": {
     branches: ["main"],
     branchesTruncated: false,
@@ -2446,7 +2450,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(47);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(48);
   });
 
   it("parses valid session open and event batch payloads", () => {

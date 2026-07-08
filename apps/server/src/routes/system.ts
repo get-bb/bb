@@ -1,7 +1,9 @@
 import {
+  getAppSettings,
   getExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
+  setAppSettings,
   setExperiments,
   setStoredAppearance,
 } from "@bb/db";
@@ -31,6 +33,7 @@ import {
   resolveCustomThemeCssPath,
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
+import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
 
 export function registerSystemRoutes(
   app: Hono,
@@ -46,6 +49,7 @@ export function registerSystemRoutes(
 
   function buildSystemConfigResponse() {
     return {
+      generalSettings: getAppSettings(deps.db),
       experiments: getExperiments(deps.db),
       appearance: resolveAppTheme(
         themeRoot,
@@ -61,6 +65,15 @@ export function registerSystemRoutes(
   }
 
   get(routes.config, (context) => context.json(buildSystemConfigResponse()));
+
+  put(routes.generalSettings, (context, payload) => {
+    setAppSettings(deps.db, payload);
+    deps.hub.notifySystem(["config-changed"]);
+    schedulePrimaryHostCaffeinateReconciliation(deps, {
+      reason: "settings-updated",
+    });
+    return context.json(getAppSettings(deps.db));
+  });
 
   put(routes.experiments, (context, payload) => {
     const previous = getExperiments(deps.db);

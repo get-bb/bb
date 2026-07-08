@@ -19,6 +19,10 @@ import {
   cancelEnvironmentProvision,
   provisionEnvironment,
 } from "./command-handlers/environment.js";
+import {
+  createCaffeinateManager,
+  type CaffeinateManager,
+} from "./command-handlers/caffeinate.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
@@ -58,6 +62,7 @@ import {
 } from "./workspace-resolution.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
+const defaultCaffeinateManager = createCaffeinateManager();
 
 export {
   CommandDispatchError,
@@ -91,6 +96,12 @@ function providerCliEnvFromShellEnv(
   shellEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
+}
+
+function getCaffeinateManager(
+  options: CommandDispatchOptions,
+): CaffeinateManager {
+  return options.caffeinateManager ?? defaultCaffeinateManager;
 }
 
 function handleProviderCliInstallEventLine(
@@ -318,6 +329,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
   "host.pick_folder": pickHostFolder,
+  "host.caffeinate": async (command, options) =>
+    getCaffeinateManager(options).setEnabled(command.enabled),
   "host.list_commands": listHostCommands,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,

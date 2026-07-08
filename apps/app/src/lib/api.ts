@@ -1,5 +1,6 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
+  AppSettings,
   AppTheme,
   AppThemeSelection,
   Environment,
@@ -1781,6 +1782,14 @@ export async function updateAppearance(
 ): Promise<AppTheme> {
   return request<AppTheme>(
     apiClient.settings.appearance.$put({ json: selection }),
+  );
+}
+
+export async function updateGeneralSettings(
+  settings: AppSettings,
+): Promise<AppSettings> {
+  return request<AppSettings>(
+    apiClient.settings.general.$put({ json: settings }),
   );
 }
 

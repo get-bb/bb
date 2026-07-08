@@ -3,6 +3,7 @@ import { hc, type ClientRequestOptions } from "hono/client";
 import type {
   AppTheme,
   AppThemeSelection,
+  AppSettings,
   Environment,
   Experiments,
   Host,
@@ -13,7 +14,11 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import { appThemeSelectionSchema, experimentsSchema } from "@bb/domain";
+import {
+  appSettingsSchema,
+  appThemeSelectionSchema,
+  experimentsSchema,
+} from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
@@ -991,6 +996,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemConfigResponse>(),
+    }),
+    generalSettings: defineRoute({
+      path: "/settings/general",
+      method: "put",
+      request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
+      response: jsonResponse<AppSettings>(),
     }),
     experiments: defineRoute({
       path: "/settings/experiments",
