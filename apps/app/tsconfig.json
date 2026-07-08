@@ -4,7 +4,6 @@
     "@bb/tsconfig/typecheck-overrides.json"
   ],
   "compilerOptions": {
-    "baseUrl": ".",
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "bundler",

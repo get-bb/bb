@@ -24,7 +24,8 @@
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   },
   "dependencies": {

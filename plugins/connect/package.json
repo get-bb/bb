@@ -35,7 +35,8 @@
     "@types/react": "^19.0.0",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "12.10.0",
-    "typescript": "^5.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
     "vaul": "^1.1.2",
     "vitest": "^4.1.1"
   }

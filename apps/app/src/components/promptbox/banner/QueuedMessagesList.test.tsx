@@ -310,6 +310,7 @@ describe("QueuedMessagesList", () => {
     class IntersectionObserverMock implements IntersectionObserver {
       readonly root = null;
       readonly rootMargin = "";
+      readonly scrollMargin = "";
       readonly thresholds = [0];
       readonly targets: Element[] = [];
 

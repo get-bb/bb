@@ -40,7 +40,8 @@
     "esbuild": "^0.28.0",
     "rimraf": "^6.1.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1",
     "yaml": "^2.8.2"
   }
