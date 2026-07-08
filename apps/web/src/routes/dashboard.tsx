@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,24 @@ import {
   getDashboard,
 } from "@/server/fns";
 import bbIcon from "../assets/bb-icon.png";
+import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
+
+interface DashboardSearch {
+  returnTo: string | null;
+}
+
+function validateDashboardSearch(search: Record<string, unknown>): DashboardSearch {
+  return {
+    returnTo: typeof search.returnTo === "string" ? search.returnTo : null,
+  };
+}
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [{ title: "bb connect" }],
     links: [{ rel: "stylesheet", href: appCss }],
   }),
+  validateSearch: validateDashboardSearch,
   loader: () => getDashboard(),
   component: Home,
 });
@@ -47,6 +59,13 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Home() {
   const data = Route.useLoaderData();
+  const search = Route.useSearch();
+
+  useEffect(() => {
+    if (!data.authed) return;
+    const returnTo = connectReturnTo(search.returnTo, window.location.origin);
+    if (returnTo) window.location.assign(returnTo);
+  }, [data.authed, search.returnTo]);
 
   if (!data.authed) {
     return (
@@ -61,7 +80,9 @@ function Home() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => void signInWithGithub()}>Continue with GitHub</Button>
+            <Button onClick={() => void signInWithGithub(search.returnTo)}>
+              Continue with GitHub
+            </Button>
           </CardContent>
         </Card>
       </Shell>
@@ -81,11 +102,12 @@ function Home() {
   );
 }
 
-async function signInWithGithub() {
+async function signInWithGithub(returnTo: string | null) {
+  const callbackURL = connectReturnTo(returnTo, window.location.origin) ?? DASHBOARD_PATH;
   const res = await fetch("/api/auth/sign-in/social", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ provider: "github", callbackURL: "/dashboard" }),
+    body: JSON.stringify({ provider: "github", callbackURL }),
   });
   const data = (await res.json().catch(() => ({}))) as { url?: string };
   if (data.url) window.location.href = data.url;

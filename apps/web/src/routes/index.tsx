@@ -33,6 +33,7 @@ import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
+import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { ClaudeIcon, CursorIcon, OpenAiIcon, OpencodeIcon, PiIcon } from "../landing/icons";
 import type { CtaPlacement } from "../landing/site";
 import {
@@ -1701,6 +1702,7 @@ function LandingPage() {
         </a>
         <div className="nav-links">
           <GitHubLink placement="nav">GitHub</GitHubLink>
+          <a href={DASHBOARD_PATH}>Sign in</a>
           <DownloadLink placement="nav" className="btn btn-primary btn-sm">
             Download for macOS
           </DownloadLink>

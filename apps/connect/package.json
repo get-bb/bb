@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "spike:origin": "tsx scripts/spike-origin.mts",
     "spike:client": "tsx scripts/spike-client.mts"

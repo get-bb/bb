@@ -25,8 +25,15 @@ function text(body: string, status: number): Response {
 
 // Matches the bb dashboard's visual language (Inter, --canvas/--ink tokens,
 // dark primary button, bb logo) since this plain worker can't bundle React.
-function signInPage(handle: string, appUrl: string): Response {
+export function dashboardSignInUrl(appUrl: string, returnTo: string): string {
+  const url = new URL("/dashboard", appUrl);
+  url.searchParams.set("returnTo", returnTo);
+  return url.toString();
+}
+
+function signInPage(handle: string, appUrl: string, returnTo: string): Response {
   const host = new URL(appUrl).host;
+  const signInUrl = dashboardSignInUrl(appUrl, returnTo);
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
      <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -61,7 +68,7 @@ function signInPage(handle: string, appUrl: string): Response {
        <div class="card">
          <h1>This is <code>${handle}</code>'s bb</h1>
          <p>Sign in with the account that owns this server to reach it.</p>
-         <a class="btn" href="${appUrl}">Sign in at ${host}</a>
+         <a class="btn" href="${signInUrl}">Sign in at ${host}</a>
        </div>
      </div></body></html>`,
     { status: 401, headers: { "content-type": "text/html; charset=utf-8" } },
@@ -130,9 +137,9 @@ export default {
     // Visitor request — require a session owned by this handle's account.
     const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
     const appUrl = `https://${env.BASE_DOMAIN}`;
-    if (!cookie) return signInPage(handle, appUrl);
+    if (!cookie) return signInPage(handle, appUrl, url.toString());
     const userId = await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db);
-    if (!userId) return signInPage(handle, appUrl);
+    if (!userId) return signInPage(handle, appUrl, url.toString());
     if (userId !== resolved.userId) return text("bb connect: not your server\n", 403);
 
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
