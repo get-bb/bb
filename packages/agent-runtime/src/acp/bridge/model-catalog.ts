@@ -148,21 +148,25 @@ const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
   Partial<Record<string, ReasoningLevel>>
 > = {
   none: "none",
+  minimal: "low",
   low: "low",
   medium: "medium",
   high: "high",
   xhigh: "xhigh",
+  ultracode: "ultracode",
+  max: "max",
 };
 
-const ACP_NATIVE_REASONING_VALUE_BY_LEVEL: Readonly<
-  Partial<Record<ReasoningLevel, string>>
+const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
+  Partial<Record<ReasoningLevel, readonly string[]>>
 > = {
-  none: "none",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  max: "xhigh",
+  none: ["none"],
+  low: ["low", "minimal"],
+  medium: ["medium"],
+  high: ["high"],
+  xhigh: ["xhigh"],
+  ultracode: ["ultracode", "xhigh"],
+  max: ["max", "xhigh"],
 };
 
 function acpNativeValueToReasoningLevel(
@@ -177,14 +181,14 @@ export function acpNativeReasoningLevelToValue(
   level: ReasoningLevel,
   thoughtLevelOption: AcpConfigOption,
 ): string | undefined {
-  const mappedValue = ACP_NATIVE_REASONING_VALUE_BY_LEVEL[level];
-  if (mappedValue === undefined) {
+  const candidateValues = ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL[level];
+  if (candidateValues === undefined) {
     return undefined;
   }
   const values = new Set(
     (thoughtLevelOption.options ?? []).map((o) => o.value),
   );
-  return values.has(mappedValue) ? mappedValue : undefined;
+  return candidateValues.find((value) => values.has(value));
 }
 
 export function buildAcpNativeReasoningSupport(
@@ -192,14 +196,29 @@ export function buildAcpNativeReasoningSupport(
 ): AcpNativeReasoningSupport {
   const options = thoughtLevelOption?.options ?? [];
   const seen = new Set<ReasoningLevel>();
+  const matchedValueByLevel = new Map<ReasoningLevel, string>();
   const supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"] =
     [];
   for (const option of options) {
     const level = acpNativeValueToReasoningLevel(option.value);
-    if (level === undefined || seen.has(level)) {
+    if (level === undefined) {
+      continue;
+    }
+    if (seen.has(level)) {
+      const previousValue = matchedValueByLevel.get(level);
+      if (previousValue !== level && option.value === level) {
+        const effort = supportedReasoningEfforts.find(
+          (candidate) => candidate.reasoningEffort === level,
+        );
+        if (effort) {
+          effort.description = option.name ?? option.value;
+        }
+        matchedValueByLevel.set(level, option.value);
+      }
       continue;
     }
     seen.add(level);
+    matchedValueByLevel.set(level, option.value);
     supportedReasoningEfforts.push({
       reasoningEffort: level,
       description: option.name ?? option.value,

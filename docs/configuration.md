@@ -126,7 +126,9 @@ Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
 be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
 and can be launched as `omp acp`. It also exposes `acp-grok` when Grok Build's
-`grok` CLI is on PATH and can be launched as `grok agent stdio`.
+`grok` CLI is on PATH and can be launched as `grok agent stdio`, and
+`acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
+`hermes acp`.
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
@@ -163,6 +165,11 @@ Example:
           "max": "high"
         },
         "defaultLevel": "high"
+      },
+      "nativeReasoning": {
+        "configId": "reasoning_effort",
+        "supportedLevels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "defaultLevel": "medium"
       }
     }
   ]
@@ -193,13 +200,22 @@ encoding effort in model ids. `flag` is inserted before the ACP agent args,
 picker default, and `levelValues` maps bb reasoning levels to the agent's CLI
 vocabulary when they differ.
 
+`nativeReasoning` is optional. Use it for ACP agents that accept reasoning via
+`session/set_config_option` but do not advertise a `thought_level` config option
+during model discovery. `configId` is the ACP config id to set,
+`supportedLevels` controls the picker levels, `defaultLevel` controls the
+picker default, and `levelValues` maps bb reasoning levels to the agent's ACP
+config vocabulary when they differ. Hermes Agent uses this with
+`configId: "reasoning_effort"`.
+
 For ACP-native agents, bb also uses a protocol `thought_level` config option
 when the selected model advertises one. The selected reasoning level is applied
 with `session/set_config_option` before the first prompt. Models without that
-option keep agent-managed reasoning. Cursor is intentionally separate: it
-encodes reasoning in model ids discovered through `modelCli`, not in an ACP
-`thought_level` option. Grok Build is also separate: it uses `reasoningCli` to
-launch `grok --reasoning-effort <level> agent stdio`.
+option keep agent-managed reasoning unless the provider launch spec declares
+`nativeReasoning`. Cursor is intentionally separate: it encodes reasoning in
+model ids discovered through `modelCli`, not in an ACP `thought_level` option.
+Grok Build is also separate: it uses `reasoningCli` to launch
+`grok --reasoning-effort <level> agent stdio`.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not

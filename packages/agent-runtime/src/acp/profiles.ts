@@ -13,6 +13,9 @@ export type AcpAgentModelCli = NonNullable<HostDaemonAcpLaunchSpec["modelCli"]>;
 export type AcpAgentReasoningCli = NonNullable<
   HostDaemonAcpLaunchSpec["reasoningCli"]
 >;
+export type AcpAgentNativeReasoning = NonNullable<
+  HostDaemonAcpLaunchSpec["nativeReasoning"]
+>;
 export type AcpAgentPermissionCli = NonNullable<
   HostDaemonAcpLaunchSpec["permissionCli"]
 >;
@@ -30,6 +33,7 @@ export interface AcpAgentProfile {
   cwd?: string;
   modelCli?: AcpAgentModelCli;
   reasoningCli?: AcpAgentReasoningCli;
+  nativeReasoning?: AcpAgentNativeReasoning;
   permissionCli?: AcpAgentPermissionCli;
 }
 

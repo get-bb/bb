@@ -63,6 +63,23 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
       defaultLevel: "high",
     },
   },
+  {
+    // Hermes Agent speaks ACP over stdio via `hermes acp`. The official ACP
+    // registry also supports a uvx launcher, but the installed CLI exposes the
+    // `hermes` command as the stable host-local signal.
+    // https://hermes-agent.nousresearch.com/docs/user-guide/features/acp
+    id: "acp-hermes-agent",
+    displayName: "Hermes Agent",
+    command: "hermes",
+    args: ["acp"],
+    env: {},
+    executableName: "hermes",
+    nativeReasoning: {
+      configId: "reasoning_effort",
+      supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+      defaultLevel: "medium",
+    },
+  },
 ];
 
 export function listKnownAcpAgentExecutableQueries(): KnownAcpAgentExecutableQuery[] {

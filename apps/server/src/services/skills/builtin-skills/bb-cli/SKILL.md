@@ -76,8 +76,9 @@ message agents, or inspect projects, providers, and environments.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 - Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode`, `omp`, or Grok Build's `grok` CLI on PATH
-  appears as provider `acp-opencode`, `acp-omp`, or `acp-grok`.
+  host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
+  `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
+  `acp-grok`, or `acp-hermes-agent`.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known
@@ -85,7 +86,8 @@ message agents, or inspect projects, providers, and environments.
   has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
   or restart bb. The configured command is local code execution and only works
   with a co-located daemon. Custom ACP agents can use `modelCli` for CLI model
-  listing/selection and `reasoningCli` for launch-time reasoning flags.
+  listing/selection, `reasoningCli` for launch-time reasoning flags, and
+  `nativeReasoning` for ACP `session/set_config_option` reasoning.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files

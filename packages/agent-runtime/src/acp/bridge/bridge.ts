@@ -52,6 +52,7 @@ import {
   acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
+  type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
   type AcpBridgeThreadResumeParams,
@@ -393,6 +394,31 @@ function reasoningSupportFromCli(
   };
 }
 
+function reasoningSupportFromNativeHint(
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+):
+  | Pick<
+      AvailableModel,
+      "supportedReasoningEfforts" | "defaultReasoningEffort"
+    >
+  | undefined {
+  if (nativeReasoning === undefined) {
+    return undefined;
+  }
+  const supportedLevels = nativeReasoning.supportedLevels;
+  const defaultReasoningEffort =
+    nativeReasoning.defaultLevel !== undefined &&
+    supportedLevels.includes(nativeReasoning.defaultLevel)
+      ? nativeReasoning.defaultLevel
+      : supportedLevels.includes("medium")
+        ? "medium"
+        : supportedLevels[0];
+  return {
+    supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
+    defaultReasoningEffort,
+  };
+}
+
 function applyReasoningCliToModel(
   model: AvailableModel,
   reasoningCli: AcpBridgeReasoningCli | undefined,
@@ -406,11 +432,48 @@ function applyReasoningCliToModel(
       };
 }
 
-function applyReasoningCliToModels(
+function modelHasOnlyAgentManagedReasoning(model: AvailableModel): boolean {
+  return (
+    model.supportedReasoningEfforts.length === 1 &&
+    model.supportedReasoningEfforts[0]?.reasoningEffort === "medium" &&
+    model.defaultReasoningEffort === "medium"
+  );
+}
+
+function applyNativeReasoningHintToModel(
+  model: AvailableModel,
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+): AvailableModel {
+  const reasoningSupport = reasoningSupportFromNativeHint(nativeReasoning);
+  return reasoningSupport === undefined ||
+    !modelHasOnlyAgentManagedReasoning(model)
+    ? model
+    : {
+        ...model,
+        ...reasoningSupport,
+      };
+}
+
+function applyConfiguredReasoningToModel(
+  model: AvailableModel,
+  args: {
+    reasoningCli: AcpBridgeReasoningCli | undefined;
+    nativeReasoning: AcpBridgeNativeReasoning | undefined;
+  },
+): AvailableModel {
+  return args.reasoningCli !== undefined
+    ? applyReasoningCliToModel(model, args.reasoningCli)
+    : applyNativeReasoningHintToModel(model, args.nativeReasoning);
+}
+
+function applyConfiguredReasoningToModels(
   models: readonly AvailableModel[],
-  reasoningCli: AcpBridgeReasoningCli | undefined,
+  args: {
+    reasoningCli: AcpBridgeReasoningCli | undefined;
+    nativeReasoning: AcpBridgeNativeReasoning | undefined;
+  },
 ): AvailableModel[] {
-  return models.map((model) => applyReasoningCliToModel(model, reasoningCli));
+  return models.map((model) => applyConfiguredReasoningToModel(model, args));
 }
 
 function resolveReasoningCliValue(args: {
@@ -424,6 +487,56 @@ function resolveReasoningCliValue(args: {
   return args.reasoningCli.supportedLevels.includes(args.reasoningLevel)
     ? args.reasoningLevel
     : undefined;
+}
+
+function nativeReasoningLevelToValue(args: {
+  nativeReasoning: AcpBridgeNativeReasoning;
+  reasoningLevel: ReasoningLevel;
+}): string | undefined {
+  const override =
+    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  if (override !== undefined) {
+    return override;
+  }
+  return args.nativeReasoning.supportedLevels.includes(args.reasoningLevel)
+    ? args.reasoningLevel
+    : undefined;
+}
+
+function nativeReasoningToThoughtLevelOption(
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+): AcpConfigOption | undefined {
+  if (nativeReasoning === undefined) {
+    return undefined;
+  }
+  const options = nativeReasoning.supportedLevels.flatMap((level) => {
+    const value = nativeReasoningLevelToValue({
+      nativeReasoning,
+      reasoningLevel: level,
+    });
+    return value === undefined
+      ? []
+      : [
+          {
+            value,
+            name: value,
+          },
+        ];
+  });
+  const currentValue =
+    nativeReasoning.defaultLevel === undefined
+      ? undefined
+      : nativeReasoningLevelToValue({
+          nativeReasoning,
+          reasoningLevel: nativeReasoning.defaultLevel,
+        });
+  return {
+    id: nativeReasoning.configId,
+    category: "thought_level",
+    type: "select",
+    ...(currentValue !== undefined ? { currentValue } : {}),
+    options,
+  };
 }
 
 function permissionCliArgsForMode(
@@ -882,6 +995,7 @@ async function selectAcpNativeModel(args: {
   configOptions: readonly AcpConfigOption[] | undefined;
   models: AcpSessionModels | undefined;
   modelSelection: AcpBridgeThreadStartParams["modelSelection"];
+  nativeReasoning: AcpBridgeNativeReasoning | undefined;
 }): Promise<void> {
   const selection = args.modelSelection;
   if (!selection || !("modelId" in selection)) {
@@ -938,6 +1052,7 @@ async function selectAcpNativeModel(args: {
     sessionId: args.sessionId,
     configOptions,
     modelSelection: selection,
+    nativeReasoning: args.nativeReasoning,
   });
 }
 
@@ -949,14 +1064,15 @@ async function selectAcpNativeReasoning(args: {
     AcpBridgeThreadStartParams["modelSelection"],
     { modelId: string }
   >;
+  nativeReasoning: AcpBridgeNativeReasoning | undefined;
 }): Promise<void> {
   const reasoningLevel = args.modelSelection.reasoningLevel;
   if (reasoningLevel === undefined) {
     return;
   }
-  const thoughtLevelOption = findAcpThoughtLevelConfigOption(
-    args.configOptions,
-  );
+  const thoughtLevelOption =
+    findAcpThoughtLevelConfigOption(args.configOptions) ??
+    nativeReasoningToThoughtLevelOption(args.nativeReasoning);
   if (!thoughtLevelOption) {
     return;
   }
@@ -1457,6 +1573,7 @@ async function startAgentSession(
         configOptions: newSession.configOptions,
         models: newSession.models,
         modelSelection: params.modelSelection,
+        nativeReasoning: params.nativeReasoning,
       });
       if (request.kind === "resume") {
         sendNotification(ACP_WARNING_METHOD, {
@@ -1471,6 +1588,7 @@ async function startAgentSession(
         configOptions: loadedConfigOptions,
         models: loadedModels,
         modelSelection: params.modelSelection,
+        nativeReasoning: params.nativeReasoning,
       });
     }
 
@@ -1655,10 +1773,10 @@ async function handleRequest(
         sendResult(
           request.id,
           splitPrimaryModels(
-            applyReasoningCliToModels(
-              catalog.models,
-              request.params.reasoningCli,
-            ),
+            applyConfiguredReasoningToModels(catalog.models, {
+              reasoningCli: request.params.reasoningCli,
+              nativeReasoning: request.params.nativeReasoning,
+            }),
             request.params.primaryModels,
           ),
         );
@@ -1670,20 +1788,20 @@ async function handleRequest(
           : null;
       if (sessionDiscoveredModels) {
         sendResult(request.id, {
-          models: applyReasoningCliToModels(
-            sessionDiscoveredModels,
-            request.params.reasoningCli,
-          ),
+          models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
+            reasoningCli: request.params.reasoningCli,
+            nativeReasoning: request.params.nativeReasoning,
+          }),
           selectedOnlyModels: [],
         });
         return;
       }
       sendResult(request.id, {
         models: [
-          applyReasoningCliToModel(
-            ACP_DEFAULT_MODEL,
-            request.params.reasoningCli,
-          ),
+          applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
+            reasoningCli: request.params.reasoningCli,
+            nativeReasoning: request.params.nativeReasoning,
+          }),
         ],
         selectedOnlyModels: [],
       });

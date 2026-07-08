@@ -343,6 +343,82 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("includes installed Hermes Agent ACP and sends its launch spec when loading models", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-hermes-installed",
+      });
+      const catalogModel = availableModelFixture({
+        model: "openrouter:openai/gpt-5.5",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-hermes-agent",
+                  executablePath:
+                    agent.id === "acp-hermes-agent"
+                      ? "/Users/example/.local/bin/hermes"
+                      : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-hermes-agent",
+      });
+
+      expect(response.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "acp-hermes-agent",
+            displayName: "Hermes Agent",
+            available: true,
+          }),
+        ]),
+      );
+      expect(response.models).toEqual([catalogModel]);
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status", "provider.list_models"],
+      );
+      expect(responder.requests[1].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-hermes-agent",
+        acpLaunchSpec: {
+          displayName: "Hermes Agent",
+          command: "hermes",
+          args: ["acp"],
+          env: {},
+          nativeReasoning: {
+            configId: "reasoning_effort",
+            supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+            defaultLevel: "medium",
+          },
+        },
+      });
+    });
+  });
+
   it("omits known ACP agents that the host reports missing", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -577,9 +653,9 @@ describe("resolveSystemExecutionOptions", () => {
           sessionId: session.id,
           handle: (request) => {
             if (request.command.type === "known_acp_agents.status") {
-              // acp-omp and acp-grok are known agents that are not overridden
-              // by custom config here, so the server probes host install
-              // status for them.
+              // acp-omp, acp-grok, and acp-hermes-agent are known agents that
+              // are not overridden by custom config here, so the server probes
+              // host install status for them.
               return { ok: true, result: { agents: [] } };
             }
             if (request.command.type === "provider.list_models") {

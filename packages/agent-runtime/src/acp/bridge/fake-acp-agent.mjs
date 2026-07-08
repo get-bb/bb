@@ -13,6 +13,9 @@
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
+ * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
+ *                            → accept reasoning_effort config updates without
+ *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
@@ -31,6 +34,8 @@ const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const acceptNativeReasoning =
+  process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
@@ -415,6 +420,19 @@ async function handleMessage(message) {
           typeof value !== "string" ||
           !efforts?.includes(value)
         ) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `effort not found: ${value}` },
+          });
+          return;
+        }
+        selectedEffort = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "reasoning_effort" && acceptNativeReasoning) {
+        if (typeof value !== "string") {
           send({
             jsonrpc: "2.0",
             id: message.id,

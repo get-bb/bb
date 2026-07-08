@@ -59,6 +59,11 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     },
     defaultLevel: "high",
   },
+  nativeReasoning: {
+    configId: "reasoning_effort",
+    supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+    defaultLevel: "medium",
+  },
   permissionCli: {
     full: ["--always-approve"],
     insertAfterArgs: 1,
@@ -599,6 +604,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
     "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning":
+    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
+    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -629,6 +640,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
     "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning":
+    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
+    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -679,6 +696,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.levelValues":
     "resume-context ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning":
+    "resume-context ACP launch specs may omit nativeReasoning when the agent advertises thought_level itself or does not support bb-managed ACP reasoning.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
+    "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":

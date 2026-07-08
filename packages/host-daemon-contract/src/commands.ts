@@ -1,5 +1,6 @@
 import {
   acpPermissionCliSchema,
+  acpNativeReasoningSchema,
   acpReasoningCliSchema,
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
@@ -133,6 +134,7 @@ export const hostDaemonAcpLaunchSpecSchema = z
       )
       .optional(),
     reasoningCli: acpReasoningCliSchema.optional(),
+    nativeReasoning: acpNativeReasoningSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
   })
   .strict();
@@ -151,6 +153,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     cwd,
     modelCli,
     reasoningCli,
+    nativeReasoning,
     permissionCli,
   } = spec;
   const permissionCliHasMode =
@@ -167,6 +170,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
       ? { modelCli }
       : {}),
     ...(reasoningCli !== undefined ? { reasoningCli } : {}),
+    ...(nativeReasoning !== undefined ? { nativeReasoning } : {}),
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),

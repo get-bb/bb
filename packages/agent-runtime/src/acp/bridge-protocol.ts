@@ -9,6 +9,7 @@
 
 import {
   acpPermissionCliSchema as acpBridgePermissionCliSchema,
+  acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
   dynamicToolSchema,
   permissionEscalationSchema,
@@ -47,6 +48,10 @@ export type AcpBridgeReasoningCli = z.infer<
   typeof acpBridgeReasoningCliSchema
 >;
 
+export type AcpBridgeNativeReasoning = z.infer<
+  typeof acpBridgeNativeReasoningSchema
+>;
+
 export type AcpBridgePermissionCli = z.infer<
   typeof acpBridgePermissionCliSchema
 >;
@@ -74,6 +79,7 @@ const acpBridgeModelListParamsSchema = z.object({
    */
   primaryModels: z.array(z.string()).default([]),
   reasoningCli: acpBridgeReasoningCliSchema.optional(),
+  nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
 });
 
 /**
@@ -117,6 +123,7 @@ const acpBridgeSessionParamsSchema = z.object({
    */
   launchReasoningLevel: reasoningLevelSchema.optional(),
   reasoningCli: acpBridgeReasoningCliSchema.optional(),
+  nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
   /**
    * Launch-time permission flags for agents whose own prompt policy must be
    * selected by CLI args rather than by ACP permission responses.

@@ -525,6 +525,12 @@ export function createAcpProviderAdapter(
       : { reasoningCli: profile.reasoningCli };
   }
 
+  function buildNativeReasoningParam(): Record<string, unknown> {
+    return profile.nativeReasoning === undefined
+      ? {}
+      : { nativeReasoning: profile.nativeReasoning };
+  }
+
   function buildPermissionCliParam(): Record<string, unknown> {
     return profile.permissionCli === undefined
       ? {}
@@ -1173,6 +1179,7 @@ export function createAcpProviderAdapter(
       },
       ...buildModelSelectionParam(command.options),
       ...buildReasoningCliParam(),
+      ...buildNativeReasoningParam(),
       ...buildPermissionCliParam(),
       ...(profile.reasoningCli !== undefined &&
       command.options.reasoningLevel !== undefined
@@ -1269,6 +1276,7 @@ export function createAcpProviderAdapter(
               ...(agent !== undefined ? { agent } : {}),
               primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
               ...buildReasoningCliParam(),
+              ...buildNativeReasoningParam(),
             },
           };
         case "skills/configure":

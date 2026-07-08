@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { GrokIcon } from "@/components/icons/GrokIcon";
+import { HermesAgentIcon } from "@/components/icons/HermesAgentIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
@@ -33,6 +34,7 @@ const KNOWN_ACP_BRAND_ICONS: Record<
   ComponentType<{ className?: string }>
 > = {
   grok: GrokIcon,
+  "hermes-agent": HermesAgentIcon,
   opencode: OpencodeIcon,
   omp: OmpIcon,
 };

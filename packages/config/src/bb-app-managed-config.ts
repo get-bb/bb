@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { agentProviderIdSchema, isAgentProviderId } from "@bb/agent-providers";
-import { acpReasoningCliSchema } from "@bb/domain";
+import { acpNativeReasoningSchema, acpReasoningCliSchema } from "@bb/domain";
 import { z } from "zod";
 
 export const BB_APP_CONFIG_FILE_NAME = "config.json";
@@ -86,6 +86,7 @@ export const customAcpAgentSchema = z
     cwd: z.string().min(1).optional(),
     modelCli: customAcpAgentModelCliSchema.optional(),
     reasoningCli: acpReasoningCliSchema.optional(),
+    nativeReasoning: acpNativeReasoningSchema.optional(),
   })
   .strict()
   .superRefine((agent, context) => {

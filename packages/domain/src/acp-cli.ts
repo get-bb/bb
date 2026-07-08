@@ -36,6 +36,36 @@ export const acpReasoningCliSchema = z
   });
 export type AcpReasoningCli = z.infer<typeof acpReasoningCliSchema>;
 
+export const acpNativeReasoningSchema = z
+  .object({
+    configId: z.string().min(1),
+    supportedLevels: z.array(reasoningLevelSchema).min(1),
+    levelValues: acpReasoningCliLevelValueOverridesSchema.optional(),
+    defaultLevel: reasoningLevelSchema.optional(),
+  })
+  .strict()
+  .superRefine((nativeReasoning, context) => {
+    const supportedLevels = new Set(nativeReasoning.supportedLevels);
+    if (supportedLevels.size !== nativeReasoning.supportedLevels.length) {
+      context.addIssue({
+        code: "custom",
+        message: "supportedLevels must not contain duplicates",
+        path: ["supportedLevels"],
+      });
+    }
+    if (
+      nativeReasoning.defaultLevel !== undefined &&
+      !supportedLevels.has(nativeReasoning.defaultLevel)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultLevel must be one of supportedLevels",
+        path: ["defaultLevel"],
+      });
+    }
+  });
+export type AcpNativeReasoning = z.infer<typeof acpNativeReasoningSchema>;
+
 const acpPermissionCliArgsSchema = z.array(z.string().min(1)).min(1);
 
 export const acpPermissionCliSchema = z

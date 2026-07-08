@@ -2935,6 +2935,7 @@ describe("public thread data routes", () => {
             { id: "acp-opencode", executableName: "opencode" },
             { id: "acp-omp", executableName: "omp" },
             { id: "acp-grok", executableName: "grok" },
+            { id: "acp-hermes-agent", executableName: "hermes" },
           ],
         },
         { type: "provider.list_models", providerId: "codex" },

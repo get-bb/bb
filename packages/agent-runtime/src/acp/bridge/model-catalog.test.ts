@@ -458,6 +458,62 @@ describe("acp configOptions model catalog", () => {
     ).toBeUndefined();
   });
 
+  it("maps Hermes-style ACP reasoning values", () => {
+    const thoughtLevel = {
+      id: "reasoning_effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "max",
+      options: [
+        { value: "none" },
+        { value: "minimal", name: "Minimal" },
+        { value: "low", name: "Low" },
+        { value: "medium" },
+        { value: "high" },
+        { value: "xhigh" },
+        { value: "max" },
+      ],
+    };
+
+    const support = buildAcpNativeReasoningSupport(thoughtLevel);
+    expect(support.defaultReasoningEffort).toBe("max");
+    expect(
+      support.supportedReasoningEfforts.map((e) => [
+        e.reasoningEffort,
+        e.description,
+      ]),
+    ).toEqual([
+      ["none", "none"],
+      ["low", "Low"],
+      ["medium", "medium"],
+      ["high", "high"],
+      ["xhigh", "xhigh"],
+      ["max", "max"],
+    ]);
+    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe("low");
+    expect(acpNativeReasoningLevelToValue("max", thoughtLevel)).toBe("max");
+  });
+
+  it("uses Hermes minimal as bb low when ACP does not advertise low", () => {
+    const thoughtLevel = {
+      id: "reasoning_effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "minimal",
+      options: [
+        { value: "none" },
+        { value: "minimal", name: "Minimal" },
+        { value: "medium" },
+      ],
+    };
+
+    const support = buildAcpNativeReasoningSupport(thoughtLevel);
+    expect(support.defaultReasoningEffort).toBe("low");
+    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe(
+      "minimal",
+    );
+  });
+
   it("falls back to the first model when currentValue is absent or stale", () => {
     expect(
       buildModelCatalogFromConfigOptions({

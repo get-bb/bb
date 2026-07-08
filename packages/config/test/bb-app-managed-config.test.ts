@@ -134,6 +134,36 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
+  it("keeps custom ACP nativeReasoning config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          nativeReasoning: {
+            configId: "reasoning_effort",
+            supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+            defaultLevel: "medium",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      nativeReasoning: {
+        configId: "reasoning_effort",
+        supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+        defaultLevel: "medium",
+      },
+    });
+  });
+
   it("rejects custom ACP reasoningCli defaults outside supported levels", () => {
     expect(
       bbAppManagedConfigSchema.safeParse({

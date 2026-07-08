@@ -106,6 +106,12 @@ interface StartThreadArgs {
     levelValues?: Partial<Record<ReasoningLevel, string>>;
     defaultLevel?: ReasoningLevel;
   };
+  nativeReasoning?: {
+    configId: string;
+    supportedLevels: ReasoningLevel[];
+    levelValues?: Partial<Record<ReasoningLevel, string>>;
+    defaultLevel?: ReasoningLevel;
+  };
   permissionCli?: {
     full?: string[];
     workspaceWrite?: string[];
@@ -133,6 +139,9 @@ async function startThread(args?: StartThreadArgs): Promise<{
       : {}),
     ...(args?.reasoningCli !== undefined
       ? { reasoningCli: args.reasoningCli }
+      : {}),
+    ...(args?.nativeReasoning !== undefined
+      ? { nativeReasoning: args.nativeReasoning }
       : {}),
     ...(args?.permissionCli !== undefined
       ? { permissionCli: args.permissionCli }
@@ -927,6 +936,29 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-effort:xhigh");
   });
 
+  it("applies configured native reasoning when the ACP agent does not advertise thought_level", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_ACCEPT_NATIVE_REASONING: "1",
+      },
+      modelSelection: { modelId: "fake/strong", reasoningLevel: "max" },
+      nativeReasoning: {
+        configId: "reasoning_effort",
+        supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+        defaultLevel: "medium",
+      },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-effort:max");
+  });
+
   it("keeps ACP-native models without thought_level at the single managed level", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
@@ -950,6 +982,43 @@ describe("acp bridge", () => {
       models.find((model) => model.id === "fake/strong")
         ?.supportedReasoningEfforts,
     ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
+  });
+
+  it("shows configured native reasoning for ACP-native models without thought_level", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      },
+      primaryModels: [],
+      nativeReasoning: {
+        configId: "reasoning_effort",
+        supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+        defaultLevel: "medium",
+      },
+    });
+
+    const response = await waitForResponse(modelListId);
+    const models = (
+      response.result as {
+        models: {
+          id: string;
+          supportedReasoningEfforts: { reasoningEffort: string }[];
+          defaultReasoningEffort: string;
+        }[];
+      }
+    ).models;
+    const strong = models.find((model) => model.id === "fake/strong");
+    expect(strong?.defaultReasoningEffort).toBe("medium");
+    expect(strong?.supportedReasoningEfforts).toEqual([
+      { reasoningEffort: "none", description: "No extended thinking" },
+      { reasoningEffort: "low", description: "Low reasoning effort" },
+      { reasoningEffort: "medium", description: "Medium reasoning effort" },
+      { reasoningEffort: "high", description: "High reasoning effort" },
+      { reasoningEffort: "xhigh", description: "Extra high reasoning effort" },
+      { reasoningEffort: "max", description: "Maximum reasoning effort" },
+    ]);
   });
 
   it("does not leak bridge-only Electron env to the spawned agent", async () => {

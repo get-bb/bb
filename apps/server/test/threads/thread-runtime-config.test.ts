@@ -227,6 +227,21 @@ describe("thread runtime config", () => {
       providerId: "acp-grok",
       requestedModel: "grok-4.5",
     },
+    {
+      expectedSpec: {
+        displayName: "Hermes Agent",
+        command: "hermes",
+        args: ["acp"],
+        env: {},
+        nativeReasoning: {
+          configId: "reasoning_effort",
+          supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+          defaultLevel: "medium",
+        },
+      },
+      providerId: "acp-hermes-agent",
+      requestedModel: "acp-default",
+    },
   ])(
     "attaches known ACP launch specs for $providerId to thread start and turn submit commands",
     async ({ expectedSpec, providerId, requestedModel }) => {
