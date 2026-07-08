@@ -376,6 +376,31 @@ describe("NotificationHub", () => {
     expect(otherHostSocket.messages).toHaveLength(0);
   });
 
+  // The host-connected broadcast must fire at daemon socket registration —
+  // the moment /hosts starts reading "connected" — not earlier (e.g. at
+  // session open). A client that refetches on an earlier broadcast captures
+  // "disconnected" as fresh and never heals (the desktop cold-start
+  // "Host is offline" bug).
+  it("broadcasts host-connected when a daemon registers", () => {
+    const hub = new NotificationHub();
+    const clientSocket = createMockHubSocket();
+    const daemonSocket = createMockHubSocket();
+
+    hub.subscribe(clientSocket, { kind: "host-list" });
+    hub.registerDaemon("session-1", "host-1", daemonSocket);
+
+    expect(
+      clientSocket.messages.map((message) => JSON.parse(message)),
+    ).toEqual([
+      {
+        type: "changed",
+        entity: "host",
+        id: "host-1",
+        changes: ["host-connected"],
+      },
+    ]);
+  });
+
   // One broadcast per entity carrying every declared change kind must clear
   // the outgoing schema gate intact. The per-kind delivery behavior is the
   // same code path; what this pins is that no declared kind is rejected.
