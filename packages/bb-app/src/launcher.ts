@@ -2235,15 +2235,16 @@ async function createHostDaemonJoinEnv(
 async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
-  const childProcess = spawn(
-    join(args.context.daemonBundleDir, "bb"),
-    args.args,
-    {
-      cwd: process.cwd(),
-      env: createCliEnv({ context: args.context, env: args.env }),
-      stdio: "inherit",
-    },
-  );
+  // Prefer the daemon-injected absolute CLI when present so packaged `bb`
+  // trampolines match the running host daemon (dev workspace or this install).
+  const bbCliOverride = trimToUndefined(args.env.BB_CLI);
+  const cliPath =
+    bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
+  const childProcess = spawn(cliPath, args.args, {
+    cwd: process.cwd(),
+    env: createCliEnv({ context: args.context, env: args.env }),
+    stdio: "inherit",
+  });
 
   return toExitCode(await waitForProcessExit(childProcess));
 }

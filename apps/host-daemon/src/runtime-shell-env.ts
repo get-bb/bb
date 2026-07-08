@@ -12,6 +12,12 @@ interface ResolveLocalBbExecutableDirectoryOptions {
 
 export interface PrepareRuntimeShellEnvOptions {
   bbExecutableDirectory: string;
+  /**
+   * Absolute path to the daemon-managed `bb` executable. Defaults to
+   * `<bbExecutableDirectory>/bb`. Injected as `BB_CLI` so agent shells can
+   * invoke it even when PATH is rewritten (ACP providers).
+   */
+  bbExecutablePath?: string;
   hostDaemonPort?: number;
   serverUrl: string;
   inheritedPath?: string;
@@ -333,21 +339,48 @@ export async function resolveUserShellPath(
 export async function resolveLocalBbExecutableDirectory(
   options: ResolveLocalBbExecutableDirectoryOptions = {},
 ): Promise<string> {
+  const cliEntryPath = await resolveLocalBbExecutablePath(options);
+  return dirname(cliEntryPath);
+}
+
+/**
+ * Absolute path to the local bb CLI entry used for agent shell injection.
+ * Prefer this over directory-only resolution when setting `BB_CLI`.
+ */
+export async function resolveLocalBbExecutablePath(
+  options: ResolveLocalBbExecutableDirectoryOptions = {},
+): Promise<string> {
   const resolvedCliExecutablePath =
     options.cliExecutablePath ?? getDefaultCliExecutablePath();
-  const cliEntryPath = await resolveCliEntryPath(resolvedCliExecutablePath);
+  return resolveCliEntryPath(resolvedCliExecutablePath);
+}
 
-  return dirname(cliEntryPath);
+/** Platform-stable name of the bb CLI file inside `BB_CLI_DIR` / daemon dist. */
+export function bbExecutableFileName(): string {
+  return "bb";
+}
+
+export function resolveBbExecutablePathInDirectory(
+  bbExecutableDirectory: string,
+): string {
+  return resolve(bbExecutableDirectory, bbExecutableFileName());
 }
 
 export function prepareRuntimeShellEnv(
   options: PrepareRuntimeShellEnvOptions,
 ): NonNullable<AgentRuntimeOptions["shellEnv"]> {
+  const bbExecutablePath =
+    options.bbExecutablePath ??
+    resolveBbExecutablePathInDirectory(options.bbExecutableDirectory);
   const shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {
     PATH: prependPath(
       options.bbExecutableDirectory,
       options.inheritedPath ?? process.env.PATH,
     ),
+    // Absolute path survives PATH rewrites in ACP agent tool shells. Official
+    // CLI entrypoints re-exec to this target when it differs from the current
+    // binary (see apps/cli `maybeReexecViaBbCli`).
+    BB_CLI: bbExecutablePath,
     BB_SERVER_URL: options.serverUrl,
   };
   assignIfDefined({

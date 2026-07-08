@@ -22,6 +22,7 @@ Context variables set automatically inside a thread environment:
 - BB_PROJECT_ID — current project
 - BB_THREAD_ID — current thread
 - BB_ENVIRONMENT_ID — current environment
+- BB_CLI — absolute path to the daemon-managed `bb` executable (prefer this if bare `bb` is wrong; official entrypoints also re-exec to it)
 
 Run `bb status` to see your current context (resolved project and thread IDs).
 

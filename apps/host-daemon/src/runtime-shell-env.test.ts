@@ -352,7 +352,7 @@ describe("resolveUserShellPath", () => {
 });
 
 describe("prepareRuntimeShellEnv", () => {
-  it("prepends the configured bb executable directory to PATH", () => {
+  it("prepends the configured bb executable directory to PATH and sets BB_CLI", () => {
     expect(
       prepareRuntimeShellEnv({
         bbExecutableDirectory: "/tmp/bb-bin",
@@ -362,8 +362,23 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
+      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
+    });
+  });
+
+  it("uses an explicit bbExecutablePath for BB_CLI", () => {
+    expect(
+      prepareRuntimeShellEnv({
+        bbExecutableDirectory: "/tmp/bb-bin",
+        bbExecutablePath: "/opt/custom/bb",
+        inheritedPath: "/usr/bin",
+        serverUrl: "http://127.0.0.1:3334",
+      }),
+    ).toMatchObject({
+      BB_CLI: "/opt/custom/bb",
+      PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
     });
   });
 
@@ -378,6 +393,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
+      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -392,6 +408,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
+      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });

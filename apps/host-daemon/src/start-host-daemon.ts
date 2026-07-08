@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 import {
   loadHostDaemonStartConfig,
   type HostDaemonConnectionConfig,
@@ -27,7 +28,8 @@ import {
 } from "./local-api-config.js";
 import {
   prepareRuntimeShellEnv,
-  resolveLocalBbExecutableDirectory,
+  resolveBbExecutablePathInDirectory,
+  resolveLocalBbExecutablePath,
   resolveUserShellPath,
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -155,9 +157,11 @@ export async function startHostDaemon(
           localApi: options.localApi,
         })
       : null;
-    const bbExecutableDirectory =
-      options.bbExecutableDirectory ??
-      (await resolveLocalBbExecutableDirectory());
+    const bbExecutablePath =
+      options.bbExecutableDirectory !== undefined
+        ? resolveBbExecutablePathInDirectory(options.bbExecutableDirectory)
+        : await resolveLocalBbExecutablePath();
+    const bbExecutableDirectory = dirname(bbExecutablePath);
     const logger =
       options.logger ??
       createLogger({
@@ -189,6 +193,7 @@ export async function startHostDaemon(
     const resolveRuntimeShellEnv = async () =>
       prepareRuntimeShellEnv({
         bbExecutableDirectory,
+        bbExecutablePath,
         hostDaemonPort: localApiConfig?.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
         serverUrl,

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
@@ -23,6 +24,10 @@ import {
   runPluginCliCommand,
 } from "./plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "./version.js";
+
+// Hop to the daemon-managed binary when BB_CLI is set (agent shell env). Must
+// run before Commander so flags/help match the intended build.
+maybeReexecViaBbCli();
 
 const program = new Command();
 let cliRuntimeContext: CliRuntimeContext | undefined;

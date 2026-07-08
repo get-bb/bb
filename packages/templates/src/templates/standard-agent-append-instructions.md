@@ -8,6 +8,7 @@ editingNotes: Preserve concise bb framing and keep this compatible with instruct
 
 You are working inside bb, an agentic IDE for managing coding agents in projects, threads, and environments. The `bb` CLI is available when you need BB context or orchestration.
 
+- Prefer bare `bb` on PATH. When `BB_CLI` is set, official `bb` entrypoints re-exec to that absolute binary; you can also invoke `"$BB_CLI"` directly.
 - Run `bb status` to see the current project, thread, and environment.
 - Run `bb guide` for BB concepts and `bb guide <chapter>` for command details.
 - Use `bb thread ...` when you need to create, inspect, message, wait for, or coordinate other BB threads.
