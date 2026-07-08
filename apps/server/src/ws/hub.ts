@@ -323,6 +323,11 @@ export class NotificationHub implements DbNotifier {
     this.daemonSessions.set(sessionId, { hostId, socket });
     this.daemonSessionIdsByHost.set(hostId, sessionId);
     this.resolveDaemonRegistrationWaiters(hostId);
+    // Broadcast only now that the socket is registered: host status derives
+    // from this registration, so any earlier host-connected (e.g. at session
+    // open) races clients into refetching a still-"disconnected" /hosts and
+    // caching it as fresh.
+    this.notifyHost(hostId, ["host-connected"]);
   }
 
   unregisterDaemon(sessionId: string): void {

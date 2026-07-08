@@ -83,7 +83,11 @@ export function openSession(
 
   markHostSeen(db, input.hostId, now);
 
-  notifier.notifyHost(input.hostId, ["host-connected"]);
+  // No host-connected broadcast here: host status reads "connected" only once
+  // the daemon's WebSocket registers in the hub, which happens after this
+  // session-open call. Broadcasting now would tell clients to refetch while
+  // /hosts still answers "disconnected", and they'd cache that as fresh.
+  // NotificationHub.registerDaemon emits the broadcast instead.
 
   return row;
 }
