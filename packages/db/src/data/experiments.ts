@@ -8,8 +8,8 @@ const SYSTEM_EXPERIMENTS_ROW_ID = "current";
 export function getExperiments(db: DbConnection): Experiments {
   const row = db
     .select({
+      bbConnect: systemExperiments.bbConnect,
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
-      multiMachine: systemExperiments.multiMachine,
       popoutChat: systemExperiments.popoutChat,
       popoutChatHotkey: systemExperiments.popoutChatHotkey,
       plugins: systemExperiments.plugins,
@@ -29,8 +29,8 @@ export function setExperiments(
   db.insert(systemExperiments)
     .values({
       id: SYSTEM_EXPERIMENTS_ROW_ID,
+      bbConnect: experiments.bbConnect,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-      multiMachine: experiments.multiMachine,
       popoutChat: experiments.popoutChat,
       popoutChatHotkey: experiments.popoutChatHotkey,
       plugins: experiments.plugins,
@@ -39,8 +39,8 @@ export function setExperiments(
     .onConflictDoUpdate({
       target: systemExperiments.id,
       set: {
+        bbConnect: experiments.bbConnect,
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-        multiMachine: experiments.multiMachine,
         popoutChat: experiments.popoutChat,
         popoutChatHotkey: experiments.popoutChatHotkey,
         plugins: experiments.plugins,

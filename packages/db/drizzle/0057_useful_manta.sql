@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` RENAME COLUMN "multi_machine" TO "bb_connect";

@@ -18,11 +18,9 @@ import {
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
+import { requirePrimaryHostId } from "../services/hosts/primary-host.js";
 import {
-  assertUsableHostId,
-  requirePrimaryHostId,
-} from "../services/hosts/primary-host.js";
-import {
+  requireNonDestroyedHostWithStatus,
   requirePublicThreadEnvironment,
 } from "../services/lib/entity-lookup.js";
 
@@ -141,10 +139,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
 
   const resolveHostId = (hostId: string | undefined): string => {
     const resolved = hostId ?? requirePrimaryHostId(deps);
-    // Directing a host to read/write/list files is host execution: gate
-    // non-primary targets behind the Multi-machine experiment (the primary
-    // always passes, so single-host installs are unaffected).
-    assertUsableHostId(deps, { hostId: resolved });
+    requireNonDestroyedHostWithStatus(deps, resolved);
     return resolved;
   };
 

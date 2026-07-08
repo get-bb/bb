@@ -226,20 +226,17 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
-## Multi-Machine
+## bb connect Experiment
 
-Running threads on hosts other than the local primary (`bb thread spawn
---host <id>`; ids from `bb host list`) is gated behind the "Multi-machine"
-experiment (Settings → Experiments, off by default). While the experiment is
-off, execution requests that target a non-primary host are rejected with
-`multi_machine_disabled`. The bb connect remote-access surfaces are gated by
-the same experiment; while it is off, the builtin connect plugin is not loaded.
+The **bb connect** experiment (Settings → Experiments, off by default) gates
+remote access for reaching this bb server through getbb.app. It does not enable
+running threads on non-primary hosts.
 
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Enable the "Multi-machine" experiment first;
+command at https://getbb.app). Enable the "bb connect" experiment first;
 while it is off, `bb connect` and the Connect panel are unavailable because
 the plugin is not loaded. Remote access is owned by the builtin
 **connect plugin** (`plugins/connect/`): pairing redeems the code and stores
@@ -252,7 +249,7 @@ re-establishes on restart; there is no foreground client. Pair from a machine
 without an installed bb via `npx -p bb-app@latest bb connect …`.
 `bb connect status` shows the connect state and `bb connect off` disconnects
 and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
-cuts off all remote access; with the Multi-machine experiment still enabled,
+cuts off all remote access; with the bb connect experiment still enabled,
 `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
@@ -264,7 +261,7 @@ User-installed plugins are gated behind the "Plugins" experiment (Settings →
 Experiments, off by default). While the experiment is off, user plugin code
 does not load and `bb plugin` commands for user plugins report that plugins are
 disabled. Builtin plugins ship with bb and can remain available; the builtin
-connect plugin is separately gated by "Multi-machine". Toggling these
+connect plugin is separately gated by "bb connect". Toggling these
 experiments applies live.
 
 Plugin state lives under the data dir:

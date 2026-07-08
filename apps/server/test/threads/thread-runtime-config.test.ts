@@ -715,8 +715,8 @@ describe("thread runtime config", () => {
       });
 
       setExperiments(harness.db, {
+        bbConnect: false,
         claudeCodeMockCliTraffic: true,
-        multiMachine: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,

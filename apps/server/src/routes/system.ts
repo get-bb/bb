@@ -71,7 +71,7 @@ export function registerSystemRoutes(
     const next = getExperiments(deps.db);
     if (
       previous.plugins !== next.plugins ||
-      previous.multiMachine !== next.multiMachine
+      previous.bbConnect !== next.bbConnect
     ) {
       // Live toggle: plugin-affecting experiments load/unload matching rows.
       void pluginService.onExperimentsChanged().catch((error) => {

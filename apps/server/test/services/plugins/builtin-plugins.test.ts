@@ -178,7 +178,7 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(1);
   });
 
-  it("loads the builtin connect plugin only while the multi-machine experiment is on", async () => {
+  it("loads the builtin connect plugin only while the bb connect experiment is on", async () => {
     let connectEnabled = false;
     service = createService({
       db,
@@ -195,7 +195,7 @@ describe("builtin plugin reconciliation", () => {
         source: "builtin:connect",
         enabled: true,
         status: "disabled",
-        statusDetail: 'disabled by the "Multi-machine" experiment',
+        statusDetail: 'disabled by the "bb connect" experiment',
       },
     ]);
     expect(loadCount()).toBe(0);
@@ -221,7 +221,7 @@ describe("builtin plugin reconciliation", () => {
         id: "builtin-fixture",
         source: "builtin:connect",
         status: "disabled",
-        statusDetail: 'disabled by the "Multi-machine" experiment',
+        statusDetail: 'disabled by the "bb connect" experiment',
       },
     ]);
   });

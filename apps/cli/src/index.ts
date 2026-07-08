@@ -2,7 +2,6 @@
 import { Command } from "commander";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
-import { registerHostCommands } from "./commands/host.js";
 import { registerManagerCommands } from "./commands/manager.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
@@ -77,7 +76,6 @@ registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
-registerHostCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
 registerGuideCommand(program);
@@ -110,9 +108,9 @@ async function tryPluginCommandProxy(): Promise<void> {
     // when the name matches an installed-but-disabled plugin's id.
     const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
     if (disabled !== null) {
-      if (disabled.enabled && disabled.statusDetail?.includes("Multi-machine")) {
+      if (disabled.enabled && disabled.statusDetail?.includes("bb connect")) {
         console.error(
-          `bb ${candidate} is behind the "Multi-machine" experiment — ` +
+          `bb ${candidate} is behind the "bb connect" experiment — ` +
             "enable it in Settings → Experiments.",
         );
       } else if (

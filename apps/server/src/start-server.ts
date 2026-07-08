@@ -72,11 +72,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_DEV_APP_PORT !== undefined) {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
-  // Constructed after runtimeConfig: host_path terminals gate their target
-  // host through the Multi-machine experiment, which needs config.dataDir to
-  // resolve the primary host.
   const terminalSessions = new TerminalSessionLifecycle({
-    config: runtimeConfig,
     db,
     hub,
     logger,

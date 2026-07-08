@@ -151,8 +151,8 @@ async function startSmokeServer({ dataDir, expectedDesktopVersion }) {
         customThemes: [],
         dataDir,
         experiments: {
+          bbConnect: false,
           claudeCodeMockCliTraffic: false,
-          multiMachine: false,
           popoutChat: false,
           popoutChatHotkey: "Alt+Space",
           plugins: false,

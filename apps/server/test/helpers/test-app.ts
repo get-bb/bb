@@ -140,7 +140,6 @@ export async function createTestAppHarness(
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
-    config,
     db,
     hub,
     logger: testLogger,

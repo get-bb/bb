@@ -225,7 +225,7 @@ export interface PluginServiceDeps {
   appVersion: string;
   /** The `plugins` experiment gate for user-installed plugins, read live. */
   isEnabled: () => boolean;
-  /** The `multiMachine` experiment gate for the builtin connect plugin, read live. */
+  /** The `bbConnect` experiment gate for the builtin connect plugin, read live. */
   isConnectEnabled: () => boolean;
   /** Declared first-party plugins installed by default; test-only override. */
   builtinPlugins?: readonly BuiltinPluginRegistration[];
@@ -1178,7 +1178,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function experimentGateDisabledDetail(row: InstalledPluginRow): string | null {
     const builtinName = builtinNameFromSource(row.source);
     if (builtinName === CONNECT_BUILTIN_PLUGIN_NAME) {
-      return 'disabled by the "Multi-machine" experiment';
+      return 'disabled by the "bb connect" experiment';
     }
     if (builtinName === null) {
       return 'disabled by the "Plugins" experiment';

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultExperiments,
   experimentsSchema,
   isValidElectronAccelerator,
 } from "../src/experiments.js";
@@ -15,7 +16,7 @@ describe("experimentsSchema", () => {
 
     expect(() =>
       experimentsSchema.parse({
-        claudeCodeMockCliTraffic: false,
+        ...defaultExperiments,
         popoutChat: true,
         popoutChatHotkey: "A",
       }),

@@ -236,7 +236,6 @@ async function startIntegrationServer(
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
-    config,
     db,
     hub,
     logger: testLogger,

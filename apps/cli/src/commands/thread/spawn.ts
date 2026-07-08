@@ -27,7 +27,6 @@ interface ThreadSpawnCommandOptions {
   environment?: string;
   newEnvironment?: string;
   baseBranch?: string;
-  host?: string;
   parentThread?: string;
   provider?: string;
   model?: string;
@@ -164,10 +163,6 @@ export function registerSpawnCommand(
       "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
     )
     .option(
-      "--host <id>",
-      "Target host ID to run on (e.g. a second connected machine). Omit to use the local primary host.",
-    )
-    .option(
       "--parent-thread <id>",
       "Parent thread ID for worker thread links",
     )
@@ -207,12 +202,7 @@ export function registerSpawnCommand(
           Boolean(opts.newEnvironment) ||
           (!defaultPersonalWorkspace &&
             (!environmentValue || looksLikePath(environmentValue)));
-        // An explicit --host targets a specific connected host (e.g. a second
-        // machine); otherwise fall back to the local primary host when one is
-        // needed. The server validates the host is a usable connected host.
-        const explicitHostId = opts.host?.trim() || null;
-        const hostId =
-          explicitHostId ?? (needsHostId ? await resolveLocalHostId() : null);
+        const hostId = needsHostId ? await resolveLocalHostId() : null;
         const environment = buildSpawnEnvironment({
           defaultPersonalWorkspace,
           environmentValue,

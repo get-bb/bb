@@ -400,6 +400,13 @@
       "when": 1783464830533,
       "tag": "0056_drop_ui_forking",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1783488303729,
+      "tag": "0057_useful_manta",
+      "breakpoints": true
     }
   ]
 }

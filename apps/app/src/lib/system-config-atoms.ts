@@ -10,8 +10,8 @@ import { wsManager } from "./ws";
 // Offline/unavailable app behavior should fail closed independently of server defaults.
 const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
+    bbConnect: false,
     claudeCodeMockCliTraffic: false,
-    multiMachine: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
     plugins: false,

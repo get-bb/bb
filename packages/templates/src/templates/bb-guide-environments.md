@@ -63,22 +63,10 @@ Making your repo work with bb:
   bb environment squash-merge <id>        Squash-merge into a target branch
     --merge-base-branch <branch>          Target branch (required)
 
-Hosts:
-
-  Every environment lives on a host (a machine running the bb host daemon).
-
-  bb host list                            List hosts with connection status and last-seen time
-
-  Pass a host id to `bb thread spawn --host <id>` to run a thread on a
-  specific connected machine; omit it to use the local primary host.
-  Targeting a non-primary host requires the "Multi-machine" experiment
-  (Settings → Experiments); when it is off such requests are rejected.
-  The same experiment gates bb connect remote access.
-
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Enable the "Multi-machine" experiment, claim a handle at
+  browser. Enable the "bb connect" experiment, claim a handle at
   https://getbb.app, copy the connect command it generates, then run it here to
   pair:
 
@@ -98,5 +86,5 @@ Remote access (bb connect):
   Remote access is owned by the builtin "connect" plugin (its "Connect"
   panel in the app shows the URL and a QR code). Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; with the
-  Multi-machine experiment still enabled, re-enable with `bb plugin enable
+  bb connect experiment still enabled, re-enable with `bb plugin enable
   connect`.

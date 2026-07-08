@@ -42,7 +42,6 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, ServerLogger } from "../../types.js";
-import { assertUsableHostId } from "../hosts/primary-host.js";
 import {
   requireConnectedHostSession,
   requireEnvironment,
@@ -292,7 +291,6 @@ interface CloseThreadTerminalsForLifecycleArgs {
 
 interface TerminalSessionLifecycleOptions {
   attachTimeoutMs?: number;
-  config: AppDeps["config"];
   db: AppDeps["db"];
   hub: AppDeps["hub"];
   logger: ServerLogger;
@@ -713,17 +711,6 @@ export class TerminalSessionLifecycle {
         };
       }
       case "host_path":
-        // Opening a shell on a host is host execution: gate non-primary
-        // targets behind the Multi-machine experiment (the primary always
-        // passes, so single-host installs are unaffected).
-        assertUsableHostId(
-          {
-            config: this.options.config,
-            db: this.options.db,
-            hub: this.options.hub,
-          },
-          { hostId: target.hostId },
-        );
         return {
           daemonTarget: {
             kind: "host_path",

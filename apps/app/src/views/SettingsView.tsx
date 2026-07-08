@@ -152,11 +152,11 @@ function appPaletteLabel(appearance: AppTheme): string {
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
+  bbConnectEnabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   desktopShellAvailable: boolean;
-  multiMachineEnabled: boolean;
+  onBbConnectEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onMultiMachineEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
@@ -668,7 +668,7 @@ export function GeneralSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
+const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
@@ -849,12 +849,12 @@ function HotkeyRecorder({
 }
 
 export function ExperimentsSettingsSection({
+  bbConnectEnabled,
   claudeCodeMockCliTrafficEnabled,
   desktopShellAvailable,
   disabled,
-  multiMachineEnabled,
+  onBbConnectEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
-  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
@@ -882,14 +882,14 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={MULTI_MACHINE_EXPERIMENT_LABEL}
-          description="Run threads on other connected machines (bb thread spawn --host) and bb connect remote access. Off rejects execution on any host but this machine's."
+          label={BB_CONNECT_EXPERIMENT_LABEL}
+          description="Enable remote access for this bb server at getbb.app."
         >
           <Switch
-            checked={multiMachineEnabled}
+            checked={bbConnectEnabled}
             disabled={disabled}
-            onCheckedChange={onMultiMachineEnabledChange}
-            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
+            onCheckedChange={onBbConnectEnabledChange}
+            aria-label={BB_CONNECT_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1049,10 +1049,10 @@ export function SettingsView() {
               popoutChatHotkey: hotkey,
             })
           }
-          onMultiMachineEnabledChange={(enabled) =>
+          onBbConnectEnabledChange={(enabled) =>
             updateExperimentsMutation.mutate({
               ...experiments,
-              multiMachine: enabled,
+              bbConnect: enabled,
             })
           }
           onPluginsEnabledChange={(enabled) =>
@@ -1061,7 +1061,7 @@ export function SettingsView() {
               plugins: enabled,
             })
           }
-          multiMachineEnabled={experiments.multiMachine}
+          bbConnectEnabled={experiments.bbConnect}
           pluginsEnabled={experiments.plugins}
           popoutChatEnabled={experiments.popoutChat}
           popoutChatHotkey={experiments.popoutChatHotkey}

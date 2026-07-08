@@ -210,7 +210,7 @@ describe("findDisabledPluginForCommand", () => {
                   id: "connect",
                   enabled: true,
                   status: "disabled",
-                  statusDetail: 'disabled by the "Multi-machine" experiment',
+                  statusDetail: 'disabled by the "bb connect" experiment',
                 },
               ],
             }),
@@ -224,7 +224,7 @@ describe("findDisabledPluginForCommand", () => {
       id: "connect",
       enabled: true,
       status: "disabled",
-      statusDetail: 'disabled by the "Multi-machine" experiment',
+      statusDetail: 'disabled by the "bb connect" experiment',
     });
   });
 

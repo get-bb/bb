@@ -56,19 +56,15 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Spawn creates a root thread unless you pass `--parent-thread`.
-- Pass `--host <host-id>` to run the thread on a specific connected machine
-  (list ids with `bb host list`); omit it to use the local primary host.
-  Non-primary hosts require the "Multi-machine" experiment (Settings →
-  Experiments) — when off, the server rejects with `multi_machine_disabled`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
-  https://getbb.app). It requires the "Multi-machine" experiment; when off the
+  https://getbb.app). It requires the "bb connect" experiment; when off the
   builtin connect plugin is not loaded. Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
   `bb connect status` / `bb connect off` report and clear the pairing. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
-  cuts it off entirely; with Multi-machine still enabled, `bb plugin enable
+  cuts it off entirely; with bb connect still enabled, `bb plugin enable
   connect` restores the command.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
@@ -255,7 +251,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - **Enable user-installed plugins first.** Plugins are an experiment, off by
   default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
   (`builtin:<name>`) ship with bb and remain available even when the experiment
-  is off, except `connect`, which is gated by the **"Multi-machine"**
+  is off, except `connect`, which is gated by the **"bb connect"**
   experiment.
 - Commands:
   - `bb plugin install <src>` — local path, `builtin:<name>`,

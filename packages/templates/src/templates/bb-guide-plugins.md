@@ -15,7 +15,7 @@ run like any other command. Plugins are full-trust code inside the server.
 User-installed plugins are an experiment, off by default: enable "Plugins" under
 Settings → Experiments first. Builtin plugins (`builtin:<name>`) ship with bb and
 can remain available even when the experiment is off; `connect` additionally
-requires the "Multi-machine" experiment. Plugin state lives under
+requires the "bb connect" experiment. Plugin state lives under
 `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
   bb plugin install <src>        Install from a local path, builtin:<name>,
