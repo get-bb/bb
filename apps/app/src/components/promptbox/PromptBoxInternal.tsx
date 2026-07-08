@@ -2439,9 +2439,9 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-xl border border-border bg-background pb-2 shadow-lift",
-        "transition-[border-radius,padding] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-        showVoiceActionGroup && "rounded-3xl pb-0",
+        "relative w-full rounded-xl border border-border bg-background shadow-lift",
+        "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+        showVoiceActionGroup && "rounded-3xl",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
@@ -2603,7 +2603,7 @@ export function PromptBoxInternal({
             </div>
           ) : null}
 
-          <div className="flex shrink-0 flex-row items-center gap-3 pl-3.5 pr-2 pt-1.5">
+          <div className="flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5">
             <div
               className="flex min-w-0 flex-1 flex-row items-center gap-1"
               aria-live="polite"
