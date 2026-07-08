@@ -32,9 +32,15 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.hosts;
 
-  get(routes.list, (context) =>
-    context.json(listPublicHostsWithStatus(deps)),
-  );
+  get(routes.list, (context) => {
+    const hosts = listPublicHostsWithStatus(deps);
+    // DIAGNOSTIC-ONLY (thr_v7jjaqbtaw): record what each /hosts read returned.
+    deps.logger.info(
+      { hosts: hosts.map((host) => ({ id: host.id, status: host.status })) },
+      "diag: GET /hosts",
+    );
+    return context.json(hosts);
+  });
 
   get(routes.get, (context) =>
     context.json(

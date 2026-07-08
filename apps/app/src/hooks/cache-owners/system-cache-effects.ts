@@ -34,6 +34,7 @@ import {
   threadsQueryKey,
 } from "../queries/query-keys";
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
+import { diag } from "@/lib/renderer-diag";
 import type { QueryClientArg } from "../cache-effect-types";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import {
@@ -112,9 +113,18 @@ export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
   for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
     queryClient.invalidateQueries({
       queryKey,
-      predicate: (query) =>
-        query.state.dataUpdatedAt !== 0 &&
-        query.state.dataUpdatedAt < connectedAt,
+      predicate: (query) => {
+        const matched =
+          query.state.dataUpdatedAt !== 0 &&
+          query.state.dataUpdatedAt < connectedAt;
+        if (matched) {
+          diag("watermark invalidate", {
+            key: query.queryKey,
+            dataUpdatedAt: query.state.dataUpdatedAt,
+          });
+        }
+        return matched;
+      },
     });
   }
 }

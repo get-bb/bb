@@ -10,12 +10,14 @@ import {
   createAppQueryClient,
   installAppQueryClientBrowserEvents,
 } from "./lib/query-client";
+import { installRendererDiag } from "./lib/renderer-diag";
 import { takeOverPanelResizeCursor } from "./lib/resizeCursor";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import "./app.css";
 
 const queryClient = createAppQueryClient();
 installAppQueryClientBrowserEvents(queryClient);
+installRendererDiag(queryClient);
 
 initializePreferredTheme();
 // Apply the palette cached from the last load before React renders, so a

@@ -8,6 +8,7 @@ import {
   type ThreadChangeMetadata,
   type ThreadChangeKind,
 } from "@bb/domain";
+import { diag } from "@/lib/renderer-diag";
 import {
   invalidateRealtimeQueriesAfterServerReconnect,
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
@@ -304,6 +305,7 @@ export function createRealtimeCacheEffects({
       }
     },
     handleConnected: ({ reconnected }) => {
+      diag("realtime handleConnected", { reconnected });
       if (reconnected) {
         invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
         return;
@@ -311,8 +313,10 @@ export function createRealtimeCacheEffects({
       refetchErroredRealtimeQueriesOnInitialConnect({ queryClient });
       // The ws manager flushes subscribe messages before this callback runs,
       // so "now" is the watermark after which change events are delivered.
+      const connectedAt = Date.now();
+      diag("watermark set", { connectedAt });
       invalidateRealtimeQueriesFetchedBeforeInitialConnect({
-        connectedAt: Date.now(),
+        connectedAt,
         queryClient,
       });
     },
