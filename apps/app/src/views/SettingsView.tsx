@@ -39,6 +39,7 @@ import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSet
 import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import {
   useUpdateAppearance,
   useUpdateExperiments,
@@ -1011,6 +1012,8 @@ export function SettingsView() {
           onRichTextEditingChange={setRichTextEditing}
           onThemePreferenceChange={setPreferredTheme}
         />
+
+        <UpdatesSettingsSection />
 
         <UsageLimitsSettingsSection />
 

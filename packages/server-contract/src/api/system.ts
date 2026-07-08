@@ -121,6 +121,12 @@ export const systemVersionResponseSchema = z.object({
 });
 export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
 
+export const systemVersionQuerySchema = z.object({
+  /** "true" bypasses the server-side npm latest cache for a manual check. */
+  force: z.enum(["true", "false"]).optional(),
+});
+export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
+
 export const systemConfigReloadResponseSchema = z.object({
   ok: z.literal(true),
 });

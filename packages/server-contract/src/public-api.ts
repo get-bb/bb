@@ -106,6 +106,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
@@ -198,6 +199,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemVersionQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -1045,7 +1047,9 @@ export const publicApiRoutes = {
     version: defineRoute({
       path: "/system/version",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemVersionQuery>(
+        systemVersionQuerySchema,
+      ),
       response: jsonResponse<SystemVersionResponse>(),
     }),
   },

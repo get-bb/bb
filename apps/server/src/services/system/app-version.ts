@@ -15,7 +15,13 @@ const npmLatestResponseSchema = z
   .passthrough();
 
 export interface AppVersionService {
-  getSystemVersion(): Promise<SystemVersionResponse>;
+  getSystemVersion(
+    args?: AppVersionGetSystemVersionArgs,
+  ): Promise<SystemVersionResponse>;
+}
+
+export interface AppVersionGetSystemVersionArgs {
+  forceRefresh?: boolean;
 }
 
 export interface CreateAppVersionServiceArgs {
@@ -90,9 +96,15 @@ export function createAppVersionService(
   // fetch returns null even if a stale cached value exists. This is choice
   // "A" (null on failure) and overrides the plan body's earlier suggestion
   // to fall back to the stale cached value with a warning.
-  async function getLatestVersion(): Promise<string | null> {
+  async function getLatestVersion(args?: {
+    forceRefresh?: boolean;
+  }): Promise<string | null> {
     const currentTime = now();
-    if (cache !== null && currentTime - cache.cachedAt < cacheTtlMs) {
+    if (
+      args?.forceRefresh !== true &&
+      cache !== null &&
+      currentTime - cache.cachedAt < cacheTtlMs
+    ) {
       return cache.latestVersion;
     }
     if (inflight !== null) {
@@ -116,7 +128,9 @@ export function createAppVersionService(
   }
 
   return {
-    async getSystemVersion(): Promise<SystemVersionResponse> {
+    async getSystemVersion(
+      args: AppVersionGetSystemVersionArgs = {},
+    ): Promise<SystemVersionResponse> {
       const baseResponse: SystemVersionResponse = {
         currentVersion: config.appVersion,
         latestVersion: null,
@@ -130,7 +144,9 @@ export function createAppVersionService(
         return baseResponse;
       }
 
-      const latestVersion = await getLatestVersion();
+      const latestVersion = await getLatestVersion({
+        forceRefresh: args.forceRefresh,
+      });
       if (latestVersion === null) {
         return baseResponse;
       }

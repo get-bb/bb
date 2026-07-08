@@ -169,6 +169,23 @@ describe("createAppVersionService", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("bypasses the npm cache for a forced check", async () => {
+    const calls: FetchCall[] = [];
+    const service = createAppVersionService({
+      config: { appVersion: "0.0.5", isDevelopment: false },
+      fetchImpl: createStubFetch(
+        [{ body: { version: "0.0.6" } }, { body: { version: "0.0.7" } }],
+        calls,
+      ),
+      logger: testLogger,
+    });
+    const first = await service.getSystemVersion();
+    const second = await service.getSystemVersion({ forceRefresh: true });
+    expect(first.latestVersion).toBe("0.0.6");
+    expect(second.latestVersion).toBe("0.0.7");
+    expect(calls).toHaveLength(2);
+  });
+
   it("re-fetches once the TTL has expired", async () => {
     const calls: FetchCall[] = [];
     let currentTime = 1_000;

@@ -1738,10 +1738,17 @@ export async function listSystemProviders(): Promise<SystemProviderInfo[]> {
 }
 
 export async function getSystemVersion(
-  signal?: AbortSignal,
+  args: { force?: boolean; signal?: AbortSignal } = {},
 ): Promise<SystemVersionResponse> {
   return request<SystemVersionResponse>(
-    apiClient.system.version.$get({}, requestOptions(signal)),
+    apiClient.system.version.$get(
+      {
+        query: {
+          ...(args.force ? { force: "true" as const } : {}),
+        },
+      },
+      requestOptions(args.signal),
+    ),
   );
 }
 

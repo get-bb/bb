@@ -99,7 +99,7 @@ export function useSystemConfig(options?: QueryOptions) {
 export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
-    queryFn: ({ signal }) => api.getSystemVersion(signal),
+    queryFn: ({ signal }) => api.getSystemVersion({ signal }),
     enabled: options?.enabled ?? true,
     ...SERVER_SESSION_QUERY_POLICY,
   });
