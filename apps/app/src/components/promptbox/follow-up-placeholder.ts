@@ -31,3 +31,28 @@ export function getFollowUpPromptPlaceholder(
       return assertNever(displayStatus);
   }
 }
+
+/** Short copy that remains fully visible in the one-line mobile composer. */
+export function getMinimizedFollowUpPromptPlaceholder(
+  displayStatus: ThreadRuntimeDisplayStatus,
+): string {
+  switch (displayStatus) {
+    case "provisioning":
+      return "Setting up...";
+    case "starting":
+      return "Starting...";
+    case "stopping":
+      return "Stopping...";
+    case "waiting-for-host":
+      return "Host disconnected";
+    case "host-reconnecting":
+      return "Reconnecting...";
+    case "error":
+      return "Send a follow-up";
+    case "idle":
+    case "active":
+      return "Ask a follow-up";
+    default:
+      return assertNever(displayStatus);
+  }
+}

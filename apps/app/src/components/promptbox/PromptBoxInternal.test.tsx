@@ -210,6 +210,22 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
   );
 }
 
+function PromptBoxSizeHarness({ storageKey }: { storageKey: string }) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  return (
+    <PromptBoxInternal
+      {...createPromptBoxProps({
+        minimized: {
+          isMinimized,
+          onToggle: () => setIsMinimized((previous) => !previous),
+          placeholder: "Ask a follow-up",
+        },
+        zenMode: { storageKey },
+      })}
+    />
+  );
+}
+
 function renderPromptBox(
   initialValue: string,
   options: {
@@ -585,12 +601,23 @@ describe("PromptBoxInternal zen mode layout", () => {
       .mockReturnValueOnce(new DOMRect(0, 0, 320, 512))
       .mockReturnValue(new DOMRect(0, 0, 320, 512));
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
 
     await waitFor(() => {
       expect(form.style.transition).toContain("height 240ms");
       expect(form.style.height).toBe("512px");
     });
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
 
     fireEvent.transitionEnd(form, { propertyName: "height" });
     window.localStorage.removeItem(storageKey);
@@ -610,7 +637,9 @@ describe("PromptBoxInternal zen mode layout", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
 
     await waitFor(() => {
       const scrollContainer = document.querySelector(
@@ -631,6 +660,162 @@ describe("PromptBoxInternal zen mode layout", () => {
         ?.parentElement;
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
+    window.localStorage.removeItem(storageKey);
+  });
+});
+
+describe("PromptBoxInternal minimized layout", () => {
+  it("keeps only the one-line editor, expand control, and primary action", () => {
+    const onToggle = vi.fn();
+    const voice: PromptVoiceConfig = {
+      state: "idle",
+      isSupported: true,
+      stream: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      cancel: vi.fn(),
+    };
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value:
+            "A compact follow-up that is much wider than the available mobile space\nA hidden second line",
+          attachments: { onAttachFiles: vi.fn() },
+          footerStart: <button type="button">Model selector</button>,
+          minimized: {
+            isMinimized: true,
+            onToggle,
+            placeholder: "Ask a follow-up",
+          },
+          promptActions,
+          voice,
+        })}
+      />,
+    );
+
+    const form = document.querySelector("[data-promptbox]");
+    expect(form?.getAttribute("data-promptbox-minimized")).toBe("");
+    expect(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Start voice input" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+    expect(getPromptEditorElement().getAttribute("data-placeholder")).toBe(
+      "Ask a follow-up",
+    );
+    const minimizedContent = document.querySelector(
+      "[data-promptbox-minimized-content]",
+    );
+    expect(minimizedContent).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Markdown and mention pills inside the truncated preview", async () => {
+    const mentionToken =
+      "@apps/app/src/components/promptbox/PromptBoxInternal.tsx";
+    const value = [
+      `> Review ${mentionToken} with the rest of this long quoted request`,
+      "> Then verify the hidden continuation",
+      "A hidden paragraph after the quote",
+    ].join("\n");
+    const mentionStart = value.indexOf(mentionToken);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value,
+          mentionRanges: [
+            {
+              start: mentionStart,
+              end: mentionStart + mentionToken.length,
+              resource: {
+                kind: "path",
+                source: "workspace",
+                entryKind: "file",
+                path: "apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+                label: "PromptBoxInternal.tsx",
+              },
+            },
+          ],
+          minimized: {
+            isMinimized: true,
+            onToggle: vi.fn(),
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    const minimizedContent = document.querySelector(
+      "[data-promptbox-minimized-content]",
+    );
+    const editor = getPromptEditorElement();
+    expect(minimizedContent?.contains(editor)).toBe(true);
+    expect(editor.firstElementChild?.tagName).toBe("BLOCKQUOTE");
+    await waitFor(() =>
+      expect(editor.querySelector(".prompt-mention-pill")).toBeTruthy(),
+    );
+    expect(editor.querySelector("br")).toBeTruthy();
+    expect(editor.children.length).toBeGreaterThan(1);
+  });
+
+  it("shows only the smaller control in the normal mobile layout", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          minimized: { isMinimized: false, onToggle: vi.fn() },
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Attach files" })).toBeTruthy();
+  });
+
+  it("uses one contextual size control for compact and normal on mobile", () => {
+    const storageKey = "bb.test.promptbox.size-system";
+    window.localStorage.removeItem(storageKey);
+    render(<PromptBoxSizeHarness storageKey={storageKey} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    );
+    expect(document.querySelector("[data-promptbox-minimized]")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+    expect(document.querySelector("[data-promptbox-minimized]")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
     window.localStorage.removeItem(storageKey);
   });
 });

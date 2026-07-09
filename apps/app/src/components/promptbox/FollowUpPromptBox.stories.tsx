@@ -356,9 +356,11 @@ function buildStoryMentions(
 }
 
 const stackedCardsWithPillsMessage = [
-  "Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
-  "with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
-].join(" ");
+  "> Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+  "> with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
+  "",
+  "This paragraph should stay outside the collapsed one-line preview.",
+].join("\n");
 
 const stackedCardsWithPillsMentions = buildStoryMentions(
   stackedCardsWithPillsMessage,
@@ -869,8 +871,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="stacked cards with pills"
-        hint="banner + queued messages above a composer seeded with mention pills"
+        label="stacked cards with Markdown + pills"
+        hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>

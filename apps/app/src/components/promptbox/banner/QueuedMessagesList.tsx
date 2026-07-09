@@ -63,6 +63,7 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
+import { useMobilePromptBoxMinimizedState } from "@/components/promptbox/mobile-promptbox-minimized-context";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -690,7 +691,19 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [isExpanded, setIsExpanded] = useState(true);
+  const shouldCollapseForMobilePrompt = useMobilePromptBoxMinimizedState();
+  const [isExpanded, setIsExpanded] = useState(
+    !shouldCollapseForMobilePrompt,
+  );
+  const [lastPromptMinimizedState, setLastPromptMinimizedState] = useState(
+    shouldCollapseForMobilePrompt,
+  );
+  if (shouldCollapseForMobilePrompt !== lastPromptMinimizedState) {
+    setLastPromptMinimizedState(shouldCollapseForMobilePrompt);
+    if (shouldCollapseForMobilePrompt && isExpanded) {
+      setIsExpanded(false);
+    }
+  }
   const {
     aboveOverflow,
     belowOverflow,
