@@ -40,8 +40,9 @@ message agents, or inspect projects, providers, and environments.
 - Settings → General has a macOS-only "Caffeinate" toggle. It is persisted
   server-side and asks the primary host daemon to run `/usr/bin/caffeinate -i -w
   <daemon-pid>` while enabled, preventing system idle sleep while bb is running.
-  Turning it off stops that process. It is only shown when the connected primary
-  host daemon reports macOS.
+  Turning it off stops that process. It only blocks idle sleep: closing a laptop
+  lid or choosing Sleep manually still sleeps the Mac. It is only shown when the
+  connected primary host daemon reports macOS.
 
 ## Agent Instructions
 

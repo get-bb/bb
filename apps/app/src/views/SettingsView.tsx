@@ -490,7 +490,7 @@ export function CaffeinateSettingsControl({
   return (
     <SettingsWithControl
       label={CAFFEINATE_SETTING_LABEL}
-      description="Prevent system idle sleep while bb is running."
+      description="Prevent system idle sleep while bb is running. Closing the lid or choosing Sleep still sleeps the Mac."
     >
       <Switch
         checked={enabled}
