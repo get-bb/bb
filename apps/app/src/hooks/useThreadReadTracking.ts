@@ -21,6 +21,7 @@ interface UseThreadReadTrackingParams {
 
 interface ReadTrackingSnapshot {
   isVisible: boolean;
+  isRead: boolean | null;
   latestAttentionAt: number | null;
   threadId: string | null;
 }
@@ -58,13 +59,16 @@ export function useThreadReadTracking({
 }: UseThreadReadTrackingParams) {
   const failedReadKeysRef = useRef<Set<string>>(new Set());
   const pendingReadKeysRef = useRef<Set<string>>(new Set());
+  const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
   const isVisible = useDocumentVisible();
 
   useEffect(() => {
     const previousSnapshot = previousSnapshotRef.current;
+    const threadIsRead = thread ? isThreadRead(thread) : null;
     const currentSnapshot: ReadTrackingSnapshot = {
       isVisible,
+      isRead: threadIsRead,
       latestAttentionAt: thread?.latestAttentionAt ?? null,
       threadId: thread?.id ?? null,
     };
@@ -78,21 +82,43 @@ export function useThreadReadTracking({
     }
 
     const marker = `${thread.id}:${thread.latestAttentionAt}`;
-    if (isThreadRead(thread)) {
-      failedReadKeysRef.current.delete(marker);
-      pendingReadKeysRef.current.delete(marker);
-      return;
-    }
-
     const isOpenedThread =
       previousSnapshot === null || previousSnapshot.threadId !== thread.id;
     const hasNewAttention =
       previousSnapshot?.threadId === thread.id &&
       previousSnapshot.latestAttentionAt !== thread.latestAttentionAt;
+    if (isOpenedThread || hasNewAttention) {
+      suppressedManualUnreadKeysRef.current.clear();
+    }
+
+    if (threadIsRead) {
+      failedReadKeysRef.current.delete(marker);
+      pendingReadKeysRef.current.delete(marker);
+      suppressedManualUnreadKeysRef.current.delete(marker);
+      return;
+    }
+
     const becameVisible =
       previousSnapshot?.threadId === thread.id &&
       previousSnapshot.isVisible === false;
     const isRetry = failedReadKeysRef.current.has(marker);
+    const becameManuallyUnread =
+      previousSnapshot?.threadId === thread.id &&
+      previousSnapshot.latestAttentionAt === thread.latestAttentionAt &&
+      previousSnapshot.isVisible &&
+      previousSnapshot.isRead === true &&
+      !isRetry;
+
+    if (becameManuallyUnread) {
+      suppressedManualUnreadKeysRef.current.add(marker);
+    }
+    if (
+      suppressedManualUnreadKeysRef.current.has(marker) &&
+      !isOpenedThread &&
+      !hasNewAttention
+    ) {
+      return;
+    }
 
     if (!isOpenedThread && !hasNewAttention && !becameVisible && !isRetry) {
       return;

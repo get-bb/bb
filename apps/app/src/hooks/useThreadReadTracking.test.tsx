@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThreadReadTracking } from "./useThreadReadTracking";
 
@@ -20,9 +20,19 @@ function makeMarkThreadRead() {
   } satisfies MarkThreadReadMutation;
 }
 
+function setDocumentVisibilityState(
+  visibilityState: DocumentVisibilityState,
+): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: visibilityState,
+  });
+}
+
 describe("useThreadReadTracking", () => {
   afterEach(() => {
     cleanup();
+    setDocumentVisibilityState("visible");
   });
 
   it("does not mark read without a visible thread", () => {
@@ -107,6 +117,38 @@ describe("useThreadReadTracking", () => {
     expect(markThreadRead.mutate).not.toHaveBeenCalled();
 
     rerender({ lastReadAt: null });
+
+    expect(markThreadRead.mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not undo marking the visible thread unread after tab refocus", () => {
+    const markThreadRead = makeMarkThreadRead();
+    type VisibleThreadProps = { lastReadAt: number | null };
+    const initialProps: VisibleThreadProps = { lastReadAt: 20 };
+    const { rerender } = renderHook(
+      ({ lastReadAt }: VisibleThreadProps) =>
+        useThreadReadTracking({
+          markThreadRead,
+          thread: {
+            id: "thr_side_chat",
+            lastReadAt,
+            latestAttentionAt: 20,
+          },
+        }),
+      { initialProps },
+    );
+
+    rerender({ lastReadAt: null });
+    expect(markThreadRead.mutate).not.toHaveBeenCalled();
+
+    act(() => {
+      setDocumentVisibilityState("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      setDocumentVisibilityState("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
 
     expect(markThreadRead.mutate).not.toHaveBeenCalled();
   });
